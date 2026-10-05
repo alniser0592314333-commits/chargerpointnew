@@ -1,0 +1,178 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* Default Light Mode Variables (Preserved 100% Light Palette) */
+  :root, html.light {
+    --bg-primary: #f8faf9;
+    --bg-atmosphere: #f8faf9;
+    --surface-subtle: rgba(240, 245, 243, 0.8);
+    --surface-glass: #ffffff;
+    --surface-elevated: #ffffff;
+    --surface-modal: #ffffff;
+
+    --border-subtle: rgba(0, 0, 0, 0.08);
+    --border-default: rgba(0, 0, 0, 0.12);
+    --border-highlight: rgba(0, 0, 0, 0.18);
+    --inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+
+    --foreground: #111827;
+    --foreground-muted: #374151;
+    --foreground-subtle: #6b7280;
+
+    --primary: #235347;
+    --primary-hover: #163832;
+    --primary-active: #0b2b26;
+
+    --shadow-subtle: 0 2px 10px rgba(0, 0, 0, 0.04);
+    --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.05);
+    --shadow-floating: 0 16px 40px rgba(0, 0, 0, 0.08);
+    --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Deep Teal / Deep Green Dark Mode Palette (Rich Multi-Zone Atmospheric Depth) */
+  html.dark {
+    color-scheme: dark;
+
+    --bg-primary: #031817;
+    --bg-atmosphere: 
+      radial-gradient(ellipse 95% 55% at 50% -5%, rgba(22, 74, 65, 0.48) 0%, transparent 75%),
+      radial-gradient(ellipse 75% 50% at 50% 45%, rgba(14, 54, 47, 0.38) 0%, transparent 80%),
+      radial-gradient(circle at 10% 25%, rgba(16, 60, 52, 0.28) 0%, transparent 50%),
+      radial-gradient(circle at 90% 75%, rgba(12, 46, 40, 0.35) 0%, transparent 55%),
+      linear-gradient(180deg, #05201e 0%, #031817 50%, #021211 100%);
+    
+    --surface-header: #072420;
+    --surface-sidebar: #06201c;
+    --surface-content: #082622;
+    --surface-elevated: #0a2f29;
+    --surface-modal: #0c352f;
+    --surface-input: #051d1a;
+    --surface-dropdown: #092c26;
+
+    --border-subtle: #0f3b34;
+    --border-default: #14423b;
+    --border-highlight: #1d554c;
+    --inner-highlight: inset 0 1px 0 rgba(218, 241, 222, 0.08);
+
+    --foreground: #daf1de;
+    --foreground-muted: #8eb698;
+    --foreground-subtle: #5e8674;
+
+    --primary: #235347;
+    --primary-hover: #163832;
+    --primary-active: #0b2b26;
+
+    --shadow-subtle: 0 4px 20px rgba(0, 0, 0, 0.25);
+    --shadow-card: 0 12px 40px rgba(2, 18, 17, 0.5);
+    --shadow-floating: 0 20px 60px rgba(2, 18, 17, 0.65);
+    --shadow-modal: 0 28px 90px rgba(2, 18, 17, 0.85);
+
+    /* Map Tailwind Gray Utilities to Deep Teal Palette for Global Dark Mode Consistency */
+    --color-gray-950: #031817;
+    --color-gray-900: #082622;
+    --color-gray-850: #0a2f29;
+    --color-gray-800: #14423b;
+    --color-gray-700: #1d554c;
+    --color-gray-600: #2d6b60;
+    --color-gray-500: #5e8674;
+    --color-gray-400: #8eb698;
+    --color-gray-300: #a9d4b4;
+    --color-gray-200: #c5ebd0;
+    --color-gray-100: #daf1de;
+    --color-gray-50: #051d1a;
+  }
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--foreground);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+html.dark body {
+  background: var(--bg-atmosphere);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
+  color: var(--foreground);
+}
+
+.nocturnal-bg {
+  background: var(--bg-atmosphere);
+  background-attachment: fixed;
+}
+
+.light-atmospheric-bg {
+  background: var(--bg-atmosphere);
+  background-attachment: fixed;
+}
+
+/* Material Architectures */
+.glass-subtle {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-subtle);
+}
+
+.glass-panel, .glass-default {
+  background: var(--surface-glass);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-card);
+}
+
+.glass-panel-elevated, .glass-elevated {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-floating);
+}
+
+.glass-modal {
+  background: var(--surface-modal);
+  border: 1px solid var(--border-highlight);
+  box-shadow: var(--shadow-modal);
+}
+
+.glass-input {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
+  color: var(--foreground);
+}
+
+.glass-input:focus {
+  border-color: var(--foreground-muted);
+}
+
+/* Print Styles for Customer QR Card */
+@media print {
+  @page {
+    size: auto;
+    margin: 15mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  aside,
+  header,
+  nav,
+  button,
+  .print\\:hidden {
+    display: none !important;
+  }
+
+  #customer-qr-card-print-target,
+  #public-customer-qr-card {
+    box-shadow: none !important;
+    border: 2px solid #000000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid;
+  }
+}
+

@@ -1,0 +1,7 @@
+{
+  "name": "Order & Customer Management System - Architecture Foundation",
+  "description": "A robust, offline-first architectural foundation for order and customer management with TypeScript, i18n (AR/EN), theming, and modular layered architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

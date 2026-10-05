@@ -1,0 +1,29 @@
+project_id = "ydhcyamtgioyrxfarkwk"
+
+[auth]
+additional_redirect_urls = [
+  "https://ais-dev-ysj6qxp5jjdotuhhmuwlez-886408646256.europe-west2.run.app/**",
+  "https://ais-pre-ysj6qxp5jjdotuhhmuwlez-886408646256.europe-west2.run.app/**",
+  "http://localhost:3000/**"
+]
+site_url = "https://ais-dev-ysj6qxp5jjdotuhhmuwlez-886408646256.europe-west2.run.app"
+
+[auth.email]
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[db.pooler]
+default_pool_size = 15
+max_client_conn = 200
+
+[storage.analytics]
+enabled = true
+max_namespaces = 10
+
+[storage.image_transformation]
+enabled = true
