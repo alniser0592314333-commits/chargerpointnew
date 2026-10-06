@@ -418,58 +418,94 @@ export class FinalUseCases {
       ]);
     }
 
-    // 1. Overlay Order
-    await this.createOverlay(commandId, mutationKey, 'orders', order.id, 'CREATE', order as unknown as Record<string, unknown>);
+    /*
+     * LOCAL READ-MODEL INVARIANT:
+     * The order aggregate must exist in the authoritative local entity stores
+     * in the SAME transaction as its outbox commands. Optimistic overlays remain
+     * a presentation/pending layer only; they are never the only copy of a new
+     * order or item.
+     */
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.orderRepo.save(order);
 
-    // 2. Overlay Items
-    for (const item of preparedItems) {
-      const itemOverlayId = `${commandId}:item:${item.id}`;
-      await this.createOverlay(itemOverlayId, mutationKey, 'order_items', item.id, 'CREATE', item as unknown as Record<string, unknown>);
-    }
-
-    // 3. Record Commands
-    await this.deps.commandRepo.record(commandId, 'CREATE_ORDER', {
-      id: order.id,
-      aggregateId: order.id,
-      dayId,
-      customerId,
-      displayNumber,
-      notes,
-      customerBalanceSnapshotMinor: currentBalance,
-      ...(groupId ? { groupId } : {}),
-    });
-
-    for (const item of preparedItems) {
-      await this.deps.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
-        id: item.id,
+      ctx.commandRepo.record(commandId, 'CREATE_ORDER', {
+        id: order.id,
         aggregateId: order.id,
-        orderId: order.id,
-        deviceTypeId: item.deviceTypeId,
-        hasCharger: item.hasCharger,
+        dayId,
+        customerId,
+        displayNumber,
+        notes,
+        customerBalanceSnapshotMinor: currentBalance,
         ...(groupId ? { groupId } : {}),
-        deviceNameSnapshot: item.deviceNameSnapshot,
-        deviceIconSnapshot: item.deviceIconSnapshot,
-        basePriceSnapshotMinor: item.basePriceSnapshotMinor,
-        chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
-        customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
-        chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
-        unitPriceMinor: item.unitPriceMinor,
-        totalPriceMinor: item.totalPriceMinor,
-        dependencyCommandId: commandId,
       });
 
-      if (item.status === 'delivered') {
-        const deliveryCommandId = crypto.randomUUID();
-        await this.deps.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
-          id: deliveryCommandId,
-          itemId: item.id,
-          orderItemId: item.id,
-          orderId: order.id,
-          dependencyCommandId: item.id,
-        }, item.version);
-      }
-    }
+      for (const item of preparedItems) {
+        ctx.itemRepo.save(item);
 
+        ctx.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
+          id: item.id,
+          aggregateId: order.id,
+          orderId: order.id,
+          deviceTypeId: item.deviceTypeId,
+          hasCharger: item.hasCharger,
+          ...(groupId ? { groupId } : {}),
+          deviceNameSnapshot: item.deviceNameSnapshot,
+          deviceIconSnapshot: item.deviceIconSnapshot,
+          basePriceSnapshotMinor: item.basePriceSnapshotMinor,
+          chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
+          customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
+          chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
+          unitPriceMinor: item.unitPriceMinor,
+          totalPriceMinor: item.totalPriceMinor,
+          dependencyCommandId: commandId,
+        });
+
+        if (item.status === 'delivered') {
+          const deliveryCommandId = crypto.randomUUID();
+          ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+            id: deliveryCommandId,
+            itemId: item.id,
+            orderItemId: item.id,
+            orderId: order.id,
+            dependencyCommandId: item.id,
+          }, item.version);
+        }
+      }
+    });
+
+    /*
+     * Keep overlays for pending-state/projection compatibility with existing
+     * UI and sync cleanup. They are deliberately written AFTER the atomic
+     * entity+outbox commit so an overlay failure can never hide a valid local
+     * order or strand its outbox commands.
+     */
+    try {
+      await this.createOverlay(
+        commandId,
+        mutationKey,
+        'orders',
+        order.id,
+        'CREATE',
+        order as unknown as Record<string, unknown>
+      );
+
+      for (const item of preparedItems) {
+        const itemOverlayId = `${commandId}:item:${item.id}`;
+        await this.createOverlay(
+          itemOverlayId,
+          mutationKey,
+          'order_items',
+          item.id,
+          'CREATE',
+          item as unknown as Record<string, unknown>
+        );
+      }
+    } catch (overlayError) {
+      console.warn(
+        'Failed to persist order pending overlays; base local state is authoritative.',
+        overlayError
+      );
+    }
     return { success: true, data: { order, items: preparedItems } };
   }
 
