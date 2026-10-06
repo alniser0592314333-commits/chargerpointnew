@@ -4712,7 +4712,8 @@ export const topUpCustomerBalance = async (
       cust.id,
       amountMinor,
       bin,
-      commandId
+      commandId,
+      note
     );
 
     if (!result.success) {
