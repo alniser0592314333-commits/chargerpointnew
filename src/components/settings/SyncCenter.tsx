@@ -6,6 +6,7 @@ import { Modal } from '../ui/Modal';
 import { localDb, OutboxRecord, SyncHistoryRecord } from '../../infrastructure/localDb/localDb';
 import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
+import { globalSyncTransport } from '../../components/pages/dayOrdersStore';
 import { authService } from '../../services/auth/authService';
 import {
   RefreshCw,
@@ -234,9 +235,10 @@ export const SyncCenter: React.FC = () => {
         return;
       }
 
+      // Keep the BIN only in the live transport memory. Never persist it in IndexedDB.
+      globalSyncTransport.authorizeCommand(binAuthCommandId, cleanBin);
       target.payload = {
         ...((target.payload || {}) as any),
-        bin: cleanBin,
         authorizationState: 'AUTHORIZED',
       };
       target.status = 'pending';
