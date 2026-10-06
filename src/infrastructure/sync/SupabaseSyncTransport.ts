@@ -63,6 +63,12 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
         p.authorizationState = 'AUTHORIZED';
       }
       const payloadHash = computePayloadHash(p);
+      // The canonical RPC reads expectedVersion from the command payload.
+      // Keep it in the same semantic request envelope so server-side optimistic
+      // concurrency cannot be silently bypassed by the legacy wrapper parameter.
+      if (req.expectedVersion !== undefined && p.expectedVersion === undefined) {
+        p.expectedVersion = req.expectedVersion;
+      }
 
       // 1. Primary Canonical Path: Server-Authoritative Semantic RPC
       // Note: NO pre-upserts. Missing server entities are properly caught by relational constraints.
