@@ -3691,10 +3691,7 @@ export const deliverSingleOrderItem = async (
     const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
     if (offline) {
-      const queued = await phase5UseCases.queueDeliveryAwaitingBin(auth, orderItemId);
-      if (!queued.success) return { success: false, error: presentError((queued as any).error || 'فشل جدولة التسليم') };
-      notifyStore('all');
-      return { success: true, item: queued.data };
+      return { success: false, error: 'لا يمكن تسليم الجهاز بدون اتصال للتحقق من رمز BIN' };
     }
     await auth.verifyBin(bin);
     const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin);
@@ -3730,11 +3727,10 @@ export const deliverEntireOrder = async (
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
         if (offline) {
-          await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
-        } else {
-          await auth.verifyBin(bin);
-          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+          return { success: false, error: 'لا يمكن تسليم الأجهزة بدون اتصال للتحقق من رمز BIN' };
         }
+        await auth.verifyBin(bin);
+        await phase5UseCases.deliverOrderItem(auth, item.id, bin);
         count++;
       }
     }
