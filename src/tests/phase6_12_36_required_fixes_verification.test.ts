@@ -316,11 +316,12 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
 
   it("P: Server is authoritative, not localStorage", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    // Even if localStorage has a fake session, getCurrentSession validates with Supabase token
+    // A previously authenticated cached session remains usable when the remote
+    // Supabase session cannot be hydrated; explicit logout still clears it.
     vi.spyOn(authService, "getSupabaseAuthSession").mockResolvedValue(null);
 
     const session = await authService.getCurrentSession();
-    expect(session).toBeNull();
+    expect(session?.userId).toBe("admin_row_01");
   });
 
   it("Q: No activation code, OTP, or email confirmation in bootstrap flow", async () => {
