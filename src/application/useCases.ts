@@ -791,8 +791,8 @@ export class FinalUseCases {
   ): Promise<Result<CustomerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('customers:create');
-    if (!Number.isInteger(debtLimitMinor) || debtLimitMinor < 0) {
-      throw new BusinessRuleViolation('Debt limit must be a non-negative integer in minor units');
+    if (!Number.isInteger(debtLimitMinor)) {
+      throw new BusinessRuleViolation('Debt limit must be an integer in minor units');
     }
 
     const customerId = commandId || crypto.randomUUID();
@@ -821,8 +821,8 @@ export class FinalUseCases {
   async updateCustomer(auth: AuthorizationContext, customerId: ID, updates: Partial<CustomerEntity>): Promise<Result<CustomerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('customers:edit');
-    if (updates.debtLimitMinor !== undefined && (!Number.isInteger(updates.debtLimitMinor) || updates.debtLimitMinor < 0)) {
-      throw new BusinessRuleViolation('Debt limit must be a non-negative integer in minor units');
+    if (updates.debtLimitMinor !== undefined && !Number.isInteger(updates.debtLimitMinor)) {
+      throw new BusinessRuleViolation('Debt limit must be an integer in minor units');
     }
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
