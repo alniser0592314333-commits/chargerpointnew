@@ -250,6 +250,33 @@ export const notifyStore = (scope: StoreScope, entityId?: string): void => {
   });
 };
 
+/**
+ * Maps optimistic/outbox command types to the external-store scopes that must
+ * be invalidated after the local transaction commits. Overlay-backed mutations
+ * intentionally do not mutate the base entity maps, so without this signal a
+ * mounted page can remain visually stale until a remote delta or manual reload
+ * happens. The notification is local-only; it does not alter sync semantics.
+ */
+const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
+  switch (commandType) {
+    case 'CREATE_ORDER':
+    case 'UPDATE_ORDER':
+      return ['orders'];
+    case 'CANCEL_ORDER':
+      return ['orders', 'orderItems'];
+    case 'ADD_ORDER_ITEM':
+    case 'CANCEL_ORDER_ITEM':
+      return ['orderItems'];
+    case 'DELIVER_ORDER_ITEM':
+      return ['orderItems', 'financialLedger'];
+    case 'CREATE_PAYMENT':
+    case 'CREATE_CUSTOMER_CREDIT':
+      return ['payments', 'financialLedger'];
+    default:
+      return [];
+  }
+};
+
 export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number {
   const [version, setVersion] = useState(0);
 
@@ -1783,6 +1810,13 @@ function createTransactionalRepoContext(
             newState: currentGen === -1 ? 'PENDING_RECONCILIATION' : 'PENDING',
             timestamp: new Date().toISOString(),
           });
+
+          // Overlay-backed local mutations are the effective read model while
+          // pending. Notify mounted pages only after the transaction commits.
+          const notificationScopes = getCommandNotificationScopes(type);
+          for (const scope of notificationScopes) {
+            notifyStore(scope, aggregateId);
+          }
         });
       },
     },
