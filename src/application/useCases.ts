@@ -406,6 +406,17 @@ export class FinalUseCases {
 
       if (autoDeliver) {
         const deliveryCommandId = crypto.randomUUID();
+        ctx.ledgerRepo.append({
+          id: crypto.randomUUID(),
+          eventType: 'ORDER_ITEM_CHARGE',
+          amountMinor: -item.totalPriceMinor,
+          customerId: order.customerId,
+          orderId,
+          orderItemId: item.id,
+          actorAdminId: actor.id,
+          referenceId: deliveryCommandId,
+          createdAt: item.updatedAt,
+        });
         // The ADD command and the auto-delivery command are separate server
         // transactions. Keep a rollback snapshot for the delivery command so
         // an authoritative delivery rejection restores the item to CHARGING
