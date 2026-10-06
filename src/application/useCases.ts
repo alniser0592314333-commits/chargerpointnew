@@ -685,8 +685,8 @@ export class FinalUseCases {
     const patch: Partial<OrderItemEntity> = { status:'delivered', financialStatus:'RECOGNIZED', deliveredAt, financiallyRecognizedAt:deliveredAt, updatedAt:deliveredAt, version:item.version+1 };
     const commandId = crypto.randomUUID();
     if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
+    const parentAdd = await this.deps.commandRepo.get(item.id);
     await this.deps.transactionManager.runInTransaction((ctx) => {
-      const parentAdd = ctx.commandRepo.get(item.id);
       ctx.itemRepo.save({...item,...patch});
       ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
         id:commandId,
