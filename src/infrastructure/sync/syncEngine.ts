@@ -651,6 +651,7 @@ export class SyncEngine {
       if (pullRes.changes.length > 0) {
         const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
         await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+          let appliedThroughSequence = syncState.lastAppliedChangeSequence;
           for (const change of sortedChanges) {
             try {
               const applied = this.onDeltaApplied
@@ -670,22 +671,17 @@ export class SyncEngine {
                 break;
               }
               pulledCount++;
+              appliedThroughSequence = change.sequenceId;
             } catch (deltaErr) {
               console.error(`Failed to apply delta change sequence ${change.sequenceId}:`, deltaErr);
               throw deltaErr;
             }
           }
-          const appliedChanges = sortedChanges.filter((change) => {
-            // The callback above already stopped at the first protected delta.
-            // Only advance through the contiguous prefix actually applied.
-            return true;
-          });
-          const maxSeq = appliedChanges.length > 0
-            ? appliedChanges[Math.min(pulledCount, appliedChanges.length) - 1]?.sequenceId
-            : syncState.lastAppliedChangeSequence;
+          // Advance only to the last contiguous delta that was actually
+          // applied. A protected/failed delta must leave the cursor unchanged.
           const updatedState = {
             ...syncState,
-            lastAppliedChangeSequence: maxSeq ?? syncState.lastAppliedChangeSequence,
+            lastAppliedChangeSequence: appliedThroughSequence,
             lastPulledAt: new Date().toISOString(),
           };
           localDb.setSyncStateWithTx(tx, updatedState);
