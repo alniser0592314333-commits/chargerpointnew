@@ -1850,7 +1850,7 @@ function createTransactionalRepoContext(
               ? 'business_days'
               : type === 'CREATE_CUSTOMER' || type === 'UPDATE_CUSTOMER'
               ? 'customers'
-              : type === 'CREATE_DEVICE_TYPE' || type === 'UPDATE_DEVICE_TYPE' || type === 'DELETE_DEVICE_TYPE'
+              : type === 'CREATE_DEVICE_TYPE' || type === 'UPDATE_DEVICE_TYPE' || type === 'DELETE_DEVICE_TYPE' || type === 'RETIRE_DEVICE_TYPE'
               ? 'device_types'
               : type === 'CREATE_GOAL' || type === 'UPDATE_GOAL_CONFIG' || type === 'UPDATE_GOAL_PROGRESS'
               ? 'goals'
@@ -2107,11 +2107,21 @@ export const repoContext: RepositoryContext = {
     },
     save: async (c) => {
       await ensureStoreHydrated();
-      // Generic persistence is side-effect free. CREATE_CUSTOMER / UPDATE_CUSTOMER
-      // are explicit application commands owned by their use cases; synthesizing
-      // CREATE_CUSTOMER here corrupts the outbox whenever an existing customer is edited.
+      const existed = customersMap.has(c.id);
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.customerRepo.save(c);
+        ctx.commandRepo.record(c.id, existed ? 'UPDATE_CUSTOMER' : 'CREATE_CUSTOMER', {
+          id: c.id,
+          aggregateId: c.id,
+          customerId: c.id,
+          name: c.name,
+          phone: c.phone,
+          address: c.address,
+          isActive: c.isActive,
+          debtLimitMinor: c.debtLimitMinor,
+          chargerFeeExempt: c.chargerFeeExempt,
+          version: c.version,
+        });
       });
     },
     getBalance: async (id) => {
@@ -2264,10 +2274,18 @@ export const repoContext: RepositoryContext = {
     },
     save: async (d) => {
       await ensureStoreHydrated();
-      // Opening/closing a business day is an explicit use-case command. A
-      // generic repository save must remain persistence-only.
+      // Public repository writes are mutation entry points used by bootstrap
+      // and migration flows; persist the row and its OPEN_DAY command together.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.dayRepo.save(d);
+        ctx.commandRepo.record(d.id, 'OPEN_DAY', {
+          id: d.id,
+          aggregateId: d.id,
+          dayId: d.id,
+          businessDate: d.businessDate,
+          isClosed: d.isClosed,
+          version: d.version,
+        });
       });
     },
     isClosed: async (dayId) => {
