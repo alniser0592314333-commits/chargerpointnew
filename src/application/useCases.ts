@@ -543,6 +543,11 @@ export class FinalUseCases {
         { table: 'orderItems', id: item.id, existed: true, data: item },
       ]);
     }
+    // Persist the projected delivery state locally before queueing the server command.
+    // The mutation snapshot captured above makes this reversible if the command is rejected.
+    // The server remains authoritative; the subsequent canonical delta reconciles this state.
+    await this.deps.itemRepo.save({ ...item, ...patch } as OrderItemEntity);
+
     await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
 
     await this.deps.commandRepo.record(commandId, 'DELIVER_ORDER_ITEM', {
