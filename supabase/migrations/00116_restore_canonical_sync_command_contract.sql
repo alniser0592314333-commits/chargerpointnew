@@ -203,7 +203,11 @@ BEGIN
 
     IF (
         p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND')
-        AND NOT (p_command_type = 'DELIVER_ORDER_ITEM' AND COALESCE((p_payload->>'autoDelivery')::BOOLEAN, FALSE))
+        AND NOT (
+            p_command_type = 'DELIVER_ORDER_ITEM'
+            AND COALESCE((p_payload->>'autoDelivery')::BOOLEAN, FALSE)
+            AND v_admin_role IN ('SUPER_ADMIN', 'Super Admin')
+        )
        )
        OR (p_command_type = 'UPDATE_CUSTOMER'
            AND ((p_payload ? 'debtLimitMinor') OR (p_payload ? 'debt_limit_minor')
