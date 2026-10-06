@@ -2538,6 +2538,11 @@ const getEffectiveCustomerLedger = async (customerId: string): Promise<Financial
   }
 
   const projected: FinancialLedgerEntity[] = [];
+  const reversedItemIds = new Set(
+    effective
+      .filter((l) => l.eventType === 'REVERSAL' && l.orderItemId)
+      .map((l) => l.orderItemId as string)
+  );
 
   for (const overlay of overlays) {
     if (overlay.status !== 'PENDING') continue;
@@ -2598,24 +2603,42 @@ const getEffectiveCustomerLedger = async (customerId: string): Promise<Financial
     if (overlay.entityType === 'order_items' && overlay.operation === 'PATCH') {
       const status = String(payload.status || '').toLowerCase();
       const financialStatus = String(payload.financialStatus || payload.financial_status || '').toUpperCase();
-      if (status !== 'delivered' && financialStatus !== 'RECOGNIZED') continue;
-
       const item = effectiveItems.get(overlay.entityId);
-      if (!item || chargeItemIds.has(item.id)) continue;
+      if (!item) continue;
       const order = ordersMap.get(item.orderId);
       if (!order || order.customerId !== customerId) continue;
 
-      projected.push({
-        id: 'pending-charge-' + item.id,
-        eventType: 'ORDER_ITEM_CHARGE',
-        amountMinor: -Math.abs(Number(item.totalPriceMinor || item.unitPriceMinor || 0)),
-        customerId,
-        orderId: item.orderId,
-        orderItemId: item.id,
-        referenceId: item.id,
-        metadata: { pendingLocal: true },
-        createdAt: payload.deliveredAt || payload.updatedAt || overlay.createdAt,
-      });
+      if ((status === 'delivered' || financialStatus === 'RECOGNIZED') && !chargeItemIds.has(item.id)) {
+        projected.push({
+          id: 'pending-charge-' + item.id,
+          eventType: 'ORDER_ITEM_CHARGE',
+          amountMinor: -Math.abs(Number(item.totalPriceMinor || item.unitPriceMinor || 0)),
+          customerId,
+          orderId: item.orderId,
+          orderItemId: item.id,
+          referenceId: item.id,
+          metadata: { pendingLocal: true },
+          createdAt: payload.deliveredAt || payload.updatedAt || overlay.createdAt,
+        });
+      }
+
+      if (
+        status === 'cancelled' &&
+        financialStatus === 'REVERSED' &&
+        !reversedItemIds.has(item.id)
+      ) {
+        projected.push({
+          id: 'pending-reversal-' + item.id,
+          eventType: 'REVERSAL',
+          amountMinor: Math.abs(Number(item.totalPriceMinor || item.unitPriceMinor || 0)),
+          customerId,
+          orderId: item.orderId,
+          orderItemId: item.id,
+          referenceId: item.id,
+          metadata: { pendingLocal: true },
+          createdAt: payload.cancelledAt || payload.updatedAt || overlay.createdAt,
+        });
+      }
     }
   }
 
