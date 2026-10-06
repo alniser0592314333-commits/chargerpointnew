@@ -206,7 +206,7 @@ export function getAuthenticatedIdentity(): { actorAdminId: string; deviceId: st
     }
   }
 
-  const actorAdminId = appSessionUserId || storedAuth?.user?.id;
+  const actorAdminId = appSessionUserId || (isTestEnv ? null : storedAuth?.user?.id);
 
   let deviceId = storage?.getItem('app_device_id');
   if (!deviceId) {
