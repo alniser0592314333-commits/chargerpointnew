@@ -804,7 +804,11 @@ class DefaultAuthService implements AuthService {
       void supabaseSession;
     }
 
-    if (!forceRefresh && inMemorySession && new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now()) {
+    // Never short-circuit from the in-memory app session while Supabase is configured.
+    // On a reload/offline transition, the cached app identity must still pass the
+    // persisted Supabase-subject binding check below; otherwise a forged/stale
+    // localStorage session could be resurrected without an authenticated subject.
+    if (!this.isSupabaseConfigured() && !forceRefresh && inMemorySession && new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now()) {
       return inMemorySession;
     }
 
@@ -836,6 +840,8 @@ class DefaultAuthService implements AuthService {
           if (!serverProfile && this.isSupabaseConfigured()) {
             const boundAuthUserId = storedSession.authUserId;
             if (!boundAuthUserId || !storedSupabase?.user?.id || boundAuthUserId !== storedSupabase.user.id) {
+              storage.removeItem(SESSION_STORAGE_KEY);
+              inMemorySession = null;
               return null;
             }
           }
