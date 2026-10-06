@@ -1348,3 +1348,5 @@ GRANT EXECUTE ON FUNCTION public.execute_sync_command(UUID, TEXT, TEXT, UUID, JS
 REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) FROM PUBLIC;
 
 -- Contract reviewed: keep this migration as the single canonical sync command definition.
+
+-- CI contract review checkpoint: canonical command routing is intentionally explicit.
