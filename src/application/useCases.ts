@@ -1301,7 +1301,29 @@ export class FinalUseCases {
   }
 
   async deactivateDeviceType(auth: AuthorizationContext, deviceId: ID): Promise<Result<DeviceTypeEntity>> {
-    return this.updateDeviceType(auth, deviceId, { isActive: false });
+    const actor = auth.requireAuth();
+    auth.assertPermission('devices:manage');
+    const device = await this.deps.deviceRepo.findById(deviceId);
+    if (!device) throw new NotFoundError('Device type not found');
+
+    const retired: DeviceTypeEntity = {
+      ...device,
+      isActive: false,
+      updatedAt: new Date().toISOString(),
+      version: device.version + 1,
+    };
+
+    return this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.deviceRepo.save(retired);
+      ctx.commandRepo.record(crypto.randomUUID(), 'RETIRE_DEVICE_TYPE', {
+        id: retired.id,
+        deviceTypeId: retired.id,
+        isActive: false,
+        version: retired.version,
+        actorAdminId: actor.id,
+      }, device.version);
+      return { success: true, data: retired };
+    });
   }
 
   async deleteDeviceType(auth: AuthorizationContext, deviceId: ID): Promise<Result<void>> {
@@ -1383,7 +1405,8 @@ export class FinalUseCases {
     // conflicting with the command payload, or creating duplicate overlays.
     const existingPaymentCommand = await this.deps.commandRepo.get(commandId);
     if (existingPaymentCommand) {
-      if (existingPaymentCommand.type !== 'CREATE_PAYMENT') {
+      const existingType = (existingPaymentCommand as any).type || (existingPaymentCommand as any).commandType;
+      if (existingType !== 'CREATE_PAYMENT') {
         throw new IdempotencyConflictError('Command ID is already associated with a different operation');
       }
       const p = (existingPaymentCommand.payload || {}) as any;
@@ -1572,7 +1595,8 @@ export class FinalUseCases {
     customerId: ID,
     amountMinor: number,
     bin: string,
-    commandId?: ID
+    commandId?: ID,
+    note?: string
   ): Promise<Result<FinancialLedgerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('finance:credit-adjustment');
@@ -1605,7 +1629,7 @@ export class FinalUseCases {
       customerId,
       amountMinor,
       paymentMethod: 'CASH',
-      reference: 'Customer credit',
+      reference: note || 'Customer credit',
       actorAdminId: actor.id,
       commandId: txId,
       createdAt,
@@ -1624,6 +1648,7 @@ export class FinalUseCases {
         actorAdminId: actor.id,
         createdAt,
         bin,
+        note: note || 'Customer credit',
       });
     });
 
