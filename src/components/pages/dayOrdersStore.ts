@@ -2765,12 +2765,14 @@ export const computeCustomerOrderPaymentStatuses = (
     // For a brand-new order, the whole active intake is the payment liability.
     // Once an order already contains a recognized/delivered item, newly added
     // charging items are excluded until their own delivery recognition.
-    const items = allActiveItems.filter(
-      (i) =>
-        (!hasRecognizedItem || i.status === 'delivered') &&
-        String(i.financialStatus || '').toUpperCase() !== 'UNRECOGNIZED' &&
-        i.financialStatus !== 'REVERSED'
-    );
+    const items = hasRecognizedItem
+      ? allActiveItems.filter(
+          (i) =>
+            i.status === 'delivered' &&
+            String(i.financialStatus || '').toUpperCase() !== 'UNRECOGNIZED' &&
+            i.financialStatus !== 'REVERSED'
+        )
+      : allActiveItems.filter((i) => i.financialStatus !== 'REVERSED');
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     if (totalMinor <= 0) {
