@@ -1678,22 +1678,18 @@ function createTransactionalRepoContext(
     commandRepo: {
       get: (cmdId: string) => commandsMap.get(cmdId) || null,
       record: (cmdId: string, type: string, payload: any, expectedVersion?: number) => {
-        commandsMap.set(cmdId, { type, payload });
-        const { actorAdminId, deviceId } = getAuthenticatedIdentity();
-        
-        const existingOutbox = localDb.listOutboxSync();
-        const hasProcessed = existingOutbox.some(
-          r => r.commandId === cmdId && r.status !== 'pending'
-        );
-        const hasHistory = localDb.getHistorySync(cmdId);
-
-        let finalCommandId: string;
-        if (hasProcessed || hasHistory) {
-          finalCommandId = crypto.randomUUID();
-        } else {
-          finalCommandId = cmdId;
+        const existingCommand = commandsMap.get(cmdId);
+        if (existingCommand) {
+          const sameType = existingCommand.type === type;
+          const samePayload = JSON.stringify(existingCommand.payload) === JSON.stringify(payload);
+          if (!sameType || !samePayload) {
+            throw new ConflictError('Command id is already associated with a different operation');
+          }
+          // Idempotent local retry: do not create a second outbox record.
+          return;
         }
 
+        const { actorAdminId, deviceId } = getAuthenticatedIdentity();
         const currentGen = getCurrentSyncGeneration();
         const payloadRecord = (payload && typeof payload === 'object') ? (payload as any) : {};
         const aggregateId =
@@ -1705,7 +1701,7 @@ function createTransactionalRepoContext(
               : payloadRecord.entityId || payloadRecord.deviceTypeId || payloadRecord.orderId || payloadRecord.customerId || payloadRecord.dayId || payloadRecord.id || cmdId);
 
         const record: OutboxRecord = {
-          commandId: finalCommandId,
+          commandId: cmdId,
           commandType: type,
           aggregateType:
             type === 'CREATE_ORDER' || type === 'UPDATE_ORDER' || type === 'CANCEL_ORDER'
@@ -1746,7 +1742,7 @@ function createTransactionalRepoContext(
         postCommitActions.push(() => {
           syncEventEmitter.emit({
             type: 'command_status_changed',
-            commandId: finalCommandId,
+            commandId: cmdId,
             groupId: record.groupId,
             newState: currentGen === -1 ? 'PENDING_RECONCILIATION' : 'PENDING',
             timestamp: new Date().toISOString(),
