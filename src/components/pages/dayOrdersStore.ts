@@ -589,6 +589,7 @@ export const applyRemoteChange = (change: {
       customerId: derivedCustomerId,
       actorAdminId: p.actorAdminId || p.actor_admin_id || undefined,
       referenceId: p.referenceId || p.reference_id || undefined,
+      note: p.note ?? p.metadata?.note ?? undefined,
       metadata: p.metadata ?? undefined,
       createdAt: p.createdAt || p.created_at || new Date().toISOString(),
     };
