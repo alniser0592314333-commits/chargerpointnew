@@ -1955,15 +1955,12 @@ export const repoContext: RepositoryContext = {
     },
     save: async (o) => {
       await ensureStoreHydrated();
-      const existed = ordersMap.has(o.id);
+      // Repository persistence is deliberately side-effect free. Business
+      // commands are recorded only by the corresponding use case, never by a
+      // generic save(), otherwise hydration/tests/internal repairs can create
+      // phantom CREATE/UPDATE_ORDER outbox entries.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.orderRepo.save(o);
-        const commandId = existed ? crypto.randomUUID() : o.id;
-        ctx.commandRepo.record(commandId, existed ? 'UPDATE_ORDER' : 'CREATE_ORDER', {
-          ...o,
-          id: o.id,
-          aggregateId: o.id,
-        });
       });
     },
     countForDay: async (dayId) => {
@@ -2018,9 +2015,11 @@ export const repoContext: RepositoryContext = {
     },
     save: async (it) => {
       await ensureStoreHydrated();
+      // Pure persistence. ADD_ORDER_ITEM / DELIVER_ORDER_ITEM /
+      // CANCEL_ORDER_ITEM are explicit application commands and must never be
+      // synthesized by a generic repository save.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.itemRepo.save(it);
-        ctx.commandRepo.record(it.id, 'ADD_ORDER_ITEM', it);
       });
     },
     findById: async (id) => {
@@ -2211,9 +2210,10 @@ export const repoContext: RepositoryContext = {
     },
     save: async (d) => {
       await ensureStoreHydrated();
+      // Opening/closing a business day is an explicit use-case command. A
+      // generic repository save must remain persistence-only.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.dayRepo.save(d);
-        ctx.commandRepo.record(d.id, 'OPEN_DAY', d);
       });
     },
     isClosed: async (dayId) => {
