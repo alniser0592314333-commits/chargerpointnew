@@ -1075,6 +1075,39 @@ export class SyncEngine {
         }
       }
 
+      // Final authoritative pull: commands may have created new server rows after the preflight pull.
+      // Reconcile those deltas before declaring the sync cycle complete.
+      try {
+        const finalState = await localDb.getSyncState('global');
+        if (finalState) {
+          const finalPull = await this.transport.pullChanges(finalState.lastAppliedChangeSequence);
+          if (finalPull.changes.length > 0) {
+            const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+            await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+              for (const change of sortedFinalChanges) {
+                if (this.onDeltaApplied) {
+                  this.onDeltaApplied(change, tx);
+                } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+                  localDb.removeWithTx(tx, change.entityType, change.entityId);
+                } else {
+                  localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
+                }
+                pulledCount++;
+              }
+              localDb.setSyncStateWithTx(tx, {
+                ...finalState,
+                lastAppliedChangeSequence: sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId,
+                lastPulledAt: new Date().toISOString(),
+              });
+            });
+          }
+        }
+      } catch (finalPullError) {
+        // A successful command is never rolled back because a post-push pull failed.
+        // The next sync cycle will reconcile the authoritative delta.
+        console.warn('Final authoritative reconciliation pull deferred:', finalPullError);
+      }
+
       syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
       return { pushed: pushedCount, pulled: pulledCount };
     } finally {

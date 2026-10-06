@@ -22,7 +22,7 @@ import {
   GoalRequestEntity,
 } from '../../domain/models';
 import { ClosedDayError, InactiveCustomerError, NotFoundError, ConflictError, OrderNumberReservationExhaustedError, presentError } from '../../domain/errors';
-import { localDb, OutboxRecord } from '../../infrastructure/localDb/localDb';
+import { localDb, OutboxRecord, OptimisticOverlayRecord } from '../../infrastructure/localDb/localDb';
 import { generateSecurePublicToken, computeTokenHash } from '../../services/supabase/qrSecurity';
 import {
   rpcResolveCustomerQr,
@@ -173,6 +173,55 @@ const allocationsList: PaymentAllocationEntity[] = [];
 const reservationsMap = new Map<string, OrderNumberReservationEntity>();
 const goalsMap = new Map<string, GoalEntity>();
 const goalRequestsMap = new Map<string, GoalRequestEntity>();
+
+const applyOptimisticItemOverlays = (base: OrderItemEntity): OrderItemEntity | null => {
+  let current: OrderItemEntity | null = base;
+  const overlays = localDb.listOverlaysSync()
+    .filter((overlay: OptimisticOverlayRecord) =>
+      overlay.entityType === 'order_items' && overlay.entityId === base.id
+    )
+    .sort((a, b) => a.sequence - b.sequence);
+
+  for (const overlay of overlays) {
+    if (!current) break;
+    if (overlay.operation === 'DELETE') {
+      current = null;
+    } else if (overlay.operation === 'PATCH') {
+      current = { ...current, ...(overlay.patch || {}) } as OrderItemEntity;
+    } else if (overlay.operation === 'CREATE') {
+      current = { ...(overlay.entityPayload || {}) } as OrderItemEntity;
+    }
+  }
+  return current;
+};
+
+/**
+ * Customer balance is authoritative ledger balance plus local delivery projections.
+ * A projected delivery is counted only while its order item is financially recognized
+ * and no authoritative ledger row exists for that item. Once the server ledger arrives,
+ * the projection is naturally replaced and cannot double-count.
+ */
+const calculateProjectedCustomerBalance = (customerId: string): number => {
+  let balance = 0;
+  ledgerList.forEach((entry) => {
+    if (entry.customerId === customerId) balance += entry.amountMinor;
+  });
+
+  itemsMap.forEach((baseItem) => {
+    const item = applyOptimisticItemOverlays(baseItem);
+    const order = ordersMap.get(baseItem.orderId);
+    if (
+      item &&
+      order?.customerId === customerId &&
+      item.financialStatus === 'RECOGNIZED' &&
+      !ledgerList.some((entry) => entry.orderItemId === item.id)
+    ) {
+      balance -= ((item as any).finalChargeSnapshotMinor ?? item.totalPriceMinor);
+    }
+  });
+
+  return balance;
+};
 
 // Runtime Identity Resolver (No fake fallback in production)
 export function getAuthenticatedIdentity(): { actorAdminId: string; deviceId: string } {
@@ -1513,7 +1562,10 @@ function createTransactionalRepoContext(
       findByOrderId: (orderId: string) => {
         const res: OrderItemEntity[] = [];
         itemsMap.forEach((it) => {
-          if (it.orderId === orderId) res.push(it);
+          if (it.orderId === orderId) {
+            const projected = applyOptimisticItemOverlays(it);
+            if (projected) res.push(projected);
+          }
         });
         return res;
       },
@@ -1522,7 +1574,10 @@ function createTransactionalRepoContext(
         localDb.setWithTx(tx, 'orderItems', it.id, it);
         postCommitActions.push(() => notifyStore('orderItems', it.id));
       },
-      findById: (id: string) => itemsMap.get(id) || null,
+      findById: (id: string) => {
+        const item = itemsMap.get(id);
+        return item ? applyOptimisticItemOverlays(item) : null;
+      },
       isDeviceTypeInUse: (deviceTypeId: string) => {
         for (const it of itemsMap.values()) {
           if (it.deviceTypeId === deviceTypeId) return true;
@@ -1537,13 +1592,7 @@ function createTransactionalRepoContext(
         localDb.setWithTx(tx, 'customers', c.id, c);
         postCommitActions.push(() => notifyStore('customers', c.id));
       },
-      getBalance: (id: string) => {
-        let bal = 0;
-        ledgerList.forEach((l) => {
-          if (l.customerId === id) bal += l.amountMinor;
-        });
-        return bal;
-      },
+      getBalance: (id: string) => calculateProjectedCustomerBalance(id),
     },
     deviceRepo: {
       findById: (id: string) => devicesMap.get(id) || null,
@@ -1810,7 +1859,10 @@ export const repoContext: RepositoryContext = {
       await ensureStoreHydrated();
       const res: OrderItemEntity[] = [];
       itemsMap.forEach((it) => {
-        if (it.orderId === orderId) res.push(it);
+        if (it.orderId === orderId) {
+          const projected = applyOptimisticItemOverlays(it);
+          if (projected) res.push(projected);
+        }
       });
       return res;
     },
@@ -1823,7 +1875,8 @@ export const repoContext: RepositoryContext = {
     },
     findById: async (id) => {
       await ensureStoreHydrated();
-      return itemsMap.get(id) || null;
+      const item = itemsMap.get(id);
+      return item ? applyOptimisticItemOverlays(item) : null;
     },
     isDeviceTypeInUse: async (deviceTypeId) => {
       await ensureStoreHydrated();
@@ -1847,13 +1900,7 @@ export const repoContext: RepositoryContext = {
     },
     getBalance: async (id) => {
       await ensureStoreHydrated();
-      let bal = 0;
-      ledgerList.forEach((l) => {
-        if (l.customerId === id) {
-          bal += l.amountMinor;
-        }
-      });
-      return bal;
+      return calculateProjectedCustomerBalance(id);
     },
   },
   deviceRepo: {
