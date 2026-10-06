@@ -3605,7 +3605,7 @@ export const deliverSingleOrderItem = async (
   try {
     const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
-    if (offline && !bin.trim()) {
+    if (offline) {
       const queued = await phase5UseCases.queueDeliveryAwaitingBin(auth, orderItemId);
       if (!queued.success) return { success: false, error: presentError((queued as any).error || 'فشل جدولة التسليم') };
       notifyStore('all');
@@ -3644,7 +3644,7 @@ export const deliverEntireOrder = async (
 
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
-        if (offline && !bin.trim()) {
+        if (offline) {
           await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
         } else {
           await auth.verifyBin(bin);
@@ -3684,7 +3684,7 @@ export const updateOrderWithPhase5Engine = async (
     // cancellation that the server would later reject.
     for (const itemId of existingItemIdsToRemove) {
       const offline = typeof navigator !== 'undefined' && !navigator.onLine;
-      if (offline && !bin?.trim()) {
+      if (offline) {
         await phase5UseCases.queueCancelOrderItemAwaitingBin(getAuthorizedAdminContext(), itemId);
       } else {
         await phase5UseCases.cancelOrderItem(getAuthorizedAdminContext(bin), itemId, bin || '');
@@ -3734,7 +3734,7 @@ export const updateOrderWithPhase5Engine = async (
     } else if (newStatus === 'cancelled' && order.status !== 'cancelled') {
       const offline = typeof navigator !== 'undefined' && !navigator.onLine;
       const auth = getAuthorizedAdminContext(bin);
-      if (offline && !bin?.trim()) {
+      if (offline) {
         await phase5UseCases.queueCancelOrderAwaitingBin(auth, orderId);
       } else {
         await auth.verifyBin(bin || '');
