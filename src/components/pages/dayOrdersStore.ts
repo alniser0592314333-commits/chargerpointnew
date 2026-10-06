@@ -1666,7 +1666,7 @@ function createTransactionalRepoContext(
         // Repository reads must include the same pending projections used by
         // the UI; otherwise sequential offline adds can reuse itemSequence.
         for (const overlay of localDb.listOverlaysSync()) {
-          if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+          if (overlay.status !== 'PENDING' || !['order_items', 'orderItems'].includes(overlay.entityType)) continue;
           const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
           const base = effective.get(overlay.entityId);
           const candidate = {
@@ -1700,7 +1700,7 @@ function createTransactionalRepoContext(
         const overlays = localDb.listOverlaysSync()
           .filter((overlay) =>
             overlay.status === 'PENDING' &&
-            overlay.entityType === 'order_items' &&
+            ['order_items', 'orderItems'].includes(overlay.entityType) &&
             overlay.entityId === id
           )
           .sort((a, b) => {
@@ -2024,7 +2024,7 @@ export const repoContext: RepositoryContext = {
       });
 
       for (const overlay of localDb.listOverlaysSync()) {
-        if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+        if (overlay.status !== 'PENDING' || !['order_items', 'orderItems'].includes(overlay.entityType)) continue;
 
         const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
         const base = effective.get(overlay.entityId);
@@ -2067,7 +2067,7 @@ export const repoContext: RepositoryContext = {
       const overlays = localDb.listOverlaysSync()
         .filter((overlay) =>
           overlay.status === 'PENDING' &&
-          overlay.entityType === 'order_items' &&
+          ['order_items', 'orderItems'].includes(overlay.entityType) &&
           overlay.entityId === id
         )
         .sort((a, b) => {
@@ -2150,7 +2150,7 @@ export const repoContext: RepositoryContext = {
 
       const effectiveItems = new Map<string, OrderItemEntity>(itemsMap);
       for (const overlay of overlays) {
-        if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+        if (overlay.status !== 'PENDING' || !['order_items', 'orderItems'].includes(overlay.entityType)) continue;
         const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
         const base = effectiveItems.get(overlay.entityId);
         const candidate = {
@@ -2176,7 +2176,7 @@ export const repoContext: RepositoryContext = {
           continue;
         }
 
-        if (overlay.entityType === 'order_items' && (overlay.operation === 'PATCH' || overlay.operation === 'CREATE')) {
+        if (['order_items', 'orderItems'].includes(overlay.entityType) && (overlay.operation === 'PATCH' || overlay.operation === 'CREATE')) {
           const payload = (overlay.patch || {}) as any;
           const itemId = overlay.entityId;
           const status = String(payload.status || '').toLowerCase();
@@ -2604,7 +2604,7 @@ const getEffectiveCustomerLedger = async (customerId: string): Promise<Financial
   const overlays = await localDb.listOverlays();
   const effectiveItems = new Map<string, OrderItemEntity>(itemsMap);
   for (const overlay of overlays) {
-    if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+    if (overlay.status !== 'PENDING' || !['order_items', 'orderItems'].includes(overlay.entityType)) continue;
     const payload = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
     const base = effectiveItems.get(overlay.entityId);
     const candidate = { ...(base || {}), ...payload, id: overlay.entityId } as OrderItemEntity;
@@ -2675,7 +2675,7 @@ const getEffectiveCustomerLedger = async (customerId: string): Promise<Financial
       continue;
     }
 
-    if (overlay.entityType === 'order_items' && overlay.operation === 'PATCH') {
+    if (['order_items', 'orderItems'].includes(overlay.entityType) && overlay.operation === 'PATCH') {
       const status = String(payload.status || '').toLowerCase();
       const financialStatus = String(payload.financialStatus || payload.financial_status || '').toUpperCase();
       const item = effectiveItems.get(overlay.entityId);
@@ -2862,7 +2862,7 @@ export const getOrdersForDay = async (
       } else {
         effectiveOrdersMap.set(overlay.entityId, effective);
       }
-    } else if (overlay.entityType === 'order_items') {
+    } else if (['order_items', 'orderItems'].includes(overlay.entityType)) {
       const base = effectiveItemsMap.get(overlay.entityId);
       const effective = {
         ...(base || {}),
