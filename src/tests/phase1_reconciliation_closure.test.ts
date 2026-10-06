@@ -248,7 +248,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     const updateGoalRes = await useCases.updateGoalConfig(authAdmin, goalId, { targetQuantity: 1 });
     expect(updateGoalRes.success).toBe(true);
     if (!updateGoalRes.success) throw new Error('Expected goal update success');
-    expect(updateGoalRes.data.status).toBe('COMPLETED');
+    expect(updateGoalRes.data.status).toBe('ACTIVE');
 
     // Goal progress is derived only from authoritative RECOGNIZED charges, so an
     // optimistic local delivery cannot complete the goal or grant its bonus.
