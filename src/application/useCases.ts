@@ -665,6 +665,35 @@ export class FinalUseCases {
     return { success: true, data: order };
   }
 
+  /** Queue a protected item cancellation while offline. No authoritative financial state changes locally. */
+  async queueCancelOrderItemAwaitingBin(
+    auth: AuthorizationContext,
+    itemId: ID
+  ): Promise<Result<OrderItemEntity>> {
+    auth.requireAuth();
+    auth.assertPermission('orders:cancel');
+
+    const item = await this.deps.itemRepo.findById(itemId);
+    if (!item) throw new NotFoundError('Item not found');
+    const order = await this.deps.orderRepo.findById(item.orderId);
+    if (!order) throw new NotFoundError('Order not found');
+    validateItemTransition(item.status, 'cancelled');
+
+    const commandId = crypto.randomUUID();
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+        id: commandId,
+        aggregateId: order.id,
+        itemId: item.id,
+        orderItemId: item.id,
+        orderId: order.id,
+        authorizationState: 'PENDING_BIN',
+      }, item.version);
+    });
+
+    return { success: true, data: item };
+  }
+
   async editOrderNotes(auth: AuthorizationContext, orderId: ID, notes?: string): Promise<Result<OrderEntity>> {
     const actor=auth.requireAuth(); auth.assertPermission('orders:edit');
     const existing=await this.deps.orderRepo.findById(orderId); if(!existing) throw new NotFoundError('Order not found');
