@@ -6,6 +6,7 @@ import {
   CustomerEntity,
   DeviceTypeEntity,
   OrderEntity,
+  OrderStatus,
   OrderItemEntity,
   ItemStatus,
   ItemOperationalStatus,
@@ -381,6 +382,7 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('orders', change.entityId);
       return;
     }
+<<<<<<< HEAD
     const previousOrder = ordersMap.get(change.entityId);
     const incomingOrderVersion = Number(p.version ?? 1);
     if (previousOrder && change.action !== 'INSERT' && Number(previousOrder.version ?? 0) >= incomingOrderVersion) {
@@ -401,9 +403,37 @@ export const applyRemoteChange = (change: {
       cancelledAt: p.cancelledAt || p.cancelled_at || undefined,
       customerBalanceSnapshotMinor: p.customerBalanceSnapshotMinor ?? p.customer_balance_snapshot_minor ?? 0,
       createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+=======
+    const existing = ordersMap.get(p.id || change.entityId) || null;
+    const rawStatus = (
+      p.status ||
+      p.order_status ||
+      existing?.status ||
+      'pending'
+    ).toLowerCase();
+    const resolvedStatus: OrderStatus =
+      rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending'
+        ? (rawStatus as OrderStatus)
+        : existing?.status || 'pending';
+
+    const entity: OrderEntity = {
+      id: p.id || change.entityId,
+      dayId: p.dayId || p.day_id || existing?.dayId,
+      customerId: p.customerId || p.customer_id || existing?.customerId,
+      displayNumber: p.displayNumber || p.display_number || existing?.displayNumber || 1,
+      internalSequence: p.internalSequence || p.internal_sequence || existing?.internalSequence || 1,
+      status: resolvedStatus,
+      notes: p.notes ?? existing?.notes ?? undefined,
+      qrTokenId: p.qrTokenId || p.qr_token_id || existing?.qrTokenId || undefined,
+      chargingAt: p.chargingAt || p.charging_at || existing?.chargingAt || undefined,
+      deliveredAt: p.deliveredAt || p.delivered_at || existing?.deliveredAt || undefined,
+      cancelledAt: p.cancelledAt || p.cancelled_at || existing?.cancelledAt || undefined,
+      customerBalanceSnapshotMinor: p.customerBalanceSnapshotMinor ?? p.customer_balance_snapshot_minor ?? existing?.customerBalanceSnapshotMinor ?? 0,
+      createdAt: p.createdAt || p.created_at || existing?.createdAt || new Date().toISOString(),
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
       updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      deletedAt: p.deletedAt || p.deleted_at || undefined,
-      version: p.version || 1,
+      deletedAt: p.deletedAt || p.deleted_at || existing?.deletedAt || undefined,
+      version: p.version || existing?.version || 1,
     };
     localDb.setWithTx(tx, 'orders', entity.id, entity);
     ordersMap.set(entity.id, entity);
@@ -415,12 +445,21 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('orderItems', change.entityId);
       return;
     }
+<<<<<<< HEAD
     const previousItem = itemsMap.get(change.entityId);
     const incomingItemVersion = Number(p.version ?? 1);
     if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
       return;
     }
     const rawStatus = String(p.status || p.item_status || previousItem?.status || 'charging').toLowerCase();
+=======
+    const rawStatus = (
+      p.status ||
+      p.deliveryStatus ||
+      p.delivery_status ||
+      'charging'
+    );
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
     const normalizedStatus: ItemStatus =
       rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending' || rawStatus === 'charging'
         ? (rawStatus as ItemStatus)
@@ -433,8 +472,13 @@ export const applyRemoteChange = (change: {
       deviceTypeId: p.deviceTypeId || p.device_type_id || previousItem?.deviceTypeId,
       itemSequence: p.itemSequence ?? p.item_sequence ?? previousItem?.itemSequence ?? 1,
       status: normalizedStatus,
+<<<<<<< HEAD
       financialStatus: p.financialStatus || p.financial_status || previousItem?.financialStatus || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
       paymentStatus: p.paymentStatus || p.payment_status || previousItem?.paymentStatus || 'UNPAID',
+=======
+      financialStatus: p.financialStatus || p.financial_status || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
+      paymentStatus: p.paymentStatus || p.payment_status || 'UNPAID',
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
       deviceNameSnapshot: p.deviceNameSnapshot || p.device_name_snapshot || '',
       deviceIconSnapshot: p.deviceIconSnapshot || p.device_icon_snapshot || 'smartphone',
       basePriceSnapshotMinor: p.basePriceSnapshotMinor ?? p.base_price_snapshot_minor ?? 0,
@@ -1954,6 +1998,24 @@ export const repoContext: RepositoryContext = {
       });
     },
   },
+  overlayRepo: {
+    save: async (o) => {
+      await ensureStoreHydrated();
+      await localDb.saveOverlay(o);
+    },
+    remove: async (id) => {
+      await ensureStoreHydrated();
+      await localDb.removeOverlay(id);
+    },
+    get: async (id) => {
+      await ensureStoreHydrated();
+      return await localDb.getOverlay(id);
+    },
+    getNextSequence: async () => {
+      await ensureStoreHydrated();
+      return await localDb.getNextSequence();
+    },
+  },
   reservationRepo: {
     findActiveByDayAndDevice: async (dayId, deviceId) => {
       await ensureStoreHydrated();
@@ -2665,10 +2727,10 @@ export const getCustomerOrders = async (
         ? 'UNPAID'
         : (alloc?.paymentStatus || 'UNPAID');
 
-    const itemSummaries: UICustomerOrderItemSummary[] = items.map((i) => {
+    const itemSummaries: UICustomerOrderItemSummary[] = items.map((i, iIdx) => {
       const devName = getItemLocalizedDeviceName(i.deviceTypeId || i.deviceNameSnapshot, locale);
       return {
-        id: i.id,
+        id: i.id || (i as any).order_item_id || `item-${iIdx}-${ord.id}`,
         deviceName: devName,
         priceMinor: i.totalPriceMinor,
         hasCharger: i.hasCharger,
@@ -2676,7 +2738,7 @@ export const getCustomerOrders = async (
     });
 
     summaries.push({
-      id: ord.id,
+      id: ord.id || (ord as any).order_id || `order-${ord.displayNumber}-${summaries.length}`,
       orderNumber: ord.displayNumber,
       dayId: ord.dayId,
       createdAt: ord.createdAt,
@@ -2749,7 +2811,7 @@ export const getCustomerFinancialHistory = async (
           const devName = getItemLocalizedDeviceName(targetItem.deviceTypeId || targetItem.deviceNameSnapshot, locale);
           orderItems = [
             {
-              id: targetItem.id,
+              id: targetItem.id || `orderitem-${ev.orderItemId}`,
               deviceName: devName,
               priceMinor: targetItem.totalPriceMinor,
               hasCharger: targetItem.hasCharger,
@@ -2761,10 +2823,10 @@ export const getCustomerFinancialHistory = async (
       if (!orderItems) {
         const rawItems = Array.from(itemsMap.values()).filter((i) => i.orderId === ev.orderId && i.status !== 'cancelled');
         if (rawItems.length > 0) {
-          orderItems = rawItems.map((i) => {
+          orderItems = rawItems.map((i, rawIdx) => {
             const devName = getItemLocalizedDeviceName(i.deviceTypeId || i.deviceNameSnapshot, locale);
             return {
-              id: i.id,
+              id: i.id || `orderitem-${rawIdx}-${ev.id || ev.orderId}`,
               deviceName: devName,
               priceMinor: i.totalPriceMinor,
               hasCharger: i.hasCharger,
@@ -2855,7 +2917,7 @@ export const getCustomerFinancialHistory = async (
     }
 
     items.push({
-      id: ev.id,
+      id: ev.id || `ledger-${ev.createdAt}-${items.length}`,
       eventType: ev.eventType,
       amountMinor: ev.amountMinor,
       postBalanceMinor: runningBalance,
@@ -3044,7 +3106,11 @@ export const getOrderForEdit = async (
     customerPhone: cust ? cust.phone || '' : '',
     debtLimitMinor: cust ? cust.debtLimitMinor : -2000,
     customerBalanceSnapshotMinor: snapshotMinor,
+<<<<<<< HEAD
     status: calculateOrderProjection(orderItems, order.status),
+=======
+    status: calculateOrderProjection(order, items),
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
     createdAt: order.createdAt,
     notes: order.notes,
     items: uiItems,

@@ -159,11 +159,41 @@ export interface BackupSnapshotRecord {
   data: BackupSnapshotData;
 }
 
+<<<<<<< HEAD
 const cloneForRollback = <T>(value: T): T => {
   if (typeof structuredClone === 'function') return structuredClone(value);
   if (value === undefined) return value;
   return JSON.parse(JSON.stringify(value)) as T;
 };
+=======
+export interface MutationSnapshotItem {
+  table: string;
+  id: ID;
+  previousRecord: any | null;
+  existed: boolean;
+}
+
+export interface MutationSnapshotRecord {
+  commandId: ID;
+  mutationKey: string;
+  items: MutationSnapshotItem[];
+  createdAt: Timestamp;
+}
+
+export interface OptimisticOverlayRecord {
+  commandId: ID;
+  mutationKey: string;
+  entityType: string;
+  entityId: ID;
+  operation: 'CREATE' | 'PATCH' | 'DELETE';
+  patch?: Record<string, unknown> | null;
+  entityPayload?: Record<string, unknown> | null;
+  sequence: number;
+  createdAt: Timestamp;
+  dependencyCommandId?: ID;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+}
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
 
 export class IndexedDBLocalDatabase {
   private dbName = 'OrderSystemOfflineDB';
@@ -175,6 +205,11 @@ export class IndexedDBLocalDatabase {
   private memorySyncHistory = new Map<ID, SyncHistoryRecord>();
   private memorySnapshots = new Map<ID, BackupSnapshotRecord>();
   private memoryMutationSnapshots = new Map<ID, MutationSnapshotRecord>();
+<<<<<<< HEAD
+=======
+  private memoryOverlays = new Map<ID, OptimisticOverlayRecord>();
+  private overlaySequence = 0;
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
   private isBrowser = typeof window !== 'undefined' && typeof indexedDB !== 'undefined';
   private hydrationPromise: Promise<void> | null = null;
   private isHydrated = false;
@@ -225,6 +260,12 @@ export class IndexedDBLocalDatabase {
           if (!db.objectStoreNames.contains('mutationSnapshots')) {
             db.createObjectStore('mutationSnapshots', { keyPath: 'commandId' });
           }
+<<<<<<< HEAD
+=======
+          if (!db.objectStoreNames.contains('optimisticOverlays')) {
+            db.createObjectStore('optimisticOverlays', { keyPath: 'commandId' });
+          }
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
         };
       } catch (err) {
         console.warn('IndexedDB init error:', err);
@@ -400,6 +441,77 @@ export class IndexedDBLocalDatabase {
           resolve();
         }
       });
+    }
+
+    // 6. Hydrate mutationSnapshots
+    if (this.db.objectStoreNames.contains('mutationSnapshots')) {
+      await new Promise<void>((resolve) => {
+        try {
+          const tx = this.db!.transaction('mutationSnapshots', 'readonly');
+          const store = tx.objectStore('mutationSnapshots');
+          const req = store.openCursor();
+          req.onsuccess = (e) => {
+            const cursor = (e.target as IDBRequest).result as IDBCursorWithValue;
+            if (cursor) {
+              const val = cursor.value as MutationSnapshotRecord;
+              if (val && val.commandId) {
+                this.memoryMutationSnapshots.set(val.commandId, val);
+              }
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+          req.onerror = () => resolve();
+        } catch {
+          resolve();
+        }
+      });
+    }
+
+    // 7. Hydrate optimisticOverlays
+    if (this.db.objectStoreNames.contains('optimisticOverlays')) {
+      await new Promise<void>((resolve) => {
+        try {
+          const tx = this.db!.transaction('optimisticOverlays', 'readonly');
+          const store = tx.objectStore('optimisticOverlays');
+          const req = store.openCursor();
+          req.onsuccess = (e) => {
+            const cursor = (e.target as IDBRequest).result as IDBCursorWithValue;
+            if (cursor) {
+              const val = cursor.value as OptimisticOverlayRecord;
+              if (val && val.commandId) {
+                this.memoryOverlays.set(val.commandId, val);
+              }
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+          req.onerror = () => resolve();
+        } catch {
+          resolve();
+        }
+      });
+    }
+
+    // Reconcile orphaned mutation snapshots against active outbox commands
+    const activeOutboxIds = new Set<ID>();
+    for (const cmd of this.memoryOutbox.values()) {
+      if (cmd.status === 'pending' || cmd.status === 'syncing' || cmd.status === 'PENDING_RECONCILIATION' || cmd.status === 'READY') {
+        activeOutboxIds.add(cmd.commandId);
+      }
+    }
+    for (const [cmdId] of this.memoryMutationSnapshots.entries()) {
+      if (!activeOutboxIds.has(cmdId)) {
+        this.memoryMutationSnapshots.delete(cmdId);
+        if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
+          try {
+            const tx = this.db.transaction('mutationSnapshots', 'readwrite');
+            tx.objectStore('mutationSnapshots').delete(cmdId);
+          } catch {}
+        }
+      }
     }
   }
 
@@ -1329,13 +1441,21 @@ export class IndexedDBLocalDatabase {
     this.memoryOutbox.clear();
     this.memorySyncState.clear();
     this.memorySyncHistory.clear();
+<<<<<<< HEAD
     this.memoryMutationSnapshots.clear();
+=======
+    this.memoryOverlays.clear();
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
     if (!options?.preserveSnapshots) {
       this.memorySnapshots.clear();
     }
     if (this.db) {
       try {
+<<<<<<< HEAD
         const storeNames = ['kvStore', 'outbox', 'syncState', 'syncHistory', 'mutationSnapshots'].filter((s) =>
+=======
+        const storeNames = ['kvStore', 'outbox', 'syncState', 'syncHistory', 'optimisticOverlays'].filter((s) =>
+>>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
           this.db!.objectStoreNames.contains(s)
         );
         if (!options?.preserveSnapshots && this.db!.objectStoreNames.contains('backupSnapshots')) {
@@ -1356,6 +1476,218 @@ export class IndexedDBLocalDatabase {
         console.warn('Failed to clear IndexedDB stores:', err);
       }
     }
+  }
+
+  async saveMutationSnapshot(record: MutationSnapshotRecord): Promise<void> {
+    await this.ensureHydrated();
+    this.memoryMutationSnapshots.set(record.commandId, record);
+    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
+      try {
+        const tx = this.db.transaction('mutationSnapshots', 'readwrite');
+        tx.objectStore('mutationSnapshots').put(record);
+      } catch (err) {
+        console.warn('Failed to persist mutation snapshot:', err);
+      }
+    }
+  }
+
+  async getMutationSnapshot(commandId: ID): Promise<MutationSnapshotRecord | null> {
+    await this.ensureHydrated();
+    if (this.memoryMutationSnapshots.has(commandId)) {
+      return this.memoryMutationSnapshots.get(commandId)!;
+    }
+    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
+      return new Promise((resolve) => {
+        try {
+          const tx = this.db!.transaction('mutationSnapshots', 'readonly');
+          const req = tx.objectStore('mutationSnapshots').get(commandId);
+          req.onsuccess = () => resolve((req.result as MutationSnapshotRecord) || null);
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+    }
+    return null;
+  }
+
+  async removeMutationSnapshot(commandId: ID): Promise<void> {
+    await this.ensureHydrated();
+    this.memoryMutationSnapshots.delete(commandId);
+    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
+      try {
+        const tx = this.db.transaction('mutationSnapshots', 'readwrite');
+        tx.objectStore('mutationSnapshots').delete(commandId);
+      } catch (err) {
+        console.warn('Failed to remove mutation snapshot:', err);
+      }
+    }
+  }
+
+  async hasActiveMutationForEntity(mutationKey: string): Promise<boolean> {
+    await this.ensureHydrated();
+    for (const snap of this.memoryMutationSnapshots.values()) {
+      if (snap.mutationKey === mutationKey) return true;
+    }
+    return false;
+  }
+
+  async atomicRollback(commandId: ID): Promise<boolean> {
+    await this.ensureHydrated();
+    const snapshot = await this.getMutationSnapshot(commandId);
+    if (!snapshot) return false;
+
+    if (this.db && this.db.objectStoreNames.contains('kvStore') && this.db.objectStoreNames.contains('mutationSnapshots')) {
+      return new Promise<boolean>((resolve) => {
+        try {
+          const tx = this.db!.transaction(['kvStore', 'mutationSnapshots'], 'readwrite');
+          const kvStore = tx.objectStore('kvStore');
+          const snapStore = tx.objectStore('mutationSnapshots');
+
+          for (const item of snapshot.items) {
+            const kvKey = `${item.table}:${item.id}`;
+            if (item.existed && item.previousRecord) {
+              kvStore.put({ key: kvKey, table: item.table, id: item.id, item: item.previousRecord }, kvKey);
+            } else if (!item.existed) {
+              kvStore.delete(kvKey);
+            }
+          }
+          snapStore.delete(commandId);
+
+          tx.oncomplete = () => {
+            for (const item of snapshot.items) {
+              const tableMap = this.getMemoryTable(item.table);
+              if (item.existed && item.previousRecord) {
+                tableMap.set(item.id, item.previousRecord);
+              } else if (!item.existed) {
+                tableMap.delete(item.id);
+              }
+            }
+            this.memoryMutationSnapshots.delete(commandId);
+            resolve(true);
+          };
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        } catch {
+          resolve(false);
+        }
+      });
+    } else {
+      // Memory fallback atomic execution
+      try {
+        for (const item of snapshot.items) {
+          const tableMap = this.getMemoryTable(item.table);
+          if (item.existed && item.previousRecord) {
+            tableMap.set(item.id, item.previousRecord);
+          } else if (!item.existed) {
+            tableMap.delete(item.id);
+          }
+        }
+        this.memoryMutationSnapshots.delete(commandId);
+        return true;
+      } catch (err) {
+        console.warn('Atomic rollback failed:', err);
+        return false;
+      }
+    }
+  }
+
+  async saveOverlay(record: OptimisticOverlayRecord): Promise<void> {
+    await this.ensureHydrated();
+    this.memoryOverlays.set(record.commandId, record);
+    if (this.db && this.db.objectStoreNames.contains('optimisticOverlays')) {
+      try {
+        const tx = this.db.transaction('optimisticOverlays', 'readwrite');
+        const store = tx.objectStore('optimisticOverlays');
+        store.put(record);
+      } catch (err) {
+        console.warn('Failed to persist optimistic overlay to IndexedDB:', err);
+      }
+    }
+  }
+
+  async getOverlay(commandId: ID): Promise<OptimisticOverlayRecord | null> {
+    await this.ensureHydrated();
+    const mem = this.memoryOverlays.get(commandId);
+    if (mem) return mem;
+    if (this.db && this.db.objectStoreNames.contains('optimisticOverlays')) {
+      return new Promise((resolve) => {
+        try {
+          const tx = this.db!.transaction('optimisticOverlays', 'readonly');
+          const store = tx.objectStore('optimisticOverlays');
+          const req = store.get(commandId);
+          req.onsuccess = () => {
+            if (req.result) {
+              this.memoryOverlays.set(commandId, req.result);
+              resolve(req.result as OptimisticOverlayRecord);
+            } else {
+              resolve(null);
+            }
+          };
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+    }
+    return null;
+  }
+
+  async listOverlays(): Promise<OptimisticOverlayRecord[]> {
+    await this.ensureHydrated();
+    return Array.from(this.memoryOverlays.values());
+  }
+
+  async getNextSequence(): Promise<number> {
+    await this.ensureHydrated();
+    this.overlaySequence += 1;
+    return this.overlaySequence;
+  }
+
+  async removeOverlay(commandId: ID): Promise<void> {
+    await this.ensureHydrated();
+    this.memoryOverlays.delete(commandId);
+    if (this.db && this.db.objectStoreNames.contains('optimisticOverlays')) {
+      try {
+        const tx = this.db.transaction('optimisticOverlays', 'readwrite');
+        const store = tx.objectStore('optimisticOverlays');
+        store.delete(commandId);
+      } catch (err) {
+        console.warn('Failed to remove optimistic overlay from IndexedDB:', err);
+      }
+    }
+  }
+
+  async getEffectiveState(entityType: string, entityId: ID): Promise<any | null> {
+    await this.ensureHydrated();
+    const base = await this.get(entityType, entityId);
+    const allOverlays = await this.listOverlays();
+    const activeOverlays = allOverlays
+      .filter(o => o.entityType === entityType && o.entityId === entityId && o.status === 'PENDING')
+      .sort((a, b) => {
+        if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+
+    if (!base && activeOverlays.length === 0) return null;
+
+    let effective: any = base ? JSON.parse(JSON.stringify(base)) : null;
+
+    for (const overlay of activeOverlays) {
+      if (overlay.operation === 'DELETE') {
+        return null;
+      }
+      if (overlay.operation === 'CREATE') {
+        effective = { id: entityId, ...(overlay.entityPayload || overlay.patch || {}) };
+      } else if (overlay.operation === 'PATCH') {
+        if (!effective) {
+          effective = { id: entityId, ...(overlay.patch || {}) };
+        } else {
+          effective = { ...effective, ...(overlay.patch || {}) };
+        }
+      }
+    }
+    return effective;
   }
 }
 

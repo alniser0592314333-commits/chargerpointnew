@@ -374,14 +374,15 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
               </div>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-[#123d37]">
-                {financialHistory.map((item) => {
+                {financialHistory.map((item, itemIndex) => {
                   const isExpanded = expandedFinancialId === item.id;
                   const isPositive = item.amountMinor > 0;
                   const isCharge = item.eventType === 'ORDER_ITEM_CHARGE';
                   const isPayment = item.eventType === 'PAYMENT';
+                  const finKey = `fin-${item.id || 'noid'}-${itemIndex}`;
 
                   return (
-                    <div key={item.id} className="py-3 px-1 transition-colors">
+                    <div key={finKey} className="py-3 px-1 transition-colors">
                       {/* Summary Row */}
                       <div
                         onClick={() => toggleExpandFinancial(item.id)}
@@ -450,26 +451,29 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                                 {locale === 'en' ? 'Historical Order Items:' : 'تفاصيل أجهزة الطلب:'}
                               </span>
                               <div className="space-y-1 pl-2 pr-2">
-                                {item.orderItems.map((dev) => (
-                                  <div
-                                    key={`${item.id}-${dev.id}`}
-                                    className="flex items-center justify-between text-[11px] text-gray-700 dark:text-[#daf1de]"
-                                  >
-                                    <span className="flex items-center gap-1.5">
-                                      <Smartphone className="w-3 h-3 text-gray-400" />
-                                      <span>{dev.deviceName}</span>
-                                      {dev.hasCharger && (
-                                        <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
-                                          <BatteryCharging className="w-2.5 h-2.5" />
-                                          {t('withCharger')}
-                                        </span>
-                                      )}
-                                    </span>
-                                    <span className="font-mono font-medium">
-                                      {formatCurrency(dev.priceMinor)}
-                                    </span>
-                                  </div>
-                                ))}
+                                {(item.orderItems || []).map((dev, devIndex) => {
+                                  const devKey = `fin-dev-${item.id || itemIndex}-${dev.id || 'dev'}-${devIndex}`;
+                                  return (
+                                    <div
+                                      key={devKey}
+                                      className="flex items-center justify-between text-[11px] text-gray-700 dark:text-[#daf1de]"
+                                    >
+                                      <span className="flex items-center gap-1.5">
+                                        <Smartphone className="w-3 h-3 text-gray-400" />
+                                        <span>{dev.deviceName}</span>
+                                        {dev.hasCharger && (
+                                          <span className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
+                                            <BatteryCharging className="w-2.5 h-2.5" />
+                                            {t('withCharger')}
+                                          </span>
+                                        )}
+                                      </span>
+                                      <span className="font-mono font-medium">
+                                        {formatCurrency(dev.priceMinor)}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
                               </div>
 
                               {item.orderTotalMinor !== undefined && (
@@ -526,10 +530,11 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
               </div>
             ) : (
               <div className="divide-y divide-gray-100 dark:divide-[#123d37]">
-                {orders.map((ord) => {
+                {orders.map((ord, ordIndex) => {
                   const isExpanded = expandedOrderId === ord.id;
+                  const orderKey = `order-${ord.id || 'noid'}-${ordIndex}`;
                   return (
-                    <div key={ord.id} className="py-3 px-1 transition-colors">
+                    <div key={orderKey} className="py-3 px-1 transition-colors">
                       {/* Order Summary Row */}
                       <div
                         onClick={() => toggleExpandOrder(ord.id)}
@@ -583,11 +588,13 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                           </span>
 
                           <div className="space-y-1 pl-2 pr-2">
-                            {ord.items.map((dev) => (
-                              <div
-                                key={dev.id}
-                                className="flex items-center justify-between text-[11px] text-gray-700 dark:text-[#daf1de]"
-                              >
+                            {(ord.items || []).map((dev, devIndex) => {
+                              const devKey = `ord-dev-${ord.id || ordIndex}-${dev.id || 'dev'}-${devIndex}`;
+                              return (
+                                <div
+                                  key={devKey}
+                                  className="flex items-center justify-between text-[11px] text-gray-700 dark:text-[#daf1de]"
+                                >
                                 <span className="flex items-center gap-1.5">
                                   <Smartphone className="w-3 h-3 text-gray-400" />
                                   <span>{dev.deviceName}</span>
@@ -601,8 +608,9 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                                 <span className="font-mono font-medium">
                                   {formatCurrency(dev.priceMinor)}
                                 </span>
-                              </div>
-                            ))}
+                                </div>
+                              );
+                            })}
                           </div>
 
                           <div className="pt-2 border-t border-gray-200/60 dark:border-[#14423b]/60 flex items-center justify-between text-xs font-semibold">
@@ -874,10 +882,10 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                     {isSubmittingTopUp ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <>
+                      <span className="inline-flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4" />
                         <span>{t('confirmAndApply')}</span>
-                      </>
+                      </span>
                     )}
                   </Button>
                 </div>
