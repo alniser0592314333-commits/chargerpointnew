@@ -417,10 +417,10 @@ create index if not exists idx_outbox_commands on public.processed_commands(comm
 
 create or replace function public.is_system_bootstrapped()
 returns boolean language sql stable security definer set search_path=public
-as $ select exists(select 1 from public.admins where role='SUPER_ADMIN' and is_active=true) $;
+as $$ select exists(select 1 from public.admins where role='SUPER_ADMIN' and is_active=true) $;
 
 create or replace function public.bootstrap_first_super_admin(p_username text,p_full_name text,p_bin text)
-returns jsonb language plpgsql security definer set search_path=public as $
+returns jsonb language plpgsql security definer set search_path=public as $$
 declare v_id uuid; v_email text;
 begin
  if exists(select 1 from public.admins where role='SUPER_ADMIN' and is_active=true) then
@@ -438,23 +438,23 @@ begin
  'admin:manage','sync:manage','sync:view','goals:view','goals:manage','goals:request','goals:approve']::text[],
  crypt(p_bin,gen_salt('bf'))) returning id into v_id;
  return jsonb_build_object('success',true,'admin_id',v_id);
-end $;
+end $$;
 
 create or replace function public.get_email_by_username(p_username text)
 returns text language sql stable security definer set search_path=public
-as $ select email from public.admins where lower(username)=lower(p_username) and is_active=true limit 1 $;
+as $$ select email from public.admins where lower(username)=lower(p_username) and is_active=true limit 1 $;
 
 create or replace function public.rpc_fetch_admins()
 returns setof jsonb language sql security definer set search_path=public
-as $ select jsonb_build_object('id',a.id,'username',a.username,'full_name',a.full_name,'email',a.email,'role',a.role,'is_active',a.is_active,'version',a.version,'created_at',a.created_at) from public.admins a where public.current_admin_id() is not null order by a.created_at $;
+as $$ select jsonb_build_object('id',a.id,'username',a.username,'full_name',a.full_name,'email',a.email,'role',a.role,'is_active',a.is_active,'version',a.version,'created_at',a.created_at) from public.admins a where public.current_admin_id() is not null order by a.created_at $;
 
 create or replace function public.get_global_app_identity()
 returns jsonb language sql stable security definer set search_path=public
-as $ select jsonb_build_object('id',id,'app_name',app_name,'white_logo_url',white_logo_url,'dark_logo_url',dark_logo_url,'version',version,'updated_at',updated_at,'updated_by',updated_by) from public.global_app_identity order by updated_at desc limit 1 $;
+as $$ select jsonb_build_object('id',id,'app_name',app_name,'white_logo_url',white_logo_url,'dark_logo_url',dark_logo_url,'version',version,'updated_at',updated_at,'updated_by',updated_by) from public.global_app_identity order by updated_at desc limit 1 $;
 
 create or replace function public.update_global_app_identity(p_app_name text,p_white_logo_url text,p_dark_logo_url text)
 returns jsonb language plpgsql security definer set search_path=public
-as $
+as $$
 declare v_id uuid;
 begin
  if not exists(select 1 from public.admins a where a.id=public.current_admin_id() and (a.role='SUPER_ADMIN' or 'settings:manage'=any(a.permissions))) then
@@ -470,7 +470,7 @@ begin
  where id='00000000-0000-0000-0000-000000000001'
  returning id into v_id;
  return public.get_global_app_identity();
-end $;
+end $$;
 
 create or replace function public.current_admin_id()
 returns uuid
@@ -992,7 +992,7 @@ $$;
 create or replace function public.execute_customer_top_up_atomic(
   p_command_id uuid,p_customer_id uuid,p_amount_minor bigint,p_bin text,p_note text default null
 ) returns jsonb language plpgsql security definer set search_path=public
-as $
+as $$
 declare v_result jsonb; v_balance bigint;
 begin
  v_result:=public.execute_sync_command(
@@ -1002,7 +1002,7 @@ begin
  );
  select coalesce(sum(amount_minor),0) into v_balance from public.financial_ledger where customer_id=p_customer_id;
  return jsonb_build_object('success',true,'transactionId',p_command_id,'newBalanceMinor',v_balance,'result',v_result);
-end $;
+end $$;
 
 create or replace function public.verify_admin_bin_with_attempt_tracking(p_bin text)
 returns jsonb language plpgsql security definer set search_path=public
@@ -1022,7 +1022,7 @@ end;
 $$;
 
 create or replace function public.get_or_create_customer_qr(p_customer_id uuid)
-returns text language plpgsql security definer set search_path=public as $
+returns text language plpgsql security definer set search_path=public as $$
 declare v_token text;
 begin
  select public_token into v_token from public.qr_tokens where target_id=p_customer_id and token_type='CUSTOMER' and is_active limit 1;
@@ -1030,20 +1030,20 @@ begin
  v_token:=replace(replace(replace(encode(gen_random_bytes(24),'base64'),'+','-'),'/','_'),'=','');
  insert into public.qr_tokens(token_hash,public_token,token_type,target_id) values(encode(digest(v_token,'sha256'),'hex'),v_token,'CUSTOMER',p_customer_id);
  return v_token;
-end $;
+end $$;
 
 create or replace function public.rotate_customer_qr(p_customer_id uuid)
-returns text language plpgsql security definer set search_path=public as $
+returns text language plpgsql security definer set search_path=public as $$
 declare v_token text;
 begin
  update public.qr_tokens set is_active=false where target_id=p_customer_id and token_type='CUSTOMER';
  v_token:=replace(replace(replace(encode(gen_random_bytes(24),'base64'),'+','-'),'/','_'),'=','');
  insert into public.qr_tokens(token_hash,public_token,token_type,target_id) values(encode(digest(v_token,'sha256'),'hex'),v_token,'CUSTOMER',p_customer_id);
  return v_token;
-end $;
+end $$;
 
 create or replace function public.get_or_create_order_qr(p_order_id uuid)
-returns text language plpgsql security definer set search_path=public as $
+returns text language plpgsql security definer set search_path=public as $$
 declare v_token text;
 begin
  select public_token into v_token from public.qr_tokens where target_id=p_order_id and token_type='ORDER' and is_active limit 1;
@@ -1051,18 +1051,18 @@ begin
  v_token:=replace(replace(replace(encode(gen_random_bytes(24),'base64'),'+','-'),'/','_'),'=','');
  insert into public.qr_tokens(token_hash,public_token,token_type,target_id) values(encode(digest(v_token,'sha256'),'hex'),v_token,'ORDER',p_order_id);
  return v_token;
-end $;
+end $$;
 
 do $ begin
  if not exists(select 1 from pg_type where typname='public_customer_qr_result') then
   create type public.public_customer_qr_result as (customer_name text, customer_code text);
  end if;
-end $;
+end $$;
 
 -- Public QR functions are intentionally read-only. They return the minimum
 -- customer/order projection and never expose admin-only fields.
 create or replace function public.public_resolve_order_qr(p_public_token text)
-returns setof jsonb language plpgsql security definer set search_path=public as $
+returns setof jsonb language plpgsql security definer set search_path=public as $$
 declare v qr_tokens%rowtype;
 begin
  select * into v from public.qr_tokens where public_token=p_public_token and token_type='ORDER' and is_active and (expires_at is null or expires_at>now());
@@ -1072,16 +1072,16 @@ begin
    'items_count',(select count(*) from public.order_items oi where oi.order_id=o.id),
    'items',(select coalesce(jsonb_agg(jsonb_build_object('name',oi.device_name_snapshot,'status',oi.status,'has_charger',oi.has_charger) order by oi.item_sequence),'[]'::jsonb) from public.order_items oi where oi.order_id=o.id))
  from public.orders o join public.customers c on c.id=o.customer_id where o.id=v.target_id;
-end $;
+end $$;
 
 create or replace function public.public_resolve_customer_qr(p_public_token text)
-returns setof public_customer_qr_result language plpgsql security definer set search_path=public as $
+returns setof public_customer_qr_result language plpgsql security definer set search_path=public as $$
 declare v qr_tokens%rowtype;
 begin
  select * into v from public.qr_tokens where public_token=p_public_token and token_type='CUSTOMER' and is_active and (expires_at is null or expires_at>now());
  if v.id is null then return; end if;
  return query select c.name, left(replace(c.id::text,'-',''),4) from public.customers c where c.id=v.target_id;
-end $;
+end $$;
 
 -- Security boundary: clients can read through authenticated REST for the
 -- read-model tables; canonical mutations must use execute_sync_command/RPCs.
