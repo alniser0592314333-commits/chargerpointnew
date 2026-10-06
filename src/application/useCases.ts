@@ -856,8 +856,12 @@ export class FinalUseCases {
     const commandId = crypto.randomUUID();
     const mutationKey = `order:${order.id}`;
     
+    const cancellationWasFinanciallyRecognized =
+      existingItem.financialStatus === 'RECOGNIZED' || existingItem.status === 'delivered';
+
     const patch = {
-      status: 'cancelled',
+      status: 'cancelled' as const,
+      financialStatus: cancellationWasFinanciallyRecognized ? 'REVERSED' as const : existingItem.financialStatus,
       cancelledAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: existingItem.version + 1,
@@ -869,9 +873,36 @@ export class FinalUseCases {
       ]);
     }
 
-    await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.itemRepo.save({ ...existingItem, ...patch } as OrderItemEntity);
+      ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+        id: commandId,
+        aggregateId: order.id,
+        itemId: itemId,
+        orderItemId: itemId,
+        orderId: order.id,
+        bin,
+      }, existingItem.version);
+    });
 
-    await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+    try {
+      await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
+    } catch (overlayError) {
+      console.warn('Cancellation pending projection failed; local item is authoritative.', overlayError);
+    }
+
+    /*
+     * The local entity row is now the durable read model; the overlay is only
+     * an additional pending projection. This mirrors delivery/add-item and
+     * makes cancellation immediately visible and rollback-safe.
+     */
+    return { success: true, data: { ...existingItem, ...patch } as OrderItemEntity };
+  }
+
+  /*
+   * Legacy implementation removed: cancellation previously wrote only an
+   * overlay and outbox command, leaving the durable local item in CHARGING.
+   */
       id: commandId,
       aggregateId: order.id,
       itemId: itemId,
