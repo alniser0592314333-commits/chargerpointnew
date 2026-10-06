@@ -2076,9 +2076,11 @@ export const repoContext: RepositoryContext = {
     },
     save: async (c) => {
       await ensureStoreHydrated();
+      // Generic persistence is side-effect free. CREATE_CUSTOMER / UPDATE_CUSTOMER
+      // are explicit application commands owned by their use cases; synthesizing
+      // CREATE_CUSTOMER here corrupts the outbox whenever an existing customer is edited.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.customerRepo.save(c);
-        ctx.commandRepo.record(c.id, 'CREATE_CUSTOMER', c);
       });
     },
     getBalance: async (id) => {
