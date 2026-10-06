@@ -343,9 +343,14 @@ export class FinalUseCases {
     };
 
     const mutationKey = `order:${orderId}`;
+    const orderReopened = order.status === 'delivered' && !autoDeliver;
+    const reopenedOrder: OrderEntity = orderReopened
+      ? { ...order, status: 'charging', updatedAt: item.updatedAt, version: order.version + 1 }
+      : order;
     if (this.deps.mutationSnapshotRepo) {
       await this.deps.mutationSnapshotRepo.capture(itemId, [
         { table: 'orderItems', id: item.id, existed: false },
+        ...(orderReopened ? [{ table: 'orders', id: order.id, existed: true, data: order }] : []),
       ]);
     }
 
@@ -354,6 +359,7 @@ export class FinalUseCases {
      * only a pending projection; the local entity row is the durable read model.
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
+      if (orderReopened) ctx.orderRepo.save(reopenedOrder);
       ctx.itemRepo.save(item);
       const parentCreate = ctx.commandRepo.get(orderId);
       ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
@@ -407,6 +413,16 @@ export class FinalUseCases {
     });
 
     try {
+      if (orderReopened) {
+        await this.createOverlay(
+          itemId,
+          mutationKey,
+          'orders',
+          order.id,
+          'PATCH',
+          { status: 'charging', updatedAt: reopenedOrder.updatedAt, version: reopenedOrder.version },
+        );
+      }
       await this.createOverlay(
         itemId,
         mutationKey,
