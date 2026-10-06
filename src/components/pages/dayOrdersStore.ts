@@ -3103,9 +3103,30 @@ export const getCustomerFinancialHistory = async (
   if (!cust) return [];
 
   const targetId = cust.id;
-  const rawEvents = await repoContext.ledgerRepo.findByCustomer(targetId);
+  const authoritativeEvents = await repoContext.ledgerRepo.findByCustomer(targetId);
 
-  // Sort ascending by time (oldest first) to compute running post-transaction balances
+  // Include pending local ledger projections in the customer-facing history, but
+  // never write them into the authoritative ledger. This keeps the UI responsive
+  // after a local-first top-up/delivery while SyncEngine remains the sole path to
+  // server recognition.
+  const pendingLedgerProjections = (await localDb.listOverlays())
+    .filter(o => o.entityType === 'ledger' && o.status === 'PENDING' && o.operation === 'CREATE')
+    .map(o => o.entityPayload as any)
+    .filter((p) => p && p.customerId === targetId)
+    .map((p) => ({
+      ...p,
+      id: p.id || crypto.randomUUID(),
+      createdAt: p.createdAt || new Date().toISOString(),
+      metadata: { ...(p.metadata || {}), pendingLocal: true },
+    }));
+
+  const authoritativeIds = new Set(authoritativeEvents.map(e => e.id));
+  const rawEvents = [
+    ...authoritativeEvents,
+    ...pendingLedgerProjections.filter(p => !authoritativeIds.has(p.id)),
+  ];
+
+  // Sort ascending by time to compute running post-transaction balances
   const sortedAsc = [...rawEvents].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
