@@ -1439,7 +1439,7 @@ export class FinalUseCases {
       }
       const existingPayment = this.deps.paymentRepo.findByCustomer
         ? await this.deps.paymentRepo.findByCustomer(customerId)
-        : [];
+        : await localDb.list<PaymentEntity>('payments');
       const found = existingPayment.find((payment) => payment.id === commandId);
       if (found) return { success: true, data: found };
       throw new IdempotencyConflictError('CREATE_PAYMENT command exists but its local payment is missing');
