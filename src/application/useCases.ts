@@ -275,16 +275,22 @@ export class FinalUseCases {
       version: 1,
     };
 
-    // Phase 1.1: Use Overlay
     const mutationKey = `order:${orderId}`;
     if (this.deps.mutationSnapshotRepo) {
       await this.deps.mutationSnapshotRepo.capture(itemId, [
         { table: 'orderItems', id: item.id, existed: false },
       ]);
     }
-    await this.createOverlay(itemId, mutationKey, 'order_items', itemId, 'CREATE', item as unknown as Record<string, unknown>);
 
-    await this.deps.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
+    /*
+     * Persist the new item and its outbox command atomically. The overlay is
+     * only a pending projection; the local entity row is the durable read model.
+     */
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.itemRepo.save(item);
+      ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
+        id: item.id,
+        aggregateId: orderId,
         orderId,
         deviceTypeId,
         hasCharger,
@@ -297,8 +303,24 @@ export class FinalUseCases {
         chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
         unitPriceMinor: item.unitPriceMinor,
         totalPriceMinor: item.totalPriceMinor,
+      });
     });
-    
+
+    try {
+      await this.createOverlay(
+        itemId,
+        mutationKey,
+        'order_items',
+        itemId,
+        'CREATE',
+        item as unknown as Record<string, unknown>
+      );
+    } catch (overlayError) {
+      console.warn(
+        'Failed to persist item pending overlay; base local state is authoritative.',
+        overlayError
+      );
+    }
     return { success: true, data: item };
   }
 
