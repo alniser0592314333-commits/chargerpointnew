@@ -74,47 +74,10 @@ BEGIN
     PERFORM pg_advisory_xact_lock(hashtextextended(p_command_id::TEXT, 0));
 
     -- ==========================================
-    -- 0. RESET GENERATION VALIDATION (STALE OUTBOX PROTECTION)
+    -- 0. AUTHENTICATION & IDENTITY RESOLUTION
     -- ==========================================
-    SELECT COALESCE(value_number, 1) INTO v_server_gen
-    FROM public.system_settings
-    WHERE key = 'server_reset_generation';
-
-    -- Extract resetGeneration from payload if present, default to 1 for older clients
-    v_cmd_gen := COALESCE((p_payload->>'resetGeneration')::BIGINT, (p_payload->>'reset_generation')::BIGINT, 1);
-
-    IF v_cmd_gen < v_server_gen THEN
-        RAISE EXCEPTION 'Reset Generation Mismatch: Command generation % is older than server reset generation %. Stale pre-reset command rejected.', v_cmd_gen, v_server_gen
-        USING ERRCODE = 'P0002';
-    END IF;
-
-    -- ==========================================
-    -- 1. STRICT IDEMPOTENCY CHECK
-    -- ==========================================
-    SELECT command_id, payload_hash, result_payload
-    INTO v_existing_cmd
-    FROM public.processed_commands
-    WHERE command_id = p_command_id;
-
-    IF v_existing_cmd.command_id IS NOT NULL THEN
-        IF v_existing_cmd.payload_hash = p_payload_hash OR p_payload_hash = 'no_hash' THEN
-            -- Exact idempotent retry: Return previous result
-            RETURN jsonb_build_object(
-                'success', TRUE,
-                'idempotent', TRUE,
-                'commandId', p_command_id,
-                'result', v_existing_cmd.result_payload
-            );
-        ELSE
-            -- Same command ID with DIFFERENT payload: REJECT
-            RAISE EXCEPTION 'Idempotency Conflict: Command ID % already executed with different payload', p_command_id
-                USING ERRCODE = '23505';
-        END IF;
-    END IF;
-
-    -- ==========================================
-    -- 2. AUTHENTICATION & IDENTITY RESOLUTION
-    -- ==========================================
+    -- Authenticate BEFORE any idempotency lookup. A known command_id must
+    -- never become a side-channel for unauthenticated callers.
     IF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Authentication required: caller must be signed in via Supabase Auth'
             USING ERRCODE = 'P0001';
@@ -132,6 +95,42 @@ BEGIN
     IF v_is_active IS NOT TRUE THEN
         RAISE EXCEPTION 'Forbidden: Admin account is inactive or disabled'
             USING ERRCODE = 'P0001';
+    END IF;
+
+    -- ==========================================
+    -- 1. RESET GENERATION VALIDATION (STALE OUTBOX PROTECTION)
+    -- ==========================================
+    SELECT COALESCE(value_number, 1) INTO v_server_gen
+    FROM public.system_settings
+    WHERE key = 'server_reset_generation';
+
+    v_cmd_gen := COALESCE((p_payload->>'resetGeneration')::BIGINT, (p_payload->>'reset_generation')::BIGINT, 1);
+
+    IF v_cmd_gen < v_server_gen THEN
+        RAISE EXCEPTION 'Reset Generation Mismatch: Command generation % is older than server reset generation %. Stale pre-reset command rejected.', v_cmd_gen, v_server_gen
+        USING ERRCODE = 'P0002';
+    END IF;
+
+    -- ==========================================
+    -- 2. STRICT IDEMPOTENCY CHECK
+    -- ==========================================
+    SELECT command_id, payload_hash, result_payload
+    INTO v_existing_cmd
+    FROM public.processed_commands
+    WHERE command_id = p_command_id;
+
+    IF v_existing_cmd.command_id IS NOT NULL THEN
+        IF v_existing_cmd.payload_hash = p_payload_hash OR p_payload_hash = 'no_hash' THEN
+            RETURN jsonb_build_object(
+                'success', TRUE,
+                'idempotent', TRUE,
+                'commandId', p_command_id,
+                'result', v_existing_cmd.result_payload
+            );
+        ELSE
+            RAISE EXCEPTION 'Idempotency Conflict: Command ID % already executed with different payload', p_command_id
+                USING ERRCODE = '23505';
+        END IF;
     END IF;
 
     -- ==========================================
