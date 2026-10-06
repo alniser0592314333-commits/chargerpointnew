@@ -3849,6 +3849,10 @@ export const deliverAllOrdersInDay = async (
     const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
     const dayOrders = await getOrdersForDay(dayId);
+    if (offline) {
+      return { success: false, error: 'لا يمكن تسليم أجهزة اليوم بدون اتصال للتحقق من رمز BIN' };
+    }
+    await auth.verifyBin(bin);
     let count = 0;
 
     for (const ord of dayOrders) {
@@ -3864,12 +3868,7 @@ export const deliverAllOrdersInDay = async (
       let deliveredInThisOrder = false;
       for (const item of items) {
         if (item.status !== 'delivered' && item.status !== 'cancelled') {
-          if (offline && !bin.trim()) {
-            await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
-          } else {
-            await auth.verifyBin(bin);
-            await phase5UseCases.deliverOrderItem(auth, item.id, bin);
-          }
+          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
           deliveredInThisOrder = true;
         }
       }
