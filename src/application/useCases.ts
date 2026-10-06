@@ -796,10 +796,11 @@ export class FinalUseCases {
     const parentAdd = await this.deps.commandRepo.get(item.id);
     await this.deps.transactionManager.runInTransaction(async (ctx) => {
       if (orderStatusChanged) ctx.orderRepo.save(nextOrder);
-      // Delivery is projected through the optimistic overlay first. Keeping the
-      // base order-item row unchanged until the authoritative server delta is
-      // applied prevents a local financial action from masquerading as canonical
-      // state and lets rollback remove only the pending delivery projection.
+      // Local-first invariant: delivery is a durable local read-model mutation
+      // in the same transaction as its financial projection and outbox command.
+      // The overlay remains as a sync/reconciliation aid, but UI reads must never
+      // depend on the overlay to see a successful local action.
+      ctx.itemRepo.save({ ...item, ...patch } as OrderItemEntity);
       ctx.ledgerRepo.append(chargeLedger);
       if (ctx.goalRepo) {
         await this.evaluateCustomerGoal(order.customerId, ctx);
