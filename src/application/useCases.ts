@@ -1471,7 +1471,9 @@ export class FinalUseCases {
     let totalAllocated = 0;
 
     for (const l of ledger) {
-      if (l.eventType === 'ORDER_ITEM_CHARGE') totalRecognized += (l.amountMinor < 0 ? -l.amountMinor : l.amountMinor);
+      if (l.eventType === 'ORDER_ITEM_CHARGE' || l.eventType === 'CHARGE') {
+        totalRecognized += (l.amountMinor < 0 ? -l.amountMinor : l.amountMinor);
+      }
       if (l.eventType === 'REVERSAL' || l.eventType === 'REFUND') totalRecognized -= (l.amountMinor < 0 ? -l.amountMinor : l.amountMinor);
     }
 
