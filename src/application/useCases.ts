@@ -1491,6 +1491,10 @@ export class FinalUseCases {
         referenceId: payment.id,
         createdAt: payment.createdAt,
       });
+      // Apply the same FIFO allocation path used by explicit approval so a
+      // normal customer payment immediately settles recognized order items
+      // locally and creates UUID allocation rows before sync.
+      this.allocatePaymentFIFOInternal(ctx, commandId, customerId, amountMinor, ledger, allocations);
       ctx.commandRepo.record(commandId, 'CREATE_PAYMENT', {
         ...payment,
         resetGeneration
