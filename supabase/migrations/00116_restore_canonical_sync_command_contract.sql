@@ -40,6 +40,7 @@ DECLARE
     v_day_uuid UUID;
     v_order_uuid UUID;
     v_item_uuid UUID;
+    v_item_existed BOOLEAN := FALSE;
     v_customer_uuid UUID;
     v_device_type_uuid UUID;
     v_payment_uuid UUID;
@@ -545,6 +546,10 @@ WHEN 'UPDATE_ORDER' THEN
             JOIN public.customers c ON o.customer_id = c.id
             WHERE o.id = v_order_uuid;
 
+            SELECT EXISTS (
+                SELECT 1 FROM public.order_items WHERE id = v_item_uuid
+            ) INTO v_item_existed;
+
             v_has_charger := COALESCE((p_payload->>'hasCharger')::BOOLEAN, (p_payload->>'has_charger')::BOOLEAN, FALSE);
             
             IF v_charger_applicable AND (NOT v_customer_exempt) AND (NOT v_has_charger) THEN
@@ -601,7 +606,36 @@ WHEN 'UPDATE_ORDER' THEN
                 updated_at = NOW(),
                 version = public.order_items.version + 1;
 
-            PERFORM public.record_canonical_change('order_items', v_item_uuid, 'INSERT', p_payload, 1);
+            IF v_item_existed THEN
+                PERFORM public.record_canonical_change(
+                    'order_items', v_item_uuid, 'UPDATE',
+                    jsonb_build_object(
+                        'id', v_item_uuid,
+                        'base_price_snapshot_minor', v_base_price,
+                        'charger_fee_snapshot_minor', v_authoritative_charger_fee,
+                        'discount_snapshot_minor', v_authoritative_discount,
+                        'final_charge_snapshot_minor', v_authoritative_final_charge,
+                        'total_price_minor', v_authoritative_final_charge
+                    ),
+                    (SELECT version FROM public.order_items WHERE id = v_item_uuid)
+                );
+            ELSE
+                PERFORM public.record_canonical_change('order_items', v_item_uuid, 'INSERT', p_payload, 1);
+            END IF;
+
+            -- Adding a device to a previously delivered order reopens the parent
+            -- order. Publish that parent version as part of the same command.
+            IF EXISTS (
+                SELECT 1 FROM public.orders
+                WHERE id = v_order_uuid AND status = 'charging'
+            ) THEN
+                PERFORM public.record_canonical_change(
+                    'orders', v_order_uuid, 'UPDATE',
+                    jsonb_build_object('id', v_order_uuid, 'status', 'charging'),
+                    (SELECT version FROM public.orders WHERE id = v_order_uuid)
+                );
+            END IF;
+
             v_result := jsonb_build_object('orderItemId', v_item_uuid, 'provisionalFinalChargeMinor', v_authoritative_final_charge);
 
         WHEN 'DELIVER_ORDER_ITEM' THEN
