@@ -834,7 +834,8 @@ undefined
   async cancelOrderItem(
     auth: AuthorizationContext,
     itemId: ID,
-    bin: string
+    bin: string,
+    commandId: ID = crypto.randomUUID()
   ): Promise<Result<OrderItemEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:cancel');
@@ -852,7 +853,6 @@ undefined
       throw new ClosedDayError();
     }
 
-    const commandId = crypto.randomUUID();
     const mutationKey = `order:${order.id}`;
     
     const patch = {
@@ -868,16 +868,19 @@ undefined
       ]);
     }
 
-    await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.itemRepo.save({ ...existingItem, ...patch });
+      ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+        id: commandId,
+        aggregateId: order.id,
+        itemId: itemId,
+        orderItemId: itemId,
+        orderId: order.id,
+        authorizationState: 'AUTHORIZED',
+      }, existingItem.version);
+    });
 
-    await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
-      id: commandId,
-      aggregateId: order.id,
-      itemId: itemId,
-      orderItemId: itemId,
-      orderId: order.id,
-      bin,
-    }, existingItem.version);
+    await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
 
     return { success: true, data: { ...existingItem, ...patch } as OrderItemEntity };
   }
