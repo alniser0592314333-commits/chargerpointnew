@@ -801,6 +801,9 @@ export class FinalUseCases {
       // applied prevents a local financial action from masquerading as canonical
       // state and lets rollback remove only the pending delivery projection.
       ctx.ledgerRepo.append(chargeLedger);
+      if (ctx.goalRepo) {
+        await this.evaluateCustomerGoal(order.customerId, ctx);
+      }
       ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
         id:commandId,
         aggregateId:item.id,
@@ -2262,11 +2265,17 @@ export class FinalUseCases {
 
     // Count qualifying delivered order items in window [goal.startedAt, goal.expiresAt]
     const ledger = await repos.ledgerRepo.findByCustomer(customerId);
+    const reversedItemIds = new Set(
+      ledger
+        .filter((entry) => entry.eventType === 'REVERSAL' && entry.orderItemId)
+        .map((entry) => String(entry.orderItemId))
+    );
     const qualifyingCharges = ledger.filter(
       l =>
         (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') &&
         l.createdAt >= goal.startedAt &&
-        l.createdAt <= goal.expiresAt
+        l.createdAt <= goal.expiresAt &&
+        (!l.orderItemId || !reversedItemIds.has(String(l.orderItemId)))
     );
 
     const newProgress = qualifyingCharges.length;
