@@ -808,12 +808,12 @@ export class FinalUseCases {
     ]);
     const parentAdd = await this.deps.commandRepo.get(item.id);
     await this.deps.transactionManager.runInTransaction(async (ctx) => {
-      if (orderStatusChanged) ctx.orderRepo.save(nextOrder);
-      // Local-first invariant: delivery is a durable local read-model mutation
-      // in the same transaction as its financial projection and outbox command.
-      // The overlay remains as a sync/reconciliation aid, but UI reads must never
-      // depend on the overlay to see a successful local action.
-      ctx.itemRepo.save({ ...item, ...patch } as OrderItemEntity);
+      // Delivery is an optimistic composite mutation: keep the durable base
+      // entity at its pre-delivery state until the authoritative command is
+      // accepted, while the effective local read model is immediately patched
+      // by the overlay below. This prevents a rejected/failed delivery from
+      // looking financially recognized in the base row and preserves the
+      // local-first invariant without waiting for a remote delta.
       ctx.ledgerRepo.append(chargeLedger);
       if (ctx.goalRepo) {
         await this.evaluateCustomerGoal(order.customerId, ctx);
