@@ -700,9 +700,22 @@ export class FinalUseCases {
     const deliveredAt = new Date().toISOString();
     const patch: Partial<OrderItemEntity> = { status:'delivered', financialStatus:'RECOGNIZED', deliveredAt, financiallyRecognizedAt:deliveredAt, updatedAt:deliveredAt, version:item.version+1 };
     const commandId = crypto.randomUUID();
-    if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
+    const nextItems = orderItems.map((candidate) => candidate.id === item.id ? ({ ...candidate, ...patch } as OrderItemEntity) : candidate);
+    const activeAfter = nextItems.filter((candidate) => candidate.status !== 'cancelled');
+    const nextOrderStatus: OrderEntity['status'] = activeAfter.length > 0 && activeAfter.every((candidate) => candidate.status === 'delivered')
+      ? 'delivered'
+      : 'charging';
+    const orderStatusChanged = order.status !== nextOrderStatus;
+    const nextOrder: OrderEntity = orderStatusChanged
+      ? { ...order, status: nextOrderStatus, updatedAt: deliveredAt, version: order.version + 1 }
+      : order;
+    if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[
+      {table:'orderItems',id:item.id,existed:true,data:item},
+      ...(orderStatusChanged ? [{table:'orders',id:order.id,existed:true,data:order}] : []),
+    ]);
     const parentAdd = await this.deps.commandRepo.get(item.id);
     await this.deps.transactionManager.runInTransaction((ctx) => {
+      if (orderStatusChanged) ctx.orderRepo.save(nextOrder);
       ctx.itemRepo.save({...item,...patch});
       ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
         id:commandId,
@@ -714,7 +727,16 @@ export class FinalUseCases {
         ...(parentAdd?.type === 'ADD_ORDER_ITEM' ? { dependencyCommandId: item.id } : {}),
       },item.version);
     });
-    try { await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>); } catch(e) { console.warn('Delivery pending projection failed; local item is authoritative.',e); }
+    try {
+      if (orderStatusChanged) {
+        await this.createOverlay(commandId, `order:${order.id}`, 'orders', order.id, 'PATCH', {
+          status: nextOrder.status,
+          updatedAt: nextOrder.updatedAt,
+          version: nextOrder.version,
+        });
+      }
+      await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>);
+    } catch(e) { console.warn('Delivery pending projection failed; local aggregate is authoritative.',e); }
     return {success:true,data:{...item,...patch} as OrderItemEntity};
   }
 
