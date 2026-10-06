@@ -70,6 +70,7 @@ DECLARE
     v_dev_name VARCHAR(200);
     v_dev_icon VARCHAR(100);
     v_bin TEXT;
+    v_canonical_payload JSONB;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
@@ -620,7 +621,8 @@ WHEN 'UPDATE_ORDER' THEN
                 version = public.order_items.version + 1;
 
             SELECT version INTO v_current_version FROM public.order_items WHERE id = v_item_uuid;
-            PERFORM public.record_canonical_change('order_items', v_item_uuid, 'INSERT', p_payload, v_current_version);
+            SELECT to_jsonb(oi) INTO v_canonical_payload FROM public.order_items oi WHERE oi.id = v_item_uuid;
+            PERFORM public.record_canonical_change('order_items', v_item_uuid, 'INSERT', v_canonical_payload, v_current_version);
             v_result := jsonb_build_object('orderItemId', v_item_uuid, 'version', v_current_version, 'provisionalFinalChargeMinor', v_authoritative_final_charge);
 
         WHEN 'DELIVER_ORDER_ITEM' THEN
