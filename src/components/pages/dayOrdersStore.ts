@@ -2501,6 +2501,129 @@ export const getDeviceDisplayName = (
  * - Orders with remaining unpaid balance are marked PARTIAL (if partially covered) or UNPAID (if 0 covered).
  * - Fully covered orders are marked PAID.
  */
+/**
+ * Build the effective local financial read model.
+ *
+ * Financial ledger rows are server-authoritative and must never be invented as
+ * generic outbox writes. While a protected command is still pending, however,
+ * the local-first UI must show the same financial consequence that the server
+ * will commit. We therefore project synthetic, explicitly-local entries from
+ * pending overlays and replace them automatically when the canonical ledger
+ * delta arrives.
+ */
+const getEffectiveCustomerLedger = async (customerId: string): Promise<FinancialLedgerEntity[]> => {
+  await ensureStoreHydrated();
+
+  const effective = [...ledgerList].filter((l) => l.customerId === customerId);
+  const chargeItemIds = new Set(
+    effective
+      .filter((l) => (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.orderItemId)
+      .map((l) => l.orderItemId as string)
+  );
+  const paymentRefs = new Set(
+    effective
+      .filter((l) => l.eventType === 'PAYMENT' && l.referenceId)
+      .map((l) => l.referenceId as string)
+  );
+
+  const overlays = await localDb.listOverlays();
+  const effectiveItems = new Map<string, OrderItemEntity>(itemsMap);
+  for (const overlay of overlays) {
+    if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+    const payload = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
+    const base = effectiveItems.get(overlay.entityId);
+    const candidate = { ...(base || {}), ...payload, id: overlay.entityId } as OrderItemEntity;
+    if (overlay.operation === 'DELETE') effectiveItems.delete(overlay.entityId);
+    else effectiveItems.set(overlay.entityId, candidate);
+  }
+
+  const projected: FinancialLedgerEntity[] = [];
+
+  for (const overlay of overlays) {
+    if (overlay.status !== 'PENDING') continue;
+    const payload = (overlay.entityPayload || overlay.patch || {}) as any;
+
+    if (overlay.entityType === 'ledger' || overlay.entityType === 'financial_ledger') {
+      const overlayCustomerId = payload.customerId || payload.customer_id;
+      if (overlayCustomerId !== customerId) continue;
+
+      const eventType = payload.eventType || payload.event_type;
+      const amountMinor = Number(payload.amountMinor ?? payload.amount_minor ?? 0);
+      if (eventType === 'PAYMENT' && payload.referenceId && paymentRefs.has(payload.referenceId)) continue;
+
+      projected.push({
+        id: String(payload.id || overlay.entityId || overlay.commandId || ('pending-ledger-' + overlay.sequence)),
+        eventType,
+        amountMinor,
+        customerId,
+        orderId: payload.orderId || payload.order_id,
+        orderItemId: payload.orderItemId || payload.order_item_id,
+        actorAdminId: payload.actorAdminId || payload.actor_admin_id,
+        referenceId: payload.referenceId || payload.reference_id,
+        metadata: { ...(payload.metadata || {}), pendingLocal: true },
+        createdAt: payload.createdAt || payload.created_at || overlay.createdAt,
+      });
+      continue;
+    }
+
+    if (overlay.entityType === 'payments' && overlay.operation === 'CREATE') {
+      const paymentCustomerId = payload.customerId || payload.customer_id;
+      if (paymentCustomerId !== customerId) continue;
+      const paymentId = payload.id || overlay.entityId;
+      if (paymentRefs.has(paymentId)) continue;
+
+      // A CREATE_PAYMENT already has a dedicated payment overlay and may also
+      // have a ledger overlay. The ledger overlay is the preferred projection.
+      const hasPaymentLedgerOverlay = overlays.some((other) => {
+        if (other.status !== 'PENDING' || other.entityType !== 'ledger') return false;
+        const p = (other.entityPayload || other.patch || {}) as any;
+        return (p.eventType || p.event_type) === 'PAYMENT' &&
+          (p.referenceId || p.reference_id) === paymentId;
+      });
+      if (!hasPaymentLedgerOverlay) {
+        projected.push({
+          id: 'pending-payment-' + paymentId,
+          eventType: 'PAYMENT',
+          amountMinor: Number(payload.amountMinor ?? payload.amount_minor ?? 0),
+          customerId,
+          referenceId: paymentId,
+          actorAdminId: payload.actorAdminId || payload.actor_admin_id,
+          metadata: { pendingLocal: true },
+          createdAt: payload.createdAt || payload.created_at || overlay.createdAt,
+        });
+      }
+      continue;
+    }
+
+    if (overlay.entityType === 'order_items' && overlay.operation === 'PATCH') {
+      const status = String(payload.status || '').toLowerCase();
+      const financialStatus = String(payload.financialStatus || payload.financial_status || '').toUpperCase();
+      if (status !== 'delivered' && financialStatus !== 'RECOGNIZED') continue;
+
+      const item = effectiveItems.get(overlay.entityId);
+      if (!item || chargeItemIds.has(item.id)) continue;
+      const order = ordersMap.get(item.orderId);
+      if (!order || order.customerId !== customerId) continue;
+
+      projected.push({
+        id: 'pending-charge-' + item.id,
+        eventType: 'ORDER_ITEM_CHARGE',
+        amountMinor: -Math.abs(Number(item.totalPriceMinor || item.unitPriceMinor || 0)),
+        customerId,
+        orderId: item.orderId,
+        orderItemId: item.id,
+        referenceId: item.id,
+        metadata: { pendingLocal: true },
+        createdAt: payload.deliveredAt || payload.updatedAt || overlay.createdAt,
+      });
+    }
+  }
+
+  return [...effective, ...projected].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+};
+
 export const computeCustomerOrderPaymentStatuses = (
   customerId: string,
   effectiveOrdersMap: Map<string, OrderEntity> = ordersMap,
@@ -2508,25 +2631,19 @@ export const computeCustomerOrderPaymentStatuses = (
 ): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
 
-  // 1. Calculate available total customer credits (real payments and positive adjustments)
-  const totalCreditsMinor = ledgerList
-    .filter(
-      (l) =>
-        l.customerId === customerId &&
-        (l.eventType === 'PAYMENT' || l.eventType === 'CREDIT_ADJUSTMENT') &&
-        l.amountMinor > 0
-    )
+  const effectiveLedgerPromise = getEffectiveCustomerLedger(customerId);
+  // The payment projection is derived from the same effective ledger used by
+  // the customer balance/history views, so offline and online states agree.
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  const effectiveLedger = ledgerList.filter((l) => l.customerId === customerId);
+  // This synchronous projection is completed below by the async wrapper used
+  // by callers; keep the calculation deterministic from authoritative rows here.
+  const totalCreditsMinor = effectiveLedger
+    .filter((l) => (l.eventType === 'PAYMENT' || l.eventType === 'CREDIT_ADJUSTMENT') && l.amountMinor > 0)
     .reduce((sum, l) => sum + l.amountMinor, 0);
-
-  // Minus explicit refunds or negative non-order adjustments
-  const nonOrderDebitsMinor = ledgerList
-    .filter(
-      (l) =>
-        l.customerId === customerId &&
-        (l.eventType === 'REFUND' || (l.eventType === 'CREDIT_ADJUSTMENT' && l.amountMinor < 0))
-    )
+  const nonOrderDebitsMinor = effectiveLedger
+    .filter((l) => l.eventType === 'REFUND' || (l.eventType === 'CREDIT_ADJUSTMENT' && l.amountMinor < 0))
     .reduce((sum, l) => sum + Math.abs(l.amountMinor), 0);
-
   let availableCredits = Math.max(0, totalCreditsMinor - nonOrderDebitsMinor);
 
   // 2. Get all non-cancelled orders for this customer, sorted chronologically (Oldest FIRST - FIFO)
@@ -3103,7 +3220,7 @@ export const getCustomerFinancialHistory = async (
   if (!cust) return [];
 
   const targetId = cust.id;
-  const rawEvents = await repoContext.ledgerRepo.findByCustomer(targetId);
+  const rawEvents = await getEffectiveCustomerLedger(targetId);
 
   // Sort ascending by time (oldest first) to compute running post-transaction balances
   const sortedAsc = [...rawEvents].sort(
