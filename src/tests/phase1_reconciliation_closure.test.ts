@@ -241,7 +241,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     // Goal progress is derived only from authoritative RECOGNIZED charges, so an
     // optimistic local delivery cannot complete the goal or grant its bonus.
     expect(getAuthoritativeLedgerBalance(custId)).toBe(0);
-    expect(ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId)).toBeUndefined;
+    expect(ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId)).toBeUndefined();
 
     // SCENARIO F: Recognized charge is reversed
     // Simulate reversal of item-1
