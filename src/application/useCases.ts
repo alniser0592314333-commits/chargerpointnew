@@ -232,6 +232,7 @@ export class FinalUseCases {
       reservation.nextNumber += 1;
       if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
       reservation.updatedAt = new Date().toISOString();
+      await this.deps.reservationRepo.save(reservation);
     } else {
       displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
     }
@@ -531,6 +532,9 @@ export class FinalUseCases {
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.orderRepo.save(order);
+      if (reservation) {
+        ctx.reservationRepo.save(reservation);
+      }
 
       ctx.commandRepo.record(commandId, 'CREATE_ORDER', {
         id: order.id,
