@@ -999,20 +999,6 @@ export const SyncCenter: React.FC = () => {
                                     </button>
                                   )}
 
-                                  {evt.isOutboxActive && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleRemoveSingleOutbox(evt.commandId);
-                                      }}
-                                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors border border-rose-200/80 dark:border-rose-900/60"
-                                      title={locale === 'ar' ? 'حذف العملية من طابور المزامنة' : 'Remove from queue'}
-                                    >
-                                      {locale === 'ar' ? 'حذف' : 'Remove'}
-                                    </button>
-                                  )}
-
                                   <span
                                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                                       evt.status === 'SYNCED'
