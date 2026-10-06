@@ -4563,7 +4563,9 @@ export const topUpCustomerBalance = async (
     };
   }
 
-  const commandId = idempotencyKey || crypto.randomUUID();\n\n  if (offline) {
+  const commandId = idempotencyKey || crypto.randomUUID();
+
+  if (offline) {
     try {
       const queued = await phase5UseCases.queueCustomerCreditAwaitingBin(
         getAuthorizedAdminContext(), cust.id, amountMinor, commandId
