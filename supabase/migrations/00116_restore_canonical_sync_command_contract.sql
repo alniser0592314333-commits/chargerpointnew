@@ -137,7 +137,19 @@ BEGIN
     -- 3. RBAC AUTHORIZATION
     -- ==========================================
     IF v_admin_role NOT IN ('SUPER_ADMIN', 'Super Admin') THEN
-        CASE p_command_type
+        -- Protected customer fields have their own permission boundary.
+        IF p_command_type = 'UPDATE_CUSTOMER'
+           AND (p_payload ? 'debtLimitMinor' OR p_payload ? 'debt_limit_minor') THEN
+            v_required_perm := 'customers:debt-limit';
+        ELSIF p_command_type = 'UPDATE_CUSTOMER'
+           AND (p_payload ? 'chargerFeeExempt' OR p_payload ? 'charger_fee_exempt') THEN
+            v_required_perm := 'customers:charger-exemption';
+        ELSE
+            v_required_perm := NULL;
+        END IF;
+
+        IF v_required_perm IS NULL THEN
+            CASE p_command_type
             WHEN 'OPEN_DAY', 'CREATE_BUSINESS_DAY', 'UPDATE_DAY' THEN
                 v_required_perm := 'settings:manage';
             WHEN 'CREATE_CUSTOMER' THEN
@@ -148,7 +160,44 @@ BEGIN
                 v_required_perm := 'devices:manage';
             WHEN 'CREATE_ORDER' THEN
                 v_required_perm := 'orders:create';
-            WHEN 'ADD_ORDER_ITEM' THEN
+            WHEN 'UPDATE_ORDER' THEN
+            v_order_uuid := (p_payload->>'id')::UUID;
+            IF v_order_uuid IS NULL THEN
+                v_order_uuid := (p_payload->>'orderId')::UUID;
+            END IF;
+            IF v_order_uuid IS NULL THEN
+                RAISE EXCEPTION 'Validation Error: Order ID must be a valid UUID'
+                    USING ERRCODE = 'P2201';
+            END IF;
+
+            SELECT version INTO v_current_version
+            FROM public.orders
+            WHERE id = v_order_uuid
+            FOR UPDATE;
+
+            IF v_current_version IS NULL THEN
+                RAISE EXCEPTION 'Order Not Found: ID %', v_order_uuid
+                    USING ERRCODE = '23503';
+            END IF;
+
+            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
+            IF v_expected_version IS NOT NULL AND v_current_version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order %. Expected version %, current server version is %', v_order_uuid, v_expected_version, v_current_version
+                    USING ERRCODE='P0409';
+            END IF;
+
+            -- UPDATE_ORDER is intentionally limited to non-financial editable fields.
+            -- Delivery/cancellation remain dedicated protected commands.
+            UPDATE public.orders
+            SET notes = CASE WHEN p_payload ? 'notes' THEN p_payload->>'notes' ELSE notes END,
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_order_uuid;
+
+            PERFORM public.record_canonical_change('orders', v_order_uuid, 'UPDATE', jsonb_build_object('id',v_order_uuid,'notes', (SELECT notes FROM public.orders WHERE id=v_order_uuid)), v_current_version + 1);
+            v_result := jsonb_build_object('orderId', v_order_uuid, 'version', v_current_version + 1);
+
+        WHEN 'ADD_ORDER_ITEM' THEN
                 v_required_perm := 'orders:edit';
             WHEN 'DELIVER_ORDER_ITEM' THEN
                 v_required_perm := 'orders:deliver';
@@ -164,7 +213,8 @@ BEGIN
                 v_required_perm := 'goals:manage';
             ELSE
                 v_required_perm := 'settings:manage';
-        END CASE;
+            END CASE;
+        END IF;
 
         IF v_required_perm IS NOT NULL AND NOT EXISTS (
             SELECT 1 FROM public.get_effective_permissions(v_actor_id) WHERE permission = v_required_perm
@@ -179,7 +229,11 @@ BEGIN
     -- ==========================================
     v_bin := NULLIF(TRIM(COALESCE(p_payload->>'bin', p_payload->>'adminBin', '')), '');
 
-    IF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND') THEN
+    IF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND')
+       OR (p_command_type = 'UPDATE_CUSTOMER'
+           AND (p_payload ? 'authorizationState')
+           AND (p_payload ? 'bin')
+           AND ((p_payload ? 'debtLimitMinor') OR (p_payload ? 'debt_limit_minor') OR (p_payload ? 'chargerFeeExempt') OR (p_payload ? 'charger_fee_exempt'))) THEN
         IF v_bin IS NULL THEN
             RAISE EXCEPTION 'Authorization required: BIN is required for %', p_command_type USING ERRCODE = 'P4004';
         END IF;
@@ -243,6 +297,43 @@ BEGIN
         -- ----------------------------------------------------
         -- B. DEVICE TYPE OPERATIONS
         -- ----------------------------------------------------
+        WHEN 'UPDATE_CUSTOMER', 'EDIT_CUSTOMER' THEN
+            v_entity_uuid := (p_payload->>'id')::UUID;
+            IF v_entity_uuid IS NULL THEN
+                RAISE EXCEPTION 'Validation Error: Customer ID must be a valid UUID'
+                    USING ERRCODE = 'P2201';
+            END IF;
+
+            SELECT version INTO v_current_version
+            FROM public.customers
+            WHERE id = v_entity_uuid
+            FOR UPDATE;
+
+            IF v_current_version IS NULL THEN
+                RAISE EXCEPTION 'Customer Not Found: ID %', v_entity_uuid
+                    USING ERRCODE = '23503';
+            END IF;
+
+            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
+            IF v_expected_version IS NOT NULL AND v_current_version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on customer %. Expected version %, current server version is %', v_entity_uuid, v_expected_version, v_current_version
+                    USING ERRCODE='P0409';
+            END IF;
+
+            UPDATE public.customers
+            SET name = COALESCE(p_payload->>'name', name),
+                phone = COALESCE(p_payload->>'phone', phone),
+                notes = COALESCE(p_payload->>'notes', notes),
+                debt_limit_minor = COALESCE((p_payload->>'debtLimitMinor')::BIGINT, (p_payload->>'debt_limit_minor')::BIGINT, debt_limit_minor),
+                charger_fee_exempt = COALESCE((p_payload->>'chargerFeeExempt')::BOOLEAN, (p_payload->>'charger_fee_exempt')::BOOLEAN, charger_fee_exempt),
+                is_active = COALESCE((p_payload->>'isActive')::BOOLEAN, (p_payload->>'is_active')::BOOLEAN, is_active),
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_entity_uuid;
+
+            PERFORM public.record_canonical_change('customers', v_entity_uuid, 'UPDATE', p_payload, v_current_version + 1);
+            v_result := jsonb_build_object('customerId', v_entity_uuid, 'version', v_current_version + 1);
+
         WHEN 'CREATE_DEVICE_TYPE' THEN
             v_entity_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
             INSERT INTO public.device_types (
