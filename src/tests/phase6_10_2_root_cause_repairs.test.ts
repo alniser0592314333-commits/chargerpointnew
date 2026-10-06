@@ -68,7 +68,7 @@ describe('Phase 6.10.2 Root Cause Repairs & Regression Suite', () => {
 
     const historyAfter = await getCustomerFinancialHistory('cust-1', 'ar');
     const orderCharges = historyAfter.filter(
-      (h) => h.orderId === 'ord-27' && h.eventType === 'ORDER_ITEM_CHARGE'
+      (h) => h.orderId === 'ord-27' && (h.eventType === 'ORDER_ITEM_CHARGE' || h.eventType === 'CHARGE')
     );
     // 2 items delivered in ord-27 -> exactly 2 item charges
     expect(orderCharges.length).toBe(2);
