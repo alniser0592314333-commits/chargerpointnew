@@ -1337,14 +1337,6 @@ export class FinalUseCases {
       });
     });
 
-    const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
-      eventType: 'PAYMENT',
-      amountMinor,
-      customerId,
-      actorAdminId: actor.id,
-      referenceId: payment.id,
-    };
-
     try {
       await this.createOverlay(
         commandId,
