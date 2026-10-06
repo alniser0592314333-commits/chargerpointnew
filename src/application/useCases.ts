@@ -1262,6 +1262,7 @@ export class FinalUseCases {
       amountMinor,
       actorAdminId: actor.id,
       createdAt,
+      bin,
     });
 
     return { success: true, data: { id: txId, createdAt, ...event } };
