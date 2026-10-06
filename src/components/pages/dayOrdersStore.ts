@@ -2508,8 +2508,21 @@ export const computeCustomerOrderPaymentStatuses = (
 ): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
 
-  // 1. Calculate available total customer credits (real payments and positive adjustments)
-  const totalCreditsMinor = ledgerList
+  // 1. Calculate available customer credits from authoritative ledger plus
+  // pending local financial projections. Pending projections are read-only UI
+  // state; they are not treated as server recognition.
+  const pendingFinancialProjections = localDb
+    .listOverlaysSync()
+    .filter(o => o.entityType === 'ledger' && o.status === 'PENDING' && o.operation === 'CREATE')
+    .map(o => o.entityPayload as any)
+    .filter(p => p && p.customerId === customerId);
+
+  const creditEvents = [
+    ...ledgerList,
+    ...pendingFinancialProjections.filter(p => !ledgerList.some(l => l.id === p.id)),
+  ];
+
+  const totalCreditsMinor = creditEvents
     .filter(
       (l) =>
         l.customerId === customerId &&
@@ -2519,7 +2532,7 @@ export const computeCustomerOrderPaymentStatuses = (
     .reduce((sum, l) => sum + l.amountMinor, 0);
 
   // Minus explicit refunds or negative non-order adjustments
-  const nonOrderDebitsMinor = ledgerList
+  const nonOrderDebitsMinor = creditEvents
     .filter(
       (l) =>
         l.customerId === customerId &&
