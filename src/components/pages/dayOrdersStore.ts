@@ -314,6 +314,55 @@ const notifyStoreAfterTransaction = (
   notifyStore(scope, id);
 };
 
+const hasPendingLocalMutationForRemoteEntity = (entityType: string, entityId: string, payload: any): boolean => {
+  const activeStatuses = new Set(['pending', 'PENDING_RECONCILIATION', 'READY', 'syncing', 'conflict', 'blocked']);
+  const outbox = localDb.listOutboxSync();
+  const normalized = String(entityType || '').toLowerCase();
+  return outbox.some((item) => {
+    if (!activeStatuses.has(item.status)) return false;
+    const p = (item.payload || {}) as any;
+    const aggregateType = String(item.aggregateType || '').toLowerCase();
+    const aggregateId = String(item.aggregateId || '');
+    const ids = new Set<string>([
+      String(p.id || ''),
+      String(p.entityId || ''),
+      String(p.orderId || ''),
+      String(p.itemId || ''),
+      String(p.orderItemId || ''),
+      String(p.customerId || ''),
+      String(p.paymentId || ''),
+      String(p.dayId || ''),
+      aggregateId,
+    ].filter(Boolean));
+
+    if (normalized === 'orders') {
+      return (aggregateType === 'orders' || item.commandType === 'CREATE_ORDER' || item.commandType === 'UPDATE_ORDER' || item.commandType === 'CANCEL_ORDER')
+        && (aggregateId === entityId || p.id === entityId || p.orderId === entityId);
+    }
+    if (normalized === 'order_items' || normalized === 'orderitems') {
+      return (item.commandType === 'ADD_ORDER_ITEM' || item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM')
+        && (p.id === entityId || p.itemId === entityId || p.orderItemId === entityId || (aggregateType === 'order_items' && aggregateId === entityId));
+    }
+    if (normalized === 'customers') {
+      return (aggregateType === 'customers' || item.commandType.includes('CUSTOMER'))
+        && (aggregateId === entityId || p.id === entityId || p.customerId === entityId);
+    }
+    if (normalized === 'business_days' || normalized === 'businessdays') {
+      return (aggregateType === 'business_days' || item.commandType === 'OPEN_DAY' || item.commandType === 'CLOSE_DAY')
+        && (aggregateId === entityId || p.id === entityId || p.dayId === entityId);
+    }
+    if (normalized === 'device_types' || normalized === 'devicetypes') {
+      return (aggregateType === 'device_types' || item.commandType.includes('DEVICE_TYPE'))
+        && (aggregateId === entityId || p.id === entityId || p.deviceTypeId === entityId);
+    }
+    if (normalized === 'payments') {
+      return (item.commandType === 'CREATE_PAYMENT' || item.commandType === 'POST_PAYMENT' || item.commandType === 'PAYMENT')
+        && (p.id === entityId || p.paymentId === entityId || aggregateId === entityId);
+    }
+    return false;
+  });
+};
+
 export const applyRemoteChange = (change: {
   sequenceId: number;
   entityType: string;
@@ -322,17 +371,23 @@ export const applyRemoteChange = (change: {
   payload: any;
   version?: number;
   changedAt: string;
-}, tx?: IDBTransaction): void => {
+}, tx?: IDBTransaction): boolean => {
   const p = change.payload || {};
   const entityType = change.entityType;
   const isDelete = change.action === 'DELETE' || change.action === 'TOMBSTONE';
+  // Never let a remote delta overwrite a local mutation that has not reached
+  // the authoritative server. The sync cursor must stop before this change;
+  // otherwise the authoritative delta could be skipped forever.
+  if (hasPendingLocalMutationForRemoteEntity(entityType, change.entityId, p)) {
+    return false;
+  }
 
   if (entityType === 'business_days' || entityType === 'businessDays') {
     if (isDelete) {
       daysMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'businessDays', change.entityId);
       notifyStoreAfterTransaction('businessDays', change.entityId);
-      return;
+      return true;
     }
     const resolvedDate =
       p.businessDate ||
@@ -359,7 +414,7 @@ export const applyRemoteChange = (change: {
       customersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'customers', change.entityId);
       notifyStoreAfterTransaction('customers', change.entityId);
-      return;
+      return true;
     }
     const entity: CustomerEntity = {
       id: p.id || change.entityId,
@@ -381,7 +436,7 @@ export const applyRemoteChange = (change: {
       devicesMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'deviceTypes', change.entityId);
       notifyStoreAfterTransaction('deviceTypes', change.entityId);
-      return;
+      return true;
     }
     const entity: DeviceTypeEntity = {
       id: p.id || change.entityId,
@@ -407,12 +462,12 @@ export const applyRemoteChange = (change: {
       ordersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orders', change.entityId);
       notifyStoreAfterTransaction('orders', change.entityId);
-      return;
+      return true;
     }
     const previousOrder = ordersMap.get(change.entityId);
     const incomingOrderVersion = Number(p.version ?? 1);
     if (previousOrder && change.action !== 'INSERT' && Number(previousOrder.version ?? 0) >= incomingOrderVersion) {
-      return;
+      return true;
     }
     const rawStatus = (p.status || p.order_status || previousOrder?.status || 'pending').toLowerCase();
     const resolvedStatus: OrderStatus =
@@ -446,12 +501,12 @@ export const applyRemoteChange = (change: {
       itemsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orderItems', change.entityId);
       notifyStoreAfterTransaction('orderItems', change.entityId);
-      return;
+      return true;
     }
     const previousItem = itemsMap.get(change.entityId);
     const incomingItemVersion = Number(change.version ?? p.version ?? (previousItem ? Number(previousItem.version ?? 0) + 1 : 1));
     if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
-      return;
+      return true;
     }
     const rawStatus = String(
       p.status ||
@@ -503,7 +558,7 @@ export const applyRemoteChange = (change: {
       if (idx >= 0) ledgerList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'financialLedger', change.entityId);
       notifyStoreAfterTransaction('financialLedger', change.entityId);
-      return;
+      return true;
     }
     const ledgerEventType = p.eventType || p.event_type;
     const ledgerOrderId = p.orderId || p.order_id || undefined;
@@ -550,7 +605,7 @@ export const applyRemoteChange = (change: {
       paymentsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'payments', change.entityId);
       notifyStoreAfterTransaction('payments', change.entityId);
-      return;
+      return true;
     }
     const entity: PaymentEntity = {
       id: p.id || change.entityId,
@@ -571,7 +626,7 @@ export const applyRemoteChange = (change: {
       if (idx >= 0) allocationsList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'paymentAllocations', change.entityId);
       notifyStoreAfterTransaction('paymentAllocations', change.entityId);
-      return;
+      return true;
     }
     const entity: PaymentAllocationEntity = {
       id: p.id || change.entityId,
@@ -592,11 +647,12 @@ export const applyRemoteChange = (change: {
     if (isDelete) {
       localDb.removeWithTx(tx as any, entityType, change.entityId);
       notifyStoreAfterTransaction('all', change.entityId);
-      return;
+      return true;
     }
     localDb.setWithTx(tx, entityType, change.entityId, p);
     notifyStoreAfterTransaction('all', change.entityId);
   }
+  return true;
 };
 
 // Helper to derive or format a secure 4-character alphanumeric customer code
