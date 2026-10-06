@@ -46,10 +46,21 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
         p_expected_version: req.expectedVersion || null,
       });
 
-      if (!rpcError && rpcData) {
+      if (!rpcError && rpcData && rpcData.success === true) {
         return {
           success: true,
-          serverVersion: (req.expectedVersion || 0) + 1,
+          serverVersion: Number(rpcData.serverVersion ?? rpcData.result?.serverVersion ?? ((req.expectedVersion || 0) + 1)),
+          rpcReached: true,
+        };
+      }
+
+      if (!rpcError && rpcData && rpcData.success !== true) {
+        return {
+          success: false,
+          error: typeof rpcData.error === 'string'
+            ? rpcData.error
+            : 'Canonical command was reached but did not report success',
+          code: typeof rpcData.code === 'string' ? rpcData.code : undefined,
           rpcReached: true,
         };
       }
