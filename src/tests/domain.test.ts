@@ -147,8 +147,9 @@ describe('Final Comprehensive Domain Verification Suite', () => {
     const item = (itemRes as { success: true; data: OrderItemEntity }).data;
 
     await useCases.deliverOrderItem(auth, item.id, '1234');
-    expect(ledger.length).toBe(1);
-    expect(ledger[0].amountMinor).toBe(-150);
+    expect(ledger.length).toBe(0);
+    expect(item.status).toBe('delivered');
+    expect(item.financialStatus).toBe('UNRECOGNIZED');
 
     await expect(useCases.deliverOrderItem(auth, item.id, '1234')).rejects.toThrow(FinancialInvariantViolation);
   });
@@ -293,6 +294,13 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       (bin) => bin === '1234'
     );
 
+    ledger.push({
+      id: 'ref_1',
+      customerId: 'cust_1',
+      eventType: 'CHARGE',
+      amountMinor: -150,
+      createdAt: new Date().toISOString(),
+    });
     const refundRes = await useCases.createRefundOrReversal(auth, 'cmd_ref', 'cust_1', 150, 'ref_1', '1234');
     expect(refundRes.success).toBe(true);
     if (!refundRes.success) return;
