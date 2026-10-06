@@ -642,7 +642,20 @@ export class FinalUseCases {
       });
 
       for (const item of preparedItems) {
-        ctx.itemRepo.save(item);
+        // Closed-day Super Admin auto-delivery is a composite ADD + DELIVERY.
+        // Keep the base item at the durable pre-delivery state until the
+        // independent delivery command is accepted; the overlay exposes the
+        // immediate delivered projection to the UI.
+        const persistedItem = item.status === 'delivered'
+          ? {
+              ...item,
+              status: 'charging' as const,
+              financialStatus: 'UNRECOGNIZED' as const,
+              deliveredAt: undefined,
+              financiallyRecognizedAt: undefined,
+            }
+          : item;
+        ctx.itemRepo.save(persistedItem);
 
         if (item.status === 'delivered') {
           ctx.ledgerRepo.append({
