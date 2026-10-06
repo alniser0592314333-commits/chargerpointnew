@@ -173,6 +173,7 @@ export interface FinancialLedgerEntity {
   customerId: ID;
   actorAdminId?: ID;
   referenceId?: ID;
+  note?: string;
   metadata?: Record<string, unknown>;
   createdAt: Timestamp;
 }
