@@ -170,11 +170,11 @@ BEGIN
             WHEN 'CANCEL_ORDER', 'CANCEL_ORDER_ITEM' THEN
                 v_required_perm := 'orders:cancel';
             WHEN 'POST_PAYMENT', 'CREATE_PAYMENT' THEN
-                v_required_perm := 'payments:create';
+                v_required_perm := 'finance:create-payment';
             WHEN 'CREATE_CUSTOMER_CREDIT', 'CONSUME_CUSTOMER_CREDIT' THEN
                 v_required_perm := 'finance:credit-adjustment';
             WHEN 'REFUND_PAYMENT', 'CREATE_REFUND' THEN
-                v_required_perm := 'payments:refund';
+                v_required_perm := 'finance:refund';
             WHEN 'CREATE_GOAL', 'UPDATE_GOAL_CONFIG', 'UPDATE_GOAL_PROGRESS' THEN
                 v_required_perm := 'goals:manage';
             WHEN 'RECORD_GOAL_REQUEST' THEN
