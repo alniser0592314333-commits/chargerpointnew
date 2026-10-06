@@ -563,249 +563,72 @@ export class FinalUseCases {
     return this.addOrderItem(auth, orderId, deviceTypeId, hasCharger);
   }
 
-  async deliverOrderItem(
-    auth: AuthorizationContext,
-    itemId: ID,
-    bin: string
-  ): Promise<Result<OrderItemEntity>> {
-    const actor = auth.requireAuth();
-    auth.assertPermission('orders:deliver');
-    await auth.verifyBin(bin);
-
-    const item = await this.deps.itemRepo.findById(itemId);
-    if (!item) throw new NotFoundError('Item not found');
-
-    const order = await this.deps.orderRepo.findById(item.orderId);
-    if (!order) throw new NotFoundError('Order not found');
-
-    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
-    if (dayIsClosed && !actor.isSuperAdmin) {
-      throw new ClosedDayError();
-    }
-
+  async deliverOrderItem(auth: AuthorizationContext, itemId: ID, bin: string): Promise<Result<OrderItemEntity>> {
+    const actor = auth.requireAuth(); auth.assertPermission('orders:deliver'); await auth.verifyBin(bin);
+    const item = await this.deps.itemRepo.findById(itemId); if (!item) throw new NotFoundError('Item not found');
+    const order = await this.deps.orderRepo.findById(item.orderId); if (!order) throw new NotFoundError('Order not found');
+    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId); if (dayIsClosed && !actor.isSuperAdmin) throw new ClosedDayError();
     const orderItems = await this.deps.itemRepo.findByOrderId(order.id);
-    const activeItems = orderItems.filter(i => i.status !== 'cancelled');
-    if (activeItems.length === 0) {
-      throw new BusinessRuleViolation('Cannot deliver or recognize an empty order');
-    }
-
-    const customer = await this.deps.customerRepo.findById(order.customerId);
-    if (!customer) throw new NotFoundError('Customer not found');
-    DomainInvariants.assertCustomerActive(customer);
-
-    DomainInvariants.assertOrderNotCancelledForRecognition(order.status);
-    if (item.status === 'delivered') {
-      throw new FinancialInvariantViolation(`Order item ${item.id} is already delivered.`);
-    }
+    if (orderItems.filter(i => i.status !== 'cancelled').length === 0) throw new BusinessRuleViolation('Cannot deliver or recognize an empty order');
+    const customer = await this.deps.customerRepo.findById(order.customerId); if (!customer) throw new NotFoundError('Customer not found');
+    DomainInvariants.assertCustomerActive(customer); DomainInvariants.assertOrderNotCancelledForRecognition(order.status);
+    if (item.status === 'delivered') throw new FinancialInvariantViolation(`Order item ${item.id} is already delivered.`);
     validateItemTransition(item.status, 'delivered');
     DomainInvariants.assertItemNotRecognizedTwice(item.id, await this.deps.ledgerRepo.findByCustomer(order.customerId));
-
-    const currentCustomerBalance = await this.deps.customerRepo.getBalance(order.customerId);
-    const projectedBalance = currentCustomerBalance - item.totalPriceMinor;
-    if (!checkDebtLimit(projectedBalance, customer.debtLimitMinor, actor.isSuperAdmin)) {
-      throw new BusinessRuleViolation(
-        `Debt limit exceeded: Customer debt limit of ${customer.debtLimitMinor} minor units exceeded by projected balance ${projectedBalance}`
-      );
-    }
-
-    const patch: Partial<OrderItemEntity> = {
-      status: 'delivered',
-      financialStatus: 'RECOGNIZED',
-      deliveredAt: new Date().toISOString(),
-      financiallyRecognizedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: item.version + 1,
-    };
-
-    // Phase 1.1: Use Overlay
-    const mutationKey = `order:${order.id}`;
+    const projectedBalance = (await this.deps.customerRepo.getBalance(order.customerId)) - item.totalPriceMinor;
+    if (!checkDebtLimit(projectedBalance, customer.debtLimitMinor, actor.isSuperAdmin)) throw new BusinessRuleViolation(`Debt limit exceeded: Customer debt limit of ${customer.debtLimitMinor} minor units exceeded by projected balance ${projectedBalance}`);
+    const deliveredAt = new Date().toISOString();
+    const patch: Partial<OrderItemEntity> = { status:'delivered', financialStatus:'RECOGNIZED', deliveredAt, financiallyRecognizedAt:deliveredAt, updatedAt:deliveredAt, version:item.version+1 };
     const commandId = crypto.randomUUID();
-    
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(commandId, [
-        { table: 'orderItems', id: item.id, existed: true, data: item },
-      ]);
-    }
-    await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
-
-    await this.deps.commandRepo.record(commandId, 'DELIVER_ORDER_ITEM', {
-        id: commandId,
-        itemId: item.id,
-        orderItemId: item.id,
-        orderId: order.id,
-        bin,
-    }, item.version);
-
-    return { success: true as const, data: { ...item, ...patch } as OrderItemEntity };
+    if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.itemRepo.save({...item,...patch});
+      ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{id:commandId,itemId:item.id,orderItemId:item.id,orderId:order.id,bin},item.version);
+    });
+    try { await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>); } catch(e) { console.warn('Delivery pending projection failed; local item is authoritative.',e); }
+    return {success:true,data:{...item,...patch} as OrderItemEntity};
   }
 
-  async editOrderNotes(
-    auth: AuthorizationContext,
-    orderId: ID,
-    notes?: string
-  ): Promise<Result<OrderEntity>> {
-    const actor = auth.requireAuth();
-    auth.assertPermission('orders:edit');
-
-    const existing = await this.deps.orderRepo.findById(orderId);
-    if (!existing) throw new NotFoundError('Order not found');
-
-    const dayIsClosed = await this.deps.dayRepo.isClosed(existing.dayId);
-    if (dayIsClosed && !actor.isSuperAdmin) {
-      throw new ClosedDayError();
-    }
-
-    if (existing.status === 'cancelled') throw new BusinessRuleViolation('Cannot edit a cancelled order');
-
-    const patch: Partial<OrderEntity> = {
-      notes: notes?.trim() || undefined,
-      updatedAt: new Date().toISOString(),
-      version: existing.version + 1,
-    };
-
-    const commandId = crypto.randomUUID();
-    const mutationKey = `order:${orderId}`;
-
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(commandId, [
-        { table: 'orders', id: existing.id, existed: true, data: existing },
-      ]);
-    }
-
-    await this.createOverlay(commandId, mutationKey, 'orders', orderId, 'PATCH', patch as Record<string, unknown>);
-
-    await this.deps.commandRepo.record(commandId, 'UPDATE_ORDER', {
-      id: orderId,
-      aggregateId: orderId,
-      orderId: orderId,
-      notes: patch.notes,
-    }, existing.version);
-
-    return { success: true, data: { ...existing, ...patch } as OrderEntity };
+  async editOrderNotes(auth: AuthorizationContext, orderId: ID, notes?: string): Promise<Result<OrderEntity>> {
+    const actor=auth.requireAuth(); auth.assertPermission('orders:edit');
+    const existing=await this.deps.orderRepo.findById(orderId); if(!existing) throw new NotFoundError('Order not found');
+    if(await this.deps.dayRepo.isClosed(existing.dayId) && !actor.isSuperAdmin) throw new ClosedDayError();
+    if(existing.status==='cancelled') throw new BusinessRuleViolation('Cannot edit a cancelled order');
+    const updatedAt=new Date().toISOString(); const patch:Partial<OrderEntity>={notes:notes?.trim()||undefined,updatedAt,version:existing.version+1};
+    const updatedOrder={...existing,...patch} as OrderEntity; const commandId=crypto.randomUUID();
+    if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orders',id:existing.id,existed:true,data:existing}]);
+    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.orderRepo.save(updatedOrder);ctx.commandRepo.record(commandId,'UPDATE_ORDER',{id:orderId,aggregateId:orderId,orderId,notes:patch.notes},existing.version);});
+    try{await this.createOverlay(commandId,`order:${orderId}`,'orders',orderId,'PATCH',patch as Record<string,unknown>);}catch(e){console.warn('Order pending projection failed; local order is authoritative.',e);}
+    return {success:true,data:updatedOrder};
   }
 
-  async removeOrderItemDuringEdit(
-    auth: AuthorizationContext,
-    itemId: ID
-  ): Promise<Result<OrderItemEntity>> {
-    const actor = auth.requireAuth();
-    auth.assertPermission('orders:edit');
-
-    const item = await this.deps.itemRepo.findById(itemId);
-    if (!item) throw new NotFoundError('Item not found');
-
-    const order = await this.deps.orderRepo.findById(item.orderId);
-    if (!order) throw new NotFoundError('Order not found');
-
-    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
-    if (dayIsClosed && !actor.isSuperAdmin) {
-      throw new ClosedDayError();
-    }
-
-    validateItemTransition(item.status, 'cancelled');
-
-    const patch: Partial<OrderItemEntity> = {
-      status: 'cancelled',
-      updatedAt: new Date().toISOString(),
-      version: item.version + 1,
-    };
-
-    const commandId = crypto.randomUUID();
-    const mutationKey = `order:${order.id}`;
-
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(commandId, [
-        { table: 'orderItems', id: item.id, existed: true, data: item },
-      ]);
-    }
-
-    await this.createOverlay(commandId, mutationKey, 'order_items', item.id, 'PATCH', patch as Record<string, unknown>);
-
-    await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
-      id: commandId,
-      itemId: item.id,
-      orderItemId: item.id,
-      orderId: order.id,
-    }, item.version);
-
-    return { success: true, data: { ...item, ...patch } as OrderItemEntity };
+  async removeOrderItemDuringEdit(auth: AuthorizationContext, itemId: ID): Promise<Result<OrderItemEntity>> {
+    const actor=auth.requireAuth(); auth.assertPermission('orders:edit');
+    const item=await this.deps.itemRepo.findById(itemId); if(!item) throw new NotFoundError('Item not found');
+    const order=await this.deps.orderRepo.findById(item.orderId); if(!order) throw new NotFoundError('Order not found');
+    if(await this.deps.dayRepo.isClosed(order.dayId) && !actor.isSuperAdmin) throw new ClosedDayError();
+    validateItemTransition(item.status,'cancelled');
+    const updatedAt=new Date().toISOString(); const patch:Partial<OrderItemEntity>={status:'cancelled',updatedAt,version:item.version+1};
+    const updatedItem={...item,...patch} as OrderItemEntity; const commandId=crypto.randomUUID();
+    if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
+    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.itemRepo.save(updatedItem);ctx.commandRepo.record(commandId,'CANCEL_ORDER_ITEM',{id:commandId,itemId,orderItemId:itemId,orderId:order.id},item.version);});
+    try{await this.createOverlay(commandId,`order:${order.id}`,'order_items',item.id,'PATCH',patch as Record<string,unknown>);}catch(e){console.warn('Cancellation projection failed; local item is authoritative.',e);}
+    return {success:true,data:updatedItem};
   }
 
-  async cancelOrder(
-    auth: AuthorizationContext,
-    orderId: ID,
-    bin: string
-  ): Promise<Result<OrderEntity>> {
-    const actor = auth.requireAuth();
-    auth.assertPermission('orders:cancel');
-    await auth.verifyBin(bin);
-
-    const order = await this.deps.orderRepo.findById(orderId);
-    if (!order) throw new NotFoundError('Order not found');
-
-    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
-    if (dayIsClosed && !actor.isSuperAdmin) {
-      throw new ClosedDayError();
-    }
-
-    validateOrderTransition(order.status, 'cancelled');
-
-    const items = await this.deps.itemRepo.findByOrderId(orderId);
-    const activeItems = items.filter(i => i.status !== 'cancelled');
-    
-    const commandId = crypto.randomUUID();
-    const mutationKey = `order:${orderId}`;
-
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(commandId, [
-        ...activeItems.map((i) => ({ table: 'orderItems', id: i.id, existed: true, data: i })),
-      ]);
-    }
-
-    // For simplicity in Phase 1.1, we overlay each item cancellation
-    // However, since createOverlay only handles one per commandId, we'll need to be careful.
-    // Actually, let's just overlay the first item and the command will handle the rest on server.
-    // Wait, the client projection should show ALL as cancelled.
-    // We'll use a PATCH on order_items table for the whole order? No, localDb overlays are per entityId.
-    
-    for (const itemToCancel of activeItems) {
-        const itemPatch = {
-            status: 'cancelled',
-            cancelledAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        };
-        // We'll create a separate overlay for each item with unique commandIds?
-        // No, standard says one commandId per mutation.
-        // Let's modify createOverlay to handle multiple if needed? 
-        // No, let's just create one overlay for the order cancellation state if possible.
-        // But the projection is based on items.
-        
-        const itemCommandId = `${commandId}:${itemToCancel.id}`;
-        await this.createOverlay(itemCommandId, mutationKey, 'order_items', itemToCancel.id, 'PATCH', itemPatch as Record<string, unknown>);
-    }
-
-    await this.createOverlay(
-      commandId,
-      mutationKey,
-      'orders',
-      orderId,
-      'PATCH',
-      {
-        status: 'cancelled',
-        cancelledAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        version: order.version + 1,
-      }
-    );
-
-    await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER', {
-      id: commandId,
-      aggregateId: orderId,
-      orderId,
-      bin,
-    }, order.version);
-
-    return { success: true, data: { ...order, status: 'cancelled', cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: order.version + 1 } };
+  async cancelOrder(auth: AuthorizationContext, orderId: ID, bin: string): Promise<Result<OrderEntity>> {
+    const actor=auth.requireAuth(); auth.assertPermission('orders:cancel'); await auth.verifyBin(bin);
+    const order=await this.deps.orderRepo.findById(orderId); if(!order) throw new NotFoundError('Order not found');
+    if(await this.deps.dayRepo.isClosed(order.dayId) && !actor.isSuperAdmin) throw new ClosedDayError();
+    validateOrderTransition(order.status,'cancelled');
+    const items=await this.deps.itemRepo.findByOrderId(orderId); const activeItems=items.filter(i=>i.status!=='cancelled');
+    const commandId=crypto.randomUUID(); const cancelledAt=new Date().toISOString();
+    const updatedOrder={...order,status:'cancelled' as const,cancelledAt,updatedAt:cancelledAt,version:order.version+1};
+    const updatedItems=activeItems.map(item=>({...item,status:'cancelled' as const,cancelledAt,updatedAt:cancelledAt,version:item.version+1}));
+    if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orders',id:order.id,existed:true,data:order},...activeItems.map(i=>({table:'orderItems',id:i.id,existed:true,data:i}))]);
+    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.orderRepo.save(updatedOrder);for(const item of updatedItems)ctx.itemRepo.save(item);ctx.commandRepo.record(commandId,'CANCEL_ORDER',{id:commandId,aggregateId:orderId,orderId,bin},order.version);});
+    try{for(const item of updatedItems)await this.createOverlay(`${commandId}:${item.id}`,`order:${orderId}`,'order_items',item.id,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:item.version});await this.createOverlay(commandId,`order:${orderId}`,'orders',orderId,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:updatedOrder.version});}catch(e){console.warn('Cancellation projections failed; local aggregate is authoritative.',e);}
+    return {success:true,data:updatedOrder};
   }
 
   async cancelOrderItem(
