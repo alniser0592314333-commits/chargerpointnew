@@ -141,7 +141,7 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
 
     expect(addNewCustomerBody).not.toContain('cust-${Date.now()}');
     expect(addNewCustomerBody).not.toContain('cust-');
-    expect(addNewCustomerBody).toContain('crypto.randomUUID()');
+    expect(addNewCustomerBody).toContain('phase5UseCases.createCustomer(');
 
     const useCasesPath = path.resolve(process.cwd(), 'src/application/useCases.ts');
     const useCasesContent = fs.readFileSync(useCasesPath, 'utf8');
@@ -149,6 +149,7 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
     expect(createCustomerMatch).not.toBeNull();
     const createCustomerBody = createCustomerMatch![0];
     expect(createCustomerBody).not.toContain('`cust_${Date.now()}_');
+    expect(createCustomerBody).toContain('crypto.randomUUID()');
   });
 
   // TEST H: applyRemoteChange does not duplicate customer when server ID matches local ID
