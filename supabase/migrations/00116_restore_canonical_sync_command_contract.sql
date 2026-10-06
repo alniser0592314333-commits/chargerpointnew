@@ -63,6 +63,11 @@ DECLARE
     v_dev_icon VARCHAR(100);
     v_bin TEXT;
 BEGIN
+    -- Serialize concurrent retries of the same logical command before
+    -- checking/inserting processed_commands. This closes the race where two
+    -- identical requests could both pass the initial SELECT.
+    PERFORM pg_advisory_xact_lock(hashtextextended(p_command_id::TEXT, 0));
+
     -- ==========================================
     -- 0. RESET GENERATION VALIDATION (STALE OUTBOX PROTECTION)
     -- ==========================================
