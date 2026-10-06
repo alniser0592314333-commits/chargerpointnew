@@ -367,7 +367,19 @@ export const applyRemoteChange = (change: {
   // the authoritative server. The sync cursor must stop before this change;
   // otherwise the authoritative delta could be skipped forever.
   if (hasPendingLocalMutationForRemoteEntity(entityType, change.entityId, p)) {
-    return false;
+    // A remote row that is strictly newer than the local pending projection is
+    // authoritative evidence that the server already incorporated the mutation.
+    // Older/equal deltas remain blocked so an offline pending edit can never be
+    // silently overwritten by stale pull data.
+    const current =
+      entityType === 'customers' ? customersMap.get(change.entityId) :
+      entityType === 'device_types' || entityType === 'deviceTypes' ? devicesMap.get(change.entityId) :
+      entityType === 'orders' ? ordersMap.get(change.entityId) :
+      entityType === 'order_items' || entityType === 'orderItems' ? itemsMap.get(change.entityId) :
+      undefined;
+    const localVersion = Number((current as any)?.version || 0);
+    const remoteVersion = Number(change.version ?? p.version ?? 0);
+    if (!(remoteVersion > localVersion)) return false;
   }
 
   if (entityType === 'business_days' || entityType === 'businessDays') {
