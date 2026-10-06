@@ -478,13 +478,24 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('financialLedger', change.entityId);
       return;
     }
+    const ledgerEventType = p.eventType || p.event_type;
+    const ledgerOrderId = p.orderId || p.order_id || undefined;
+    const ledgerOrderItemId = p.orderItemId || p.order_item_id || undefined;
+    const derivedOrder = ledgerOrderId ? ordersMap.get(ledgerOrderId) : undefined;
+    const derivedItem = ledgerOrderItemId ? itemsMap.get(ledgerOrderItemId) : undefined;
+    const rawLedgerAmount = Number(p.amountMinor ?? p.amount_minor ?? 0);
+    const normalizedLedgerAmount =
+      (ledgerEventType === 'CHARGE' || ledgerEventType === 'ORDER_ITEM_CHARGE') && rawLedgerAmount > 0
+        ? -rawLedgerAmount
+        : rawLedgerAmount;
+
     const entity: FinancialLedgerEntity = {
       id: p.id || change.entityId,
-      eventType: p.eventType || p.event_type,
-      amountMinor: p.amountMinor ?? p.amount_minor ?? 0,
-      orderId: p.orderId || p.order_id || undefined,
-      orderItemId: p.orderItemId || p.order_item_id || undefined,
-      customerId: p.customerId || p.customer_id,
+      eventType: ledgerEventType,
+      amountMinor: normalizedLedgerAmount,
+      orderId: ledgerOrderId || derivedItem?.orderId,
+      orderItemId: ledgerOrderItemId,
+      customerId: p.customerId || p.customer_id || derivedOrder?.customerId || (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined),
       actorAdminId: p.actorAdminId || p.actor_admin_id || undefined,
       referenceId: p.referenceId || p.reference_id || undefined,
       metadata: p.metadata ?? undefined,
