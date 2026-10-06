@@ -845,7 +845,7 @@ WHEN 'UPDATE_ORDER' THEN
                     'operational_status', 'CANCELLED',
                     'financial_status', 'REVERSED',
                     'status', 'cancelled'
-                ), 1);
+                ), (SELECT version FROM public.order_items WHERE id = v_item_uuid));
 
                 PERFORM public.record_canonical_change('financial_ledger', v_entity_uuid, 'INSERT', jsonb_build_object(
                     'event_type', 'REVERSAL',
