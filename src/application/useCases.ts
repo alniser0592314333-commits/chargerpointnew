@@ -1593,26 +1593,8 @@ export class FinalUseCases {
       });
     });
 
-    try {
-      await this.createOverlay(
-        txId,
-        mutationKey,
-        'ledger',
-        txId,
-        'CREATE',
-        { id: txId, createdAt, ...event } as unknown as Record<string, unknown>
-      );
-      await this.createOverlay(
-        `${txId}:payment`,
-        mutationKey,
-        'payments',
-        txId,
-        'CREATE',
-        payment as unknown as Record<string, unknown>
-      );
-    } catch (overlayError) {
-      console.warn('Credit pending projection failed; durable local financial rows remain authoritative.', overlayError);
-    }
+    // Durable local financial rows are the pending projection; no duplicate overlays.
+
 
     return { success: true, data: { id: txId, createdAt, ...event } };
   }
