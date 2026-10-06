@@ -95,7 +95,7 @@ create table if not exists public.customers (
   status text not null default 'ACTIVE' check(status in ('ACTIVE','DELETED')),
   is_active boolean not null default true,
   notes text,
-  debt_limit_minor bigint not null default 0 check(debt_limit_minor >= 0),
+  debt_limit_minor bigint not null default 0,
   charger_fee_exempt boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
