@@ -220,6 +220,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     // SCENARIO B: Delivery is operationally optimistic; recognition is server-owned.
     const deliverRes = await useCases.deliverOrderItem(authAdmin, itemId, '1234');
     expect(deliverRes.success).toBe(true);
+    if (!deliverRes.success) throw new Error(deliverRes.error);
     expect(deliverRes.data.financialStatus).toBe('UNRECOGNIZED');
     expect(getAuthoritativeLedgerBalance(custId)).toBe(0);
 
