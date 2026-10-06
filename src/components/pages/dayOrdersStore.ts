@@ -2673,7 +2673,13 @@ export const computeCustomerOrderPaymentStatuses = (
 
   // 3. Allocate credits in FIFO sequence
   for (const ord of custOrders) {
-    const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
+    // Only financially recognized/delivered items create a customer charge.
+    // A newly added device on an already-delivered order remains charging until
+    // its own delivery command succeeds; it must not make the old item look
+    // unpaid/paid against the new device's future amount.
+    const items = Array.from(effectiveItemsMap.values()).filter(
+      (i) => i.orderId === ord.id && i.status === 'delivered' && i.financialStatus !== 'UNRECOGNIZED'
+    );
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     if (totalMinor <= 0) {
@@ -3171,7 +3177,10 @@ export const getCustomerOrders = async (
 
   for (const ord of custOrders) {
     const items = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
-    const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
+    const recognizedItems = items.filter(
+      (i) => i.status === 'delivered' && i.financialStatus !== 'UNRECOGNIZED'
+    );
+    const totalMinor = recognizedItems.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     const alloc = allocMap.get(ord.id);
     const paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' =
@@ -3194,7 +3203,7 @@ export const getCustomerOrders = async (
       orderNumber: ord.displayNumber,
       dayId: ord.dayId,
       createdAt: ord.createdAt,
-      status: ord.status,
+      status: calculateOrderProjection(items, ord.status),
       paymentStatus,
       totalMinor,
       itemCount: items.length,
