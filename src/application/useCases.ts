@@ -235,12 +235,28 @@ export class FinalUseCases {
 
     const orderId = commandId || crypto.randomUUID();
 
+    const deviceId = actor.deviceId || 'default-device';
+    let displayNumber = 1;
+    if (this.deps.reservationRepo) {
+      let reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
+      if (!reservation || reservation.nextNumber > reservation.endNumber) {
+        reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, orderId, 20);
+      }
+      displayNumber = reservation.nextNumber;
+      reservation.nextNumber += 1;
+      if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
+      reservation.updatedAt = new Date().toISOString();
+      await this.deps.reservationRepo.save(reservation);
+    } else {
+      displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
+    }
+
     const order: OrderEntity = {
       id: orderId,
       dayId,
       customerId,
-      displayNumber: 0, // Will be set by server
-      internalSequence: 0,
+      displayNumber,
+      internalSequence: displayNumber,
       status: 'pending',
       customerBalanceSnapshotMinor: currentBalance,
       notes,
@@ -276,7 +292,7 @@ export class FinalUseCases {
         ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
         displayNumber: order.displayNumber,
-        orderNumber: (order as any).orderNumber ?? order.displayNumber,
+        orderNumber: order.displayNumber,
       });
     });
 
