@@ -4297,7 +4297,6 @@ export const topUpCustomerBalance = async (
   }
 
   const commandId = idempotencyKey || crypto.randomUUID();
-  const { actorAdminId } = getAuthenticatedIdentity();
 
   // Idempotency check: if already processed, return previous transaction result
   if (idempotencyKey) {
