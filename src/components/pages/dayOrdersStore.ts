@@ -1919,7 +1919,42 @@ export const repoContext: RepositoryContext = {
     },
     findById: async (id) => {
       await ensureStoreHydrated();
-      return itemsMap.get(id) || null;
+
+      // Use the same effective local read model as the transactional repository.
+      // Delivery is executed through this (non-transactional) repoContext, so a
+      // newly added item that exists only as a pending CREATE overlay must still
+      // be resolvable here. Otherwise deliverOrderItem() exits with "Item not found"
+      // and never records the DELIVER_ORDER_ITEM command.
+      let effective = itemsMap.get(id) || null;
+
+      const overlays = localDb.listOverlaysSync()
+        .filter((overlay) =>
+          overlay.status === 'PENDING' &&
+          overlay.entityType === 'order_items' &&
+          overlay.entityId === id
+        )
+        .sort((a, b) => {
+          if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
+
+      for (const overlay of overlays) {
+        if (overlay.operation === 'DELETE') {
+          effective = null;
+          continue;
+        }
+
+        const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
+        if (overlay.operation === 'CREATE') {
+          effective = { ...patch, id } as OrderItemEntity;
+        } else {
+          effective = effective
+            ? ({ ...effective, ...patch, id } as OrderItemEntity)
+            : ({ ...patch, id } as OrderItemEntity);
+        }
+      }
+
+      return effective;
     },
     isDeviceTypeInUse: async (deviceTypeId) => {
       await ensureStoreHydrated();
