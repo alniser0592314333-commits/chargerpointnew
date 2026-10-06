@@ -4517,14 +4517,17 @@ export const topUpCustomerBalance = async (
 ): Promise<TopUpCustomerBalanceResult> => {
   await ensureStoreHydrated();
   const { customerId, amountMinor, bin, note, idempotencyKey } = params;
+  const offline = typeof navigator !== 'undefined' && !navigator.onLine;
 
-  const binValidation = validateBinFormat(bin);
-  if (!binValidation.valid) {
-    return {
-      success: false,
-      newBalanceMinor: 0,
-      error: binValidation.error,
-    };
+  if (!offline) {
+    const binValidation = validateBinFormat(bin);
+    if (!binValidation.valid) {
+      return {
+        success: false,
+        newBalanceMinor: 0,
+        error: binValidation.error,
+      };
+    }
   }
 
   if (!amountMinor || amountMinor <= 0) {
@@ -4560,8 +4563,7 @@ export const topUpCustomerBalance = async (
     };
   }
 
-  const commandId = idempotencyKey || crypto.randomUUID();\n\n  const offline = typeof navigator !== 'undefined' && !navigator.onLine;
-  if (offline) {
+  const commandId = idempotencyKey || crypto.randomUUID();\n\n  if (offline) {
     try {
       const queued = await phase5UseCases.queueCustomerCreditAwaitingBin(
         getAuthorizedAdminContext(), cust.id, amountMinor, commandId
