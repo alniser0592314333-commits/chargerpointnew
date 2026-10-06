@@ -175,7 +175,8 @@ export const SyncCenter: React.FC = () => {
       const latestFailed = sortedHistory[0];
       if (
         latestFailed?.errorClass === 'AUTHENTICATION' ||
-        latestFailed?.errorClass === 'AUTHORIZATION'
+        latestFailed?.errorClass === 'AUTHORIZATION' ||
+        latestFailed?.errorClass === 'AUTHORIZATION_REQUIRED'
       ) {
         return 'AUTH_REQUIRED';
       }
