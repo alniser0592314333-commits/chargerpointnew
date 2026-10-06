@@ -785,12 +785,20 @@ class DefaultAuthService implements AuthService {
 
   async getCurrentSession(forceRefresh = false): Promise<UserSession | null> {
     if (this.isSupabaseConfigured()) {
-      // Validate that Supabase Auth token is active and valid
+      /*
+       * Offline-first session rule:
+       * absence of a currently hydrated Supabase token is not, by itself,
+       * proof that the cached local admin session is invalid. Explicit logout
+       * clears the cached app session as well, while an offline/reload path may
+       * temporarily have no remote token available.
+       *
+       * Do not destroy the local session here. The cached session is evaluated
+       * below using its own expiry. When a valid Supabase session is available,
+       * the authoritative server profile is still checked and replaces the
+       * cached permissions/identity.
+       */
       const supabaseSession = await this.getSupabaseAuthSession();
-      if (!supabaseSession?.access_token) {
-        await this.logout();
-        return null;
-      }
+      void supabaseSession;
     }
 
     if (!forceRefresh && inMemorySession && new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now()) {
