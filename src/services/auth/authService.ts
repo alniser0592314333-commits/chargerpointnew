@@ -834,15 +834,17 @@ class DefaultAuthService implements AuthService {
         try {
           const storedSession = JSON.parse(stored) as UserSession;
           const storedSupabase = await this.getSupabaseAuthSession();
-          // Offline-first rule: if Supabase cannot currently hydrate a
-          // remote session, retain the last successfully authenticated local
-          // admin session until its local expiry. Remote profile data, when
-          // available, always replaces the cached identity/permissions.
-          // Explicit logout remains the only local session revocation path while
-          // offline.
-          if (!serverProfile && this.isSupabaseConfigured() && storedSession.authUserId) {
-            // Keep the stored session; absence of a remote token is a transport
-            // condition, not proof that the prior authenticated session was invalid.
+          // A cached app profile is never an authentication credential by itself.
+          // When Supabase is configured, offline reload is allowed only when the
+          // cached profile is cryptographically bound to the persisted Supabase
+          // Auth subject. This preserves offline reload while preventing a forged
+          // app_auth_session from becoming an authenticated admin session.
+          if (this.isSupabaseConfigured()) {
+            if (!storedSupabase?.user?.id || !storedSession.authUserId || storedSession.authUserId !== storedSupabase.user.id) {
+              storage.removeItem(SESSION_STORAGE_KEY);
+              inMemorySession = null;
+              return null;
+            }
           }
           if (new Date(storedSession.tokenExpiresAt).getTime() > Date.now()) {
             const session: UserSession = serverProfile ? {
