@@ -188,6 +188,7 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
         entityId: row.entity_id,
         action: row.action,
         payload: row.payload,
+        version: row.version !== null && row.version !== undefined ? Number(row.version) : undefined,
         changedAt: row.changed_at,
       }));
 
