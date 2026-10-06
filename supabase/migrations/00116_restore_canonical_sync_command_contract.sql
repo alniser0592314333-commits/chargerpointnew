@@ -1207,6 +1207,62 @@ WHEN 'UPDATE_ORDER' THEN
             END IF;
             v_result := jsonb_build_object('goalId', v_entity_uuid, 'version', v_rec_goal.version + 1);
 
+        WHEN 'CREATE_PAYMENT', 'POST_PAYMENT' THEN
+            v_payment_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
+            v_customer_uuid := COALESCE((p_payload->>'customerId'), (p_payload->>'customer_id'))::UUID;
+            IF v_customer_uuid IS NULL THEN
+                RAISE EXCEPTION 'Validation Error: Customer ID is required for payment' USING ERRCODE = 'P2201';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM public.customers WHERE id = v_customer_uuid AND is_active = TRUE) THEN
+                RAISE EXCEPTION 'Customer Not Found/Inactive: Cannot record payment for customer %', v_customer_uuid USING ERRCODE = '23503';
+            END IF;
+            IF COALESCE((p_payload->>'amountMinor')::BIGINT, (p_payload->>'amount_minor')::BIGINT, 0) <= 0 THEN
+                RAISE EXCEPTION 'Validation Error: Payment amount must be positive' USING ERRCODE = '22023';
+            END IF;
+
+            INSERT INTO public.payments (
+                id, customer_id, amount_minor, payment_method, reference, actor_admin_id, command_id, notes, created_at
+            )
+            VALUES (
+                v_payment_uuid,
+                v_customer_uuid,
+                COALESCE((p_payload->>'amountMinor')::BIGINT, (p_payload->>'amount_minor')::BIGINT),
+                COALESCE(p_payload->>'paymentMethod', p_payload->>'payment_method', 'CASH'),
+                COALESCE(p_payload->>'reference', ''),
+                v_actor_id,
+                p_command_id,
+                COALESCE(p_payload->>'notes', ''),
+                NOW()
+            )
+            ON CONFLICT (id) DO NOTHING;
+
+            INSERT INTO public.financial_ledger (
+                event_type, amount_minor, customer_id, actor_admin_id, reference_id, metadata, created_at
+            )
+            SELECT
+                'PAYMENT',
+                COALESCE((p_payload->>'amountMinor')::BIGINT, (p_payload->>'amount_minor')::BIGINT),
+                v_customer_uuid,
+                v_actor_id,
+                v_payment_uuid,
+                jsonb_build_object('paymentId', v_payment_uuid, 'commandId', p_command_id),
+                NOW()
+            WHERE NOT EXISTS (
+                SELECT 1 FROM public.financial_ledger
+                WHERE event_type = 'PAYMENT' AND reference_id = v_payment_uuid
+            )
+            RETURNING id INTO v_ledger_uuid;
+
+            PERFORM public.record_canonical_change('payments', v_payment_uuid, 'INSERT', p_payload, 1);
+            IF v_ledger_uuid IS NOT NULL THEN
+                PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', jsonb_build_object(
+                    'id', v_ledger_uuid, 'eventType', 'PAYMENT', 'amountMinor', COALESCE((p_payload->>'amountMinor')::BIGINT, (p_payload->>'amount_minor')::BIGINT),
+                    'customerId', v_customer_uuid, 'referenceId', v_payment_uuid
+                ), 1);
+            END IF;
+
+            v_result := jsonb_build_object('paymentId', v_payment_uuid, 'ledgerEntryId', v_ledger_uuid, 'customerId', v_customer_uuid);
+
         WHEN 'SET_SYSTEM_SETTING' THEN
             INSERT INTO public.system_settings (key, value_type, value_string, value_number, value_boolean, value_json, updated_at, updated_by)
             VALUES (
