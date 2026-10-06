@@ -1183,25 +1183,56 @@ export class FinalUseCases {
       ]);
     }
 
-    // 1. Overlay Payment
-    await this.createOverlay(commandId, mutationKey, 'payments', commandId, 'CREATE', payment as unknown as Record<string, unknown>);
-
-    // 2. Overlay Ledger
-    const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
-        eventType: 'PAYMENT',
-        amountMinor,
-        customerId,
-        actorAdminId: actor.id,
-        referenceId: payment.id,
-    };
-    await this.createOverlay(`${commandId}:ledger`, mutationKey, 'ledger', commandId, 'CREATE', ledgerEvent as unknown as Record<string, unknown>);
-
-    // 3. Outbox Recording
-    await this.deps.commandRepo.record(commandId, 'CREATE_PAYMENT', {
-      ...payment,
-      resetGeneration
+    /*
+     * Payment is a financial mutation, so the authoritative ledger remains
+     * server-owned. We can still persist the payment entity itself locally,
+     * atomically with the CREATE_PAYMENT outbox command, while retaining the
+     * existing pending ledger overlay for balance projection.
+     */
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.paymentRepo.save(payment);
+      ctx.commandRepo.record(commandId, 'CREATE_PAYMENT', {
+        ...payment,
+        resetGeneration
+      });
     });
 
+    const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
+      eventType: 'PAYMENT',
+      amountMinor,
+      customerId,
+      actorAdminId: actor.id,
+      referenceId: payment.id,
+    };
+
+    try {
+      await this.createOverlay(
+        commandId,
+        mutationKey,
+        'payments',
+        commandId,
+        'CREATE',
+        payment as unknown as Record<string, unknown>
+      );
+      await this.createOverlay(
+        `${commandId}:ledger`,
+        mutationKey,
+        'ledger',
+        commandId,
+        'CREATE',
+        ledgerEvent as unknown as Record<string, unknown>
+      );
+    } catch (overlayError) {
+      /*
+       * The payment row + outbox are already durable. If the projection layer
+       * cannot be written, syncing remains correct; the pending financial
+       * projection will be reconstructed by normal reconciliation.
+       */
+      console.warn(
+        'Failed to persist payment pending projection; payment remains queued.',
+        overlayError
+      );
+    }
     return { success: true, data: payment };
   }
 
