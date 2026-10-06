@@ -73,6 +73,9 @@ export const SyncCenter: React.FC = () => {
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState<'ALL' | 'SYNCED' | 'PENDING' | 'BLOCKED' | 'FAILED'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [binAuthCommandId, setBinAuthCommandId] = useState<string | null>(null);
+  const [binAuthInput, setBinAuthInput] = useState('');
+  const [binAuthError, setBinAuthError] = useState('');
 
   const sessionStartTime = useMemo(() => getSessionStartTime(), []);
 
@@ -210,6 +213,54 @@ export const SyncCenter: React.FC = () => {
     } finally {
       await refreshSyncData();
       setIsSyncing(false);
+    }
+  };
+
+  // Authorize a previously queued protected command with the current BIN.
+  // The command ID is preserved so server-side idempotency remains intact.
+  const handleAuthorizeWithBin = async () => {
+    if (!binAuthCommandId) return;
+    const cleanBin = binAuthInput.trim();
+    if (!/^\d{4,}$/.test(cleanBin)) {
+      setBinAuthError(locale === 'ar' ? 'أدخل رمز BIN صحيحاً.' : 'Enter a valid BIN.');
+      return;
+    }
+
+    try {
+      const outbox = await localDb.listOutbox();
+      const target = outbox.find((o) => o.commandId === binAuthCommandId);
+      if (!target) {
+        setBinAuthError(locale === 'ar' ? 'عملية المزامنة لم تعد موجودة.' : 'The sync operation is no longer queued.');
+        return;
+      }
+
+      target.payload = {
+        ...((target.payload || {}) as any),
+        bin: cleanBin,
+        authorizationState: 'AUTHORIZED',
+      };
+      target.status = 'pending';
+      target.retryCount = 0;
+      target.lastError = undefined;
+      await localDb.saveOutbox(target);
+
+      const history = await localDb.getHistoryByCommandId(binAuthCommandId);
+      if (history) {
+        history.state = 'PENDING';
+        history.errorClass = undefined;
+        history.errorMessage = undefined;
+        history.retryEligible = undefined;
+        history.updatedAt = new Date().toISOString();
+        await localDb.saveHistory(history);
+      }
+
+      setBinAuthCommandId(null);
+      setBinAuthInput('');
+      setBinAuthError('');
+      await refreshSyncData();
+      await handleManualSync();
+    } catch (err: any) {
+      setBinAuthError(err?.message || (locale === 'ar' ? 'تعذر تجهيز العملية للمزامنة.' : 'Could not prepare the operation for sync.'));
     }
   };
 
@@ -465,6 +516,7 @@ export const SyncCenter: React.FC = () => {
       customerId?: string;
       dayId?: string;
       isOutboxActive: boolean;
+      errorClass?: string;
     }>();
 
     // 1. ALL Active Outbox items currently in IndexedDB queue (MUST ALWAYS BE VISIBLE!)
@@ -483,6 +535,7 @@ export const SyncCenter: React.FC = () => {
         status: st,
         createdAt: item.createdAt,
         updatedAt: item.createdAt,
+        errorClass: (item as any).errorClass,
         errorMsg: item.lastError || (st === 'BLOCKED' ? (locale === 'ar' ? 'عملية محجوزة بانتظار إعادة تقييم التبعيات والمزامنة' : 'Blocked operation waiting for dependency sync') : undefined),
         customerName: p.customerName || p.name || p.customer_name,
         customerId: p.customerId || (item.aggregateType === 'customers' ? item.aggregateId : undefined),
@@ -511,6 +564,7 @@ export const SyncCenter: React.FC = () => {
           status: st,
           createdAt: h.createdAt || existing?.createdAt || new Date().toISOString(),
           updatedAt: h.updatedAt,
+          errorClass: (h as any).errorClass || existing?.errorClass,
           errorMsg: h.errorMessage || existing?.errorMsg,
           customerName: p.customerName || p.name || existing?.customerName,
           customerId: p.customerId || existing?.customerId,
@@ -930,6 +984,21 @@ export const SyncCenter: React.FC = () => {
                                     </button>
                                   )}
 
+                                  {evt.isOutboxActive && (evt.errorClass === 'AUTHORIZATION_REQUIRED' || evt.payload?.authorizationState === 'PENDING_BIN') && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setBinAuthCommandId(evt.commandId);
+                                        setBinAuthInput('');
+                                        setBinAuthError('');
+                                      }}
+                                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-orange-500 hover:bg-orange-600 text-white cursor-pointer transition-colors shadow-sm"
+                                    >
+                                      {locale === 'ar' ? 'إدخال BIN' : 'Enter BIN'}
+                                    </button>
+                                  )}
+
                                   {evt.isOutboxActive && (
                                     <button
                                       type="button"
@@ -1077,6 +1146,54 @@ export const SyncCenter: React.FC = () => {
 
         </div>
       </Modal>
+      <Modal
+        isOpen={Boolean(binAuthCommandId)}
+        onClose={() => {
+          setBinAuthCommandId(null);
+          setBinAuthInput('');
+          setBinAuthError('');
+        }}
+        title={locale === 'ar' ? 'تأكيد العملية برمز BIN' : 'Authorize operation with BIN'}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-gray-600 dark:text-[#8eb698]">
+            {locale === 'ar'
+              ? 'هذه العملية تم حفظها محلياً أثناء عدم توفر الاتصال. أدخل BIN الآن لتفويضها للخادم. لن يتم تكرار العملية؛ سيتم استخدام نفس رقم العملية.'
+              : 'This operation was queued offline. Enter BIN to authorize it with the server. The same command ID will be reused, so the operation will not be duplicated.'}
+          </p>
+          {binAuthError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-[#360d13] border border-red-200 dark:border-[#421419] text-red-700 dark:text-[#e07a7a] text-xs">
+              {binAuthError}
+            </div>
+          )}
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={8}
+            value={binAuthInput}
+            onChange={(e) => setBinAuthInput(e.target.value)}
+            placeholder="••••"
+            className="w-full h-10 rounded-xl border border-gray-200 dark:border-[#123832] bg-white dark:bg-[#041714] text-center tracking-widest font-mono"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setBinAuthCommandId(null);
+                setBinAuthInput('');
+                setBinAuthError('');
+              }}
+            >
+              {locale === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleAuthorizeWithBin}>
+              {locale === 'ar' ? 'تفويض ومزامنة' : 'Authorize & Sync'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 };
