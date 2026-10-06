@@ -930,29 +930,67 @@ begin
 end;
 $$;
 
+create or replace function public.get_or_create_customer_qr(p_customer_id uuid)
+returns text language plpgsql security definer set search_path=public as $
+declare v_token text;
+begin
+ select public_token into v_token from public.qr_tokens where target_id=p_customer_id and token_type='CUSTOMER' and is_active limit 1;
+ if v_token is not null then return v_token; end if;
+ v_token:=replace(replace(replace(encode(gen_random_bytes(24),'base64'),'+','-'),'/','_'),'=','');
+ insert into public.qr_tokens(token_hash,public_token,token_type,target_id) values(encode(digest(v_token,'sha256'),'hex'),v_token,'CUSTOMER',p_customer_id);
+ return v_token;
+end $;
+
+create or replace function public.rotate_customer_qr(p_customer_id uuid)
+returns text language plpgsql security definer set search_path=public as $
+declare v_token text;
+begin
+ update public.qr_tokens set is_active=false where target_id=p_customer_id and token_type='CUSTOMER';
+ v_token:=replace(replace(replace(encode(gen_random_bytes(24),'base64'),'+','-'),'/','_'),'=','');
+ insert into public.qr_tokens(token_hash,public_token,token_type,target_id) values(encode(digest(v_token,'sha256'),'hex'),v_token,'CUSTOMER',p_customer_id);
+ return v_token;
+end $;
+
+create or replace function public.get_or_create_order_qr(p_order_id uuid)
+returns text language plpgsql security definer set search_path=public as $
+declare v_token text;
+begin
+ select public_token into v_token from public.qr_tokens where target_id=p_order_id and token_type='ORDER' and is_active limit 1;
+ if v_token is not null then return v_token; end if;
+ v_token:=replace(replace(replace(encode(gen_random_bytes(24),'base64'),'+','-'),'/','_'),'=','');
+ insert into public.qr_tokens(token_hash,public_token,token_type,target_id) values(encode(digest(v_token,'sha256'),'hex'),v_token,'ORDER',p_order_id);
+ return v_token;
+end $;
+
+do $ begin
+ if not exists(select 1 from pg_type where typname='public_customer_qr_result') then
+  create type public_customer_qr_result as (customer_name text, customer_code text);
+ end if;
+end $;
+
 -- Public QR functions are intentionally read-only. They return the minimum
 -- customer/order projection and never expose admin-only fields.
-create or replace function public.public_resolve_order_qr(p_token text)
-returns jsonb language plpgsql security definer set search_path=public as $$
-declare v qr_tokens%rowtype; r jsonb;
+create or replace function public.public_resolve_order_qr(p_public_token text)
+returns setof jsonb language plpgsql security definer set search_path=public as $
+declare v qr_tokens%rowtype;
 begin
-  select * into v from public.qr_tokens where public_token=p_token and token_type='ORDER' and is_active and (expires_at is null or expires_at>now());
-  if v.id is null then return jsonb_build_object('success',false,'error','QR_NOT_FOUND'); end if;
-  select jsonb_build_object('id',o.id,'displayNumber',o.display_number,'status',o.status,'notes',o.notes,'customerId',o.customer_id)
-  into r from public.orders o where o.id=v.target_id;
-  return jsonb_build_object('success',true,'data',r);
-end $$;
+ select * into v from public.qr_tokens where public_token=p_public_token and token_type='ORDER' and is_active and (expires_at is null or expires_at>now());
+ if v.id is null then return; end if;
+ return query
+ select jsonb_build_object('order_id',o.id,'order_number',o.display_number,'customer_name',c.name,'status',o.status,'created_at',o.created_at,
+   'items_count',(select count(*) from public.order_items oi where oi.order_id=o.id),
+   'items',(select coalesce(jsonb_agg(jsonb_build_object('name',oi.device_name_snapshot,'status',oi.status,'has_charger',oi.has_charger) order by oi.item_sequence),'[]'::jsonb) from public.order_items oi where oi.order_id=o.id))
+ from public.orders o join public.customers c on c.id=o.customer_id where o.id=v.target_id;
+end $;
 
-create or replace function public.public_resolve_customer_qr(p_token text)
-returns jsonb language plpgsql security definer set search_path=public as $$
-declare v qr_tokens%rowtype; r jsonb;
+create or replace function public.public_resolve_customer_qr(p_public_token text)
+returns setof public_customer_qr_result language plpgsql security definer set search_path=public as $
+declare v qr_tokens%rowtype;
 begin
-  select * into v from public.qr_tokens where public_token=p_token and token_type='CUSTOMER' and is_active and (expires_at is null or expires_at>now());
-  if v.id is null then return jsonb_build_object('success',false,'error','QR_NOT_FOUND'); end if;
-  select jsonb_build_object('id',c.id,'name',c.name,'phone',c.phone)
-  into r from public.customers c where c.id=v.target_id;
-  return jsonb_build_object('success',true,'data',r);
-end $$;
+ select * into v from public.qr_tokens where public_token=p_public_token and token_type='CUSTOMER' and is_active and (expires_at is null or expires_at>now());
+ if v.id is null then return; end if;
+ return query select c.name, left(replace(c.id::text,'-',''),4) from public.customers c where c.id=v.target_id;
+end $;
 
 -- Security boundary: clients can read through authenticated REST for the
 -- read-model tables; canonical mutations must use execute_sync_command/RPCs.
