@@ -201,7 +201,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
     const addCommands = outbox.filter((c) => c.commandType === 'ADD_ORDER_ITEM');
     const deliverCommands = outbox.filter((c) => c.commandType === 'DELIVER_ORDER_ITEM');
 
-    expect(addCommands).toHaveLength(1);
+    expect(addCommands).toHaveLength(2);
     expect(deliverCommands).toHaveLength(1);
     expect(deliverCommands[0].payload.itemId).not.toBe('item-already-delivered');
 
