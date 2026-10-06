@@ -492,7 +492,8 @@ BEGIN
                 version = public.orders.version + 1;
 
             SELECT version INTO v_current_version FROM public.orders WHERE id = v_entity_uuid;
-            PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', p_payload, v_current_version);
+            SELECT to_jsonb(o) INTO v_canonical_payload FROM public.orders o WHERE o.id = v_entity_uuid;
+            PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', v_canonical_payload, v_current_version);
             v_result := jsonb_build_object('orderId', v_entity_uuid, 'version', v_current_version);
 
 WHEN 'UPDATE_ORDER' THEN
