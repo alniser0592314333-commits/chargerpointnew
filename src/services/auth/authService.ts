@@ -377,7 +377,7 @@ class DefaultAuthService implements AuthService {
 
     // 4. Establish authoritative session
     const session: UserSession = {
-      userId: profileRes.admin_id || profileRes.id || bootstrapRes.data?.admin_id || authSession.user.id,
+      userId: profileRes.admin_id || bootstrapRes.data?.admin_id || authSession.user.id,
       email: cleanEmail,
       fullName: profileRes.full_name || cleanFullName,
       role: "SUPER_ADMIN",
