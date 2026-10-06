@@ -656,11 +656,22 @@ export class IndexedDBLocalDatabase {
       for (const outbox of this.memoryOutbox.values()) {
         if (!protectedStatuses.has(outbox.status)) continue;
         if (!outbox.aggregateType || !outbox.aggregateId || outbox.aggregateType === 'COMMAND') continue;
-        const tableMap = this.memoryFallback.get(outbox.aggregateType);
+        const tableAliases: Record<string, string> = {
+          business_days: 'businessDays',
+          device_types: 'deviceTypes',
+          order_items: 'orderItems',
+          financial_ledger: 'financialLedger',
+          payment_allocations: 'paymentAllocations',
+          order_number_reservations: 'orderNumberReservations',
+          goal_requests: 'goalRequests',
+          qr_tokens: 'qrTokens',
+        };
+        const localTable = tableAliases[outbox.aggregateType] || outbox.aggregateType;
+        const tableMap = this.memoryFallback.get(localTable);
         const row = tableMap?.get(outbox.aggregateId);
         if (row !== undefined) {
           preservedRows.push({
-            table: outbox.aggregateType,
+            table: localTable,
             id: outbox.aggregateId,
             item: cloneForRollback(row),
           });
