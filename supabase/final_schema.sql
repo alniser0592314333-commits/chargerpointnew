@@ -448,9 +448,9 @@ as $$
 declare v_payload jsonb; v_id uuid; v_version integer; v_action text;
 begin
   if tg_op='DELETE' then
-    v_payload:=to_jsonb(old); v_id:=old.id; v_version:=coalesce((old.version)::integer,null); v_action:='DELETE';
+    v_payload:=to_jsonb(old); v_id:=old.id; v_version:=nullif(v_payload->>'version','')::integer; v_action:='DELETE';
   else
-    v_payload:=to_jsonb(new); v_id:=new.id; v_version:=case when to_jsonb(new) ? 'version' then (new.version)::integer else null end; v_action:=case when tg_op='INSERT' then 'INSERT' else 'UPDATE' end;
+    v_payload:=to_jsonb(new); v_id:=new.id; v_version:=nullif(v_payload->>'version','')::integer; v_action:=case when tg_op='INSERT' then 'INSERT' else 'UPDATE' end;
   end if;
   perform public.record_canonical_change(tg_table_name,v_id,v_action,v_payload,v_version);
   return case when tg_op='DELETE' then old else new end;
@@ -479,6 +479,8 @@ language plpgsql security definer set search_path=public
 as $$
 declare
   v_actor uuid:=public.current_admin_id();
+  v_role text;
+  v_required_permission text;
   v_customer uuid;
   v_order uuid;
   v_item uuid;
@@ -499,6 +501,46 @@ declare
 begin
   if v_actor is null then
     raise exception 'Authentication required' using errcode='P0001';
+  end if;
+
+  select role into v_role from public.admins where id=v_actor;
+
+  v_required_permission:=case p_command_type
+    when 'OPEN_DAY' then 'settings:manage'
+    when 'CLOSE_DAY' then 'settings:manage'
+    when 'CREATE_CUSTOMER' then 'customers:create'
+    when 'UPDATE_CUSTOMER' then 'customers:edit'
+    when 'CREATE_DEVICE_TYPE' then 'devices:manage'
+    when 'UPDATE_DEVICE_TYPE' then 'devices:manage'
+    when 'DELETE_DEVICE_TYPE' then 'devices:manage'
+    when 'CREATE_ORDER' then 'orders:create'
+    when 'UPDATE_ORDER' then 'orders:edit'
+    when 'CANCEL_ORDER' then 'orders:cancel'
+    when 'ADD_ORDER_ITEM' then 'orders:edit'
+    when 'DELIVER_ORDER_ITEM' then 'orders:deliver'
+    when 'CANCEL_ORDER_ITEM' then 'orders:cancel'
+    when 'CREATE_PAYMENT','POST_PAYMENT' then 'finance:create-payment'
+    when 'CREATE_CUSTOMER_CREDIT','CONSUME_CUSTOMER_CREDIT' then 'finance:credit-adjustment'
+    when 'CREATE_REFUND' then 'finance:refund'
+    when 'CREATE_GOAL','UPDATE_GOAL_CONFIG','UPDATE_GOAL_PROGRESS' then 'goals:manage'
+    when 'RECORD_GOAL_REQUEST' then 'goals:request'
+    when 'APPROVE_GOAL_REQUEST','REJECT_GOAL_REQUEST' then 'goals:approve'
+    else null
+  end;
+
+  if coalesce(v_role,'') <> 'SUPER_ADMIN'
+     and v_required_permission is not null
+     and not exists (
+       select 1 from unnest(coalesce((select permissions from public.admins where id=v_actor),'{}'::text[])) p
+       where p=v_required_permission
+     ) then
+    raise exception 'Forbidden: missing permission %',v_required_permission using errcode='P4003';
+  end if;
+
+  if p_payload ? 'bin' and nullif(p_payload->>'bin','') is not null then
+    if public.verify_admin_bin(p_payload->>'bin') is not true then
+      raise exception 'Invalid BIN' using errcode='P0003';
+    end if;
   end if;
 
   if exists(select 1 from public.processed_commands where command_id=p_command_id) then
@@ -741,14 +783,14 @@ begin
     when 'CREATE_CUSTOMER_CREDIT' then
       v_customer:=(p_payload->>'customerId')::uuid; v_amount:=(p_payload->>'amountMinor')::bigint;
       if v_amount<=0 then raise exception 'Invalid credit amount' using errcode='P0003'; end if;
-      insert into public.financial_ledger(event_type,amount_minor,customer_id,actor_admin_id,reference_id,metadata)
-      values('CREDIT_ADJUSTMENT',v_amount,v_customer,v_actor,p_command_id,coalesce(p_payload->'metadata','{}'::jsonb));
+      insert into public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,metadata)
+      values(p_command_id,'CREDIT_ADJUSTMENT',v_amount,v_customer,v_actor,p_command_id,coalesce(p_payload->'metadata','{}'::jsonb));
       v_result:=jsonb_build_object('ledgerId',p_command_id);
 
     when 'CONSUME_CUSTOMER_CREDIT' then
       v_customer:=(p_payload->>'customerId')::uuid; v_amount:=(p_payload->>'amountMinor')::bigint;
-      insert into public.financial_ledger(event_type,amount_minor,customer_id,order_id,actor_admin_id,reference_id)
-      values('CREDIT_USED',-v_amount,(p_payload->>'customerId')::uuid,(p_payload->>'orderId')::uuid,v_actor,p_command_id);
+      insert into public.financial_ledger(id,event_type,amount_minor,customer_id,order_id,actor_admin_id,reference_id)
+      values(p_command_id,'CREDIT_USED',-v_amount,(p_payload->>'customerId')::uuid,(p_payload->>'orderId')::uuid,v_actor,p_command_id);
       v_result:=jsonb_build_object('ledgerId',p_command_id);
 
     when 'CREATE_REFUND' then
@@ -756,8 +798,8 @@ begin
       if not exists(select 1 from public.financial_ledger where id=(p_payload->>'referenceEventId')::uuid and customer_id=v_customer) then
         raise exception 'Referenced financial event not found' using errcode='P0006';
       end if;
-      insert into public.financial_ledger(event_type,amount_minor,customer_id,actor_admin_id,reference_id)
-      values('REFUND',-v_amount,v_customer,v_actor,(p_payload->>'referenceEventId')::uuid);
+      insert into public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id)
+      values(p_command_id,'REFUND',-v_amount,v_customer,v_actor,(p_payload->>'referenceEventId')::uuid);
       v_result:=jsonb_build_object('ledgerId',p_command_id);
 
     when 'CREATE_GOAL' then
