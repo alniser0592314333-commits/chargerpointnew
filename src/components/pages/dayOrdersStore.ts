@@ -874,7 +874,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // Replace the local operational snapshot atomically at the bootstrap level;
     // otherwise records deleted remotely could survive in IndexedDB and reappear
     // after a browser restart.
-    await localDb.clearOperationalData({ clearOutbox: false, clearSyncState: false });
+    // A remote bootstrap is a read-model reconciliation. Preserve any local
+    // aggregate that still has an outbox command so an online refresh cannot
+    // erase work that has not yet reached the server.
+    await localDb.clearOperationalData({
+      clearOutbox: false,
+      clearSyncState: false,
+      preservePendingMutations: true,
+    });
     customersMap.clear();
     devicesMap.clear();
     daysMap.clear();
