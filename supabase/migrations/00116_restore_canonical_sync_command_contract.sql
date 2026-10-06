@@ -396,7 +396,8 @@ BEGIN
                 version = version + 1
             WHERE id = v_entity_uuid;
 
-            PERFORM public.record_canonical_change('device_types', v_entity_uuid, 'UPDATE', jsonb_build_object('id', v_entity_uuid, 'status', 'RETIRED'), 1);
+            PERFORM public.record_canonical_change('device_types', v_entity_uuid, 'UPDATE', jsonb_build_object('id', v_entity_uuid, 'status', 'RETIRED'),
+                (SELECT version FROM public.device_types WHERE id = v_entity_uuid));
             v_result := jsonb_build_object('deviceTypeId', v_entity_uuid, 'status', 'RETIRED');
 
         -- ----------------------------------------------------
@@ -439,7 +440,8 @@ BEGIN
                 version = version + 1
             WHERE id = v_day_uuid;
 
-            PERFORM public.record_canonical_change('business_days', v_day_uuid, 'UPDATE', jsonb_build_object('id', v_day_uuid, 'status', 'CLOSED'), 1);
+            PERFORM public.record_canonical_change('business_days', v_day_uuid, 'UPDATE', jsonb_build_object('id', v_day_uuid, 'status', 'CLOSED'),
+                (SELECT version FROM public.business_days WHERE id = v_day_uuid));
             v_result := jsonb_build_object('businessDayId', v_day_uuid, 'status', 'CLOSED');
 
         -- ----------------------------------------------------
