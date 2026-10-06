@@ -1195,7 +1195,13 @@ export class FinalUseCases {
     });
   }
 
-  async createCustomerCredit(auth: AuthorizationContext, customerId: ID, amountMinor: number, bin: string): Promise<Result<FinancialLedgerEntity>> {
+  async createCustomerCredit(
+    auth: AuthorizationContext,
+    customerId: ID,
+    amountMinor: number,
+    bin: string,
+    commandId?: ID
+  ): Promise<Result<FinancialLedgerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('finance:credit-adjustment');
     await auth.verifyBin(bin);
