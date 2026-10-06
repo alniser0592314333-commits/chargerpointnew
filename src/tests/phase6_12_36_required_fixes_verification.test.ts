@@ -319,6 +319,14 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
     // A previously authenticated cached session remains usable when the remote
     // Supabase session cannot be hydrated; explicit logout still clears it.
     vi.spyOn(authService, "getSupabaseAuthSession").mockResolvedValue(null);
+    localStorage.setItem("app_auth_session", JSON.stringify({
+      userId: "admin_row_01",
+      role: "SUPER_ADMIN",
+      permissions: [],
+      authUserId: "auth_usr_01",
+      email: OWNER_EMAIL,
+      fullName: "Owner",
+    }));
 
     const session = await authService.getCurrentSession();
     expect(session?.userId).toBe("admin_row_01");
