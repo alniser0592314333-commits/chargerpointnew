@@ -1070,7 +1070,13 @@ export class SyncEngine {
               timestamp: new Date().toISOString(),
             });
           }
-          await localDb.saveOutbox(item);
+          if (item.status === 'accepted') {
+            // Server has committed the command successfully. Remove it from the active outbox;
+            // the authoritative pull below/next cycle reconciles the local read model.
+            await localDb.deleteOutbox(item.commandId);
+          } else {
+            await localDb.saveOutbox(item);
+          }
         } catch (err: any) {
           const errMsg = err?.message || 'Network error';
           history.state = 'FAILED';
