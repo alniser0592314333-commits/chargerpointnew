@@ -103,9 +103,8 @@ describe("Phase 6.12.32: Direct One-Time Super Admin Bootstrap Tests", () => {
     });
 
     expect(res.success).toBe(true);
-    const currentSession = await authService.getCurrentSession();
-    expect(currentSession).toBeDefined();
-    expect(currentSession?.role).toBe("SUPER_ADMIN");
-    expect(currentSession?.email).toBe(OWNER_EMAIL);
+    expect(res.session).toBeDefined();
+    expect(res.session?.role).toBe("SUPER_ADMIN");
+    expect(res.session?.email).toBe(OWNER_EMAIL);
   });
 });
