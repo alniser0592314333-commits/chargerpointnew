@@ -169,6 +169,13 @@ export class FinalUseCases {
     // must return the existing local aggregate, while reusing that commandId
     // with a different semantic payload must be rejected.
     const existingCommand = await this.deps.commandRepo.get(commandId);
+    if (!existingCommand) {
+      // Accepted commands are removed from the active outbox. If the caller
+      // retries the same id after that point, the durable local aggregate is
+      // the idempotent result and must be returned instead of recreated.
+      const existingOrder = await this.deps.orderRepo.findById(commandId);
+      if (existingOrder) return { success: true, data: existingOrder };
+    }
     if (existingCommand) {
       if (existingCommand.type !== 'CREATE_ORDER') {
         throw new IdempotencyConflictError('Command ID is already associated with a different operation');
