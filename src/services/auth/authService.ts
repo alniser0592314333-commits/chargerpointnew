@@ -827,6 +827,26 @@ class DefaultAuthService implements AuthService {
       }
     }
 
+    // Preserve a verified runtime session when localStorage is unavailable.
+    if (
+      inMemorySession &&
+      new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now() &&
+      serverProfile?.authenticated &&
+      serverProfile.is_admin
+    ) {
+      const session: UserSession = {
+        ...inMemorySession,
+        userId: serverProfile.admin_id || inMemorySession.userId,
+        email: serverProfile.email || inMemorySession.email,
+        fullName: serverProfile.full_name || serverProfile.username || inMemorySession.fullName,
+        role: (serverProfile.role as UserRole) || inMemorySession.role,
+        permissions: serverProfile.permissions || inMemorySession.permissions,
+        authUserId: serverProfile.auth_user_id || inMemorySession.authUserId,
+      };
+      inMemorySession = session;
+      return session;
+    }
+
     const storage = getLocalStorage();
     if (storage) {
       const stored = storage.getItem(SESSION_STORAGE_KEY);
