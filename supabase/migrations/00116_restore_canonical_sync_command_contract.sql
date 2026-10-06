@@ -568,6 +568,16 @@ WHEN 'UPDATE_ORDER' THEN
             SET status = 'charging', updated_at = NOW(), version = version + 1
             WHERE id = v_order_uuid AND status = 'delivered';
 
+            IF FOUND THEN
+                PERFORM public.record_canonical_change(
+                    'orders',
+                    v_order_uuid,
+                    'UPDATE',
+                    jsonb_build_object('id', v_order_uuid, 'status', 'charging'),
+                    (SELECT version FROM public.orders WHERE id = v_order_uuid)
+                );
+            END IF;
+
             INSERT INTO public.order_items (
                 id, order_id, device_type_id, item_sequence,
                 operational_status, financial_status, payment_status,
