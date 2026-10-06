@@ -643,14 +643,21 @@ export class SyncEngine {
         await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
           for (const change of sortedChanges) {
             try {
-              if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
-              } else {
-                if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
-                  localDb.removeWithTx(tx, change.entityType, change.entityId);
-                } else {
-                  localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
-                }
+              const applied = this.onDeltaApplied
+                ? this.onDeltaApplied(change, tx) !== false
+                : (() => {
+                    if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+                      localDb.removeWithTx(tx, change.entityType, change.entityId);
+                    } else {
+                      localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
+                    }
+                    return true;
+                  })();
+              if (!applied) {
+                // A pending local mutation owns this entity. Do not advance the
+                // cursor past it; the next sync must replay this authoritative
+                // delta after the local command is accepted.
+                break;
               }
               pulledCount++;
             } catch (deltaErr) {
@@ -658,10 +665,17 @@ export class SyncEngine {
               throw deltaErr;
             }
           }
-          const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
+          const appliedChanges = sortedChanges.filter((change) => {
+            // The callback above already stopped at the first protected delta.
+            // Only advance through the contiguous prefix actually applied.
+            return true;
+          });
+          const maxSeq = appliedChanges.length > 0
+            ? appliedChanges[Math.min(pulledCount, appliedChanges.length) - 1]?.sequenceId
+            : syncState.lastAppliedChangeSequence;
           const updatedState = {
             ...syncState,
-            lastAppliedChangeSequence: maxSeq,
+            lastAppliedChangeSequence: maxSeq ?? syncState.lastAppliedChangeSequence,
             lastPulledAt: new Date().toISOString(),
           };
           localDb.setSyncStateWithTx(tx, updatedState);
@@ -1089,16 +1103,24 @@ export class SyncEngine {
         if (finalPull.changes.length > 0) {
           const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
           await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+            let appliedFinalCount = 0;
             for (const change of sortedFinalChanges) {
-              if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
-              } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
-                localDb.removeWithTx(tx, change.entityType, change.entityId);
-              } else {
-                localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
-              }
+              const applied = this.onDeltaApplied
+                ? this.onDeltaApplied(change, tx) !== false
+                : (() => {
+                    if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+                      localDb.removeWithTx(tx, change.entityType, change.entityId);
+                    } else {
+                      localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
+                    }
+                    return true;
+                  })();
+              if (!applied) break;
+              appliedFinalCount++;
             }
-            const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
+            const maxSeq = appliedFinalCount > 0
+              ? sortedFinalChanges[appliedFinalCount - 1].sequenceId
+              : finalCursor;
             localDb.setSyncStateWithTx(tx, {
               ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
               lastAppliedChangeSequence: Math.max(finalCursor, maxSeq),
