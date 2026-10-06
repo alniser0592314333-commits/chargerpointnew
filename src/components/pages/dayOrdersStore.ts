@@ -2116,7 +2116,6 @@ export const repoContext: RepositoryContext = {
           customerId: c.id,
           name: c.name,
           phone: c.phone,
-          address: c.address,
           isActive: c.isActive,
           debtLimitMinor: c.debtLimitMinor,
           chargerFeeExempt: c.chargerFeeExempt,
