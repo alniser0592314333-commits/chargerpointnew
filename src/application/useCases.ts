@@ -872,7 +872,7 @@ undefined
     const mutationKey = `order:${order.id}`;
     
     const patch = {
-      status: 'cancelled',
+      status: 'cancelled' as const,
       cancelledAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: existingItem.version + 1,
