@@ -1,6 +1,11 @@
 -- Migration 00116: restore complete canonical sync command contract and enforce server-side BIN.
 -- Intentionally not applied to production by this branch.
 
+-- Remove every legacy canonical overload introduced by earlier migrations.
+-- PostgreSQL treats TEXT and VARCHAR as distinct function signatures, so both
+-- must be dropped before installing the single authoritative contract.
+DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,VARCHAR(100),JSONB,TEXT,TEXT,TEXT);
+DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,VARCHAR(100),JSONB,TEXT,TEXT,UUID);
 DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,TEXT,JSONB,TEXT,TEXT,TEXT);
 DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,TEXT,JSONB,TEXT,TEXT,UUID);
 
@@ -948,7 +953,10 @@ BEGIN
 END;
 $$;
 -- Canonical execute_sync_command wrapper.
+-- Remove both historical TEXT/VARCHAR wrapper overloads so PostgREST sees
+-- exactly one execute_sync_command contract.
 DROP FUNCTION IF EXISTS public.execute_sync_command(TEXT,VARCHAR,VARCHAR,TEXT,JSONB,INTEGER);
+DROP FUNCTION IF EXISTS public.execute_sync_command(TEXT,VARCHAR(100),VARCHAR(100),TEXT,JSONB,INTEGER);
 CREATE OR REPLACE FUNCTION public.execute_sync_command(
     p_command_id UUID,
     p_command_type TEXT,
