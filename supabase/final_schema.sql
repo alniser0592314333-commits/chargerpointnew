@@ -688,7 +688,7 @@ begin
       perform pg_advisory_xact_lock(hashtext((p_payload->>'dayId')::text));
       insert into public.orders(id,day_id,customer_id,display_number,status,customer_balance_snapshot_minor,notes,charging_at)
       values(v_order,(p_payload->>'dayId')::uuid,v_customer,
-        greatest(1,coalesce((p_payload->>'displayNumber')::integer,(select coalesce(max(display_number),0)+1 from public.orders where day_id=(p_payload->>'dayId')::uuid))),
+        (select coalesce(max(display_number),0)+1 from public.orders where day_id=(p_payload->>'dayId')::uuid),
         coalesce(p_payload->>'status','pending'),coalesce((p_payload->>'customerBalanceSnapshotMinor')::bigint,0),
         p_payload->>'notes',now())
       on conflict(id) do nothing;
