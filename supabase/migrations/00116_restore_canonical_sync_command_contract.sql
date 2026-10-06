@@ -712,7 +712,7 @@ WHEN 'UPDATE_ORDER' THEN
                     'charger_fee_snapshot_minor', v_authoritative_charger_fee,
                     'final_charge_snapshot_minor', v_authoritative_final_charge,
                     'financially_recognized_at', NOW()
-                ), 1);
+                ), (SELECT version FROM public.order_items WHERE id = v_item_uuid));
 
                 PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', jsonb_build_object(
                     'event_type', 'CHARGE',
@@ -795,7 +795,7 @@ WHEN 'UPDATE_ORDER' THEN
                 PERFORM public.record_canonical_change('order_items', v_item_uuid, 'UPDATE', jsonb_build_object(
                     'operational_status', 'CANCELLED',
                     'status', 'cancelled'
-                ), 1);
+                ), (SELECT version FROM public.order_items WHERE id = v_item_uuid));
 
                 v_result := jsonb_build_object('orderItemId', v_item_uuid, 'status', 'CANCELLED', 'reversalCreated', FALSE);
             ELSIF v_rec_item.financial_status = 'RECOGNIZED' THEN
@@ -844,7 +844,7 @@ WHEN 'UPDATE_ORDER' THEN
                     'operational_status', 'CANCELLED',
                     'financial_status', 'REVERSED',
                     'status', 'cancelled'
-                ), 1);
+                ), (SELECT version FROM public.order_items WHERE id = v_item_uuid));
 
                 PERFORM public.record_canonical_change('financial_ledger', v_entity_uuid, 'INSERT', jsonb_build_object(
                     'event_type', 'REVERSAL',
@@ -956,7 +956,8 @@ WHEN 'UPDATE_ORDER' THEN
                         UPDATE public.order_items SET payment_status = 'PAID', updated_at = NOW(), version = version + 1
                         WHERE id = v_rec_item.id;
 
-                        PERFORM public.record_canonical_change('order_items', v_rec_item.id, 'UPDATE', jsonb_build_object('id', v_rec_item.id, 'payment_status', 'PAID'), 1);
+                        PERFORM public.record_canonical_change('order_items', v_rec_item.id, 'UPDATE', jsonb_build_object('id', v_rec_item.id, 'payment_status', 'PAID'),
+                            (SELECT version FROM public.order_items WHERE id = v_rec_item.id));
                     ELSE
                         v_alloc_amount := v_unallocated_amount;
                         v_unallocated_amount := 0;
@@ -964,7 +965,8 @@ WHEN 'UPDATE_ORDER' THEN
                         UPDATE public.order_items SET payment_status = 'PARTIALLY_PAID', updated_at = NOW(), version = version + 1
                         WHERE id = v_rec_item.id;
 
-                        PERFORM public.record_canonical_change('order_items', v_rec_item.id, 'UPDATE', jsonb_build_object('id', v_rec_item.id, 'payment_status', 'PARTIALLY_PAID'), 1);
+                        PERFORM public.record_canonical_change('order_items', v_rec_item.id, 'UPDATE', jsonb_build_object('id', v_rec_item.id, 'payment_status', 'PARTIALLY_PAID'),
+                            (SELECT version FROM public.order_items WHERE id = v_rec_item.id));
                     END IF;
 
                     INSERT INTO public.payment_allocations (
