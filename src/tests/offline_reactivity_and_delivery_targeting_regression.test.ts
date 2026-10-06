@@ -212,10 +212,10 @@ describe('Offline reactivity and delivery targeting regression', () => {
 
     expect(addCommands).toHaveLength(2);
     expect(deliverCommands).toHaveLength(1);
-    expect(deliverCommands[0].payload.itemId).not.toBe('item-already-delivered');
+    expect(deliverCommands[0].payload as any).itemId).not.toBe('item-already-delivered');
 
-    const newItemId = addCommands[0].payload.id as string;
-    expect(deliverCommands[0].payload.itemId).toBe(newItemId);
+    const newItemId = addCommands[0].payload as any).id as string;
+    expect(deliverCommands[0].payload as any).itemId).toBe(newItemId);
     const persistedNewItem = await localDb.get<any>('orderItems', newItemId);
     expect(persistedNewItem?.id).toBe(newItemId);
     expect(persistedNewItem?.orderId).toBe('order-delivered-regression');
@@ -257,12 +257,12 @@ describe('Offline reactivity and delivery targeting regression', () => {
       (command) => command.commandId === commandId && command.commandType === 'CREATE_ORDER'
     );
     const addCommands = outbox.filter(
-      (command) => command.commandType === 'ADD_ORDER_ITEM' && command.payload.orderId === orderId
+      (command) => command.commandType === 'ADD_ORDER_ITEM' && command.payload as any).orderId === orderId
     );
 
     expect(createCommand).toBeTruthy();
     expect(addCommands).toHaveLength(2);
-    expect(addCommands.every((command) => command.payload.dependencyCommandId === commandId)).toBe(true);
+    expect(addCommands.every((command) => command.payload as any).dependencyCommandId === commandId)).toBe(true);
   });
   it('persists delivery state in the local read model atomically with its outbox command', async () => {
     await seedBaseOrder();
@@ -293,7 +293,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
     expect(persisted?.financialStatus).toBe('RECOGNIZED');
 
     const command = (await localDb.listOutbox()).find(
-      (c) => c.commandType === 'DELIVER_ORDER_ITEM' && c.payload.itemId === itemId
+      (c) => c.commandType === 'DELIVER_ORDER_ITEM' && c.payload as any).itemId === itemId
     );
     expect(command).toBeTruthy();
     expect(command?.expectedVersion).toBe(1);
@@ -329,8 +329,8 @@ describe('Offline reactivity and delivery targeting regression', () => {
     expect((await localDb.get<any>('orderItems', itemId))?.status).toBe('cancelled');
 
     const outbox = await localDb.listOutbox();
-    expect(outbox.some((c) => c.commandType === 'UPDATE_ORDER' && c.payload.orderId === orderId)).toBe(true);
-    expect(outbox.some((c) => c.commandType === 'CANCEL_ORDER_ITEM' && c.payload.itemId === itemId)).toBe(true);
+    expect(outbox.some((c) => c.commandType === 'UPDATE_ORDER' && c.payload as any).orderId === orderId)).toBe(true);
+    expect(outbox.some((c) => c.commandType === 'CANCEL_ORDER_ITEM' && c.payload as any).itemId === itemId)).toBe(true);
   });
 
 });
