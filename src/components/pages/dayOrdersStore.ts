@@ -4600,6 +4600,18 @@ export const topUpCustomerBalance = async (
   const commandId = idempotencyKey || crypto.randomUUID();
 
   if (offline) {
+    // A supplied BIN is an authorization attempt, not a value we are allowed
+    // to blindly queue while offline. Without an authoritative verifier the
+    // protected operation must fail closed. The caller can retry without a BIN
+    // and authorize the pending command later from Sync Center.
+    if (bin.trim()) {
+      return {
+        success: false,
+        newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id),
+        error: 'لا يمكن التحقق من رمز الأمان بدون اتصال. نفّذ المزامنة ثم أدخل BIN.',
+      };
+    }
+
     try {
       const queued = await phase5UseCases.queueCustomerCreditAwaitingBin(
         getAuthorizedAdminContext(), cust.id, amountMinor, commandId
