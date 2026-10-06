@@ -952,7 +952,23 @@ export class FinalUseCases {
     const updatedAt=new Date().toISOString(); const patch:Partial<OrderItemEntity>={status:'cancelled',updatedAt,version:item.version+1};
     const updatedItem={...item,...patch} as OrderItemEntity; const commandId=crypto.randomUUID();
     if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
-    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.itemRepo.save(updatedItem);ctx.commandRepo.record(commandId,'CANCEL_ORDER_ITEM',{id:commandId,aggregateId:order.id,itemId,orderItemId:itemId,orderId:order.id},item.version);});
+    await this.deps.transactionManager.runInTransaction((ctx)=>{
+      ctx.itemRepo.save(updatedItem);
+      if (item.financialStatus === 'RECOGNIZED' || item.status === 'delivered') {
+        ctx.ledgerRepo.append({
+          id: crypto.randomUUID(),
+          eventType: 'REVERSAL',
+          amountMinor: Math.abs(item.totalPriceMinor),
+          customerId: order.customerId,
+          orderId: order.id,
+          orderItemId: item.id,
+          actorAdminId: actor.id,
+          referenceId: commandId,
+          createdAt: updatedAt,
+        });
+      }
+      ctx.commandRepo.record(commandId,'CANCEL_ORDER_ITEM',{id:commandId,aggregateId:order.id,itemId,orderItemId:itemId,orderId:order.id},item.version);
+    });
     try{await this.createOverlay(commandId,`order:${order.id}`,'order_items',item.id,'PATCH',patch as Record<string,unknown>);}catch(e){console.warn('Cancellation projection failed; local item is authoritative.',e);}
     return {success:true,data:updatedItem};
   }
