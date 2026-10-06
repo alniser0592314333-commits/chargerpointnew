@@ -31,7 +31,6 @@ import {
   rpcRotateCustomerQr,
   rpcGetOrCreateOrderQr,
   rpcVerifyAdminBin,
-  rpcExecuteCustomerTopUpAtomic,
   getSupabaseStatus,
   invokeSupabaseRestGet,
   invokeSupabaseRestUpsert,
@@ -4247,62 +4246,6 @@ export const topUpCustomerBalance = async (
     }
   }
 
-  // If Supabase is configured and not running under a test-supplied runtimeBinVerifier, execute atomic server-side verification and mutation (No TOCTOU)
-  if (getSupabaseStatus().isConfigured && !runtimeBinVerifier) {
-    const serverCommandId = isUUID(commandId) ? commandId : crypto.randomUUID();
-    const atomicServerRes = await rpcExecuteCustomerTopUpAtomic({
-      commandId: serverCommandId,
-      customerId: cust.id,
-      amountMinor,
-      bin,
-      note: note?.trim(),
-    });
-
-    if (!atomicServerRes.success) {
-      return {
-        success: false,
-        newBalanceMinor: 0,
-        error: atomicServerRes.error || 'رمز التحقق (BIN) غير صحيح أو تم رفض العملية على الخادم',
-      };
-    }
-
-    // Atomic server mutation succeeded: sync local state with server authoritative result
-    const txId = atomicServerRes.transactionId || crypto.randomUUID();
-    const prevBalance = await repoContext.customerRepo.getBalance(cust.id);
-    const newBal = atomicServerRes.newBalanceMinor ?? (prevBalance + amountMinor);
-    const ledgerRecord: FinancialLedgerEntity = {
-      id: txId,
-      customerId: cust.id,
-      amountMinor,
-      eventType: 'CREDIT_ADJUSTMENT',
-      actorAdminId,
-      createdAt: new Date().toISOString(),
-      metadata: { note: note?.trim(), commandId },
-    };
-    ledgerList.push(ledgerRecord);
-    await initDbIfNeeded();
-    await localDb.set('financialLedger', txId, ledgerRecord);
-
-    const paymentRecord: PaymentEntity = {
-      id: txId,
-      customerId: cust.id,
-      amountMinor,
-      paymentMethod: 'CASH',
-      reference: note?.trim() || 'شحن رصيد نقدي',
-      actorAdminId,
-      commandId,
-      createdAt: ledgerRecord.createdAt,
-    };
-    paymentsMap.set(txId, paymentRecord);
-    await localDb.set('payments', txId, paymentRecord);
-
-    return {
-      success: true,
-      transactionId: txId,
-      newBalanceMinor: newBal,
-    };
-  }
-
   // Use the authenticated actor and server-backed permissions for offline/local projection.
   const authContext = getAuthorizedAdminContext(bin);
 
@@ -4315,7 +4258,8 @@ export const topUpCustomerBalance = async (
       authContext,
       cust.id,
       amountMinor,
-      bin
+      bin,
+      commandId
     );
 
     if (!result.success) {
@@ -4325,14 +4269,6 @@ export const topUpCustomerBalance = async (
         error: presentError(('error' in result ? result.error : undefined) || 'فشلت عملية شحن الرصيد'),
       };
     }
-
-    // Explicitly register authoritative command into outbox path
-    await repoContext.commandRepo.record(commandId, 'CREATE_CUSTOMER_CREDIT', {
-      customerId: cust.id,
-      amountMinor,
-      note: note?.trim(),
-      transactionId: result.data?.id,
-    });
 
     // If note or transaction is recorded, update metadata and payments
     if (result.data?.id) {
