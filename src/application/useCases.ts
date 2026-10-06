@@ -132,7 +132,23 @@ export class FinalUseCases {
     operation: 'CREATE' | 'PATCH' | 'DELETE',
     patchOrPayload: Record<string, unknown> | null
   ) {
-    if (!this.deps.overlayRepo) return;
+    if (!this.deps.overlayRepo) {
+      const existing = await localDb.listOverlays();
+      const sequence = existing.reduce((max, row) => Math.max(max, row.sequence || 0), 0) + 1;
+      const overlay: OptimisticOverlayRecord = {
+        commandId,
+        mutationKey,
+        entityType,
+        entityId,
+        operation,
+        ...(operation === 'CREATE' ? { entityPayload: patchOrPayload } : { patch: patchOrPayload }),
+        sequence,
+        createdAt: new Date().toISOString(),
+        status: 'PENDING',
+      };
+      await localDb.saveOverlay(overlay);
+      return;
+    }
     const sequence = await this.deps.overlayRepo.getNextSequence();
     
     const overlay: OptimisticOverlayRecord = {
