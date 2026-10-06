@@ -1628,11 +1628,12 @@ export class FinalUseCases {
     if (!customer) throw new NotFoundError('Customer not found');
     DomainInvariants.assertCustomerActive(customer);
 
-    const event: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
+    const event: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> & { note?: string } = {
       eventType: 'CREDIT_ADJUSTMENT',
       amountMinor,
       customerId,
       actorAdminId: actor.id,
+      ...(note ? { note } : {}),
     };
 
     const txId = commandId || crypto.randomUUID();
