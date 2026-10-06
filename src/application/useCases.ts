@@ -1238,7 +1238,7 @@ export class FinalUseCases {
       actorAdminId: actor.id,
     };
 
-    const txId = crypto.randomUUID();
+    const txId = commandId || crypto.randomUUID();
     const mutationKey = `customer:${customerId}`;
     const createdAt = new Date().toISOString();
 
@@ -1589,7 +1589,8 @@ export class FinalUseCases {
 
     if (!this.deps.goalRepo) throw new Error('Goal repository not configured');
     const goalRecord = await this.deps.goalRepo.findById(goalId);
-    if (!goal) throw new NotFoundError('Goal not found');
+    if (!goalRecord) throw new NotFoundError('Goal not found');
+    const goal = { ...goalRecord };
 
     DomainInvariants.assertGoalEditable(goal);
 
@@ -1719,7 +1720,8 @@ export class FinalUseCases {
     }
 
     const reqRecord = await this.deps.goalRequestRepo.findById(requestId);
-    if (!req) throw new NotFoundError('Goal request not found');
+    if (!reqRecord) throw new NotFoundError('Goal request not found');
+    const req = { ...reqRecord };
     if (req.status !== 'PENDING') throw new BusinessRuleViolation(`Request is already ${req.status}`);
 
     const existingActive = await this.deps.goalRepo.findActiveByCustomerId(req.customerId);
@@ -1808,7 +1810,7 @@ export class FinalUseCases {
     if (!repos.goalRepo) return { success: true as const, data: { hasActiveGoal: false } };
 
     const goalRecord = await repos.goalRepo.findActiveByCustomerId(customerId);
-    if (!goal || goal.status !== 'ACTIVE') {
+    if (!goalRecord || goalRecord.status !== 'ACTIVE') {
       return { success: true as const, data: { hasActiveGoal: false } };
     }
 
