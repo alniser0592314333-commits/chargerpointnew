@@ -3446,7 +3446,9 @@ export const deliverSingleOrderItem = async (
       return { success: true, item: queued.data };
     }
     await auth.verifyBin(bin);
-    const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin);
+    const commandId = crypto.randomUUID();
+    globalSyncTransport.authorizeCommand(commandId, bin);
+    const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin, commandId);
     if (result.success) {
       const item = result.data;
       notifyStore('all');
@@ -3482,7 +3484,9 @@ export const deliverEntireOrder = async (
           await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
         } else {
           await auth.verifyBin(bin);
-          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+          const commandId = crypto.randomUUID();
+          globalSyncTransport.authorizeCommand(commandId, bin);
+          await phase5UseCases.deliverOrderItem(auth, item.id, bin, commandId);
         }
         count++;
       }
@@ -3619,7 +3623,9 @@ export const deliverAllOrdersInDay = async (
             await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
           } else {
             await auth.verifyBin(bin);
-            await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+            const commandId = crypto.randomUUID();
+            globalSyncTransport.authorizeCommand(commandId, bin);
+            await phase5UseCases.deliverOrderItem(auth, item.id, bin, commandId);
           }
           deliveredInThisOrder = true;
         }
