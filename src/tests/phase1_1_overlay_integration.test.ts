@@ -104,7 +104,7 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
 
     const result = await useCases.addOrderItem(auth, order.data.id, 'dev-1', false, 'cmd-item-1');
     expect(result.success).toBe(true);
-    expect(overlays.find(o => o.commandId === 'cmd-item-1')?.mutationKey).toBe('order:cmd-item-1');
+    expect(overlays.find(o => o.commandId === 'cmd-item-1')?.mutationKey).toBe('order:cmd-ord-1');
   });
 
   it('DELIVER_ORDER_ITEM is operationally optimistic but financially unrecognized until sync', async () => {
