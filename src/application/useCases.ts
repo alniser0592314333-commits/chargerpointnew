@@ -696,7 +696,19 @@ undefined
         authorizationState: 'AUTHORIZED',
       },item.version);
     });
-    try { await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>); } catch(e) { console.warn('Delivery pending projection failed; local item is authoritative.',e); }
+    try {
+      await this.createOverlay(commandId, `order:${order.id}`, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
+      await this.createOverlay(`${commandId}:ledger`, `order:${order.id}`, 'ledger', commandId, 'CREATE', {
+        id: commandId,
+        eventType: 'CHARGE',
+        amountMinor: -item.totalPriceMinor,
+        customerId: order.customerId,
+        orderId: order.id,
+        orderItemId: item.id,
+        createdAt: deliveredAt,
+        metadata: { pendingLocal: true },
+      });
+    } catch(e) { console.warn('Delivery pending projection failed; local item is authoritative.',e); }
     return {success:true,data:{...item,...patch} as OrderItemEntity};
   }
 
