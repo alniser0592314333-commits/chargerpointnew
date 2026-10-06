@@ -165,6 +165,42 @@ export class FinalUseCases {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:create');
 
+    // Local idempotency: retrying the same CREATE_ORDER command must return the
+    // already-created local aggregate instead of attempting a second optimistic
+    // write (which incorrectly trips the repository version check). A reused
+    // command ID with a different semantic payload is a real idempotency conflict.
+    const existingCommand = await this.deps.commandRepo.get(commandId);
+    if (existingCommand) {
+      if (existingCommand.type !== 'CREATE_ORDER') {
+        throw new IdempotencyConflictError('Command ID is already associated with a different operation');
+      }
+
+      const existingPayload = (existingCommand.payload || {}) as Record<string, unknown>;
+      const requestedPayload = (typeof payloadHash === 'object' && payloadHash !== null)
+        ? (payloadHash as Record<string, unknown>)
+        : {};
+      const existingSemantic = {
+        dayId: existingPayload.dayId,
+        customerId: existingPayload.customerId,
+        notes: existingPayload.notes ?? undefined,
+      };
+      const requestedSemantic = {
+        dayId: requestedPayload.dayId ?? dayId,
+        customerId: requestedPayload.customerId ?? customerId,
+        notes: requestedPayload.notes ?? notes,
+      };
+
+      if (JSON.stringify(existingSemantic) !== JSON.stringify(requestedSemantic)) {
+        throw new IdempotencyConflictError();
+      }
+
+      const existingOrder = await this.deps.orderRepo.findById(commandId);
+      if (existingOrder) {
+        return { success: true, data: existingOrder };
+      }
+      throw new IdempotencyConflictError('CREATE_ORDER command exists but its local aggregate is missing');
+    }
+
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
     if (!customer.isActive) throw new InactiveCustomerError();
