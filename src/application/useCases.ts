@@ -481,7 +481,7 @@ export class FinalUseCases {
         orderId: order.id,
         deviceTypeId: requested.deviceTypeId,
         itemSequence: index + 1,
-        status: initialStatus,
+        status: 'charging',
         deviceNameSnapshot: deviceType.name,
         deviceIconSnapshot: deviceType.icon,
         basePriceSnapshotMinor: deviceType.basePriceMinor,
