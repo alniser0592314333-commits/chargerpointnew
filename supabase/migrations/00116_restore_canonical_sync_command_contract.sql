@@ -142,9 +142,6 @@ BEGIN
     IF v_admin_role NOT IN ('SUPER_ADMIN', 'Super Admin') THEN
         -- Protected customer fields have their own permission boundary.
         IF p_command_type = 'UPDATE_CUSTOMER'
-           AND (p_payload ? 'debtLimitMinor' OR p_payload ? 'debt_limit_minor') THEN
-            v_required_perm := 'customers:debt-limit';
-        ELSIF p_command_type = 'UPDATE_CUSTOMER'
            AND (p_payload ? 'chargerFeeExempt' OR p_payload ? 'charger_fee_exempt') THEN
             v_required_perm := 'customers:charger-exemption';
         ELSE
@@ -203,7 +200,7 @@ BEGIN
 
     IF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND')
        OR (p_command_type = 'UPDATE_CUSTOMER'
-           AND ((p_payload ? 'debtLimitMinor') OR (p_payload ? 'debt_limit_minor') OR (p_payload ? 'chargerFeeExempt') OR (p_payload ? 'charger_fee_exempt'))) THEN
+           AND ((p_payload ? 'chargerFeeExempt') OR (p_payload ? 'charger_fee_exempt'))) THEN
         IF v_bin IS NULL THEN
             RAISE EXCEPTION 'Authorization required: BIN is required for %', p_command_type USING ERRCODE = 'P4004';
         END IF;
