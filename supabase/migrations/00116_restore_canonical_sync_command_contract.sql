@@ -662,13 +662,12 @@ WHEN 'UPDATE_ORDER' THEN
                     NULL;
                 END IF;
 
-                IF v_change_seq = 1 THEN
-                    RETURN jsonb_build_object('success', TRUE, 'result', v_result);
-                END IF;
             END IF;
 
-            SELECT base_price_minor, charger_fee_applicable
-            INTO v_base_price, v_charger_applicable
+            -- Only a missing financial effect enters the recognition path.
+            IF COALESCE(v_change_seq, 0) <> 1 THEN
+                SELECT base_price_minor, charger_fee_applicable
+                INTO v_base_price, v_charger_applicable
                 FROM public.device_types
                 WHERE id = v_rec_item.device_type_id;
 
@@ -775,6 +774,7 @@ WHEN 'UPDATE_ORDER' THEN
                     'finalChargeMinor', v_authoritative_final_charge,
                     'ledgerEntryId', v_ledger_uuid
                 );
+            END IF;
 
         WHEN 'CANCEL_ORDER' THEN
             v_order_uuid := (COALESCE(p_payload->>'orderId', p_payload->>'id'))::UUID;
