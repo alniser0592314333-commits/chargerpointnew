@@ -1,5 +1,5 @@
 /**
- * Focused Regression Test Suite for Migration 00111 Canonical BIN Contract
+ * Focused Regression Test Suite for Current canonical BIN command contract
  */
 
 import { describe, it, expect } from 'vitest';
@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Migration 00111 Canonical BIN Contract & Security Verification', () => {
-  const migrationPath = path.resolve(process.cwd(), 'supabase/migrations/00111_fix_noncanonical_adminbin.sql');
+  const migrationPath = path.resolve(process.cwd(), 'supabase/migrations/00116_restore_canonical_sync_command_contract.sql');
   
   it('00111 migration file exists and is well-formed', () => {
     expect(fs.existsSync(migrationPath)).toBe(true);
@@ -34,8 +34,10 @@ describe('Migration 00111 Canonical BIN Contract & Security Verification', () =>
     expect(content).not.toContain('p_bin TEXT');
   });
 
-  it('Migration history includes 00111', () => {
+  it('Current command contract keeps BIN canonical and actor identity separate', () => {
     const content = fs.readFileSync(migrationPath, 'utf8');
-    expect(content).toContain("VALUES ('00111', 'fix_noncanonical_adminbin')");
+    expect(content).toContain("WHEN 'DELIVER_ORDER_ITEM'");
+    expect(content).toContain("WHEN 'CREATE_CUSTOMER_CREDIT'");
+    expect(content).toContain("p_actor_id UUID DEFAULT NULL");
   });
 });
