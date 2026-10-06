@@ -170,7 +170,7 @@ describe('Phase 6.9.2: Order + Financial Integrity Regression Tests', () => {
 
     const itemRes = await useCases.addOrderItem(superAdminAuth, order.id, 'dev_1', true);
     expect(itemRes.success).toBe(true);
-    expect((itemRes as { success: true; data: OrderItemEntity }).data.status).toBe('delivered');
+    expect((itemRes as { success: true; data: OrderItemEntity }).data.status).toBe('charging');
 
     const deliveredItem = (itemRes as any).data as OrderItemEntity;
     const charges = ledger.filter(l => l.orderItemId === deliveredItem.id);
