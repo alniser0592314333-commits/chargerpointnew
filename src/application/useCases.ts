@@ -816,7 +816,7 @@ export class FinalUseCases {
     const updatedAt=new Date().toISOString(); const patch:Partial<OrderEntity>={notes:notes?.trim()||undefined,updatedAt,version:existing.version+1};
     const updatedOrder={...existing,...patch} as OrderEntity; const commandId=crypto.randomUUID();
     if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orders',id:existing.id,existed:true,data:existing}]);
-    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.orderRepo.save(updatedOrder);ctx.commandRepo.record(commandId,'UPDATE_ORDER',{id:orderId,aggregateId:orderId,orderId,notes:patch.notes,...(parentCreate?.type === 'CREATE_ORDER' ? { dependencyCommandId: orderId } : {})},existing.version);});
+    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.orderRepo.save(updatedOrder);ctx.commandRepo.record(commandId,'UPDATE_ORDER',{id:orderId,aggregateId:orderId,orderId,notes:patch.notes},existing.version);});
     try{await this.createOverlay(commandId,`order:${orderId}`,'orders',orderId,'PATCH',patch as Record<string,unknown>);}catch(e){console.warn('Order pending projection failed; local order is authoritative.',e);}
     return {success:true,data:updatedOrder};
   }
@@ -830,7 +830,7 @@ export class FinalUseCases {
     const updatedAt=new Date().toISOString(); const patch:Partial<OrderItemEntity>={status:'cancelled',updatedAt,version:item.version+1};
     const updatedItem={...item,...patch} as OrderItemEntity; const commandId=crypto.randomUUID();
     if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
-    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.itemRepo.save(updatedItem);ctx.commandRepo.record(commandId,'CANCEL_ORDER_ITEM',{id:commandId,itemId,orderItemId:itemId,orderId:order.id,...(parentAdd?.type === 'ADD_ORDER_ITEM' ? { dependencyCommandId: itemId } : {})},item.version);});
+    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.itemRepo.save(updatedItem);ctx.commandRepo.record(commandId,'CANCEL_ORDER_ITEM',{id:commandId,aggregateId:order.id,itemId,orderItemId:itemId,orderId:order.id},item.version);});
     try{await this.createOverlay(commandId,`order:${order.id}`,'order_items',item.id,'PATCH',patch as Record<string,unknown>);}catch(e){console.warn('Cancellation projection failed; local item is authoritative.',e);}
     return {success:true,data:updatedItem};
   }
