@@ -63,6 +63,9 @@ DECLARE
     v_item_charge_due BIGINT;
     v_alloc_amount BIGINT;
     v_rec_item RECORD;
+    v_rec_goal RECORD;
+    v_rec_goal_request RECORD;
+    v_current_status TEXT;
     v_orig_charge_amount BIGINT;
     v_dev_name VARCHAR(200);
     v_dev_icon VARCHAR(100);
