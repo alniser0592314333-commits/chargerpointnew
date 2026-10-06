@@ -78,6 +78,8 @@ export interface UserSession {
   permissions: Permission[];
   tenantId?: ID;
   tokenExpiresAt: Timestamp;
+  /** Stable Supabase Auth subject bound to this cached session for offline reload integrity. */
+  authUserId?: string;
 }
 
 export interface AdminProfileResult {
@@ -381,6 +383,7 @@ class DefaultAuthService implements AuthService {
       role: "SUPER_ADMIN",
       permissions: profileRes.permissions || [],
       tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      authUserId: authSession.user.id,
     };
 
     inMemorySession = session;
@@ -826,6 +829,16 @@ class DefaultAuthService implements AuthService {
       if (stored) {
         try {
           const storedSession = JSON.parse(stored) as UserSession;
+          const storedSupabase = await this.getSupabaseAuthSession();
+          // When operating offline, never trust a free-standing local admin
+          // profile. It must remain cryptographically/identity-bound to the
+          // Supabase Auth subject that originally established it.
+          if (!serverProfile && this.isSupabaseConfigured()) {
+            const boundAuthUserId = storedSession.authUserId;
+            if (!boundAuthUserId || !storedSupabase?.user?.id || boundAuthUserId !== storedSupabase.user.id) {
+              return null;
+            }
+          }
           if (new Date(storedSession.tokenExpiresAt).getTime() > Date.now()) {
             const session: UserSession = serverProfile ? {
               userId: serverProfile.admin_id || storedSession.userId,
@@ -834,6 +847,7 @@ class DefaultAuthService implements AuthService {
               role: (serverProfile.role as UserRole) || storedSession.role,
               permissions: serverProfile.permissions || storedSession.permissions,
               tokenExpiresAt: storedSession.tokenExpiresAt,
+              authUserId: serverProfile?.auth_user_id || storedSession.authUserId,
             } : storedSession;
 
             inMemorySession = session;
@@ -856,6 +870,7 @@ class DefaultAuthService implements AuthService {
           role: serverProfile.role || "OPERATOR",
           permissions: serverProfile.permissions || [],
           tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          authUserId: supabaseSession?.user.id,
         };
         inMemorySession = session;
         storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
