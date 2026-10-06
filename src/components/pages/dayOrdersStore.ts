@@ -2631,11 +2631,26 @@ export const computeCustomerOrderPaymentStatuses = (
 ): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
 
-  const effectiveLedgerPromise = getEffectiveCustomerLedger(customerId);
-  // The payment projection is derived from the same effective ledger used by
-  // the customer balance/history views, so offline and online states agree.
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  // Keep payment-status calculation synchronous because it is used while
+  // building the Days-page read model. Include pending payment overlays so an
+  // offline top-up is visible immediately, without creating a fake server row.
   const effectiveLedger = ledgerList.filter((l) => l.customerId === customerId);
+  for (const overlay of localDb.listOverlaysSync()) {
+    if (overlay.status !== 'PENDING') continue;
+    const p = (overlay.entityPayload || overlay.patch || {}) as any;
+    const overlayCustomerId = p.customerId || p.customer_id;
+    if (overlayCustomerId !== customerId) continue;
+    if (overlay.entityType === 'ledger' && (p.eventType || p.event_type) === 'PAYMENT') {
+      effectiveLedger.push({
+        id: 'pending-' + overlay.entityId,
+        eventType: 'PAYMENT',
+        amountMinor: Number(p.amountMinor ?? p.amount_minor ?? 0),
+        customerId,
+        referenceId: p.referenceId || p.reference_id,
+        createdAt: p.createdAt || p.created_at || overlay.createdAt,
+      });
+    }
+  }
   // This synchronous projection is completed below by the async wrapper used
   // by callers; keep the calculation deterministic from authoritative rows here.
   const totalCreditsMinor = effectiveLedger
