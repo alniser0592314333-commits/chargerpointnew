@@ -90,12 +90,11 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
         }
       }
       if (!matchedInActiveOutbox) {
-        // Keep the entity ID as a dependency even when its command is no longer
-        // in the active outbox. The scheduler must then consult syncHistory by
-        // commandId/entityId: FAILED/BLOCKED prerequisites stay blocked, while
-        // SUCCESS history satisfies the dependency. Falling through here would
-        // allow a dependent command to reach the server after a failed create.
-        deps.add(candidateId as string);
+        // No local command owns this entity, so it may be an already-existing
+        // authoritative server row. Do not invent a dependency on the entity ID:
+        // that incorrectly blocks valid commands such as DELIVER/CANCEL against
+        // an existing order item when no local ADD_ORDER_ITEM command exists.
+        // Explicit dependencyCommandId/dependencies are still enforced above.
       }
     };
 
