@@ -60,6 +60,8 @@ describe('Financial Consistency Audit & Idempotency', () => {
     expect(payments.length).toBe(1);
     
     const ledger = await localDb.list('financialLedger');
-    expect(ledger.filter((l: any) => l.eventType === 'PAYMENT').length).toBe(1);
+    expect(ledger.filter((l: any) => l.eventType === 'PAYMENT').length).toBe(0);
+    const pendingLedger = await localDb.getOverlay(paymentId + ':ledger');
+    expect(pendingLedger?.entityType).toBe('ledger');
   });
 });
