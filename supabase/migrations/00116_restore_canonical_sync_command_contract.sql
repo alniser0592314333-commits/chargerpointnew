@@ -631,11 +631,44 @@ WHEN 'UPDATE_ORDER' THEN
                 RAISE EXCEPTION 'Customer is soft-deleted/frozen. Cannot deliver item';
             END IF;
 
+            -- A recognized item is idempotently complete only when its financial
+            -- effect actually exists. Do not silently accept a half-committed state
+            -- (RECOGNIZED without a charge), because that is exactly how the local
+            -- and server financial models drift apart.
             IF v_rec_item.financial_status = 'RECOGNIZED' THEN
-                v_result := jsonb_build_object('orderItemId', v_item_uuid, 'status', 'DELIVERED', 'alreadyRecognized', TRUE);
-            ELSE
-                SELECT base_price_minor, charger_fee_applicable
-                INTO v_base_price, v_charger_applicable
+                SELECT COUNT(*), MIN(id), MIN(amount_minor)
+                INTO v_change_seq, v_ledger_uuid, v_orig_charge_amount
+                FROM public.financial_ledger
+                WHERE order_item_id = v_item_uuid
+                  AND event_type IN ('CHARGE', 'ORDER_ITEM_CHARGE');
+
+                IF v_change_seq = 1 THEN
+                    v_result := jsonb_build_object(
+                        'orderItemId', v_item_uuid,
+                        'status', 'DELIVERED',
+                        'financialStatus', 'RECOGNIZED',
+                        'alreadyRecognized', TRUE,
+                        'ledgerEntryId', v_ledger_uuid,
+                        'finalChargeMinor', ABS(COALESCE(v_orig_charge_amount, 0))
+                    );
+                    -- The command is a replay of an already committed delivery.
+                    -- Nothing else must be inserted.
+                ELSIF v_change_seq > 1 THEN
+                    RAISE EXCEPTION 'FINANCIAL_INVARIANT [409]: Order item % has % charge ledger entries',
+                        v_item_uuid, v_change_seq;
+                ELSE
+                    -- Fall through to the authoritative recognition path below.
+                    -- This repairs an inconsistent legacy/server state exactly once.
+                    NULL;
+                END IF;
+
+                IF v_change_seq = 1 THEN
+                    RETURN jsonb_build_object('success', TRUE, 'result', v_result);
+                END IF;
+            END IF;
+
+            SELECT base_price_minor, charger_fee_applicable
+            INTO v_base_price, v_charger_applicable
                 FROM public.device_types
                 WHERE id = v_rec_item.device_type_id;
 
@@ -742,7 +775,6 @@ WHEN 'UPDATE_ORDER' THEN
                     'finalChargeMinor', v_authoritative_final_charge,
                     'ledgerEntryId', v_ledger_uuid
                 );
-            END IF;
 
         WHEN 'CANCEL_ORDER' THEN
             v_order_uuid := (COALESCE(p_payload->>'orderId', p_payload->>'id'))::UUID;
