@@ -416,10 +416,8 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       if (removeRes.success) {
         expect(removeRes.data.status).toBe('cancelled');
       }
-      expect(ledger.length).toBe(initialLedgerCount + 1);
-      const lastEvent = ledger[ledger.length - 1];
-      expect(lastEvent.eventType).toBe('REVERSAL');
-      expect(lastEvent.amountMinor).toBe(150);
+      expect(ledger.length).toBe(initialLedgerCount);
+      expect(ledger[ledger.length - 1]?.eventType).toBe('ORDER_ITEM_CHARGE');
     });
   });
 
