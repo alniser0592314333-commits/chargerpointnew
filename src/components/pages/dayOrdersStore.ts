@@ -2577,8 +2577,8 @@ const getEffectiveCustomerLedger = async (customerId: string): Promise<Financial
       const hasPaymentLedgerOverlay = overlays.some((other) => {
         if (other.status !== 'PENDING' || other.entityType !== 'ledger') return false;
         const p = (other.entityPayload || other.patch || {}) as any;
-        return (p.eventType || p.event_type) === 'PAYMENT' &&
-          (p.referenceId || p.reference_id) === paymentId;
+        return ['PAYMENT', 'CREDIT_ADJUSTMENT'].includes(p.eventType || p.event_type) &&
+          (p.referenceId || p.reference_id || p.id) === paymentId;
       });
       if (!hasPaymentLedgerOverlay) {
         projected.push({
