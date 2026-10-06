@@ -110,6 +110,7 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
     const orderResult = await useCases.createOrder(auth, 'cmd-order', 'day-1', 'c1');
     expect(orderResult.success).toBe(true);
     if (!orderResult.success) throw new Error(orderResult.error);
+    if (!orderResult.success) throw new Error(orderResult.error);
     const order = orderResult.data;
     const itemResult = await useCases.addOrderItem(auth, order.id, 'dev-1', false, 'cmd-item');
     expect(itemResult.success).toBe(true);
