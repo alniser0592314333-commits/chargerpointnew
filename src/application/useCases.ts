@@ -314,12 +314,18 @@ export class FinalUseCases {
 
     const itemId = commandId || crypto.randomUUID();
 
+    // A Super Admin is allowed to add a device to an already closed day.
+    // The device is immediately recognized as delivered, but the financial
+    // recognition still travels through the canonical DELIVER_ORDER_ITEM
+    // command after ADD_ORDER_ITEM, preserving one authoritative charge.
+    const autoDeliver = dayIsClosed && actor.isSuperAdmin;
     const item: OrderItemEntity = {
       id: itemId,
       orderId,
       deviceTypeId,
       itemSequence,
-      status: 'charging', // Always start charging optimistically
+      status: autoDeliver ? 'delivered' : 'charging',
+      financialStatus: autoDeliver ? 'RECOGNIZED' : 'UNRECOGNIZED',
       deviceNameSnapshot: deviceType.name,
       deviceIconSnapshot: deviceType.icon,
       basePriceSnapshotMinor: deviceType.basePriceMinor,
@@ -329,6 +335,8 @@ export class FinalUseCases {
       hasCharger,
       unitPriceMinor: pricing.unitPriceMinor,
       totalPriceMinor: pricing.totalPriceMinor,
+      deliveredAt: autoDeliver ? new Date().toISOString() : undefined,
+      financiallyRecognizedAt: autoDeliver ? new Date().toISOString() : undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: 1,
@@ -363,6 +371,19 @@ export class FinalUseCases {
         unitPriceMinor: item.unitPriceMinor,
         totalPriceMinor: item.totalPriceMinor,
       });
+
+      if (autoDeliver) {
+        const deliveryCommandId = crypto.randomUUID();
+        ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+          id: deliveryCommandId,
+          aggregateId: item.id,
+          itemId: item.id,
+          orderItemId: item.id,
+          orderId,
+          autoDelivery: true,
+          dependencyCommandId: item.id,
+        }, item.version);
+      }
     });
 
     try {
