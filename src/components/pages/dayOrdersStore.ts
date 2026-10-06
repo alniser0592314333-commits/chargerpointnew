@@ -2101,6 +2101,11 @@ export const repoContext: RepositoryContext = {
           .filter((l) => l.customerId === id && (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.orderItemId)
           .map((l) => l.orderItemId as string)
       );
+      const authoritativeReversalItems = new Set(
+        ledgerList
+          .filter((l) => l.customerId === id && l.eventType === 'REVERSAL' && l.orderItemId)
+          .map((l) => l.orderItemId as string)
+      );
 
       const effectiveItems = new Map<string, OrderItemEntity>(itemsMap);
       for (const overlay of overlays) {
@@ -2133,15 +2138,15 @@ export const repoContext: RepositoryContext = {
         if (overlay.entityType === 'order_items' && (overlay.operation === 'PATCH' || overlay.operation === 'CREATE')) {
           const payload = (overlay.patch || {}) as any;
           const itemId = overlay.entityId;
-          if (
-            String(payload.status || '').toLowerCase() === 'delivered' ||
-            String(payload.financialStatus || payload.financial_status || '').toUpperCase() === 'RECOGNIZED'
-          ) {
+          const status = String(payload.status || '').toLowerCase();
+          const financialStatus = String(payload.financialStatus || payload.financial_status || '').toUpperCase();
+          const item = effectiveItems.get(itemId);
+          if (!item) continue;
+          const order = ordersMap.get(item.orderId);
+          if (!order || order.customerId !== id) continue;
+
+          if (status === 'delivered' || financialStatus === 'RECOGNIZED') {
             if (authoritativeChargeItems.has(itemId)) continue;
-            const item = effectiveItems.get(itemId);
-            if (!item) continue;
-            const order = ordersMap.get(item.orderId);
-            if (!order || order.customerId !== id) continue;
             bal -= Number(
               item.finalChargeSnapshotMinor ??
               item.totalPriceMinor ??
@@ -2149,6 +2154,22 @@ export const repoContext: RepositoryContext = {
               payload.totalPriceMinor ??
               0
             );
+          } else if (status === 'cancelled' && financialStatus === 'REVERSED') {
+            if (authoritativeReversalItems.has(itemId)) continue;
+            // The charge may already be authoritative while the reversal is still
+            // pending. Project the reversal so the local balance matches the
+            // server's eventual net result instead of leaving the customer
+            // incorrectly in debt until the next pull.
+            const charge = ledgerList.find(
+              (l) =>
+                l.customerId === id &&
+                (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') &&
+                l.orderItemId === itemId
+            );
+            const reversalAmount = charge
+              ? Math.abs(charge.amountMinor)
+              : Number(item.finalChargeSnapshotMinor ?? item.totalPriceMinor ?? 0);
+            bal += reversalAmount;
           }
         }
       }
