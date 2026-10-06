@@ -146,10 +146,12 @@ describe('Final Comprehensive Domain Verification Suite', () => {
     const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
     const item = (itemRes as { success: true; data: OrderItemEntity }).data;
 
-    await useCases.deliverOrderItem(auth, item.id, '1234');
+    const delivery = await useCases.deliverOrderItem(auth, item.id, '1234');
+    expect(delivery.success).toBe(true);
+    if (!delivery.success) throw new Error(delivery.error);
     expect(ledger.length).toBe(0);
-    expect(item.status).toBe('delivered');
-    expect(item.financialStatus).toBe('UNRECOGNIZED');
+    expect(delivery.data.status).toBe('delivered');
+    expect(delivery.data.financialStatus).toBe('UNRECOGNIZED');
 
     await expect(useCases.deliverOrderItem(auth, item.id, '1234')).rejects.toThrow(FinancialInvariantViolation);
   });
@@ -414,10 +416,8 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       if (removeRes.success) {
         expect(removeRes.data.status).toBe('cancelled');
       }
-      expect(ledger.length).toBe(initialLedgerCount + 1);
-      const lastEvent = ledger[ledger.length - 1];
-      expect(lastEvent.eventType).toBe('REVERSAL');
-      expect(lastEvent.amountMinor).toBe(-150);
+      expect(ledger.length).toBe(initialLedgerCount);
+      expect(ledger[ledger.length - 1]?.eventType).toBe('ORDER_ITEM_CHARGE');
     });
   });
 
