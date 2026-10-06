@@ -1548,6 +1548,11 @@ function createTransactionalRepoContext(
         localDb.setWithTx(tx, 'orderItems', it.id, it);
         postCommitActions.push(() => notifyStore('orderItems', it.id));
       },
+      saveLocal: (it: OrderItemEntity) => {
+        itemsMap.set(it.id, it);
+        localDb.setWithTx(tx, 'orderItems', it.id, it);
+        postCommitActions.push(() => notifyStore('orderItems', it.id));
+      },
       findById: (id: string) => itemsMap.get(id) || null,
       isDeviceTypeInUse: (deviceTypeId: string) => {
         for (const it of itemsMap.values()) {
@@ -1839,6 +1844,16 @@ export const repoContext: RepositoryContext = {
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.itemRepo.save(it);
         ctx.commandRepo.record(it.id, 'ADD_ORDER_ITEM', it);
+      });
+    },
+    saveLocal: async (it) => {
+      await ensureStoreHydrated();
+      await repoContext.transactionManager.runInTransaction((ctx) => {
+        if (ctx.itemRepo.saveLocal) {
+          ctx.itemRepo.saveLocal(it);
+        } else {
+          ctx.itemRepo.save(it);
+        }
       });
     },
     findById: async (id) => {
