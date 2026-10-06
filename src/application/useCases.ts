@@ -815,13 +815,24 @@ export class FinalUseCases {
       ...(orderStatusChanged ? [{table:'orders',id:order.id,existed:true,data:order}] : []),
     ]);
     const parentAdd = await this.deps.commandRepo.get(item.id);
+    const baseItem = await localDb.get<OrderItemEntity>('orderItems', item.id);
+    const addOutbox = await localDb.getOutbox(item.id);
+    // If ADD_ORDER_ITEM is still pending, the item is a local-only CREATE and
+    // delivery must remain an overlay projection until ADD is authoritative.
+    // For an already-existing local item, persist delivery to the base read
+    // model immediately so normal local reads are durable.
+    const pendingAdd = Boolean(
+      addOutbox &&
+      addOutbox.commandType === 'ADD_ORDER_ITEM' &&
+      addOutbox.status !== 'accepted'
+    );
+    const persistDeliveryBase = Boolean(baseItem) && !pendingAdd;
+
     await this.deps.transactionManager.runInTransaction(async (ctx) => {
-      // Delivery is an optimistic composite mutation: keep the durable base
-      // entity at its pre-delivery state until the authoritative command is
-      // accepted, while the effective local read model is immediately patched
-      // by the overlay below. This prevents a rejected/failed delivery from
-      // looking financially recognized in the base row and preserves the
-      // local-first invariant without waiting for a remote delta.
+      if (persistDeliveryBase) {
+        if (orderStatusChanged) ctx.orderRepo.save(nextOrder);
+        ctx.itemRepo.save({ ...item, ...patch } as OrderItemEntity);
+      }
       ctx.ledgerRepo.append(chargeLedger);
       if (ctx.goalRepo) {
         await this.evaluateCustomerGoal(order.customerId, ctx);
