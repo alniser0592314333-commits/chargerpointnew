@@ -1618,6 +1618,10 @@ export class IndexedDBLocalDatabase {
     return null;
   }
 
+  listOverlaysSync(): OptimisticOverlayRecord[] {
+    return Array.from(this.memoryOverlays.values());
+  }
+
   async listOverlays(): Promise<OptimisticOverlayRecord[]> {
     await this.ensureHydrated();
     return Array.from(this.memoryOverlays.values());
