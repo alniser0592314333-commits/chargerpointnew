@@ -2438,7 +2438,7 @@ export const getAuthorizedAdminContext = (bin?: string): AuthorizationContext =>
 
   // Never invent an ADMIN actor in production. Tests intentionally use the
   // explicit test identity returned by getAuthenticatedIdentity().
-  if (actorAdminId === 'admin_test_session' && (!storedSession?.userId || !storedSession?.role || !Array.isArray(storedSession.permissions))) {
+  if (isTestRuntime() && (!storedSession?.userId || !storedSession?.role || !Array.isArray(storedSession.permissions))) {
     return new AuthorizationContext(
       {
         id: actorAdminId,
