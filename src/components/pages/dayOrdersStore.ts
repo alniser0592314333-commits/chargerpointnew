@@ -2448,14 +2448,16 @@ export const phase5UseCases = new FinalUseCases(repoContext);
 
 // Runtime credential verifier hook for custom environment / test harness
 let runtimeBinVerifier: ((bin: string, actor: any) => boolean | Promise<boolean>) | null = null;
+let runtimeBinVerifierConfigured = false;
 
 export const setRuntimeBinVerifier = (verifier: ((bin: string, actor: any) => boolean | Promise<boolean>) | null): void => {
+  runtimeBinVerifierConfigured = true;
   runtimeBinVerifier = verifier;
 };
 
 export const getAuthoritativeBinVerifier = (): BinVerifierFn | undefined => {
-  if (runtimeBinVerifier) {
-    return runtimeBinVerifier;
+  if (runtimeBinVerifierConfigured) {
+    return runtimeBinVerifier || undefined;
   }
   if (getSupabaseStatus().isConfigured) {
     return async (bin: string) => {
