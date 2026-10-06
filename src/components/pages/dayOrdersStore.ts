@@ -4871,7 +4871,19 @@ export const topUpCustomerBalance = async (
     const hex = Array.from(bytes.slice(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
   }
-  return crypto.randomUUID();
+  let h1 = 2166136261, h2 = 2166136261, h3 = 2166136261, h4 = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    const n = key.charCodeAt(i);
+    h1 = Math.imul(h1 ^ n, 16777619);
+    h2 = Math.imul(h2 ^ (n + 17), 16777619);
+    h3 = Math.imul(h3 ^ (n + 31), 16777619);
+    h4 = Math.imul(h4 ^ (n + 47), 16777619);
+  }
+  const words = [h1 >>> 0, h2 >>> 0, h3 >>> 0, h4 >>> 0];
+  words[1] = (words[1] & 0x0fffffff) | 0x50000000;
+  words[2] = (words[2] & 0x3fffffff) | 0x80000000;
+  const hex = words.map((n) => n.toString(16).padStart(8, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 };
 
 const commandId = idempotencyKey
