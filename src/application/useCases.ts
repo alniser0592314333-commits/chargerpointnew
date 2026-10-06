@@ -1374,6 +1374,19 @@ export class FinalUseCases {
       commandId: txId,
       createdAt,
     };
+    // Payment identity is a durable local read-model row; the financial
+    // ledger remains an optimistic overlay until the server accepts the command.
+    await this.deps.transactionManager.runInTransaction(async (ctx) => {
+      await ctx.paymentRepo.save(payment);
+      await ctx.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
+        id: txId,
+        customerId,
+        amountMinor,
+        actorAdminId: actor.id,
+        createdAt,
+      });
+    });
+
     await this.createOverlay(
       `${txId}:payment`,
       mutationKey,
@@ -1382,15 +1395,6 @@ export class FinalUseCases {
       'CREATE',
       payment as unknown as Record<string, unknown>
     );
-
-    await this.deps.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
-      id: txId,
-      customerId,
-      amountMinor,
-      actorAdminId: actor.id,
-      createdAt,
-      bin,
-    });
 
     return { success: true, data: { id: txId, createdAt, ...event } };
   }
@@ -1422,10 +1426,11 @@ export class FinalUseCases {
       id: txId, customerId, amountMinor, paymentMethod: 'CASH', reference: 'Customer credit',
       actorAdminId: actor.id, commandId: txId, createdAt,
     };
-    await this.createOverlay(`${txId}:payment`, mutationKey, 'payments', txId, 'CREATE', payment as unknown as Record<string, unknown>);
+    await this.deps.paymentRepo.save(payment);
     await this.deps.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
       id: txId, customerId, amountMinor, actorAdminId: actor.id, createdAt, authorizationState: 'PENDING_BIN',
     });
+    await this.createOverlay(`${txId}:payment`, mutationKey, 'payments', txId, 'CREATE', payment as unknown as Record<string, unknown>);
     return { success: true, data: { id: txId, createdAt, ...event } };
   }
 
