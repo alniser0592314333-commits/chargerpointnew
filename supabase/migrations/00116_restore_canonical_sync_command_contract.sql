@@ -1075,7 +1075,7 @@ BEGIN
         p_payload,
         COALESCE(p_payload->>'payloadHash', 'no_hash'),
         COALESCE(p_payload->>'deviceId', 'default_device'),
-        p_payload->>'bin'
+        auth.uid()
     );
 END;
 $$;
