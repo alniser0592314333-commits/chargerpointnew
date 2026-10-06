@@ -589,6 +589,54 @@ export class FinalUseCases {
     return {success:true,data:{...item,...patch} as OrderItemEntity};
   }
 
+  /**
+   * Queue a delivery intent while offline without pretending that BIN
+   * authorization or financial recognition already happened. The server must
+   * authorize the same command with BIN before it can recognize the charge.
+   */
+  async queueDeliveryAwaitingBin(
+    auth: AuthorizationContext,
+    itemId: ID
+  ): Promise<Result<OrderItemEntity>> {
+    const actor = auth.requireAuth();
+    auth.assertPermission('orders:deliver');
+
+    const item = await this.deps.itemRepo.findById(itemId);
+    if (!item) throw new NotFoundError('Item not found');
+
+    const order = await this.deps.orderRepo.findById(item.orderId);
+    if (!order) throw new NotFoundError('Order not found');
+    if (order.status === 'cancelled') {
+      throw new BusinessRuleViolation('Cannot deliver an item from a cancelled order');
+    }
+
+    const customer = await this.deps.customerRepo.findById(order.customerId);
+    if (!customer) throw new NotFoundError('Customer not found');
+    DomainInvariants.assertCustomerActive(customer);
+
+    if (item.status === 'delivered') {
+      throw new FinancialInvariantViolation(`Order item ${item.id} is already delivered.`);
+    }
+
+    validateItemTransition(item.status, 'delivered');
+
+    const commandId = crypto.randomUUID();
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.commandRepo.record(commandId, 'DELIVER_ORDER_ITEM', {
+        id: commandId,
+        itemId: item.id,
+        orderItemId: item.id,
+        orderId: order.id,
+        authorizationState: 'PENDING_BIN',
+      }, item.version);
+    });
+
+    return {
+      success: true,
+      data: item,
+    };
+  }
+
   async editOrderNotes(auth: AuthorizationContext, orderId: ID, notes?: string): Promise<Result<OrderEntity>> {
     const actor=auth.requireAuth(); auth.assertPermission('orders:edit');
     const existing=await this.deps.orderRepo.findById(orderId); if(!existing) throw new NotFoundError('Order not found');
