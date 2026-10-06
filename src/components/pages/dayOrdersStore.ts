@@ -250,6 +250,33 @@ export const notifyStore = (scope: StoreScope, entityId?: string): void => {
   });
 };
 
+/**
+ * Maps optimistic/outbox command types to the external-store scopes that must
+ * be invalidated after the local transaction commits. Overlay-backed mutations
+ * intentionally do not mutate the base entity maps, so without this signal a
+ * mounted page can remain visually stale until a remote delta or manual reload
+ * happens. The notification is local-only; it does not alter sync semantics.
+ */
+const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
+  switch (commandType) {
+    case 'CREATE_ORDER':
+    case 'UPDATE_ORDER':
+      return ['orders'];
+    case 'CANCEL_ORDER':
+      return ['orders', 'orderItems'];
+    case 'ADD_ORDER_ITEM':
+    case 'CANCEL_ORDER_ITEM':
+      return ['orderItems'];
+    case 'DELIVER_ORDER_ITEM':
+      return ['orderItems', 'financialLedger'];
+    case 'CREATE_PAYMENT':
+    case 'CREATE_CUSTOMER_CREDIT':
+      return ['payments', 'financialLedger'];
+    default:
+      return [];
+  }
+};
+
 export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number {
   const [version, setVersion] = useState(0);
 
@@ -1783,6 +1810,13 @@ function createTransactionalRepoContext(
             newState: currentGen === -1 ? 'PENDING_RECONCILIATION' : 'PENDING',
             timestamp: new Date().toISOString(),
           });
+
+          // Overlay-backed local mutations are the effective read model while
+          // pending. Notify mounted pages only after the transaction commits.
+          const notificationScopes = getCommandNotificationScopes(type);
+          for (const scope of notificationScopes) {
+            notifyStore(scope, aggregateId);
+          }
         });
       },
     },
@@ -3424,28 +3458,36 @@ export const updateOrderWithPhase5Engine = async (
       }
     }
 
-    // 4. Update status if changed. Enforce the same transition contract locally
-    // before anything is persisted/queued; the server remains authoritative.
-    if (newStatus !== order.status) {
-      if (newStatus === 'pending') {
-        const currentStatus = order.status as any;
-        if (currentStatus !== 'pending') {
-          throw new ConflictError(`Invalid order status transition from '${currentStatus}' to 'pending'`);
-        }
-      } else if (newStatus === 'delivered') {
+    // 4. Resolve status against the effective item state AFTER edits.
+    // A previously delivered parent order can become visually "charging" when a
+    // new device is added. In that case order.status remains 'delivered' on the
+    // parent row, so comparing newStatus with order.status would incorrectly
+    // skip delivery of the newly added item.
+    const effectiveItemsAfterEdits = await repoContext.itemRepo.findByOrderId(orderId);
+    const hasUndeliveredActiveItem = effectiveItemsAfterEdits.some(
+      (item) => item.status !== 'delivered' && item.status !== 'cancelled'
+    );
+
+    if (newStatus === 'pending') {
+      const currentProjectedStatus = calculateOrderProjection(effectiveItemsAfterEdits, order.status);
+      if (currentProjectedStatus !== 'pending') {
+        throw new ConflictError(`Invalid order status transition from '${currentProjectedStatus}' to 'pending'`);
+      }
+    } else if (newStatus === 'delivered') {
+      // Delivery is item-scoped and financial recognition is also item-scoped.
+      // Deliver only active items that are not already delivered; this guarantees
+      // that an already-delivered historical device is never charged again while
+      // a newly added charging device is recognized exactly once.
+      if (hasUndeliveredActiveItem) {
         const deliverRes = await deliverEntireOrder(orderId, bin || '');
         if (!deliverRes.success) {
           return { success: false, error: deliverRes.error || 'فشل تسليم الطلب' };
         }
-      } else if (newStatus === 'cancelled') {
-        const auth = getAuthorizedAdminContext(bin);
-        await auth.verifyBin(bin || '');
-        await phase5UseCases.cancelOrder(auth, orderId, bin || '');
       }
-    } else {
-      // Order.status is server-authoritative. The client may display a projection
-      // from Effective OrderItem state, but it must never persist that projection
-      // as an authoritative Order mutation.
+    } else if (newStatus === 'cancelled' && order.status !== 'cancelled') {
+      const auth = getAuthorizedAdminContext(bin);
+      await auth.verifyBin(bin || '');
+      await phase5UseCases.cancelOrder(auth, orderId, bin || '');
     }
 
     return { success: true };
