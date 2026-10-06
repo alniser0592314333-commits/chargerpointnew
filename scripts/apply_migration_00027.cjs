@@ -1,6 +1,5 @@
 const https = require('https');
-const ref = process.env.SUPABASE_PROJECT_REF;
-if (!ref) { throw new Error('Missing SUPABASE_PROJECT_REF'); }
+const ref = "ydhcyamtgioyrxfarkwk";
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 
 async function runQuery(query) {

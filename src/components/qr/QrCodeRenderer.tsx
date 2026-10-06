@@ -29,7 +29,7 @@ export const QrCodeRenderer: React.FC<QrCodeRendererProps> = ({
   const hasLogo = logoVisible ?? Boolean(centerLogo);
   const renderResult = useMemo(() => {
     if (!value) return null;
-    return createQrRenderMatrix(value, errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H', margin, logoCircleSize || 56, size, hasLogo);
+    return createQrRenderMatrix(value, errorCorrectionLevel, margin, logoCircleSize || 56, size, hasLogo);
   }, [value, errorCorrectionLevel, margin, logoCircleSize, size, hasLogo]);
 
   return (

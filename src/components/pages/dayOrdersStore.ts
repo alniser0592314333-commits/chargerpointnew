@@ -382,58 +382,34 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('orders', change.entityId);
       return;
     }
-<<<<<<< HEAD
     const previousOrder = ordersMap.get(change.entityId);
     const incomingOrderVersion = Number(p.version ?? 1);
     if (previousOrder && change.action !== 'INSERT' && Number(previousOrder.version ?? 0) >= incomingOrderVersion) {
       return;
     }
-    const resolvedOrderStatus = p.status || p.order_status || previousOrder?.status || 'pending';
+    const rawStatus = (p.status || p.order_status || previousOrder?.status || 'pending').toLowerCase();
+    const resolvedStatus: OrderStatus =
+      rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending' || rawStatus === 'charging'
+        ? (rawStatus as OrderStatus)
+        : previousOrder?.status || 'pending';
+
     const entity: OrderEntity = {
       id: p.id || change.entityId,
       dayId: p.dayId || p.day_id || previousOrder?.dayId,
       customerId: p.customerId || p.customer_id || previousOrder?.customerId,
       displayNumber: p.displayNumber ?? p.display_number ?? previousOrder?.displayNumber ?? 1,
       internalSequence: p.internalSequence ?? p.internal_sequence ?? previousOrder?.internalSequence ?? 0,
-      status: resolvedOrderStatus,
-      notes: p.notes ?? undefined,
-      qrTokenId: p.qrTokenId || p.qr_token_id || undefined,
-      chargingAt: p.chargingAt || p.charging_at || undefined,
-      deliveredAt: p.deliveredAt || p.delivered_at || undefined,
-      cancelledAt: p.cancelledAt || p.cancelled_at || undefined,
-      customerBalanceSnapshotMinor: p.customerBalanceSnapshotMinor ?? p.customer_balance_snapshot_minor ?? 0,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-=======
-    const existing = ordersMap.get(p.id || change.entityId) || null;
-    const rawStatus = (
-      p.status ||
-      p.order_status ||
-      existing?.status ||
-      'pending'
-    ).toLowerCase();
-    const resolvedStatus: OrderStatus =
-      rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending'
-        ? (rawStatus as OrderStatus)
-        : existing?.status || 'pending';
-
-    const entity: OrderEntity = {
-      id: p.id || change.entityId,
-      dayId: p.dayId || p.day_id || existing?.dayId,
-      customerId: p.customerId || p.customer_id || existing?.customerId,
-      displayNumber: p.displayNumber || p.display_number || existing?.displayNumber || 1,
-      internalSequence: p.internalSequence || p.internal_sequence || existing?.internalSequence || 1,
       status: resolvedStatus,
-      notes: p.notes ?? existing?.notes ?? undefined,
-      qrTokenId: p.qrTokenId || p.qr_token_id || existing?.qrTokenId || undefined,
-      chargingAt: p.chargingAt || p.charging_at || existing?.chargingAt || undefined,
-      deliveredAt: p.deliveredAt || p.delivered_at || existing?.deliveredAt || undefined,
-      cancelledAt: p.cancelledAt || p.cancelled_at || existing?.cancelledAt || undefined,
-      customerBalanceSnapshotMinor: p.customerBalanceSnapshotMinor ?? p.customer_balance_snapshot_minor ?? existing?.customerBalanceSnapshotMinor ?? 0,
-      createdAt: p.createdAt || p.created_at || existing?.createdAt || new Date().toISOString(),
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
+      notes: p.notes ?? previousOrder?.notes ?? undefined,
+      qrTokenId: p.qrTokenId || p.qr_token_id || previousOrder?.qrTokenId || undefined,
+      chargingAt: p.chargingAt || p.charging_at || previousOrder?.chargingAt || undefined,
+      deliveredAt: p.deliveredAt || p.delivered_at || previousOrder?.deliveredAt || undefined,
+      cancelledAt: p.cancelledAt || p.cancelled_at || previousOrder?.cancelledAt || undefined,
+      customerBalanceSnapshotMinor: p.customerBalanceSnapshotMinor ?? p.customer_balance_snapshot_minor ?? previousOrder?.customerBalanceSnapshotMinor ?? 0,
+      createdAt: p.createdAt || p.created_at || previousOrder?.createdAt || new Date().toISOString(),
       updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      deletedAt: p.deletedAt || p.deleted_at || existing?.deletedAt || undefined,
-      version: p.version || existing?.version || 1,
+      deletedAt: p.deletedAt || p.deleted_at || previousOrder?.deletedAt || undefined,
+      version: p.version || previousOrder?.version || 1,
     };
     localDb.setWithTx(tx, 'orders', entity.id, entity);
     ordersMap.set(entity.id, entity);
@@ -445,21 +421,12 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('orderItems', change.entityId);
       return;
     }
-<<<<<<< HEAD
     const previousItem = itemsMap.get(change.entityId);
     const incomingItemVersion = Number(p.version ?? 1);
     if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
       return;
     }
-    const rawStatus = String(p.status || p.item_status || previousItem?.status || 'charging').toLowerCase();
-=======
-    const rawStatus = (
-      p.status ||
-      p.deliveryStatus ||
-      p.delivery_status ||
-      'charging'
-    );
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
+    const rawStatus = String(p.status || p.item_status || p.deliveryStatus || p.delivery_status || previousItem?.status || 'charging').toLowerCase();
     const normalizedStatus: ItemStatus =
       rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending' || rawStatus === 'charging'
         ? (rawStatus as ItemStatus)
@@ -472,13 +439,8 @@ export const applyRemoteChange = (change: {
       deviceTypeId: p.deviceTypeId || p.device_type_id || previousItem?.deviceTypeId,
       itemSequence: p.itemSequence ?? p.item_sequence ?? previousItem?.itemSequence ?? 1,
       status: normalizedStatus,
-<<<<<<< HEAD
       financialStatus: p.financialStatus || p.financial_status || previousItem?.financialStatus || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
       paymentStatus: p.paymentStatus || p.payment_status || previousItem?.paymentStatus || 'UNPAID',
-=======
-      financialStatus: p.financialStatus || p.financial_status || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
-      paymentStatus: p.paymentStatus || p.payment_status || 'UNPAID',
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
       deviceNameSnapshot: p.deviceNameSnapshot || p.device_name_snapshot || '',
       deviceIconSnapshot: p.deviceIconSnapshot || p.device_icon_snapshot || 'smartphone',
       basePriceSnapshotMinor: p.basePriceSnapshotMinor ?? p.base_price_snapshot_minor ?? 0,
@@ -3106,11 +3068,7 @@ export const getOrderForEdit = async (
     customerPhone: cust ? cust.phone || '' : '',
     debtLimitMinor: cust ? cust.debtLimitMinor : -2000,
     customerBalanceSnapshotMinor: snapshotMinor,
-<<<<<<< HEAD
     status: calculateOrderProjection(orderItems, order.status),
-=======
-    status: calculateOrderProjection(order, items),
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
     createdAt: order.createdAt,
     notes: order.notes,
     items: uiItems,

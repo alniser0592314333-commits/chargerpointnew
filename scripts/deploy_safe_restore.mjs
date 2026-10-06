@@ -2,8 +2,7 @@ import fs from 'fs';
 
 async function run() {
   const token = process.env.SUPABASE_ACCESS_TOKEN;
-  const project = process.env.SUPABASE_PROJECT_REF;
-if (!project) { throw new Error('Missing SUPABASE_PROJECT_REF'); }
+  const project = 'ydhcyamtgioyrxfarkwk';
 
   const createSql = `
 CREATE OR REPLACE FUNCTION public.create_authoritative_backup_checkpoint(

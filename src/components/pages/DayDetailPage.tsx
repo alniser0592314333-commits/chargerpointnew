@@ -4,7 +4,6 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Plus, QrCode, Edit3, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { presentError } from '../../domain/errors';
 import { 
   getOrdersForDay, 
   deliverAllOrdersInDay, 
@@ -451,7 +450,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
                     loadOrders();
                   }
                 } catch (err: any) {
-                  setBinError(presentError(err, locale) || 'حدث خطأ أثناء تسليم الطلبات');
+                  setBinError(err.message || 'حدث خطأ أثناء تسليم الطلبات');
                 } finally {
                   setIsSubmitting(false);
                 }

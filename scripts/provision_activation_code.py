@@ -6,9 +6,7 @@ import sys
 
 def main():
     token = os.environ.get('SUPABASE_ACCESS_TOKEN', '')
-    project_ref = os.environ.get('SUPABASE_PROJECT_REF')
-    if not project_ref:
-        raise RuntimeError('Missing SUPABASE_PROJECT_REF')
+    project_ref = 'ydhcyamtgioyrxfarkwk'
     
     code = os.environ.get('SUPABASE_ACTIVATION_CODE') or os.environ.get('ACTIVATION_CODE')
     if not code or not code.strip():

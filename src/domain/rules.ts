@@ -238,11 +238,7 @@ export function calculateAuthoritativeGoalProgress(
 
   for (const item of customerItems) {
     if (item.deletedAt) continue;
-<<<<<<< HEAD
     const isDelivered = item.status && item.status.toLowerCase() === 'delivered';
-=======
-    const isDelivered = (item.status && item.status.toLowerCase() === 'delivered');
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
     const isRecognized =
       (item.financialStatus && item.financialStatus.toUpperCase() === 'RECOGNIZED') ||
       item.status === 'delivered';
@@ -256,28 +252,5 @@ export function calculateAuthoritativeGoalProgress(
   }
 
   return qualifyingItemIds.size;
-}
-
-/**
- * Calculates authoritative Order status projection from OrderItems adhering to Phase 1 rules.
- */
-export function calculateOrderProjection(items: Array<{ status?: string }>): OrderStatus {
-  if (!items || items.length === 0) {
-    return 'pending';
-  }
-  const activeItems = items.filter(i => i.status && i.status.toLowerCase() !== 'cancelled');
-  if (activeItems.length === 0) {
-    return 'cancelled';
-  }
-  const hasCharging = activeItems.some(i => i.status && i.status.toLowerCase() === 'charging');
-  const allDelivered = activeItems.every(i => i.status && i.status.toLowerCase() === 'delivered');
-
-  if (allDelivered) {
-    return 'delivered';
-  }
-  if (hasCharging) {
-    return 'charging';
-  }
-  return 'charging';
 }
 

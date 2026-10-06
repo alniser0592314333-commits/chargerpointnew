@@ -4,7 +4,6 @@
  * Phase 6.12.17: Server-Authoritative Identity Profile Resolution & Separated BIN Challenge.
  */
 
-import { config } from '../../config/env';
 import { ID, Timestamp } from "../../types/common";
 import {
   getSupabaseStatus,
@@ -32,6 +31,7 @@ import {
   supabaseVerifyEmailOtp,
   supabaseResendEmailOtp,
 } from "../supabase/client";
+import { config } from "../../config/env";
 
 export type UserRole = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "STAFF" | "VIEWER" | "OPERATOR" | "FINANCE";
 
@@ -643,12 +643,6 @@ class DefaultAuthService implements AuthService {
       }
 
       return session;
-    }
-
-    // Local/test credentials are allowed only in explicit non-production modes.
-    // A production build must fail closed if Supabase is not configured.
-    if (config.env === 'production') {
-      throw new Error("SUPABASE_NOT_CONFIGURED");
     }
 
     // Fallback: Local / test preview environment (ONLY when Supabase is NOT configured)

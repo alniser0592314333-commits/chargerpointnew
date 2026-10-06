@@ -967,10 +967,11 @@ export class SyncEngine {
             item.serverProcessedAt = new Date().toISOString();
             pushedCount++;
 
-            // The server is now authoritative. Discard only the rollback snapshot;
+            // The server is now authoritative. Discard only the rollback snapshot and optimistic overlays;
             // remote deltas remain responsible for authoritative entity hydration.
-            await localDb.runTransaction(['kvStore', 'mutationSnapshots'], 'readwrite', (tx) => {
+            await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
               localDb.deleteMutationSnapshotWithTx(tx, item.commandId);
+              localDb.removeOverlaysForCommandWithTx(tx, item.commandId);
             });
 
             history.state = 'SUCCESS';
@@ -1017,8 +1018,9 @@ export class SyncEngine {
             item.lastError = res.error;
 
             if (!classification.retryEligible) {
-              await localDb.runTransaction(['kvStore', 'mutationSnapshots'], 'readwrite', (tx) => {
+              await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
                 localDb.rollbackMutationSnapshotWithTx(tx, item.commandId);
+                localDb.removeOverlaysForCommandWithTx(tx, item.commandId);
               });
             }
 

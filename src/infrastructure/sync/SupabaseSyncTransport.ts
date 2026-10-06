@@ -47,14 +47,9 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
       });
 
       if (!rpcError && rpcData) {
-        const resultPayload = (rpcData && typeof rpcData === 'object') ? rpcData.result : undefined;
-        const resultEntity = resultPayload && typeof resultPayload === 'object'
-          ? ((resultPayload as any).entity || (resultPayload as any).order || (resultPayload as any).orderItem || resultPayload)
-          : undefined;
         return {
           success: true,
-          serverVersion: Number((resultEntity as any)?.version ?? (req.expectedVersion !== undefined ? req.expectedVersion + 1 : 0)),
-          result: rpcData,
+          serverVersion: (req.expectedVersion || 0) + 1,
           rpcReached: true,
         };
       }
@@ -91,12 +86,7 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
           rpcError.includes('UNAUTHORIZED') ||
           rpcError.includes('Forbidden') ||
           rpcError.includes('Unauthorized') ||
-          rpcError.includes('Authentication required') ||
-          postgresSqlstate === 'P4002';
-
-        const isAuthorizationErr = postgresSqlstate === 'P4003' || postgresSqlstate === 'P0003';
-        const isNotFoundErr = postgresSqlstate === 'P0404';
-        const isBusinessRuleErr = postgresSqlstate === 'P0409' || postgresSqlstate === 'P0429' || postgresSqlstate === 'P0422';
+          rpcError.includes('Authentication required');
 
         const isConflict =
           httpStatus === 409 ||
@@ -112,8 +102,8 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
         return {
           success: false,
           error: rpcError,
-          code: isAuthErr ? 'AUTH_REQUIRED' : isAuthorizationErr ? 'FORBIDDEN' : isNotFoundErr ? 'NOT_FOUND' : isBusinessRuleErr ? 'BUSINESS_RULE' : isConflict ? (rpcError.includes('VERSION_CONFLICT') ? 'VERSION_CONFLICT' : 'IDEMPOTENCY_CONFLICT') : isConstraint ? 'DATABASE_CONSTRAINT' : undefined,
-          errorClass: isAuthErr ? 'AUTHENTICATION' : isAuthorizationErr ? 'AUTHORIZATION' : isNotFoundErr ? 'NOT_FOUND' : isBusinessRuleErr ? 'BUSINESS_RULE' : isConflict ? 'CONFLICT' : isConstraint ? 'DATABASE_CONSTRAINT' : undefined,
+          code: isAuthErr ? 'AUTH_REQUIRED' : isConflict ? (rpcError.includes('VERSION_CONFLICT') ? 'VERSION_CONFLICT' : 'IDEMPOTENCY_CONFLICT') : isConstraint ? 'DATABASE_CONSTRAINT' : undefined,
+          errorClass: isAuthErr ? 'AUTHENTICATION' : isConflict ? 'CONFLICT' : isConstraint ? 'DATABASE_CONSTRAINT' : undefined,
           rpcReached: true,
           httpStatus,
           postgresSqlstate,

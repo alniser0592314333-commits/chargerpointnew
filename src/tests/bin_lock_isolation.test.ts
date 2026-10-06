@@ -17,7 +17,7 @@ describe('Bin Lock Isolation From Primary Auth Regression Tests', () => {
     vi.restoreAllMocks();
     storageMap.clear();
     await authService.logout();
-    config.supabaseUrl = 'https://example.supabase.co';
+    config.supabaseUrl = 'https://ydhcyamtgioyrxfarkwk.supabase.co';
     config.supabaseAnonKey = 'sb_publishable_mock_key';
   });
 

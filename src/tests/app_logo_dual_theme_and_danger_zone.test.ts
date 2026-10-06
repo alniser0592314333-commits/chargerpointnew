@@ -538,7 +538,7 @@ describe('App Logo Manager & Danger Zone Contracts', () => {
 
       const uploadSpy = vi.spyOn(supabaseClient, 'uploadAppIdentityLogo').mockImplementation(async (target) => {
         return {
-          url: `https://example.supabase.co/storage/v1/object/public/app-identity/${target}/repaired_logo.png`,
+          url: `https://ydhcyamtgioyrxfarkwk.supabase.co/storage/v1/object/public/app-identity/${target}/repaired_logo.png`,
           error: null,
         };
       });
@@ -562,8 +562,8 @@ describe('App Logo Manager & Danger Zone Contracts', () => {
       try {
         const repairRes = await repairBase64LogosToStorage();
         expect(repairRes.repaired).toBe(true);
-        expect(repairRes.whiteUrl).toContain('https://example.supabase.co/storage/v1/object/public/app-identity/white/');
-        expect(repairRes.darkUrl).toContain('https://example.supabase.co/storage/v1/object/public/app-identity/dark/');
+        expect(repairRes.whiteUrl).toContain('https://ydhcyamtgioyrxfarkwk.supabase.co/storage/v1/object/public/app-identity/white/');
+        expect(repairRes.darkUrl).toContain('https://ydhcyamtgioyrxfarkwk.supabase.co/storage/v1/object/public/app-identity/dark/');
         expect(updatedRpcPayload.whiteLogoUrl).not.toContain('data:image/');
       } finally {
         getRpcSpy.mockRestore();
@@ -580,7 +580,7 @@ describe('App Logo Manager & Danger Zone Contracts', () => {
       let deletedUrl: string | null = null;
 
       const uploadSpy = vi.spyOn(supabaseClient, 'uploadAppIdentityLogo').mockImplementation(async (target) => {
-        uploadedUrl = `https://example.supabase.co/storage/v1/object/public/app-identity/${target}/new_logo.png`;
+        uploadedUrl = `https://ydhcyamtgioyrxfarkwk.supabase.co/storage/v1/object/public/app-identity/${target}/new_logo.png`;
         return {
           url: uploadedUrl,
           error: null,

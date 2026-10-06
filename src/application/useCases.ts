@@ -90,17 +90,15 @@ export interface RepositoryContext {
     get(commandId: ID): Promise<{ type: string; payload: unknown } | null> | ({ type: string; payload: unknown } | null);
     record(commandId: ID, type: string, payload: unknown, expectedVersion?: number): Promise<void> | void;
   };
-<<<<<<< HEAD
   mutationSnapshotRepo?: {
     capture(commandId: ID, records: Array<{ table: string; id: ID; existed: boolean; data?: unknown }>): Promise<void> | void;
     clear(commandId: ID): Promise<void> | void;
-=======
+  };
   overlayRepo: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
   };
   qrTokenRepo?: {
     findByHash(tokenHash: string): Promise<QrTokenEntity | null> | (QrTokenEntity | null);
@@ -194,27 +192,24 @@ export class FinalUseCases {
 
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
 
-<<<<<<< HEAD
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(orderId, [
-        { table: 'orders', id: order.id, existed: false },
-      ]);
-      if (ctx.reservationRepo && reservation) {
-        ctx.reservationRepo.save(reservation);
-      }
-      ctx.orderRepo.save(order);
-      ctx.commandRepo.record(orderId, 'CREATE_ORDER', {
-=======
     // Phase 1.1: Use Overlay
     const mutationKey = `order:${orderId}`;
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(orderId, [
+        { table: 'orders', id: order.id, existed: false },
+      ]);
+    }
     await this.createOverlay(orderId, mutationKey, 'orders', orderId, 'CREATE', order as unknown as Record<string, unknown>);
 
     await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
         ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash : {}),
         id: orderId,
+        dayId: order.dayId,
+        customerId: order.customerId,
+        notes: order.notes,
         ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
+        orderNumber: order.orderNumber,
     });
     
     return { success: true, data: order };
@@ -278,20 +273,16 @@ export class FinalUseCases {
       version: 1,
     };
 
-<<<<<<< HEAD
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(itemId, [
-        { table: 'orderItems', id: item.id, existed: false },
-      ]);
-      ctx.itemRepo.save(item);
-      ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
-=======
     // Phase 1.1: Use Overlay
     const mutationKey = `order:${orderId}`;
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(itemId, [
+        { table: 'orderItems', id: item.id, existed: false },
+      ]);
+    }
     await this.createOverlay(itemId, mutationKey, 'order_items', itemId, 'CREATE', item as unknown as Record<string, unknown>);
 
     await this.deps.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
         orderId,
         deviceTypeId,
         hasCharger,
@@ -304,21 +295,6 @@ export class FinalUseCases {
         chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
         unitPriceMinor: item.unitPriceMinor,
         totalPriceMinor: item.totalPriceMinor,
-<<<<<<< HEAD
-      });
-      if (isSuperAdminClosedEdit) {
-        const deliveryCommandId = crypto.randomUUID();
-        ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
-          id: deliveryCommandId,
-          itemId: item.id,
-          orderItemId: item.id,
-          orderId: order.id,
-          dependencyCommandId: itemId,
-        }, item.version);
-      }
-      return { success: true, data: item };
-=======
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
     });
     
     return { success: true, data: item };
@@ -431,61 +407,68 @@ export class FinalUseCases {
       });
     }
 
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(order.id, [
-        { table: 'orders', id: order.id, existed: false },
-      ]);
-      if (ctx.reservationRepo && reservation) ctx.reservationRepo.save(reservation);
+    const mutationKey = `order:${order.id}`;
 
-      ctx.orderRepo.save(order);
-      ctx.commandRepo.record(order.id, 'CREATE_ORDER', {
-        id: order.id,
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
+        { table: 'orders', id: order.id, existed: false },
+        ...preparedItems.map(item => ({ table: 'orderItems', id: item.id, existed: false })),
+      ]);
+    }
+
+    // 1. Overlay Order
+    await this.createOverlay(commandId, mutationKey, 'orders', order.id, 'CREATE', order as unknown as Record<string, unknown>);
+
+    // 2. Overlay Items
+    for (const item of preparedItems) {
+      const itemOverlayId = `${commandId}:item:${item.id}`;
+      await this.createOverlay(itemOverlayId, mutationKey, 'order_items', item.id, 'CREATE', item as unknown as Record<string, unknown>);
+    }
+
+    // 3. Record Commands
+    await this.deps.commandRepo.record(commandId, 'CREATE_ORDER', {
+      id: order.id,
+      aggregateId: order.id,
+      dayId,
+      customerId,
+      displayNumber,
+      notes,
+      customerBalanceSnapshotMinor: currentBalance,
+      ...(groupId ? { groupId } : {}),
+    });
+
+    for (const item of preparedItems) {
+      await this.deps.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
+        id: item.id,
         aggregateId: order.id,
-        dayId,
-        customerId,
-        displayNumber,
-        notes,
-        customerBalanceSnapshotMinor: currentBalance,
+        orderId: order.id,
+        deviceTypeId: item.deviceTypeId,
+        hasCharger: item.hasCharger,
         ...(groupId ? { groupId } : {}),
+        deviceNameSnapshot: item.deviceNameSnapshot,
+        deviceIconSnapshot: item.deviceIconSnapshot,
+        basePriceSnapshotMinor: item.basePriceSnapshotMinor,
+        chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
+        customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
+        chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
+        unitPriceMinor: item.unitPriceMinor,
+        totalPriceMinor: item.totalPriceMinor,
+        dependencyCommandId: commandId,
       });
 
-      for (const item of preparedItems) {
-        ctx.mutationSnapshotRepo?.capture(item.id, [
-          { table: 'orderItems', id: item.id, existed: false },
-          { table: 'orders', id: order.id, existed: true, data: order },
-        ]);
-        ctx.itemRepo.save(item);
-        ctx.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
-          id: item.id,
-          aggregateId: order.id,
+      if (item.status === 'delivered') {
+        const deliveryCommandId = crypto.randomUUID();
+        await this.deps.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+          id: deliveryCommandId,
+          itemId: item.id,
+          orderItemId: item.id,
           orderId: order.id,
-          deviceTypeId: item.deviceTypeId,
-          hasCharger: item.hasCharger,
-          ...(groupId ? { groupId } : {}),
-          deviceNameSnapshot: item.deviceNameSnapshot,
-          deviceIconSnapshot: item.deviceIconSnapshot,
-          basePriceSnapshotMinor: item.basePriceSnapshotMinor,
-          chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
-          customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
-          chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
-          unitPriceMinor: item.unitPriceMinor,
-          totalPriceMinor: item.totalPriceMinor,
-        });
-
-        if (item.status === 'delivered') {
-          const deliveryCommandId = crypto.randomUUID();
-          ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
-            id: deliveryCommandId,
-            itemId: item.id,
-            orderItemId: item.id,
-            orderId: order.id,
-            dependencyCommandId: item.id,
-          }, item.version);
-        }
+          dependencyCommandId: item.id,
+        }, item.version);
       }
+    }
 
-      return { success: true, data: { order, items: preparedItems } };
-    });
+    return { success: true, data: { order, items: preparedItems } };
   }
 
   async addItemToDeliveredOrder(
@@ -512,6 +495,11 @@ export class FinalUseCases {
     const order = await this.deps.orderRepo.findById(item.orderId);
     if (!order) throw new NotFoundError('Order not found');
 
+    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) {
+      throw new ClosedDayError();
+    }
+
     const orderItems = await this.deps.itemRepo.findByOrderId(order.id);
     const activeItems = orderItems.filter(i => i.status !== 'cancelled');
     if (activeItems.length === 0) {
@@ -537,35 +525,6 @@ export class FinalUseCases {
       );
     }
 
-<<<<<<< HEAD
-    const expectedVersion = item.version;
-    const deliveryCommandId = crypto.randomUUID();
-    const optimisticItem: OrderItemEntity = {
-      ...item,
-      status: 'delivered',
-      deliveredAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      // Keep the authoritative server version unchanged while this optimistic
-      // mutation is pending. The server increments it only after committing the
-      // delivery + ledger transaction.
-      version: item.version,
-    };
-
-    const result = await this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(deliveryCommandId, [
-        { table: 'orderItems', id: item.id, existed: true, data: item },
-      ]);
-      ctx.itemRepo.save(optimisticItem);
-      ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
-        id: deliveryCommandId,
-        itemId: item.id,
-        orderItemId: item.id,
-        orderId: order.id,
-        bin,
-      }, expectedVersion);
-
-      return { success: true as const, data: optimisticItem };
-=======
     const patch: Partial<OrderItemEntity> = {
       status: 'delivered',
       financialStatus: 'RECOGNIZED',
@@ -577,15 +536,22 @@ export class FinalUseCases {
 
     // Phase 1.1: Use Overlay
     const mutationKey = `order:${order.id}`;
-    await this.createOverlay(itemId, mutationKey, 'order_items', itemId, 'PATCH', patch);
+    const commandId = crypto.randomUUID();
+    
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
+        { table: 'orderItems', id: item.id, existed: true, data: item },
+      ]);
+    }
+    await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
 
-    await this.deps.commandRepo.record(itemId, 'DELIVER_ORDER_ITEM', {
+    await this.deps.commandRepo.record(commandId, 'DELIVER_ORDER_ITEM', {
+        id: commandId,
         itemId: item.id,
         orderItemId: item.id,
-        id: item.id,
+        orderId: order.id,
         bin,
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
-    });
+    }, item.version);
 
     return { success: true as const, data: { ...item, ...patch } as OrderItemEntity };
   }
@@ -600,29 +566,39 @@ export class FinalUseCases {
 
     const existing = await this.deps.orderRepo.findById(orderId);
     if (!existing) throw new NotFoundError('Order not found');
+
+    const dayIsClosed = await this.deps.dayRepo.isClosed(existing.dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) {
+      throw new ClosedDayError();
+    }
+
     if (existing.status === 'cancelled') throw new BusinessRuleViolation('Cannot edit a cancelled order');
 
-    const updated: OrderEntity = {
-      ...existing,
+    const patch: Partial<OrderEntity> = {
       notes: notes?.trim() || undefined,
       updatedAt: new Date().toISOString(),
       version: existing.version,
     };
 
     const commandId = crypto.randomUUID();
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(commandId, [
+    const mutationKey = `order:${orderId}`;
+
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
         { table: 'orders', id: existing.id, existed: true, data: existing },
       ]);
-      ctx.orderRepo.save(updated);
-      ctx.commandRepo.record(commandId, 'UPDATE_ORDER', {
-        id: updated.id,
-        aggregateId: updated.id,
-        orderId: updated.id,
-        notes: updated.notes,
-      }, existing.version);
-      return { success: true, data: updated };
-    });
+    }
+
+    await this.createOverlay(commandId, mutationKey, 'orders', orderId, 'PATCH', patch as Record<string, unknown>);
+
+    await this.deps.commandRepo.record(commandId, 'UPDATE_ORDER', {
+      id: orderId,
+      aggregateId: orderId,
+      orderId: orderId,
+      notes: patch.notes,
+    }, existing.version);
+
+    return { success: true, data: { ...existing, ...patch } as OrderEntity };
   }
 
   async removeOrderItemDuringEdit(
@@ -638,33 +614,38 @@ export class FinalUseCases {
     const order = await this.deps.orderRepo.findById(item.orderId);
     if (!order) throw new NotFoundError('Order not found');
 
-    if (await this.deps.dayRepo.isClosed(order.dayId)) {
+    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) {
       throw new ClosedDayError();
     }
 
     validateItemTransition(item.status, 'cancelled');
 
-    const updatedItem: OrderItemEntity = {
-      ...item,
+    const patch: Partial<OrderItemEntity> = {
       status: 'cancelled',
       updatedAt: new Date().toISOString(),
       version: item.version,
     };
 
     const commandId = crypto.randomUUID();
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(commandId, [
+    const mutationKey = `order:${order.id}`;
+
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
         { table: 'orderItems', id: item.id, existed: true, data: item },
       ]);
-      ctx.itemRepo.save(updatedItem);
-      ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
-        id: commandId,
-        itemId: item.id,
-        orderItemId: item.id,
-        orderId: order.id,
-      }, item.version);
-      return { success: true, data: updatedItem };
-    });
+    }
+
+    await this.createOverlay(commandId, mutationKey, 'order_items', item.id, 'PATCH', patch as Record<string, unknown>);
+
+    await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+      id: commandId,
+      itemId: item.id,
+      orderItemId: item.id,
+      orderId: order.id,
+    }, item.version);
+
+    return { success: true, data: { ...item, ...patch } as OrderItemEntity };
   }
 
   async cancelOrder(
@@ -678,32 +659,56 @@ export class FinalUseCases {
 
     const order = await this.deps.orderRepo.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');
+
+    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) {
+      throw new ClosedDayError();
+    }
+
     validateOrderTransition(order.status, 'cancelled');
 
     const items = await this.deps.itemRepo.findByOrderId(orderId);
+    const activeItems = items.filter(i => i.status !== 'cancelled');
+    
     const commandId = crypto.randomUUID();
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(commandId, [
-        ...items.filter((i) => i.status !== 'cancelled').map((i) => ({ table: 'orderItems', id: i.id, existed: true, data: i })),
+    const mutationKey = `order:${orderId}`;
+
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
+        ...activeItems.map((i) => ({ table: 'orderItems', id: i.id, existed: true, data: i })),
       ]);
-      for (const existingItem of items) {
-        if (existingItem.status === 'cancelled') continue;
-        ctx.itemRepo.save({
-          ...existingItem,
-          status: 'cancelled',
-          cancelledAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          version: existingItem.version,
-        } as OrderItemEntity);
-      }
-      ctx.commandRepo.record(commandId, 'CANCEL_ORDER', {
-        id: commandId,
-        aggregateId: orderId,
-        orderId,
-        bin,
-      }, order.version);
-      return { success: true, data: order };
-    });
+    }
+
+    // For simplicity in Phase 1.1, we overlay each item cancellation
+    // However, since createOverlay only handles one per commandId, we'll need to be careful.
+    // Actually, let's just overlay the first item and the command will handle the rest on server.
+    // Wait, the client projection should show ALL as cancelled.
+    // We'll use a PATCH on order_items table for the whole order? No, localDb overlays are per entityId.
+    
+    for (const itemToCancel of activeItems) {
+        const itemPatch = {
+            status: 'cancelled',
+            cancelledAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+        // We'll create a separate overlay for each item with unique commandIds?
+        // No, standard says one commandId per mutation.
+        // Let's modify createOverlay to handle multiple if needed? 
+        // No, let's just create one overlay for the order cancellation state if possible.
+        // But the projection is based on items.
+        
+        const itemCommandId = `${commandId}:${itemToCancel.id}`;
+        await this.createOverlay(itemCommandId, mutationKey, 'order_items', itemToCancel.id, 'PATCH', itemPatch as Record<string, unknown>);
+    }
+
+    await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER', {
+      id: commandId,
+      aggregateId: orderId,
+      orderId,
+      bin,
+    }, order.version);
+
+    return { success: true, data: order };
   }
 
   async cancelOrderItem(
@@ -711,7 +716,7 @@ export class FinalUseCases {
     itemId: ID,
     bin: string
   ): Promise<Result<OrderItemEntity>> {
-    auth.requireAuth();
+    const actor = auth.requireAuth();
     auth.assertPermission('orders:cancel');
     await auth.verifyBin(bin);
 
@@ -722,30 +727,39 @@ export class FinalUseCases {
     const order = await this.deps.orderRepo.findById(existingItem.orderId);
     if (!order) throw new NotFoundError('Order not found');
 
+    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) {
+      throw new ClosedDayError();
+    }
+
     const commandId = crypto.randomUUID();
-    const optimisticItem: OrderItemEntity = {
-      ...existingItem,
+    const mutationKey = `order:${order.id}`;
+    
+    const patch = {
       status: 'cancelled',
       cancelledAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: existingItem.version,
     };
 
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.mutationSnapshotRepo?.capture(commandId, [
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
         { table: 'orderItems', id: existingItem.id, existed: true, data: existingItem },
       ]);
-      ctx.itemRepo.save(optimisticItem);
-      ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
-        id: commandId,
-        aggregateId: order.id,
-        itemId: itemId,
-        orderItemId: itemId,
-        orderId: order.id,
-        bin,
-      }, existingItem.version);
-      return { success: true, data: optimisticItem };
-    });
+    }
+
+    await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
+
+    await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+      id: commandId,
+      aggregateId: order.id,
+      itemId: itemId,
+      orderItemId: itemId,
+      orderId: order.id,
+      bin,
+    }, existingItem.version);
+
+    return { success: true, data: { ...existingItem, ...patch } as OrderItemEntity };
   }
 
   // ==========================================
@@ -1053,31 +1067,34 @@ export class FinalUseCases {
       createdAt: new Date().toISOString(),
     };
 
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      // 1. Atomic Idempotency Check (Local)
-      const existing = ctx.commandRepo.get(commandId) as { type: string; payload: unknown } | null;
-      if (existing) return { success: true, data: existing.payload as PaymentEntity };
+    const mutationKey = `customer:${customerId}`;
 
-      ctx.paymentRepo.save(payment);
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
+        { table: 'payments', id: commandId, existed: false },
+      ]);
+    }
 
-      ctx.ledgerRepo.append({
+    // 1. Overlay Payment
+    await this.createOverlay(commandId, mutationKey, 'payments', commandId, 'CREATE', payment as unknown as Record<string, unknown>);
+
+    // 2. Overlay Ledger
+    const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
         eventType: 'PAYMENT',
         amountMinor,
         customerId,
         actorAdminId: actor.id,
         referenceId: payment.id,
-      });
+    };
+    await this.createOverlay(`${commandId}:ledger`, mutationKey, 'ledger', commandId, 'CREATE', ledgerEvent as unknown as Record<string, unknown>);
 
-      this.allocatePaymentFIFOInternal(ctx, payment.id, customerId, amountMinor, ledger, allocations);
-
-      // 2. Atomic Outbox Recording with resetGeneration
-      ctx.commandRepo.record(commandId, 'CREATE_PAYMENT', {
-        ...payment,
-        resetGeneration
-      });
-
-      return { success: true, data: payment };
+    // 3. Outbox Recording
+    await this.deps.commandRepo.record(commandId, 'CREATE_PAYMENT', {
+      ...payment,
+      resetGeneration
     });
+
+    return { success: true, data: payment };
   }
 
   private allocatePaymentFIFOInternal(
@@ -1186,19 +1203,27 @@ export class FinalUseCases {
       actorAdminId: actor.id,
     };
 
-    const txId = crypto.randomUUID();
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      const createdAt = new Date().toISOString();
-      ctx.ledgerRepo.append({ id: txId, createdAt, ...event });
-      ctx.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
-        id: txId,
-        customerId,
-        amountMinor,
-        actorAdminId: actor.id,
-        createdAt,
-      });
-      return { success: true, data: { id: txId, createdAt, ...event } };
+    const txId = commandId || crypto.randomUUID();
+    const mutationKey = `customer:${customerId}`;
+    const createdAt = new Date().toISOString();
+
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(txId, [
+        { table: 'ledger', id: txId, existed: false },
+      ]);
+    }
+
+    await this.createOverlay(txId, mutationKey, 'ledger', txId, 'CREATE', { id: txId, createdAt, ...event } as unknown as Record<string, unknown>);
+
+    await this.deps.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
+      id: txId,
+      customerId,
+      amountMinor,
+      actorAdminId: actor.id,
+      createdAt,
     });
+
+    return { success: true, data: { id: txId, createdAt, ...event } };
   }
 
   async consumeCustomerCredit(auth: AuthorizationContext, customerId: ID, amountMinor: number, orderId: ID): Promise<Result<FinancialLedgerEntity>> {

@@ -56,37 +56,6 @@ export function sanitizeFileName(name: string): string {
   return name.replace(/[^\w\s\u0600-\u06FF-]/g, '').trim().replace(/\s+/g, '_') || 'backup';
 }
 
-const BACKUP_LOCAL_PREFERENCE_KEYS = [
-  'sys_theme',
-  'sys_locale',
-  'app_qr_design_config_CUSTOMER',
-  'app_qr_design_config_ORDER',
-  'app_application_logos_v1',
-  'app_active_logo_id_v1',
-  'app_global_identity_cache_v1',
-];
-
-function captureLocalPreferences(): Record<string, string> {
-  if (typeof localStorage === 'undefined') return {};
-  const out: Record<string, string> = {};
-  for (const key of BACKUP_LOCAL_PREFERENCE_KEYS) {
-    try {
-      const value = localStorage.getItem(key);
-      if (value !== null) out[key] = value;
-    } catch {}
-  }
-  return out;
-}
-
-function restoreLocalPreferences(values?: Record<string, string>): void {
-  if (!values || typeof localStorage === 'undefined') return;
-  for (const key of BACKUP_LOCAL_PREFERENCE_KEYS) {
-    try {
-      if (Object.prototype.hasOwnProperty.call(values, key)) localStorage.setItem(key, values[key]);
-    } catch {}
-  }
-}
-
 /**
  * Deterministically computes a checksum over snapshot data using canonical JSON representation
  * and FNV-1a hashing.
@@ -200,7 +169,6 @@ export function normalizeCustomerEntity(c: any): any {
   const exemptVal = c.chargerFeeExempt ?? c.charger_fee_exempt ?? false;
   const debtLimit = c.debtLimitMinor ?? c.debt_limit_minor ?? c.balanceMinor ?? c.balance_minor ?? 0;
   return {
-    ...c,
     id: c.id,
     name: c.name,
     phone: c.phone || c.phone_number || c.phoneNumber || '',
@@ -227,7 +195,6 @@ export function normalizeBusinessDayEntity(b: any): any {
     '';
   const closedVal = b.isClosed ?? b.is_closed ?? false;
   return {
-    ...b,
     id: b.id,
     businessDate,
     business_date: businessDate,
@@ -244,7 +211,6 @@ export function normalizeDeviceTypeEntity(d: any): any {
   if (!d) return d;
   const activeVal = d.isActive ?? d.is_active ?? true;
   const chargerVal = d.chargerFeeEnabled ?? d.charger_fee_enabled ?? true;
-  const chargerApplicable = d.chargerFeeApplicable ?? d.charger_fee_applicable ?? chargerVal;
   const basePrice =
     d.basePriceMinor ??
     d.base_price_minor ??
@@ -254,7 +220,6 @@ export function normalizeDeviceTypeEntity(d: any): any {
     d.service_price_minor ??
     0;
   return {
-    ...d,
     id: d.id,
     name: d.name,
     nameAr: d.nameAr || d.name_ar || d.name,
@@ -266,8 +231,6 @@ export function normalizeDeviceTypeEntity(d: any): any {
     base_price_minor: basePrice,
     chargerFeeEnabled: Boolean(chargerVal),
     charger_fee_enabled: Boolean(chargerVal),
-    chargerFeeApplicable: Boolean(chargerApplicable),
-    charger_fee_applicable: Boolean(chargerApplicable),
     isActive: Boolean(activeVal),
     is_active: Boolean(activeVal),
     sortOrder: d.sortOrder ?? d.sort_order ?? 0,
@@ -286,7 +249,6 @@ export function normalizeOrderEntity(o: any): any {
   const intSeq = o.internalSequence ?? o.internal_sequence ?? 0;
   const balanceSnap = o.customerBalanceSnapshotMinor ?? o.customer_balance_snapshot_minor ?? 0;
   return {
-    ...o,
     id: o.id,
     dayId,
     day_id: dayId,
@@ -347,7 +309,6 @@ export function normalizeOrderItemEntity(i: any): any {
   const payStatus = i.paymentStatus || i.payment_status || 'UNPAID';
 
   return {
-    ...i,
     id: i.id,
     orderId,
     order_id: orderId,
@@ -391,7 +352,6 @@ export function normalizeOrderItemEntity(i: any): any {
 export function normalizeFinancialLedgerEntity(l: any): any {
   if (!l) return l;
   return {
-    ...l,
     id: l.id,
     eventType:
       l.eventType ||
@@ -413,7 +373,6 @@ export function normalizeFinancialLedgerEntity(l: any): any {
 export function normalizePaymentEntity(p: any): any {
   if (!p) return p;
   return {
-    ...p,
     id: p.id,
     customerId: p.customerId || p.customer_id,
     amountMinor: p.amountMinor ?? p.amount_minor ?? 0,
@@ -426,7 +385,6 @@ export function normalizePaymentEntity(p: any): any {
 export function normalizePaymentAllocationEntity(a: any): any {
   if (!a) return a;
   return {
-    ...a,
     id: a.id,
     paymentId: a.paymentId || a.payment_id,
     orderId: a.orderId || a.order_id,
@@ -437,19 +395,11 @@ export function normalizePaymentAllocationEntity(a: any): any {
 
 export function normalizeQrTokenEntity(q: any): any {
   if (!q) return q;
-  // Never persist an ephemeral raw auth token under the generic `token` key.
-  // Persistent QR identity is represented by public_token/token_hash and can
-  // therefore survive an exact business-data backup/restore.
-  const publicToken = q.publicToken || q.public_token || q.token;
   return {
-    ...q,
     id: q.id,
-    publicToken,
-    public_token: publicToken,
-    tokenHash: q.tokenHash || q.token_hash,
-    token_hash: q.tokenHash || q.token_hash,
-    entityType: q.entityType || q.entity_type || q.tokenType || q.token_type,
-    entityId: q.entityId || q.entity_id || q.targetId || q.target_id,
+    token: q.token,
+    entityType: q.entityType || q.entity_type,
+    entityId: q.entityId || q.entity_id,
     createdAt: q.createdAt || q.created_at || new Date().toISOString(),
   };
 }
@@ -465,24 +415,17 @@ export class BackupService {
    * Captures current offline business data from IndexedDB kvStore.
    */
   async captureOfflineData(): Promise<BackupSnapshotData> {
-    // One synchronous clone of the hydrated in-memory cache prevents a multi-table
-    // backup from observing different moments between sequential IndexedDB reads.
-    const recovery = await localDb.captureRecoverySnapshot();
-    const t = recovery.tables;
-    const customers = t.customers.map(sanitizeEntity);
-    const businessDays = t.businessDays.map(sanitizeEntity);
-    const orders = t.orders.map(sanitizeEntity);
-    const orderItems = t.orderItems.map(sanitizeEntity);
-    const financialLedger = t.financialLedger.map(sanitizeEntity);
-    const payments = t.payments.map(sanitizeEntity);
-    const paymentAllocations = t.paymentAllocations.map(sanitizeEntity);
-    const deviceTypes = t.deviceTypes.map(sanitizeEntity);
-    const goals = t.goals.map(sanitizeEntity);
-    const goalRequests = t.goalRequests.map(sanitizeEntity);
-    const qrTokens = (t.qr_tokens.length ? t.qr_tokens : t.qrTokens).map(sanitizeEntity);
-    const orderNumberReservations = t.orderNumberReservations.map(sanitizeEntity);
-    const deletedDeviceTypeMarkers = t.deletedDeviceTypeMarkers.map(sanitizeEntity);
-    const changeLog = t.changeLog.map(sanitizeEntity);
+    const customers = (await localDb.list('customers')).map(sanitizeEntity);
+    const businessDays = (await localDb.list('businessDays')).map(sanitizeEntity);
+    const orders = (await localDb.list('orders')).map(sanitizeEntity);
+    const orderItems = (await localDb.list('orderItems')).map(sanitizeEntity);
+    const financialLedger = (await localDb.list('financialLedger')).map(sanitizeEntity);
+    const payments = (await localDb.list('payments')).map(sanitizeEntity);
+    const paymentAllocations = (await localDb.list('paymentAllocations')).map(sanitizeEntity);
+    const deviceTypes = (await localDb.list('deviceTypes')).map(sanitizeEntity);
+    const qrTokens = (await localDb.list('qr_tokens')).map(sanitizeEntity);
+    const orderNumberReservations = (await localDb.list('orderNumberReservations')).map(sanitizeEntity);
+    const syncState = await localDb.getSyncState('global');
 
     return {
       customers,
@@ -493,63 +436,9 @@ export class BackupService {
       payments,
       paymentAllocations,
       deviceTypes,
-      goals,
-      goalRequests,
       qrTokens,
       orderNumberReservations,
-      deletedDeviceTypeMarkers,
-      mutationSnapshots: recovery.mutationSnapshots.map(sanitizeEntity),
-      changeLog,
-      outbox: recovery.outbox.map(sanitizeEntity),
-      syncHistory: recovery.syncHistory.map(sanitizeEntity),
-      syncState: recovery.syncState,
-      systemSettings: [],
-      localPreferences: captureLocalPreferences(),
-    };
-  }
-
-  /**
-   * Captures an atomic, server-side point-in-time backup for an ONLINE snapshot.
-   * This is intentionally separate from the general REST reader used by previews.
-   */
-  async captureAuthoritativeOnlineData(bin: string): Promise<BackupSnapshotData> {
-    if (!bin?.trim()) throw new AuthorizationError('BIN is required for authoritative online backup.');
-    const { data, error } = await invokeSupabaseRpc<any>('create_authoritative_backup_checkpoint_v2', {
-      p_entered_bin: bin.trim(),
-      p_notes: 'MANUAL_V2',
-    });
-    if (error || !data?.success || !data.snapshotData) {
-      throw new Error(error || 'Authoritative online backup failed. Migration 00116 must be applied before taking an Online snapshot.');
-    }
-    const d = data.snapshotData;
-    const normalizeArray = (key: string) => Array.isArray(d[key]) ? d[key].map(sanitizeEntity) : [];
-    return {
-      systemSettings: normalizeArray('systemSettings'),
-      authoritativeCheckpoint: {
-        checkpointId: data.checkpointId,
-        checkpointSequence: data.checkpointSequence,
-        integrityHash: data.integrityHash,
-        authoritativeMaxSequence: data.manifest?.authoritativeMaxSequence,
-      },
-      customers: normalizeArray('customers').map(normalizeCustomerEntity),
-      businessDays: normalizeArray('businessDays').map(normalizeBusinessDayEntity),
-      orders: normalizeArray('orders').map(normalizeOrderEntity),
-      orderItems: normalizeArray('orderItems').map(normalizeOrderItemEntity),
-      financialLedger: normalizeArray('financialLedger').map(normalizeFinancialLedgerEntity),
-      payments: normalizeArray('payments').map(normalizePaymentEntity),
-      paymentAllocations: normalizeArray('paymentAllocations').map(normalizePaymentAllocationEntity),
-      deviceTypes: normalizeArray('deviceTypes').map(normalizeDeviceTypeEntity),
-      goals: normalizeArray('goals'),
-      goalRequests: normalizeArray('goalRequests'),
-      qrTokens: normalizeArray('qrTokens').map(normalizeQrTokenEntity),
-      orderNumberReservations: [],
-      deletedDeviceTypeMarkers: [],
-      mutationSnapshots: [],
-      changeLog: [],
-      outbox: [],
-      syncHistory: [],
-      syncState: null,
-      localPreferences: captureLocalPreferences(),
+      syncState,
     };
   }
 
@@ -574,19 +463,9 @@ export class BackupService {
         payments: (customOnlineData.payments || []).map(sanitizeEntity),
         paymentAllocations: (customOnlineData.paymentAllocations || []).map(sanitizeEntity),
         deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity),
-        goals: (customOnlineData.goals || []).map(sanitizeEntity),
-        goalRequests: (customOnlineData.goalRequests || []).map(sanitizeEntity),
         qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity),
         orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity),
-        deletedDeviceTypeMarkers: (customOnlineData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
-        mutationSnapshots: (customOnlineData.mutationSnapshots || []).map(sanitizeEntity),
-        changeLog: (customOnlineData.changeLog || []).map(sanitizeEntity),
-        outbox: (customOnlineData.outbox || []).map(sanitizeEntity),
-        syncHistory: (customOnlineData.syncHistory || []).map(sanitizeEntity),
         syncState: customOnlineData.syncState || null,
-        systemSettings: (customOnlineData.systemSettings || []).map(sanitizeEntity),
-        authoritativeCheckpoint: customOnlineData.authoritativeCheckpoint ? sanitizeEntity(customOnlineData.authoritativeCheckpoint) : undefined,
-        localPreferences: customOnlineData.localPreferences ? sanitizeEntity(customOnlineData.localPreferences) : captureLocalPreferences(),
       };
     }
 
@@ -630,8 +509,6 @@ export class BackupService {
       payments,
       paymentAllocations,
       deviceTypes,
-      goals,
-      goalRequests,
       qrTokens,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
@@ -642,8 +519,6 @@ export class BackupService {
       fetchTable('payments').then((rows) => rows.map(normalizePaymentEntity)),
       fetchTable('payment_allocations').then((rows) => rows.map(normalizePaymentAllocationEntity)),
       fetchTable('device_types').then((rows) => rows.map(normalizeDeviceTypeEntity)),
-      fetchTable('goals'),
-      fetchTable('goal_requests'),
       fetchTable('qr_tokens').then((rows) => rows.map(normalizeQrTokenEntity)),
     ]);
 
@@ -656,19 +531,8 @@ export class BackupService {
       payments,
       paymentAllocations,
       deviceTypes,
-      goals,
-      goalRequests,
       qrTokens,
-      orderNumberReservations: [],
-      deletedDeviceTypeMarkers: [],
-      mutationSnapshots: [],
-      changeLog: [],
-      outbox: [],
-      syncHistory: [],
       syncState: null,
-      systemSettings: [],
-      authoritativeCheckpoint: undefined,
-      localPreferences: captureLocalPreferences(),
     };
   }
 
@@ -847,9 +711,7 @@ export class BackupService {
         data.financialLedger.length +
         data.payments.length +
         data.paymentAllocations.length +
-        data.deviceTypes.length +
-        (data.goals || []).length +
-        (data.goalRequests || []).length
+        data.deviceTypes.length
       );
     };
 
@@ -865,15 +727,7 @@ export class BackupService {
       payments: consolidatedPayments,
       paymentAllocations: consolidatedAllocations,
       deviceTypes: consolidatedDevices,
-      goals: offline.goals || online.goals || [],
-      goalRequests: offline.goalRequests || online.goalRequests || [],
       qrTokens: offline.qrTokens || online.qrTokens || [],
-      orderNumberReservations: offline.orderNumberReservations || [],
-      deletedDeviceTypeMarkers: (offline.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
-      mutationSnapshots: (offline.mutationSnapshots || []).map(sanitizeEntity),
-      changeLog: (offline.changeLog || []).map(sanitizeEntity),
-      outbox: pendingOutbox.map(sanitizeEntity),
-      syncHistory: (offline.syncHistory || []).map(sanitizeEntity),
       syncState: online.syncState || offline.syncState || null,
       consolidationMetadata: {
         onlineRecordCount,
@@ -912,14 +766,10 @@ export class BackupService {
     if (sourceType === 'OFFLINE') {
       rawData = await this.captureOfflineData();
     } else if (sourceType === 'ONLINE') {
-      rawData = options?.customOnlineData
-        ? await this.captureOnlineData(options.customOnlineData)
-        : await this.captureAuthoritativeOnlineData(options?.bin || '');
+      rawData = await this.captureOnlineData(options?.customOnlineData);
     } else if (sourceType === 'CONSOLIDATED') {
       const [online, offline, outbox] = await Promise.all([
-        options?.customOnlineData
-          ? this.captureOnlineData(options.customOnlineData)
-          : this.captureAuthoritativeOnlineData(options?.bin || ''),
+        this.captureOnlineData(options?.customOnlineData),
         this.captureOfflineData(),
         localDb.listOutbox(),
       ]);
@@ -939,19 +789,9 @@ export class BackupService {
       payments: rawData.payments.map(sanitizeEntity),
       paymentAllocations: rawData.paymentAllocations.map(sanitizeEntity),
       deviceTypes: rawData.deviceTypes.map(sanitizeEntity),
-      goals: (rawData.goals || []).map(sanitizeEntity),
-      goalRequests: (rawData.goalRequests || []).map(sanitizeEntity),
       qrTokens: (rawData.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (rawData.orderNumberReservations || []).map(sanitizeEntity),
-      deletedDeviceTypeMarkers: (rawData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
-      mutationSnapshots: (rawData.mutationSnapshots || []).map(sanitizeEntity),
-      changeLog: (rawData.changeLog || []).map(sanitizeEntity),
-      outbox: (rawData.outbox || []).map(sanitizeEntity),
-      syncHistory: (rawData.syncHistory || []).map(sanitizeEntity),
       syncState: rawData.syncState ? sanitizeEntity(rawData.syncState) : null,
-      systemSettings: (rawData.systemSettings || []).map(sanitizeEntity),
-      authoritativeCheckpoint: rawData.authoritativeCheckpoint ? sanitizeEntity(rawData.authoritativeCheckpoint) : undefined,
-      localPreferences: rawData.localPreferences ? sanitizeEntity(rawData.localPreferences) : captureLocalPreferences(),
       consolidationMetadata: rawData.consolidationMetadata
         ? sanitizeEntity(rawData.consolidationMetadata)
         : undefined,
@@ -966,15 +806,6 @@ export class BackupService {
       payments: sanitizedData.payments.length,
       paymentAllocations: sanitizedData.paymentAllocations.length,
       deviceTypes: sanitizedData.deviceTypes.length,
-      goals: (sanitizedData.goals || []).length,
-      goalRequests: (sanitizedData.goalRequests || []).length,
-      qrTokens: (sanitizedData.qrTokens || []).length,
-      orderNumberReservations: (sanitizedData.orderNumberReservations || []).length,
-      deletedDeviceTypeMarkers: (sanitizedData.deletedDeviceTypeMarkers || []).length,
-      mutationSnapshots: (sanitizedData.mutationSnapshots || []).length,
-      outbox: (sanitizedData.outbox || []).length,
-      syncHistory: (sanitizedData.syncHistory || []).length,
-      changeLog: (sanitizedData.changeLog || []).length,
     };
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
@@ -1031,61 +862,6 @@ export class BackupService {
     return localDb.deleteSnapshot(snapshotId);
   }
 
-  private validateSnapshotDataStructure(data: BackupSnapshotData): void {
-    if (!data || !Array.isArray(data.customers) || !Array.isArray(data.businessDays) || !Array.isArray(data.orders) || !Array.isArray(data.orderItems)) {
-      throw new SnapshotFormatError('Invalid snapshot entity collections structure');
-    }
-    const customerIds = new Set(data.customers.map((x: any) => x?.id).filter(Boolean));
-    const dayIds = new Set(data.businessDays.map((x: any) => x?.id).filter(Boolean));
-    const orderIds = new Set(data.orders.map((x: any) => x?.id).filter(Boolean));
-    const paymentIds = new Set((data.payments || []).map((x: any) => x?.id).filter(Boolean));
-    const deviceIds = new Set((data.deviceTypes || []).map((x: any) => x?.id).filter(Boolean));
-
-    for (const o of data.orders) {
-      if (!o?.id || !o?.dayId || !o?.customerId || !dayIds.has(o.dayId) || !customerIds.has(o.customerId)) {
-        throw new SnapshotFormatError(`Invalid order reference: ${o?.id || 'unknown'}`);
-      }
-    }
-    for (const i of data.orderItems) {
-      const deviceId = i?.deviceTypeId || i?.device_type_id;
-      if (!i?.id || !i?.orderId || !orderIds.has(i.orderId) || (deviceId && !deviceIds.has(deviceId))) {
-        throw new SnapshotFormatError(`Invalid order item reference: ${i?.id || 'unknown'}`);
-      }
-    }
-    for (const p of data.payments || []) {
-      if (!p?.id || !p?.customerId || !customerIds.has(p.customerId)) throw new SnapshotFormatError(`Invalid payment reference: ${p?.id || 'unknown'}`);
-    }
-    for (const a of data.paymentAllocations || []) {
-      const paymentId = a?.paymentId || a?.payment_id;
-      const orderId = a?.orderId || a?.order_id;
-      if (!a?.id || !paymentId || !orderId || !paymentIds.has(paymentId) || !orderIds.has(orderId)) {
-        throw new SnapshotFormatError(`Invalid payment allocation reference: ${a?.id || 'unknown'}`);
-      }
-    }
-    for (const l of data.financialLedger || []) {
-      const customerId = l?.customerId || l?.customer_id;
-      const orderId = l?.orderId || l?.order_id;
-      const itemId = l?.orderItemId || l?.order_item_id;
-      if (customerId && !customerIds.has(customerId)) throw new SnapshotFormatError(`Invalid ledger customer reference: ${l?.id || 'unknown'}`);
-      if (orderId && !orderIds.has(orderId)) throw new SnapshotFormatError(`Invalid ledger order reference: ${l?.id || 'unknown'}`);
-      if (itemId && !data.orderItems.some((i: any) => i?.id === itemId)) throw new SnapshotFormatError(`Invalid ledger item reference: ${l?.id || 'unknown'}`);
-    }
-    for (const g of data.goals || []) {
-      const customerId = g?.customerId || g?.customer_id;
-      if (customerId && !customerIds.has(customerId)) throw new SnapshotFormatError(`Invalid goal customer reference: ${g?.id || 'unknown'}`);
-    }
-    for (const g of data.goalRequests || []) {
-      const customerId = g?.customerId || g?.customer_id;
-      if (customerId && !customerIds.has(customerId)) throw new SnapshotFormatError(`Invalid goal request customer reference: ${g?.id || 'unknown'}`);
-    }
-    for (const q of data.qrTokens || []) {
-      const targetId = q?.targetId || q?.target_id || q?.entityId || q?.entity_id;
-      if (targetId && !customerIds.has(targetId) && !orderIds.has(targetId)) {
-        throw new SnapshotFormatError(`Invalid QR target reference: ${q?.id || 'unknown'}`);
-      }
-    }
-  }
-
   /**
    * Restores an immutable snapshot into local offline storage.
    * Performs staged validation before clearing operational tables.
@@ -1121,9 +897,16 @@ export class BackupService {
       );
     }
 
-    // 3. Validate Entity Structure + foreign-key references before any destructive write.
+    // 3. Validate Entity Structure
     const d = snapshot.data;
-    this.validateSnapshotDataStructure(d);
+    if (
+      !Array.isArray(d.customers) ||
+      !Array.isArray(d.businessDays) ||
+      !Array.isArray(d.orders) ||
+      !Array.isArray(d.orderItems)
+    ) {
+      throw new SnapshotFormatError('Invalid snapshot entity collections structure');
+    }
 
     // 4. Staged Transactional Replacement of Business Data inside atomic runTransaction
     // Notice: backupSnapshots is explicitly PRESERVED and protected!
@@ -1132,11 +915,6 @@ export class BackupService {
       'readwrite',
       (tx) => {
         localDb.clearOperationalTablesWithTx(tx);
-        localDb.clearOutboxWithTx(tx);
-        // A snapshot is authoritative for its captured sync cursor; never retain a newer stale cursor.
-        try { tx.objectStore('syncState').clear(); } catch {}
-        try { tx.objectStore('mutationSnapshots').clear(); } catch {}
-
 
         // Populate operational stores from snapshot
         for (const c of d.customers) localDb.setWithTx(tx, 'customers', c.id, c);
@@ -1157,22 +935,8 @@ export class BackupService {
            localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of d.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
-        for (const goal of d.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
-        for (const request of d.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
         for (const q of d.qrTokens || []) localDb.setWithTx(tx, 'qr_tokens', q.id, q);
         for (const r of d.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
-        for (const marker of d.deletedDeviceTypeMarkers || []) localDb.setWithTx(tx, 'deletedDeviceTypeMarkers', marker.id, marker);
-        for (const change of d.changeLog || []) localDb.setWithTx(tx, 'changeLog', change.id || String(change.sequenceId ?? `change_${Date.now()}`), change);
-        for (const mutation of d.mutationSnapshots || []) {
-          if (mutation && mutation.commandId) localDb.saveMutationSnapshotWithTx(tx, mutation as any);
-        }
-
-        for (const cmd of d.outbox || []) {
-          if (cmd && cmd.commandId) localDb.saveOutboxWithTx(tx, cmd as any);
-        }
-        for (const history of d.syncHistory || []) {
-          if (history && history.historyId) localDb.saveHistoryWithTx(tx, history as any);
-        }
 
         if (d.syncState) {
           localDb.setSyncStateWithTx(tx, {
@@ -1194,8 +958,6 @@ export class BackupService {
       const { CURRENT_MIGRATION_VERSION } = await import('../../components/pages/dayOrdersStore');
       storage.setItem('sys_db_version', CURRENT_MIGRATION_VERSION);
     }
-
-    restoreLocalPreferences(d.localPreferences);
 
     // Post-Restore Runtime Read Model Synchronization:
     // Rehydrate in-memory read models so IndexedDB and runtime repositories never diverge.
@@ -1255,11 +1017,6 @@ export class BackupService {
       'readwrite',
       (tx) => {
         localDb.clearOperationalTablesWithTx(tx);
-        localDb.clearOutboxWithTx(tx);
-        // A snapshot is authoritative for its captured sync cursor; never retain a newer stale cursor.
-        try { tx.objectStore('syncState').clear(); } catch {}
-        try { tx.objectStore('mutationSnapshots').clear(); } catch {}
-
 
         for (const c of onlineData.customers) localDb.setWithTx(tx, 'customers', c.id, c);
         for (const b of onlineData.businessDays) localDb.setWithTx(tx, 'businessDays', b.id, b);
@@ -1278,8 +1035,6 @@ export class BackupService {
           localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of onlineData.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
-        for (const goal of onlineData.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
-        for (const request of onlineData.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
         for (const q of onlineData.qrTokens || []) localDb.setWithTx(tx, 'qr_tokens', q.id, q);
         for (const r of onlineData.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
@@ -1304,7 +1059,6 @@ export class BackupService {
       storage.setItem('sys_db_version', CURRENT_MIGRATION_VERSION);
     }
 
-    restoreLocalPreferences(onlineData.localPreferences);
     const { reloadStoreFromLocal } = await import('../../components/pages/dayOrdersStore');
     await reloadStoreFromLocal();
 
@@ -1468,18 +1222,6 @@ export class BackupService {
       ? { ...(await this.captureLocalData()), ...options.customLocalData }
       : await this.captureLocalData();
 
-    // Local -> Online replacement is a destructive authority transfer. It is only
-    // safe when the local state is settled: pending commands or rollback snapshots
-    // mean the local state is still optimistic and must never be promoted wholesale.
-    const pendingOutbox = (localData.outbox || []).filter((c: any) => !['SUCCESS','accepted','COMPLETED'].includes(String(c.status || '')));
-    const pendingMutations = localData.mutationSnapshots || [];
-    if (pendingOutbox.length > 0 || pendingMutations.length > 0) {
-      throw new Error(`LOCAL_NOT_SETTLED: cannot replace online data while ${pendingOutbox.length} outbox command(s) or ${pendingMutations.length} rollback snapshot(s) remain pending`);
-    }
-    if (localData.syncState?.reconciliationRequired || localData.syncState?.status === 'RECONCILIATION_REQUIRED') {
-      throw new Error('LOCAL_NOT_SETTLED: local synchronization requires reconciliation before online replacement');
-    }
-
     // 2. Strict Pre-Validation of payment_allocations
     const allocations = localData.paymentAllocations || [];
     for (const alloc of allocations) {
@@ -1504,9 +1246,7 @@ export class BackupService {
     }
 
     // 3. Authoritative Online Safety Snapshot before mutation
-    const onlineSafetyData = options?.customOnlineSafetyData
-      ? await this.captureOnlineData(options.customOnlineSafetyData)
-      : await this.captureAuthoritativeOnlineData(bin.trim());
+    const onlineSafetyData = await this.captureOnlineData(options?.customOnlineSafetyData);
     const safetySnapshot = await this.createSnapshot(
       'ONLINE',
       auth,
@@ -1607,35 +1347,6 @@ export class BackupService {
         allocated_amount_minor: a.allocatedAmountMinor ?? a.allocated_amount_minor,
         created_at: a.createdAt || a.created_at,
       })),
-      goals: (localData.goals || []).map((g: any) => ({
-        id: g.id,
-        customer_id: g.customerId || g.customer_id,
-        target_quantity: g.targetQuantity ?? g.target_quantity,
-        current_progress: g.currentProgress ?? g.current_progress ?? 0,
-        bonus_amount_minor: g.bonusAmountMinor ?? g.bonus_amount_minor ?? 0,
-        duration_days: g.durationDays ?? g.duration_days ?? 7,
-        status: g.status || 'ACTIVE',
-        started_at: g.startedAt || g.started_at,
-        expires_at: g.expiresAt || g.expires_at,
-        completed_at: g.completedAt || g.completed_at,
-        bonus_ledger_id: g.bonusLedgerId || g.bonus_ledger_id,
-        version: g.version ?? 1,
-        created_at: g.createdAt || g.created_at,
-        updated_at: g.updatedAt || g.updated_at,
-      })),
-      goal_requests: (localData.goalRequests || []).map((g: any) => ({
-        id: g.id,
-        customer_id: g.customerId || g.customer_id,
-        requested_target: g.requestedTarget ?? g.requested_target,
-        status: g.status || 'PENDING',
-        reviewed_by: g.reviewedBy || g.reviewed_by,
-        reviewed_at: g.reviewedAt || g.reviewed_at,
-        rejection_reason: g.rejectionReason || g.rejection_reason,
-        resulting_goal_id: g.resultingGoalId || g.resulting_goal_id,
-        version: g.version ?? 1,
-        created_at: g.createdAt || g.created_at,
-        updated_at: g.updatedAt || g.updated_at,
-      })),
     };
 
     // 5. Invoke atomic server RPC
@@ -1713,14 +1424,6 @@ export class BackupService {
       deviceTypes: (snapshot.data.deviceTypes || []).map(sanitizeEntity),
       qrTokens: (snapshot.data.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (snapshot.data.orderNumberReservations || []).map(sanitizeEntity),
-      deletedDeviceTypeMarkers: (snapshot.data.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
-      mutationSnapshots: (snapshot.data.mutationSnapshots || []).map(sanitizeEntity),
-      changeLog: (snapshot.data.changeLog || []).map(sanitizeEntity),
-      outbox: (snapshot.data.outbox || []).map(sanitizeEntity),
-      syncHistory: (snapshot.data.syncHistory || []).map(sanitizeEntity),
-      systemSettings: (snapshot.data.systemSettings || []).map(sanitizeEntity),
-      authoritativeCheckpoint: snapshot.data.authoritativeCheckpoint ? sanitizeEntity(snapshot.data.authoritativeCheckpoint) : undefined,
-      localPreferences: snapshot.data.localPreferences ? sanitizeEntity(snapshot.data.localPreferences) : {},
       syncState: snapshot.data.syncState ? sanitizeEntity(snapshot.data.syncState) : null,
       consolidationMetadata: snapshot.data.consolidationMetadata
         ? sanitizeEntity(snapshot.data.consolidationMetadata)
@@ -1859,27 +1562,6 @@ export class BackupService {
     if (d.orderNumberReservations && !Array.isArray(d.orderNumberReservations)) {
       return { valid: false, error: 'Collection "orderNumberReservations" must be an array if present', errorCode: 'INVALID_DATA_COLLECTION' };
     }
-    if (d.localPreferences && (typeof d.localPreferences !== 'object' || Array.isArray(d.localPreferences))) {
-      return { valid: false, error: 'Collection "localPreferences" must be an object if present', errorCode: 'INVALID_DATA_COLLECTION' };
-    }
-
-    for (const col of ['qrTokens','deletedDeviceTypeMarkers','mutationSnapshots','changeLog','systemSettings']) {
-      if (d[col] && !Array.isArray(d[col])) {
-        return { valid: false, error: `Collection "${col}" must be an array if present`, errorCode: 'INVALID_DATA_COLLECTION' };
-      }
-    }
-    if (d.goals && !Array.isArray(d.goals)) {
-      return { valid: false, error: 'Collection "goals" must be an array if present', errorCode: 'INVALID_DATA_COLLECTION' };
-    }
-    if (d.goalRequests && !Array.isArray(d.goalRequests)) {
-      return { valid: false, error: 'Collection "goalRequests" must be an array if present', errorCode: 'INVALID_DATA_COLLECTION' };
-    }
-    if (d.outbox && !Array.isArray(d.outbox)) {
-      return { valid: false, error: 'Collection "outbox" must be an array if present', errorCode: 'INVALID_DATA_COLLECTION' };
-    }
-    if (d.syncHistory && !Array.isArray(d.syncHistory)) {
-      return { valid: false, error: 'Collection "syncHistory" must be an array if present', errorCode: 'INVALID_DATA_COLLECTION' };
-    }
 
     // Sanitize entity collections recursively from secrets
     const sanitizedData: BackupSnapshotData = {
@@ -1893,14 +1575,6 @@ export class BackupService {
       deviceTypes: (d.deviceTypes || []).map(sanitizeEntity),
       qrTokens: (d.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (d.orderNumberReservations || []).map(sanitizeEntity),
-      deletedDeviceTypeMarkers: (d.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
-      mutationSnapshots: (d.mutationSnapshots || []).map(sanitizeEntity),
-      changeLog: (d.changeLog || []).map(sanitizeEntity),
-      outbox: (d.outbox || []).map(sanitizeEntity),
-      syncHistory: (d.syncHistory || []).map(sanitizeEntity),
-      systemSettings: (d.systemSettings || []).map(sanitizeEntity),
-      authoritativeCheckpoint: d.authoritativeCheckpoint ? sanitizeEntity(d.authoritativeCheckpoint) : undefined,
-      localPreferences: d.localPreferences ? sanitizeEntity(d.localPreferences) : {},
       syncState: d.syncState ? sanitizeEntity(d.syncState) : null,
       consolidationMetadata: d.consolidationMetadata ? sanitizeEntity(d.consolidationMetadata) : undefined,
     };
@@ -1961,30 +1635,6 @@ export class BackupService {
           errorCode: 'REFERENTIAL_INTEGRITY_VIOLATION',
         };
       }
-    }
-
-    const actualCounts: Record<string, number> = {
-      customers: sanitizedData.customers.length, businessDays: sanitizedData.businessDays.length,
-      orders: sanitizedData.orders.length, orderItems: sanitizedData.orderItems.length,
-      financialLedger: sanitizedData.financialLedger.length, payments: sanitizedData.payments.length,
-      paymentAllocations: sanitizedData.paymentAllocations.length, deviceTypes: sanitizedData.deviceTypes.length,
-      goals: (sanitizedData.goals || []).length, goalRequests: (sanitizedData.goalRequests || []).length,
-      qrTokens: (sanitizedData.qrTokens || []).length, orderNumberReservations: (sanitizedData.orderNumberReservations || []).length,
-      outbox: (sanitizedData.outbox || []).length, syncHistory: (sanitizedData.syncHistory || []).length,
-      mutationSnapshots: (sanitizedData.mutationSnapshots || []).length, changeLog: (sanitizedData.changeLog || []).length,
-    };
-    for (const [key, count] of Object.entries(actualCounts)) {
-      const declared = parsed.metadata.recordCounts?.[key];
-      if (declared !== undefined && Number(declared) !== count) {
-        return { valid: false, error: `Backup metadata count mismatch for ${key}: declared ${declared}, actual ${count}`, errorCode: 'METADATA_MISMATCH' };
-      }
-    }
-    const actualTotal = Object.values(actualCounts).reduce((a, b) => a + b, 0);
-    if (parsed.metadata.totalEntities !== undefined && Number(parsed.metadata.totalEntities) !== actualTotal) {
-      return { valid: false, error: `Backup metadata totalEntities mismatch: declared ${parsed.metadata.totalEntities}, actual ${actualTotal}`, errorCode: 'METADATA_MISMATCH' };
-    }
-    try { this.validateSnapshotDataStructure(sanitizedData); } catch (e: any) {
-      return { valid: false, error: e?.message || 'Referential integrity validation failed', errorCode: 'REFERENTIAL_INTEGRITY_VIOLATION' };
     }
 
     const checkpointSequence = parsed.checkpointSequence ?? parsed.metadata?.checkpointSequence ?? 1;
@@ -2058,10 +1708,6 @@ export class BackupService {
 
     const sanitizedData = portableFile.data;
     const checksum = computeSnapshotChecksum(sanitizedData);
-    if (portableFile.metadata?.checksum && portableFile.metadata.checksum !== checksum) {
-      throw new SnapshotIntegrityError('Portable backup checksum mismatch.');
-    }
-    this.validateSnapshotDataStructure(sanitizedData);
 
     const record: BackupSnapshotRecord = {
       snapshotId: targetSnapshotId,

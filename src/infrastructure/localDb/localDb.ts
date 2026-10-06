@@ -159,13 +159,12 @@ export interface BackupSnapshotRecord {
   data: BackupSnapshotData;
 }
 
-<<<<<<< HEAD
 const cloneForRollback = <T>(value: T): T => {
   if (typeof structuredClone === 'function') return structuredClone(value);
   if (value === undefined) return value;
   return JSON.parse(JSON.stringify(value)) as T;
 };
-=======
+
 export interface MutationSnapshotItem {
   table: string;
   id: ID;
@@ -193,7 +192,6 @@ export interface OptimisticOverlayRecord {
   dependencyCommandId?: ID;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
 }
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
 
 export class IndexedDBLocalDatabase {
   private dbName = 'OrderSystemOfflineDB';
@@ -205,11 +203,8 @@ export class IndexedDBLocalDatabase {
   private memorySyncHistory = new Map<ID, SyncHistoryRecord>();
   private memorySnapshots = new Map<ID, BackupSnapshotRecord>();
   private memoryMutationSnapshots = new Map<ID, MutationSnapshotRecord>();
-<<<<<<< HEAD
-=======
   private memoryOverlays = new Map<ID, OptimisticOverlayRecord>();
   private overlaySequence = 0;
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
   private isBrowser = typeof window !== 'undefined' && typeof indexedDB !== 'undefined';
   private hydrationPromise: Promise<void> | null = null;
   private isHydrated = false;
@@ -260,12 +255,9 @@ export class IndexedDBLocalDatabase {
           if (!db.objectStoreNames.contains('mutationSnapshots')) {
             db.createObjectStore('mutationSnapshots', { keyPath: 'commandId' });
           }
-<<<<<<< HEAD
-=======
           if (!db.objectStoreNames.contains('optimisticOverlays')) {
             db.createObjectStore('optimisticOverlays', { keyPath: 'commandId' });
           }
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
         };
       } catch (err) {
         console.warn('IndexedDB init error:', err);
@@ -1441,21 +1433,14 @@ export class IndexedDBLocalDatabase {
     this.memoryOutbox.clear();
     this.memorySyncState.clear();
     this.memorySyncHistory.clear();
-<<<<<<< HEAD
     this.memoryMutationSnapshots.clear();
-=======
     this.memoryOverlays.clear();
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
     if (!options?.preserveSnapshots) {
       this.memorySnapshots.clear();
     }
     if (this.db) {
       try {
-<<<<<<< HEAD
-        const storeNames = ['kvStore', 'outbox', 'syncState', 'syncHistory', 'mutationSnapshots'].filter((s) =>
-=======
-        const storeNames = ['kvStore', 'outbox', 'syncState', 'syncHistory', 'optimisticOverlays'].filter((s) =>
->>>>>>> 4e55486a6852245c0d53ee50a72b8dfc88ec66ee
+        const storeNames = ['kvStore', 'outbox', 'syncState', 'syncHistory', 'mutationSnapshots', 'optimisticOverlays'].filter((s) =>
           this.db!.objectStoreNames.contains(s)
         );
         if (!options?.preserveSnapshots && this.db!.objectStoreNames.contains('backupSnapshots')) {
@@ -1644,18 +1629,56 @@ export class IndexedDBLocalDatabase {
     return this.overlaySequence;
   }
 
-  async removeOverlay(commandId: ID): Promise<void> {
+  removeOverlaysForCommandWithTx(tx: IDBTransaction | null, commandId: ID): void {
+    const idsToRemove: ID[] = [];
+    for (const id of this.memoryOverlays.keys()) {
+      if (id === commandId || id.startsWith(`${commandId}:`)) {
+        idsToRemove.push(id);
+      }
+    }
+    for (const id of idsToRemove) {
+      this.memoryOverlays.delete(id);
+    }
+
+    if (tx && tx.db.objectStoreNames.contains('optimisticOverlays')) {
+      try {
+        const store = tx.objectStore('optimisticOverlays');
+        for (const id of idsToRemove) {
+          store.delete(id);
+        }
+      } catch (err) {
+        console.warn('Failed to remove optimistic overlays in TX:', err);
+      }
+    }
+  }
+
+  async removeOverlaysForCommand(commandId: ID): Promise<void> {
     await this.ensureHydrated();
-    this.memoryOverlays.delete(commandId);
+    const idsToRemove: ID[] = [];
+    for (const id of this.memoryOverlays.keys()) {
+      if (id === commandId || id.startsWith(`${commandId}:`)) {
+        idsToRemove.push(id);
+      }
+    }
+    for (const id of idsToRemove) {
+      this.memoryOverlays.delete(id);
+    }
+
     if (this.db && this.db.objectStoreNames.contains('optimisticOverlays')) {
       try {
         const tx = this.db.transaction('optimisticOverlays', 'readwrite');
         const store = tx.objectStore('optimisticOverlays');
-        store.delete(commandId);
+        for (const id of idsToRemove) {
+          store.delete(id);
+        }
       } catch (err) {
-        console.warn('Failed to remove optimistic overlay from IndexedDB:', err);
+        console.warn('Failed to remove optimistic overlays from IndexedDB:', err);
       }
     }
+  }
+
+  async removeOverlay(commandId: ID): Promise<void> {
+    await this.removeOverlaysForCommand(commandId);
   }
 
   async getEffectiveState(entityType: string, entityId: ID): Promise<any | null> {

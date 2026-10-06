@@ -137,7 +137,6 @@ export interface OrderItemEntity extends BaseEntity {
   replacementOfItemId?: ID;
   deliveredAt?: Timestamp;
   financiallyRecognizedAt?: Timestamp;
-  cancelledAt?: Timestamp;
   deletedAt?: Timestamp;
 }
 
