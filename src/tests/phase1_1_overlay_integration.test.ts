@@ -100,8 +100,9 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
   it('ADD_ORDER_ITEM uses the order aggregate mutation key and persists the item', async () => {
     const order = await useCases.createOrder(auth, 'cmd-ord-1', 'day-1', 'c1');
     expect(order.success).toBe(true);
+    if (!order.success) throw new Error(order.error);
 
-    const result = await useCases.addOrderItem(auth, order.id, 'dev-1', false, 'cmd-item-1');
+    const result = await useCases.addOrderItem(auth, order.data.id, 'dev-1', false, 'cmd-item-1');
     expect(result.success).toBe(true);
     expect(overlays.find(o => o.commandId === 'cmd-item-1')?.mutationKey).toBe('order:cmd-item-1');
   });
@@ -109,7 +110,6 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
   it('DELIVER_ORDER_ITEM is operationally optimistic but financially unrecognized until sync', async () => {
     const orderResult = await useCases.createOrder(auth, 'cmd-order', 'day-1', 'c1');
     expect(orderResult.success).toBe(true);
-    if (!orderResult.success) throw new Error(orderResult.error);
     if (!orderResult.success) throw new Error(orderResult.error);
     const order = orderResult.data;
     const itemResult = await useCases.addOrderItem(auth, order.id, 'dev-1', false, 'cmd-item');
