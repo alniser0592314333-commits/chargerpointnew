@@ -18,6 +18,7 @@ import {
   GoalRequestEntity,
   OrderNumberReservationEntity
 } from '../domain/models';
+import { OptimisticOverlayRecord } from '../infrastructure/localDb/localDb';
 import { 
   calculateItemPrice, 
   validateOrderTransition, 
@@ -88,6 +89,12 @@ export interface RepositoryContext {
     get(commandId: ID): Promise<{ type: string; payload: unknown } | null> | ({ type: string; payload: unknown } | null);
     record(commandId: ID, type: string, payload: unknown, expectedVersion?: number): Promise<void> | void;
   };
+  overlayRepo: {
+    save(overlay: OptimisticOverlayRecord): Promise<void> | void;
+    remove(commandId: ID): Promise<void> | void;
+    get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
+    getNextSequence(): Promise<number> | number;
+  };
   qrTokenRepo?: {
     findByHash(tokenHash: string): Promise<QrTokenEntity | null> | (QrTokenEntity | null);
     save(token: QrTokenEntity): Promise<void> | void;
@@ -112,6 +119,30 @@ export interface RepositoryContext {
 export class FinalUseCases {
   constructor(private deps: RepositoryContext) {}
 
+  private async createOverlay(
+    commandId: ID,
+    mutationKey: string,
+    entityType: string,
+    entityId: ID,
+    operation: 'CREATE' | 'PATCH' | 'DELETE',
+    patchOrPayload: Record<string, unknown> | null
+  ) {
+    const sequence = await this.deps.overlayRepo.getNextSequence();
+    
+    const overlay: OptimisticOverlayRecord = {
+      commandId,
+      mutationKey,
+      entityType,
+      entityId,
+      operation,
+      ...(operation === 'CREATE' ? { entityPayload: patchOrPayload } : { patch: patchOrPayload }),
+      sequence,
+      createdAt: new Date().toISOString(),
+      status: 'PENDING',
+    };
+    await this.deps.overlayRepo.save(overlay);
+  }
+
   // ==========================================
   // ORDERS USE CASES
   // ==========================================
@@ -128,30 +159,6 @@ export class FinalUseCases {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:create');
 
-    const existingCmd = await this.deps.commandRepo.get(commandId);
-    if (existingCmd) {
-      const recorded = existingCmd.payload as any;
-      const incoming = payloadHash as any;
-      const isMatch =
-        JSON.stringify(recorded) === JSON.stringify(incoming) ||
-        (typeof recorded === 'object' &&
-          recorded !== null &&
-          typeof incoming === 'object' &&
-          incoming !== null &&
-          Object.keys(incoming).every(k => JSON.stringify(recorded[k]) === JSON.stringify(incoming[k])) &&
-          recorded.id === commandId);
-      if (!isMatch) {
-        throw new IdempotencyConflictError();
-      }
-      const order = await this.deps.orderRepo.findById(commandId);
-      if (order) return { success: true, data: order };
-    }
-
-    const isClosed = await this.deps.dayRepo.isClosed(dayId);
-    if (isClosed && !actor.isSuperAdmin) {
-      throw new ClosedDayError();
-    }
-
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
     if (!customer.isActive) throw new InactiveCustomerError();
@@ -162,40 +169,14 @@ export class FinalUseCases {
       return { success: false, error: 'Debt limit exceeded. Regular admin blocked.', code: 'DEBT_LIMIT_EXCEEDED' };
     }
 
-    const deviceId = actor.deviceId || 'default-device';
-    let displayNumber = 1;
-    let reservation: OrderNumberReservationEntity | null = null;
-
-    if (this.deps.reservationRepo) {
-      reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
-      if (!reservation || reservation.nextNumber > reservation.endNumber) {
-        try {
-          reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, commandId, 20);
-        } catch {
-          throw new OrderNumberReservationExhaustedError();
-        }
-      }
-      if (!reservation || reservation.nextNumber > reservation.endNumber) {
-        throw new OrderNumberReservationExhaustedError();
-      }
-      displayNumber = reservation.nextNumber;
-      reservation.nextNumber += 1;
-      if (reservation.nextNumber > reservation.endNumber) {
-        reservation.status = 'EXHAUSTED';
-      }
-      reservation.updatedAt = new Date().toISOString();
-    } else {
-      displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
-    }
-
     const orderId = commandId || crypto.randomUUID();
 
     const order: OrderEntity = {
       id: orderId,
       dayId,
       customerId,
-      displayNumber,
-      internalSequence: displayNumber,
+      displayNumber: 0, // Will be set by server
+      internalSequence: 0,
       status: 'pending',
       customerBalanceSnapshotMinor: currentBalance,
       notes,
@@ -206,20 +187,18 @@ export class FinalUseCases {
 
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
 
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      if (ctx.reservationRepo && reservation) {
-        ctx.reservationRepo.save(reservation);
-      }
-      ctx.orderRepo.save(order);
-      ctx.commandRepo.record(orderId, 'CREATE_ORDER', {
+    // Phase 1.1: Use Overlay
+    const mutationKey = `order:${orderId}`;
+    await this.createOverlay(orderId, mutationKey, 'orders', orderId, 'CREATE', order as unknown as Record<string, unknown>);
+
+    await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
         ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash : {}),
         id: orderId,
-        displayNumber,
         ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
-      });
-      return { success: true, data: order };
     });
+    
+    return { success: true, data: order };
   }
 
   async addOrderItem(
@@ -258,9 +237,6 @@ export class FinalUseCases {
     const existingItems = await this.deps.itemRepo.findByOrderId(orderId);
     const itemSequence = (Array.isArray(existingItems) ? existingItems.length : 0) + 1;
 
-    const isSuperAdminClosedEdit = dayIsClosed && actor.isSuperAdmin;
-    const initialStatus = isSuperAdminClosedEdit ? 'delivered' : 'charging';
-
     const itemId = commandId || crypto.randomUUID();
 
     const item: OrderItemEntity = {
@@ -268,7 +244,7 @@ export class FinalUseCases {
       orderId,
       deviceTypeId,
       itemSequence,
-      status: initialStatus,
+      status: 'charging', // Always start charging optimistically
       deviceNameSnapshot: deviceType.name,
       deviceIconSnapshot: deviceType.icon,
       basePriceSnapshotMinor: deviceType.basePriceMinor,
@@ -278,15 +254,16 @@ export class FinalUseCases {
       hasCharger,
       unitPriceMinor: pricing.unitPriceMinor,
       totalPriceMinor: pricing.totalPriceMinor,
-      deliveredAt: isSuperAdminClosedEdit ? new Date().toISOString() : undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: 1,
     };
 
-    return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.itemRepo.save(item);
-      ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
+    // Phase 1.1: Use Overlay
+    const mutationKey = `order:${orderId}`;
+    await this.createOverlay(itemId, mutationKey, 'order_items', itemId, 'CREATE', item as unknown as Record<string, unknown>);
+
+    await this.deps.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
         orderId,
         deviceTypeId,
         hasCharger,
@@ -299,19 +276,9 @@ export class FinalUseCases {
         chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
         unitPriceMinor: item.unitPriceMinor,
         totalPriceMinor: item.totalPriceMinor,
-      });
-      if (isSuperAdminClosedEdit) {
-        ctx.ledgerRepo.append({
-          eventType: 'ORDER_ITEM_CHARGE',
-          amountMinor: -item.totalPriceMinor,
-          orderId: order.id,
-          orderItemId: item.id,
-          customerId: order.customerId,
-          actorAdminId: actor.id,
-        });
-      }
-      return { success: true, data: item };
     });
+    
+    return { success: true, data: item };
   }
 
   async addItemToDeliveredOrder(
@@ -352,7 +319,6 @@ export class FinalUseCases {
     validateItemTransition(item.status, 'delivered');
     DomainInvariants.assertItemNotRecognizedTwice(item.id, await this.deps.ledgerRepo.findByCustomer(order.customerId));
 
-    // Authoritative debt limit check
     const currentCustomerBalance = await this.deps.customerRepo.getBalance(order.customerId);
     const projectedBalance = currentCustomerBalance - item.totalPriceMinor;
     if (!checkDebtLimit(projectedBalance, customer.debtLimitMinor, actor.isSuperAdmin)) {
@@ -361,39 +327,27 @@ export class FinalUseCases {
       );
     }
 
-    item.status = 'delivered';
-    item.operationalStatus = 'DELIVERED';
-    item.financialStatus = 'RECOGNIZED';
-    item.deliveredAt = new Date().toISOString();
-    item.financiallyRecognizedAt = new Date().toISOString();
-    item.updatedAt = new Date().toISOString();
-    item.version += 1;
+    const patch: Partial<OrderItemEntity> = {
+      status: 'delivered',
+      financialStatus: 'RECOGNIZED',
+      deliveredAt: new Date().toISOString(),
+      financiallyRecognizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: item.version + 1,
+    };
 
-    const result = await this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.itemRepo.save(item);
+    // Phase 1.1: Use Overlay
+    const mutationKey = `order:${order.id}`;
+    await this.createOverlay(itemId, mutationKey, 'order_items', itemId, 'PATCH', patch);
 
-      ctx.ledgerRepo.append({
-        eventType: 'ORDER_ITEM_CHARGE',
-        amountMinor: -item.totalPriceMinor,
-        orderId: order.id,
+    await this.deps.commandRepo.record(itemId, 'DELIVER_ORDER_ITEM', {
+        itemId: item.id,
         orderItemId: item.id,
-        customerId: order.customerId,
-        actorAdminId: actor.id,
-      });
-
-      ctx.commandRepo.record(itemId, 'DELIVER_ORDER_ITEM', {
-        orderItemId: item.id,
+        id: item.id,
         bin,
-      });
-
-      return { success: true as const, data: item };
     });
 
-    if (this.deps.goalRepo) {
-      await this.evaluateCustomerGoal(order.customerId);
-    }
-
-    return { success: true as const, data: result.data };
+    return { success: true as const, data: { ...item, ...patch } as OrderItemEntity };
   }
 
   async removeOrderItemDuringEdit(

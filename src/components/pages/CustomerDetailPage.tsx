@@ -476,55 +476,55 @@ const [isLoading, setIsLoading] = useState(true);
     setExpandedFinancialId((prev) => (prev === id ? null : id));
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, key?: string) => {
     switch (status) {
       case 'completed':
       case 'delivered':
         return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-[#0d362f] dark:text-[#7ae09e] rounded-md border border-emerald-200 dark:border-[#14423b]">
+          <span key={key || 'status-delivered'} className="px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-[#0d362f] dark:text-[#7ae09e] rounded-md border border-emerald-200 dark:border-[#14423b]">
             {t('statusDelivered')}
           </span>
         );
       case 'cancelled':
         return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-red-50 text-red-700 dark:bg-[#360d13] dark:text-[#e07a7a] rounded-md border border-red-200 dark:border-[#421419]">
+          <span key={key || 'status-cancelled'} className="px-2 py-0.5 text-xs font-medium bg-red-50 text-red-700 dark:bg-[#360d13] dark:text-[#e07a7a] rounded-md border border-red-200 dark:border-[#421419]">
             {t('statusCancelled')}
           </span>
         );
       case 'charging':
       case 'in_progress':
         return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 dark:bg-[#0c312b] dark:text-[#8eb698] rounded-md border border-blue-200 dark:border-[#14423b]">
+          <span key={key || 'status-charging'} className="px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 dark:bg-[#0c312b] dark:text-[#8eb698] rounded-md border border-blue-200 dark:border-[#14423b]">
             {t('statusCharging')}
           </span>
         );
       default:
         return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 dark:bg-[#36270d] dark:text-[#e0be7a] rounded-md border border-amber-200 dark:border-[#423314]">
+          <span key={key || 'status-pending'} className="px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 dark:bg-[#36270d] dark:text-[#e0be7a] rounded-md border border-amber-200 dark:border-[#423314]">
             {t('statusPending')}
           </span>
         );
     }
   };
 
-  const getPaymentStatusBadge = (pStatus: 'PAID' | 'PARTIAL' | 'UNPAID') => {
+  const getPaymentStatusBadge = (pStatus: 'PAID' | 'PARTIAL' | 'UNPAID', key?: string) => {
     switch (pStatus) {
       case 'PAID':
         return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-[#0d362f] dark:text-[#7ae09e] rounded-md border border-emerald-200 dark:border-[#14423b]">
+          <span key={key || 'payment-paid'} className="px-2 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-[#0d362f] dark:text-[#7ae09e] rounded-md border border-emerald-200 dark:border-[#14423b]">
             {t('paymentPaid')}
           </span>
         );
       case 'PARTIAL':
         return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 dark:bg-[#36270d] dark:text-[#e0be7a] rounded-md border border-amber-200 dark:border-[#423314]">
+          <span key={key || 'payment-partial'} className="px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 dark:bg-[#36270d] dark:text-[#e0be7a] rounded-md border border-amber-200 dark:border-[#423314]">
             {t('paymentPartial')}
           </span>
         );
       case 'UNPAID':
       default:
         return (
-          <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 dark:bg-[#0d2623] dark:text-[#8eb698] rounded-md border border-gray-200 dark:border-[#14423b]">
+          <span key={key || 'payment-unpaid'} className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 dark:bg-[#0d2623] dark:text-[#8eb698] rounded-md border border-gray-200 dark:border-[#14423b]">
             {t('paymentUnpaid')}
           </span>
         );
@@ -702,38 +702,39 @@ const [isLoading, setIsLoading] = useState(true);
               className="inline-flex items-center gap-2 px-3 py-1.5 text-base font-bold text-gray-900 dark:text-[#daf1de] bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-xl hover:bg-gray-50 dark:hover:bg-[#0b312b] transition-colors shadow-xs cursor-pointer"
             >
               {activeTab === 'orders' ? (
-                <>
+                <span key="active-tab-orders" className="inline-flex items-center gap-2">
                   <ShoppingBag className="w-4 h-4 text-gray-500 dark:text-[#8eb698]" />
                   <span>{t('ordersHistoryTab')}</span>
                   <span className="ms-1 px-2 py-0.5 text-xs text-gray-500 dark:text-[#a9d4b4] bg-gray-100 dark:bg-[#0c312b] rounded-full font-medium border border-transparent dark:border-[#14423b]">
                     {orders.length}
                   </span>
-                </>
-              ) : isHistoryError ? (<div className="p-8 text-center bg-rose-50/30 rounded-xl border border-rose-100"><p className="text-xs text-rose-600">{t('errorOccurred')}</p></div>) : isHistoryLoading ? (<div className="p-8 text-center animate-pulse"><div className="h-10 bg-gray-100 rounded-xl w-full"></div></div>) : 
-                <>
+                </span>
+              ) : (
+                <span key="active-tab-financial" className="inline-flex items-center gap-2">
                   <Receipt className="w-4 h-4 text-gray-500 dark:text-[#8eb698]" />
                   <span>{t('financialLedgerTab')}</span>
                   <span className="ms-1 px-2 py-0.5 text-xs text-gray-500 dark:text-[#a9d4b4] bg-gray-100 dark:bg-[#0c312b] rounded-full font-medium border border-transparent dark:border-[#14423b]">
                     {financialHistory.length}
                   </span>
-                </>
-              }
+                </span>
+              )}
               {isDropdownOpen ? (
-                <ChevronUp className="w-4 h-4 text-gray-500 dark:text-[#8eb698] shrink-0 ms-1" />
+                <ChevronUp key="chevron-up" className="w-4 h-4 text-gray-500 dark:text-[#8eb698] shrink-0 ms-1" />
               ) : (
-                <ChevronDown className="w-4 h-4 text-gray-500 dark:text-[#8eb698] shrink-0 ms-1" />
+                <ChevronDown key="chevron-down" className="w-4 h-4 text-gray-500 dark:text-[#8eb698] shrink-0 ms-1" />
               )}
             </button>
 
             {/* Dropdown Menu */}
             {isDropdownOpen && (
-              <>
+              <div key="dropdown-menu-wrapper">
                 <div
                   className="fixed inset-0 z-10"
                   onClick={() => setIsDropdownOpen(false)}
                 />
                 <div className="absolute top-full start-0 mt-1.5 w-48 bg-white dark:bg-[#0a2f29] border border-gray-200 dark:border-[#174840] rounded-xl shadow-lg z-20 py-1 overflow-hidden">
                   <button
+                    key="btn-tab-orders"
                     type="button"
                     onClick={() => {
                       setActiveTab('orders');
@@ -755,6 +756,7 @@ const [isLoading, setIsLoading] = useState(true);
                   </button>
 
                   <button
+                    key="btn-tab-financial"
                     type="button"
                     onClick={() => {
                       setActiveTab('financial');
@@ -775,28 +777,29 @@ const [isLoading, setIsLoading] = useState(true);
                     </span>
                   </button>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
 
         {/* Tab Content Display */}
         <div className="space-y-2">
-          {activeTab === 'orders' ? (isOrdersLoading ? (<div className="p-8 text-center animate-pulse"><div className="h-10 bg-gray-100 dark:bg-[#0c312b] rounded-xl w-full"></div></div>) : isOrdersError ? (<div className="p-8 text-center bg-rose-50/30 rounded-xl border border-rose-100"><p className="text-xs text-rose-600">{t('errorOccurred')}</p></div>) : 
+          {activeTab === 'orders' ? (isOrdersLoading ? (<div key="loading-orders" className="p-8 text-center animate-pulse"><div className="h-10 bg-gray-100 dark:bg-[#0c312b] rounded-xl w-full"></div></div>) : isOrdersError ? (<div key="error-orders" className="p-8 text-center bg-rose-50/30 rounded-xl border border-rose-100"><p className="text-xs text-rose-600">{t('errorOccurred')}</p></div>) : 
             orders.length === 0 ? (
-              <div className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-xl p-8 text-center space-y-2">
+              <div key="empty-orders" className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-xl p-8 text-center space-y-2">
                 <ShoppingBag className="w-8 h-8 text-gray-300 dark:text-[#174840] mx-auto" />
                 <p className="text-xs text-gray-500 dark:text-[#8eb698]">
                   {t('noOrdersForCustomer')}
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {orders.map((ord) => {
+              <div key="orders-list" className="space-y-2">
+                {orders.map((ord, ordIdx) => {
                   const isExpanded = expandedOrderId === ord.id;
+                  const orderKey = `order-${ord.id || 'noid'}-${ordIdx}`;
                   return (
                     <div
-                      key={ord.id}
+                      key={orderKey}
                       className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-xl overflow-hidden shadow-2xs transition-colors"
                     >
                       <div
@@ -813,11 +816,11 @@ const [isLoading, setIsLoading] = useState(true);
                       >
                         <div className="space-y-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-gray-900 dark:text-[#daf1de]">
+                            <span key="order-label" className="font-semibold text-sm text-gray-900 dark:text-[#daf1de]">
                               {t('orderResultLabel', { number: ord.orderNumber })}
                             </span>
-                            {getStatusBadge(ord.status)}
-                            {getPaymentStatusBadge(ord.paymentStatus)}
+                            {getStatusBadge(ord.status, `status-${ord.id || ordIdx}`)}
+                            {getPaymentStatusBadge(ord.paymentStatus, `payment-${ord.id || ordIdx}`)}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-[#8eb698]">
                             <span>{formatDate(ord.createdAt)}</span>
@@ -847,26 +850,29 @@ const [isLoading, setIsLoading] = useState(true);
                             {t('registeredDevicesList')}:
                           </span>
                           <div className="space-y-1.5">
-                            {ord.items.map((item) => (
-                              <div
-                                key={`${ord.id}-${item.id}`}
-                                className="flex items-center justify-between text-xs p-2 rounded bg-white dark:bg-[#082622] border border-gray-100 dark:border-[#14423b]"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-gray-800 dark:text-[#daf1de]">
-                                    {item.deviceName}
-                                  </span>
-                                  {item.hasCharger && (
-                                    <span className="px-1.5 py-0.5 text-[10px] bg-amber-50 text-amber-800 dark:bg-[#36270d] dark:text-[#e0be7a] rounded font-medium">
-                                      {t('withCharger')}
+                            {(ord.items || []).map((item, itemIdx) => {
+                              const itemKey = `ord-item-${ord.id || ordIdx}-${item.id || 'item'}-${itemIdx}`;
+                              return (
+                                <div
+                                  key={itemKey}
+                                  className="flex items-center justify-between text-xs p-2 rounded bg-white dark:bg-[#082622] border border-gray-100 dark:border-[#14423b]"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-gray-800 dark:text-[#daf1de]">
+                                      {item.deviceName}
                                     </span>
-                                  )}
+                                    {item.hasCharger && (
+                                      <span className="px-1.5 py-0.5 text-[10px] bg-amber-50 text-amber-800 dark:bg-[#36270d] dark:text-[#e0be7a] rounded font-medium">
+                                        {t('withCharger')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="font-mono font-medium text-gray-700 dark:text-[#8eb698]">
+                                    {formatCurrency(item.priceMinor)}
+                                  </span>
                                 </div>
-                                <span className="font-mono font-medium text-gray-700 dark:text-[#8eb698]">
-                                  {formatCurrency(item.priceMinor)}
-                                </span>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -875,24 +881,25 @@ const [isLoading, setIsLoading] = useState(true);
                 })}
               </div>
             )
-          ) : (isHistoryLoading ? (<div className="p-8 text-center animate-pulse"><div className="h-10 bg-gray-100 dark:bg-[#0c312b] rounded-xl w-full"></div></div>) : isHistoryError ? (<div className="p-8 text-center bg-rose-50/30 rounded-xl border border-rose-100"><p className="text-xs text-rose-600">{t('errorOccurred')}</p></div>) : 
+          ) : (isHistoryLoading ? (<div key="loading-financial" className="p-8 text-center animate-pulse"><div className="h-10 bg-gray-100 dark:bg-[#0c312b] rounded-xl w-full"></div></div>) : isHistoryError ? (<div key="error-financial" className="p-8 text-center bg-rose-50/30 rounded-xl border border-rose-100"><p className="text-xs text-rose-600">{t('errorOccurred')}</p></div>) : 
             financialHistory.length === 0 ? (
-              <div className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-xl p-8 text-center space-y-2">
+              <div key="empty-financial" className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-xl p-8 text-center space-y-2">
                 <Receipt className="w-8 h-8 text-gray-300 dark:text-[#174840] mx-auto" />
                 <p className="text-xs text-gray-500 dark:text-[#8eb698]">
                   {t('noFinancialTransactionsFound')}
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {financialHistory.map((item) => {
+              <div key="financial-list" className="space-y-2">
+                {financialHistory.map((item, histIdx) => {
                   const isExpanded = expandedFinancialId === item.id;
                   const isPayment = item.amountMinor > 0;
                   const isOrderCharge = item.eventType === 'ORDER_ITEM_CHARGE' || item.eventType === 'ORDER_CHARGE';
+                  const finKey = `fin-${item.id || 'noid'}-${histIdx}`;
 
                   return (
                     <div
-                      key={item.id}
+                      key={finKey}
                       className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-xl overflow-hidden shadow-2xs transition-colors"
                     >
                       <div
@@ -955,24 +962,27 @@ const [isLoading, setIsLoading] = useState(true);
                                 {t('registeredDevicesList')}:
                               </span>
                               <div className="space-y-1 pl-2 pr-2">
-                                {item.orderItems.map((dev) => (
-                                  <div
-                                    key={`${item.id}-${dev.id}`}
-                                    className="flex items-center justify-between text-gray-700 dark:text-[#daf1de]"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <span>• {dev.deviceName}</span>
-                                      {dev.hasCharger && (
-                                        <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 dark:bg-[#36270d] text-amber-800 dark:text-[#e0be7a] rounded font-medium">
-                                          {t('withCharger')}
-                                        </span>
-                                      )}
+                                {(item.orderItems || []).map((dev, devIdx) => {
+                                  const devKey = `fin-dev-${item.id || histIdx}-${dev.id || 'dev'}-${devIdx}`;
+                                  return (
+                                    <div
+                                      key={devKey}
+                                      className="flex items-center justify-between text-gray-700 dark:text-[#daf1de]"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span>• {dev.deviceName}</span>
+                                        {dev.hasCharger && (
+                                          <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 dark:bg-[#36270d] text-amber-800 dark:text-[#e0be7a] rounded font-medium">
+                                            {t('withCharger')}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="font-medium text-gray-900 dark:text-[#daf1de]">
+                                        {formatCurrency(dev.priceMinor)}
+                                      </span>
                                     </div>
-                                    <span className="font-medium text-gray-900 dark:text-[#daf1de]">
-                                      {formatCurrency(dev.priceMinor)}
-                                    </span>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                               {item.orderTotalMinor !== undefined && (
                                 <div className="flex items-center justify-between pt-1 border-t border-gray-200/50 dark:border-[#14423b] font-bold text-gray-900 dark:text-[#daf1de]">
@@ -1554,10 +1564,10 @@ const [isLoading, setIsLoading] = useState(true);
                     {isSubmittingTopUp ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <>
+                      <span className="inline-flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4" />
                         <span>{t('confirmAndApply')}</span>
-                      </>
+                      </span>
                     )}
                   </Button>
                 </div>

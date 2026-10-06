@@ -102,7 +102,6 @@ describe('Restore Runtime Read Model Rehydration & Delivery Suite', () => {
           deviceTypeId: 'dev-1',
           itemSequence: 1,
           status: 'charging' as const,
-          operationalStatus: 'CHARGING' as const,
           financialStatus: 'UNRECOGNIZED' as const,
           paymentStatus: 'UNPAID' as const,
           deviceNameSnapshot: 'شاشة آيفون 13 برو',
@@ -124,7 +123,6 @@ describe('Restore Runtime Read Model Rehydration & Delivery Suite', () => {
           deviceTypeId: 'dev-1',
           itemSequence: 2,
           status: 'cancelled' as const,
-          operationalStatus: 'CANCELLED' as const,
           financialStatus: 'UNRECOGNIZED' as const,
           paymentStatus: 'UNPAID' as const,
           deviceNameSnapshot: 'شاشة آيفون 13 برو',
@@ -188,7 +186,6 @@ describe('Restore Runtime Read Model Rehydration & Delivery Suite', () => {
     expect(item).toBeDefined();
     expect(item).not.toBeNull();
     expect(item?.status).toBe('charging');
-    expect(item?.operationalStatus).toBe('CHARGING');
     expect(item?.financialStatus).toBe('UNRECOGNIZED');
     expect(item?.totalPriceMinor).toBe(4550);
   });
@@ -205,7 +202,6 @@ describe('Restore Runtime Read Model Rehydration & Delivery Suite', () => {
     expect(deliverResult.success).toBe(true);
     if (!deliverResult.success) throw new Error('Expected delivery to succeed');
     expect(deliverResult.data.status).toBe('delivered');
-    expect(deliverResult.data.operationalStatus).toBe('DELIVERED');
     expect(deliverResult.data.financialStatus).toBe('RECOGNIZED');
 
     // Verify financial recognition ledger was created
@@ -236,13 +232,11 @@ describe('Restore Runtime Read Model Rehydration & Delivery Suite', () => {
     // Verify item-501 is delivered
     const item501 = await repoContext.itemRepo.findById('item-501');
     expect(item501?.status).toBe('delivered');
-    expect(item501?.operationalStatus).toBe('DELIVERED');
     expect(item501?.financialStatus).toBe('RECOGNIZED');
 
     // Verify item-502 (cancelled) was NOT modified
     const item502 = await repoContext.itemRepo.findById('item-502');
     expect(item502?.status).toBe('cancelled');
-    expect(item502?.operationalStatus).toBe('CANCELLED');
 
     // Financial ledger has exactly 1 charge
     const ledger = await repoContext.ledgerRepo.findByCustomer('cust-101');

@@ -298,8 +298,6 @@ export function normalizeOrderItemEntity(i: any): any {
 
   const rawStatus = (
     i.status ||
-    i.operationalStatus?.toLowerCase() ||
-    i.operational_status?.toLowerCase() ||
     i.deliveryStatus ||
     i.delivery_status ||
     'charging'
@@ -307,7 +305,6 @@ export function normalizeOrderItemEntity(i: any): any {
   const normalizedStatus = (rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending')
     ? rawStatus
     : 'charging';
-  const opStatus = i.operationalStatus || i.operational_status || (normalizedStatus === 'delivered' ? 'DELIVERED' : normalizedStatus === 'cancelled' ? 'CANCELLED' : 'CHARGING');
   const finStatus = i.financialStatus || i.financial_status || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED');
   const payStatus = i.paymentStatus || i.payment_status || 'UNPAID';
 
@@ -320,8 +317,6 @@ export function normalizeOrderItemEntity(i: any): any {
     itemSequence: seq,
     item_sequence: seq,
     status: normalizedStatus,
-    operationalStatus: opStatus,
-    operational_status: opStatus,
     financialStatus: finStatus,
     financial_status: finStatus,
     paymentStatus: payStatus,

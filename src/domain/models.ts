@@ -117,7 +117,6 @@ export interface OrderItemEntity extends BaseEntity {
   itemSequence: number;
   
   // Independent Dimensions
-  operationalStatus?: ItemOperationalStatus;
   financialStatus?: ItemFinancialStatus;
   paymentStatus?: ItemPaymentStatus;
   status: ItemStatus;

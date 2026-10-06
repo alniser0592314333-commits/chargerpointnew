@@ -91,7 +91,6 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
       }
       if (!matchedInActiveOutbox) {
         if (
-          isStructural ||
           item.dependencyCommandId === candidateId ||
           item.dependencyCommandIds?.includes(candidateId as string) ||
           item.dependencies?.includes(candidateId as string) ||
@@ -106,6 +105,16 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     if (item.commandType === 'CREATE_ORDER' || item.aggregateType === 'orders') {
       if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
       if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
+    }
+    // Item commands (DELIVER_ORDER_ITEM, CANCEL_ORDER_ITEM, etc.) depend on ADD_ORDER_ITEM (itemId / orderItemId)
+    else if (item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM' || payload.itemId || payload.orderItemId) {
+      const targetItemId = payload.itemId || payload.orderItemId;
+      if (targetItemId) {
+        checkCandidate(targetItemId, ['ADD_ORDER_ITEM'], true);
+      }
+      if (payload.orderId) {
+        checkCandidate(payload.orderId, ['CREATE_ORDER', 'orders'], true);
+      }
     }
     // ADD_ORDER_ITEM depends on CREATE_ORDER (orderId) and CREATE_DEVICE_TYPE (deviceTypeId)
     else if (item.commandType === 'ADD_ORDER_ITEM' || item.aggregateType === 'order_items') {
@@ -284,15 +293,16 @@ export class OutboxScheduler {
             }
           } else {
             // Prerequisite is not in active outbox AND not in history.
-            // Check if the entity already exists locally in DB (e.g. existing order, day, customer, device)
-            const [existsInDays, existsInOrders, existsInCustomers, existsInDevices] = await Promise.all([
+            // Check if the entity already exists locally in DB (e.g. existing order, day, customer, device, item)
+            const [existsInDays, existsInOrders, existsInCustomers, existsInDevices, existsInItems] = await Promise.all([
               localDb.get('businessDays', depId).catch(() => null),
               localDb.get('orders', depId).catch(() => null),
               localDb.get('customers', depId).catch(() => null),
               localDb.get('deviceTypes', depId).catch(() => null),
+              localDb.get('orderItems', depId).catch(() => null),
             ]);
 
-            const entityExistsLocally = Boolean(existsInDays || existsInOrders || existsInCustomers || existsInDevices);
+            const entityExistsLocally = Boolean(existsInDays || existsInOrders || existsInCustomers || existsInDevices || existsInItems);
 
             if (!entityExistsLocally) {
               const isDayDep =
@@ -301,13 +311,16 @@ export class OutboxScheduler {
               const isOrderDep =
                 (candidate.commandType === 'ADD_ORDER_ITEM' || candidate.aggregateType === 'order_items') &&
                 (candidate.payload as any)?.orderId === depId;
+              const isItemDep =
+                (candidate.commandType === 'DELIVER_ORDER_ITEM' || candidate.commandType === 'CANCEL_ORDER_ITEM' || (candidate.payload as any)?.itemId || (candidate.payload as any)?.orderItemId) &&
+                ((candidate.payload as any)?.itemId === depId || (candidate.payload as any)?.orderItemId === depId);
               const isExplicitDep =
                 candidate.dependencyCommandId === depId ||
                 candidate.dependencyCommandIds?.includes(depId) ||
                 candidate.dependencies?.includes(depId) ||
                 (candidate.payload as any)?.dependencyCommandId === depId;
 
-              if (isDayDep || isOrderDep || isExplicitDep) {
+              if (isDayDep || isOrderDep || isItemDep || isExplicitDep) {
                 unsatisfied.push(depId);
               }
             }
