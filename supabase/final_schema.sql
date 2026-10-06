@@ -785,7 +785,9 @@ begin
       if v_amount<=0 then raise exception 'Invalid credit amount' using errcode='P0003'; end if;
       insert into public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,metadata)
       values(p_command_id,'CREDIT_ADJUSTMENT',v_amount,v_customer,v_actor,p_command_id,coalesce(p_payload->'metadata','{}'::jsonb));
-      v_result:=jsonb_build_object('ledgerId',p_command_id);
+      insert into public.payments(id,customer_id,amount_minor,payment_method,reference,actor_admin_id,command_id)
+      values(p_command_id,v_customer,v_amount,'CASH',coalesce(p_payload->>'note','Customer credit'),v_actor,p_command_id);
+      v_result:=jsonb_build_object('ledgerId',p_command_id,'paymentId',p_command_id);
 
     when 'CONSUME_CUSTOMER_CREDIT' then
       v_customer:=(p_payload->>'customerId')::uuid; v_amount:=(p_payload->>'amountMinor')::bigint;
