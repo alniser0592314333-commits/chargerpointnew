@@ -213,12 +213,35 @@ export class FinalUseCases {
 
     const orderId = commandId || crypto.randomUUID();
 
+    // Legacy CREATE_ORDER must use the same local reservation contract as the
+    // aggregate create-with-items path. Returning displayNumber=0 here made
+    // the Days page show an invalid order number until a server round-trip and
+    // caused offline numbering tests to diverge from the real order pipeline.
+    const deviceId = actor.deviceId || 'default-device';
+    let displayNumber = 1;
+    let reservation: OrderNumberReservationEntity | null = null;
+    if (this.deps.reservationRepo) {
+      reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
+      if (!reservation || reservation.nextNumber > reservation.endNumber) {
+        reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, orderId, 20);
+      }
+      if (!reservation || reservation.nextNumber > reservation.endNumber) {
+        throw new OrderNumberReservationExhaustedError();
+      }
+      displayNumber = reservation.nextNumber;
+      reservation.nextNumber += 1;
+      if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
+      reservation.updatedAt = new Date().toISOString();
+    } else {
+      displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
+    }
+
     const order: OrderEntity = {
       id: orderId,
       dayId,
       customerId,
-      displayNumber: 0, // Will be set by server
-      internalSequence: 0,
+      displayNumber,
+      internalSequence: displayNumber,
       status: 'pending',
       customerBalanceSnapshotMinor: currentBalance,
       notes,
