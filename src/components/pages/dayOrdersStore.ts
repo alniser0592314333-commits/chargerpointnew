@@ -580,6 +580,23 @@ export const applyRemoteChange = (change: {
       metadata: p.metadata ?? undefined,
       createdAt: p.createdAt || p.created_at || new Date().toISOString(),
     };
+    // Reconcile a local-first provisional ledger row with the canonical server row
+    // by semantic identity, not only by UUID. The local projection uses commandId as
+    // its temporary id while the server may generate a different ledger UUID.
+    const semanticIdx = ledgerList.findIndex((item) =>
+      item.id !== entity.id &&
+      item.eventType === entity.eventType &&
+      (
+        (entity.orderItemId && item.orderItemId === entity.orderItemId) ||
+        (entity.eventType === 'PAYMENT' && entity.referenceId && item.referenceId === entity.referenceId)
+      )
+    );
+    if (semanticIdx >= 0) {
+      const provisionalId = ledgerList[semanticIdx].id;
+      ledgerList.splice(semanticIdx, 1);
+      localDb.removeWithTx(tx as any, 'financialLedger', provisionalId);
+    }
+
     localDb.setWithTx(tx, 'financialLedger', entity.id, entity);
     const existingIdx = ledgerList.findIndex((item) => item.id === entity.id);
     if (existingIdx >= 0) {
