@@ -2753,19 +2753,27 @@ export const computeCustomerOrderPaymentStatuses = (
     // Payment liability is based only on financially recognized delivered items.
     // A newly added device starts as charging/UNRECOGNIZED and must not change the
     // amount due for an order until that specific device is delivered.
-    const items = Array.from(effectiveItemsMap.values()).filter(
+    const allActiveItems = Array.from(effectiveItemsMap.values()).filter(
+      (i) => i.orderId === ord.id && i.status !== 'cancelled'
+    );
+    const hasRecognizedItem = allActiveItems.some(
       (i) =>
-        i.orderId === ord.id &&
         i.status === 'delivered' &&
+        String(i.financialStatus || '').toUpperCase() !== 'UNRECOGNIZED' &&
+        i.financialStatus !== 'REVERSED'
+    );
+    // For a brand-new order, the whole active intake is the payment liability.
+    // Once an order already contains a recognized/delivered item, newly added
+    // charging items are excluded until their own delivery recognition.
+    const items = allActiveItems.filter(
+      (i) =>
+        (!hasRecognizedItem || i.status === 'delivered') &&
         String(i.financialStatus || '').toUpperCase() !== 'UNRECOGNIZED' &&
         i.financialStatus !== 'REVERSED'
     );
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     if (totalMinor <= 0) {
-      // An order with no recognized financial charge is not "paid". Payment
-      // status tracks settlement of a real recognized liability; before any
-      // item is delivered the order remains UNPAID until a charge exists.
       result.set(ord.id, {
         paymentStatus: 'UNPAID',
         allocatedAmountMinor: 0,
