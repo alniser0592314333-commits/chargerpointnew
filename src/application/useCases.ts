@@ -358,10 +358,10 @@ export class FinalUseCases {
      * Persist the new item and its outbox command atomically. The overlay is
      * only a pending projection; the local entity row is the durable read model.
      */
+    const parentCreate = await this.deps.commandRepo.get(orderId);
     await this.deps.transactionManager.runInTransaction((ctx) => {
       if (orderReopened) ctx.orderRepo.save(reopenedOrder);
       ctx.itemRepo.save(item);
-      const parentCreate = ctx.commandRepo.get(orderId);
       ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
         id: item.id,
         aggregateId: orderId,
@@ -700,6 +700,17 @@ export class FinalUseCases {
     const deliveredAt = new Date().toISOString();
     const patch: Partial<OrderItemEntity> = { status:'delivered', financialStatus:'RECOGNIZED', deliveredAt, financiallyRecognizedAt:deliveredAt, updatedAt:deliveredAt, version:item.version+1 };
     const commandId = crypto.randomUUID();
+    const chargeLedger: Omit<FinancialLedgerEntity, 'createdAt'> & { createdAt?: string } = {
+      id: commandId,
+      eventType: 'ORDER_ITEM_CHARGE',
+      amountMinor: -item.totalPriceMinor,
+      customerId: order.customerId,
+      orderId: order.id,
+      orderItemId: item.id,
+      actorAdminId: actor.id,
+      referenceId: commandId,
+      createdAt: deliveredAt,
+    };
     const nextItems = orderItems.map((candidate) => candidate.id === item.id ? ({ ...candidate, ...patch } as OrderItemEntity) : candidate);
     const activeAfter = nextItems.filter((candidate) => candidate.status !== 'cancelled');
     const nextOrderStatus: OrderEntity['status'] = activeAfter.length > 0 && activeAfter.every((candidate) => candidate.status === 'delivered')
@@ -717,6 +728,7 @@ export class FinalUseCases {
     await this.deps.transactionManager.runInTransaction((ctx) => {
       if (orderStatusChanged) ctx.orderRepo.save(nextOrder);
       ctx.itemRepo.save({...item,...patch});
+      ctx.ledgerRepo.append(chargeLedger);
       ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
         id:commandId,
         aggregateId:item.id,
@@ -1310,6 +1322,15 @@ export class FinalUseCases {
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.paymentRepo.save(payment);
+      ctx.ledgerRepo.append({
+        id: commandId,
+        eventType: 'PAYMENT',
+        amountMinor,
+        customerId,
+        actorAdminId: actor.id,
+        referenceId: payment.id,
+        createdAt: payment.createdAt,
+      });
       ctx.commandRepo.record(commandId, 'CREATE_PAYMENT', {
         ...payment,
         resetGeneration
@@ -1333,14 +1354,8 @@ export class FinalUseCases {
         'CREATE',
         payment as unknown as Record<string, unknown>
       );
-      await this.createOverlay(
-        `${commandId}:ledger`,
-        mutationKey,
-        'ledger',
-        commandId,
-        'CREATE',
-        ledgerEvent as unknown as Record<string, unknown>
-      );
+      // The ledger row is already persisted atomically above; keep only the
+      // payment overlay so the same financial event is not projected twice.
     } catch (overlayError) {
       /*
        * The payment row + outbox are already durable. If the projection layer
