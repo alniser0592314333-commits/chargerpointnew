@@ -4909,9 +4909,10 @@ const commandId = idempotencyKey
     const existingRecord = existingCmd || existingOutbox || existingHistory;
     if (existingRecord) {
       const custBalance = await repoContext.customerRepo.getBalance(cust.id);
+      const recordPayload = 'payload' in existingRecord ? (existingRecord as any).payload : undefined;
       return {
         success: true,
-        transactionId: (existingRecord.payload as any)?.transactionId || commandId,
+        transactionId: recordPayload?.transactionId || commandId,
         newBalanceMinor: custBalance,
       };
     }
