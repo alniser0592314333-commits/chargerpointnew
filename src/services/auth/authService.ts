@@ -78,6 +78,8 @@ export interface UserSession {
   permissions: Permission[];
   tenantId?: ID;
   tokenExpiresAt: Timestamp;
+  /** Stable Supabase Auth subject bound to this cached session for offline reload integrity. */
+  authUserId?: string;
 }
 
 export interface AdminProfileResult {
@@ -381,6 +383,7 @@ class DefaultAuthService implements AuthService {
       role: "SUPER_ADMIN",
       permissions: profileRes.permissions || [],
       tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      authUserId: authSession.user.id,
     };
 
     inMemorySession = session;
@@ -785,15 +788,27 @@ class DefaultAuthService implements AuthService {
 
   async getCurrentSession(forceRefresh = false): Promise<UserSession | null> {
     if (this.isSupabaseConfigured()) {
-      // Validate that Supabase Auth token is active and valid
+      /*
+       * Offline-first session rule:
+       * absence of a currently hydrated Supabase token is not, by itself,
+       * proof that the cached local admin session is invalid. Explicit logout
+       * clears the cached app session as well, while an offline/reload path may
+       * temporarily have no remote token available.
+       *
+       * Do not destroy the local session here. The cached session is evaluated
+       * below using its own expiry. When a valid Supabase session is available,
+       * the authoritative server profile is still checked and replaces the
+       * cached permissions/identity.
+       */
       const supabaseSession = await this.getSupabaseAuthSession();
-      if (!supabaseSession?.access_token) {
-        await this.logout();
-        return null;
-      }
+      void supabaseSession;
     }
 
-    if (!forceRefresh && inMemorySession && new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now()) {
+    // Never short-circuit from the in-memory app session while Supabase is configured.
+    // On a reload/offline transition, the cached app identity must still pass the
+    // persisted Supabase-subject binding check below; otherwise a forged/stale
+    // localStorage session could be resurrected without an authenticated subject.
+    if (!this.isSupabaseConfigured() && !forceRefresh && inMemorySession && new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now()) {
       return inMemorySession;
     }
 
@@ -818,6 +833,18 @@ class DefaultAuthService implements AuthService {
       if (stored) {
         try {
           const storedSession = JSON.parse(stored) as UserSession;
+          const storedSupabase = await this.getSupabaseAuthSession();
+          // When operating offline, never trust a free-standing local admin
+          // profile. It must remain cryptographically/identity-bound to the
+          // Supabase Auth subject that originally established it.
+          if (!serverProfile && this.isSupabaseConfigured()) {
+            const boundAuthUserId = storedSession.authUserId;
+            if (!boundAuthUserId || !storedSupabase?.user?.id || boundAuthUserId !== storedSupabase.user.id) {
+              storage.removeItem(SESSION_STORAGE_KEY);
+              inMemorySession = null;
+              return null;
+            }
+          }
           if (new Date(storedSession.tokenExpiresAt).getTime() > Date.now()) {
             const session: UserSession = serverProfile ? {
               userId: serverProfile.admin_id || storedSession.userId,
@@ -826,6 +853,7 @@ class DefaultAuthService implements AuthService {
               role: (serverProfile.role as UserRole) || storedSession.role,
               permissions: serverProfile.permissions || storedSession.permissions,
               tokenExpiresAt: storedSession.tokenExpiresAt,
+              authUserId: serverProfile?.auth_user_id || storedSession.authUserId,
             } : storedSession;
 
             inMemorySession = session;
@@ -848,6 +876,7 @@ class DefaultAuthService implements AuthService {
           role: serverProfile.role || "OPERATOR",
           permissions: serverProfile.permissions || [],
           tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          authUserId: supabaseSession?.user.id,
         };
         inMemorySession = session;
         storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));

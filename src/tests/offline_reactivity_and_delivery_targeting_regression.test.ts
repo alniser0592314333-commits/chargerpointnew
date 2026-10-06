@@ -139,12 +139,21 @@ describe('Offline reactivity and delivery targeting regression', () => {
       'cash'
     );
     expect(paymentResult.success).toBe(true);
+    if (!paymentResult.success) return;
 
     unsubscribe();
 
     expect(scopes).toContain('orders');
     expect(scopes).toContain('payments');
     expect(scopes).toContain('financialLedger');
+
+    const persistedPayment = await localDb.get<any>('payments', paymentResult.data.id);
+    expect(persistedPayment?.id).toBe(paymentResult.data.id);
+
+    const paymentCommand = (await localDb.listOutbox()).find(
+      (command) => command.commandId === paymentResult.data.id && command.commandType === 'CREATE_PAYMENT'
+    );
+    expect(paymentCommand).toBeTruthy();
   });
 
   it('when a delivered order receives a new device, choosing Delivered targets only the new charging item', async () => {
@@ -201,11 +210,129 @@ describe('Offline reactivity and delivery targeting regression', () => {
     const addCommands = outbox.filter((c) => c.commandType === 'ADD_ORDER_ITEM');
     const deliverCommands = outbox.filter((c) => c.commandType === 'DELIVER_ORDER_ITEM');
 
-    expect(addCommands).toHaveLength(2);
+    // Seeded repository rows are persistence-only and must not manufacture
+    // outbox commands. Only the newly added device belongs in this queue.
+    expect(addCommands).toHaveLength(1);
     expect(deliverCommands).toHaveLength(1);
-    expect(deliverCommands[0].payload.itemId).not.toBe('item-already-delivered');
+    expect((deliverCommands[0].payload as any).itemId).not.toBe('item-already-delivered');
 
-    const newItemId = addCommands[0].payload.id as string;
-    expect(deliverCommands[0].payload.itemId).toBe(newItemId);
+    const newItemId = (addCommands[0].payload as any).id as string;
+    expect((deliverCommands[0].payload as any).itemId).toBe(newItemId);
+    const persistedNewItem = await localDb.get<any>('orderItems', newItemId);
+    expect(persistedNewItem?.id).toBe(newItemId);
+    expect(persistedNewItem?.orderId).toBe('order-delivered-regression');
+    expect(persistedNewItem?.status).toBe('charging');
+
+    const effectiveNewItem = await repoContext.itemRepo.findById(newItemId);
+    expect(effectiveNewItem?.status).toBe('delivered');
   });
+
+  it('persists a newly created order and all items in the local read model together with its outbox', async () => {
+    await seedBaseOrder();
+
+    const commandId = crypto.randomUUID();
+    const result = await phase5UseCases.createOrderWithItems(
+      superAdminAuth,
+      commandId,
+      'day-regression',
+      'cust-regression',
+      [
+        { deviceTypeId: 'device-regression', hasCharger: false },
+        { deviceTypeId: 'device-regression-2', hasCharger: true },
+      ]
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const orderId = result.data.order.id;
+    const localOrder = await repoContext.orderRepo.findById(orderId);
+    const localItems = await repoContext.itemRepo.findByOrderId(orderId);
+    const outbox = await localDb.listOutbox();
+
+    expect(localOrder?.id).toBe(orderId);
+    expect(localOrder?.dayId).toBe('day-regression');
+    expect(localItems).toHaveLength(2);
+    expect(localItems.every((item) => item.orderId === orderId)).toBe(true);
+
+    const createCommand = outbox.find(
+      (command) => command.commandId === commandId && command.commandType === 'CREATE_ORDER'
+    );
+    const addCommands = outbox.filter(
+      (command) => command.commandType === 'ADD_ORDER_ITEM' && (command.payload as any).orderId === orderId
+    );
+
+    expect(createCommand).toBeTruthy();
+    expect(addCommands).toHaveLength(2);
+    expect(addCommands.every((command) => (command.payload as any).dependencyCommandId === commandId)).toBe(true);
+  });
+  it('persists delivery state in the local read model atomically with its outbox command', async () => {
+    await seedBaseOrder();
+    const orderId = 'order-delivery-persist';
+    const itemId = 'item-delivery-persist';
+
+    await repoContext.orderRepo.save({
+      id: orderId, dayId: 'day-regression', customerId: 'cust-regression',
+      displayNumber: 10, internalSequence: 10, status: 'charging',
+      customerBalanceSnapshotMinor: 0, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+    await repoContext.itemRepo.save({
+      id: itemId, orderId, deviceTypeId: 'device-regression', itemSequence: 1,
+      status: 'charging', financialStatus: 'UNRECOGNIZED', deviceNameSnapshot: 'Regression Device',
+      deviceIconSnapshot: 'smartphone', basePriceSnapshotMinor: 2000,
+      chargerFeeEnabledSnapshot: false, customerChargerFeeExemptSnapshot: false,
+      chargerFeeSnapshotMinor: 0, hasCharger: false, unitPriceMinor: 2000,
+      totalPriceMinor: 2000, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+
+    const result = await phase5UseCases.deliverOrderItem(superAdminAuth, itemId, '1234');
+    expect(result.success).toBe(true);
+
+    const persisted = await localDb.get<any>('orderItems', itemId);
+    expect(persisted?.status).toBe('delivered');
+    expect(persisted?.financialStatus).toBe('RECOGNIZED');
+
+    const command = (await localDb.listOutbox()).find(
+      (c) => c.commandType === 'DELIVER_ORDER_ITEM' && (c.payload as any).itemId === itemId
+    );
+    expect(command).toBeTruthy();
+    expect(command?.expectedVersion).toBe(1);
+  });
+
+  it('persists order note edits and item cancellation in the local read model before sync', async () => {
+    await seedBaseOrder();
+    const orderId = 'order-edit-persist';
+    const itemId = 'item-cancel-persist';
+
+    await repoContext.orderRepo.save({
+      id: orderId, dayId: 'day-regression', customerId: 'cust-regression',
+      displayNumber: 11, internalSequence: 11, status: 'charging',
+      customerBalanceSnapshotMinor: 0, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+    await repoContext.itemRepo.save({
+      id: itemId, orderId, deviceTypeId: 'device-regression', itemSequence: 1,
+      status: 'charging', financialStatus: 'UNRECOGNIZED', deviceNameSnapshot: 'Regression Device',
+      deviceIconSnapshot: 'smartphone', basePriceSnapshotMinor: 2000,
+      chargerFeeEnabledSnapshot: false, customerChargerFeeExemptSnapshot: false,
+      chargerFeeSnapshotMinor: 0, hasCharger: false, unitPriceMinor: 2000,
+      totalPriceMinor: 2000, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+
+    const noteResult = await phase5UseCases.editOrderNotes(superAdminAuth, orderId, 'offline note');
+    expect(noteResult.success).toBe(true);
+    const cancelledResult = await phase5UseCases.removeOrderItemDuringEdit(superAdminAuth, itemId);
+    expect(cancelledResult.success).toBe(true);
+
+    expect((await localDb.get<any>('orders', orderId))?.notes).toBe('offline note');
+    expect((await localDb.get<any>('orderItems', itemId))?.status).toBe('cancelled');
+
+    const outbox = await localDb.listOutbox();
+    expect(outbox.some((c) => c.commandType === 'UPDATE_ORDER' && (c.payload as any).orderId === orderId)).toBe(true);
+    expect(outbox.some((c) => c.commandType === 'CANCEL_ORDER_ITEM' && (c.payload as any).itemId === itemId)).toBe(true);
+  });
+
 });

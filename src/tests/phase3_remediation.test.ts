@@ -246,7 +246,7 @@ describe('Phase 3 Remediation Verification Suite', () => {
     };
 
     const engine = new SyncEngine(mockTransport);
-    engine.onDeltaApplied = async () => {
+    engine.onDeltaApplied = () => {
       throw new Error('Simulated delta processing crash');
     };
 

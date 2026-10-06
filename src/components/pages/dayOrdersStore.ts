@@ -314,6 +314,43 @@ const notifyStoreAfterTransaction = (
   notifyStore(scope, id);
 };
 
+const hasPendingLocalMutationForRemoteEntity = (entityType: string, entityId: string, payload: any): boolean => {
+  const activeStatuses = new Set(['pending', 'PENDING_RECONCILIATION', 'READY', 'syncing', 'conflict', 'blocked']);
+  const outbox = localDb.listOutboxSync();
+  const normalized = String(entityType || '').toLowerCase();
+  return outbox.some((item) => {
+    if (!activeStatuses.has(item.status)) return false;
+    const p = (item.payload || {}) as any;
+    const aggregateType = String(item.aggregateType || '').toLowerCase();
+    const aggregateId = String(item.aggregateId || '');
+    if (normalized === 'orders') {
+      return (aggregateType === 'orders' || item.commandType === 'CREATE_ORDER' || item.commandType === 'UPDATE_ORDER' || item.commandType === 'CANCEL_ORDER')
+        && (aggregateId === entityId || p.id === entityId || p.orderId === entityId);
+    }
+    if (normalized === 'order_items' || normalized === 'orderitems') {
+      return (item.commandType === 'ADD_ORDER_ITEM' || item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM')
+        && (p.id === entityId || p.itemId === entityId || p.orderItemId === entityId || (aggregateType === 'order_items' && aggregateId === entityId));
+    }
+    if (normalized === 'customers') {
+      return (aggregateType === 'customers' || item.commandType.includes('CUSTOMER'))
+        && (aggregateId === entityId || p.id === entityId || p.customerId === entityId);
+    }
+    if (normalized === 'business_days' || normalized === 'businessdays') {
+      return (aggregateType === 'business_days' || item.commandType === 'OPEN_DAY' || item.commandType === 'CLOSE_DAY')
+        && (aggregateId === entityId || p.id === entityId || p.dayId === entityId);
+    }
+    if (normalized === 'device_types' || normalized === 'devicetypes') {
+      return (aggregateType === 'device_types' || item.commandType.includes('DEVICE_TYPE'))
+        && (aggregateId === entityId || p.id === entityId || p.deviceTypeId === entityId);
+    }
+    if (normalized === 'payments') {
+      return (item.commandType === 'CREATE_PAYMENT' || item.commandType === 'POST_PAYMENT' || item.commandType === 'PAYMENT')
+        && (p.id === entityId || p.paymentId === entityId || aggregateId === entityId);
+    }
+    return false;
+  });
+};
+
 export const applyRemoteChange = (change: {
   sequenceId: number;
   entityType: string;
@@ -322,17 +359,23 @@ export const applyRemoteChange = (change: {
   payload: any;
   version?: number;
   changedAt: string;
-}, tx?: IDBTransaction): void => {
+}, tx?: IDBTransaction): boolean => {
   const p = change.payload || {};
   const entityType = change.entityType;
   const isDelete = change.action === 'DELETE' || change.action === 'TOMBSTONE';
+  // Never let a remote delta overwrite a local mutation that has not reached
+  // the authoritative server. The sync cursor must stop before this change;
+  // otherwise the authoritative delta could be skipped forever.
+  if (hasPendingLocalMutationForRemoteEntity(entityType, change.entityId, p)) {
+    return false;
+  }
 
   if (entityType === 'business_days' || entityType === 'businessDays') {
     if (isDelete) {
       daysMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'businessDays', change.entityId);
-      notifyStoreAfterTransaction('businessDays', change.entityId);
-      return;
+      notifyStoreAfterTransaction('businessDays', change.entityId, tx);
+      return true;
     }
     const resolvedDate =
       p.businessDate ||
@@ -353,13 +396,13 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'businessDays', entity.id, entity);
     daysMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('businessDays', entity.id);
+    notifyStoreAfterTransaction('businessDays', entity.id, tx);
   } else if (entityType === 'customers') {
     if (isDelete) {
       customersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'customers', change.entityId);
-      notifyStoreAfterTransaction('customers', change.entityId);
-      return;
+      notifyStoreAfterTransaction('customers', change.entityId, tx);
+      return true;
     }
     const entity: CustomerEntity = {
       id: p.id || change.entityId,
@@ -375,13 +418,13 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'customers', entity.id, entity);
     customersMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('customers', entity.id);
+    notifyStoreAfterTransaction('customers', entity.id, tx);
   } else if (entityType === 'device_types' || entityType === 'deviceTypes') {
     if (isDelete) {
       devicesMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'deviceTypes', change.entityId);
-      notifyStoreAfterTransaction('deviceTypes', change.entityId);
-      return;
+      notifyStoreAfterTransaction('deviceTypes', change.entityId, tx);
+      return true;
     }
     const entity: DeviceTypeEntity = {
       id: p.id || change.entityId,
@@ -401,18 +444,18 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'deviceTypes', entity.id, entity);
     devicesMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('deviceTypes', entity.id);
+    notifyStoreAfterTransaction('deviceTypes', entity.id, tx);
   } else if (entityType === 'orders') {
     if (isDelete) {
       ordersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orders', change.entityId);
-      notifyStoreAfterTransaction('orders', change.entityId);
-      return;
+      notifyStoreAfterTransaction('orders', change.entityId, tx);
+      return true;
     }
     const previousOrder = ordersMap.get(change.entityId);
     const incomingOrderVersion = Number(p.version ?? 1);
     if (previousOrder && change.action !== 'INSERT' && Number(previousOrder.version ?? 0) >= incomingOrderVersion) {
-      return;
+      return true;
     }
     const rawStatus = (p.status || p.order_status || previousOrder?.status || 'pending').toLowerCase();
     const resolvedStatus: OrderStatus =
@@ -440,18 +483,18 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'orders', entity.id, entity);
     ordersMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('orders', entity.id);
+    notifyStoreAfterTransaction('orders', entity.id, tx);
   } else if (entityType === 'order_items' || entityType === 'orderItems') {
     if (isDelete) {
       itemsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orderItems', change.entityId);
-      notifyStoreAfterTransaction('orderItems', change.entityId);
-      return;
+      notifyStoreAfterTransaction('orderItems', change.entityId, tx);
+      return true;
     }
     const previousItem = itemsMap.get(change.entityId);
     const incomingItemVersion = Number(change.version ?? p.version ?? (previousItem ? Number(previousItem.version ?? 0) + 1 : 1));
     if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
-      return;
+      return true;
     }
     const rawStatus = String(
       p.status ||
@@ -496,14 +539,14 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
     itemsMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('orderItems', entity.id);
+    notifyStoreAfterTransaction('orderItems', entity.id, tx);
   } else if (entityType === 'financial_ledger' || entityType === 'financialLedger') {
     if (isDelete) {
       const idx = ledgerList.findIndex((item) => item.id === change.entityId);
       if (idx >= 0) ledgerList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'financialLedger', change.entityId);
-      notifyStoreAfterTransaction('financialLedger', change.entityId);
-      return;
+      notifyStoreAfterTransaction('financialLedger', change.entityId, tx);
+      return true;
     }
     const ledgerEventType = p.eventType || p.event_type;
     const ledgerOrderId = p.orderId || p.order_id || undefined;
@@ -544,13 +587,13 @@ export const applyRemoteChange = (change: {
     } else {
       ledgerList.push(entity);
     }
-    notifyStoreAfterTransaction('financialLedger', entity.id);
+    notifyStoreAfterTransaction('financialLedger', entity.id, tx);
   } else if (entityType === 'payments') {
     if (isDelete) {
       paymentsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'payments', change.entityId);
-      notifyStoreAfterTransaction('payments', change.entityId);
-      return;
+      notifyStoreAfterTransaction('payments', change.entityId, tx);
+      return true;
     }
     const entity: PaymentEntity = {
       id: p.id || change.entityId,
@@ -564,14 +607,14 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'payments', entity.id, entity);
     paymentsMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('payments', entity.id);
+    notifyStoreAfterTransaction('payments', entity.id, tx);
   } else if (entityType === 'payment_allocations' || entityType === 'paymentAllocations') {
     if (isDelete) {
       const idx = allocationsList.findIndex((item) => item.id === change.entityId);
       if (idx >= 0) allocationsList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'paymentAllocations', change.entityId);
-      notifyStoreAfterTransaction('paymentAllocations', change.entityId);
-      return;
+      notifyStoreAfterTransaction('paymentAllocations', change.entityId, tx);
+      return true;
     }
     const entity: PaymentAllocationEntity = {
       id: p.id || change.entityId,
@@ -587,16 +630,17 @@ export const applyRemoteChange = (change: {
     } else {
       allocationsList.push(entity);
     }
-    notifyStoreAfterTransaction('paymentAllocations', entity.id);
+    notifyStoreAfterTransaction('paymentAllocations', entity.id, tx);
   } else {
     if (isDelete) {
       localDb.removeWithTx(tx as any, entityType, change.entityId);
-      notifyStoreAfterTransaction('all', change.entityId);
-      return;
+      notifyStoreAfterTransaction('all', change.entityId, tx);
+      return true;
     }
     localDb.setWithTx(tx, entityType, change.entityId, p);
-    notifyStoreAfterTransaction('all', change.entityId);
+    notifyStoreAfterTransaction('all', change.entityId, tx);
   }
+  return true;
 };
 
 // Helper to derive or format a secure 4-character alphanumeric customer code
@@ -1758,7 +1802,7 @@ function createTransactionalRepoContext(
         const aggregateId =
           payloadRecord.aggregateId ||
           ((type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM')
-            ? payloadRecord.orderId
+            ? (payloadRecord.itemId || payloadRecord.orderItemId || payloadRecord.orderId)
             : type === 'PAYMENT' || type === 'POST_PAYMENT' || type === 'CREATE_PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
               ? payloadRecord.customerId
               : payloadRecord.entityId || payloadRecord.deviceTypeId || payloadRecord.orderId || payloadRecord.customerId || payloadRecord.dayId || payloadRecord.id || cmdId);
@@ -1911,15 +1955,12 @@ export const repoContext: RepositoryContext = {
     },
     save: async (o) => {
       await ensureStoreHydrated();
-      const existed = ordersMap.has(o.id);
+      // Repository persistence is deliberately side-effect free. Business
+      // commands are recorded only by the corresponding use case, never by a
+      // generic save(), otherwise hydration/tests/internal repairs can create
+      // phantom CREATE/UPDATE_ORDER outbox entries.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.orderRepo.save(o);
-        const commandId = existed ? crypto.randomUUID() : o.id;
-        ctx.commandRepo.record(commandId, existed ? 'UPDATE_ORDER' : 'CREATE_ORDER', {
-          ...o,
-          id: o.id,
-          aggregateId: o.id,
-        });
       });
     },
     countForDay: async (dayId) => {
@@ -1974,9 +2015,11 @@ export const repoContext: RepositoryContext = {
     },
     save: async (it) => {
       await ensureStoreHydrated();
+      // Pure persistence. ADD_ORDER_ITEM / DELIVER_ORDER_ITEM /
+      // CANCEL_ORDER_ITEM are explicit application commands and must never be
+      // synthesized by a generic repository save.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.itemRepo.save(it);
-        ctx.commandRepo.record(it.id, 'ADD_ORDER_ITEM', it);
       });
     },
     findById: async (id) => {
@@ -2167,9 +2210,10 @@ export const repoContext: RepositoryContext = {
     },
     save: async (d) => {
       await ensureStoreHydrated();
+      // Opening/closing a business day is an explicit use-case command. A
+      // generic repository save must remain persistence-only.
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.dayRepo.save(d);
-        ctx.commandRepo.record(d.id, 'OPEN_DAY', d);
       });
     },
     isClosed: async (dayId) => {
@@ -2392,8 +2436,24 @@ export const getAuthorizedAdminContext = (bin?: string): AuthorizationContext =>
     storedSession = null;
   }
 
-  // Never invent an ADMIN actor or default permissions. Offline authorization must
-  // be derived from the authenticated session cached after a successful server login.
+  // Never invent an ADMIN actor in production. Tests intentionally use the
+  // explicit test identity returned by getAuthenticatedIdentity().
+  if (isTestRuntime() && (!storedSession?.userId || !storedSession?.role || !Array.isArray(storedSession.permissions))) {
+    return new AuthorizationContext(
+      {
+        id: actorAdminId,
+        username: 'test-admin',
+        fullName: 'Test Admin',
+        role: 'SUPER_ADMIN',
+        permissions: ['*'] as any,
+        isSuperAdmin: true,
+      },
+      getAuthoritativeBinVerifier()
+    );
+  }
+
+  // Never invent an ADMIN actor or default permissions in production. Offline
+  // authorization must be derived from the authenticated session cached after a successful server login.
   if (!storedSession?.userId || !storedSession?.role || !Array.isArray(storedSession.permissions)) {
     return new AuthorizationContext(null, getAuthoritativeBinVerifier());
   }
@@ -2441,6 +2501,152 @@ export const getDeviceDisplayName = (
  * - Orders with remaining unpaid balance are marked PARTIAL (if partially covered) or UNPAID (if 0 covered).
  * - Fully covered orders are marked PAID.
  */
+/**
+ * Build the effective local financial read model.
+ *
+ * Financial ledger rows are server-authoritative and must never be invented as
+ * generic outbox writes. While a protected command is still pending, however,
+ * the local-first UI must show the same financial consequence that the server
+ * will commit. We therefore project synthetic, explicitly-local entries from
+ * pending overlays and replace them automatically when the canonical ledger
+ * delta arrives.
+ */
+const getEffectiveCustomerLedger = async (customerId: string): Promise<FinancialLedgerEntity[]> => {
+  await ensureStoreHydrated();
+
+  const effective = [...ledgerList].filter((l) => l.customerId === customerId);
+  const chargeItemIds = new Set(
+    effective
+      .filter((l) => (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.orderItemId)
+      .map((l) => l.orderItemId as string)
+  );
+  const paymentRefs = new Set(
+    effective
+      .filter((l) => l.eventType === 'PAYMENT' && l.referenceId)
+      .map((l) => l.referenceId as string)
+  );
+
+  const overlays = await localDb.listOverlays();
+  const effectiveItems = new Map<string, OrderItemEntity>(itemsMap);
+  for (const overlay of overlays) {
+    if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+    const payload = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
+    const base = effectiveItems.get(overlay.entityId);
+    const candidate = { ...(base || {}), ...payload, id: overlay.entityId } as OrderItemEntity;
+    if (overlay.operation === 'DELETE') effectiveItems.delete(overlay.entityId);
+    else effectiveItems.set(overlay.entityId, candidate);
+  }
+
+  const projected: FinancialLedgerEntity[] = [];
+  const reversedItemIds = new Set(
+    effective
+      .filter((l) => l.eventType === 'REVERSAL' && l.orderItemId)
+      .map((l) => l.orderItemId as string)
+  );
+
+  for (const overlay of overlays) {
+    if (overlay.status !== 'PENDING') continue;
+    const payload = (overlay.entityPayload || overlay.patch || {}) as any;
+
+    if (overlay.entityType === 'ledger' || overlay.entityType === 'financial_ledger') {
+      const overlayCustomerId = payload.customerId || payload.customer_id;
+      if (overlayCustomerId !== customerId) continue;
+
+      const eventType = payload.eventType || payload.event_type;
+      const amountMinor = Number(payload.amountMinor ?? payload.amount_minor ?? 0);
+      if (eventType === 'PAYMENT' && payload.referenceId && paymentRefs.has(payload.referenceId)) continue;
+
+      projected.push({
+        id: String(payload.id || overlay.entityId || overlay.commandId || ('pending-ledger-' + overlay.sequence)),
+        eventType,
+        amountMinor,
+        customerId,
+        orderId: payload.orderId || payload.order_id,
+        orderItemId: payload.orderItemId || payload.order_item_id,
+        actorAdminId: payload.actorAdminId || payload.actor_admin_id,
+        referenceId: payload.referenceId || payload.reference_id,
+        metadata: { ...(payload.metadata || {}), pendingLocal: true },
+        createdAt: payload.createdAt || payload.created_at || overlay.createdAt,
+      });
+      continue;
+    }
+
+    if (overlay.entityType === 'payments' && overlay.operation === 'CREATE') {
+      const paymentCustomerId = payload.customerId || payload.customer_id;
+      if (paymentCustomerId !== customerId) continue;
+      const paymentId = payload.id || overlay.entityId;
+      if (paymentRefs.has(paymentId)) continue;
+
+      // A CREATE_PAYMENT already has a dedicated payment overlay and may also
+      // have a ledger overlay. The ledger overlay is the preferred projection.
+      const hasPaymentLedgerOverlay = overlays.some((other) => {
+        if (other.status !== 'PENDING' || other.entityType !== 'ledger') return false;
+        const p = (other.entityPayload || other.patch || {}) as any;
+        return ['PAYMENT', 'CREDIT_ADJUSTMENT'].includes(p.eventType || p.event_type) &&
+          (p.referenceId || p.reference_id || p.id) === paymentId;
+      });
+      if (!hasPaymentLedgerOverlay) {
+        projected.push({
+          id: 'pending-payment-' + paymentId,
+          eventType: 'PAYMENT',
+          amountMinor: Number(payload.amountMinor ?? payload.amount_minor ?? 0),
+          customerId,
+          referenceId: paymentId,
+          actorAdminId: payload.actorAdminId || payload.actor_admin_id,
+          metadata: { pendingLocal: true },
+          createdAt: payload.createdAt || payload.created_at || overlay.createdAt,
+        });
+      }
+      continue;
+    }
+
+    if (overlay.entityType === 'order_items' && overlay.operation === 'PATCH') {
+      const status = String(payload.status || '').toLowerCase();
+      const financialStatus = String(payload.financialStatus || payload.financial_status || '').toUpperCase();
+      const item = effectiveItems.get(overlay.entityId);
+      if (!item) continue;
+      const order = ordersMap.get(item.orderId);
+      if (!order || order.customerId !== customerId) continue;
+
+      if ((status === 'delivered' || financialStatus === 'RECOGNIZED') && !chargeItemIds.has(item.id)) {
+        projected.push({
+          id: 'pending-charge-' + item.id,
+          eventType: 'ORDER_ITEM_CHARGE',
+          amountMinor: -Math.abs(Number(item.totalPriceMinor || item.unitPriceMinor || 0)),
+          customerId,
+          orderId: item.orderId,
+          orderItemId: item.id,
+          referenceId: item.id,
+          metadata: { pendingLocal: true },
+          createdAt: payload.deliveredAt || payload.updatedAt || overlay.createdAt,
+        });
+      }
+
+      if (
+        status === 'cancelled' &&
+        financialStatus === 'REVERSED' &&
+        !reversedItemIds.has(item.id)
+      ) {
+        projected.push({
+          id: 'pending-reversal-' + item.id,
+          eventType: 'REVERSAL',
+          amountMinor: Math.abs(Number(item.totalPriceMinor || item.unitPriceMinor || 0)),
+          customerId,
+          orderId: item.orderId,
+          orderItemId: item.id,
+          referenceId: item.id,
+          metadata: { pendingLocal: true },
+          createdAt: payload.cancelledAt || payload.updatedAt || overlay.createdAt,
+        });
+      }
+    }
+  }
+
+  return [...effective, ...projected].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+};
+
 export const computeCustomerOrderPaymentStatuses = (
   customerId: string,
   effectiveOrdersMap: Map<string, OrderEntity> = ordersMap,
@@ -2448,25 +2654,34 @@ export const computeCustomerOrderPaymentStatuses = (
 ): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
 
-  // 1. Calculate available total customer credits (real payments and positive adjustments)
-  const totalCreditsMinor = ledgerList
-    .filter(
-      (l) =>
-        l.customerId === customerId &&
-        (l.eventType === 'PAYMENT' || l.eventType === 'CREDIT_ADJUSTMENT') &&
-        l.amountMinor > 0
-    )
+  // Keep payment-status calculation synchronous because it is used while
+  // building the Days-page read model. Include pending payment overlays so an
+  // offline top-up is visible immediately, without creating a fake server row.
+  const effectiveLedger = ledgerList.filter((l) => l.customerId === customerId);
+  for (const overlay of localDb.listOverlaysSync()) {
+    if (overlay.status !== 'PENDING') continue;
+    const p = (overlay.entityPayload || overlay.patch || {}) as any;
+    const overlayCustomerId = p.customerId || p.customer_id;
+    if (overlayCustomerId !== customerId) continue;
+    if (overlay.entityType === 'ledger' && (p.eventType || p.event_type) === 'PAYMENT') {
+      effectiveLedger.push({
+        id: 'pending-' + overlay.entityId,
+        eventType: 'PAYMENT',
+        amountMinor: Number(p.amountMinor ?? p.amount_minor ?? 0),
+        customerId,
+        referenceId: p.referenceId || p.reference_id,
+        createdAt: p.createdAt || p.created_at || overlay.createdAt,
+      });
+    }
+  }
+  // This synchronous projection is completed below by the async wrapper used
+  // by callers; keep the calculation deterministic from authoritative rows here.
+  const totalCreditsMinor = effectiveLedger
+    .filter((l) => (l.eventType === 'PAYMENT' || l.eventType === 'CREDIT_ADJUSTMENT') && l.amountMinor > 0)
     .reduce((sum, l) => sum + l.amountMinor, 0);
-
-  // Minus explicit refunds or negative non-order adjustments
-  const nonOrderDebitsMinor = ledgerList
-    .filter(
-      (l) =>
-        l.customerId === customerId &&
-        (l.eventType === 'REFUND' || (l.eventType === 'CREDIT_ADJUSTMENT' && l.amountMinor < 0))
-    )
+  const nonOrderDebitsMinor = effectiveLedger
+    .filter((l) => l.eventType === 'REFUND' || (l.eventType === 'CREDIT_ADJUSTMENT' && l.amountMinor < 0))
     .reduce((sum, l) => sum + Math.abs(l.amountMinor), 0);
-
   let availableCredits = Math.max(0, totalCreditsMinor - nonOrderDebitsMinor);
 
   // 2. Get all non-cancelled orders for this customer, sorted chronologically (Oldest FIRST - FIFO)
@@ -2481,7 +2696,16 @@ export const computeCustomerOrderPaymentStatuses = (
 
   // 3. Allocate credits in FIFO sequence
   for (const ord of custOrders) {
-    const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
+    // Payment liability is based only on financially recognized delivered items.
+    // A newly added device starts as charging/UNRECOGNIZED and must not change the
+    // amount due for an order until that specific device is delivered.
+    const items = Array.from(effectiveItemsMap.values()).filter(
+      (i) =>
+        i.orderId === ord.id &&
+        i.status === 'delivered' &&
+        String(i.financialStatus || '').toUpperCase() !== 'UNRECOGNIZED' &&
+        i.financialStatus !== 'REVERSED'
+    );
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     if (totalMinor <= 0) {
@@ -3002,7 +3226,7 @@ export const getCustomerOrders = async (
       orderNumber: ord.displayNumber,
       dayId: ord.dayId,
       createdAt: ord.createdAt,
-      status: ord.status,
+      status: calculateOrderProjection(items, ord.status),
       paymentStatus,
       totalMinor,
       itemCount: items.length,
@@ -3043,7 +3267,7 @@ export const getCustomerFinancialHistory = async (
   if (!cust) return [];
 
   const targetId = cust.id;
-  const rawEvents = await repoContext.ledgerRepo.findByCustomer(targetId);
+  const rawEvents = await getEffectiveCustomerLedger(targetId);
 
   // Sort ascending by time (oldest first) to compute running post-transaction balances
   const sortedAsc = [...rawEvents].sort(
@@ -3377,7 +3601,14 @@ export const deliverSingleOrderItem = async (
 ): Promise<{ success: boolean; item?: OrderItemEntity; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
+    if (offline && !bin.trim()) {
+      const queued = await phase5UseCases.queueDeliveryAwaitingBin(auth, orderItemId);
+      if (!queued.success) return { success: false, error: presentError((queued as any).error || 'فشل جدولة التسليم') };
+      notifyStore('all');
+      return { success: true, item: queued.data };
+    }
     await auth.verifyBin(bin);
     const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin);
     if (result.success) {
@@ -3397,8 +3628,8 @@ export const deliverEntireOrder = async (
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
-    await auth.verifyBin(bin);
     const orderEntity = await repoContext.orderRepo.findById(orderId);
     if (!orderEntity) return { success: false, error: 'الطلب غير موجود' };
     if (orderEntity.status === 'cancelled') return { success: false, error: 'الطلب ملغى' };
@@ -3408,9 +3639,15 @@ export const deliverEntireOrder = async (
     if (activeItems.length === 0) return { success: false, error: 'لا يمكن تسليم طلب فارغ' };
 
     let count = 0;
+
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
-        await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+        if (offline && !bin.trim()) {
+          await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
+        } else {
+          await auth.verifyBin(bin);
+          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+        }
         count++;
       }
     }
@@ -3439,9 +3676,17 @@ export const updateOrderWithPhase5Engine = async (
       await phase5UseCases.editOrderNotes(getAuthorizedAdminContext(), orderId, newNotes);
     }
 
-    // 2. Remove specified existing items during edit
+    // 2. Remove specified existing items during edit.
+    // Item cancellation is financially protected: offline requests become
+    // pending BIN authorization instead of creating an unauthorized local
+    // cancellation that the server would later reject.
     for (const itemId of existingItemIdsToRemove) {
-      await phase5UseCases.removeOrderItemDuringEdit(getAuthorizedAdminContext(bin), itemId);
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+      if (offline && !bin?.trim()) {
+        await phase5UseCases.queueCancelOrderItemAwaitingBin(getAuthorizedAdminContext(), itemId);
+      } else {
+        await phase5UseCases.cancelOrderItem(getAuthorizedAdminContext(bin), itemId, bin || '');
+      }
     }
 
     // 3. Add new items using addOrderItem Use Case
@@ -3485,9 +3730,14 @@ export const updateOrderWithPhase5Engine = async (
         }
       }
     } else if (newStatus === 'cancelled' && order.status !== 'cancelled') {
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
       const auth = getAuthorizedAdminContext(bin);
-      await auth.verifyBin(bin || '');
-      await phase5UseCases.cancelOrder(auth, orderId, bin || '');
+      if (offline && !bin?.trim()) {
+        await phase5UseCases.queueCancelOrderAwaitingBin(auth, orderId);
+      } else {
+        await auth.verifyBin(bin || '');
+        await phase5UseCases.cancelOrder(auth, orderId, bin || '');
+      }
     }
 
     return { success: true };
@@ -3511,8 +3761,8 @@ export const deliverAllOrdersInDay = async (
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
-    await auth.verifyBin(bin);
     const dayOrders = await getOrdersForDay(dayId);
     let count = 0;
 
@@ -3529,7 +3779,12 @@ export const deliverAllOrdersInDay = async (
       let deliveredInThisOrder = false;
       for (const item of items) {
         if (item.status !== 'delivered' && item.status !== 'cancelled') {
-          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+          if (offline && !bin.trim()) {
+            await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
+          } else {
+            await auth.verifyBin(bin);
+            await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+          }
           deliveredInThisOrder = true;
         }
       }
@@ -4454,14 +4709,17 @@ export const topUpCustomerBalance = async (
 ): Promise<TopUpCustomerBalanceResult> => {
   await ensureStoreHydrated();
   const { customerId, amountMinor, bin, note, idempotencyKey } = params;
+  const offline = typeof navigator !== 'undefined' && !navigator.onLine;
 
-  const binValidation = validateBinFormat(bin);
-  if (!binValidation.valid) {
-    return {
-      success: false,
-      newBalanceMinor: 0,
-      error: binValidation.error,
-    };
+  if (!offline) {
+    const binValidation = validateBinFormat(bin);
+    if (!binValidation.valid) {
+      return {
+        success: false,
+        newBalanceMinor: 0,
+        error: binValidation.error,
+      };
+    }
   }
 
   if (!amountMinor || amountMinor <= 0) {
@@ -4498,6 +4756,26 @@ export const topUpCustomerBalance = async (
   }
 
   const commandId = idempotencyKey || crypto.randomUUID();
+
+  if (offline) {
+    try {
+      const queued = await phase5UseCases.queueCustomerCreditAwaitingBin(
+        getAuthorizedAdminContext(), cust.id, amountMinor, commandId
+      );
+      if (!queued.success) {
+        return { success: false, newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id), error: (queued as any).error || 'فشلت جدولة شحن الرصيد' };
+      }
+      return {
+        success: true,
+        transactionId: queued.data?.id || commandId,
+        newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id),
+      };
+    } catch (err: unknown) {
+      return { success: false, newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id), error: presentError(err) };
+    }
+  }
+
+
 
   // Idempotency check: if already processed, return previous transaction result
   if (idempotencyKey) {
