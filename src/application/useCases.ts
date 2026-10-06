@@ -1453,8 +1453,8 @@ export class FinalUseCases {
         aggregateId: day.id,
         dayId: day.id,
         closedAt: day.closedAt,
-        closedBy: day.closedBy,
-      });
+        closedBy: updatedDay.closedBy,
+      }, day.version);
       return { success: true, data: updatedDay };
     });
   }
