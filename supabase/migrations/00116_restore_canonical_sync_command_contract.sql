@@ -702,7 +702,8 @@ WHEN 'UPDATE_ORDER' THEN
                 ) THEN
                     UPDATE public.orders SET status = 'delivered', updated_at = NOW(), version = version + 1
                     WHERE id = v_rec_item.order_id;
-                    PERFORM public.record_canonical_change('orders', v_rec_item.order_id, 'UPDATE', jsonb_build_object('status', 'delivered'), 1);
+                    PERFORM public.record_canonical_change('orders', v_rec_item.order_id, 'UPDATE', jsonb_build_object('status', 'delivered'),
+                        (SELECT version FROM public.orders WHERE id = v_rec_item.order_id));
                 END IF;
 
                 PERFORM public.record_canonical_change('order_items', v_item_uuid, 'UPDATE', jsonb_build_object(
