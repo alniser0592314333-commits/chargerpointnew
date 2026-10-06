@@ -598,6 +598,10 @@ export class FinalUseCases {
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.orderRepo.save(order);
+      // Persist the consumed reservation cursor in the same transaction as the
+      // order. Mutating only the returned in-memory reservation would reset the
+      // next number after restart/backup restore.
+      if (reservation) ctx.reservationRepo?.save(reservation);
 
       ctx.commandRepo.record(commandId, 'CREATE_ORDER', {
         id: order.id,
