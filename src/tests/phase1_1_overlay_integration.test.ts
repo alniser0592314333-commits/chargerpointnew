@@ -31,7 +31,7 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
         countForDay: async () => orders.size,
       },
       deviceRepo: {
-        findById: async (id) => ({
+        findById: async (id: string) => ({
           id, name: 'Test Device', icon: 'phone', basePriceMinor: 1000,
           chargerFeeEnabled: false, isActive: true, sortOrder: 1,
           createdAt: '', updatedAt: '', version: 1,
