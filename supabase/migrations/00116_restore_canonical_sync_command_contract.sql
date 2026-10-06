@@ -570,7 +570,7 @@ WHEN 'UPDATE_ORDER' THEN
                 v_item_uuid,
                 v_order_uuid,
                 v_device_type_uuid,
-                COALESCE((p_payload->>'itemSequence')::INTEGER, (p_payload->>'item_sequence')::INTEGER, 1),
+                COALESCE((p_payload->>'itemSequence')::INTEGER, (p_payload->>'item_sequence')::INTEGER, (SELECT COALESCE(MAX(item_sequence), 0) + 1 FROM public.order_items WHERE order_id = v_order_uuid)),
                 'CHARGING',
                 'UNRECOGNIZED',
                 'UNPAID',
