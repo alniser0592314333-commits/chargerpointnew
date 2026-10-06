@@ -577,7 +577,7 @@ export class FinalUseCases {
     const patch: Partial<OrderEntity> = {
       notes: notes?.trim() || undefined,
       updatedAt: new Date().toISOString(),
-      version: existing.version,
+      version: existing.version + 1,
     };
 
     const commandId = crypto.randomUUID();
@@ -624,7 +624,7 @@ export class FinalUseCases {
     const patch: Partial<OrderItemEntity> = {
       status: 'cancelled',
       updatedAt: new Date().toISOString(),
-      version: item.version,
+      version: item.version + 1,
     };
 
     const commandId = crypto.randomUUID();
@@ -701,6 +701,20 @@ export class FinalUseCases {
         await this.createOverlay(itemCommandId, mutationKey, 'order_items', itemToCancel.id, 'PATCH', itemPatch as Record<string, unknown>);
     }
 
+    await this.createOverlay(
+      commandId,
+      mutationKey,
+      'orders',
+      orderId,
+      'PATCH',
+      {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        version: order.version + 1,
+      }
+    );
+
     await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER', {
       id: commandId,
       aggregateId: orderId,
@@ -708,7 +722,7 @@ export class FinalUseCases {
       bin,
     }, order.version);
 
-    return { success: true, data: order };
+    return { success: true, data: { ...order, status: 'cancelled', cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: order.version + 1 } };
   }
 
   async cancelOrderItem(
@@ -813,12 +827,18 @@ export class FinalUseCases {
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
 
-    Object.assign(customer, updates, { updatedAt: new Date().toISOString(), version: customer.version + 1 });
-    
+    const updatedCustomer: CustomerEntity = {
+      ...customer,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      version: customer.version + 1,
+    };
+
     return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.customerRepo.save(customer);
-      ctx.commandRepo.record(crypto.randomUUID(), 'UPDATE_CUSTOMER', customer);
-      return { success: true, data: customer };
+      const commandId = crypto.randomUUID();
+      ctx.customerRepo.save(updatedCustomer);
+      ctx.commandRepo.record(commandId, 'UPDATE_CUSTOMER', updatedCustomer, customer.version);
+      return { success: true, data: updatedCustomer };
     });
   }
 
@@ -1417,13 +1437,16 @@ export class FinalUseCases {
     const day = await this.deps.dayRepo.findById(dayId);
     if (!day) throw new NotFoundError('Business day not found');
 
-    day.isClosed = true;
-    day.closedAt = new Date().toISOString();
-    day.closedBy = actor.id;
-    day.version += 1;
+    const updatedDay: BusinessDayEntity = {
+      ...day,
+      isClosed: true,
+      closedAt: new Date().toISOString(),
+      closedBy: actor.id,
+      version: day.version + 1,
+    };
 
     return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.dayRepo.save(day);
+      ctx.dayRepo.save(updatedDay);
       const commandId = crypto.randomUUID();
       ctx.commandRepo.record(commandId, 'CLOSE_DAY', {
         id: day.id,
