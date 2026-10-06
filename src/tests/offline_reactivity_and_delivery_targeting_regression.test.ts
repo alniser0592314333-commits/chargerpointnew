@@ -208,4 +208,44 @@ describe('Offline reactivity and delivery targeting regression', () => {
     const newItemId = addCommands[0].payload.id as string;
     expect(deliverCommands[0].payload.itemId).toBe(newItemId);
   });
+
+  it('persists a newly created order and all items in the local read model together with its outbox', async () => {
+    await seedBaseOrder();
+
+    const commandId = crypto.randomUUID();
+    const result = await phase5UseCases.createOrderWithItems(
+      superAdminAuth,
+      commandId,
+      'day-regression',
+      'cust-regression',
+      [
+        { deviceTypeId: 'device-regression', hasCharger: false },
+        { deviceTypeId: 'device-regression-2', hasCharger: true },
+      ]
+    );
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const orderId = result.data.order.id;
+    const localOrder = await repoContext.orderRepo.findById(orderId);
+    const localItems = await repoContext.itemRepo.findByOrderId(orderId);
+    const outbox = await localDb.listOutbox();
+
+    expect(localOrder?.id).toBe(orderId);
+    expect(localOrder?.dayId).toBe('day-regression');
+    expect(localItems).toHaveLength(2);
+    expect(localItems.every((item) => item.orderId === orderId)).toBe(true);
+
+    const createCommand = outbox.find(
+      (command) => command.commandId === commandId && command.commandType === 'CREATE_ORDER'
+    );
+    const addCommands = outbox.filter(
+      (command) => command.commandType === 'ADD_ORDER_ITEM' && command.payload.orderId === orderId
+    );
+
+    expect(createCommand).toBeTruthy();
+    expect(addCommands).toHaveLength(2);
+    expect(addCommands.every((command) => command.payload.dependencyCommandId === commandId)).toBe(true);
+  });
 });
