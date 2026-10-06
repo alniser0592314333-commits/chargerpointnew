@@ -1333,6 +1333,7 @@ export class FinalUseCases {
         referenceEventId,
         actorAdminId: actor.id,
         createdAt,
+        bin,
       });
       return { success: true, data: { id: commandId, createdAt, ...event } };
     });
