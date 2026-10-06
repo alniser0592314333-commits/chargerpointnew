@@ -1148,7 +1148,8 @@ export class SyncEngine {
               reconciliationRequired: false,
             });
           });
-          pulledCount += sortedFinalChanges.length;
+          // Count only the contiguous prefix actually applied. If a pending local mutation blocks a delta, advancing the count to the full batch would report false progress and obscure the remaining authoritative delta.
+          pulledCount += appliedFinalCount;
         }
       } catch (finalPullError) {
         console.warn('Final authoritative sync pull failed; accepted commands remain queued for reconciliation:', finalPullError);
