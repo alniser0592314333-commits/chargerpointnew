@@ -1082,6 +1082,8 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           deviceTypeId: it.device_type_id,
           itemSequence: it.item_sequence,
           status: it.status,
+          financialStatus: it.financial_status ?? (String(it.status || '').toLowerCase() === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
+          paymentStatus: it.payment_status ?? 'UNPAID',
           deviceNameSnapshot: it.device_name_snapshot,
           deviceIconSnapshot: it.device_icon_snapshot,
           basePriceSnapshotMinor: it.base_price_snapshot_minor,
