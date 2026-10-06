@@ -231,8 +231,19 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     expect(paymentMap.get('cmd-pay-1')?.amountMinor).toBe(1000);
     expect(getAuthoritativeLedgerBalance(custId)).toBe(0);
 
-    // SCENARIO E: Customer receives Goal bonus (800 minor units = 8.00₪)
-    // Goal config target updated to 1 -> since current progress is 1, Goal is atomically COMPLETED & Bonus granted
+    // SCENARIO E: simulate the authoritative server publishing the delivery charge.
+    // Only after RECOGNIZED state exists may goal progress complete and grant its bonus.
+    ledgerList.push({
+      id: 'ledger-charge-authoritative',
+      eventType: 'CHARGE',
+      amountMinor: -1000,
+      customerId: custId,
+      orderItemId: itemId,
+      createdAt: new Date().toISOString(),
+    });
+    itemMap.set(itemId, { ...itemMap.get(itemId)!, status: 'delivered', financialStatus: 'RECOGNIZED' });
+
+    // Goal config target updated to 1 -> current authoritative progress completes the goal.
     const goalId = createGoalRes.data.id;
     const updateGoalRes = await useCases.updateGoalConfig(authAdmin, goalId, { targetQuantity: 1 });
     expect(updateGoalRes.success).toBe(true);
@@ -258,7 +269,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
 
     // A manually inserted authoritative reversal is still reflected normally.
     const finalBal = getAuthoritativeLedgerBalance(custId);
-    expect(finalBal).toBe(1000);
+    expect(finalBal).toBe(800);
 
     // Verify exact correspondence between repo getBalance and derived ledger sum
     expect(useCases['deps'].customerRepo.getBalance(custId)).toBe(finalBal);
