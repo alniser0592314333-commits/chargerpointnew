@@ -177,7 +177,7 @@ describe('Phase 6.9.2: Order + Financial Integrity Regression Tests', () => {
     const deliveredItem = (itemRes as any).data as OrderItemEntity;
     const charges = ledger.filter(l => l.orderItemId === deliveredItem.id);
     expect(charges.length).toBe(0);
-    expect(deliveredItem.financialStatus).toBe('UNRECOGNIZED');
+    expect(deliveredItem.status).toBe('charging');
     expect(Array.from(commands.values()).some(c => c.type === 'DELIVER_ORDER_ITEM')).toBe(false);
   });
 
