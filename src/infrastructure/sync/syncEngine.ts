@@ -1121,8 +1121,8 @@ export class SyncEngine {
         const finalPull = await this.transport.pullChanges(finalCursor);
         if (finalPull.changes.length > 0) {
           const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+          let appliedFinalCount = 0;
           await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
-            let appliedFinalCount = 0;
             for (const change of sortedFinalChanges) {
               const applied = this.onDeltaApplied
                 ? this.onDeltaApplied(change, tx) !== false
