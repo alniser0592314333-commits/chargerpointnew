@@ -4636,10 +4636,13 @@ export const topUpCustomerBalance = async (
   const authContext = getAuthorizedAdminContext(bin);
 
   try {
-    // Authoritative verifyBin (rejects if verifier missing, invalid, or fails)
+    // Keep the protected BIN strictly in the transport's transient memory.
+    // It is injected only for this command's server execution and is never
+    // written into the persisted outbox payload.
     await authContext.verifyBin(bin);
+    globalSyncTransport.authorizeCommand(commandId, bin);
 
-    // Authoritative createCustomerCredit useCase execution (verifies BIN and appends ledger)
+    // Authoritative createCustomerCredit useCase execution.
     const result = await phase5UseCases.createCustomerCredit(
       authContext,
       cust.id,
