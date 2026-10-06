@@ -1269,6 +1269,9 @@ export class FinalUseCases {
         name: updatedDevice.name,
         arabicName: updatedDevice.nameAr || updatedDevice.name,
         englishName: updatedDevice.nameEn || updatedDevice.name,
+        // Keep canonical names plus compatibility aliases for older transports/tests.
+        nameAr: updatedDevice.nameAr || updatedDevice.name,
+        nameEn: updatedDevice.nameEn || updatedDevice.name,
         icon: updatedDevice.icon,
         basePriceMinor: updatedDevice.basePriceMinor,
         chargerFeeEnabled: updatedDevice.chargerFeeEnabled,
