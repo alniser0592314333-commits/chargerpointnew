@@ -165,6 +165,39 @@ export class FinalUseCases {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:create');
 
+    // CREATE_ORDER is an idempotent command. A retry with the same commandId
+    // must return the existing local aggregate, while reusing that commandId
+    // with a different semantic payload must be rejected.
+    const existingCommand = await this.deps.commandRepo.get(commandId);
+    if (existingCommand) {
+      if (existingCommand.type !== 'CREATE_ORDER') {
+        throw new IdempotencyConflictError('Command ID is already associated with a different operation');
+      }
+
+      const existingPayload = (existingCommand.payload || {}) as Record<string, unknown>;
+      const requestedPayload = (typeof payloadHash === 'object' && payloadHash !== null)
+        ? (payloadHash as Record<string, unknown>)
+        : {};
+      const existingSemantic = {
+        dayId: existingPayload.dayId,
+        customerId: existingPayload.customerId,
+        notes: existingPayload.notes ?? undefined,
+      };
+      const requestedSemantic = {
+        dayId: requestedPayload.dayId ?? dayId,
+        customerId: requestedPayload.customerId ?? customerId,
+        notes: requestedPayload.notes ?? notes,
+      };
+
+      if (JSON.stringify(existingSemantic) !== JSON.stringify(requestedSemantic)) {
+        throw new IdempotencyConflictError();
+      }
+
+      const existingOrder = await this.deps.orderRepo.findById(commandId);
+      if (existingOrder) return { success: true, data: existingOrder };
+      throw new IdempotencyConflictError('CREATE_ORDER command exists but its local aggregate is missing');
+    }
+
     // Closed business days are immutable for regular admins. This guard must
     // exist at the order boundary itself; relying on addOrderItem is too late
     // because it leaves a ghost order/outbox command possible.
