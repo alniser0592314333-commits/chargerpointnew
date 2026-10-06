@@ -69,7 +69,7 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
 
     // 4. Domain entity relationships:
     // Helper to find matching outbox commands by aggregateId, commandId, or payload id
-    const checkCandidate = (candidateId: unknown, validTypes?: string[], isStructural: boolean = false) => {
+    const checkCandidate = (candidateId: unknown, validTypes?: string[], isStructural: boolean = false, allowMissingAsDependency: boolean = true) => {
       if (!candidateId || typeof candidateId !== 'string') return;
       let matchedInActiveOutbox = false;
       for (const other of allOutbox) {
@@ -89,12 +89,10 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
           }
         }
       }
-      if (!matchedInActiveOutbox) {
-        // No local command owns this entity, so it may be an already-existing
-        // authoritative server row. Do not invent a dependency on the entity ID:
-        // that incorrectly blocks valid commands such as DELIVER/CANCEL against
-        // an existing order item when no local ADD_ORDER_ITEM command exists.
-        // Explicit dependencyCommandId/dependencies are still enforced above.
+      if (!matchedInActiveOutbox && allowMissingAsDependency) {
+        // For structural prerequisites (day/order/customer creation), a missing
+        // command/history/entity is a real unsatisfied dependency and must block.
+        deps.add(candidateId as string);
       }
     };
 
@@ -120,10 +118,10 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     else if (item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM' || payload.itemId || payload.orderItemId) {
       const targetItemId = payload.itemId || payload.orderItemId;
       if (targetItemId) {
-        checkCandidate(targetItemId, ['ADD_ORDER_ITEM'], true);
+        checkCandidate(targetItemId, ['ADD_ORDER_ITEM'], true, false);
       }
       if (payload.orderId) {
-        checkCandidate(payload.orderId, ['CREATE_ORDER', 'orders'], true);
+        checkCandidate(payload.orderId, ['CREATE_ORDER', 'orders'], true, false);
       }
     }
     // ADD_ORDER_ITEM depends on CREATE_ORDER (orderId) and CREATE_DEVICE_TYPE (deviceTypeId)
