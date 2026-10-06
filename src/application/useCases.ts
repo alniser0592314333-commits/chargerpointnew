@@ -472,7 +472,10 @@ export class FinalUseCases {
         hasCharger: requested.hasCharger,
       });
 
-      const initialStatus = isClosed && actor.isSuperAdmin ? 'delivered' : 'charging';
+      // A closed day never bypasses the protected delivery boundary. Even a
+      // Super Admin-created item must receive explicit BIN-authorized delivery;
+      // otherwise the local state would claim "delivered" while the server is
+      // correctly refusing the financial recognition command.
       preparedItems.push({
         id: crypto.randomUUID(),
         orderId: order.id,
@@ -488,7 +491,7 @@ export class FinalUseCases {
         hasCharger: requested.hasCharger,
         unitPriceMinor: pricing.unitPriceMinor,
         totalPriceMinor: pricing.totalPriceMinor,
-        deliveredAt: initialStatus === 'delivered' ? now : undefined,
+        deliveredAt: undefined,
         createdAt: now,
         updatedAt: now,
         version: 1,
@@ -546,16 +549,7 @@ export class FinalUseCases {
           dependencyCommandId: commandId,
         });
 
-        if (item.status === 'delivered') {
-          const deliveryCommandId = crypto.randomUUID();
-          ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
-            id: deliveryCommandId,
-            itemId: item.id,
-            orderItemId: item.id,
-            orderId: order.id,
-            dependencyCommandId: item.id,
-          }, item.version);
-        }
+undefined
       }
     });
 
