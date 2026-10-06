@@ -1634,6 +1634,23 @@ export class FinalUseCases {
     };
 
     const txId = commandId || crypto.randomUUID();
+
+    // Credit mutations are also command-idempotent. A retried top-up with the
+    // same command ID must return the existing financial row instead of creating
+    // a second balance change.
+    if (commandId) {
+      const existing = await this.deps.commandRepo.get(commandId);
+      if (existing) {
+        const existingType = (existing as any).type || (existing as any).commandType;
+        if (existingType !== 'CREATE_CUSTOMER_CREDIT') {
+          throw new IdempotencyConflictError('Command ID is already associated with a different operation');
+        }
+        const existingLedger = await this.deps.ledgerRepo.findByCustomer(customerId);
+        const found = (existingLedger || []).find((row) => row.id === commandId);
+        if (found) return { success: true, data: found };
+      }
+    }
+
     const mutationKey = `customer:${customerId}`;
     const createdAt = new Date().toISOString();
 
