@@ -221,6 +221,14 @@ export class FinalUseCases {
     if (!customer) throw new NotFoundError('Customer not found');
     if (!customer.isActive) throw new InactiveCustomerError();
 
+    // The aggregate-only create path must enforce the same closed-day rule as
+    // createOrderWithItems. Otherwise a regular admin can create a "pending"
+    // order on a closed day, bypassing the transaction/rollback invariant.
+    const dayIsClosed = await this.deps.dayRepo.isClosed(dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) {
+      throw new ClosedDayError();
+    }
+
     const currentBalance = await this.deps.customerRepo.getBalance(customerId);
     const allowed = checkDebtLimit(currentBalance, customer.debtLimitMinor, actor.isSuperAdmin);
     if (!allowed) {
