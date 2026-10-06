@@ -374,6 +374,24 @@ export class FinalUseCases {
 
       if (autoDeliver) {
         const deliveryCommandId = crypto.randomUUID();
+        // The ADD command and the auto-delivery command are separate server
+        // transactions. Keep a rollback snapshot for the delivery command so
+        // an authoritative delivery rejection restores the item to CHARGING
+        // instead of leaving a locally "delivered" item with no charge.
+        ctx.mutationSnapshotRepo?.capture(deliveryCommandId, [
+          {
+            table: 'orderItems',
+            id: item.id,
+            existed: true,
+            data: {
+              ...item,
+              status: 'charging',
+              financialStatus: 'UNRECOGNIZED',
+              deliveredAt: undefined,
+              financiallyRecognizedAt: undefined,
+            },
+          },
+        ]);
         ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
           id: deliveryCommandId,
           aggregateId: item.id,
@@ -566,6 +584,22 @@ export class FinalUseCases {
 
         if (item.status === 'delivered') {
           const deliveryCommandId = crypto.randomUUID();
+          // Same invariant as the single-item closed-day path: the delivery
+          // command must be independently rollback-safe after ADD succeeds.
+          ctx.mutationSnapshotRepo?.capture(deliveryCommandId, [
+            {
+              table: 'orderItems',
+              id: item.id,
+              existed: true,
+              data: {
+                ...item,
+                status: 'charging',
+                financialStatus: 'UNRECOGNIZED',
+                deliveredAt: undefined,
+                financiallyRecognizedAt: undefined,
+              },
+            },
+          ]);
           ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
             id: deliveryCommandId,
             aggregateId: item.id,
