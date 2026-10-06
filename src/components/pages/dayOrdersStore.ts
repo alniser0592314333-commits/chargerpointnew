@@ -2007,7 +2007,29 @@ export const repoContext: RepositoryContext = {
   orderRepo: {
     findById: async (id) => {
       await ensureStoreHydrated();
-      return ordersMap.get(id) || null;
+      let effective = ordersMap.get(id) || null;
+      const overlays = localDb.listOverlaysSync()
+        .filter((overlay) =>
+          overlay.status === 'PENDING' &&
+          ['orders', 'order'].includes(overlay.entityType) &&
+          overlay.entityId === id
+        )
+        .sort((a, b) => a.sequence - b.sequence);
+      for (const overlay of overlays) {
+        if (overlay.operation === 'DELETE') {
+          effective = null;
+          continue;
+        }
+        const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+        if (overlay.operation === 'CREATE') {
+          effective = { ...patch, id } as OrderEntity;
+        } else {
+          effective = effective
+            ? ({ ...effective, ...patch, id } as OrderEntity)
+            : ({ ...patch, id } as OrderEntity);
+        }
+      }
+      return effective;
     },
     save: async (o) => {
       await ensureStoreHydrated();
