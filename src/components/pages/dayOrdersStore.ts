@@ -193,7 +193,7 @@ const calculateProjectedCustomerBalance = (customerId: string): number => {
       item.financialStatus === 'RECOGNIZED' &&
       !ledgerList.some((entry) => entry.orderItemId === item.id)
     ) {
-      balance -= item.totalPriceMinor;
+      balance -= ((item as any).finalChargeSnapshotMinor ?? item.totalPriceMinor);
     }
   });
 
