@@ -207,10 +207,13 @@ describe('Offline reactivity and delivery targeting regression', () => {
 
     const newItemId = addCommands[0].payload.id as string;
     expect(deliverCommands[0].payload.itemId).toBe(newItemId);
-    const localNewItem = await repoContext.itemRepo.findById(newItemId);
-    expect(localNewItem?.id).toBe(newItemId);
-    expect(localNewItem?.orderId).toBe('order-delivered-regression');
-    expect(localNewItem?.status).toBe('delivered');
+    const persistedNewItem = await localDb.get<any>('orderItems', newItemId);
+    expect(persistedNewItem?.id).toBe(newItemId);
+    expect(persistedNewItem?.orderId).toBe('order-delivered-regression');
+    expect(persistedNewItem?.status).toBe('charging');
+
+    const effectiveNewItem = await repoContext.itemRepo.findById(newItemId);
+    expect(effectiveNewItem?.status).toBe('delivered');
   });
 
   it('persists a newly created order and all items in the local read model together with its outbox', async () => {
