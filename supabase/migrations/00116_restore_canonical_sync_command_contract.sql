@@ -1,8 +1,8 @@
--- Migration 00116: restore the complete canonical sync command contract and enforce server-side BIN
--- This migration is intentionally NOT applied to production by this branch.
+-- Migration 00116: restore complete canonical sync command contract and enforce server-side BIN.
+-- Intentionally not applied to production by this branch.
 
-DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, TEXT);
-DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID);
+DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,TEXT,JSONB,TEXT,TEXT,TEXT);
+DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,TEXT,JSONB,TEXT,TEXT,UUID);
 
 CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(
     p_command_id UUID,
@@ -110,7 +110,6 @@ BEGIN
             USING ERRCODE = 'P0001';
     END IF;
 
-    -- JWT identity is authoritative; p_actor_id is retained only for overload compatibility.
     v_actor_id := auth.uid();
     SELECT id, role, is_active INTO v_actor_id, v_admin_role, v_is_active
     FROM public.admins WHERE auth_user_id = auth.uid() LIMIT 1;
@@ -171,26 +170,15 @@ BEGIN
     -- ==========================================
     v_bin := NULLIF(TRIM(COALESCE(p_payload->>'bin', p_payload->>'adminBin', '')), '');
 
-    IF p_command_type IN (
-        'DELIVER_ORDER_ITEM',
-        'CANCEL_ORDER',
-        'CANCEL_ORDER_ITEM',
-        'CREATE_CUSTOMER_CREDIT',
-        'CREATE_REFUND'
-    ) THEN
+    IF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND') THEN
         IF v_bin IS NULL THEN
-            RAISE EXCEPTION 'Authorization required: BIN is required for %', p_command_type
-                USING ERRCODE = 'P4004';
+            RAISE EXCEPTION 'Authorization required: BIN is required for %', p_command_type USING ERRCODE = 'P4004';
         END IF;
         IF public.verify_admin_bin(v_bin) IS NOT TRUE THEN
-            RAISE EXCEPTION 'Invalid BIN: Security verification failed'
-                USING ERRCODE = 'P0003';
+            RAISE EXCEPTION 'Invalid BIN: Security verification failed' USING ERRCODE = 'P0003';
         END IF;
-    ELSIF v_bin IS NOT NULL THEN
-        IF public.verify_admin_bin(v_bin) IS NOT TRUE THEN
-            RAISE EXCEPTION 'Invalid BIN: Security verification failed'
-                USING ERRCODE = 'P0003';
-        END IF;
+    ELSIF v_bin IS NOT NULL AND public.verify_admin_bin(v_bin) IS NOT TRUE THEN
+        RAISE EXCEPTION 'Invalid BIN: Security verification failed' USING ERRCODE = 'P0003';
     END IF;
 
     -- ==========================================
@@ -509,7 +497,7 @@ BEGIN
             v_result := jsonb_build_object('orderItemId', v_item_uuid, 'provisionalFinalChargeMinor', v_authoritative_final_charge);
 
         WHEN 'DELIVER_ORDER_ITEM' THEN
-            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER, (p_payload->>'expected_version')::INTEGER);
+            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
             v_item_uuid := (COALESCE(p_payload->>'itemId', p_payload->>'orderItemId', p_payload->>'id'))::UUID;
 
             SELECT oi.*, o.customer_id, c.status AS cust_status, c.debt_limit_minor, c.charger_fee_exempt
@@ -522,10 +510,8 @@ BEGIN
             IF v_rec_item.id IS NULL THEN
                 RAISE EXCEPTION 'Order Item Not Found: ID %', v_item_uuid USING ERRCODE = '23503';
             END IF;
-
             IF v_expected_version IS NOT NULL AND v_rec_item.version <> v_expected_version THEN
-                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version
-                    USING ERRCODE = 'P0409';
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version USING ERRCODE='P0409';
             END IF;
 
             IF v_rec_item.cust_status = 'DELETED' THEN
@@ -640,106 +626,40 @@ BEGIN
 
         WHEN 'CANCEL_ORDER' THEN
             v_order_uuid := (COALESCE(p_payload->>'orderId', p_payload->>'id'))::UUID;
-
-            SELECT o.customer_id INTO v_customer_uuid
-            FROM public.orders o
-            WHERE o.id = v_order_uuid
-            FOR UPDATE;
-
-            IF v_customer_uuid IS NULL THEN
-                RAISE EXCEPTION 'Order Not Found: ID %', v_order_uuid USING ERRCODE = '23503';
-            END IF;
-
+            SELECT o.customer_id INTO v_customer_uuid FROM public.orders o WHERE o.id = v_order_uuid FOR UPDATE;
+            IF v_customer_uuid IS NULL THEN RAISE EXCEPTION 'Order Not Found: ID %', v_order_uuid USING ERRCODE = '23503'; END IF;
             IF EXISTS (SELECT 1 FROM public.orders WHERE id = v_order_uuid AND status = 'cancelled') THEN
                 v_result := jsonb_build_object('orderId', v_order_uuid, 'status', 'CANCELLED', 'alreadyCancelled', TRUE);
             ELSE
-                FOR v_rec_item IN
-                    SELECT oi.*
-                    FROM public.order_items oi
-                    WHERE oi.order_id = v_order_uuid
-                      AND oi.operational_status <> 'CANCELLED'
-                    FOR UPDATE
-                LOOP
+                FOR v_rec_item IN SELECT oi.* FROM public.order_items oi WHERE oi.order_id = v_order_uuid AND oi.operational_status <> 'CANCELLED' FOR UPDATE LOOP
                     IF v_rec_item.financial_status = 'RECOGNIZED' THEN
-                        SELECT id, amount_minor
-                        INTO v_ledger_uuid, v_orig_charge_amount
-                        FROM public.financial_ledger
-                        WHERE order_item_id = v_rec_item.id
-                          AND event_type IN ('CHARGE', 'ORDER_ITEM_CHARGE')
-                        ORDER BY created_at DESC
-                        LIMIT 1;
-
+                        SELECT id, amount_minor INTO v_ledger_uuid, v_orig_charge_amount
+                        FROM public.financial_ledger WHERE order_item_id = v_rec_item.id AND event_type IN ('CHARGE','ORDER_ITEM_CHARGE')
+                        ORDER BY created_at DESC LIMIT 1;
                         UPDATE public.order_items
-                        SET operational_status = 'CANCELLED',
-                            financial_status = 'REVERSED',
-                            status = 'cancelled',
-                            cancelled_at = NOW(),
-                            updated_at = NOW(),
-                            version = version + 1
-                        WHERE id = v_rec_item.id;
-
-                        INSERT INTO public.financial_ledger (
-                            event_type, amount_minor, order_id, order_item_id, customer_id,
-                            actor_admin_id, linked_ledger_id, metadata, created_at
-                        )
-                        VALUES (
-                            'REVERSAL',
-                            ABS(COALESCE(v_orig_charge_amount, v_rec_item.final_charge_snapshot_minor, 0)),
-                            v_rec_item.order_id,
-                            v_rec_item.id,
-                            v_rec_item.customer_id,
-                            v_actor_id,
-                            v_ledger_uuid,
-                            jsonb_build_object('reason', COALESCE(p_payload->>'reason', 'Order cancellation'), 'cancelledAt', NOW()),
-                            NOW()
-                        )
+                        SET operational_status='CANCELLED', financial_status='REVERSED', status='cancelled', cancelled_at=NOW(), updated_at=NOW(), version=version+1
+                        WHERE id=v_rec_item.id;
+                        INSERT INTO public.financial_ledger(event_type,amount_minor,order_id,order_item_id,customer_id,actor_admin_id,linked_ledger_id,metadata,created_at)
+                        VALUES('REVERSAL',ABS(COALESCE(v_orig_charge_amount,v_rec_item.final_charge_snapshot_minor,0)),v_rec_item.order_id,v_rec_item.id,v_rec_item.customer_id,v_actor_id,v_ledger_uuid,
+                               jsonb_build_object('reason',COALESCE(p_payload->>'reason','Order cancellation'),'cancelledAt',NOW()),NOW())
                         RETURNING id INTO v_entity_uuid;
-
-                        PERFORM public.record_canonical_change(
-                            'order_items', v_rec_item.id, 'UPDATE',
-                            jsonb_build_object('status','cancelled','financial_status','REVERSED'),
-                            (SELECT version FROM public.order_items WHERE id = v_rec_item.id)
-                        );
-                        PERFORM public.record_canonical_change(
-                            'financial_ledger', v_entity_uuid, 'INSERT',
-                            jsonb_build_object('event_type','REVERSAL','amount_minor',ABS(COALESCE(v_orig_charge_amount, v_rec_item.final_charge_snapshot_minor,0)),'order_item_id',v_rec_item.id),
-                            1
-                        );
+                        PERFORM public.record_canonical_change('order_items',v_rec_item.id,'UPDATE',jsonb_build_object('status','cancelled','financial_status','REVERSED'),
+                            (SELECT version FROM public.order_items WHERE id=v_rec_item.id));
+                        PERFORM public.record_canonical_change('financial_ledger',v_entity_uuid,'INSERT',jsonb_build_object('event_type','REVERSAL','amount_minor',ABS(COALESCE(v_orig_charge_amount,v_rec_item.final_charge_snapshot_minor,0)),'order_item_id',v_rec_item.id),1);
                     ELSE
-                        UPDATE public.order_items
-                        SET operational_status = 'CANCELLED',
-                            status = 'cancelled',
-                            cancelled_at = NOW(),
-                            updated_at = NOW(),
-                            version = version + 1
-                        WHERE id = v_rec_item.id;
-
-                        PERFORM public.record_canonical_change(
-                            'order_items', v_rec_item.id, 'UPDATE',
-                            jsonb_build_object('status','cancelled'),
-                            (SELECT version FROM public.order_items WHERE id = v_rec_item.id)
-                        );
+                        UPDATE public.order_items SET operational_status='CANCELLED', status='cancelled', cancelled_at=NOW(), updated_at=NOW(), version=version+1 WHERE id=v_rec_item.id;
+                        PERFORM public.record_canonical_change('order_items',v_rec_item.id,'UPDATE',jsonb_build_object('status','cancelled'),
+                            (SELECT version FROM public.order_items WHERE id=v_rec_item.id));
                     END IF;
                 END LOOP;
-
-                UPDATE public.orders
-                SET status = 'cancelled',
-                    cancelled_at = NOW(),
-                    updated_at = NOW(),
-                    version = version + 1
-                WHERE id = v_order_uuid;
-
-                PERFORM public.record_canonical_change(
-                    'orders', v_order_uuid, 'UPDATE',
-                    jsonb_build_object('id',v_order_uuid,'status','cancelled'),
-                    (SELECT version FROM public.orders WHERE id = v_order_uuid)
-                );
-
-                v_result := jsonb_build_object('orderId', v_order_uuid, 'status', 'CANCELLED');
+                UPDATE public.orders SET status='cancelled', cancelled_at=NOW(), updated_at=NOW(), version=version+1 WHERE id=v_order_uuid;
+                PERFORM public.record_canonical_change('orders',v_order_uuid,'UPDATE',jsonb_build_object('id',v_order_uuid,'status','cancelled'),
+                    (SELECT version FROM public.orders WHERE id=v_order_uuid));
+                v_result := jsonb_build_object('orderId',v_order_uuid,'status','CANCELLED');
             END IF;
 
         WHEN 'CANCEL_ORDER_ITEM' THEN
-            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER, (p_payload->>'expected_version')::INTEGER);
+            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
             v_item_uuid := (COALESCE(p_payload->>'itemId', p_payload->>'orderItemId', p_payload->>'id'))::UUID;
 
             SELECT oi.*, o.customer_id
@@ -751,10 +671,8 @@ BEGIN
             IF v_rec_item.id IS NULL THEN
                 RAISE EXCEPTION 'Order Item Not Found: ID %', v_item_uuid USING ERRCODE = '23503';
             END IF;
-
             IF v_expected_version IS NOT NULL AND v_rec_item.version <> v_expected_version THEN
-                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version
-                    USING ERRCODE = 'P0409';
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version USING ERRCODE='P0409';
             END IF;
 
             IF v_rec_item.operational_status = 'CANCELLED' THEN
@@ -835,88 +753,45 @@ BEGIN
         WHEN 'CREATE_CUSTOMER_CREDIT' THEN
             v_customer_uuid := (p_payload->>'customerId')::UUID;
             v_unallocated_amount := (p_payload->>'amountMinor')::BIGINT;
-            IF v_customer_uuid IS NULL OR v_unallocated_amount IS NULL OR v_unallocated_amount <= 0 THEN
-                RAISE EXCEPTION 'Invalid customer credit adjustment';
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM public.customers WHERE id = v_customer_uuid AND status <> 'DELETED') THEN
-                RAISE EXCEPTION 'Customer Not Found or inactive: ID %', v_customer_uuid USING ERRCODE = '23503';
-            END IF;
-
-            v_payment_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
-            INSERT INTO public.payments (
-                id, customer_id, amount_minor, payment_method, reference, actor_admin_id, command_id, created_at
-            ) VALUES (
-                v_payment_uuid, v_customer_uuid, v_unallocated_amount, 'CASH',
-                COALESCE(p_payload->>'reference','Customer credit'),
-                v_actor_id, p_command_id, NOW()
-            )
-            ON CONFLICT (id) DO NOTHING;
-
-            INSERT INTO public.financial_ledger (
-                id, event_type, amount_minor, customer_id, actor_admin_id, reference_id, created_at
-            ) VALUES (
-                gen_random_uuid(), 'CREDIT_ADJUSTMENT', v_unallocated_amount, v_customer_uuid,
-                v_actor_id, v_payment_uuid, NOW()
-            )
+            IF v_customer_uuid IS NULL OR v_unallocated_amount IS NULL OR v_unallocated_amount <= 0 THEN RAISE EXCEPTION 'Invalid customer credit adjustment'; END IF;
+            IF NOT EXISTS (SELECT 1 FROM public.customers WHERE id=v_customer_uuid AND status <> 'DELETED') THEN RAISE EXCEPTION 'Customer Not Found or inactive: ID %',v_customer_uuid USING ERRCODE='23503'; END IF;
+            v_payment_uuid := COALESCE((p_payload->>'id')::UUID,p_command_id);
+            INSERT INTO public.payments(id,customer_id,amount_minor,payment_method,reference,actor_admin_id,command_id,created_at)
+            VALUES(v_payment_uuid,v_customer_uuid,v_unallocated_amount,'CASH',COALESCE(p_payload->>'reference','Customer credit'),v_actor_id,p_command_id,NOW())
+            ON CONFLICT(id) DO NOTHING;
+            INSERT INTO public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,created_at)
+            VALUES(gen_random_uuid(),'CREDIT_ADJUSTMENT',v_unallocated_amount,v_customer_uuid,v_actor_id,v_payment_uuid,NOW())
             RETURNING id INTO v_ledger_uuid;
-
-            PERFORM public.record_canonical_change('payments', v_payment_uuid, 'INSERT', p_payload, 1);
-            PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT',
-                jsonb_build_object('event_type','CREDIT_ADJUSTMENT','amount_minor',v_unallocated_amount,'customer_id',v_customer_uuid), 1);
-
-            v_result := jsonb_build_object('paymentId', v_payment_uuid, 'ledgerEntryId', v_ledger_uuid, 'amountMinor', v_unallocated_amount);
+            PERFORM public.record_canonical_change('payments',v_payment_uuid,'INSERT',p_payload,1);
+            PERFORM public.record_canonical_change('financial_ledger',v_ledger_uuid,'INSERT',jsonb_build_object('event_type','CREDIT_ADJUSTMENT','amount_minor',v_unallocated_amount,'customer_id',v_customer_uuid),1);
+            v_result:=jsonb_build_object('paymentId',v_payment_uuid,'ledgerEntryId',v_ledger_uuid,'amountMinor',v_unallocated_amount);
 
         WHEN 'CONSUME_CUSTOMER_CREDIT' THEN
             v_customer_uuid := (p_payload->>'customerId')::UUID;
             v_unallocated_amount := (p_payload->>'amountMinor')::BIGINT;
-            IF v_customer_uuid IS NULL OR v_unallocated_amount IS NULL OR v_unallocated_amount <= 0 THEN
-                RAISE EXCEPTION 'Invalid credit consumption';
-            END IF;
-
-            INSERT INTO public.financial_ledger (
-                id, event_type, amount_minor, customer_id, order_id, actor_admin_id, created_at
-            ) VALUES (
-                COALESCE((p_payload->>'id')::UUID, p_command_id),
-                'CREDIT_USED',
-                -v_unallocated_amount,
-                v_customer_uuid,
-                CASE WHEN p_payload->>'orderId' IS NULL THEN NULL ELSE (p_payload->>'orderId')::UUID END,
-                v_actor_id,
-                NOW()
-            )
-            ON CONFLICT (id) DO NOTHING
+            IF v_customer_uuid IS NULL OR v_unallocated_amount IS NULL OR v_unallocated_amount <= 0 THEN RAISE EXCEPTION 'Invalid credit consumption'; END IF;
+            INSERT INTO public.financial_ledger(id,event_type,amount_minor,customer_id,order_id,actor_admin_id,created_at)
+            VALUES(COALESCE((p_payload->>'id')::UUID,p_command_id),'CREDIT_USED',-v_unallocated_amount,v_customer_uuid,
+                   CASE WHEN p_payload->>'orderId' IS NULL THEN NULL ELSE (p_payload->>'orderId')::UUID END,v_actor_id,NOW())
+            ON CONFLICT(id) DO NOTHING
             RETURNING id INTO v_ledger_uuid;
-
-            PERFORM public.record_canonical_change('financial_ledger', COALESCE(v_ledger_uuid, COALESCE((p_payload->>'id')::UUID, p_command_id)), 'INSERT',
-                jsonb_build_object('event_type','CREDIT_USED','amount_minor',-v_unallocated_amount,'customer_id',v_customer_uuid), 1);
-            v_result := jsonb_build_object('ledgerEntryId', COALESCE(v_ledger_uuid, COALESCE((p_payload->>'id')::UUID, p_command_id)), 'amountMinor', -v_unallocated_amount);
+            PERFORM public.record_canonical_change('financial_ledger',COALESCE(v_ledger_uuid,COALESCE((p_payload->>'id')::UUID,p_command_id)),'INSERT',
+                jsonb_build_object('event_type','CREDIT_USED','amount_minor',-v_unallocated_amount,'customer_id',v_customer_uuid),1);
+            v_result:=jsonb_build_object('ledgerEntryId',COALESCE(v_ledger_uuid,COALESCE((p_payload->>'id')::UUID,p_command_id)),'amountMinor',-v_unallocated_amount);
 
         WHEN 'CREATE_REFUND' THEN
             v_customer_uuid := (p_payload->>'customerId')::UUID;
             v_unallocated_amount := (p_payload->>'amountMinor')::BIGINT;
             v_entity_uuid := (p_payload->>'referenceEventId')::UUID;
-            IF v_customer_uuid IS NULL OR v_unallocated_amount IS NULL OR v_unallocated_amount <= 0 OR v_entity_uuid IS NULL THEN
-                RAISE EXCEPTION 'Invalid refund payload';
-            END IF;
-            IF NOT EXISTS (
-                SELECT 1 FROM public.financial_ledger
-                WHERE id = v_entity_uuid AND customer_id = v_customer_uuid
-            ) THEN
-                RAISE EXCEPTION 'Referenced financial event not found for this customer';
-            END IF;
-
-            INSERT INTO public.financial_ledger (
-                id, event_type, amount_minor, customer_id, actor_admin_id, reference_id, created_at
-            ) VALUES (
-                COALESCE((p_payload->>'id')::UUID, p_command_id),
-                'REFUND', -v_unallocated_amount, v_customer_uuid, v_actor_id, v_entity_uuid, NOW()
-            )
-            ON CONFLICT (id) DO NOTHING
+            IF v_customer_uuid IS NULL OR v_unallocated_amount IS NULL OR v_unallocated_amount <= 0 OR v_entity_uuid IS NULL THEN RAISE EXCEPTION 'Invalid refund payload'; END IF;
+            IF NOT EXISTS (SELECT 1 FROM public.financial_ledger WHERE id=v_entity_uuid AND customer_id=v_customer_uuid) THEN RAISE EXCEPTION 'Referenced financial event not found for this customer'; END IF;
+            INSERT INTO public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,created_at)
+            VALUES(COALESCE((p_payload->>'id')::UUID,p_command_id),'REFUND',-v_unallocated_amount,v_customer_uuid,v_actor_id,v_entity_uuid,NOW())
+            ON CONFLICT(id) DO NOTHING
             RETURNING id INTO v_ledger_uuid;
-
-            PERFORM public.record_canonical_change('financial_ledger', COALESCE(v_ledger_uuid, COALESCE((p_payload->>'id')::UUID, p_command_id)), 'INSERT',
-                jsonb_build_object('event_type','REFUND','amount_minor',-v_unallocated_amount,'customer_id',v_customer_uuid,'reference_id',v_entity_uuid), 1);
-            v_result := jsonb_build_object('ledgerEntryId', COALESCE(v_ledger_uuid, COALESCE((p_payload->>'id')::UUID, p_command_id)), 'amountMinor', -v_unallocated_amount);
+            PERFORM public.record_canonical_change('financial_ledger',COALESCE(v_ledger_uuid,COALESCE((p_payload->>'id')::UUID,p_command_id)),'INSERT',
+                jsonb_build_object('event_type','REFUND','amount_minor',-v_unallocated_amount,'customer_id',v_customer_uuid,'reference_id',v_entity_uuid),1);
+            v_result:=jsonb_build_object('ledgerEntryId',COALESCE(v_ledger_uuid,COALESCE((p_payload->>'id')::UUID,p_command_id)),'amountMinor',-v_unallocated_amount);
 
         WHEN 'POST_PAYMENT', 'CREATE_PAYMENT' THEN
             v_payment_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
@@ -1067,12 +942,8 @@ BEGIN
     );
 END;
 $$;
-
--- 2. Drop obsolete TEXT overload of execute_sync_command to resolve ambiguity (PGRST203)
-DROP FUNCTION IF EXISTS public.execute_sync_command(TEXT, VARCHAR, VARCHAR, TEXT, JSONB, INTEGER);
-DROP FUNCTION IF EXISTS public.execute_sync_command(TEXT, VARCHAR(100), VARCHAR(100), TEXT, JSONB, INTEGER);
-
--- 3. Assert exactly ONE canonical execute_sync_command with UUID signature
+-- Canonical execute_sync_command wrapper.
+DROP FUNCTION IF EXISTS public.execute_sync_command(TEXT,VARCHAR,VARCHAR,TEXT,JSONB,INTEGER);
 CREATE OR REPLACE FUNCTION public.execute_sync_command(
     p_command_id UUID,
     p_command_type TEXT,
@@ -1090,36 +961,9 @@ BEGIN
     RETURN public.execute_canonical_sync_command(
         p_command_id,
         p_command_type,
-        p_payload,
-        COALESCE(p_payload->>'payloadHash', 'no_hash'),
-        COALESCE(p_payload->>'deviceId', 'default_device'),
-        p_payload->>'bin'
-    );
-END;
-$$;
-
--- Canonical wrapper: the authenticated JWT is the only actor identity.
-DROP FUNCTION IF EXISTS public.execute_sync_command(TEXT, VARCHAR, VARCHAR, TEXT, JSONB, INTEGER);
-CREATE OR REPLACE FUNCTION public.execute_sync_command(
-    p_command_id UUID,
-    p_command_type TEXT,
-    p_aggregate_type TEXT DEFAULT NULL,
-    p_aggregate_id UUID DEFAULT NULL,
-    p_payload JSONB DEFAULT '{}'::jsonb,
-    p_expected_version INTEGER DEFAULT NULL
-)
-RETURNS JSONB
-SECURITY DEFINER
-SET search_path = public, pg_temp
-LANGUAGE plpgsql
-AS $$
-BEGIN
-    RETURN public.execute_canonical_sync_command(
-        p_command_id,
-        p_command_type,
-        p_payload || CASE WHEN p_expected_version IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('expectedVersion', p_expected_version) END,
-        COALESCE(p_payload->>'payloadHash', 'no_hash'),
-        COALESCE(p_payload->>'deviceId', 'default_device'),
+        p_payload || CASE WHEN p_expected_version IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('expectedVersion',p_expected_version) END,
+        COALESCE(p_payload->>'payloadHash','no_hash'),
+        COALESCE(p_payload->>'deviceId','default_device'),
         auth.uid()
     );
 END;
