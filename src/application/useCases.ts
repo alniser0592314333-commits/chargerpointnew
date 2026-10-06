@@ -826,7 +826,7 @@ export class FinalUseCases {
       addOutbox.commandType === 'ADD_ORDER_ITEM' &&
       addOutbox.status !== 'accepted'
     );
-    const persistDeliveryBase = Boolean(baseItem) && !pendingAdd;
+    const persistDeliveryBase = Boolean(baseItem || parentAdd) && !pendingAdd;
 
     await this.deps.transactionManager.runInTransaction(async (ctx) => {
       if (persistDeliveryBase) {
