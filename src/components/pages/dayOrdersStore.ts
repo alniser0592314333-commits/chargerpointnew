@@ -3464,9 +3464,15 @@ export const deliverEntireOrder = async (
     if (activeItems.length === 0) return { success: false, error: 'لا يمكن تسليم طلب فارغ' };
 
     let count = 0;
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
-        await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+        if (offline && !bin.trim()) {
+          await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
+        } else {
+          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+        }
         count++;
       }
     }
