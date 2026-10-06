@@ -3062,20 +3062,33 @@ export const addNewCustomer = async (
   phone: string,
   debtLimitMinor: number = 2000
 ): Promise<UICustomerItem> => {
-  const newId = crypto.randomUUID();
-  const newCust: CustomerEntity = {
-    id: newId,
+  const existing = Array.from(customersMap.values()).find(
+    (customer) => customer.name.trim() === name.trim() && (customer.phone || '') === (phone || '')
+  );
+  if (existing) {
+    return {
+      id: existing.id,
+      name: existing.name,
+      code: getCustomerCode(existing),
+      phone: existing.phone || '',
+      debtLimitMinor: existing.debtLimitMinor,
+      chargerFeeExempt: existing.chargerFeeExempt,
+    };
+  }
+
+  const result = await phase5UseCases.createCustomer(
+    getAuthorizedAdminContext(),
     name,
     phone,
-    isActive: true,
-    debtLimitMinor,
-    chargerFeeExempt: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  };
+    undefined,
+    undefined,
+    debtLimitMinor
+  );
+  if (!result.success) {
+    throw new Error(presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء العميل'));
+  }
 
-  await repoContext.customerRepo.save(newCust);
+  const newCust = result.data;
   return {
     id: newCust.id,
     name: newCust.name,
@@ -3459,7 +3472,10 @@ export const ensureBusinessDayEntityExists = async (dayId: string): Promise<Busi
       updatedAt: new Date().toISOString(),
       version: 1,
     };
-    await repoContext.dayRepo.save(day);
+    // Recovery/read-model repair only: an orphaned order reference must not
+    // manufacture an OPEN_DAY command and mutate the authoritative server.
+    daysMap.set(day.id, day);
+    await localDb.set('businessDays', day.id, day);
   }
   return day;
 };
@@ -3994,17 +4010,16 @@ export const getTodayHomeData = async (
 
 export const createTodayBusinessDay = async (dateStr: string): Promise<string> => {
   await ensureStoreHydrated();
-  const dayId = crypto.randomUUID();
-  const newDay: BusinessDayEntity = {
-    id: dayId,
-    businessDate: dateStr,
-    isClosed: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  };
-  await repoContext.dayRepo.save(newDay);
-  return dayId;
+
+  const result = await phase5UseCases.createBusinessDay(
+    getAuthorizedAdminContext(),
+    dateStr,
+    crypto.randomUUID()
+  );
+  if (!result.success) {
+    throw new Error(presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء اليوم'));
+  }
+  return result.data.id;
 };
 
 export interface UIDaySummary {
@@ -4064,25 +4079,23 @@ export const createNewBusinessDay = async (
     return { success: false, error: 'اليوم موجود بالفعل بهذا التاريخ' };
   }
 
-  const dayId = crypto.randomUUID();
-
-  const newDay: BusinessDayEntity = {
-    id: dayId,
-    businessDate: dateStr,
-    isClosed: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  };
-
   try {
-    await repoContext.dayRepo.save(newDay);
+    const result = await phase5UseCases.createBusinessDay(
+      getAuthorizedAdminContext(),
+      dateStr,
+      crypto.randomUUID()
+    );
+    if (!result.success) {
+      return {
+        success: false,
+        error: presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء اليوم'),
+      };
+    }
+    return { success: true, dayId: result.data.id };
   } catch (err: any) {
-    console.error('Failed to save local business day:', err);
-    return { success: false, error: err?.message || 'Failed to save local business day' };
+    console.error('Failed to create business day:', err);
+    return { success: false, error: err?.message || 'Failed to create business day' };
   }
-
-  return { success: true, dayId };
 };
 
 export interface UIFinancialsOverviewData {
