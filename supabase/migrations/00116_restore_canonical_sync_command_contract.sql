@@ -342,8 +342,9 @@ BEGIN
                 updated_at = NOW(),
                 version = public.device_types.version + 1;
 
-            PERFORM public.record_canonical_change('device_types', v_entity_uuid, 'INSERT', p_payload, 1);
-            v_result := jsonb_build_object('deviceTypeId', v_entity_uuid);
+            SELECT version INTO v_current_version FROM public.device_types WHERE id = v_entity_uuid;
+            PERFORM public.record_canonical_change('device_types', v_entity_uuid, 'INSERT', p_payload, v_current_version);
+            v_result := jsonb_build_object('deviceTypeId', v_entity_uuid, 'version', v_current_version);
 
         WHEN 'UPDATE_DEVICE_TYPE' THEN
             v_entity_uuid := (p_payload->>'id')::UUID;
@@ -427,8 +428,9 @@ BEGIN
                 updated_at = NOW()
             RETURNING id INTO v_entity_uuid;
 
-            PERFORM public.record_canonical_change('business_days', v_entity_uuid, 'INSERT', p_payload, 1);
-            v_result := jsonb_build_object('businessDayId', v_entity_uuid);
+            SELECT version INTO v_current_version FROM public.business_days WHERE id = v_entity_uuid;
+            PERFORM public.record_canonical_change('business_days', v_entity_uuid, 'INSERT', p_payload, v_current_version);
+            v_result := jsonb_build_object('businessDayId', v_entity_uuid, 'version', v_current_version);
 
         WHEN 'CLOSE_BUSINESS_DAY', 'CLOSE_DAY' THEN
             v_day_uuid := (COALESCE(p_payload->>'dayId', p_payload->>'day_id', p_payload->>'id'))::UUID;
@@ -488,8 +490,9 @@ BEGIN
                 updated_at = NOW(),
                 version = public.orders.version + 1;
 
-            PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', p_payload, 1);
-            v_result := jsonb_build_object('orderId', v_entity_uuid);
+            SELECT version INTO v_current_version FROM public.orders WHERE id = v_entity_uuid;
+            PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', p_payload, v_current_version);
+            v_result := jsonb_build_object('orderId', v_entity_uuid, 'version', v_current_version);
 
 WHEN 'UPDATE_ORDER' THEN
             v_order_uuid := COALESCE((p_payload->>'id')::UUID, (p_payload->>'orderId')::UUID);
@@ -606,8 +609,9 @@ WHEN 'UPDATE_ORDER' THEN
                 updated_at = NOW(),
                 version = public.order_items.version + 1;
 
-            PERFORM public.record_canonical_change('order_items', v_item_uuid, 'INSERT', p_payload, 1);
-            v_result := jsonb_build_object('orderItemId', v_item_uuid, 'provisionalFinalChargeMinor', v_authoritative_final_charge);
+            SELECT version INTO v_current_version FROM public.order_items WHERE id = v_item_uuid;
+            PERFORM public.record_canonical_change('order_items', v_item_uuid, 'INSERT', p_payload, v_current_version);
+            v_result := jsonb_build_object('orderItemId', v_item_uuid, 'version', v_current_version, 'provisionalFinalChargeMinor', v_authoritative_final_charge);
 
         WHEN 'DELIVER_ORDER_ITEM' THEN
             v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
