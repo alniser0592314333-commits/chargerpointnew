@@ -26,6 +26,16 @@ create table if not exists public.admins (
   version integer not null default 1
 );
 
+create table if not exists public.admin_audit_logs (
+  id uuid primary key default gen_random_uuid(), actor_admin_id uuid references public.admins(id),
+  action text not null, target_admin_id uuid references public.admins(id),
+  metadata jsonb not null default '{}'::jsonb, created_at timestamptz not null default now()
+);
+create table if not exists public.admin_custom_permissions (
+  admin_id uuid not null references public.admins(id) on delete cascade,
+  permission text not null, is_grant boolean not null, primary key(admin_id,permission)
+);
+
 create table if not exists public.system_settings (
   key text primary key,
   value_type text not null check (value_type in ('string','number','boolean','json')),
@@ -378,6 +388,39 @@ create unique index if not exists uq_ledger_charge_per_item on public.financial_
 create index if not exists idx_change_log_sequence on public.change_log(sequence_id);
 create index if not exists idx_change_log_entity on public.change_log(entity_type, entity_id, sequence_id);
 create index if not exists idx_outbox_commands on public.processed_commands(command_id);
+
+create or replace function public.is_system_bootstrapped()
+returns boolean language sql stable security definer set search_path=public
+as $ select exists(select 1 from public.admins where role='SUPER_ADMIN' and is_active=true) $;
+
+create or replace function public.bootstrap_first_super_admin(p_username text,p_full_name text,p_bin text)
+returns jsonb language plpgsql security definer set search_path=public as $
+declare v_id uuid; v_email text;
+begin
+ if exists(select 1 from public.admins where role='SUPER_ADMIN' and is_active=true) then
+  return jsonb_build_object('success',false,'code','ALREADY_BOOTSTRAPPED');
+ end if;
+ if auth.uid() is null then raise exception 'Authentication required' using errcode='P0001'; end if;
+ select email into v_email from auth.users where id=auth.uid();
+ insert into public.admins(auth_user_id,username,full_name,email,role,permissions,bin_hash)
+ values(auth.uid(),p_username,p_full_name,v_email,'SUPER_ADMIN',
+ array['orders:view','orders:create','orders:edit','orders:deliver','orders:cancel','orders:correct',
+ 'customers:view','customers:create','customers:edit','customers:deactivate','customers:debt-limit',
+ 'customers:charger-exemption','customers:financial-view','finance:view','finance:create-payment',
+ 'finance:approve-payment','finance:refund','finance:correction','finance:credit-adjustment',
+ 'devices:view','devices:manage','devices:pricing','devices:charger-policy','settings:manage',
+ 'admin:manage','sync:manage','sync:view','goals:view','goals:manage','goals:request','goals:approve']::text[],
+ crypt(p_bin,gen_salt('bf'))) returning id into v_id;
+ return jsonb_build_object('success',true,'admin_id',v_id);
+end $;
+
+create or replace function public.get_email_by_username(p_username text)
+returns text language sql stable security definer set search_path=public
+as $ select email from public.admins where lower(username)=lower(p_username) and is_active=true limit 1 $;
+
+create or replace function public.rpc_fetch_admins()
+returns setof jsonb language sql security definer set search_path=public
+as $ select jsonb_build_object('id',a.id,'username',a.username,'full_name',a.full_name,'email',a.email,'role',a.role,'is_active',a.is_active,'version',a.version,'created_at',a.created_at) from public.admins a where public.current_admin_id() is not null order by a.created_at $;
 
 create or replace function public.current_admin_id()
 returns uuid
@@ -916,7 +959,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['admins','business_days','customers','device_types','devices','orders','order_items','financial_ledger','payments','payment_allocations','goals','goal_requests','qr_tokens','order_number_reservations','processed_commands','change_log','audit_logs','notifications','customer_requests','customer_push_subscriptions','customer_delivery_push_logs','customer_activity','events','personal_financial_transactions','system_settings','app_canonical_state']
+  foreach t in array array['business_days','customers','device_types','devices','orders','order_items','financial_ledger','payments','payment_allocations','goals','goal_requests','qr_tokens','order_number_reservations','processed_commands','change_log','audit_logs','notifications','customer_requests','customer_push_subscriptions','customer_delivery_push_logs','customer_activity','events','personal_financial_transactions','system_settings','app_canonical_state']
   loop
     execute format('alter table public.%I enable row level security',t);
     execute format('drop policy if exists authenticated_read on public.%I',t);
