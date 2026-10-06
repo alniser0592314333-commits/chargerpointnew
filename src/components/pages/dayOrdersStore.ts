@@ -2128,7 +2128,7 @@ export const repoContext: RepositoryContext = {
           continue;
         }
 
-        if (overlay.entityType === 'order_items' && overlay.operation === 'PATCH') {
+        if (overlay.entityType === 'order_items' && (overlay.operation === 'PATCH' || overlay.operation === 'CREATE')) {
           const payload = (overlay.patch || {}) as any;
           const itemId = overlay.entityId;
           if (
