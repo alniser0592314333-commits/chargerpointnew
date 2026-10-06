@@ -1388,7 +1388,8 @@ undefined
     customerId: ID,
     amountMinor: number,
     bin: string,
-    commandId?: ID
+    commandId?: ID,
+    note?: string
   ): Promise<Result<FinancialLedgerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('finance:credit-adjustment');
@@ -1404,6 +1405,7 @@ undefined
       amountMinor,
       customerId,
       actorAdminId: actor.id,
+      metadata: note ? { note } : undefined,
     };
 
     const txId = commandId || crypto.randomUUID();
@@ -1430,7 +1432,7 @@ undefined
       customerId,
       amountMinor,
       paymentMethod: 'CASH',
-      reference: 'Customer credit',
+      reference: note || 'Customer credit',
       actorAdminId: actor.id,
       commandId: txId,
       createdAt,
@@ -1445,6 +1447,8 @@ undefined
         amountMinor,
         actorAdminId: actor.id,
         createdAt,
+        reference: note || 'Customer credit',
+        note,
       });
     });
 
