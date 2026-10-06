@@ -563,8 +563,15 @@ export class FinalUseCases {
     return this.addOrderItem(auth, orderId, deviceTypeId, hasCharger);
   }
 
-  async deliverOrderItem(auth: AuthorizationContext, itemId: ID, bin: string): Promise<Result<OrderItemEntity>> {
-    const actor = auth.requireAuth(); auth.assertPermission('orders:deliver'); await auth.verifyBin(bin);
+  async deliverOrderItem(
+    auth: AuthorizationContext,
+    itemId: ID,
+    bin: string,
+    commandId: ID = crypto.randomUUID()
+  ): Promise<Result<OrderItemEntity>> {
+    const actor = auth.requireAuth();
+    auth.assertPermission('orders:deliver');
+    await auth.verifyBin(bin);
     const item = await this.deps.itemRepo.findById(itemId); if (!item) throw new NotFoundError('Item not found');
     const order = await this.deps.orderRepo.findById(item.orderId); if (!order) throw new NotFoundError('Order not found');
     const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId); if (dayIsClosed && !actor.isSuperAdmin) throw new ClosedDayError();
@@ -578,12 +585,29 @@ export class FinalUseCases {
     const projectedBalance = (await this.deps.customerRepo.getBalance(order.customerId)) - item.totalPriceMinor;
     if (!checkDebtLimit(projectedBalance, customer.debtLimitMinor, actor.isSuperAdmin)) throw new BusinessRuleViolation(`Debt limit exceeded: Customer debt limit of ${customer.debtLimitMinor} minor units exceeded by projected balance ${projectedBalance}`);
     const deliveredAt = new Date().toISOString();
-    const patch: Partial<OrderItemEntity> = { status:'delivered', financialStatus:'RECOGNIZED', deliveredAt, financiallyRecognizedAt:deliveredAt, updatedAt:deliveredAt, version:item.version+1 };
-    const commandId = crypto.randomUUID();
+
+    // Delivery is optimistically operationally delivered locally, but financial
+    // recognition remains server-authoritative until DELIVER_ORDER_ITEM succeeds.
+    // The existing balance projection uses this pending delivery overlay, so the
+    // customer sees the correct projected debt without creating a local ledger row.
+    const patch: Partial<OrderItemEntity> = {
+      status: 'delivered',
+      financialStatus: 'UNRECOGNIZED',
+      deliveredAt,
+      financiallyRecognizedAt: undefined,
+      updatedAt: deliveredAt,
+      version: item.version + 1,
+    };
     if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.itemRepo.save({...item,...patch});
-      ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{id:commandId,itemId:item.id,orderItemId:item.id,orderId:order.id,bin},item.version);
+      ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
+        id: commandId,
+        itemId: item.id,
+        orderItemId: item.id,
+        orderId: order.id,
+        authorizationState: 'AUTHORIZED',
+      },item.version);
     });
     try { await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>); } catch(e) { console.warn('Delivery pending projection failed; local item is authoritative.',e); }
     return {success:true,data:{...item,...patch} as OrderItemEntity};
