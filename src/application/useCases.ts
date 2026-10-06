@@ -838,13 +838,17 @@ export class FinalUseCases {
     });
     try {
       if (orderStatusChanged) {
-        await this.createOverlay(commandId, `order:${order.id}`, 'orders', order.id, 'PATCH', {
+        // One delivery command can produce two projections (order + item).
+        // Overlay storage is keyed by overlay command ID, so these projections
+        // must have distinct durable overlay IDs or the second write silently
+        // replaces the first.
+        await this.createOverlay(`${commandId}:order`, `order:${order.id}`, 'orders', order.id, 'PATCH', {
           status: nextOrder.status,
           updatedAt: nextOrder.updatedAt,
           version: nextOrder.version,
         });
       }
-      await this.createOverlay(commandId,`order:${order.id}`,'orderItems',itemId,'PATCH',patch as Record<string,unknown>);
+      await this.createOverlay(`${commandId}:item`,`order:${order.id}`,'orderItems',itemId,'PATCH',patch as Record<string,unknown>);
     } catch(e) { console.warn('Delivery pending projection failed; local aggregate is authoritative.',e); }
     return {success:true,data:{...item,...patch} as OrderItemEntity};
   }
