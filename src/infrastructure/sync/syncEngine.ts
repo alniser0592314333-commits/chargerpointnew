@@ -530,7 +530,9 @@ export class SyncEngine {
         if (serverGen > localGen) {
           syncState.lastAppliedChangeSequence = 0;
           // REPAIR D: Full operational reconciliation on generation change
-          await localDb.clearOperationalData();
+          // Reset the remote read model, but never erase commands/entities that
+          // were created locally and are still waiting for authoritative sync.
+          await localDb.clearOperationalData({ preservePendingMutations: true });
         }
         syncState.reconciliationRequired = false;
         syncState.status = 'READY';
