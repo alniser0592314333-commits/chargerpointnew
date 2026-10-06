@@ -139,6 +139,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
       'cash'
     );
     expect(paymentResult.success).toBe(true);
+    if (!paymentResult.success) return;
 
     unsubscribe();
 
@@ -146,11 +147,11 @@ describe('Offline reactivity and delivery targeting regression', () => {
     expect(scopes).toContain('payments');
     expect(scopes).toContain('financialLedger');
 
-    const persistedPayment = await localDb.get<any>('payments', paymentResult.data?.id);
-    expect(persistedPayment?.id).toBe(paymentResult.data?.id);
+    const persistedPayment = await localDb.get<any>('payments', paymentResult.data.id);
+    expect(persistedPayment?.id).toBe(paymentResult.data.id);
 
     const paymentCommand = (await localDb.listOutbox()).find(
-      (command) => command.commandId === paymentResult.data?.id && command.commandType === 'CREATE_PAYMENT'
+      (command) => command.commandId === paymentResult.data.id && command.commandType === 'CREATE_PAYMENT'
     );
     expect(paymentCommand).toBeTruthy();
   });
@@ -276,7 +277,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
     });
     await repoContext.itemRepo.save({
       id: itemId, orderId, deviceTypeId: 'device-regression', itemSequence: 1,
-      status: 'charging', financialStatus: 'PENDING', deviceNameSnapshot: 'Regression Device',
+      status: 'charging', financialStatus: 'UNRECOGNIZED', deviceNameSnapshot: 'Regression Device',
       deviceIconSnapshot: 'smartphone', basePriceSnapshotMinor: 2000,
       chargerFeeEnabledSnapshot: false, customerChargerFeeExemptSnapshot: false,
       chargerFeeSnapshotMinor: 0, hasCharger: false, unitPriceMinor: 2000,
@@ -311,7 +312,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
     });
     await repoContext.itemRepo.save({
       id: itemId, orderId, deviceTypeId: 'device-regression', itemSequence: 1,
-      status: 'charging', financialStatus: 'PENDING', deviceNameSnapshot: 'Regression Device',
+      status: 'charging', financialStatus: 'UNRECOGNIZED', deviceNameSnapshot: 'Regression Device',
       deviceIconSnapshot: 'smartphone', basePriceSnapshotMinor: 2000,
       chargerFeeEnabledSnapshot: false, customerChargerFeeExemptSnapshot: false,
       chargerFeeSnapshotMinor: 0, hasCharger: false, unitPriceMinor: 2000,
