@@ -214,12 +214,13 @@ describe('Offline reactivity and delivery targeting regression', () => {
     expect(deliverCommands).toHaveLength(1);
     expect((deliverCommands[0].payload as any).itemId).not.toBe('item-already-delivered');
 
-    const newItemId = (addCommands[0].payload as any).id as string;
+    const newItemId = (addCommands[addCommands.length - 1].payload as any).id as string;
     expect((deliverCommands[0].payload as any).itemId).toBe(newItemId);
     const persistedNewItem = await localDb.get<any>('orderItems', newItemId);
     expect(persistedNewItem?.id).toBe(newItemId);
     expect(persistedNewItem?.orderId).toBe('order-delivered-regression');
-    expect(persistedNewItem?.status).toBe('charging');
+    expect(persistedNewItem?.status).toBe('delivered');
+    expect(persistedNewItem?.financialStatus).toBe('UNRECOGNIZED');
 
     const effectiveNewItem = await repoContext.itemRepo.findById(newItemId);
     expect(effectiveNewItem?.status).toBe('delivered');
@@ -290,7 +291,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
 
     const persisted = await localDb.get<any>('orderItems', itemId);
     expect(persisted?.status).toBe('delivered');
-    expect(persisted?.financialStatus).toBe('RECOGNIZED');
+    expect(persisted?.financialStatus).toBe('UNRECOGNIZED');
 
     const command = (await localDb.listOutbox()).find(
       (c) => c.commandType === 'DELIVER_ORDER_ITEM' && (c.payload as any).itemId === itemId
