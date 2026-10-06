@@ -373,34 +373,20 @@ BEGIN
                 -- Idempotent return
                 v_result := jsonb_build_object('orderItemId', v_item_uuid, 'status', 'DELIVERED', 'alreadyRecognized', TRUE);
             ELSE
-                SELECT base_price_minor, charger_fee_applicable
-                INTO v_base_price, v_charger_applicable
-                FROM public.device_types
-                WHERE id = v_rec_item.device_type_id;
-
-                IF v_base_price IS NULL THEN
-                    RAISE EXCEPTION 'Device Type Not Found for Item: ID %', v_rec_item.device_type_id USING ERRCODE = '23503';
-                END IF;
-
-                SELECT COALESCE(value_number, 500)
-                INTO v_setting_charger_fee
-                FROM public.system_settings
-                WHERE key = 'default_charger_fee_minor';
-                IF v_setting_charger_fee IS NULL THEN v_setting_charger_fee := 500; END IF;
-
-                IF v_charger_applicable AND (NOT v_rec_item.charger_fee_exempt) AND (NOT v_rec_item.has_charger) THEN
-                    v_authoritative_charger_fee := v_setting_charger_fee;
-                ELSE
-                    v_authoritative_charger_fee := 0;
-                END IF;
-
+                -- Delivery charges use the historical price snapshot captured when the item was created.
+                -- We deliberately do not re-price an existing item from the current price list.
+                v_base_price := COALESCE(v_rec_item.base_price_snapshot_minor, 0);
+                v_authoritative_charger_fee := COALESCE(v_rec_item.charger_fee_snapshot_minor, 0);
                 v_authoritative_discount := COALESCE(v_rec_item.discount_snapshot_minor, 0);
-                v_authoritative_final_charge := GREATEST(0, v_base_price + v_authoritative_charger_fee - v_authoritative_discount);
+                v_authoritative_final_charge := GREATEST(0, COALESCE(v_rec_item.final_charge_snapshot_minor,
+                    v_base_price + v_authoritative_charger_fee - v_authoritative_discount));
 
                 v_current_balance := public.calculate_customer_authoritative_balance(v_rec_item.customer_id);
                 v_projected_balance := v_current_balance - v_authoritative_final_charge;
 
-                IF v_rec_item.debt_limit_minor > 0 AND v_projected_balance < (-v_rec_item.debt_limit_minor) THEN
+                IF v_admin_role NOT IN ('SUPER_ADMIN', 'Super Admin')
+                   AND v_rec_item.debt_limit_minor IS NOT NULL
+                   AND v_projected_balance < v_rec_item.debt_limit_minor THEN
                     RAISE EXCEPTION 'Debt Limit Exceeded: Customer debt limit % exceeded by projected balance %',
                         v_rec_item.debt_limit_minor, v_projected_balance;
                 END IF;
@@ -424,7 +410,7 @@ BEGIN
                     event_type, amount_minor, order_id, order_item_id, customer_id, actor_admin_id, metadata, created_at
                 )
                 VALUES (
-                    'CHARGE',
+                    'ORDER_ITEM_CHARGE',
                     -v_authoritative_final_charge,
                     v_rec_item.order_id,
                     v_item_uuid,
@@ -472,7 +458,7 @@ BEGIN
 
                 PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', jsonb_build_object(
                     'id', v_ledger_uuid,
-                    'event_type', 'CHARGE',
+                    'event_type', 'ORDER_ITEM_CHARGE',
                     'amount_minor', -v_authoritative_final_charge,
                     'order_id', v_rec_item.order_id,
                     'order_item_id', v_item_uuid,
