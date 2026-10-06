@@ -1437,7 +1437,9 @@ export class FinalUseCases {
       ) {
         throw new IdempotencyConflictError('CREATE_PAYMENT command was reused with different payment data');
       }
-      const existingPayment = await this.deps.paymentRepo.findByCustomer(customerId);
+      const existingPayment = this.deps.paymentRepo.findByCustomer
+        ? await this.deps.paymentRepo.findByCustomer(customerId)
+        : [];
       const found = existingPayment.find((payment) => payment.id === commandId);
       if (found) return { success: true, data: found };
       throw new IdempotencyConflictError('CREATE_PAYMENT command exists but its local payment is missing');
