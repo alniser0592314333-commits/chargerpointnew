@@ -796,7 +796,10 @@ export class FinalUseCases {
     const parentAdd = await this.deps.commandRepo.get(item.id);
     await this.deps.transactionManager.runInTransaction((ctx) => {
       if (orderStatusChanged) ctx.orderRepo.save(nextOrder);
-      ctx.itemRepo.save({...item,...patch});
+      // Delivery is projected through the optimistic overlay first. Keeping the
+      // base order-item row unchanged until the authoritative server delta is
+      // applied prevents a local financial action from masquerading as canonical
+      // state and lets rollback remove only the pending delivery projection.
       ctx.ledgerRepo.append(chargeLedger);
       ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
         id:commandId,
