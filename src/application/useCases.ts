@@ -545,9 +545,11 @@ export class FinalUseCases {
           const deliveryCommandId = crypto.randomUUID();
           ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
             id: deliveryCommandId,
+            aggregateId: item.id,
             itemId: item.id,
             orderItemId: item.id,
             orderId: order.id,
+            autoDelivery: true,
             dependencyCommandId: item.id,
           }, item.version);
         }
