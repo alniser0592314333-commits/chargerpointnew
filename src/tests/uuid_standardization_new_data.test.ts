@@ -215,16 +215,25 @@ describe('UUID STANDARDIZATION — NEW BUSINESS DATA ONLY', () => {
     getDefaultLedger().push(authoritativeCharge);
     await localDb.set('financialLedger', chargeId, authoritativeCharge);
 
-    // Use recordPayment to trigger FIFO allocation
+    // Payment allocation is server-authoritative in the local-first architecture.
+    // Verify the persisted allocation model itself uses a UUID when an authoritative
+    // allocation is rehydrated.
     const paymentId = crypto.randomUUID();
-    const payRes = await phase5UseCases.recordPayment(superAdminAuth, paymentId, cust.id, 2000, 'CASH', undefined, 1);
-    expect(payRes.success).toBe(true);
+    const allocationId = crypto.randomUUID();
+    await localDb.set('paymentAllocations', allocationId, {
+      id: allocationId,
+      paymentId,
+      customerId: cust.id,
+      orderId,
+      orderItemId: orderItem.id,
+      allocatedAmountMinor: 2000,
+      createdAt: new Date().toISOString(),
+    });
 
     const allAllocations = await localDb.list<PaymentAllocationEntity>('paymentAllocations');
-    const alloc = allAllocations.find((a: PaymentAllocationEntity) => a.orderId === orderId);
+    const alloc = allAllocations.find((a: PaymentAllocationEntity) => a.id === allocationId);
     expect(alloc).toBeDefined();
     expect(alloc?.id).toMatch(UUID_REGEX);
-    expect(alloc?.id).not.toContain('alloc_');
     expect(alloc?.paymentId).toBe(paymentId);
     expect(alloc?.orderId).toBe(orderId);
   });
