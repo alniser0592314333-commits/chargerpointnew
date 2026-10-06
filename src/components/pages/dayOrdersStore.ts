@@ -3125,7 +3125,7 @@ export const getCustomerFinancialHistory = async (
       if (ord) {
         orderDisplayNumber = ord.displayNumber;
       }
-      if (ev.eventType === 'ORDER_ITEM_CHARGE' && ev.orderItemId) {
+      if ((ev.eventType === 'ORDER_ITEM_CHARGE' || ev.eventType === 'CHARGE') && ev.orderItemId) {
         const targetItem = itemsMap.get(ev.orderItemId);
         if (targetItem) {
           const devName = getItemLocalizedDeviceName(targetItem.deviceTypeId || targetItem.deviceNameSnapshot, locale);
@@ -3160,7 +3160,7 @@ export const getCustomerFinancialHistory = async (
     let description = '';
     let shortTitle = '';
 
-    if (ev.eventType === 'ORDER_ITEM_CHARGE') {
+    if (ev.eventType === 'ORDER_ITEM_CHARGE' || ev.eventType === 'CHARGE') {
       const singleDevName = orderItems && orderItems.length === 1 ? orderItems[0].deviceName : undefined;
       shortTitle =
         locale === 'ar'
@@ -4235,7 +4235,7 @@ export const getTodayHomeData = async (
         locale === 'ar' ? `دفع من ${rawCustName}` : `Payment from ${rawCustName}`;
       description =
         locale === 'ar' ? 'سداد مالي / إضافة رصيد' : 'Payment received / credit';
-    } else if (ev.eventType === 'ORDER_ITEM_CHARGE') {
+    } else if (ev.eventType === 'ORDER_ITEM_CHARGE' || ev.eventType === 'CHARGE') {
       let ordNumStr = '';
       if (ev.orderId) {
         const ord = ordersMap.get(ev.orderId);
