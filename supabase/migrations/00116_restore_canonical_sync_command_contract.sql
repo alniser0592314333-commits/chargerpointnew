@@ -973,3 +973,10 @@ BEGIN
     );
 END;
 $$;
+
+
+-- Explicit RPC grants: clients may invoke only the canonical wrapper; the inner
+-- SECURITY DEFINER function is not exposed directly to the public API role.
+REVOKE ALL ON FUNCTION public.execute_sync_command(UUID, TEXT, TEXT, UUID, JSONB, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.execute_sync_command(UUID, TEXT, TEXT, UUID, JSONB, INTEGER) TO authenticated;
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) FROM PUBLIC;
