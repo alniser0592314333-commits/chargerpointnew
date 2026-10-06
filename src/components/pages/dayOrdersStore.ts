@@ -2442,6 +2442,7 @@ export const getAuthoritativeBinVerifier = (): BinVerifierFn | undefined => {
   }
   if (getSupabaseStatus().isConfigured) {
     return async (bin: string) => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
       return await rpcVerifyAdminBin(bin);
     };
   }
