@@ -3421,7 +3421,14 @@ export const deliverSingleOrderItem = async (
 ): Promise<{ success: boolean; item?: OrderItemEntity; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
+    if (offline && !bin.trim()) {
+      const queued = await phase5UseCases.queueDeliveryAwaitingBin(auth, orderItemId);
+      if (!queued.success) return { success: false, error: presentError((queued as any).error || 'فشل جدولة التسليم') };
+      notifyStore('all');
+      return { success: true, item: queued.data };
+    }
     await auth.verifyBin(bin);
     const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin);
     if (result.success) {
@@ -3441,8 +3448,8 @@ export const deliverEntireOrder = async (
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
-    await auth.verifyBin(bin);
     const orderEntity = await repoContext.orderRepo.findById(orderId);
     if (!orderEntity) return { success: false, error: 'الطلب غير موجود' };
     if (orderEntity.status === 'cancelled') return { success: false, error: 'الطلب ملغى' };
@@ -3452,13 +3459,13 @@ export const deliverEntireOrder = async (
     if (activeItems.length === 0) return { success: false, error: 'لا يمكن تسليم طلب فارغ' };
 
     let count = 0;
-    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
 
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
         if (offline && !bin.trim()) {
           await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
         } else {
+          await auth.verifyBin(bin);
           await phase5UseCases.deliverOrderItem(auth, item.id, bin);
         }
         count++;
@@ -3574,8 +3581,8 @@ export const deliverAllOrdersInDay = async (
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
-    await auth.verifyBin(bin);
     const dayOrders = await getOrdersForDay(dayId);
     let count = 0;
 
@@ -3592,7 +3599,12 @@ export const deliverAllOrdersInDay = async (
       let deliveredInThisOrder = false;
       for (const item of items) {
         if (item.status !== 'delivered' && item.status !== 'cancelled') {
-          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+          if (offline && !bin.trim()) {
+            await phase5UseCases.queueDeliveryAwaitingBin(auth, item.id);
+          } else {
+            await auth.verifyBin(bin);
+            await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+          }
           deliveredInThisOrder = true;
         }
       }
