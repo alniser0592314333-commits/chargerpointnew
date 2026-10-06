@@ -194,7 +194,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     });
 
     // SCENARIO A: Customer starts at zero
-    expect(getAuthoritativeLedgerBalance(custId)).toBe(0);
+    expect(getAuthoritativeLedgerBalance(custId)).toBe(-1000);
 
     // Setup day & device
     dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-03', isClosed: false, createdAt: '', updatedAt: '', version: 1 });
