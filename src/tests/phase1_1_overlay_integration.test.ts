@@ -101,7 +101,7 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
     const order = await useCases.createOrder(auth, 'cmd-ord-1', 'day-1', 'c1');
     expect(order.success).toBe(true);
 
-    const result = await useCases.addOrderItem(auth, 'cmd-item-1', 'dev-1', false, 'cmd-item-1');
+    const result = await useCases.addOrderItem(auth, order.id, 'dev-1', false, 'cmd-item-1');
     expect(result.success).toBe(true);
     expect(overlays.find(o => o.commandId === 'cmd-item-1')?.mutationKey).toBe('order:cmd-item-1');
   });
