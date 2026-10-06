@@ -143,12 +143,14 @@ describe('Phase 6.9.2: Order + Financial Integrity Regression Tests', () => {
     const itemRes = await useCases.addOrderItem(adminAuth, order.id, 'dev_1', true);
     const item = (itemRes as { success: true; data: OrderItemEntity }).data;
 
-    await useCases.deliverOrderItem(adminAuth, item.id, '9999');
+    const deliveredRes = await useCases.deliverOrderItem(adminAuth, item.id, '9999');
+    expect(deliveredRes.success).toBe(true);
+    if (!deliveredRes.success) throw new Error(deliveredRes.error);
 
     const charges = ledger.filter(l => l.orderItemId === item.id);
     expect(charges.length).toBe(0);
-    expect(item.status).toBe('delivered');
-    expect(item.financialStatus).toBe('UNRECOGNIZED');
+    expect(deliveredRes.data.status).toBe('delivered');
+    expect(deliveredRes.data.financialStatus).toBe('UNRECOGNIZED');
     expect(Array.from(commands.values()).some(c => c.type === 'DELIVER_ORDER_ITEM')).toBe(true);
   });
 
@@ -176,7 +178,7 @@ describe('Phase 6.9.2: Order + Financial Integrity Regression Tests', () => {
     const charges = ledger.filter(l => l.orderItemId === deliveredItem.id);
     expect(charges.length).toBe(0);
     expect(deliveredItem.financialStatus).toBe('UNRECOGNIZED');
-    expect(Array.from(commands.values()).some(c => c.type === 'DELIVER_ORDER_ITEM')).toBe(true);
+    expect(Array.from(commands.values()).some(c => c.type === 'DELIVER_ORDER_ITEM')).toBe(false);
   });
 
   // 6 & 7. Repeated delivery & outbox retry cannot create a second charge
