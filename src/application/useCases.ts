@@ -1668,7 +1668,7 @@ export class FinalUseCases {
       amountMinor,
       customerId,
       actorAdminId: actor.id,
-      ...(note ? { note } : {}),
+      ...(note ? { note, metadata: { note } } : {}),
     };
 
     const txId = commandId || crypto.randomUUID();
