@@ -611,8 +611,10 @@ begin
 
     when 'CLOSE_DAY' then
       v_order:=(p_payload->>'id')::uuid;
+      select version into v_version from public.business_days where id=v_order for update;
+      if v_version is null then raise exception 'Business day not found' using errcode='P0006'; end if;
+      if p_expected_version is not null and v_version<>p_expected_version then raise exception 'VERSION_CONFLICT' using errcode='P0002'; end if;
       update public.business_days set status='CLOSED',is_closed=true,closed_at=now(),closed_by=v_actor,updated_at=now(),version=version+1 where id=v_order;
-      if not found then raise exception 'Business day not found' using errcode='P0006'; end if;
       v_result:=jsonb_build_object('businessDayId',v_order);
 
     when 'CREATE_CUSTOMER' then
@@ -756,6 +758,7 @@ begin
       v_item:=(p_payload->>'itemId')::uuid;
       select * into r from public.order_items where id=v_item for update;
       if not found then raise exception 'Item not found' using errcode='P0006'; end if;
+      if p_expected_version is not null and r.version<>p_expected_version then raise exception 'VERSION_CONFLICT' using errcode='P0002'; end if;
       if r.status='cancelled' then
         v_result:=jsonb_build_object('orderItemId',v_item,'alreadyCancelled',true);
       else
@@ -773,8 +776,9 @@ begin
 
     when 'CANCEL_ORDER' then
       v_order:=(p_payload->>'orderId')::uuid;
-      perform 1 from public.orders where id=v_order for update;
-      if not found then raise exception 'Order not found' using errcode='P0006'; end if;
+      select version into v_version from public.orders where id=v_order for update;
+      if v_version is null then raise exception 'Order not found' using errcode='P0006'; end if;
+      if p_expected_version is not null and v_version<>p_expected_version then raise exception 'VERSION_CONFLICT' using errcode='P0002'; end if;
       for r in select oi.* from public.order_items oi where oi.order_id=v_order and oi.status<>'cancelled' for update loop
         if r.financial_status='RECOGNIZED' then
           insert into public.financial_ledger(event_type,amount_minor,order_id,order_item_id,customer_id,actor_admin_id)
