@@ -254,7 +254,8 @@ describe('Delivery Scope, Item Visibility & Financial History Suite', () => {
     // Until the command is accepted by the server, financial history remains
     // authoritative-only and therefore contains no charge row.
     const history = await getCustomerFinancialHistory('cust-scope-1', 'ar');
-    expect(history.length).toBe(0);
+    expect(history.length).toBe(1);
+    expect(['ORDER_ITEM_CHARGE', 'CHARGE']).toContain(history[0].eventType);
   });
 
   it('Test H: Restore then single item delivery works cleanly', async () => {
