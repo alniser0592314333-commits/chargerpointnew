@@ -1,4 +1,4 @@
--- MIGRATION 00111: Remove Non-Canonical adminBin Fallback and Enforce Canonical BIN Contract
+-- MIGRATION 00111: Remove Non-Canonical Legacy BIN Fallback and Enforce Canonical BIN Contract
 -- Ensures BIN extraction uses ONLY p_payload->>'bin'.
 -- Preserves actor_id = auth.uid() UUID and separates identity from BIN credential.
 -- Preserves RBAC devices:manage for Device Type operations without requiring BIN.
