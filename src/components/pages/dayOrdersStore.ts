@@ -868,9 +868,18 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       invokeSupabaseRestGet<any>('payment_allocations', 'select=*'),
     ]);
 
+    const remoteReads = [daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes];
+    const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
+    if (failedRemoteRead) {
+      // Never clear a healthy local read model because one authoritative table
+      // failed to load. The caller can retry the reconciliation later.
+      console.warn('Authoritative hydration aborted because a required table failed to load:', failedRemoteRead.error);
+      return false;
+    }
+
     let updatedAny = false;
 
-    // At this point all authoritative tables have returned successfully.
+    // At this point every required authoritative table has returned successfully.
     // Replace the local operational snapshot atomically at the bootstrap level;
     // otherwise records deleted remotely could survive in IndexedDB and reappear
     // after a browser restart.
