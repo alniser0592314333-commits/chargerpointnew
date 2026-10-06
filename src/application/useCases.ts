@@ -600,11 +600,11 @@ export class FinalUseCases {
       });
     }
 
-    // An aggregate created with items must expose the same operational state the
-    // server will reach after its ADD_ORDER_ITEM commands: CHARGING for normal
-    // intake, DELIVERED when a closed-day Super Admin auto-delivers every item.
-    // Leaving this row as PENDING creates a local/server state split immediately.
-    order.status = preparedItems.every(item => item.status === 'delivered') ? 'delivered' : 'charging';
+    // Order-level status is an aggregate completion state: it remains PENDING
+    // until every active item is delivered. Item-level status carries CHARGING.
+    // This prevents delivering one device from incorrectly completing the whole
+    // order while preserving the per-device charging state.
+    order.status = preparedItems.every(item => item.status === 'delivered') ? 'delivered' : 'pending';
     order.updatedAt = now;
 
     const mutationKey = `order:${order.id}`;
@@ -784,7 +784,7 @@ export class FinalUseCases {
     const activeAfter = nextItems.filter((candidate) => candidate.status !== 'cancelled');
     const nextOrderStatus: OrderEntity['status'] = activeAfter.length > 0 && activeAfter.every((candidate) => candidate.status === 'delivered')
       ? 'delivered'
-      : 'charging';
+      : 'pending';
     const orderStatusChanged = order.status !== nextOrderStatus;
     const nextOrder: OrderEntity = orderStatusChanged
       ? { ...order, status: nextOrderStatus, updatedAt: deliveredAt, version: order.version + 1 }
