@@ -3521,12 +3521,14 @@ export const addNewCustomer = async (
   phone: string,
   debtLimitMinor: number = 2000
 ): Promise<UICustomerItem> => {
+  const customerId = crypto.randomUUID();
   const result = await phase5UseCases.createCustomer(
     getAuthorizedAdminContext(),
     name,
     phone,
     debtLimitMinor,
-    false
+    false,
+    customerId
   );
   if (!result.success) {
     throw new Error(presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء العميل'));
@@ -3854,6 +3856,22 @@ export const getOrCreateOrderQrToken = async (orderId: string): Promise<string> 
     try {
       const centralToken = await rpcGetOrCreateOrderQr(orderId);
       if (centralToken) {
+        const existingLocal = (await localDb.list<QrTokenEntity>('qr_tokens')).find(
+          (t) => t.targetId === orderId && t.tokenType === 'ORDER' && t.isActive
+        );
+        if (!existingLocal) {
+          const tokenHash = await computeTokenHash(centralToken);
+          const record: QrTokenEntity = {
+            id: crypto.randomUUID(),
+            tokenHash,
+            publicToken: centralToken,
+            tokenType: 'ORDER',
+            targetId: orderId,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+          };
+          await localDb.set('qr_tokens', record.publicToken || record.id, record);
+        }
         return centralToken;
       }
     } catch (err) {
@@ -4060,6 +4078,21 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
     try {
       const centralToken = await rpcGetOrCreateCustomerQr(customerId);
       if (centralToken) {
+        const existingLocal = (await localDb.list<QrTokenEntity>('qr_tokens')).find(
+          (t) => t.targetId === customerId && t.tokenType === 'CUSTOMER' && t.isActive
+        );
+        if (!existingLocal) {
+          const record: QrTokenEntity = {
+            id: crypto.randomUUID(),
+            publicToken: centralToken,
+            tokenHash: await computeTokenHash(centralToken),
+            tokenType: 'CUSTOMER',
+            targetId: customerId,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+          };
+          await localDb.set('qr_tokens', record.publicToken || record.id, record);
+        }
         return centralToken;
       }
     } catch (err) {
