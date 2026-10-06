@@ -532,7 +532,7 @@ export class FinalUseCases {
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.orderRepo.save(order);
-      if (reservation) {
+      if (reservation && ctx.reservationRepo) {
         ctx.reservationRepo.save(reservation);
       }
 
