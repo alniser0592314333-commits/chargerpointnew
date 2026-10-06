@@ -3080,9 +3080,8 @@ export const addNewCustomer = async (
     getAuthorizedAdminContext(),
     name,
     phone,
-    undefined,
-    undefined,
-    debtLimitMinor
+    debtLimitMinor,
+    false
   );
   if (!result.success) {
     throw new Error(presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء العميل'));
