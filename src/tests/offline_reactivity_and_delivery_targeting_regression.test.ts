@@ -330,7 +330,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
 
     const outbox = await localDb.listOutbox();
     expect(outbox.some((c) => c.commandType === 'UPDATE_ORDER' && (c.payload as any).orderId === orderId)).toBe(true);
-    expect(outbox.some((c) => c.commandType === 'CANCEL_ORDER_ITEM' && c.payload as any).itemId === itemId)).toBe(true);
+    expect(outbox.some((c) => c.commandType === 'CANCEL_ORDER_ITEM' && (c.payload as any).itemId === itemId)).toBe(true);
   });
 
 });
