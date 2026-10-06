@@ -899,21 +899,6 @@ export class FinalUseCases {
     return { success: true, data: { ...existingItem, ...patch } as OrderItemEntity };
   }
 
-  /*
-   * Legacy implementation removed: cancellation previously wrote only an
-   * overlay and outbox command, leaving the durable local item in CHARGING.
-   */
-      id: commandId,
-      aggregateId: order.id,
-      itemId: itemId,
-      orderItemId: itemId,
-      orderId: order.id,
-      bin,
-    }, existingItem.version);
-
-    return { success: true, data: { ...existingItem, ...patch } as OrderItemEntity };
-  }
-
   // ==========================================
   // CUSTOMER USE CASES
   // ==========================================
