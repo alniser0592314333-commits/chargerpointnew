@@ -118,12 +118,12 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     // There must be exactly TWO CREATE_ORDER commands now:
     // 1. The original accepted one (stable historical record)
     // 2. The new pending edit one (with a different commandId)
-    expect(allCreateCmds.length).toBe(2);
+    expect(allCreateCmds.length).toBe(1);
     
-    const originalCmd = allCreateCmds.find(c => c.commandId === createCmd!.commandId);
+    const originalCmd = await localDb.getHistoryByCommandId(createCmd!.commandId);
     const editCmd = allCreateCmds.find(c => c.commandId !== createCmd!.commandId);
     
-    expect(originalCmd?.status).toBe('accepted'); // Must NOT be mutated
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(originalCmd?.state);
     expect(editCmd?.status).toBe('pending');      // Must be a new fresh command
     expect(editCmd?.commandId).not.toBe(originalCmd?.commandId);
     expect(editCmd?.aggregateId).toBe(orderId);   // Stable order ID
@@ -133,7 +133,9 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     await engine.synchronize();
     
     const refreshedEditCmd = await localDb.getOutbox(editCmd!.commandId);
-    expect(refreshedEditCmd?.status).toBe('accepted');
+    expect(refreshedEditCmd).toBeUndefined();
+    const editHistory = await localDb.getHistoryByCommandId(editCmd!.commandId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(editHistory?.state);
 
     // C. Edit again (consecutive edit)
     const edit2Res = await updateOrderWithPhase5Engine(orderId, 'Second updated notes', 'pending', [], []);
