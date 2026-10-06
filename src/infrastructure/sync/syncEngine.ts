@@ -296,6 +296,7 @@ export interface ChangeLogEntry {
   entityId: ID;
   action: 'INSERT' | 'UPDATE' | 'DELETE' | 'TOMBSTONE';
   payload: unknown;
+  version?: number;
   changedAt: string;
 }
 
