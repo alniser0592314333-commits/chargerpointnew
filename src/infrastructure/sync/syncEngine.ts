@@ -1077,6 +1077,41 @@ export class SyncEngine {
         }
       }
 
+      // Final authoritative pull closes the push/reconcile window. A successful
+      // server command must be followed by the server's canonical row versions
+      // before the cycle is considered fully synchronized. If this pull fails,
+      // successful commands remain accepted and the next cycle retries the pull.
+      try {
+        const finalState = await localDb.getSyncState('global');
+        const finalCursor = finalState?.lastAppliedChangeSequence ?? 0;
+        const finalPull = await this.transport.pullChanges(finalCursor);
+        if (finalPull.changes.length > 0) {
+          const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+            for (const change of sortedFinalChanges) {
+              if (this.onDeltaApplied) {
+                this.onDeltaApplied(change, tx);
+              } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+                localDb.removeWithTx(tx, change.entityType, change.entityId);
+              } else {
+                localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
+              }
+            }
+            const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
+            localDb.setSyncStateWithTx(tx, {
+              ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+              lastAppliedChangeSequence: Math.max(finalCursor, maxSeq),
+              lastPulledAt: new Date().toISOString(),
+              status: 'READY',
+              reconciliationRequired: false,
+            });
+          });
+          pulledCount += sortedFinalChanges.length;
+        }
+      } catch (finalPullError) {
+        console.warn('Final authoritative sync pull failed; accepted commands remain queued for reconciliation:', finalPullError);
+      }
+
       syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
       return { pushed: pushedCount, pulled: pulledCount };
     } finally {
