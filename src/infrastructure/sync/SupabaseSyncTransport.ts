@@ -12,13 +12,24 @@ import { invokeSupabaseRestGet, invokeSupabaseRpc, resolveAuthBearerToken } from
 export function computePayloadHash(payload: unknown): string {
   try {
     const str = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
-    let hash = 0;
+
+    // Keep this helper synchronous for the transport contract, but use two
+    // independent 32-bit hashes instead of the old single 32-bit hash.
+    // The server stores this value only to detect command-id/payload drift.
+    let h1 = 0x811c9dc5;
+    let h2 = 0x9e3779b9;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash |= 0; // Convert to 32bit integer
+      h1 ^= char;
+      h1 = Math.imul(h1, 0x01000193);
+      h2 ^= char + i;
+      h2 = Math.imul(h2, 0x85ebca6b);
+      h2 ^= h2 >>> 13;
     }
-    return Math.abs(hash).toString(16).padStart(8, '0');
+    return (
+      (h1 >>> 0).toString(16).padStart(8, '0') +
+      (h2 >>> 0).toString(16).padStart(8, '0')
+    );
   } catch {
     return 'fallback_hash';
   }
