@@ -19,7 +19,7 @@ BEGIN
     RETURN public.execute_canonical_sync_command(
         p_command_id,
         p_command_type,
-        p_payload || jsonb_build_object('expectedVersion', p_expected_version),
+        p_payload,
         COALESCE(p_payload->>'payloadHash', 'no_hash'),
         COALESCE(p_payload->>'deviceId', 'default_device'),
         auth.uid()
