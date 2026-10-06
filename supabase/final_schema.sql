@@ -64,6 +64,18 @@ insert into public.system_settings(key,value_type,value_number,description)
 values ('server_reset_generation','number',1,'Authoritative remote dataset generation')
 on conflict(key) do nothing;
 
+create table if not exists public.global_app_identity (
+  id uuid primary key default gen_random_uuid(),
+  app_name text not null default 'نظام إدارة شحن الأجهزة',
+  white_logo_url text,
+  dark_logo_url text,
+  version integer not null default 1,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references public.admins(id)
+);
+insert into public.global_app_identity(id) values('00000000-0000-0000-0000-000000000001')
+on conflict(id) do nothing;
+
 create table if not exists public.app_canonical_state (
   singleton boolean primary key default true check (singleton),
   canonical_version_id uuid not null default gen_random_uuid(),
@@ -421,6 +433,30 @@ as $ select email from public.admins where lower(username)=lower(p_username) and
 create or replace function public.rpc_fetch_admins()
 returns setof jsonb language sql security definer set search_path=public
 as $ select jsonb_build_object('id',a.id,'username',a.username,'full_name',a.full_name,'email',a.email,'role',a.role,'is_active',a.is_active,'version',a.version,'created_at',a.created_at) from public.admins a where public.current_admin_id() is not null order by a.created_at $;
+
+create or replace function public.get_global_app_identity()
+returns jsonb language sql stable security definer set search_path=public
+as $ select jsonb_build_object('id',id,'app_name',app_name,'white_logo_url',white_logo_url,'dark_logo_url',dark_logo_url,'version',version,'updated_at',updated_at,'updated_by',updated_by) from public.global_app_identity order by updated_at desc limit 1 $;
+
+create or replace function public.update_global_app_identity(p_app_name text,p_white_logo_url text,p_dark_logo_url text)
+returns jsonb language plpgsql security definer set search_path=public
+as $
+declare v_id uuid;
+begin
+ if not exists(select 1 from public.admins a where a.id=public.current_admin_id() and (a.role='SUPER_ADMIN' or 'settings:manage'=any(a.permissions))) then
+  raise exception 'Forbidden' using errcode='P4003';
+ end if;
+ update public.global_app_identity set
+   app_name=coalesce(p_app_name,app_name),
+   white_logo_url=p_white_logo_url,
+   dark_logo_url=p_dark_logo,
+   version=version+1,
+   updated_at=now(),
+   updated_by=public.current_admin_id()
+ where id='00000000-0000-0000-0000-000000000001'
+ returning id into v_id;
+ return public.get_global_app_identity();
+end $;
 
 create or replace function public.current_admin_id()
 returns uuid
@@ -938,6 +974,21 @@ begin
   return public.execute_sync_command(p_command_id,p_command_type,null,null,p_payload,null);
 end;
 $$;
+
+create or replace function public.execute_customer_top_up_atomic(
+  p_command_id uuid,p_customer_id uuid,p_amount_minor bigint,p_bin text,p_note text default null
+) returns jsonb language plpgsql security definer set search_path=public
+as $
+declare v_result jsonb; v_balance bigint;
+begin
+ v_result:=public.execute_sync_command(
+   p_command_id,'CREATE_CUSTOMER_CREDIT','financial_ledger',p_customer_id,
+   jsonb_build_object('customerId',p_customer_id,'amountMinor',p_amount_minor,'bin',p_bin,'note',p_note),
+   null
+ );
+ select coalesce(sum(amount_minor),0) into v_balance from public.financial_ledger where customer_id=p_customer_id;
+ return jsonb_build_object('success',true,'transactionId',p_command_id,'newBalanceMinor',v_balance,'result',v_result);
+end $;
 
 create or replace function public.verify_admin_bin_with_attempt_tracking(p_bin text)
 returns jsonb language plpgsql security definer set search_path=public
