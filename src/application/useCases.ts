@@ -1330,6 +1330,40 @@ export class FinalUseCases {
     return { success: true, data: { id: txId, createdAt, ...event } };
   }
 
+  /** Queue a customer credit adjustment offline; BIN is collected later in Sync Center. */
+  async queueCustomerCreditAwaitingBin(
+    auth: AuthorizationContext,
+    customerId: ID,
+    amountMinor: number,
+    commandId?: ID
+  ): Promise<Result<FinancialLedgerEntity>> {
+    const actor = auth.requireAuth();
+    auth.assertPermission('finance:credit-adjustment');
+    DomainInvariants.assertValidPaymentAmount(amountMinor);
+    const customer = await this.deps.customerRepo.findById(customerId);
+    if (!customer) throw new NotFoundError('Customer not found');
+    DomainInvariants.assertCustomerActive(customer);
+
+    const txId = commandId || crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const event = { eventType: 'CREDIT_ADJUSTMENT' as const, amountMinor, customerId, actorAdminId: actor.id };
+    const mutationKey = `customer:${customerId}`;
+
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(txId, [{ table: 'ledger', id: txId, existed: false }]);
+    }
+    await this.createOverlay(txId, mutationKey, 'ledger', txId, 'CREATE', { id: txId, createdAt, ...event } as Record<string, unknown>);
+    const payment: PaymentEntity = {
+      id: txId, customerId, amountMinor, paymentMethod: 'CASH', reference: 'Customer credit',
+      actorAdminId: actor.id, commandId: txId, createdAt,
+    };
+    await this.createOverlay(`${txId}:payment`, mutationKey, 'payments', txId, 'CREATE', payment as unknown as Record<string, unknown>);
+    await this.deps.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
+      id: txId, customerId, amountMinor, actorAdminId: actor.id, createdAt, authorizationState: 'PENDING_BIN',
+    });
+    return { success: true, data: { id: txId, createdAt, ...event } };
+  }
+
   async consumeCustomerCredit(auth: AuthorizationContext, customerId: ID, amountMinor: number, orderId: ID): Promise<Result<FinancialLedgerEntity>> {
     const actor = auth.requireAuth();
     DomainInvariants.assertValidPaymentAmount(amountMinor);
