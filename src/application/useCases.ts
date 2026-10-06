@@ -1120,8 +1120,8 @@ undefined
         id: updatedDevice.id,
         deviceTypeId: updatedDevice.id,
         name: updatedDevice.name,
-        arabicName: updatedDevice.nameAr || updatedDevice.name,
-        englishName: updatedDevice.nameEn || updatedDevice.name,
+        nameAr: updatedDevice.nameAr || updatedDevice.name,
+        nameEn: updatedDevice.nameEn || updatedDevice.name,
         icon: updatedDevice.icon,
         basePriceMinor: updatedDevice.basePriceMinor,
         chargerFeeEnabled: updatedDevice.chargerFeeEnabled,
@@ -1157,7 +1157,7 @@ undefined
       if (ctx.deviceRepo.delete) {
         ctx.deviceRepo.delete(deviceId);
       }
-      ctx.commandRepo.record(crypto.randomUUID(), 'DELETE_DEVICE_TYPE', { id: deviceId });
+      ctx.commandRepo.record(crypto.randomUUID(), 'RETIRE_DEVICE_TYPE', { id: deviceId });
       return { success: true, data: undefined };
     });
   }
@@ -1179,8 +1179,8 @@ undefined
             id: dev.id,
             deviceTypeId: dev.id,
             name: dev.name,
-            arabicName: dev.nameAr || dev.name,
-            englishName: dev.nameEn || dev.name,
+            nameAr: dev.nameAr || dev.name,
+            nameEn: dev.nameEn || dev.name,
             icon: dev.icon,
             basePriceMinor: dev.basePriceMinor,
             chargerFeeEnabled: dev.chargerFeeEnabled,
