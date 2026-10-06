@@ -18,6 +18,7 @@ export type SyncErrorClass =
   | 'NETWORK'
   | 'AUTHENTICATION'
   | 'AUTHORIZATION'
+  | 'AUTHORIZATION_REQUIRED'
   | 'VALIDATION'
   | 'CONFLICT'
   | 'DATABASE_CONSTRAINT'
@@ -146,6 +147,15 @@ export function classifySyncError(response: Partial<SyncCommandResponse>): Struc
       failureStage: 'RPC',
       retryEligible: false,
       httpStatus: status || 401,
+    };
+  }
+
+  if (code === 'AUTHORIZATION_REQUIRED' || response.error === 'AUTHORIZATION_REQUIRED' || response.error?.includes('Authorization required')) {
+    return {
+      errorClass: 'AUTHORIZATION_REQUIRED',
+      failureStage: 'RPC',
+      retryEligible: false,
+      httpStatus: status || 403,
     };
   }
 
