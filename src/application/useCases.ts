@@ -968,6 +968,13 @@ export class FinalUseCases {
     validateItemTransition(item.status,'cancelled');
     const updatedAt=new Date().toISOString(); const patch:Partial<OrderItemEntity>={status:'cancelled',updatedAt,version:item.version+1};
     const updatedItem={...item,...patch} as OrderItemEntity; const commandId=crypto.randomUUID();
+    const priorLedger = (await this.deps.ledgerRepo.findByCustomer(order.customerId)) || [];
+    const priorCharge = [...priorLedger]
+      .reverse()
+      .find((entry) =>
+        (entry.eventType === 'ORDER_ITEM_CHARGE' || entry.eventType === 'CHARGE') &&
+        entry.orderItemId === item.id
+      );
     if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
     await this.deps.transactionManager.runInTransaction((ctx)=>{
       ctx.itemRepo.save(updatedItem);
@@ -975,7 +982,7 @@ export class FinalUseCases {
         ctx.ledgerRepo.append({
           id: crypto.randomUUID(),
           eventType: 'REVERSAL',
-          amountMinor: Math.abs(item.totalPriceMinor),
+          amountMinor: priorCharge ? -priorCharge.amountMinor : Math.abs(item.totalPriceMinor),
           customerId: order.customerId,
           orderId: order.id,
           orderItemId: item.id,
@@ -997,6 +1004,7 @@ export class FinalUseCases {
     validateOrderTransition(order.status,'cancelled');
     const items=await this.deps.itemRepo.findByOrderId(orderId); const activeItems=items.filter(i=>i.status!=='cancelled');
     const commandId=crypto.randomUUID(); const cancelledAt=new Date().toISOString();
+    const customerLedger = (await this.deps.ledgerRepo.findByCustomer(order.customerId)) || [];
     const updatedOrder={...order,status:'cancelled' as const,cancelledAt,updatedAt:cancelledAt,version:order.version+1};
     const updatedItems=activeItems.map(item=>({
       ...item,
@@ -1012,11 +1020,17 @@ export class FinalUseCases {
       for(const item of updatedItems) {
         ctx.itemRepo.save(item);
         if (item.financialStatus === 'REVERSED') {
-          const originalCharge = Math.abs(item.totalPriceMinor);
+          const originalCharge = [...customerLedger]
+            .reverse()
+            .find((entry) =>
+              (entry.eventType === 'ORDER_ITEM_CHARGE' || entry.eventType === 'CHARGE') &&
+              entry.orderItemId === item.id
+            );
+          const reversalAmount = originalCharge ? -originalCharge.amountMinor : Math.abs(item.totalPriceMinor);
           ctx.ledgerRepo.append({
             id: crypto.randomUUID(),
             eventType: 'REVERSAL',
-            amountMinor: originalCharge,
+            amountMinor: reversalAmount,
             customerId: order.customerId,
             orderId: order.id,
             orderItemId: item.id,
