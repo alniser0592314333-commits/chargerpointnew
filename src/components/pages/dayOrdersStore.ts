@@ -489,13 +489,22 @@ export const applyRemoteChange = (change: {
         ? -rawLedgerAmount
         : rawLedgerAmount;
 
+    const derivedCustomerId =
+      p.customerId ||
+      p.customer_id ||
+      derivedOrder?.customerId ||
+      (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined);
+    if (!derivedCustomerId) {
+      throw new Error(`Cannot apply financial ledger change ${change.entityId} without customer identity`);
+    }
+
     const entity: FinancialLedgerEntity = {
       id: p.id || change.entityId,
       eventType: ledgerEventType,
       amountMinor: normalizedLedgerAmount,
       orderId: ledgerOrderId || derivedItem?.orderId,
       orderItemId: ledgerOrderItemId,
-      customerId: p.customerId || p.customer_id || derivedOrder?.customerId || (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined),
+      customerId: derivedCustomerId,
       actorAdminId: p.actorAdminId || p.actor_admin_id || undefined,
       referenceId: p.referenceId || p.reference_id || undefined,
       metadata: p.metadata ?? undefined,
