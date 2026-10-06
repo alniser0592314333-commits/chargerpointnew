@@ -38,12 +38,30 @@ export function computePayloadHash(payload: unknown): string {
 export const SYNC_PULL_BATCH_SIZE = 500;
 
 export class SupabaseSyncTransport implements ServerSyncTransport {
+  // Protected BINs are deliberately memory-only. They are never persisted to IndexedDB,
+  // history, logs, or the outbox payload.
+  private transientBins = new Map<string, string>();
+
   constructor(private supabaseClientUrl?: string, private supabaseAnonKey?: string) {}
+
+  authorizeCommand(commandId: string, bin: string): void {
+    this.transientBins.set(commandId, bin);
+  }
+
+  clearCommandAuthorization(commandId: string): void {
+    this.transientBins.delete(commandId);
+  }
 
   async pushCommand(req: SyncCommandRequest): Promise<SyncCommandResponse> {
     try {
       const token = resolveAuthBearerToken();
-      const p = (req.payload || {}) as Record<string, any>;
+      const storedPayload = (req.payload || {}) as Record<string, any>;
+      const p = { ...storedPayload };
+      const transientBin = this.transientBins.get(req.commandId);
+      if (transientBin) {
+        p.bin = transientBin;
+        p.authorizationState = 'AUTHORIZED';
+      }
       const payloadHash = computePayloadHash(p);
 
       // 1. Primary Canonical Path: Server-Authoritative Semantic RPC
@@ -76,6 +94,7 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
           };
         }
 
+        this.transientBins.delete(req.commandId);
         return {
           success: true,
           serverVersion: typeof response.serverVersion === 'number'
