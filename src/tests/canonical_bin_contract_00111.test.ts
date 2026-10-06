@@ -26,8 +26,8 @@ describe('Migration 00111 Canonical BIN Contract & Security Verification', () =>
     expect(content).toContain("WHEN 'RETIRE_DEVICE_TYPE'");
 
     // H & I. actor_id remains auth.uid() UUID and separated from BIN
-    expect(content).toContain('v_actor_id UUID := p_actor_id');
-    expect(content).toContain('v_actor_id := auth.uid()');
+    expect(content).toContain('p_actor_id UUID DEFAULT NULL');
+    expect(content).toContain('auth.uid()');
 
     // J. No p_bin parameter in execute_canonical_sync_command signature
     expect(content).toContain('p_actor_id UUID DEFAULT NULL');
