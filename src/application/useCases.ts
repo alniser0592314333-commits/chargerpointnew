@@ -1588,7 +1588,7 @@ export class FinalUseCases {
     auth.assertPermission('goals:manage');
 
     if (!this.deps.goalRepo) throw new Error('Goal repository not configured');
-    const goal = await this.deps.goalRepo.findById(goalId);
+    const goalRecord = await this.deps.goalRepo.findById(goalId);
     if (!goal) throw new NotFoundError('Goal not found');
 
     DomainInvariants.assertGoalEditable(goal);
@@ -1718,7 +1718,7 @@ export class FinalUseCases {
       throw new Error('Goal repositories not configured');
     }
 
-    const req = await this.deps.goalRequestRepo.findById(requestId);
+    const reqRecord = await this.deps.goalRequestRepo.findById(requestId);
     if (!req) throw new NotFoundError('Goal request not found');
     if (req.status !== 'PENDING') throw new BusinessRuleViolation(`Request is already ${req.status}`);
 
@@ -1779,7 +1779,7 @@ export class FinalUseCases {
 
     if (!this.deps.goalRequestRepo) throw new Error('Goal request repo not configured');
 
-    const req = await this.deps.goalRequestRepo.findById(requestId);
+    const reqRecord = await this.deps.goalRequestRepo.findById(requestId);
     if (!req) throw new NotFoundError('Goal request not found');
     if (req.status !== 'PENDING') throw new BusinessRuleViolation(`Request is already ${req.status}`);
 
@@ -1807,7 +1807,7 @@ export class FinalUseCases {
     const repos = ctx || this.deps;
     if (!repos.goalRepo) return { success: true as const, data: { hasActiveGoal: false } };
 
-    const goal = await repos.goalRepo.findActiveByCustomerId(customerId);
+    const goalRecord = await repos.goalRepo.findActiveByCustomerId(customerId);
     if (!goal || goal.status !== 'ACTIVE') {
       return { success: true as const, data: { hasActiveGoal: false } };
     }
@@ -1821,6 +1821,7 @@ export class FinalUseCases {
         l.createdAt <= goal.expiresAt
     );
 
+    const goal = { ...goalRecord };
     const newProgress = qualifyingCharges.length;
     goal.currentProgress = newProgress;
     goal.updatedAt = new Date().toISOString();
