@@ -308,7 +308,8 @@ describe('Phase B.3: Real Dependency-Aware Outbox Scheduler + BLOCKED -> READY',
 
     // Verify final states in localDb
     const outboxDep = (await localDb.listOutbox()).find((o) => o.commandId === 'cmd_dep_lifecycle');
-    expect(outboxDep?.status).toBe('accepted');
+    // Successful commands are removed from the active outbox after server acceptance.
+    expect(outboxDep).toBeUndefined();
 
     const historyDep = await localDb.getHistoryByCommandId('cmd_dep_lifecycle');
     expect(historyDep?.state).toBe('SUCCESS');

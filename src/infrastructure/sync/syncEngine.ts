@@ -18,6 +18,7 @@ export type SyncErrorClass =
   | 'NETWORK'
   | 'AUTHENTICATION'
   | 'AUTHORIZATION'
+  | 'AUTHORIZATION_REQUIRED'
   | 'VALIDATION'
   | 'CONFLICT'
   | 'DATABASE_CONSTRAINT'
@@ -146,6 +147,15 @@ export function classifySyncError(response: Partial<SyncCommandResponse>): Struc
       failureStage: 'RPC',
       retryEligible: false,
       httpStatus: status || 401,
+    };
+  }
+
+  if (code === 'AUTHORIZATION_REQUIRED' || response.error === 'AUTHORIZATION_REQUIRED' || response.error?.includes('Authorization required')) {
+    return {
+      errorClass: 'AUTHORIZATION_REQUIRED',
+      failureStage: 'RPC',
+      retryEligible: false,
+      httpStatus: status || 403,
     };
   }
 
@@ -380,7 +390,7 @@ export class MockServerSyncTransport implements ServerSyncTransport {
 
 export class SyncEngine {
   private isSyncing = false;
-  public onDeltaApplied?: (change: ChangeLogEntry, tx?: IDBTransaction) => Promise<void> | void;
+  public onDeltaApplied?: (change: ChangeLogEntry, tx?: IDBTransaction) => boolean | void;
 
   constructor(private transport: ServerSyncTransport) {}
 
@@ -643,14 +653,21 @@ export class SyncEngine {
         await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
           for (const change of sortedChanges) {
             try {
-              if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
-              } else {
-                if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
-                  localDb.removeWithTx(tx, change.entityType, change.entityId);
-                } else {
-                  localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
-                }
+              const applied = this.onDeltaApplied
+                ? this.onDeltaApplied(change, tx) !== false
+                : (() => {
+                    if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+                      localDb.removeWithTx(tx, change.entityType, change.entityId);
+                    } else {
+                      localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
+                    }
+                    return true;
+                  })();
+              if (!applied) {
+                // A pending local mutation owns this entity. Do not advance the
+                // cursor past it; the next sync must replay this authoritative
+                // delta after the local command is accepted.
+                break;
               }
               pulledCount++;
             } catch (deltaErr) {
@@ -658,10 +675,17 @@ export class SyncEngine {
               throw deltaErr;
             }
           }
-          const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
+          const appliedChanges = sortedChanges.filter((change) => {
+            // The callback above already stopped at the first protected delta.
+            // Only advance through the contiguous prefix actually applied.
+            return true;
+          });
+          const maxSeq = appliedChanges.length > 0
+            ? appliedChanges[Math.min(pulledCount, appliedChanges.length) - 1]?.sequenceId
+            : syncState.lastAppliedChangeSequence;
           const updatedState = {
             ...syncState,
-            lastAppliedChangeSequence: maxSeq,
+            lastAppliedChangeSequence: maxSeq ?? syncState.lastAppliedChangeSequence,
             lastPulledAt: new Date().toISOString(),
           };
           localDb.setSyncStateWithTx(tx, updatedState);
@@ -762,6 +786,9 @@ export class SyncEngine {
         const candidates = outboxItems.filter(
           i =>
             !processedInCycle.has(i.commandId) &&
+            // Protected offline intents stay local until an operator enters BIN
+            // in Sync Center. Never send them to the server without authorization.
+            (i as any).payload?.authorizationState !== 'PENDING_BIN' &&
             (i.status === 'pending' ||
               i.status === 'blocked' ||
               i.status === 'conflict' ||
@@ -1043,7 +1070,13 @@ export class SyncEngine {
               timestamp: new Date().toISOString(),
             });
           }
-          await localDb.saveOutbox(item);
+          if (item.status === 'accepted') {
+            // Server has committed the command successfully. Remove it from the active outbox;
+            // the authoritative pull below/next cycle reconciles the local read model.
+            await localDb.deleteOutbox(item.commandId);
+          } else {
+            await localDb.saveOutbox(item);
+          }
         } catch (err: any) {
           const errMsg = err?.message || 'Network error';
           history.state = 'FAILED';
@@ -1089,16 +1122,24 @@ export class SyncEngine {
         if (finalPull.changes.length > 0) {
           const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
           await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+            let appliedFinalCount = 0;
             for (const change of sortedFinalChanges) {
-              if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
-              } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
-                localDb.removeWithTx(tx, change.entityType, change.entityId);
-              } else {
-                localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
-              }
+              const applied = this.onDeltaApplied
+                ? this.onDeltaApplied(change, tx) !== false
+                : (() => {
+                    if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+                      localDb.removeWithTx(tx, change.entityType, change.entityId);
+                    } else {
+                      localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
+                    }
+                    return true;
+                  })();
+              if (!applied) break;
+              appliedFinalCount++;
             }
-            const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
+            const maxSeq = appliedFinalCount > 0
+              ? sortedFinalChanges[appliedFinalCount - 1].sequenceId
+              : finalCursor;
             localDb.setSyncStateWithTx(tx, {
               ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
               lastAppliedChangeSequence: Math.max(finalCursor, maxSeq),

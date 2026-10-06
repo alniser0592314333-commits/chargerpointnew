@@ -410,6 +410,8 @@ export interface CreateSnapshotOptions {
   customOnlineData?: Partial<BackupSnapshotData>;
 }
 
+let lastSnapshotTimestamp = 0;
+
 export class BackupService {
   /**
    * Captures current offline business data from IndexedDB kvStore.
@@ -810,8 +812,13 @@ export class BackupService {
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
     const checksum = computeSnapshotChecksum(sanitizedData);
-    const now = new Date();
-    const snapshotId = `snap_${now.getTime()}_${Math.random().toString(36).substring(2, 9)}`;
+    // Date.now() can return the same millisecond for two consecutive local
+    // snapshots. Keep timestamps monotonic so newest-first ordering is
+    // deterministic even under fast repeated backup clicks.
+    const snapshotTimestamp = Math.max(Date.now(), lastSnapshotTimestamp + 1);
+    lastSnapshotTimestamp = snapshotTimestamp;
+    const now = new Date(snapshotTimestamp);
+    const snapshotId = `snap_${snapshotTimestamp}_${Math.random().toString(36).substring(2, 9)}`;
     const snapshotName =
       options?.name ||
       `${now.toISOString().replace('T', ' ').slice(0, 19)} (${sourceType.toLowerCase()})`;

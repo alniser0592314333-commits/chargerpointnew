@@ -296,7 +296,8 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
     }
 
     const requiresBin = (status === 'delivered' || status === 'cancelled') && status !== order?.status;
-    if (requiresBin) {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (requiresBin && !offline) {
       setBinInput('');
       setBinError('');
       setIsBinModalOpen(true);
