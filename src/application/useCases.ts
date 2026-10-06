@@ -56,6 +56,7 @@ export interface RepositoryContext {
   itemRepo: {
     findByOrderId(orderId: ID): Promise<OrderItemEntity[]> | OrderItemEntity[];
     save(item: OrderItemEntity): Promise<void> | void;
+    saveLocal?(item: OrderItemEntity): Promise<void> | void;
     findById(id: ID): Promise<OrderItemEntity | null> | (OrderItemEntity | null);
     isDeviceTypeInUse?(deviceTypeId: ID): Promise<boolean> | boolean;
   };
@@ -546,7 +547,12 @@ export class FinalUseCases {
     // Persist the projected delivery state locally before queueing the server command.
     // The mutation snapshot captured above makes this reversible if the command is rejected.
     // The server remains authoritative; the subsequent canonical delta reconciles this state.
-    await this.deps.itemRepo.save({ ...item, ...patch } as OrderItemEntity);
+    const projectedItem = { ...item, ...patch } as OrderItemEntity;
+    if (this.deps.itemRepo.saveLocal) {
+      await this.deps.itemRepo.saveLocal(projectedItem);
+    } else {
+      throw new FinancialInvariantViolation('Delivery requires a local-only item persistence boundary.');
+    }
 
     await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
 
