@@ -201,7 +201,7 @@ BEGIN
     -- ==========================================
     -- 4. BIN VERIFICATION / DEFERRED AUTHORIZATION
     -- ==========================================
-    v_bin := NULLIF(TRIM(COALESCE(p_payload->>'bin', p_payload->>'adminBin', '')), '');
+    v_bin := NULLIF(TRIM(COALESCE(p_payload->>'bin', '')), '');
 
     IF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND')
        OR (p_command_type = 'UPDATE_CUSTOMER'
