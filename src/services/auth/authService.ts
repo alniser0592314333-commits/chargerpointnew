@@ -387,30 +387,6 @@ class DefaultAuthService implements AuthService {
     };
 
     inMemorySession = session;
-    // In-memory session is the canonical runtime cache immediately after a
-    // successful login/bootstrap. Browsers normally also persist it, but test
-    // runtimes and privacy-restricted environments may not expose localStorage.
-    // If Supabase has just confirmed the same admin, do not lose the active
-    // session merely because the storage adapter is unavailable.
-    if (
-      inMemorySession &&
-      new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now() &&
-      serverProfile?.authenticated &&
-      serverProfile.is_admin
-    ) {
-      const session: UserSession = {
-        ...inMemorySession,
-        userId: serverProfile.admin_id || inMemorySession.userId,
-        email: serverProfile.email || inMemorySession.email,
-        fullName: serverProfile.full_name || serverProfile.username || inMemorySession.fullName,
-        role: (serverProfile.role as UserRole) || inMemorySession.role,
-        permissions: serverProfile.permissions || inMemorySession.permissions,
-        authUserId: serverProfile.auth_user_id || inMemorySession.authUserId,
-      };
-      inMemorySession = session;
-      return session;
-    }
-
     const storage = getLocalStorage();
     if (storage) {
       storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
