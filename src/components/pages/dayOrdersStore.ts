@@ -323,18 +323,6 @@ const hasPendingLocalMutationForRemoteEntity = (entityType: string, entityId: st
     const p = (item.payload || {}) as any;
     const aggregateType = String(item.aggregateType || '').toLowerCase();
     const aggregateId = String(item.aggregateId || '');
-    const ids = new Set<string>([
-      String(p.id || ''),
-      String(p.entityId || ''),
-      String(p.orderId || ''),
-      String(p.itemId || ''),
-      String(p.orderItemId || ''),
-      String(p.customerId || ''),
-      String(p.paymentId || ''),
-      String(p.dayId || ''),
-      aggregateId,
-    ].filter(Boolean));
-
     if (normalized === 'orders') {
       return (aggregateType === 'orders' || item.commandType === 'CREATE_ORDER' || item.commandType === 'UPDATE_ORDER' || item.commandType === 'CANCEL_ORDER')
         && (aggregateId === entityId || p.id === entityId || p.orderId === entityId);
