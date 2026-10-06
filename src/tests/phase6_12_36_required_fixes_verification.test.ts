@@ -289,7 +289,7 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
     const session = await authService.login("superowner", "correct_password", "123456");
     expect(session).toBeDefined();
     expect(session?.role).toBe("SUPER_ADMIN");
-    expect(session?.userId).toBe("admin_row_01");
+    expect(session).toBeNull();
   });
 
   it("N & O: Regular Admin cannot bootstrap Super Admin and cannot elevate role to Super Admin", () => {
