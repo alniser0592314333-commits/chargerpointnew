@@ -203,8 +203,6 @@ BEGIN
 
     IF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND')
        OR (p_command_type = 'UPDATE_CUSTOMER'
-           AND (p_payload ? 'authorizationState')
-           AND (p_payload ? 'bin')
            AND ((p_payload ? 'debtLimitMinor') OR (p_payload ? 'debt_limit_minor') OR (p_payload ? 'chargerFeeExempt') OR (p_payload ? 'charger_fee_exempt'))) THEN
         IF v_bin IS NULL THEN
             RAISE EXCEPTION 'Authorization required: BIN is required for %', p_command_type USING ERRCODE = 'P4004';
