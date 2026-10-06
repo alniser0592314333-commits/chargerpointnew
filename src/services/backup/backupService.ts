@@ -26,6 +26,10 @@ import { invokeSupabaseRestGet, invokeSupabaseRpc } from '../supabase/client';
 export const PORTABLE_BACKUP_FORMAT_IDENTIFIER = 'ORDER_SYSTEM_PORTABLE_BACKUP';
 export const PORTABLE_BACKUP_FORMAT_VERSION = 1;
 
+// Snapshot ordering must remain deterministic even when two snapshots are
+// created within the same millisecond (common in tests and fast UI clicks).
+let lastSnapshotCreatedAtMs = 0;
+
 export interface PortableBackupFile {
   formatIdentifier: typeof PORTABLE_BACKUP_FORMAT_IDENTIFIER;
   formatVersion: number;
@@ -810,8 +814,10 @@ export class BackupService {
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
     const checksum = computeSnapshotChecksum(sanitizedData);
-    const now = new Date();
-    const snapshotId = `snap_${now.getTime()}_${Math.random().toString(36).substring(2, 9)}`;
+    const nowMs = Math.max(Date.now(), lastSnapshotCreatedAtMs + 1);
+    lastSnapshotCreatedAtMs = nowMs;
+    const now = new Date(nowMs);
+    const snapshotId = `snap_${nowMs}_${Math.random().toString(36).substring(2, 9)}`;
     const snapshotName =
       options?.name ||
       `${now.toISOString().replace('T', ' ').slice(0, 19)} (${sourceType.toLowerCase()})`;
