@@ -18,7 +18,7 @@ import {
   GoalRequestEntity,
   OrderNumberReservationEntity
 } from '../domain/models';
-import { OptimisticOverlayRecord } from '../infrastructure/localDb/localDb';
+import { localDb, OptimisticOverlayRecord } from '../infrastructure/localDb/localDb';
 import { 
   calculateItemPrice, 
   validateOrderTransition, 
