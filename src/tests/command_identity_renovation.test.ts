@@ -75,6 +75,10 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
 
     const dayId = '22222222-2222-4222-8222-222222222229';
     const customerId = '33333333-3333-4333-8333-333333331234';
+    await localDb.set('businessDays', dayId, {
+      id: dayId, date: '2029-09-29', status: 'OPEN',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
+    });
     await localDb.set('customers', customerId, {
       id: customerId, name: 'Test Customer', phone: '123', isActive: true, debtLimitMinor: -10000, chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
