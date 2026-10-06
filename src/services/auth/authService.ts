@@ -801,7 +801,17 @@ class DefaultAuthService implements AuthService {
        * cached permissions/identity.
        */
       const supabaseSession = await this.getSupabaseAuthSession();
-      void supabaseSession;
+      // A verified in-memory session is trusted runtime state, not a
+      // user-editable localStorage credential. Preserve it during a temporary
+      // Supabase outage; explicit logout clears it.
+      if (
+        !forceRefresh &&
+        !supabaseSession?.access_token &&
+        inMemorySession &&
+        new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now()
+      ) {
+        return inMemorySession;
+      }
     }
 
     // Never short-circuit from the in-memory app session while Supabase is configured.
