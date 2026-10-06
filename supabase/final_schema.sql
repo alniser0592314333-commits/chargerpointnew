@@ -964,7 +964,7 @@ end $;
 
 do $ begin
  if not exists(select 1 from pg_type where typname='public_customer_qr_result') then
-  create type public_customer_qr_result as (customer_name text, customer_code text);
+  create type public.public_customer_qr_result as (customer_name text, customer_code text);
  end if;
 end $;
 
@@ -1004,6 +1004,28 @@ begin
     execute format('create policy authenticated_read on public.%I for select to authenticated using (true)',t);
   end loop;
 end $$;
+
+alter table public.admin_audit_logs enable row level security;
+drop policy if exists admin_audit_read on public.admin_audit_logs;
+create policy admin_audit_read on public.admin_audit_logs for select to authenticated
+using (
+  exists (
+    select 1 from public.admins a
+    where a.id=public.current_admin_id()
+      and (a.role='SUPER_ADMIN' or 'admin:manage'=any(a.permissions))
+  )
+);
+
+alter table public.admin_custom_permissions enable row level security;
+drop policy if exists admin_custom_permissions_read on public.admin_custom_permissions;
+create policy admin_custom_permissions_read on public.admin_custom_permissions for select to authenticated
+using (
+  exists (
+    select 1 from public.admins a
+    where a.id=public.current_admin_id()
+      and (a.role='SUPER_ADMIN' or 'admin:manage'=any(a.permissions))
+  )
+);
 
 -- Direct client INSERT/UPDATE/DELETE policies are deliberately absent.
 -- SECURITY DEFINER RPCs own all canonical writes.
