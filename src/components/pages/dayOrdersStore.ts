@@ -4288,9 +4288,15 @@ export const topUpCustomerBalance = async (
   const isUUID = (str?: string): boolean =>
     Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str));
 
-  const commandId =
-    idempotencyKey ||
-    crypto.randomUUID();
+  if (idempotencyKey && !isUUID(idempotencyKey)) {
+    return {
+      success: false,
+      newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id),
+      error: 'Invalid idempotency key: expected UUID',
+    };
+  }
+
+  const commandId = idempotencyKey || crypto.randomUUID();
   const { actorAdminId } = getAuthenticatedIdentity();
 
   // Idempotency check: if already processed, return previous transaction result
