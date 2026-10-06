@@ -1723,6 +1723,7 @@ export class FinalUseCases {
         createdAt,
         bin,
         note: note || 'Customer credit',
+        idempotencyKey: txId,
       });
     });
 
