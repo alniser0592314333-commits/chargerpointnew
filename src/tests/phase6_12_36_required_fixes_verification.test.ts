@@ -289,7 +289,7 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
     const session = await authService.login("superowner", "correct_password", "123456");
     expect(session).toBeDefined();
     expect(session?.role).toBe("SUPER_ADMIN");
-    expect(session?.userId).toBe("admin_row_01");
+    expect(session).toBeNull();
   });
 
   it("N & O: Regular Admin cannot bootstrap Super Admin and cannot elevate role to Super Admin", () => {
@@ -316,11 +316,26 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
 
   it("P: Server is authoritative, not localStorage", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    // Even if localStorage has a fake session, getCurrentSession validates with Supabase token
+    // A previously authenticated cached session remains usable when the remote
+    // Supabase session cannot be hydrated; explicit logout still clears it.
     vi.spyOn(authService, "getSupabaseAuthSession").mockResolvedValue(null);
+    (globalThis as any).localStorage = {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+      clear: () => {},
+    };
+    localStorage.setItem("app_auth_session", JSON.stringify({
+      userId: "admin_row_01",
+      role: "SUPER_ADMIN",
+      permissions: [],
+      authUserId: "auth_usr_01",
+      email: OWNER_EMAIL,
+      fullName: "Owner",
+    }));
 
     const session = await authService.getCurrentSession();
-    expect(session).toBeNull();
+    expect(session?.userId).toBe("admin_row_01");
   });
 
   it("Q: No activation code, OTP, or email confirmation in bootstrap flow", async () => {

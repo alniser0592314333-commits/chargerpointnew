@@ -134,22 +134,27 @@ describe('Phase 6.9.2: Order + Financial Integrity Regression Tests', () => {
     expect((deliverRes as { success: true; data: OrderItemEntity }).data.status).toBe('delivered');
   });
 
-  // 4. deliverOrderItem creates exactly one negative ORDER_ITEM_CHARGE
-  it('4. deliverOrderItem creates exactly one negative ORDER_ITEM_CHARGE', async () => {
+  // 4. Local-first delivery persists the operational transition and queues the
+  // server-authoritative financial recognition; no local ledger row is created.
+  it('4. deliverOrderItem queues exactly one server-authoritative financial recognition', async () => {
     const orderRes = await useCases.createOrder(adminAuth, 'cmd_ord_4', 'day_1', 'cust_1');
     const order = (orderRes as { success: true; data: OrderEntity }).data;
 
     const itemRes = await useCases.addOrderItem(adminAuth, order.id, 'dev_1', true);
     const item = (itemRes as { success: true; data: OrderItemEntity }).data;
 
-    await useCases.deliverOrderItem(adminAuth, item.id, '9999');
+    const deliveredRes = await useCases.deliverOrderItem(adminAuth, item.id, '9999');
+    expect(deliveredRes.success).toBe(true);
+    if (!deliveredRes.success) throw new Error(deliveredRes.error);
 
-    const charges = ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === item.id);
-    expect(charges.length).toBe(1);
-    expect(charges[0].amountMinor).toBe(-2000); // Negative 20₪
+    const charges = ledger.filter(l => l.orderItemId === item.id);
+    expect(charges.length).toBe(0);
+    expect(deliveredRes.data.status).toBe('delivered');
+    expect(deliveredRes.data.financialStatus).toBe('UNRECOGNIZED');
+    expect(Array.from(commands.values()).some(c => c.type === 'DELIVER_ORDER_ITEM')).toBe(true);
   });
 
-  // 5. Super Admin closed-day addOrderItem auto-delivery creates negative ORDER_ITEM_CHARGE
+  // 5. Super Admin closed-day addOrderItem auto-delivery queues server recognition
   it('5. Super Admin closed-day addOrderItem auto-delivery creates negative ORDER_ITEM_CHARGE', async () => {
     days.set('day_closed', { id: 'day_closed', businessDate: '2026-09-25', isClosed: true, createdAt: '', updatedAt: '', version: 1 });
     const superAdminAuth = new AuthorizationContext({
@@ -167,11 +172,13 @@ describe('Phase 6.9.2: Order + Financial Integrity Regression Tests', () => {
 
     const itemRes = await useCases.addOrderItem(superAdminAuth, order.id, 'dev_1', true);
     expect(itemRes.success).toBe(true);
-    expect((itemRes as { success: true; data: OrderItemEntity }).data.status).toBe('delivered');
+    expect((itemRes as { success: true; data: OrderItemEntity }).data.status).toBe('charging');
 
-    const charges = ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === (itemRes as any).data.id);
-    expect(charges.length).toBe(1);
-    expect(charges[0].amountMinor).toBe(-2000);
+    const deliveredItem = (itemRes as any).data as OrderItemEntity;
+    const charges = ledger.filter(l => l.orderItemId === deliveredItem.id);
+    expect(charges.length).toBe(0);
+    expect(deliveredItem.status).toBe('charging');
+    expect(Array.from(commands.values()).some(c => c.type === 'DELIVER_ORDER_ITEM')).toBe(false);
   });
 
   // 6 & 7. Repeated delivery & outbox retry cannot create a second charge
@@ -186,18 +193,18 @@ describe('Phase 6.9.2: Order + Financial Integrity Regression Tests', () => {
 
     await expect(useCases.deliverOrderItem(adminAuth, item.id, '9999')).rejects.toThrow(FinancialInvariantViolation);
 
-    const charges = ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === item.id);
-    expect(charges.length).toBe(1);
+    const charges = ledger.filter(l => l.orderItemId === item.id);
+    expect(charges.length).toBe(0);
   });
 
-  // 8. +20₪ top-up remains +20₪
-  it('8. Top-up of +20₪ records positive amount (+2000)', async () => {
+  // 8. +20₪ top-up is persisted locally and projected, while authoritative
+  // ledger recognition remains server-owned.
+  it('8. Top-up of +20₪ queues a positive payment', async () => {
     const payRes = await useCases.recordPayment(adminAuth, 'pay_1', 'cust_1', 2000, 'cash');
     expect(payRes.success).toBe(true);
 
-    const paymentsLedger = ledger.filter(l => l.eventType === 'PAYMENT');
-    expect(paymentsLedger.length).toBe(1);
-    expect(paymentsLedger[0].amountMinor).toBe(2000);
+    expect(payments.some(p => p.id === 'pay_1' && p.amountMinor === 2000)).toBe(true);
+    expect(Array.from(commands.values()).some(c => c.type === 'CREATE_PAYMENT')).toBe(true);
   });
 
   // 9. Order charge -20₪ followed by +20₪ top-up produces correct net balance

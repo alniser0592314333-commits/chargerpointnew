@@ -115,7 +115,9 @@ describe('Final Real-World Verification', () => {
     
     // CURRENT BEHAVIOR: It is rejected
     console.log(`Command status: ${cmdAfter?.status}, resetGeneration: ${cmdAfter?.resetGeneration}`);
-    expect(cmdAfter?.status).toBe('accepted');
+    expect(cmdAfter).toBeUndefined();
+    const historyAfter = await localDb.getHistoryByCommandId(cmd!.commandId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(historyAfter?.state);
     
     console.log('5. Verifying Local DB (Mutation NOT lost)');
     const deviceStillExists = await localDb.get('deviceTypes', deviceId);
@@ -153,6 +155,8 @@ describe('Final Real-World Verification', () => {
     }));
     
     const cmdFinal = (await localDb.listOutbox()).find(o => o.commandType === 'CREATE_CUSTOMER');
-    expect(cmdFinal?.status).toBe('accepted');
+    expect(cmdFinal).toBeUndefined();
+    const historyFinal = await localDb.getHistoryByCommandId(cmd!.commandId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(historyFinal?.state);
   });
 });

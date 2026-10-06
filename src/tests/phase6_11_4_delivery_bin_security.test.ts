@@ -259,19 +259,17 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
     expect(itemAfter?.status).toBe('delivered');
     expect(itemAfter?.deliveredAt).toBeDefined();
 
-    // Exactly one ORDER_ITEM_CHARGE
-    const charges = ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === item.id);
-    expect(charges.length).toBe(1);
-    expect(charges[0].amountMinor).toBe(-3000); // Negative
-    expect(charges[0].customerId).toBe('cust_1');
+    // Financial recognition is server-authoritative; local delivery creates no ledger row.
+    const charges = ledger.filter(l => l.orderItemId === item.id);
+    expect(charges.length).toBe(0);
+    expect(itemAfter?.financialStatus).toBe('UNRECOGNIZED');
 
-    // Retry must throw FinancialInvariantViolation and create NO duplicate charge
+    // A second local delivery is rejected by the operational state guard and cannot
+    // create a second command/financial mutation.
     await expect(
       useCases.deliverOrderItem(auth, item.id, TEST_BIN)
     ).rejects.toThrow(FinancialInvariantViolation);
-
-    const chargesAfterRetry = ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === item.id);
-    expect(chargesAfterRetry.length).toBe(1);
+    expect(ledger.filter(l => l.orderItemId === item.id).length).toBe(0);
   });
 
   // E. Existing cancelOrder behavior remains unchanged
@@ -295,7 +293,7 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     // First deliver the item
     await useCases.deliverOrderItem(auth, item.id, TEST_BIN);
-    expect(ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE').length).toBe(1);
+    expect(ledger.filter(l => l.orderItemId === item.id).length).toBe(0);
 
     // Wrong BIN fails cancelOrder
     await expect(
@@ -309,10 +307,9 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
     const orderAfter = orders.get(order.id);
     expect(orderAfter?.status).toBe('cancelled');
 
-    // Reversal logged
+    // Cancellation before server recognition has no local financial reversal.
     const reversals = ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId === item.id);
-    expect(reversals.length).toBe(1);
-    expect(reversals[0].amountMinor).toBe(3000); // Reversal of -3000
+    expect(reversals.length).toBe(0);
   });
 
   // F. Existing cancelOrderItem behavior remains unchanged

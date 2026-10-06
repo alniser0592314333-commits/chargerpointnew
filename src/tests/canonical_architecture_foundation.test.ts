@@ -386,7 +386,7 @@ describe('Canonical Architecture Foundation (Phase 1)', () => {
       });
 
       // Inject a failure when applying sequence 3 locally
-      engine.onDeltaApplied = async (change) => {
+      engine.onDeltaApplied = (change) => {
         if (change.sequenceId === 3) {
           throw new Error('Local disk write error on sequence 3');
         }

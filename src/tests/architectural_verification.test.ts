@@ -70,8 +70,9 @@ describe('Architectural Verification: Restore & Reset Generation', () => {
     await useCases.createCustomer(adminAuth, 'Test', '123', 0, false, customerId);
     await syncEngine.synchronize();
     const cmd = (await localDb.listOutbox()).find(o => o.commandType === 'CREATE_CUSTOMER');
-    expect(cmd?.status).toBe('accepted');
-    expect(cmd?.resetGeneration).toBe(9);
+    expect(cmd).toBeUndefined();
+    const history = await localDb.getHistoryByCommandId(customerId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(history?.state);
   });
 
   test('Verification Scenario 2: Device Type Reorder', async () => {
@@ -102,7 +103,8 @@ describe('Architectural Verification: Restore & Reset Generation', () => {
     await useCases.createCustomer(adminAuth, 'New', '123', 5, false, customerId);
     jest.spyOn(transport, 'pushCommand').mockResolvedValue({ success: true });
     await syncEngine.synchronize();
-    expect((await localDb.listOutbox())[0].status).toBe('accepted');
+    const active = await localDb.listOutbox();
+    expect(active).toHaveLength(0);
   });
 
   test('Verification Scenario 5: Command ID consistency', async () => {
@@ -111,9 +113,10 @@ describe('Architectural Verification: Restore & Reset Generation', () => {
     await useCases.createCustomer(adminAuth, 'Test', '123', 0, false, cmdId);
     jest.spyOn(transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 0, serverResetGeneration: 9 });
     await syncEngine.synchronize();
-    const cmd = (await localDb.listOutbox())[0];
-    expect(cmd.commandId).toBe(cmdId);
-    expect(cmd.status).toBe('accepted');
+    const cmd = (await localDb.listOutbox()).find(o => o.commandId === cmdId);
+    expect(cmd).toBeUndefined();
+    const history = await localDb.getHistoryByCommandId(cmdId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(history?.state);
   });
 
   test('Verification Scenario 6: Stale command rejection', async () => {

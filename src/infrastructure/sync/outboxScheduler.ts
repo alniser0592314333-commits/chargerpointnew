@@ -90,14 +90,12 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
         }
       }
       if (!matchedInActiveOutbox) {
-        if (
-          item.dependencyCommandId === candidateId ||
-          item.dependencyCommandIds?.includes(candidateId as string) ||
-          item.dependencies?.includes(candidateId as string) ||
-          (item.payload && (item.payload as any).dependencyCommandId === candidateId)
-        ) {
-          deps.add(candidateId as string);
-        }
+        // Keep the entity ID as a dependency even when its command is no longer
+        // in the active outbox. The scheduler must then consult syncHistory by
+        // commandId/entityId: FAILED/BLOCKED prerequisites stay blocked, while
+        // SUCCESS history satisfies the dependency. Falling through here would
+        // allow a dependent command to reach the server after a failed create.
+        deps.add(candidateId as string);
       }
     };
 

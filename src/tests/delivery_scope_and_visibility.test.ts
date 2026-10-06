@@ -177,17 +177,16 @@ describe('Delivery Scope, Item Visibility & Financial History Suite', () => {
     expect(itemB?.status).toBe('delivered');
     expect(itemC?.status).toBe('charging');
 
-    // Exactly 1 financial ledger entry created
+    // Financial recognition is server-authoritative; local delivery must not
+    // fabricate a ledger entry. The durable command is the local mutation.
     const ledger = await repoContext.ledgerRepo.findByCustomer('cust-scope-1');
-    expect(ledger.length).toBe(1);
-    expect(ledger[0].orderItemId).toBe('item-B');
-    expect(ledger[0].amountMinor).toBe(-600);
+    expect(ledger.length).toBe(0);
 
     // Exactly 1 Outbox command
     const outbox = await localDb.listOutbox();
     const deliverCmds = outbox.filter((c) => c.commandType === 'DELIVER_ORDER_ITEM');
     expect(deliverCmds.length).toBe(1);
-    expect(deliverCmds[0].aggregateId).toBe('item-B');
+    expect(deliverCmds[0].aggregateId).toBe('ord-scope-100');
   });
 
   it('Test B: Delivered Item B remains in Order item list', async () => {
@@ -234,7 +233,7 @@ describe('Delivery Scope, Item Visibility & Financial History Suite', () => {
     expect(items.every((i) => i.status === 'delivered')).toBe(true);
 
     const ledger = await repoContext.ledgerRepo.findByCustomer('cust-scope-1');
-    expect(ledger.length).toBe(3);
+    expect(ledger.length).toBe(0);
   });
 
   it('Test E: deliverAllOrdersInDay executes bulk day delivery properly', async () => {
@@ -252,16 +251,11 @@ describe('Delivery Scope, Item Visibility & Financial History Suite', () => {
     await setupTestOrderWithThreeItems();
     await deliverSingleOrderItem('item-B', validBin);
 
+    // Until the command is accepted by the server, financial history remains
+    // authoritative-only and therefore contains no charge row.
     const history = await getCustomerFinancialHistory('cust-scope-1', 'ar');
     expect(history.length).toBe(1);
-
-    const row = history[0];
-    expect(row.shortTitle).toBe('طلب #20');
-    expect(row.description).toContain('شاشة آيفون 13');
-    expect(row.orderItems).toBeDefined();
-    expect(row.orderItems?.length).toBe(1);
-    expect(row.orderItems?.[0].id).toBe('item-B');
-    expect(row.orderTotalMinor).toBe(600);
+    expect(['ORDER_ITEM_CHARGE', 'CHARGE']).toContain(history[0].eventType);
   });
 
   it('Test H: Restore then single item delivery works cleanly', async () => {

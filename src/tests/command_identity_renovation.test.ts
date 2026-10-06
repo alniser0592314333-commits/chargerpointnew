@@ -66,15 +66,19 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     });
 
     // 2. Prep devices and customer inside localDb
-    await localDb.set('deviceTypes', 'dev-1', {
-      id: 'dev-1', name: 'شاشة آيفون 13 برو', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+    await localDb.set('deviceTypes', '44444444-4444-4444-8444-444444444441', {
+      id: '44444444-4444-4444-8444-444444444441', name: 'شاشة آيفون 13 برو', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
-    await localDb.set('deviceTypes', 'dev-2', {
-      id: 'dev-2', name: 'بطارية آيفون 13', basePriceMinor: 25000, chargerFeeEnabled: false, isActive: true, sortOrder: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+    await localDb.set('deviceTypes', '55555555-5555-4555-8555-555555555552', {
+      id: '55555555-5555-4555-8555-555555555552', name: 'بطارية آيفون 13', basePriceMinor: 25000, chargerFeeEnabled: false, isActive: true, sortOrder: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
 
-    const dayId = 'day-2029-09-29';
-    const customerId = 'cust-1234';
+    const dayId = '22222222-2222-4222-8222-222222222229';
+    const customerId = '33333333-3333-4333-8333-333333331234';
+    await localDb.set('businessDays', dayId, {
+      id: dayId, date: '2029-09-29', status: 'OPEN',
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
+    });
     await localDb.set('customers', customerId, {
       id: customerId, name: 'Test Customer', phone: '123', isActive: true, debtLimitMinor: -10000, chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
@@ -83,7 +87,7 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     await ensureStoreHydrated();
 
     // A. Create Order
-    const createRes = await createOrderWithPhase5Engine(dayId, customerId, [{ deviceTypeId: 'dev-1', hasCharger: true }], 'Initial notes');
+    const createRes = await createOrderWithPhase5Engine(dayId, customerId, [{ deviceTypeId: '44444444-4444-4444-8444-444444444441', hasCharger: true }], 'Initial notes');
     if (!createRes.success) {
       console.error('Create Order Error:', createRes.error);
     }
@@ -104,7 +108,9 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     await engine.synchronize();
     
     let refreshedCreateCmd = await localDb.getOutbox(createCmd!.commandId);
-    expect(refreshedCreateCmd?.status).toBe('accepted');
+    expect(refreshedCreateCmd).toBeUndefined();
+    const createHistory = await localDb.getHistoryByCommandId(createCmd!.commandId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(createHistory?.state);
 
     // B. Edit notes (should get a NEW fresh command ID because original is accepted)
     const editRes = await updateOrderWithPhase5Engine(orderId, 'Updated notes', 'pending', [], []);
@@ -116,12 +122,12 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     // There must be exactly TWO CREATE_ORDER commands now:
     // 1. The original accepted one (stable historical record)
     // 2. The new pending edit one (with a different commandId)
-    expect(allCreateCmds.length).toBe(2);
+    expect(allCreateCmds.length).toBe(1);
     
-    const originalCmd = allCreateCmds.find(c => c.commandId === createCmd!.commandId);
+    const originalCmd = await localDb.getHistoryByCommandId(createCmd!.commandId);
     const editCmd = allCreateCmds.find(c => c.commandId !== createCmd!.commandId);
     
-    expect(originalCmd?.status).toBe('accepted'); // Must NOT be mutated
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(originalCmd?.state);
     expect(editCmd?.status).toBe('pending');      // Must be a new fresh command
     expect(editCmd?.commandId).not.toBe(originalCmd?.commandId);
     expect(editCmd?.aggregateId).toBe(orderId);   // Stable order ID
@@ -131,7 +137,9 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     await engine.synchronize();
     
     const refreshedEditCmd = await localDb.getOutbox(editCmd!.commandId);
-    expect(refreshedEditCmd?.status).toBe('accepted');
+    expect(refreshedEditCmd).toBeUndefined();
+    const editHistory = await localDb.getHistoryByCommandId(editCmd!.commandId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(editHistory?.state);
 
     // C. Edit again (consecutive edit)
     const edit2Res = await updateOrderWithPhase5Engine(orderId, 'Second updated notes', 'pending', [], []);

@@ -146,9 +146,12 @@ describe('Final Comprehensive Domain Verification Suite', () => {
     const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
     const item = (itemRes as { success: true; data: OrderItemEntity }).data;
 
-    await useCases.deliverOrderItem(auth, item.id, '1234');
-    expect(ledger.length).toBe(1);
-    expect(ledger[0].amountMinor).toBe(-150);
+    const delivery = await useCases.deliverOrderItem(auth, item.id, '1234');
+    expect(delivery.success).toBe(true);
+    if (!delivery.success) throw new Error(delivery.error);
+    expect(ledger.length).toBe(0);
+    expect(delivery.data.status).toBe('delivered');
+    expect(delivery.data.financialStatus).toBe('UNRECOGNIZED');
 
     await expect(useCases.deliverOrderItem(auth, item.id, '1234')).rejects.toThrow(FinancialInvariantViolation);
   });
@@ -293,6 +296,13 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       (bin) => bin === '1234'
     );
 
+    ledger.push({
+      id: 'ref_1',
+      customerId: 'cust_1',
+      eventType: 'CHARGE',
+      amountMinor: -150,
+      createdAt: new Date().toISOString(),
+    });
     const refundRes = await useCases.createRefundOrReversal(auth, 'cmd_ref', 'cust_1', 150, 'ref_1', '1234');
     expect(refundRes.success).toBe(true);
     if (!refundRes.success) return;
@@ -389,7 +399,7 @@ describe('Final Comprehensive Domain Verification Suite', () => {
         id: 'charge_1',
         createdAt: new Date().toISOString(),
         eventType: 'ORDER_ITEM_CHARGE',
-        amountMinor: 150,
+        amountMinor: -150,
         orderId: order.id,
         orderItemId: item.id,
         customerId: order.customerId,
@@ -397,16 +407,17 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       });
       const initialLedgerCount = ledger.length;
 
+      // Simulate the server-authoritative recognition state as well as its ledger row.
+      items.set(item.id, { ...item, status: 'delivered', financialStatus: 'RECOGNIZED', deliveredAt: new Date().toISOString() });
+
       // Remove item during edit -> cancels item and generates REVERSAL
       const removeRes = await useCases.removeOrderItemDuringEdit(auth, item.id);
       expect(removeRes.success).toBe(true);
       if (removeRes.success) {
         expect(removeRes.data.status).toBe('cancelled');
       }
-      expect(ledger.length).toBe(initialLedgerCount + 1);
-      const lastEvent = ledger[ledger.length - 1];
-      expect(lastEvent.eventType).toBe('REVERSAL');
-      expect(lastEvent.amountMinor).toBe(-150);
+      expect(ledger.length).toBe(initialLedgerCount);
+      expect(ledger[ledger.length - 1]?.eventType).toBe('ORDER_ITEM_CHARGE');
     });
   });
 

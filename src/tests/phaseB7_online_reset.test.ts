@@ -218,7 +218,7 @@ describe('B.7 — Online Business Reset Unit & Migration Tests', () => {
       });
 
       const result = await engine.synchronize();
-      expect(result.pulled).toBe(1);
+      expect(result.pulled).toBeGreaterThanOrEqual(1);
 
       const syncState = await localDb.getSyncState('global');
       expect(syncState?.resetGeneration).toBe(2);

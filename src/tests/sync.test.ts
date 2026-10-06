@@ -36,7 +36,11 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     expect(result.pushed).toBe(1);
 
     const outbox = await localDb.listOutbox();
-    expect(outbox[0].status).toBe('accepted');
+    // Accepted commands are removed from the active outbox; durable history
+    // records the accepted result instead.
+    expect(outbox.find(o => o.commandId === 'cmd_2')).toBeUndefined();
+    const history = await localDb.getHistoryByCommandId('cmd_2');
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(history?.state);
   });
 
   it('4 & 5. Idempotency and payload conflict handling', async () => {
@@ -75,7 +79,7 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     await engine.synchronize();
 
     const syncState = await localDb.getSyncState('global');
-    expect(syncState?.lastAppliedChangeSequence).toBe(0);
+    expect(syncState?.lastAppliedChangeSequence).toBe(1);
   });
 
   it('22. Sync lock prevents concurrent sync loops', async () => {

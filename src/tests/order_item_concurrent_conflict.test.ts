@@ -37,10 +37,10 @@ class AuthoritativeConcurrentServerTransport implements ServerSyncTransport {
 
   constructor() {
     // Initial seeded Order Item state: version = 5, status = 'charging'
-    this.serverItems.set('item-555', {
-      id: 'item-555',
-      orderId: 'ord-100',
-      deviceTypeId: 'dev-1',
+    this.serverItems.set('11111111-1111-4111-8111-111111111111', {
+      id: '11111111-1111-4111-8111-111111111111',
+      orderId: '22222222-2222-4222-8222-222222222222',
+      deviceTypeId: '33333333-3333-4333-8333-333333333333',
       status: 'charging',
       totalPriceMinor: 3500,
       version: 5,
@@ -53,7 +53,7 @@ class AuthoritativeConcurrentServerTransport implements ServerSyncTransport {
       return this.processedCommands.get(req.commandId)!;
     }
 
-    const item = this.serverItems.get(req.payload && (req.payload as any).orderItemId ? (req.payload as any).orderItemId : 'item-555');
+    const item = this.serverItems.get(req.payload && (req.payload as any).orderItemId ? (req.payload as any).orderItemId : '11111111-1111-4111-8111-111111111111');
     if (!item) {
       const resp: SyncCommandResponse = {
         success: false,
@@ -91,7 +91,7 @@ class AuthoritativeConcurrentServerTransport implements ServerSyncTransport {
         amountMinor: -item.totalPriceMinor,
         orderId: item.orderId,
         orderItemId: item.id,
-        customerId: 'cust-1',
+        customerId: '44444444-4444-4444-8444-444444444444',
         createdAt: item.updatedAt,
       });
 
@@ -168,10 +168,10 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
   });
 
   it('Scenario 1: DELIVER wins, CANCEL conflicts and is rejected without financial pollution', async () => {
-    const targetItemId = 'item-555';
+    const targetItemId = '11111111-1111-4111-8111-111111111111';
     const initialExpectedVersion = 5;
 
-    const cmdDeliverId = 'cmd-devA-deliver-01';
+    const cmdDeliverId = '55555555-5555-4555-8555-555555555501';
     await engineA.queueCommand(
       cmdDeliverId,
       'DELIVER_ORDER_ITEM',
@@ -183,7 +183,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       initialExpectedVersion
     );
 
-    const cmdCancelId = 'cmd-devB-cancel-02';
+    const cmdCancelId = '66666666-6666-4666-8666-666666666602';
     await engineB.queueCommand(
       cmdCancelId,
       'CANCEL_ORDER_ITEM',
@@ -230,7 +230,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
   });
 
   it('Scenario 2: CANCEL wins, DELIVER conflicts and is rejected without duplicate recognition', async () => {
-    const targetItemId = 'item-555';
+    const targetItemId = '11111111-1111-4111-8111-111111111111';
     const initialExpectedVersion = 5;
 
     const cmdCancelId = 'cmd-devB-cancel-win';

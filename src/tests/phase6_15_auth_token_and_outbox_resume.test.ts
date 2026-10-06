@@ -159,8 +159,10 @@ describe('Phase 6.15: Auth Token Resolution & Outbox Resume Security Suite', () 
       expect(syncResult.pushed).toBe(1);
 
       const outboxAfterSuccess = await localDb.listOutbox();
-      expect(outboxAfterSuccess[0].status).toBe('accepted');
-      expect(outboxAfterSuccess[0].lastError).toBeUndefined();
+      expect(outboxAfterSuccess.find(i => i.commandId === 'cmd-unauth-1')).toBeUndefined();
+      const history = await localDb.getHistoryByCommandId('cmd-unauth-1');
+      expect(['SUCCESS', 'SUCCEEDED']).toContain(history?.state);
+      expect(history?.errorMessage).toBeUndefined();
     });
 
     it('2. resumePendingOutbox resets stuck syncing/conflict/auth-rejected items to pending', async () => {

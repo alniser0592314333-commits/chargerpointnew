@@ -428,14 +428,23 @@ describe('Phase 6.12.2: First Real Super Admin Bootstrap Architecture Tests', ()
 
     try {
       // Trying to log in with test account when Supabase is configured will attempt real Supabase sign-in and fail
-      const session = await authService.login(
-        SUPER_ADMIN_TEST_ACCOUNT.email,
-        SUPER_ADMIN_TEST_ACCOUNT.pin,
-        SUPER_ADMIN_TEST_ACCOUNT.bin
-      );
+      let session = null;
+      let loginError: unknown = null;
+      try {
+        session = await authService.login(
+          SUPER_ADMIN_TEST_ACCOUNT.email,
+          SUPER_ADMIN_TEST_ACCOUNT.pin,
+          SUPER_ADMIN_TEST_ACCOUNT.bin
+        );
+      } catch (err) {
+        loginError = err;
+      }
 
-      // Must be null because Supabase endpoint fails without real backend / credentials
+      // No local test credential fallback is allowed when configured. Either the
+      // configured endpoint rejects the request or the isolated CI endpoint is
+      // unreachable; neither path may manufacture a local session.
       expect(session).toBeNull();
+      expect(loginError === null || loginError instanceof Error).toBe(true);
     } finally {
       (authService as any).isSupabaseConfigured = originalIsConfigured;
     }

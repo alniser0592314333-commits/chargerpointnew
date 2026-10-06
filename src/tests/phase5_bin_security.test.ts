@@ -259,7 +259,7 @@ describe('Phase 5 Security: Admin BIN Verification & Authorization Boundary Test
     const initialHist = await getCustomerFinancialHistory('cust-2', 'ar');
     const initialHistCount = initialHist.length;
 
-    const key = 'idem_key_topup_123';
+    const key = crypto.randomUUID();
     const res1 = await topUpCustomerBalance({
       customerId: 'cust-2',
       amountMinor: 2000,

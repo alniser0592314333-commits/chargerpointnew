@@ -141,7 +141,7 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
 
     expect(addNewCustomerBody).not.toContain('cust-${Date.now()}');
     expect(addNewCustomerBody).not.toContain('cust-');
-    expect(addNewCustomerBody).toContain('crypto.randomUUID()');
+    expect(addNewCustomerBody).toContain('phase5UseCases.createCustomer(');
 
     const useCasesPath = path.resolve(process.cwd(), 'src/application/useCases.ts');
     const useCasesContent = fs.readFileSync(useCasesPath, 'utf8');
@@ -149,12 +149,19 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
     expect(createCustomerMatch).not.toBeNull();
     const createCustomerBody = createCustomerMatch![0];
     expect(createCustomerBody).not.toContain('`cust_${Date.now()}_');
+    expect(createCustomerBody).toContain('crypto.randomUUID()');
   });
 
   // TEST H: applyRemoteChange does not duplicate customer when server ID matches local ID
   it('TEST H: applyRemoteChange cleanly overwrites same UUID entity without duplication', async () => {
     const cust = await addNewCustomer('عميل المزامنة التام', '0599000777');
     expect(cust.id).toMatch(UUID_REGEX);
+
+    // The local CREATE_CUSTOMER command is still pending at this point. A real
+    // pull must not overwrite pending local intent, so mark it authoritative
+    // before testing same-UUID remote reconciliation.
+    await localDb.removeOverlay(cust.id);
+    await localDb.deleteOutbox(cust.id);
 
     // Simulate remote pull delivering the exact same UUID from change_log
     await applyRemoteChange({
