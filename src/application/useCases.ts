@@ -978,7 +978,7 @@ export class FinalUseCases {
     if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
     await this.deps.transactionManager.runInTransaction((ctx)=>{
       ctx.itemRepo.save(updatedItem);
-      if (item.financialStatus === 'RECOGNIZED' || item.status === 'delivered') {
+      if (priorCharge || item.financialStatus === 'RECOGNIZED' || item.status === 'delivered') {
         ctx.ledgerRepo.append({
           id: crypto.randomUUID(),
           eventType: 'REVERSAL',
