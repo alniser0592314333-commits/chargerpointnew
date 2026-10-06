@@ -68,8 +68,12 @@ export default defineConfig(() => {
     define: {
       // Tests and local builds must never silently target an unrelated Supabase project.
       // Production/CI must provide these explicitly through VITE_SUPABASE_* environment variables.
-      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL || ''),
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || ''),
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(
+        process.env.VITE_SUPABASE_URL || (process.env.NODE_ENV === 'test' ? 'https://test.invalid' : '')
+      ),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
+        process.env.VITE_SUPABASE_ANON_KEY || (process.env.NODE_ENV === 'test' ? 'test-anon-key' : '')
+      ),
     },
     test: {
       setupFiles: ['./src/tests/vitest.setup.ts'],
