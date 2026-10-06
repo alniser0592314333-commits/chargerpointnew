@@ -4900,11 +4900,18 @@ const commandId = idempotencyKey
   // Idempotency check: if already processed, return previous transaction result
   if (idempotencyKey) {
     const existingCmd = await repoContext.commandRepo.get(commandId);
-    if (existingCmd) {
+    const existingOutbox = existingCmd
+      ? null
+      : (await localDb.listOutbox()).find((row) => row.commandId === commandId || (row.payload as any)?.idempotencyKey === commandId);
+    const existingHistory = existingCmd || existingOutbox
+      ? null
+      : await localDb.getHistoryByCommandId(commandId);
+    const existingRecord = existingCmd || existingOutbox || existingHistory;
+    if (existingRecord) {
       const custBalance = await repoContext.customerRepo.getBalance(cust.id);
       return {
         success: true,
-        transactionId: (existingCmd.payload as any)?.transactionId || commandId,
+        transactionId: (existingRecord.payload as any)?.transactionId || commandId,
         newBalanceMinor: custBalance,
       };
     }
