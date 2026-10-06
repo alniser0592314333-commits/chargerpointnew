@@ -213,12 +213,35 @@ export class FinalUseCases {
 
     const orderId = commandId || crypto.randomUUID();
 
+    // The legacy createOrder path must use the same lazy reservation contract as
+    // createOrderWithItems. Otherwise it emits displayNumber=0 and bypasses the
+    // reservation state, which breaks numbering, backup/restore, and multi-device
+    // sequencing for callers that create the aggregate before adding items.
+    const deviceId = actor.deviceId || 'default-device';
+    let reservation: OrderNumberReservationEntity | null = null;
+    let displayNumber = 1;
+    if (this.deps.reservationRepo) {
+      reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
+      if (!reservation || reservation.nextNumber > reservation.endNumber) {
+        reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, orderId, 20);
+      }
+      if (!reservation || reservation.nextNumber > reservation.endNumber) {
+        throw new OrderNumberReservationExhaustedError();
+      }
+      displayNumber = reservation.nextNumber;
+      reservation.nextNumber += 1;
+      if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
+      reservation.updatedAt = new Date().toISOString();
+    } else {
+      displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
+    }
+
     const order: OrderEntity = {
       id: orderId,
       dayId,
       customerId,
-      displayNumber: 0, // Will be set by server
-      internalSequence: 0,
+      displayNumber,
+      internalSequence: displayNumber,
       status: 'pending',
       customerBalanceSnapshotMinor: currentBalance,
       notes,
@@ -244,6 +267,7 @@ export class FinalUseCases {
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.orderRepo.save(order);
+      if (reservation) ctx.reservationRepo?.save(reservation);
       ctx.commandRepo.record(orderId, 'CREATE_ORDER', {
         ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash : {}),
         id: orderId,
