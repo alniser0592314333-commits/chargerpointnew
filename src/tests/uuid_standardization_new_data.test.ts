@@ -138,7 +138,7 @@ describe('UUID STANDARDIZATION — NEW BUSINESS DATA ONLY', () => {
     const outbox = await localDb.listOutbox();
     const itemCmd = outbox.find((c) => c.commandId === item.id && c.commandType === 'ADD_ORDER_ITEM');
     expect(itemCmd).toBeDefined();
-    expect(itemCmd?.aggregateId).toBe(item.id);
+    expect(itemCmd?.aggregateId).toBe(orderId);
     expect((itemCmd?.payload as any)?.orderId).toBe(orderId);
     expect((itemCmd?.payload as any)?.deviceTypeId).toBe(devRes.data.id);
   });
@@ -196,11 +196,21 @@ describe('UUID STANDARDIZATION — NEW BUSINESS DATA ONLY', () => {
     expect(orderRes.success).toBe(true);
     const orderId = orderRes.order!.id;
 
-    // Deliver the order item to recognize financial charge in ledger for FIFO allocation
+    // The local delivery is optimistic. Seed the authoritative CHARGE row that
+    // the server would publish before testing FIFO allocation identity.
     const allItems = await localDb.list<any>('orderItems');
     const orderItem = allItems.find((i: any) => i.orderId === orderId);
     expect(orderItem).toBeDefined();
-    await phase5UseCases.deliverOrderItem(superAdminAuth, orderItem.id, '0000');
+    const chargeId = crypto.randomUUID();
+    await localDb.set('financialLedger', chargeId, {
+      id: chargeId,
+      eventType: 'CHARGE',
+      amountMinor: -2000,
+      customerId: cust.id,
+      orderId,
+      orderItemId: orderItem.id,
+      createdAt: new Date().toISOString(),
+    });
 
     // Use recordPayment to trigger FIFO allocation
     const paymentId = crypto.randomUUID();
@@ -227,11 +237,12 @@ describe('UUID STANDARDIZATION — NEW BUSINESS DATA ONLY', () => {
     expect(res.data.id).not.toContain('cred_');
     expect(res.data.id).not.toContain('ledger_');
 
-    const allLedger = await localDb.list<FinancialLedgerEntity>('financialLedger');
-    const ledger = allLedger.find((l: FinancialLedgerEntity) => l.id === res.data.id);
-    expect(ledger).toBeDefined();
-    expect(ledger?.customerId).toBe(cust.id);
-    expect(ledger?.amountMinor).toBe(500);
+    const ledgerOverlay = await localDb.getOverlay(res.data.id);
+    expect(ledgerOverlay).toBeDefined();
+    expect(ledgerOverlay?.entityType).toBe('ledger');
+    expect(ledgerOverlay?.entityId).toBe(res.data.id);
+    expect((ledgerOverlay?.entityPayload as any)?.customerId).toBe(cust.id);
+    expect((ledgerOverlay?.entityPayload as any)?.amountMinor).toBe(500);
   });
 
   // TEST H: qr_tokens
