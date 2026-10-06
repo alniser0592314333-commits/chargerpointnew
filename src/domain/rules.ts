@@ -85,7 +85,7 @@ export function validateOrderTransition(current: OrderStatus, target: OrderStatu
     charging: ['delivered', 'cancelled'],
     OPEN: ['COMPLETED', 'cancelled'],
     COMPLETED: [],
-    delivered: [],
+    delivered: ['cancelled'],
     cancelled: [],
   };
 
