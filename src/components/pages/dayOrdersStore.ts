@@ -2673,7 +2673,16 @@ export const computeCustomerOrderPaymentStatuses = (
 
   // 3. Allocate credits in FIFO sequence
   for (const ord of custOrders) {
-    const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
+    // Payment liability is based only on financially recognized delivered items.
+    // A newly added device starts as charging/UNRECOGNIZED and must not change the
+    // amount due for an order until that specific device is delivered.
+    const items = Array.from(effectiveItemsMap.values()).filter(
+      (i) =>
+        i.orderId === ord.id &&
+        i.status === 'delivered' &&
+        String(i.financialStatus || '').toUpperCase() !== 'UNRECOGNIZED' &&
+        i.financialStatus !== 'REVERSED'
+    );
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     if (totalMinor <= 0) {
