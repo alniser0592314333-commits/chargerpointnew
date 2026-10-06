@@ -702,7 +702,8 @@ WHEN 'UPDATE_ORDER' THEN
                 ) THEN
                     UPDATE public.orders SET status = 'delivered', updated_at = NOW(), version = version + 1
                     WHERE id = v_rec_item.order_id;
-                    PERFORM public.record_canonical_change('orders', v_rec_item.order_id, 'UPDATE', jsonb_build_object('status', 'delivered'), 1);
+                    PERFORM public.record_canonical_change('orders', v_rec_item.order_id, 'UPDATE', jsonb_build_object('status', 'delivered'),
+                        (SELECT version FROM public.orders WHERE id = v_rec_item.order_id));
                 END IF;
 
                 PERFORM public.record_canonical_change('order_items', v_item_uuid, 'UPDATE', jsonb_build_object(
@@ -712,7 +713,7 @@ WHEN 'UPDATE_ORDER' THEN
                     'charger_fee_snapshot_minor', v_authoritative_charger_fee,
                     'final_charge_snapshot_minor', v_authoritative_final_charge,
                     'financially_recognized_at', NOW()
-                ), 1);
+                ), v_rec_item.version + 1);
 
                 PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', jsonb_build_object(
                     'event_type', 'CHARGE',
@@ -795,7 +796,7 @@ WHEN 'UPDATE_ORDER' THEN
                 PERFORM public.record_canonical_change('order_items', v_item_uuid, 'UPDATE', jsonb_build_object(
                     'operational_status', 'CANCELLED',
                     'status', 'cancelled'
-                ), 1);
+                ), (SELECT version FROM public.order_items WHERE id = v_item_uuid));
 
                 v_result := jsonb_build_object('orderItemId', v_item_uuid, 'status', 'CANCELLED', 'reversalCreated', FALSE);
             ELSIF v_rec_item.financial_status = 'RECOGNIZED' THEN
