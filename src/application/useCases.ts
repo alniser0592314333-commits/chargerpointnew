@@ -1782,7 +1782,8 @@ export class FinalUseCases {
     if (!this.deps.goalRequestRepo) throw new Error('Goal request repo not configured');
 
     const reqRecord = await this.deps.goalRequestRepo.findById(requestId);
-    if (!req) throw new NotFoundError('Goal request not found');
+    if (!reqRecord) throw new NotFoundError('Goal request not found');
+    const req = { ...reqRecord };
     if (req.status !== 'PENDING') throw new BusinessRuleViolation(`Request is already ${req.status}`);
 
     req.status = 'REJECTED';
@@ -1814,6 +1815,8 @@ export class FinalUseCases {
       return { success: true as const, data: { hasActiveGoal: false } };
     }
 
+    const goal = { ...goalRecord };
+
     // Count qualifying delivered order items in window [goal.startedAt, goal.expiresAt]
     const ledger = await repos.ledgerRepo.findByCustomer(customerId);
     const qualifyingCharges = ledger.filter(
@@ -1823,7 +1826,6 @@ export class FinalUseCases {
         l.createdAt <= goal.expiresAt
     );
 
-    const goal = { ...goalRecord };
     const newProgress = qualifyingCharges.length;
     goal.currentProgress = newProgress;
     goal.updatedAt = new Date().toISOString();
