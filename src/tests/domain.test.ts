@@ -399,7 +399,7 @@ describe('Final Comprehensive Domain Verification Suite', () => {
         id: 'charge_1',
         createdAt: new Date().toISOString(),
         eventType: 'ORDER_ITEM_CHARGE',
-        amountMinor: 150,
+        amountMinor: -150,
         orderId: order.id,
         orderItemId: item.id,
         customerId: order.customerId,
@@ -416,8 +416,10 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       if (removeRes.success) {
         expect(removeRes.data.status).toBe('cancelled');
       }
-      expect(ledger.length).toBe(initialLedgerCount);
-      expect(ledger[ledger.length - 1]?.eventType).toBe('ORDER_ITEM_CHARGE');
+      expect(ledger.length).toBe(initialLedgerCount + 1);
+      const lastEvent = ledger[ledger.length - 1];
+      expect(lastEvent.eventType).toBe('REVERSAL');
+      expect(lastEvent.amountMinor).toBe(150);
     });
   });
 
