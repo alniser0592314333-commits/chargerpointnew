@@ -405,6 +405,9 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       });
       const initialLedgerCount = ledger.length;
 
+      // Simulate the server-authoritative recognition state as well as its ledger row.
+      items.set(item.id, { ...item, status: 'delivered', financialStatus: 'RECOGNIZED', deliveredAt: new Date().toISOString() });
+
       // Remove item during edit -> cancels item and generates REVERSAL
       const removeRes = await useCases.removeOrderItemDuringEdit(auth, item.id);
       expect(removeRes.success).toBe(true);
