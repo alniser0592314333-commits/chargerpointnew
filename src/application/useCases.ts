@@ -477,7 +477,7 @@ export class FinalUseCases {
       await this.createOverlay(
         itemId,
         mutationKey,
-        'order_items',
+        'orderItems',
         itemId,
         'CREATE',
         item as unknown as Record<string, unknown>
@@ -728,7 +728,7 @@ export class FinalUseCases {
         await this.createOverlay(
           itemOverlayId,
           mutationKey,
-          'order_items',
+          'orderItems',
           item.id,
           'CREATE',
           item as unknown as Record<string, unknown>
@@ -819,7 +819,7 @@ export class FinalUseCases {
           version: nextOrder.version,
         });
       }
-      await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>);
+      await this.createOverlay(commandId,`order:${order.id}`,'orderItems',itemId,'PATCH',patch as Record<string,unknown>);
     } catch(e) { console.warn('Delivery pending projection failed; local aggregate is authoritative.',e); }
     return {success:true,data:{...item,...patch} as OrderItemEntity};
   }
@@ -969,7 +969,7 @@ export class FinalUseCases {
       }
       ctx.commandRepo.record(commandId,'CANCEL_ORDER_ITEM',{id:commandId,aggregateId:order.id,itemId,orderItemId:itemId,orderId:order.id},item.version);
     });
-    try{await this.createOverlay(commandId,`order:${order.id}`,'order_items',item.id,'PATCH',patch as Record<string,unknown>);}catch(e){console.warn('Cancellation projection failed; local item is authoritative.',e);}
+    try{await this.createOverlay(commandId,`order:${order.id}`,'orderItems',item.id,'PATCH',patch as Record<string,unknown>);}catch(e){console.warn('Cancellation projection failed; local item is authoritative.',e);}
     return {success:true,data:updatedItem};
   }
 
@@ -1011,7 +1011,7 @@ export class FinalUseCases {
       }
       ctx.commandRepo.record(commandId,'CANCEL_ORDER',{id:commandId,aggregateId:orderId,orderId,bin},order.version);
     });
-    try{for(const item of updatedItems)await this.createOverlay(`${commandId}:${item.id}`,`order:${orderId}`,'order_items',item.id,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:item.version});await this.createOverlay(commandId,`order:${orderId}`,'orders',orderId,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:updatedOrder.version});}catch(e){console.warn('Cancellation projections failed; local aggregate is authoritative.',e);}
+    try{for(const item of updatedItems)await this.createOverlay(`${commandId}:${item.id}`,`order:${orderId}`,'orderItems',item.id,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:item.version});await this.createOverlay(commandId,`order:${orderId}`,'orders',orderId,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:updatedOrder.version});}catch(e){console.warn('Cancellation projections failed; local aggregate is authoritative.',e);}
     return {success:true,data:updatedOrder};
   }
 
@@ -1082,7 +1082,7 @@ export class FinalUseCases {
     });
 
     try {
-      await this.createOverlay(commandId, mutationKey, 'order_items', itemId, 'PATCH', patch as Record<string, unknown>);
+      await this.createOverlay(commandId, mutationKey, 'orderItems', itemId, 'PATCH', patch as Record<string, unknown>);
     } catch (overlayError) {
       console.warn('Cancellation pending projection failed; local item is authoritative.', overlayError);
     }
