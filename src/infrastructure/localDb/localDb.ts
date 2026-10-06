@@ -1728,10 +1728,24 @@ export class IndexedDBLocalDatabase {
 
   async getEffectiveState(entityType: string, entityId: ID): Promise<any | null> {
     await this.ensureHydrated();
-    const base = await this.get(entityType, entityId);
+    const canonicalType =
+      entityType === 'order_items' ? 'orderItems' :
+      entityType === 'device_types' ? 'deviceTypes' :
+      entityType === 'business_days' ? 'businessDays' :
+      entityType === 'payment_allocations' ? 'paymentAllocations' :
+      entityType;
+    const base = await this.get(canonicalType, entityId);
     const allOverlays = await this.listOverlays();
     const activeOverlays = allOverlays
-      .filter(o => o.entityType === entityType && o.entityId === entityId && o.status === 'PENDING')
+      .filter(o => {
+        const overlayType =
+          o.entityType === 'order_items' ? 'orderItems' :
+          o.entityType === 'device_types' ? 'deviceTypes' :
+          o.entityType === 'business_days' ? 'businessDays' :
+          o.entityType === 'payment_allocations' ? 'paymentAllocations' :
+          o.entityType;
+        return overlayType === canonicalType && o.entityId === entityId && o.status === 'PENDING';
+      })
       .sort((a, b) => {
         if (a.sequence !== b.sequence) return a.sequence - b.sequence;
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
