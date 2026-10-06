@@ -727,7 +727,7 @@ WHEN 'UPDATE_ORDER' THEN
                     event_type, amount_minor, order_id, order_item_id, customer_id, actor_admin_id, metadata, created_at
                 )
                 VALUES (
-                    'CHARGE',
+                    'ORDER_ITEM_CHARGE',
                     -v_authoritative_final_charge,
                     v_rec_item.order_id,
                     v_item_uuid,
@@ -765,7 +765,7 @@ WHEN 'UPDATE_ORDER' THEN
                 ), v_rec_item.version + 1);
 
                 PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', jsonb_build_object(
-                    'event_type', 'CHARGE',
+                    'event_type', 'ORDER_ITEM_CHARGE',
                     'amount_minor', -v_authoritative_final_charge,
                     'order_item_id', v_item_uuid,
                     'customer_id', v_rec_item.customer_id
