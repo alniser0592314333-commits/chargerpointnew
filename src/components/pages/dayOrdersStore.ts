@@ -2763,8 +2763,11 @@ export const computeCustomerOrderPaymentStatuses = (
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     if (totalMinor <= 0) {
+      // An order with no recognized financial charge is not "paid". Payment
+      // status tracks settlement of a real recognized liability; before any
+      // item is delivered the order remains UNPAID until a charge exists.
       result.set(ord.id, {
-        paymentStatus: 'PAID',
+        paymentStatus: 'UNPAID',
         allocatedAmountMinor: 0,
         totalMinor: 0,
       });
