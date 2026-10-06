@@ -1891,11 +1891,56 @@ export const repoContext: RepositoryContext = {
     getBalance: async (id) => {
       await ensureStoreHydrated();
       let bal = 0;
+
+      // Start from authoritative ledger rows.
       ledgerList.forEach((l) => {
-        if (l.customerId === id) {
-          bal += l.amountMinor;
-        }
+        if (l.customerId === id) bal += l.amountMinor;
       });
+
+      // Then project pending local financial commands until their authoritative
+      // ledger rows arrive. This keeps debt-limit checks and customer balances
+      // consistent across offline, online, and reconciliation paths.
+      const overlays = await localDb.listOverlays();
+      const authoritativeChargeItems = new Set(
+        ledgerList
+          .filter((l) => l.customerId === id && (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.orderItemId)
+          .map((l) => l.orderItemId as string)
+      );
+
+      for (const overlay of overlays) {
+        if (overlay.status !== 'PENDING') continue;
+
+        if (overlay.entityType === 'ledger' || overlay.entityType === 'financial_ledger') {
+          const payload = (overlay.entityPayload || overlay.patch || {}) as any;
+          if (payload.customerId === id || payload.customer_id === id) {
+            bal += Number(payload.amountMinor ?? payload.amount_minor ?? 0);
+          }
+          continue;
+        }
+
+        if (overlay.entityType === 'order_items' && overlay.operation === 'PATCH') {
+          const payload = (overlay.patch || {}) as any;
+          const itemId = overlay.entityId;
+          if (
+            String(payload.status || '').toLowerCase() === 'delivered' ||
+            String(payload.financialStatus || payload.financial_status || '').toUpperCase() === 'RECOGNIZED'
+          ) {
+            if (authoritativeChargeItems.has(itemId)) continue;
+            const item = itemsMap.get(itemId);
+            if (!item) continue;
+            const order = ordersMap.get(item.orderId);
+            if (!order || order.customerId !== id) continue;
+            bal -= Number(
+              item.finalChargeSnapshotMinor ??
+              item.totalPriceMinor ??
+              payload.finalChargeSnapshotMinor ??
+              payload.totalPriceMinor ??
+              0
+            );
+          }
+        }
+      }
+
       return bal;
     },
   },
@@ -4270,31 +4315,8 @@ export const topUpCustomerBalance = async (
       };
     }
 
-    // If note or transaction is recorded, update metadata and payments
-    if (result.data?.id) {
-      const txId = result.data.id;
-      const lastRecord = ledgerList.find((l) => l.id === txId) || ledgerList[ledgerList.length - 1];
-      if (lastRecord && lastRecord.customerId === cust.id) {
-        lastRecord.metadata = { ...lastRecord.metadata, note: note?.trim(), commandId };
-        await initDbIfNeeded();
-        await localDb.set('financialLedger', lastRecord.id, lastRecord);
-      }
-
-      const paymentRecord: PaymentEntity = {
-        id: txId,
-        customerId: cust.id,
-        amountMinor,
-        paymentMethod: 'CASH',
-        reference: note?.trim() || 'شحن رصيد نقدي',
-        actorAdminId,
-        commandId,
-        createdAt: lastRecord?.createdAt || new Date().toISOString(),
-      };
-      paymentsMap.set(txId, paymentRecord);
-      await initDbIfNeeded();
-      await localDb.set('payments', txId, paymentRecord);
-    }
-
+    // The use case owns both the ledger/payment optimistic projections and the
+    // single outbox command. Do not write a second local payment or command here.
     // Authoritative fresh balance
     const newBalanceMinor = await repoContext.customerRepo.getBalance(cust.id);
 
