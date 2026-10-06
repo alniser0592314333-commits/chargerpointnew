@@ -174,6 +174,32 @@ const reservationsMap = new Map<string, OrderNumberReservationEntity>();
 const goalsMap = new Map<string, GoalEntity>();
 const goalRequestsMap = new Map<string, GoalRequestEntity>();
 
+/**
+ * Customer balance is authoritative ledger balance plus local delivery projections.
+ * A projected delivery is counted only while its order item is financially recognized
+ * and no authoritative ledger row exists for that item. Once the server ledger arrives,
+ * the projection is naturally replaced and cannot double-count.
+ */
+const calculateProjectedCustomerBalance = (customerId: string): number => {
+  let balance = 0;
+  ledgerList.forEach((entry) => {
+    if (entry.customerId === customerId) balance += entry.amountMinor;
+  });
+
+  itemsMap.forEach((item) => {
+    const order = ordersMap.get(item.orderId);
+    if (
+      order?.customerId === customerId &&
+      item.financialStatus === 'RECOGNIZED' &&
+      !ledgerList.some((entry) => entry.orderItemId === item.id)
+    ) {
+      balance -= item.totalPriceMinor;
+    }
+  });
+
+  return balance;
+};
+
 // Runtime Identity Resolver (No fake fallback in production)
 export function getAuthenticatedIdentity(): { actorAdminId: string; deviceId: string } {
   const storage = typeof localStorage !== 'undefined' ? localStorage : null;
@@ -1537,13 +1563,7 @@ function createTransactionalRepoContext(
         localDb.setWithTx(tx, 'customers', c.id, c);
         postCommitActions.push(() => notifyStore('customers', c.id));
       },
-      getBalance: (id: string) => {
-        let bal = 0;
-        ledgerList.forEach((l) => {
-          if (l.customerId === id) bal += l.amountMinor;
-        });
-        return bal;
-      },
+      getBalance: (id: string) => calculateProjectedCustomerBalance(id),
     },
     deviceRepo: {
       findById: (id: string) => devicesMap.get(id) || null,
@@ -1847,13 +1867,7 @@ export const repoContext: RepositoryContext = {
     },
     getBalance: async (id) => {
       await ensureStoreHydrated();
-      let bal = 0;
-      ledgerList.forEach((l) => {
-        if (l.customerId === id) {
-          bal += l.amountMinor;
-        }
-      });
-      return bal;
+      return calculateProjectedCustomerBalance(id);
     },
   },
   deviceRepo: {
