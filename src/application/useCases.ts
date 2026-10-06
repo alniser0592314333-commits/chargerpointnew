@@ -739,7 +739,7 @@ export class FinalUseCases {
       status: 'cancelled',
       cancelledAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      version: existingItem.version,
+      version: existingItem.version + 1,
     };
 
     if (this.deps.mutationSnapshotRepo) {
@@ -949,26 +949,31 @@ export class FinalUseCases {
     const device = await this.deps.deviceRepo.findById(deviceId);
     if (!device) throw new NotFoundError('Device type not found');
 
-    Object.assign(device, updates, { updatedAt: new Date().toISOString(), version: device.version + 1 });
-    
+    const updatedDevice: DeviceTypeEntity = {
+      ...device,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      version: device.version + 1,
+    };
+
     return this.deps.transactionManager.runInTransaction((ctx) => {
       const commandId = crypto.randomUUID();
-      ctx.deviceRepo.save(device);
+      ctx.deviceRepo.save(updatedDevice);
       ctx.commandRepo.record(commandId, 'UPDATE_DEVICE_TYPE', {
-        id: device.id,
-        deviceTypeId: device.id,
-        name: device.name,
-        arabicName: device.nameAr || device.name,
-        englishName: device.nameEn || device.name,
-        icon: device.icon,
-        basePriceMinor: device.basePriceMinor,
-        chargerFeeEnabled: device.chargerFeeEnabled,
-        chargerFeeApplicable: device.chargerFeeApplicable ?? device.chargerFeeEnabled,
-        sortOrder: device.sortOrder,
-        isActive: device.isActive,
-        version: device.version,
-      }, device.version - 1);
-      return { success: true, data: device };
+        id: updatedDevice.id,
+        deviceTypeId: updatedDevice.id,
+        name: updatedDevice.name,
+        arabicName: updatedDevice.nameAr || updatedDevice.name,
+        englishName: updatedDevice.nameEn || updatedDevice.name,
+        icon: updatedDevice.icon,
+        basePriceMinor: updatedDevice.basePriceMinor,
+        chargerFeeEnabled: updatedDevice.chargerFeeEnabled,
+        chargerFeeApplicable: updatedDevice.chargerFeeApplicable ?? updatedDevice.chargerFeeEnabled,
+        sortOrder: updatedDevice.sortOrder,
+        isActive: updatedDevice.isActive,
+        version: updatedDevice.version,
+      }, device.version);
+      return { success: true, data: updatedDevice };
     });
   }
 
@@ -1196,6 +1201,10 @@ export class FinalUseCases {
     await auth.verifyBin(bin);
     DomainInvariants.assertValidPaymentAmount(amountMinor);
 
+    const customer = await this.deps.customerRepo.findById(customerId);
+    if (!customer) throw new NotFoundError('Customer not found');
+    DomainInvariants.assertCustomerActive(customer);
+
     const event: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
       eventType: 'CREDIT_ADJUSTMENT',
       amountMinor,
@@ -1203,7 +1212,7 @@ export class FinalUseCases {
       actorAdminId: actor.id,
     };
 
-    const txId = commandId || crypto.randomUUID();
+    const txId = crypto.randomUUID();
     const mutationKey = `customer:${customerId}`;
     const createdAt = new Date().toISOString();
 
@@ -1266,6 +1275,12 @@ export class FinalUseCases {
     auth.assertPermission('finance:refund');
     await auth.verifyBin(bin);
     DomainInvariants.assertValidPaymentAmount(amountMinor);
+
+    const referenceLedger = await this.deps.ledgerRepo.findAll();
+    const referenced = referenceLedger.find((entry) => entry.id === referenceEventId);
+    if (!referenced || referenced.customerId !== customerId) {
+      throw new BusinessRuleViolation('Referenced financial event not found for this customer');
+    }
 
     return this.deps.transactionManager.runInTransaction((ctx) => {
       const event: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
