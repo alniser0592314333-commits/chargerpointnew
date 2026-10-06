@@ -48,6 +48,8 @@ DECLARE
     v_count_payments INT := 0;
     v_count_financial_ledger INT := 0;
     v_count_payment_allocations INT := 0;
+    v_count_goals INT := 0;
+    v_count_goal_requests INT := 0;
 BEGIN
     -- 1. AUTHENTICATION PREFLIGHT
     IF auth.uid() IS NULL THEN
@@ -124,6 +126,8 @@ BEGIN
     END;
 
     -- 8. ATOMIC BUSINESS DATA PURGE IN FK DEPENDENCY GRAPH ORDER (CHILDREN BEFORE PARENTS)
+    DELETE FROM goal_requests WHERE true;
+    DELETE FROM goals WHERE true;
     DELETE FROM payment_allocations WHERE true;
     DELETE FROM financial_ledger WHERE true;
     DELETE FROM payments WHERE true;
@@ -147,13 +151,17 @@ BEGIN
             RAISE EXCEPTION 'Invalid device_type ID %: must be a valid UUID', v_entity_uuid_str;
         END IF;
 
-        INSERT INTO device_types (id, name, icon, base_price_minor, charger_fee_enabled, is_active, sort_order)
+        INSERT INTO device_types (id, name, name_ar, name_en, arabic_name, icon, base_price_minor, charger_fee_enabled, charger_fee_applicable, is_active, sort_order)
         VALUES (
             v_entity_uuid_str::UUID,
-            COALESCE(v_item->>'name', 'Device'),
+            COALESCE(NULLIF(v_item->>'name', ''), NULLIF(v_item->>'name_ar', ''), NULLIF(v_item->>'nameAr', ''), 'Device'),
+            COALESCE(NULLIF(v_item->>'name_ar', ''), NULLIF(v_item->>'nameAr', ''), NULLIF(v_item->>'name', ''), 'Device'),
+            COALESCE(NULLIF(v_item->>'name_en', ''), NULLIF(v_item->>'nameEn', ''), NULLIF(v_item->>'name', ''), 'Device'),
+            COALESCE(NULLIF(v_item->>'name_ar', ''), NULLIF(v_item->>'nameAr', ''), NULLIF(v_item->>'name', ''), 'Device'),
             COALESCE(v_item->>'icon', 'smartphone'),
             COALESCE((v_item->>'base_price_minor')::BIGINT, (v_item->>'basePriceMinor')::BIGINT, 0),
             COALESCE((v_item->>'charger_fee_enabled')::BOOLEAN, (v_item->>'chargerFeeEnabled')::BOOLEAN, TRUE),
+            COALESCE((v_item->>'charger_fee_applicable')::BOOLEAN, (v_item->>'chargerFeeApplicable')::BOOLEAN, (v_item->>'charger_fee_enabled')::BOOLEAN, (v_item->>'chargerFeeEnabled')::BOOLEAN, TRUE),
             COALESCE((v_item->>'is_active')::BOOLEAN, (v_item->>'isActive')::BOOLEAN, TRUE),
             COALESCE((v_item->>'sort_order')::INTEGER, (v_item->>'sortOrder')::INTEGER, 0)
         );
@@ -392,6 +400,60 @@ BEGIN
         v_count_payment_allocations := v_count_payment_allocations + 1;
     END LOOP;
 
+    -- J) Goals (after financial_ledger because bonus_ledger_id references it)
+    FOR v_item IN SELECT * FROM jsonb_array_elements(COALESCE(p_payload->'goals', '[]'::jsonb))
+    LOOP
+        v_entity_uuid_str := v_item->>'id';
+        IF v_entity_uuid_str IS NULL OR trim(v_entity_uuid_str) = '' OR v_entity_uuid_str !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            RAISE EXCEPTION 'Invalid goal ID %: must be a valid UUID', v_entity_uuid_str;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM customers WHERE id = (COALESCE(v_item->>'customer_id', v_item->>'customerId'))::UUID) THEN
+            RAISE EXCEPTION 'Referenced customer % does not exist for goal %', v_item->>'customer_id', v_entity_uuid_str;
+        END IF;
+        INSERT INTO goals (id, customer_id, target_quantity, current_progress, bonus_amount_minor, duration_days, status, started_at, expires_at, completed_at, bonus_ledger_id, version, created_at, updated_at)
+        VALUES (
+            v_entity_uuid_str::UUID,
+            (COALESCE(v_item->>'customer_id', v_item->>'customerId'))::UUID,
+            COALESCE((v_item->>'target_quantity')::INTEGER, (v_item->>'targetQuantity')::INTEGER),
+            COALESCE((v_item->>'current_progress')::INTEGER, (v_item->>'currentProgress')::INTEGER, 0),
+            COALESCE((v_item->>'bonus_amount_minor')::BIGINT, (v_item->>'bonusAmountMinor')::BIGINT, 0),
+            COALESCE((v_item->>'duration_days')::INTEGER, (v_item->>'durationDays')::INTEGER, 7),
+            COALESCE(v_item->>'status', 'ACTIVE'),
+            COALESCE((v_item->>'started_at')::TIMESTAMPTZ, (v_item->>'startedAt')::TIMESTAMPTZ, NOW()),
+            COALESCE((v_item->>'expires_at')::TIMESTAMPTZ, (v_item->>'expiresAt')::TIMESTAMPTZ, NOW()),
+            COALESCE((v_item->>'completed_at')::TIMESTAMPTZ, (v_item->>'completedAt')::TIMESTAMPTZ),
+            NULLIF(COALESCE(v_item->>'bonus_ledger_id', v_item->>'bonusLedgerId'), '')::UUID,
+            COALESCE((v_item->>'version')::INTEGER, 1),
+            COALESCE((v_item->>'created_at')::TIMESTAMPTZ, (v_item->>'createdAt')::TIMESTAMPTZ, NOW()),
+            COALESCE((v_item->>'updated_at')::TIMESTAMPTZ, (v_item->>'updatedAt')::TIMESTAMPTZ, NOW())
+        );
+        v_count_goals := v_count_goals + 1;
+    END LOOP;
+
+    -- K) Goal Requests
+    FOR v_item IN SELECT * FROM jsonb_array_elements(COALESCE(p_payload->'goal_requests', '[]'::jsonb))
+    LOOP
+        v_entity_uuid_str := v_item->>'id';
+        IF v_entity_uuid_str IS NULL OR trim(v_entity_uuid_str) = '' OR v_entity_uuid_str !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            RAISE EXCEPTION 'Invalid goal request ID %: must be a valid UUID', v_entity_uuid_str;
+        END IF;
+        INSERT INTO goal_requests (id, customer_id, requested_target, status, reviewed_by, reviewed_at, rejection_reason, resulting_goal_id, version, created_at, updated_at)
+        VALUES (
+            v_entity_uuid_str::UUID,
+            (COALESCE(v_item->>'customer_id', v_item->>'customerId'))::UUID,
+            COALESCE((v_item->>'requested_target')::INTEGER, (v_item->>'requestedTarget')::INTEGER),
+            COALESCE(v_item->>'status', 'PENDING'),
+            NULLIF(COALESCE(v_item->>'reviewed_by', v_item->>'reviewedBy'), '')::UUID,
+            COALESCE((v_item->>'reviewed_at')::TIMESTAMPTZ, (v_item->>'reviewedAt')::TIMESTAMPTZ),
+            COALESCE(v_item->>'rejection_reason', v_item->>'rejectionReason'),
+            NULLIF(COALESCE(v_item->>'resulting_goal_id', v_item->>'resultingGoalId'), '')::UUID,
+            COALESCE((v_item->>'version')::INTEGER, 1),
+            COALESCE((v_item->>'created_at')::TIMESTAMPTZ, (v_item->>'createdAt')::TIMESTAMPTZ, NOW()),
+            COALESCE((v_item->>'updated_at')::TIMESTAMPTZ, (v_item->>'updatedAt')::TIMESTAMPTZ, NOW())
+        );
+        v_count_goal_requests := v_count_goal_requests + 1;
+    END LOOP;
+
     -- 10. RE-ENABLE TRIGGERS
     BEGIN
         ALTER TABLE customers ENABLE TRIGGER trg_log_customers;
@@ -437,7 +499,9 @@ BEGIN
             'order_items', v_count_order_items,
             'payments', v_count_payments,
             'financial_ledger', v_count_financial_ledger,
-            'payment_allocations', v_count_payment_allocations
+            'payment_allocations', v_count_payment_allocations,
+            'goals', v_count_goals,
+            'goal_requests', v_count_goal_requests
         )
     );
 END;

@@ -17,7 +17,7 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
     vi.restoreAllMocks();
     storageMap.clear();
     await authService.logout();
-    config.supabaseUrl = "https://ydhcyamtgioyrxfarkwk.supabase.co";
+    config.supabaseUrl = "https://example.supabase.co";
     config.supabaseAnonKey = "sb_publishable_mock_key";
   });
 

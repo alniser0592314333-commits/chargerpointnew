@@ -37,7 +37,8 @@ import {
   BusinessRuleViolation,
   IdempotencyConflictError,
   BinRequiredError,
-  OrderNumberReservationExhaustedError
+  OrderNumberReservationExhaustedError,
+  FinancialInvariantViolation
 } from '../domain/errors';
 
 export interface RepositoryContext {
@@ -69,7 +70,7 @@ export interface RepositoryContext {
     findAll(): Promise<DeviceTypeEntity[]> | DeviceTypeEntity[];
   };
   ledgerRepo: {
-    append(event: Omit<FinancialLedgerEntity, 'createdAt' | 'id'> & { id?: ID }): Promise<void> | void;
+    append(event: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> & { id?: ID; createdAt?: string }): Promise<void> | void;
     findByCustomer(customerId: ID): Promise<FinancialLedgerEntity[]> | FinancialLedgerEntity[];
     findAll(): Promise<FinancialLedgerEntity[]> | FinancialLedgerEntity[];
   };
@@ -87,6 +88,10 @@ export interface RepositoryContext {
   commandRepo: {
     get(commandId: ID): Promise<{ type: string; payload: unknown } | null> | ({ type: string; payload: unknown } | null);
     record(commandId: ID, type: string, payload: unknown, expectedVersion?: number): Promise<void> | void;
+  };
+  mutationSnapshotRepo?: {
+    capture(commandId: ID, records: Array<{ table: string; id: ID; existed: boolean; data?: unknown }>): Promise<void> | void;
+    clear(commandId: ID): Promise<void> | void;
   };
   qrTokenRepo?: {
     findByHash(tokenHash: string): Promise<QrTokenEntity | null> | (QrTokenEntity | null);
@@ -207,6 +212,9 @@ export class FinalUseCases {
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
 
     return this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.mutationSnapshotRepo?.capture(orderId, [
+        { table: 'orders', id: order.id, existed: false },
+      ]);
       if (ctx.reservationRepo && reservation) {
         ctx.reservationRepo.save(reservation);
       }
@@ -285,6 +293,9 @@ export class FinalUseCases {
     };
 
     return this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.mutationSnapshotRepo?.capture(itemId, [
+        { table: 'orderItems', id: item.id, existed: false },
+      ]);
       ctx.itemRepo.save(item);
       ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
         orderId,
@@ -301,16 +312,180 @@ export class FinalUseCases {
         totalPriceMinor: item.totalPriceMinor,
       });
       if (isSuperAdminClosedEdit) {
-        ctx.ledgerRepo.append({
-          eventType: 'ORDER_ITEM_CHARGE',
-          amountMinor: -item.totalPriceMinor,
-          orderId: order.id,
+        const deliveryCommandId = crypto.randomUUID();
+        ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+          id: deliveryCommandId,
+          itemId: item.id,
           orderItemId: item.id,
-          customerId: order.customerId,
-          actorAdminId: actor.id,
-        });
+          orderId: order.id,
+          dependencyCommandId: itemId,
+        }, item.version);
       }
       return { success: true, data: item };
+    });
+  }
+
+
+  /**
+   * Atomic order aggregate creation. The order row, every order item, their
+   * outbox commands, and any initial financial entries are committed as one
+   * local transaction. This prevents a failed item validation from leaving a
+   * ghost CREATE_ORDER command behind.
+   */
+  async createOrderWithItems(
+    auth: AuthorizationContext,
+    commandId: ID,
+    dayId: ID,
+    customerId: ID,
+    items: Array<{ deviceTypeId: ID; hasCharger: boolean }>,
+    notes?: string,
+    groupId?: string
+  ): Promise<Result<{ order: OrderEntity; items: OrderItemEntity[] }>> {
+    const actor = auth.requireAuth();
+    auth.assertPermission('orders:create');
+    auth.assertPermission('orders:edit');
+
+    if (!items.length) return { success: false, error: 'At least one order item is required' };
+
+    const isClosed = await this.deps.dayRepo.isClosed(dayId);
+    if (isClosed && !actor.isSuperAdmin) throw new ClosedDayError();
+
+    const customer = await this.deps.customerRepo.findById(customerId);
+    if (!customer) throw new NotFoundError('Customer not found');
+    if (!customer.isActive) throw new InactiveCustomerError();
+
+    const currentBalance = await this.deps.customerRepo.getBalance(customerId);
+    if (!checkDebtLimit(currentBalance, customer.debtLimitMinor, actor.isSuperAdmin)) {
+      return { success: false, error: 'Debt limit exceeded. Regular admin blocked.', code: 'DEBT_LIMIT_EXCEEDED' };
+    }
+
+    const deviceId = actor.deviceId || 'default-device';
+    let displayNumber = 1;
+    let reservation: OrderNumberReservationEntity | null = null;
+    if (this.deps.reservationRepo) {
+      reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
+      if (!reservation || reservation.nextNumber > reservation.endNumber) {
+        try {
+          reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, commandId, 20);
+        } catch {
+          throw new OrderNumberReservationExhaustedError();
+        }
+      }
+      if (!reservation || reservation.nextNumber > reservation.endNumber) throw new OrderNumberReservationExhaustedError();
+      displayNumber = reservation.nextNumber;
+      reservation.nextNumber += 1;
+      if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
+      reservation.updatedAt = new Date().toISOString();
+    } else {
+      displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
+    }
+
+    const now = new Date().toISOString();
+    const order: OrderEntity = {
+      id: commandId || crypto.randomUUID(),
+      dayId,
+      customerId,
+      displayNumber,
+      internalSequence: displayNumber,
+      status: 'pending',
+      customerBalanceSnapshotMinor: currentBalance,
+      notes,
+      createdAt: now,
+      updatedAt: now,
+      version: 1,
+    };
+
+    const preparedItems: OrderItemEntity[] = [];
+    for (let index = 0; index < items.length; index++) {
+      const requested = items[index];
+      const deviceType = await this.deps.deviceRepo.findById(requested.deviceTypeId);
+      if (!deviceType || !deviceType.isActive) throw new NotFoundError('Device type not found or inactive');
+
+      const pricing = calculateItemPrice({
+        basePriceMinor: deviceType.basePriceMinor,
+        chargerFeeEnabled: deviceType.chargerFeeEnabled,
+        chargerFeeApplicable: deviceType.chargerFeeApplicable ?? deviceType.chargerFeeEnabled,
+        customerExempt: customer.chargerFeeExempt,
+        hasCharger: requested.hasCharger,
+      });
+
+      const initialStatus = isClosed && actor.isSuperAdmin ? 'delivered' : 'charging';
+      preparedItems.push({
+        id: crypto.randomUUID(),
+        orderId: order.id,
+        deviceTypeId: requested.deviceTypeId,
+        itemSequence: index + 1,
+        status: initialStatus,
+        deviceNameSnapshot: deviceType.name,
+        deviceIconSnapshot: deviceType.icon,
+        basePriceSnapshotMinor: deviceType.basePriceMinor,
+        chargerFeeEnabledSnapshot: deviceType.chargerFeeEnabled,
+        customerChargerFeeExemptSnapshot: customer.chargerFeeExempt,
+        chargerFeeSnapshotMinor: pricing.chargerFeeSnapshotMinor,
+        hasCharger: requested.hasCharger,
+        unitPriceMinor: pricing.unitPriceMinor,
+        totalPriceMinor: pricing.totalPriceMinor,
+        deliveredAt: initialStatus === 'delivered' ? now : undefined,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      });
+    }
+
+    return this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.mutationSnapshotRepo?.capture(order.id, [
+        { table: 'orders', id: order.id, existed: false },
+      ]);
+      if (ctx.reservationRepo && reservation) ctx.reservationRepo.save(reservation);
+
+      ctx.orderRepo.save(order);
+      ctx.commandRepo.record(order.id, 'CREATE_ORDER', {
+        id: order.id,
+        aggregateId: order.id,
+        dayId,
+        customerId,
+        displayNumber,
+        notes,
+        customerBalanceSnapshotMinor: currentBalance,
+        ...(groupId ? { groupId } : {}),
+      });
+
+      for (const item of preparedItems) {
+        ctx.mutationSnapshotRepo?.capture(item.id, [
+          { table: 'orderItems', id: item.id, existed: false },
+          { table: 'orders', id: order.id, existed: true, data: order },
+        ]);
+        ctx.itemRepo.save(item);
+        ctx.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
+          id: item.id,
+          aggregateId: order.id,
+          orderId: order.id,
+          deviceTypeId: item.deviceTypeId,
+          hasCharger: item.hasCharger,
+          ...(groupId ? { groupId } : {}),
+          deviceNameSnapshot: item.deviceNameSnapshot,
+          deviceIconSnapshot: item.deviceIconSnapshot,
+          basePriceSnapshotMinor: item.basePriceSnapshotMinor,
+          chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
+          customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
+          chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
+          unitPriceMinor: item.unitPriceMinor,
+          totalPriceMinor: item.totalPriceMinor,
+        });
+
+        if (item.status === 'delivered') {
+          const deliveryCommandId = crypto.randomUUID();
+          ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+            id: deliveryCommandId,
+            itemId: item.id,
+            orderItemId: item.id,
+            orderId: order.id,
+            dependencyCommandId: item.id,
+          }, item.version);
+        }
+      }
+
+      return { success: true, data: { order, items: preparedItems } };
     });
   }
 
@@ -349,6 +524,9 @@ export class FinalUseCases {
     DomainInvariants.assertCustomerActive(customer);
 
     DomainInvariants.assertOrderNotCancelledForRecognition(order.status);
+    if (item.status === 'delivered') {
+      throw new FinancialInvariantViolation(`Order item ${item.id} is already delivered.`);
+    }
     validateItemTransition(item.status, 'delivered');
     DomainInvariants.assertItemNotRecognizedTwice(item.id, await this.deps.ledgerRepo.findByCustomer(order.customerId));
 
@@ -361,32 +539,33 @@ export class FinalUseCases {
       );
     }
 
-    item.status = 'delivered';
-    item.operationalStatus = 'DELIVERED';
-    item.financialStatus = 'RECOGNIZED';
-    item.deliveredAt = new Date().toISOString();
-    item.financiallyRecognizedAt = new Date().toISOString();
-    item.updatedAt = new Date().toISOString();
-    item.version += 1;
+    const expectedVersion = item.version;
+    const deliveryCommandId = crypto.randomUUID();
+    const optimisticItem: OrderItemEntity = {
+      ...item,
+      status: 'delivered',
+      deliveredAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      // Keep the authoritative server version unchanged while this optimistic
+      // mutation is pending. The server increments it only after committing the
+      // delivery + ledger transaction.
+      version: item.version,
+    };
 
     const result = await this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.itemRepo.save(item);
-
-      ctx.ledgerRepo.append({
-        eventType: 'ORDER_ITEM_CHARGE',
-        amountMinor: -item.totalPriceMinor,
+      ctx.mutationSnapshotRepo?.capture(deliveryCommandId, [
+        { table: 'orderItems', id: item.id, existed: true, data: item },
+      ]);
+      ctx.itemRepo.save(optimisticItem);
+      ctx.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+        id: deliveryCommandId,
+        itemId: item.id,
+        orderItemId: item.id,
         orderId: order.id,
-        orderItemId: item.id,
-        customerId: order.customerId,
-        actorAdminId: actor.id,
-      });
-
-      ctx.commandRepo.record(itemId, 'DELIVER_ORDER_ITEM', {
-        orderItemId: item.id,
         bin,
-      });
+      }, expectedVersion);
 
-      return { success: true as const, data: item };
+      return { success: true as const, data: optimisticItem };
     });
 
     if (this.deps.goalRepo) {
@@ -394,6 +573,41 @@ export class FinalUseCases {
     }
 
     return { success: true as const, data: result.data };
+  }
+
+  async editOrderNotes(
+    auth: AuthorizationContext,
+    orderId: ID,
+    notes?: string
+  ): Promise<Result<OrderEntity>> {
+    const actor = auth.requireAuth();
+    auth.assertPermission('orders:edit');
+
+    const existing = await this.deps.orderRepo.findById(orderId);
+    if (!existing) throw new NotFoundError('Order not found');
+    if (existing.status === 'cancelled') throw new BusinessRuleViolation('Cannot edit a cancelled order');
+
+    const updated: OrderEntity = {
+      ...existing,
+      notes: notes?.trim() || undefined,
+      updatedAt: new Date().toISOString(),
+      version: existing.version,
+    };
+
+    const commandId = crypto.randomUUID();
+    return this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.mutationSnapshotRepo?.capture(commandId, [
+        { table: 'orders', id: existing.id, existed: true, data: existing },
+      ]);
+      ctx.orderRepo.save(updated);
+      ctx.commandRepo.record(commandId, 'UPDATE_ORDER', {
+        id: updated.id,
+        aggregateId: updated.id,
+        orderId: updated.id,
+        notes: updated.notes,
+      }, existing.version);
+      return { success: true, data: updated };
+    });
   }
 
   async removeOrderItemDuringEdit(
@@ -415,26 +629,27 @@ export class FinalUseCases {
 
     validateItemTransition(item.status, 'cancelled');
 
-    item.status = 'cancelled';
-    item.updatedAt = new Date().toISOString();
-    item.version += 1;
-    await this.deps.itemRepo.save(item);
+    const updatedItem: OrderItemEntity = {
+      ...item,
+      status: 'cancelled',
+      updatedAt: new Date().toISOString(),
+      version: item.version,
+    };
 
-    const ledger = await this.deps.ledgerRepo.findByCustomer(order.customerId);
-    const chargeEvent = ledger.find(l => l.orderItemId === item.id && l.eventType === 'ORDER_ITEM_CHARGE');
-    if (chargeEvent) {
-      await this.deps.ledgerRepo.append({
-        eventType: 'REVERSAL',
-        amountMinor: -chargeEvent.amountMinor,
-        orderId: order.id,
+    const commandId = crypto.randomUUID();
+    return this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.mutationSnapshotRepo?.capture(commandId, [
+        { table: 'orderItems', id: item.id, existed: true, data: item },
+      ]);
+      ctx.itemRepo.save(updatedItem);
+      ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+        id: commandId,
+        itemId: item.id,
         orderItemId: item.id,
-        customerId: order.customerId,
-        actorAdminId: actor.id,
-        referenceId: chargeEvent.id,
-      });
-    }
-
-    return { success: true, data: item };
+        orderId: order.id,
+      }, item.version);
+      return { success: true, data: updatedItem };
+    });
   }
 
   async cancelOrder(
@@ -448,40 +663,30 @@ export class FinalUseCases {
 
     const order = await this.deps.orderRepo.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');
-
     validateOrderTransition(order.status, 'cancelled');
 
-    order.status = 'cancelled';
-    order.cancelledAt = new Date().toISOString();
-    order.updatedAt = new Date().toISOString();
-    order.version += 1;
-
     const items = await this.deps.itemRepo.findByOrderId(orderId);
-    const ledger = await this.deps.ledgerRepo.findByCustomer(order.customerId);
-
+    const commandId = crypto.randomUUID();
     return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.orderRepo.save(order);
-
-      for (const item of items) {
-        const chargeEvent = ledger.find(l => l.orderItemId === item.id && l.eventType === 'ORDER_ITEM_CHARGE');
-        if (chargeEvent) {
-          ctx.ledgerRepo.append({
-            eventType: 'REVERSAL',
-            amountMinor: -chargeEvent.amountMinor,
-            orderId: order.id,
-            orderItemId: item.id,
-            customerId: order.customerId,
-            actorAdminId: actor.id,
-            referenceId: chargeEvent.id,
-          });
-        }
+      ctx.mutationSnapshotRepo?.capture(commandId, [
+        ...items.filter((i) => i.status !== 'cancelled').map((i) => ({ table: 'orderItems', id: i.id, existed: true, data: i })),
+      ]);
+      for (const existingItem of items) {
+        if (existingItem.status === 'cancelled') continue;
+        ctx.itemRepo.save({
+          ...existingItem,
+          status: 'cancelled',
+          cancelledAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          version: existingItem.version,
+        } as OrderItemEntity);
       }
-
-      ctx.commandRepo.record(orderId, 'CANCEL_ORDER', {
+      ctx.commandRepo.record(commandId, 'CANCEL_ORDER', {
+        id: commandId,
+        aggregateId: orderId,
         orderId,
         bin,
-      });
-
+      }, order.version);
       return { success: true, data: order };
     });
   }
@@ -491,111 +696,41 @@ export class FinalUseCases {
     itemId: ID,
     bin: string
   ): Promise<Result<OrderItemEntity>> {
-    const actor = auth.requireAuth();
+    auth.requireAuth();
     auth.assertPermission('orders:cancel');
     await auth.verifyBin(bin);
 
-    const item = await this.deps.itemRepo.findById(itemId);
-    if (!item) throw new NotFoundError('Item not found');
+    const existingItem = await this.deps.itemRepo.findById(itemId);
+    if (!existingItem) throw new NotFoundError('Item not found');
+    validateItemTransition(existingItem.status, 'cancelled');
 
-    validateItemTransition(item.status, 'cancelled');
-
-    item.status = 'cancelled';
-    item.updatedAt = new Date().toISOString();
-    item.version += 1;
-    await this.deps.itemRepo.save(item);
-
-    const order = await this.deps.orderRepo.findById(item.orderId);
-    if (order) {
-      const ledger = await this.deps.ledgerRepo.findByCustomer(order.customerId);
-      const chargeEvent = ledger.find(l => l.orderItemId === item.id && l.eventType === 'ORDER_ITEM_CHARGE');
-      if (chargeEvent) {
-        await this.deps.ledgerRepo.append({
-          eventType: 'REVERSAL',
-          amountMinor: -chargeEvent.amountMinor,
-          orderId: order.id,
-          orderItemId: item.id,
-          customerId: order.customerId,
-          actorAdminId: actor.id,
-          referenceId: chargeEvent.id,
-        });
-      }
-    }
-
-    return { success: true, data: item };
-  }
-
-  async changeOrderItemDeviceType(
-    auth: AuthorizationContext,
-    itemId: ID,
-    newDeviceTypeId: ID,
-    bin: string
-  ): Promise<Result<OrderItemEntity>> {
-    const actor = auth.requireAuth();
-    auth.assertPermission('orders:correct');
-    await auth.verifyBin(bin);
-
-    const item = await this.deps.itemRepo.findById(itemId);
-    if (!item) throw new NotFoundError('Item not found');
-
-    const order = await this.deps.orderRepo.findById(item.orderId);
+    const order = await this.deps.orderRepo.findById(existingItem.orderId);
     if (!order) throw new NotFoundError('Order not found');
 
-    const newDevice = await this.deps.deviceRepo.findById(newDeviceTypeId);
-    if (!newDevice || !newDevice.isActive) throw new NotFoundError('New device type not found');
+    const commandId = crypto.randomUUID();
+    const optimisticItem: OrderItemEntity = {
+      ...existingItem,
+      status: 'cancelled',
+      cancelledAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: existingItem.version,
+    };
 
-    const customer = await this.deps.customerRepo.findById(order.customerId);
-    if (!customer) throw new NotFoundError('Customer not found');
-
-    const ledger = await this.deps.ledgerRepo.findByCustomer(order.customerId);
-    const chargeEvent = ledger.find(l => l.orderItemId === item.id && l.eventType === 'ORDER_ITEM_CHARGE');
-
-    if (chargeEvent) {
-      await this.deps.ledgerRepo.append({
-        eventType: 'REVERSAL',
-        amountMinor: -chargeEvent.amountMinor,
+    return this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.mutationSnapshotRepo?.capture(commandId, [
+        { table: 'orderItems', id: existingItem.id, existed: true, data: existingItem },
+      ]);
+      ctx.itemRepo.save(optimisticItem);
+      ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
+        id: commandId,
+        aggregateId: order.id,
+        itemId: itemId,
+        orderItemId: itemId,
         orderId: order.id,
-        orderItemId: item.id,
-        customerId: order.customerId,
-        actorAdminId: actor.id,
-        referenceId: chargeEvent.id,
-      });
-    }
-
-    const pricing = calculateItemPrice({
-      basePriceMinor: newDevice.basePriceMinor,
-      chargerFeeEnabled: newDevice.chargerFeeEnabled,
-      customerExempt: customer.chargerFeeExempt,
-      hasCharger: item.hasCharger,
+        bin,
+      }, existingItem.version);
+      return { success: true, data: optimisticItem };
     });
-
-    item.deviceTypeId = newDeviceTypeId;
-    item.deviceNameSnapshot = newDevice.name;
-    item.deviceIconSnapshot = newDevice.icon;
-    item.basePriceSnapshotMinor = newDevice.basePriceMinor;
-    item.chargerFeeEnabledSnapshot = newDevice.chargerFeeEnabled;
-    item.chargerFeeSnapshotMinor = pricing.chargerFeeSnapshotMinor;
-    item.unitPriceMinor = pricing.unitPriceMinor;
-    item.totalPriceMinor = pricing.totalPriceMinor;
-    item.status = 'charging';
-    item.deliveredAt = undefined;
-    item.updatedAt = new Date().toISOString();
-    item.version += 1;
-
-    await this.deps.itemRepo.save(item);
-    return { success: true, data: item };
-  }
-
-  async editOrderNotes(auth: AuthorizationContext, orderId: ID, notes: string): Promise<Result<OrderEntity>> {
-    const actor = auth.requireAuth();
-    auth.assertPermission('orders:edit');
-    const order = await this.deps.orderRepo.findById(orderId);
-    if (!order) throw new NotFoundError('Order not found');
-    order.notes = notes;
-    order.updatedAt = new Date().toISOString();
-    order.version += 1;
-    await this.deps.orderRepo.save(order);
-    return { success: true, data: order };
   }
 
   // ==========================================
@@ -613,6 +748,9 @@ export class FinalUseCases {
   ): Promise<Result<CustomerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('customers:create');
+    if (!Number.isInteger(debtLimitMinor) || debtLimitMinor < 0) {
+      throw new BusinessRuleViolation('Debt limit must be a non-negative integer in minor units');
+    }
 
     const customerId = commandId || crypto.randomUUID();
     const customer: CustomerEntity = {
@@ -640,6 +778,9 @@ export class FinalUseCases {
   async updateCustomer(auth: AuthorizationContext, customerId: ID, updates: Partial<CustomerEntity>): Promise<Result<CustomerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('customers:edit');
+    if (updates.debtLimitMinor !== undefined && (!Number.isInteger(updates.debtLimitMinor) || updates.debtLimitMinor < 0)) {
+      throw new BusinessRuleViolation('Debt limit must be a non-negative integer in minor units');
+    }
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
 
@@ -694,6 +835,12 @@ export class FinalUseCases {
   ): Promise<Result<DeviceTypeEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('devices:manage');
+    if (!Number.isInteger(basePriceMinor) || basePriceMinor < 0) {
+      throw new BusinessRuleViolation('Device price must be a non-negative integer in minor units');
+    }
+    if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+      throw new BusinessRuleViolation('Device sort order must be a non-negative integer');
+    }
 
     const device: DeviceTypeEntity = {
       id: crypto.randomUUID(),
@@ -703,6 +850,7 @@ export class FinalUseCases {
       icon,
       basePriceMinor,
       chargerFeeEnabled,
+      chargerFeeApplicable: chargerFeeEnabled,
       isActive,
       sortOrder,
       createdAt: new Date().toISOString(),
@@ -711,8 +859,51 @@ export class FinalUseCases {
     };
 
     return this.deps.transactionManager.runInTransaction((ctx) => {
+      // Inserting at a numbered position shifts existing entries down instead
+      // of creating duplicate sort_order values. The shift and creation share
+      // one local transaction, so the UI can never observe a half-reordered list.
+      if (device.sortOrder > 0 && ctx.deviceRepo.findAll) {
+        const existing = (ctx.deviceRepo.findAll as any)() as DeviceTypeEntity[];
+        for (const existingDevice of existing) {
+          if (existingDevice.sortOrder >= device.sortOrder) {
+            existingDevice.sortOrder += 1;
+            existingDevice.version += 1;
+            existingDevice.updatedAt = new Date().toISOString();
+            ctx.deviceRepo.save(existingDevice);
+            const shiftCommandId = crypto.randomUUID();
+            ctx.commandRepo.record(shiftCommandId, 'UPDATE_DEVICE_TYPE', {
+              id: existingDevice.id,
+              aggregateId: existingDevice.id,
+              deviceTypeId: existingDevice.id,
+              name: existingDevice.name,
+              arabicName: existingDevice.nameAr || existingDevice.name,
+              englishName: existingDevice.nameEn || existingDevice.name,
+              icon: existingDevice.icon,
+              basePriceMinor: existingDevice.basePriceMinor,
+              chargerFeeEnabled: existingDevice.chargerFeeEnabled,
+              chargerFeeApplicable: existingDevice.chargerFeeApplicable ?? existingDevice.chargerFeeEnabled,
+              sortOrder: existingDevice.sortOrder,
+              isActive: existingDevice.isActive,
+              version: existingDevice.version,
+            }, existingDevice.version - 1);
+          }
+        }
+      }
+
       ctx.deviceRepo.save(device);
-      ctx.commandRepo.record(device.id, 'CREATE_DEVICE_TYPE', device);
+      ctx.commandRepo.record(device.id, 'CREATE_DEVICE_TYPE', {
+        id: device.id,
+        name: device.name,
+        arabicName: device.nameAr || device.name,
+        englishName: device.nameEn || device.name,
+        icon: device.icon,
+        basePriceMinor: device.basePriceMinor,
+        chargerFeeEnabled: device.chargerFeeEnabled,
+        chargerFeeApplicable: device.chargerFeeApplicable ?? device.chargerFeeEnabled,
+        sortOrder: device.sortOrder,
+        isActive: device.isActive,
+        version: device.version,
+      });
       return { success: true, data: device };
     });
   }
@@ -720,14 +911,34 @@ export class FinalUseCases {
   async updateDeviceType(auth: AuthorizationContext, deviceId: ID, updates: Partial<DeviceTypeEntity>): Promise<Result<DeviceTypeEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('devices:manage');
+    if (updates.basePriceMinor !== undefined && (!Number.isInteger(updates.basePriceMinor) || updates.basePriceMinor < 0)) {
+      throw new BusinessRuleViolation('Device price must be a non-negative integer in minor units');
+    }
+    if (updates.sortOrder !== undefined && (!Number.isInteger(updates.sortOrder) || updates.sortOrder < 0)) {
+      throw new BusinessRuleViolation('Device sort order must be a non-negative integer');
+    }
     const device = await this.deps.deviceRepo.findById(deviceId);
     if (!device) throw new NotFoundError('Device type not found');
 
     Object.assign(device, updates, { updatedAt: new Date().toISOString(), version: device.version + 1 });
     
     return this.deps.transactionManager.runInTransaction((ctx) => {
+      const commandId = crypto.randomUUID();
       ctx.deviceRepo.save(device);
-      ctx.commandRepo.record(crypto.randomUUID(), 'UPDATE_DEVICE_TYPE', device, device.version - 1);
+      ctx.commandRepo.record(commandId, 'UPDATE_DEVICE_TYPE', {
+        id: device.id,
+        deviceTypeId: device.id,
+        name: device.name,
+        arabicName: device.nameAr || device.name,
+        englishName: device.nameEn || device.name,
+        icon: device.icon,
+        basePriceMinor: device.basePriceMinor,
+        chargerFeeEnabled: device.chargerFeeEnabled,
+        chargerFeeApplicable: device.chargerFeeApplicable ?? device.chargerFeeEnabled,
+        sortOrder: device.sortOrder,
+        isActive: device.isActive,
+        version: device.version,
+      }, device.version - 1);
       return { success: true, data: device };
     });
   }
@@ -764,15 +975,29 @@ export class FinalUseCases {
     const actor = auth.requireAuth();
     auth.assertPermission('devices:manage');
     
-    return this.deps.transactionManager.runInTransaction(async (ctx) => {
+    return this.deps.transactionManager.runInTransaction((ctx) => {
       for (const ord of ordering) {
-        const dev = await ctx.deviceRepo.findById(ord.id);
+        const dev = ctx.deviceRepo.findById(ord.id) as DeviceTypeEntity | null;
         if (dev) {
           dev.sortOrder = ord.sortOrder;
           dev.version += 1;
           dev.updatedAt = new Date().toISOString();
+          const commandId = crypto.randomUUID();
           ctx.deviceRepo.save(dev);
-          ctx.commandRepo.record(crypto.randomUUID(), 'UPDATE_DEVICE_TYPE', dev, dev.version - 1);
+          ctx.commandRepo.record(commandId, 'UPDATE_DEVICE_TYPE', {
+            id: dev.id,
+            deviceTypeId: dev.id,
+            name: dev.name,
+            arabicName: dev.nameAr || dev.name,
+            englishName: dev.nameEn || dev.name,
+            icon: dev.icon,
+            basePriceMinor: dev.basePriceMinor,
+            chargerFeeEnabled: dev.chargerFeeEnabled,
+            chargerFeeApplicable: dev.chargerFeeApplicable ?? dev.chargerFeeEnabled,
+            sortOrder: dev.sortOrder,
+            isActive: dev.isActive,
+            version: dev.version,
+          }, dev.version - 1);
         }
       }
       return { success: true, data: undefined };
@@ -813,9 +1038,9 @@ export class FinalUseCases {
       createdAt: new Date().toISOString(),
     };
 
-    return this.deps.transactionManager.runInTransaction(async (ctx) => {
+    return this.deps.transactionManager.runInTransaction((ctx) => {
       // 1. Atomic Idempotency Check (Local)
-      const existing = await ctx.commandRepo.get(commandId);
+      const existing = ctx.commandRepo.get(commandId) as { type: string; payload: unknown } | null;
       if (existing) return { success: true, data: existing.payload as PaymentEntity };
 
       ctx.paymentRepo.save(payment);
@@ -947,8 +1172,18 @@ export class FinalUseCases {
     };
 
     const txId = crypto.randomUUID();
-    await this.deps.ledgerRepo.append({ id: txId, ...event });
-    return { success: true, data: { id: txId, createdAt: new Date().toISOString(), ...event } };
+    return this.deps.transactionManager.runInTransaction((ctx) => {
+      const createdAt = new Date().toISOString();
+      ctx.ledgerRepo.append({ id: txId, createdAt, ...event });
+      ctx.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
+        id: txId,
+        customerId,
+        amountMinor,
+        actorAdminId: actor.id,
+        createdAt,
+      });
+      return { success: true, data: { id: txId, createdAt, ...event } };
+    });
   }
 
   async consumeCustomerCredit(auth: AuthorizationContext, customerId: ID, amountMinor: number, orderId: ID): Promise<Result<FinancialLedgerEntity>> {
@@ -964,8 +1199,19 @@ export class FinalUseCases {
     };
 
     const txId = crypto.randomUUID();
-    await this.deps.ledgerRepo.append({ id: txId, ...event });
-    return { success: true, data: { id: txId, createdAt: new Date().toISOString(), ...event } };
+    return this.deps.transactionManager.runInTransaction((ctx) => {
+      const createdAt = new Date().toISOString();
+      ctx.ledgerRepo.append({ id: txId, createdAt, ...event });
+      ctx.commandRepo.record(txId, 'CONSUME_CUSTOMER_CREDIT', {
+        id: txId,
+        customerId,
+        amountMinor,
+        orderId,
+        actorAdminId: actor.id,
+        createdAt,
+      });
+      return { success: true, data: { id: txId, createdAt, ...event } };
+    });
   }
 
   async createRefundOrReversal(
@@ -990,8 +1236,17 @@ export class FinalUseCases {
         referenceId: referenceEventId,
       };
 
-      ctx.ledgerRepo.append(event);
-      return { success: true, data: { id: commandId, createdAt: new Date().toISOString(), ...event } };
+      const createdAt = new Date().toISOString();
+      ctx.ledgerRepo.append({ id: commandId, createdAt, ...event });
+      ctx.commandRepo.record(commandId, 'CREATE_REFUND', {
+        id: commandId,
+        customerId,
+        amountMinor,
+        referenceEventId,
+        actorAdminId: actor.id,
+        createdAt,
+      });
+      return { success: true, data: { id: commandId, createdAt, ...event } };
     });
   }
 
@@ -1080,6 +1335,14 @@ export class FinalUseCases {
 
     return this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.dayRepo.save(day);
+      const commandId = crypto.randomUUID();
+      ctx.commandRepo.record(commandId, 'CLOSE_DAY', {
+        id: day.id,
+        aggregateId: day.id,
+        dayId: day.id,
+        closedAt: day.closedAt,
+        closedBy: day.closedBy,
+      });
       return { success: true, data: day };
     });
   }
@@ -1487,6 +1750,20 @@ export class FinalUseCases {
         });
       }
       c.goalRepo!.save(goal);
+      const commandId = crypto.randomUUID();
+      c.commandRepo.record(commandId, 'UPDATE_GOAL_PROGRESS', {
+        id: goal.id,
+        goalId: goal.id,
+        customerId: goal.customerId,
+        currentProgress: goal.currentProgress,
+        status: goal.status,
+        completedAt: goal.completedAt,
+        bonusLedgerId: goal.bonusLedgerId,
+        bonusGranted: bonusToGrant,
+        bonusAmountMinor: goal.bonusAmountMinor,
+        startedAt: goal.startedAt,
+        expiresAt: goal.expiresAt,
+      }, goal.version - 1);
       return { success: true as const, data: { hasActiveGoal: true, goal } };
     };
 

@@ -4,6 +4,7 @@ import { useToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { localDb, OutboxRecord, SyncHistoryRecord } from '../../infrastructure/localDb/localDb';
+import { presentError } from '../../domain/errors';
 import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
 import { authService } from '../../services/auth/authService';
@@ -202,7 +203,7 @@ export const SyncCenter: React.FC = () => {
       } else {
         console.error('Manual sync error:', err);
         showToast(
-          err.message || (locale === 'ar' ? 'تعذر استكمال المزامنة' : 'Sync cycle encountered an error'),
+          presentError(err, locale),
           'error'
         );
       }
@@ -297,7 +298,7 @@ export const SyncCenter: React.FC = () => {
     } catch (err: any) {
       console.error('Reload latest data error:', err);
       showToast(
-        err.message || (locale === 'ar' ? 'تعذر جلب التحديثات الجديدة' : 'Failed to fetch latest updates'),
+        presentError(err, locale),
         'error'
       );
     } finally {

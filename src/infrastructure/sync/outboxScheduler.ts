@@ -106,11 +106,39 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     if (item.commandType === 'CREATE_ORDER' || item.aggregateType === 'orders') {
       if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
       if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
+
+      // A CANCEL_ORDER mutation must wait for all local commands that still
+      // reference the same order, otherwise a late ADD_ORDER_ITEM could arrive
+      // after the server has already cancelled the order.
+      if (item.commandType === 'CANCEL_ORDER') {
+        for (const other of allOutbox) {
+          if (other.commandId === item.commandId) continue;
+          const op = other.payload as any;
+          if (op?.orderId === payload.id || op?.orderId === payload.orderId || other.aggregateId === payload.id) {
+            deps.add(other.commandId);
+          }
+        }
+      }
     }
     // ADD_ORDER_ITEM depends on CREATE_ORDER (orderId) and CREATE_DEVICE_TYPE (deviceTypeId)
     else if (item.commandType === 'ADD_ORDER_ITEM' || item.aggregateType === 'order_items') {
       if (payload.orderId) checkCandidate(payload.orderId, ['CREATE_ORDER', 'orders'], true);
       if (payload.deviceTypeId) checkCandidate(payload.deviceTypeId, ['CREATE_DEVICE_TYPE', 'device_types'], false);
+    }
+    // Delivery/cancellation of an item can be queued while offline immediately
+    // after the item is created. It must never reach the server before the
+    // corresponding ADD_ORDER_ITEM command has been accepted.
+    else if (item.commandType === 'CREATE_GOAL' || item.commandType === 'UPDATE_GOAL_CONFIG' || item.commandType === 'UPDATE_GOAL_PROGRESS') {
+      if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
+      if (payload.goalId && item.commandType !== 'CREATE_GOAL') checkCandidate(payload.goalId, ['CREATE_GOAL', 'goals'], true);
+    }
+    else if (item.commandType === 'RECORD_GOAL_REQUEST' || item.commandType === 'APPROVE_GOAL_REQUEST' || item.commandType === 'REJECT_GOAL_REQUEST') {
+      if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
+      if (payload.requestId) checkCandidate(payload.requestId, ['RECORD_GOAL_REQUEST', 'goal_requests'], true);
+    }
+    else if (item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM') {
+      const itemId = payload.itemId || payload.orderItemId || payload.id;
+      if (itemId) checkCandidate(itemId, ['ADD_ORDER_ITEM', 'order_items'], true);
     } else {
       // General referencing across commands
       if (payload.orderId) checkCandidate(payload.orderId, undefined, true);
@@ -285,14 +313,15 @@ export class OutboxScheduler {
           } else {
             // Prerequisite is not in active outbox AND not in history.
             // Check if the entity already exists locally in DB (e.g. existing order, day, customer, device)
-            const [existsInDays, existsInOrders, existsInCustomers, existsInDevices] = await Promise.all([
+            const [existsInDays, existsInOrders, existsInOrderItems, existsInCustomers, existsInDevices] = await Promise.all([
               localDb.get('businessDays', depId).catch(() => null),
               localDb.get('orders', depId).catch(() => null),
+              localDb.get('orderItems', depId).catch(() => null),
               localDb.get('customers', depId).catch(() => null),
               localDb.get('deviceTypes', depId).catch(() => null),
             ]);
 
-            const entityExistsLocally = Boolean(existsInDays || existsInOrders || existsInCustomers || existsInDevices);
+            const entityExistsLocally = Boolean(existsInDays || existsInOrders || existsInOrderItems || existsInCustomers || existsInDevices);
 
             if (!entityExistsLocally) {
               const isDayDep =

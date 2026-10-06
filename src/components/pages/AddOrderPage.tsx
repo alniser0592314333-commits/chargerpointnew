@@ -5,6 +5,7 @@ import { Textarea } from '../ui/Textarea';
 import { FormField } from '../ui/FormField';
 import { Plus, Trash2, Search, AlertTriangle, Check } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
+import { presentError } from '../../domain/errors';
 import { BusinessDayEntity } from '../../domain/models';
 import {
   UICustomerItem,
@@ -140,7 +141,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
     }
 
     const debtLimitNum = parseFloat(newCustomerDebtLimit);
-    const debtLimitMinor = isNaN(debtLimitNum) ? -2000 : -Math.abs(debtLimitNum * 100);
+    const debtLimitMinor = isNaN(debtLimitNum) ? 2000 : Math.abs(debtLimitNum * 100);
 
     try {
       const created = await addNewCustomer(
@@ -154,7 +155,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
       setNewCustomerDebtLimit('20');
       setExistingOrderForCustomer(null);
     } catch (err: any) {
-      setErrorMessage(err.message || t('errorOccurred'));
+      setErrorMessage(presentError(err, locale) || t('errorOccurred'));
     }
   };
 

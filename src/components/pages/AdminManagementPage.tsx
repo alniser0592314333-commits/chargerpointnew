@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useI18n } from "../../i18n/i18nContext";
+import { presentError } from '../../domain/errors';
 import { Button } from "../ui/Button";
 import { authService, UserSession } from "../../services/auth/authService";
 import {
@@ -139,7 +140,7 @@ export const AdminManagementPage: React.FC = () => {
       setAuditLogs(logsRes.data || []);
       setCustomPermissions(permsRes.data || []);
     } catch (err: any) {
-      setError(err?.message || "Failed to load admin management data.");
+      setError(presentError(err, locale) || "Failed to load admin management data.");
     } finally {
       setLoading(false);
     }
@@ -289,7 +290,7 @@ export const AdminManagementPage: React.FC = () => {
       await fetchData();
       setTimeout(() => handleCloseModal(), 1500);
     } catch (err: any) {
-      setError(err?.message || "Failed to create administrator");
+      setError(presentError(err, locale) || "Failed to create administrator");
     } finally {
       setActionLoading(false);
     }
@@ -315,7 +316,7 @@ export const AdminManagementPage: React.FC = () => {
       await fetchData();
       setTimeout(() => handleCloseModal(), 1500);
     } catch (err: any) {
-      setError(err?.message || "Failed to reset password");
+      setError(presentError(err, locale) || "Failed to reset password");
     } finally {
       setActionLoading(false);
     }
@@ -341,7 +342,7 @@ export const AdminManagementPage: React.FC = () => {
       await fetchData();
       setTimeout(() => handleCloseModal(), 1500);
     } catch (err: any) {
-      setError(err?.message || "Failed to update BIN");
+      setError(presentError(err, locale) || "Failed to update BIN");
     } finally {
       setActionLoading(false);
     }
@@ -367,7 +368,7 @@ export const AdminManagementPage: React.FC = () => {
       await fetchData();
       setTimeout(() => handleCloseModal(), 1500);
     } catch (err: any) {
-      setError(err?.message || "Failed to suspend account");
+      setError(presentError(err, locale) || "Failed to suspend account");
     } finally {
       setActionLoading(false);
     }
@@ -393,7 +394,7 @@ export const AdminManagementPage: React.FC = () => {
       await fetchData();
       setTimeout(() => handleCloseModal(), 1500);
     } catch (err: any) {
-      setError(err?.message || "Failed to activate account");
+      setError(presentError(err, locale) || "Failed to activate account");
     } finally {
       setActionLoading(false);
     }
@@ -477,7 +478,7 @@ export const AdminManagementPage: React.FC = () => {
       await fetchData();
       setTimeout(() => handleCloseModal(), 1200);
     } catch (err: any) {
-      setError(err?.message || "Failed to update permissions");
+      setError(presentError(err, locale) || "Failed to update permissions");
       binInputRef.current?.focus();
     } finally {
       setActionLoading(false);

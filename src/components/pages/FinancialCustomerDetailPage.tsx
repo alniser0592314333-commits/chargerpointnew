@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
+import { presentError } from '../../domain/errors';
 import {
   getCustomerDetail,
   getCustomerOrders,
   getCustomerFinancialHistory,
   topUpCustomerBalance,
   validateBinFormat,
-  getAuthoritativeBinVerifier,
+  getCurrentAdminAuthorizationContext,
   UICustomerDetail,
   UICustomerOrderSummary,
   UICustomerFinancialItem,
@@ -135,22 +136,10 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
     }
 
     setIsValidatingBin(true);
-    const verifier = getAuthoritativeBinVerifier();
-    if (!verifier) {
-      setTopUpError('نظام التحقق غير متوفر حالياً');
-      setIsValidatingBin(false);
-      return;
-    }
-
     try {
-      const isValid = await verifier(binInput, {
-        id: 'admin_authenticated',
-        username: 'admin',
-        fullName: 'مدير المنظومة',
-        role: 'SUPER_ADMIN',
-        permissions: [],
-        isSuperAdmin: true,
-      });
+      const auth = getCurrentAdminAuthorizationContext();
+      await auth.verifyBin(binInput.trim());
+      const isValid = true;
 
       if (!isValid) {
         setTopUpError(t('invalidBinError') || 'رمز التحقق (BIN) غير صحيح');
@@ -197,7 +186,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
       });
 
       if (!res.success) {
-        setTopUpError(res.error || 'فشلت عملية الشحن');
+        setTopUpError(res.error ? presentError(res.error, locale) : 'فشلت عملية الشحن');
         setIsSubmittingTopUp(false);
         return;
       }
@@ -208,7 +197,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
       handleCloseTopUp();
     } catch (err) {
       console.error('Commit topup error:', err);
-      setTopUpError('حدث خطأ غير متوقع');
+      setTopUpError(presentError(err, locale));
       setIsSubmittingTopUp(false);
     }
   };

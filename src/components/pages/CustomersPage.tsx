@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
 import { Search, Plus, X, ChevronLeft, ChevronRight, User, ShoppingBag } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
+import { presentError } from '../../domain/errors';
 import {
   searchCustomersAndOrders,
   addNewCustomer,
@@ -129,7 +130,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
       setIsOrderSearch(updated.isOrderSearch);
       setTotalStoreCount(updated.totalStoreCustomersCount ?? updated.customers.length);
     } catch (err: any) {
-      setAddErrorMessage(err?.message || t('errorOccurred'));
+      setAddErrorMessage(presentError(err, locale) || t('errorOccurred'));
     } finally {
       setIsSubmitting(false);
     }

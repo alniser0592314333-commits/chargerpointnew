@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
+import { presentError } from '../../domain/errors';
 import { useToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
@@ -141,7 +142,7 @@ export const BackupDataManagement: React.FC = () => {
       setSnapshots(sorted);
     } catch (err: any) {
       console.error('Failed to list snapshots:', err);
-      showToast(err.message || (locale === 'ar' ? 'فشل تحميل النسخ الاحتياطية' : 'Failed to load snapshots'), 'error');
+      showToast(presentError(err, locale) || (locale === 'ar' ? 'فشل تحميل النسخ الاحتياطية' : 'Failed to load snapshots'), 'error');
     } finally {
       setLoadingSnapshots(false);
     }
@@ -219,7 +220,7 @@ export const BackupDataManagement: React.FC = () => {
       await fetchSnapshots();
     } catch (err: any) {
       console.error('Create snapshot error:', err);
-      let msg = err.message;
+      let msg = presentError(err, locale);
       if (msg?.includes('Valid numeric BIN') || msg?.includes('BIN is required') || err.name === 'BinRequiredError') {
         msg = locale === 'ar' ? 'رمز التحقق (BIN) مطلوب ويجب أن يتكون من 4 أرقام على الأقل' : 'Valid numeric BIN of at least 4 digits is required';
       } else if (msg?.includes('Invalid BIN') || msg?.includes('WRONG_BIN')) {
@@ -256,7 +257,7 @@ export const BackupDataManagement: React.FC = () => {
       setRestoreBin('');
     } catch (err: any) {
       console.warn('Restore snapshot error:', err);
-      let msg = err.message;
+      let msg = presentError(err, locale);
       if (msg?.includes('Valid numeric BIN') || msg?.includes('BIN is required') || err.name === 'BinRequiredError') {
         msg = locale === 'ar' ? 'رمز التحقق (BIN) مطلوب ويجب أن يتكون من 4 أرقام على الأقل' : 'Valid numeric BIN of at least 4 digits is required';
       } else if (msg?.includes('Invalid BIN') || msg?.includes('WRONG_BIN')) {
@@ -292,7 +293,7 @@ export const BackupDataManagement: React.FC = () => {
       await fetchSnapshots();
     } catch (err: any) {
       console.warn('Delete snapshot error:', err);
-      let msg = err.message;
+      let msg = presentError(err, locale);
       if (msg?.includes('Valid numeric BIN') || msg?.includes('BIN is required') || err.name === 'BinRequiredError') {
         msg = locale === 'ar' ? 'رمز التحقق (BIN) مطلوب ويجب أن يتكون من 4 أرقام على الأقل' : 'Valid numeric BIN of at least 4 digits is required';
       } else if (msg?.includes('Invalid BIN') || msg?.includes('WRONG_BIN')) {
@@ -328,7 +329,7 @@ export const BackupDataManagement: React.FC = () => {
       setRestoreOnlineBin('');
     } catch (err: any) {
       console.warn('Restore online error:', err);
-      let msg = err.message;
+      let msg = presentError(err, locale);
       if (msg?.includes('Valid numeric BIN') || msg?.includes('BIN is required') || err.name === 'BinRequiredError') {
         msg = locale === 'ar' ? 'رمز التحقق (BIN) مطلوب ويجب أن يتكون من 4 أرقام على الأقل' : 'Valid numeric BIN of at least 4 digits is required';
       } else if (msg?.includes('Invalid BIN') || msg?.includes('WRONG_BIN')) {
@@ -363,7 +364,7 @@ export const BackupDataManagement: React.FC = () => {
       setDeleteLocalBin('');
     } catch (err: any) {
       console.warn('Delete local data error:', err);
-      let msg = err.message;
+      let msg = presentError(err, locale);
       if (msg?.includes('Valid numeric BIN') || msg?.includes('BIN is required') || err.name === 'BinRequiredError') {
         msg = locale === 'ar' ? 'رمز التحقق (BIN) مطلوب ويجب أن يتكون من 4 أرقام على الأقل' : 'Valid numeric BIN of at least 4 digits is required';
       } else if (msg?.includes('Invalid BIN') || msg?.includes('WRONG_BIN')) {
@@ -430,7 +431,7 @@ export const BackupDataManagement: React.FC = () => {
       setDeleteOnlineBin('');
     } catch (err: any) {
       console.warn('Delete online data error:', err);
-      let msg = err.message;
+      let msg = presentError(err, locale);
       if (
         msg?.includes('Valid numeric BIN') ||
         msg?.includes('BIN is required') ||
@@ -519,7 +520,7 @@ export const BackupDataManagement: React.FC = () => {
       await fetchSnapshots();
     } catch (err: any) {
       console.warn('Replace online data error:', err);
-      let msg = err.message;
+      let msg = presentError(err, locale);
       if (
         msg?.includes('Valid numeric BIN') ||
         msg?.includes('BIN is required') ||

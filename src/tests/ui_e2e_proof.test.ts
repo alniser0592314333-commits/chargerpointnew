@@ -2,9 +2,9 @@
 import { describe, it, expect, beforeEach, vi, afterAll } from 'vitest';
 
 // Set up environment BEFORE importing app modules
-process.env.VITE_SUPABASE_URL = 'https://ydhcyamtgioyrxfarkwk.supabase.co';
-process.env.VITE_SUPABASE_ANON_KEY = 'sb_publishable_dXsrK8ltM6DCZ88HgfP27w_bxb3rvGN';
-process.env.MODE = 'production';
+process.env.VITE_SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://example.supabase.co';
+process.env.VITE_SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'test-anon-key';
+process.env.MODE = 'test';
 
 import * as store from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
@@ -13,9 +13,9 @@ import { globalSyncEngine } from '../components/pages/dayOrdersStore';
 import { resolveAuthBearerToken } from '../services/supabase/client';
 
 // Real Supabase Connection Details
-const SUPABASE_URL = 'https://ydhcyamtgioyrxfarkwk.supabase.co';
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkaGN5YW10Z2lveXJ4ZmFya3drIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDQ3NTgxMiwiZXhwIjoyMTA2MDUxODEyfQ.PnEkWh9j1g_wp7HnKvnfZh24CFj1KjaerPr2nCH3C6I';
-const ANON_KEY = 'sb_publishable_dXsrK8ltM6DCZ88HgfP27w_bxb3rvGN';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || '';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Use a known existing Super Admin account
 const ADMIN_EMAIL = 'al.niser.0592314333@gmail.com';

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
+import { presentError } from '../../domain/errors';
 import {
   getCustomerDetail,
   getCustomerOrders,
@@ -8,7 +9,7 @@ import {
   topUpCustomerBalance,
   updateCustomerChargerFeeExemptionWithPhase5,
   validateBinFormat,
-  getAuthoritativeBinVerifier,
+  getCurrentAdminAuthorizationContext,
   UICustomerDetail,
   UICustomerOrderSummary,
   UICustomerFinancialItem,
@@ -157,22 +158,10 @@ const [isLoading, setIsLoading] = useState(true);
     }
 
     setIsValidatingBin(true);
-    const verifier = getAuthoritativeBinVerifier();
-    if (!verifier) {
-      setTopUpError('نظام التحقق غير متوفر حالياً');
-      setIsValidatingBin(false);
-      return;
-    }
-
     try {
-      const isValid = await verifier(topUpBin, {
-        id: 'admin_authenticated',
-        username: 'admin',
-        fullName: 'مدير المنظومة',
-        role: 'SUPER_ADMIN',
-        permissions: [],
-        isSuperAdmin: true,
-      });
+      const auth = getCurrentAdminAuthorizationContext();
+      await auth.verifyBin(topUpBin.trim());
+      const isValid = true;
 
       if (!isValid) {
         setTopUpError(t('invalidBinError') || 'رمز التحقق (BIN) غير صحيح');
@@ -217,7 +206,7 @@ const [isLoading, setIsLoading] = useState(true);
       });
 
       if (!res.success) {
-        setTopUpError(res.error || 'فشلت عملية الشحن');
+        setTopUpError(res.error ? presentError(res.error, locale) : 'فشلت عملية الشحن');
         setIsSubmittingTopUp(false);
         return;
       }
@@ -232,7 +221,7 @@ const [isLoading, setIsLoading] = useState(true);
       );
     } catch (err) {
       console.error('Commit topup error:', err);
-      setTopUpError('حدث خطأ غير متوقع');
+      setTopUpError(presentError(err, locale));
       setIsSubmittingTopUp(false);
     }
   };
@@ -313,7 +302,7 @@ const [isLoading, setIsLoading] = useState(true);
     }
 
     const debtNum = parseFloat(editDebtLimit);
-    const debtLimitMinor = isNaN(debtNum) ? customer.debtLimitMinor : -Math.abs(debtNum * 100);
+    const debtLimitMinor = isNaN(debtNum) ? customer.debtLimitMinor : Math.abs(debtNum * 100);
 
     setIsSavingEdit(true);
     setEditError('');
@@ -331,7 +320,7 @@ const [isLoading, setIsLoading] = useState(true);
         'success'
       );
     } catch (err: any) {
-      setEditError(err?.message || t('errorOccurred'));
+      setEditError(presentError(err, locale) || t('errorOccurred'));
     } finally {
       setIsSavingEdit(false);
     }
@@ -371,7 +360,7 @@ const [isLoading, setIsLoading] = useState(true);
         'success'
       );
     } catch (err: any) {
-      showToast(err?.message || 'فشل تحديث حالة الحساب', 'error');
+      showToast(presentError(err, locale) || 'فشل تحديث حالة الحساب', 'error');
     } finally {
       setIsSavingControl(false);
     }
@@ -395,7 +384,7 @@ const [isLoading, setIsLoading] = useState(true);
     setControlError('');
     try {
       const updated = await updateCustomer(customer.id, {
-        debtLimitMinor: -Math.abs(Math.round(num * 100)),
+        debtLimitMinor: Math.abs(Math.round(num * 100)),
       });
       setCustomer(updated);
       setIsAccountControlModalOpen(false);
@@ -404,7 +393,7 @@ const [isLoading, setIsLoading] = useState(true);
         'success'
       );
     } catch (err: any) {
-      setControlError(err?.message || 'فشل تحديث سقف الدين');
+      setControlError(presentError(err, locale) || 'فشل تحديث سقف الدين');
     } finally {
       setIsSavingControl(false);
     }
@@ -448,7 +437,7 @@ const [isLoading, setIsLoading] = useState(true);
         'success'
       );
     } catch (err: any) {
-      setExemptBinError(err?.message || 'حدث خطأ أثناء حفظ التعديل');
+      setExemptBinError(presentError(err, locale) || 'حدث خطأ أثناء حفظ التعديل');
     } finally {
       setIsSubmittingExempt(false);
     }

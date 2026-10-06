@@ -1,4 +1,4 @@
-project_id = "ydhcyamtgioyrxfarkwk"
+project_id = "YOUR_PROJECT_REF"
 
 [auth]
 additional_redirect_urls = [

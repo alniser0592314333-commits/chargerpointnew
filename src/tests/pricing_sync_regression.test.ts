@@ -83,7 +83,7 @@ describe('Pricing Sync Regression Fix', () => {
 
     const result = await useCases.addOrderItem(auth, 'order-1', 'dev-1', false);
     
-    if (!result.success) throw new Error(result.error);
+    if (!result.success) throw new Error(('error' in result ? result.error : undefined));
     const item = result.data;
     
     // Local calculation check
@@ -117,7 +117,7 @@ describe('Pricing Sync Regression Fix', () => {
 
     const result = await useCases.createOrder(auth, 'cmd-1', 'day-1', 'cust-1', 'Notes');
     
-    if (!result.success) throw new Error(result.error);
+    if (!result.success) throw new Error(('error' in result ? result.error : undefined));
     const order = result.data;
     expect(order.customerBalanceSnapshotMinor).toBe(-500);
 

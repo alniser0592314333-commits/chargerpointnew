@@ -1,7 +1,11 @@
 const crypto = require('crypto');
 
-const SUPABASE_URL = 'https://ydhcyamtgioyrxfarkwk.supabase.co';
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkaGN5YW10Z2lveXJ4ZmFya3drIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDQ3NTgxMiwiZXhwIjoyMTA2MDUxODEyfQ.PnEkWh9j1g_wp7HnKvnfZh24CFj1KjaerPr2nCH3C6I';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
+if (!SUPABASE_URL || !ACCESS_TOKEN) {
+  console.error('Set VITE_SUPABASE_URL and SUPABASE_ACCESS_TOKEN to run this verifier. No credentials are stored in the repository.');
+  process.exit(2);
+}
 
 function uuidv4() {
   return crypto.randomUUID();
@@ -16,10 +20,9 @@ async function invokeRpc(name, payload, authId) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: 'POST',
     headers: {
-      'apikey': SERVICE_ROLE_KEY,
-      'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+      'apikey': ACCESS_TOKEN,
+      'Authorization': `Bearer ${ACCESS_TOKEN}`,
       'Content-Type': 'application/json',
-      'x-supabase-auth-user-id': authId // This won't work to spoof auth.uid()
     },
     body: JSON.stringify(payload)
   });
@@ -51,46 +54,9 @@ async function invokeRpc(name, payload, authId) {
 // I'll use the GoTrue Admin API to set a known password for the Super Admin.
 // Then I'll sign in and get a JWT.
 
-async function resetAdminPassword() {
-  const userId = 'f4a7e143-f4a6-47fb-8976-eec7b5f49643'; // From scripts/secure_reset.cjs
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    method: 'PUT',
-    headers: {
-      'apikey': SERVICE_ROLE_KEY,
-      'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ password: 'VerifyPassword123!' })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Password reset failed: ${text}`);
-  }
-  console.log('Password reset successful.');
-}
-
-async function login() {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: {
-      'apikey': SERVICE_ROLE_KEY,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ email: 'al.niser.0592314333@gmail.com', password: 'VerifyPassword123!' })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Login failed: ${text}`);
-  }
-  const data = await res.json();
-  return data.access_token;
-}
-
 async function runVerify() {
   try {
-    await resetAdminPassword();
-    const token = await login();
-    console.log('Login successful, JWT obtained.');
+    const token = ACCESS_TOKEN;
 
     const orderId = uuidv4();
     const commandId1 = uuidv4();
@@ -113,7 +79,7 @@ async function runVerify() {
     const res1 = await fetch(`${SUPABASE_URL}/rest/v1/rpc/execute_sync_command`, {
       method: 'POST',
       headers: {
-        'apikey': SERVICE_ROLE_KEY,
+        'apikey': token,
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
@@ -151,7 +117,7 @@ async function runVerify() {
     const res2 = await fetch(`${SUPABASE_URL}/rest/v1/rpc/execute_sync_command`, {
       method: 'POST',
       headers: {
-        'apikey': SERVICE_ROLE_KEY,
+        'apikey': token,
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
@@ -165,8 +131,8 @@ async function runVerify() {
     console.log('Verifying server data...');
     const res3 = await fetch(`${SUPABASE_URL}/rest/v1/order_items?id=eq.${itemId}&select=*`, {
       headers: {
-        'apikey': SERVICE_ROLE_KEY,
-        'Authorization': `Bearer ${SERVICE_ROLE_KEY}`
+        'apikey': token,
+        'Authorization': `Bearer ${token}`
       }
     });
     const items = await res3.json();
@@ -174,8 +140,8 @@ async function runVerify() {
 
     const res4 = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=*`, {
       headers: {
-        'apikey': SERVICE_ROLE_KEY,
-        'Authorization': `Bearer ${SERVICE_ROLE_KEY}`
+        'apikey': token,
+        'Authorization': `Bearer ${token}`
       }
     });
     const orders = await res4.json();

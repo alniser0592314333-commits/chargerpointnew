@@ -129,10 +129,10 @@ export class SyncBridge {
 
         if (pullRes.changes.length > 0) {
           const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
-          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
             for (const change of sortedChanges) {
               if (globalSyncEngine.onDeltaApplied) {
-                await globalSyncEngine.onDeltaApplied(change, tx);
+                globalSyncEngine.onDeltaApplied(change, tx);
               } else {
                 applyRemoteChange(change, tx);
               }

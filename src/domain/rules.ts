@@ -216,6 +216,26 @@ export function generateGoalProposal(
   };
 }
 
+
+/**
+ * Server-compatible Order projection from canonical OrderItem.status.
+ * This is a read/UI projection only; callers must not persist its result as an
+ * authoritative Order.status mutation. Cancelled items are inactive.
+ */
+export function calculateOrderProjection(
+  items: Array<{ status?: string | null }>,
+  fallback: OrderStatus = 'pending'
+): OrderStatus {
+  const active = items.filter((item) => String(item.status || '').toLowerCase() !== 'cancelled');
+  if (items.length === 0) return fallback;
+  if (active.length === 0) return 'cancelled';
+  const hasCharging = active.some((item) => String(item.status || '').toLowerCase() === 'charging');
+  const hasDelivered = active.some((item) => String(item.status || '').toLowerCase() === 'delivered');
+  if (hasCharging) return 'charging';
+  if (hasDelivered) return 'delivered';
+  return fallback;
+}
+
 /**
  * Calculates authoritative goal progress based on qualifying delivered & recognized order items
  */
@@ -237,9 +257,7 @@ export function calculateAuthoritativeGoalProgress(
 
   for (const item of customerItems) {
     if (item.deletedAt) continue;
-    const isDelivered =
-      (item.operationalStatus && item.operationalStatus.toUpperCase() === 'DELIVERED') ||
-      (item.status && item.status.toLowerCase() === 'delivered');
+    const isDelivered = item.status && item.status.toLowerCase() === 'delivered';
     const isRecognized =
       (item.financialStatus && item.financialStatus.toUpperCase() === 'RECOGNIZED') ||
       item.status === 'delivered';

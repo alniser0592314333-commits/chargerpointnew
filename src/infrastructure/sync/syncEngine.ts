@@ -21,6 +21,8 @@ export type SyncErrorClass =
   | 'VALIDATION'
   | 'CONFLICT'
   | 'DATABASE_CONSTRAINT'
+  | 'NOT_FOUND'
+  | 'BUSINESS_RULE'
   | 'SERVER'
   | 'RPC'
   | 'UNKNOWN';
@@ -55,6 +57,8 @@ export function isRetryEligible(errorClass?: SyncErrorClass): boolean {
     case 'VALIDATION':
     case 'CONFLICT':
     case 'DATABASE_CONSTRAINT':
+    case 'NOT_FOUND':
+    case 'BUSINESS_RULE':
     case 'UNKNOWN':
     default:
       return false;
@@ -117,6 +121,14 @@ export function classifySyncError(response: Partial<SyncCommandResponse>): Struc
       postgresSqlstate: sqlstate,
       constraintName: response.constraintName,
     };
+  }
+
+  if (code === 'NOT_FOUND') {
+    return { errorClass: 'NOT_FOUND', failureStage: 'REMOTE_EXECUTION', retryEligible: false, httpStatus: status, postgresSqlstate: sqlstate };
+  }
+
+  if (code === 'BUSINESS_RULE') {
+    return { errorClass: 'BUSINESS_RULE', failureStage: 'REMOTE_EXECUTION', retryEligible: false, httpStatus: status, postgresSqlstate: sqlstate };
   }
 
   if (code === 'VALIDATION_ERROR' || code === 'INVALID_PAYLOAD') {
@@ -267,6 +279,7 @@ export interface SyncCommandResponse {
   error?: string;
   code?: string;
   serverVersion?: number;
+  result?: unknown;
   errorClass?: SyncErrorClass;
   failureStage?: FailureStage;
   rpcReached?: boolean;
@@ -395,7 +408,6 @@ export class SyncEngine {
     const groupId = options?.groupId || p?.groupId;
 
     const syncState = await localDb.getSyncState('global');
-    console.log('DEBUG: syncState', syncState);
     let currentGen = syncState?.resetGeneration;
     let status: 'pending' | 'PENDING_RECONCILIATION' = 'pending';
 
@@ -625,11 +637,11 @@ export class SyncEngine {
 
       if (pullRes.changes.length > 0) {
         const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
-        await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+        await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
           for (const change of sortedChanges) {
             try {
               if (this.onDeltaApplied) {
-                await this.onDeltaApplied(change, tx);
+                this.onDeltaApplied(change, tx);
               } else {
                 if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
                   localDb.removeWithTx(tx, change.entityType, change.entityId);
@@ -955,6 +967,12 @@ export class SyncEngine {
             item.serverProcessedAt = new Date().toISOString();
             pushedCount++;
 
+            // The server is now authoritative. Discard only the rollback snapshot;
+            // remote deltas remain responsible for authoritative entity hydration.
+            await localDb.runTransaction(['kvStore', 'mutationSnapshots'], 'readwrite', (tx) => {
+              localDb.deleteMutationSnapshotWithTx(tx, item.commandId);
+            });
+
             history.state = 'SUCCESS';
             history.completedAt = new Date().toISOString();
             history.errorClass = undefined;
@@ -997,6 +1015,12 @@ export class SyncEngine {
             }
             item.retryCount = history.attemptCount;
             item.lastError = res.error;
+
+            if (!classification.retryEligible) {
+              await localDb.runTransaction(['kvStore', 'mutationSnapshots'], 'readwrite', (tx) => {
+                localDb.rollbackMutationSnapshotWithTx(tx, item.commandId);
+              });
+            }
 
             syncEventEmitter.emit({
               type: 'command_failed',

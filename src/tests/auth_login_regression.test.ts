@@ -17,7 +17,7 @@ describe("Auth Regression Fix Verification (A through F)", () => {
     vi.restoreAllMocks();
     storageMap.clear();
     await authService.logout();
-    config.supabaseUrl = "https://ydhcyamtgioyrxfarkwk.supabase.co";
+    config.supabaseUrl = "https://example.supabase.co";
     config.supabaseAnonKey = "sb_publishable_mock_key";
   });
 

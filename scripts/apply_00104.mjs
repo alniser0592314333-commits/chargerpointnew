@@ -2,7 +2,8 @@
 import fs from 'fs';
 
 const token = process.env.SUPABASE_ACCESS_TOKEN;
-const projectId = 'ydhcyamtgioyrxfarkwk';
+const projectId = process.env.SUPABASE_PROJECT_REF;
+if (!projectId) { console.error('Missing SUPABASE_PROJECT_REF'); process.exit(1); }
 
 if (!token) {
   console.error('Missing SUPABASE_ACCESS_TOKEN');

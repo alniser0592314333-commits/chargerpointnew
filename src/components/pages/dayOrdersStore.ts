@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FinalUseCases, RepositoryContext } from '../../application/useCases';
 import { AuthorizationContext, BinVerifierFn } from '../../application/authContext';
-import { calculateItemPrice } from '../../domain/rules';
+import { calculateItemPrice, calculateOrderProjection } from '../../domain/rules';
 import {
   CustomerEntity,
   DeviceTypeEntity,
@@ -17,8 +17,10 @@ import {
   PaymentEntity,
   PaymentAllocationEntity,
   OrderNumberReservationEntity,
+  GoalEntity,
+  GoalRequestEntity,
 } from '../../domain/models';
-import { ClosedDayError, InactiveCustomerError, NotFoundError, ConflictError, OrderNumberReservationExhaustedError } from '../../domain/errors';
+import { ClosedDayError, InactiveCustomerError, NotFoundError, ConflictError, OrderNumberReservationExhaustedError, presentError } from '../../domain/errors';
 import { localDb, OutboxRecord } from '../../infrastructure/localDb/localDb';
 import { generateSecurePublicToken, computeTokenHash } from '../../services/supabase/qrSecurity';
 import {
@@ -39,6 +41,12 @@ import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTra
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
+
+const cloneForTransactionRollback = <T>(value: T): T => {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  if (value === undefined) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+};
 
 export interface UIOrderDeviceItem {
   id: string;
@@ -162,6 +170,8 @@ const ledgerList: FinancialLedgerEntity[] = [];
 const paymentsMap = new Map<string, PaymentEntity>();
 const allocationsList: PaymentAllocationEntity[] = [];
 const reservationsMap = new Map<string, OrderNumberReservationEntity>();
+const goalsMap = new Map<string, GoalEntity>();
+const goalRequestsMap = new Map<string, GoalRequestEntity>();
 
 // Runtime Identity Resolver (No fake fallback in production)
 export function getAuthenticatedIdentity(): { actorAdminId: string; deviceId: string } {
@@ -215,6 +225,8 @@ export type StoreScope =
   | 'payments'
   | 'paymentAllocations'
   | 'orderNumberReservations'
+  | 'goals'
+  | 'goalRequests'
   | 'all';
 
 export type StoreChangeListener = (scope: StoreScope, entityId?: string) => void;
@@ -262,6 +274,19 @@ export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number 
 }
 
 // Delta Dispatcher: Normalizes remote payload, updates localDb & in-memory maps, notifies subscribers
+const notifyStoreAfterTransaction = (
+  scope: StoreScope,
+  id?: string,
+  tx?: IDBTransaction
+): void => {
+  const transaction = tx as any;
+  if (transaction && typeof transaction.addEventListener === 'function') {
+    transaction.addEventListener('complete', () => notifyStore(scope, id), { once: true });
+    return;
+  }
+  notifyStore(scope, id);
+};
+
 export const applyRemoteChange = (change: {
   sequenceId: number;
   entityType: string;
@@ -278,7 +303,7 @@ export const applyRemoteChange = (change: {
     if (isDelete) {
       daysMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'businessDays', change.entityId);
-      notifyStore('businessDays', change.entityId);
+      notifyStoreAfterTransaction('businessDays', change.entityId);
       return;
     }
     const resolvedDate =
@@ -300,12 +325,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'businessDays', entity.id, entity);
     daysMap.set(entity.id, entity);
-    notifyStore('businessDays', entity.id);
+    notifyStoreAfterTransaction('businessDays', entity.id);
   } else if (entityType === 'customers') {
     if (isDelete) {
       customersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'customers', change.entityId);
-      notifyStore('customers', change.entityId);
+      notifyStoreAfterTransaction('customers', change.entityId);
       return;
     }
     const entity: CustomerEntity = {
@@ -322,12 +347,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'customers', entity.id, entity);
     customersMap.set(entity.id, entity);
-    notifyStore('customers', entity.id);
+    notifyStoreAfterTransaction('customers', entity.id);
   } else if (entityType === 'device_types' || entityType === 'deviceTypes') {
     if (isDelete) {
       devicesMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'deviceTypes', change.entityId);
-      notifyStore('deviceTypes', change.entityId);
+      notifyStoreAfterTransaction('deviceTypes', change.entityId);
       return;
     }
     const entity: DeviceTypeEntity = {
@@ -348,21 +373,27 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'deviceTypes', entity.id, entity);
     devicesMap.set(entity.id, entity);
-    notifyStore('deviceTypes', entity.id);
+    notifyStoreAfterTransaction('deviceTypes', entity.id);
   } else if (entityType === 'orders') {
     if (isDelete) {
       ordersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orders', change.entityId);
-      notifyStore('orders', change.entityId);
+      notifyStoreAfterTransaction('orders', change.entityId);
       return;
     }
+    const previousOrder = ordersMap.get(change.entityId);
+    const incomingOrderVersion = Number(p.version ?? 1);
+    if (previousOrder && change.action !== 'INSERT' && Number(previousOrder.version ?? 0) >= incomingOrderVersion) {
+      return;
+    }
+    const resolvedOrderStatus = p.status || p.order_status || previousOrder?.status || 'pending';
     const entity: OrderEntity = {
       id: p.id || change.entityId,
-      dayId: p.dayId || p.day_id,
-      customerId: p.customerId || p.customer_id,
-      displayNumber: p.displayNumber || p.display_number,
-      internalSequence: p.internalSequence || p.internal_sequence,
-      status: p.status,
+      dayId: p.dayId || p.day_id || previousOrder?.dayId,
+      customerId: p.customerId || p.customer_id || previousOrder?.customerId,
+      displayNumber: p.displayNumber ?? p.display_number ?? previousOrder?.displayNumber ?? 1,
+      internalSequence: p.internalSequence ?? p.internal_sequence ?? previousOrder?.internalSequence ?? 0,
+      status: resolvedOrderStatus,
       notes: p.notes ?? undefined,
       qrTokenId: p.qrTokenId || p.qr_token_id || undefined,
       chargingAt: p.chargingAt || p.charging_at || undefined,
@@ -376,37 +407,34 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'orders', entity.id, entity);
     ordersMap.set(entity.id, entity);
-    notifyStore('orders', entity.id);
+    notifyStoreAfterTransaction('orders', entity.id);
   } else if (entityType === 'order_items' || entityType === 'orderItems') {
     if (isDelete) {
       itemsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orderItems', change.entityId);
-      notifyStore('orderItems', change.entityId);
+      notifyStoreAfterTransaction('orderItems', change.entityId);
       return;
     }
-    const rawStatus = (
-      p.status ||
-      p.operationalStatus?.toLowerCase() ||
-      p.operational_status?.toLowerCase() ||
-      p.deliveryStatus ||
-      p.delivery_status ||
-      'charging'
-    );
+    const previousItem = itemsMap.get(change.entityId);
+    const incomingItemVersion = Number(p.version ?? 1);
+    if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
+      return;
+    }
+    const rawStatus = String(p.status || p.item_status || previousItem?.status || 'charging').toLowerCase();
     const normalizedStatus: ItemStatus =
-      rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending'
+      rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending' || rawStatus === 'charging'
         ? (rawStatus as ItemStatus)
         : 'charging';
 
     const entity: OrderItemEntity = {
       ...p,
       id: p.id || change.entityId,
-      orderId: p.orderId || p.order_id,
-      deviceTypeId: p.deviceTypeId || p.device_type_id,
-      itemSequence: p.itemSequence || p.item_sequence || 1,
+      orderId: p.orderId || p.order_id || previousItem?.orderId,
+      deviceTypeId: p.deviceTypeId || p.device_type_id || previousItem?.deviceTypeId,
+      itemSequence: p.itemSequence ?? p.item_sequence ?? previousItem?.itemSequence ?? 1,
       status: normalizedStatus,
-      operationalStatus: p.operationalStatus || p.operational_status || (normalizedStatus === 'delivered' ? 'DELIVERED' : normalizedStatus === 'cancelled' ? 'CANCELLED' : 'CHARGING'),
-      financialStatus: p.financialStatus || p.financial_status || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
-      paymentStatus: p.paymentStatus || p.payment_status || 'UNPAID',
+      financialStatus: p.financialStatus || p.financial_status || previousItem?.financialStatus || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
+      paymentStatus: p.paymentStatus || p.payment_status || previousItem?.paymentStatus || 'UNPAID',
       deviceNameSnapshot: p.deviceNameSnapshot || p.device_name_snapshot || '',
       deviceIconSnapshot: p.deviceIconSnapshot || p.device_icon_snapshot || 'smartphone',
       basePriceSnapshotMinor: p.basePriceSnapshotMinor ?? p.base_price_snapshot_minor ?? 0,
@@ -421,18 +449,19 @@ export const applyRemoteChange = (change: {
       updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
       deliveredAt: p.deliveredAt || p.delivered_at || undefined,
       financiallyRecognizedAt: p.financiallyRecognizedAt || p.financially_recognized_at || undefined,
+      cancelledAt: p.cancelledAt || p.cancelled_at || undefined,
       deletedAt: p.deletedAt || p.deleted_at || undefined,
       version: p.version || 1,
     };
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
     itemsMap.set(entity.id, entity);
-    notifyStore('orderItems', entity.id);
+    notifyStoreAfterTransaction('orderItems', entity.id);
   } else if (entityType === 'financial_ledger' || entityType === 'financialLedger') {
     if (isDelete) {
       const idx = ledgerList.findIndex((item) => item.id === change.entityId);
       if (idx >= 0) ledgerList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'financialLedger', change.entityId);
-      notifyStore('financialLedger', change.entityId);
+      notifyStoreAfterTransaction('financialLedger', change.entityId);
       return;
     }
     const entity: FinancialLedgerEntity = {
@@ -454,12 +483,12 @@ export const applyRemoteChange = (change: {
     } else {
       ledgerList.push(entity);
     }
-    notifyStore('financialLedger', entity.id);
+    notifyStoreAfterTransaction('financialLedger', entity.id);
   } else if (entityType === 'payments') {
     if (isDelete) {
       paymentsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'payments', change.entityId);
-      notifyStore('payments', change.entityId);
+      notifyStoreAfterTransaction('payments', change.entityId);
       return;
     }
     const entity: PaymentEntity = {
@@ -474,13 +503,13 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'payments', entity.id, entity);
     paymentsMap.set(entity.id, entity);
-    notifyStore('payments', entity.id);
+    notifyStoreAfterTransaction('payments', entity.id);
   } else if (entityType === 'payment_allocations' || entityType === 'paymentAllocations') {
     if (isDelete) {
       const idx = allocationsList.findIndex((item) => item.id === change.entityId);
       if (idx >= 0) allocationsList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'paymentAllocations', change.entityId);
-      notifyStore('paymentAllocations', change.entityId);
+      notifyStoreAfterTransaction('paymentAllocations', change.entityId);
       return;
     }
     const entity: PaymentAllocationEntity = {
@@ -497,15 +526,15 @@ export const applyRemoteChange = (change: {
     } else {
       allocationsList.push(entity);
     }
-    notifyStore('paymentAllocations', entity.id);
+    notifyStoreAfterTransaction('paymentAllocations', entity.id);
   } else {
     if (isDelete) {
       localDb.removeWithTx(tx as any, entityType, change.entityId);
-      notifyStore('all', change.entityId);
+      notifyStoreAfterTransaction('all', change.entityId);
       return;
     }
     localDb.setWithTx(tx, entityType, change.entityId, p);
-    notifyStore('all', change.entityId);
+    notifyStoreAfterTransaction('all', change.entityId);
   }
 };
 
@@ -520,11 +549,19 @@ const getCustomerCode = (cust: CustomerEntity): string => {
     'cust-6': 'R9W4',
   };
 
-  if (codeMap[cust.id]) {
-    return codeMap[cust.id];
+  // Canonical customer code: the same 4-character prefix used by the
+  // PostgreSQL derive_customer_code() RPC. This prevents a customer from
+  // receiving a different code depending on whether the UI or server
+  // generated it.
+  const compactUuid = String(cust.id || '').replace(/-/g, '');
+  if (/^[0-9a-f]{32}$/i.test(compactUuid)) {
+    return compactUuid.slice(0, 4).toUpperCase();
   }
 
-  // Generate deterministic 4-character alphanumeric code for dynamic IDs
+  // Legacy/non-UUID records may still exist in old local snapshots.
+  // Keep their historical stable mapping without affecting canonical UUID data.
+  if (codeMap[cust.id]) return codeMap[cust.id];
+
   let hash = 0;
   for (let i = 0; i < cust.id.length; i++) {
     hash = (hash << 5) - hash + cust.id.charCodeAt(i);
@@ -799,14 +836,23 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
 
     let updatedAny = false;
 
-    // Clear local memory maps before refilling to ensure consistency with remote authoritative state
-    // But ONLY if we actually got a successful response for those tables.
-    if (custRes.data) customersMap.clear();
-    if (devRes.data) devicesMap.clear();
-    if (daysRes.data) daysMap.clear();
-    if (ordRes.data) ordersMap.clear();
-    if (itemRes.data) itemsMap.clear();
-    if (payRes.data) paymentsMap.clear();
+    // At this point all authoritative tables have returned successfully.
+    // Replace the local operational snapshot atomically at the bootstrap level;
+    // otherwise records deleted remotely could survive in IndexedDB and reappear
+    // after a browser restart.
+    await localDb.clearOperationalData({ clearOutbox: false, clearSyncState: false });
+    customersMap.clear();
+    devicesMap.clear();
+    daysMap.clear();
+    ordersMap.clear();
+    itemsMap.clear();
+    ledgerList.length = 0;
+    paymentsMap.clear();
+    allocationsList.length = 0;
+
+    // Only replace the local read model after the complete remote snapshot has
+    // been fetched successfully. Partial table hydration is unsafe because it
+    // can mix generations and silently delete one side of the local model.
 
     // 1. Business Days
     if (daysRes.data && Array.isArray(daysRes.data)) {
@@ -865,6 +911,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           icon: dev.icon || 'smartphone',
           basePriceMinor: dev.base_price_minor ?? 0,
           chargerFeeEnabled: dev.charger_fee_enabled ?? true,
+          chargerFeeApplicable: dev.charger_fee_applicable ?? dev.charger_fee_enabled ?? true,
           isActive: dev.is_active ?? true,
           sortOrder: dev.sort_order ?? 0,
           createdAt: dev.created_at,
@@ -993,12 +1040,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       updatedAny = true;
     }
 
+    if (updatedAny) {
+      await localDb.setInitialHydrationCompleted(true);
+    }
     return updatedAny;
   } catch (err) {
     console.warn('Remote table hydration fallback to local persistence:', err);
+    // A failed remote bootstrap is not a successful hydration checkpoint.
     return false;
-  } finally {
-    await localDb.setInitialHydrationCompleted(true);
   }
 };
 
@@ -1031,6 +1080,8 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       ledgerList.length = 0;
       paymentsMap.clear();
       allocationsList.length = 0;
+      goalsMap.clear();
+      goalRequestsMap.clear();
       await localDb.clearOperationalTables({ clearOutbox: true, clearSyncState: true });
       await localDb.setInitialHydrationCompleted(false);
 
@@ -1049,6 +1100,8 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       persistedPayments,
       persistedAllocations,
       persistedReservations,
+      persistedGoals,
+      persistedGoalRequests,
     ] = await Promise.all([
       localDb.list<CustomerEntity>('customers'),
       localDb.list<DeviceTypeEntity>('deviceTypes'),
@@ -1059,12 +1112,18 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       localDb.list<PaymentEntity>('payments'),
       localDb.list<PaymentAllocationEntity>('paymentAllocations'),
       localDb.list<OrderNumberReservationEntity>('orderNumberReservations'),
+      localDb.list<GoalEntity>('goals'),
+      localDb.list<GoalRequestEntity>('goalRequests'),
     ]);
 
     reservationsMap.clear();
     persistedReservations.forEach((r) => {
       reservationsMap.set(r.id, r);
     });
+    goalsMap.clear();
+    persistedGoals.forEach((g) => goalsMap.set(g.id, g));
+    goalRequestsMap.clear();
+    persistedGoalRequests.forEach((g) => goalRequestsMap.set(g.id, g));
 
     // 1. Customers Hydration (always read persisted data and auto-heal active status)
     customersMap.clear();
@@ -1191,11 +1250,6 @@ export const ensureStoreHydrated = async (): Promise<void> => {
           ? (rawStatus as ItemStatus)
           : 'charging';
 
-      const opStatus: ItemOperationalStatus =
-        i.operationalStatus ||
-        (i as any).operational_status ||
-        (normalizedStatus === 'delivered' ? 'DELIVERED' : normalizedStatus === 'cancelled' ? 'CANCELLED' : 'CHARGING');
-
       const finStatus: ItemFinancialStatus =
         i.financialStatus ||
         (i as any).financial_status ||
@@ -1215,7 +1269,6 @@ export const ensureStoreHydrated = async (): Promise<void> => {
         unitPriceMinor: unitPrice,
         totalPriceMinor: totalPrice,
         status: normalizedStatus,
-        operationalStatus: opStatus,
         financialStatus: finStatus,
         paymentStatus: payStatus,
         deviceNameSnapshot: i.deviceNameSnapshot || (i as any).device_name_snapshot || '',
@@ -1540,6 +1593,18 @@ function createTransactionalRepoContext(
       findByCustomer: (customerId: string) => Array.from(paymentsMap.values()).filter((p) => p.customerId === customerId),
       findAllAllocations: () => [...allocationsList],
     },
+    mutationSnapshotRepo: {
+      capture: (commandId: string, records: Array<{ table: string; id: string; existed: boolean; data?: unknown }>) => {
+        localDb.saveMutationSnapshotWithTx(tx, {
+          commandId,
+          createdAt: new Date().toISOString(),
+          records: records.map((record) => ({ ...record, data: record.existed ? cloneForTransactionRollback(record.data) : undefined })),
+        });
+      },
+      clear: (commandId: string) => {
+        localDb.deleteMutationSnapshotWithTx(tx, commandId);
+      },
+    },
     commandRepo: {
       get: (cmdId: string) => commandsMap.get(cmdId) || null,
       record: (cmdId: string, type: string, payload: any, expectedVersion?: number) => {
@@ -1560,6 +1625,15 @@ function createTransactionalRepoContext(
         }
 
         const currentGen = getCurrentSyncGeneration();
+        const payloadRecord = (payload && typeof payload === 'object') ? (payload as any) : {};
+        const aggregateId =
+          payloadRecord.aggregateId ||
+          ((type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM')
+            ? payloadRecord.orderId
+            : type === 'PAYMENT' || type === 'POST_PAYMENT' || type === 'CREATE_PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
+              ? payloadRecord.customerId
+              : payloadRecord.entityId || payloadRecord.deviceTypeId || payloadRecord.orderId || payloadRecord.customerId || payloadRecord.dayId || payloadRecord.id || cmdId);
+
         const record: OutboxRecord = {
           commandId: finalCommandId,
           commandType: type,
@@ -1574,8 +1648,20 @@ function createTransactionalRepoContext(
               ? 'customers'
               : type === 'CREATE_DEVICE_TYPE' || type === 'UPDATE_DEVICE_TYPE' || type === 'DELETE_DEVICE_TYPE'
               ? 'device_types'
+              : type === 'CREATE_GOAL' || type === 'UPDATE_GOAL_CONFIG' || type === 'UPDATE_GOAL_PROGRESS'
+              ? 'goals'
+              : type === 'RECORD_GOAL_REQUEST' || type === 'APPROVE_GOAL_REQUEST' || type === 'REJECT_GOAL_REQUEST'
+              ? 'goal_requests'
+              : type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
+              ? 'financial_ledger'
               : 'COMMAND',
-          aggregateId: cmdId,
+          aggregateId,
+          mutationKey:
+            type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
+              ? `order:${payloadRecord.orderId || aggregateId}`
+              : type === 'CREATE_PAYMENT' || type === 'POST_PAYMENT' || type === 'PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
+                ? `customer:${payloadRecord.customerId || aggregateId}`
+                : type.includes('DEVICE_TYPE') ? `deviceType:${payloadRecord.deviceTypeId || aggregateId}` : undefined,
           payload: { ...(payload || {}), resetGeneration: currentGen },
           expectedVersion,
           createdAt: new Date().toISOString(),
@@ -1598,7 +1684,31 @@ function createTransactionalRepoContext(
         });
       },
     },
-    reservationRepo: {
+    goalRepo: {
+      findById: (id: string) => goalsMap.get(id) || null,
+      findActiveByCustomerId: (customerId: string) => {
+        for (const goal of goalsMap.values()) {
+          if (goal.customerId === customerId && goal.status === 'ACTIVE') return goal;
+        }
+        return null;
+      },
+      findAllByCustomerId: (customerId: string) => Array.from(goalsMap.values()).filter(g => g.customerId === customerId),
+      save: (goal: GoalEntity) => {
+        goalsMap.set(goal.id, goal);
+        localDb.setWithTx(tx, 'goals', goal.id, goal);
+        postCommitActions.push(() => notifyStore('goals', goal.id));
+      },
+    },
+    goalRequestRepo: {
+      findById: (id: string) => goalRequestsMap.get(id) || null,
+      findAllByCustomerId: (customerId: string) => Array.from(goalRequestsMap.values()).filter(r => r.customerId === customerId),
+      save: (request: GoalRequestEntity) => {
+        goalRequestsMap.set(request.id, request);
+        localDb.setWithTx(tx, 'goalRequests', request.id, request);
+        postCommitActions.push(() => notifyStore('goalRequests', request.id));
+      },
+    },
+  reservationRepo: {
       findActiveByDayAndDevice: (dayId: string, deviceId: string) => {
         let found: OrderNumberReservationEntity | null = null;
         reservationsMap.forEach(r => {
@@ -1623,6 +1733,14 @@ function createTransactionalRepoContext(
         reservationsMap.forEach(r => {
           if (r.businessDayId === dayId && r.endNumber > maxEnd) {
             maxEnd = r.endNumber;
+          }
+        });
+        // Reservations are local execution metadata and are intentionally not
+        // required in an online backup. After restore, derive the next safe
+        // range from authoritative local orders so numbering never restarts at 1.
+        ordersMap.forEach(order => {
+          if (order.dayId === dayId && (order.displayNumber || 0) > maxEnd) {
+            maxEnd = order.displayNumber;
           }
         });
         const startNumber = maxEnd + 1;
@@ -1657,9 +1775,15 @@ export const repoContext: RepositoryContext = {
     },
     save: async (o) => {
       await ensureStoreHydrated();
+      const existed = ordersMap.has(o.id);
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.orderRepo.save(o);
-        ctx.commandRepo.record(o.id, 'CREATE_ORDER', o);
+        const commandId = existed ? crypto.randomUUID() : o.id;
+        ctx.commandRepo.record(commandId, existed ? 'UPDATE_ORDER' : 'CREATE_ORDER', {
+          ...o,
+          id: o.id,
+          aggregateId: o.id,
+        });
       });
     },
     countForDay: async (dayId) => {
@@ -1759,8 +1883,11 @@ export const repoContext: RepositoryContext = {
         const recordId = isStandardUuid ? (ev as any).id : crypto.randomUUID();
         const createdAt = (ev as any).createdAt || new Date().toISOString();
         const evWithId: FinancialLedgerEntity = { createdAt, ...ev, id: recordId };
+        // Ledger entries are authoritative side-effects of explicit business commands
+        // (delivery, payment, refund, credit, goal completion). They must not be
+        // emitted as independent FINANCIAL_LEDGER sync commands because the server
+        // owns creation of those ledger rows and no generic ledger mutation RPC exists.
         ctx.ledgerRepo.append(evWithId);
-        ctx.commandRepo.record(recordId, 'FINANCIAL_LEDGER', evWithId);
       });
     },
     findByCustomer: async (customerId) => {
@@ -1795,7 +1922,9 @@ export const repoContext: RepositoryContext = {
       await ensureStoreHydrated();
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.paymentRepo.save(p);
-        ctx.commandRepo.record(p.id, 'PAYMENT', p);
+        // Payment synchronization is owned by CREATE_PAYMENT, which atomically
+        // creates the payment, ledger event and allocations on the server.
+        // Never enqueue the legacy PAYMENT command.
       });
     },
     saveAllocation: async (a) => {
@@ -1857,35 +1986,39 @@ export const repoContext: RepositoryContext = {
       await initDbIfNeeded();
 
       // Snapshot in-memory maps before transaction for rollback
-      const snapOrders = new Map(ordersMap);
-      const snapItems = new Map(itemsMap);
-      const snapCustomers = new Map(customersMap);
-      const snapDays = new Map(daysMap);
-      const snapCommands = new Map(commandsMap);
-      const snapDevices = new Map(devicesMap);
-      const snapPayments = new Map(paymentsMap);
-      const snapReservations = new Map(reservationsMap);
-      const snapLedger = [...ledgerList];
-      const snapAllocations = [...allocationsList];
+      const snapOrders = cloneForTransactionRollback(new Map(ordersMap));
+      const snapItems = cloneForTransactionRollback(new Map(itemsMap));
+      const snapCustomers = cloneForTransactionRollback(new Map(customersMap));
+      const snapDays = cloneForTransactionRollback(new Map(daysMap));
+      const snapCommands = cloneForTransactionRollback(new Map(commandsMap));
+      const snapDevices = cloneForTransactionRollback(new Map(devicesMap));
+      const snapPayments = cloneForTransactionRollback(new Map(paymentsMap));
+      const snapReservations = cloneForTransactionRollback(new Map(reservationsMap));
+      const snapGoals = cloneForTransactionRollback(new Map(goalsMap));
+      const snapGoalRequests = cloneForTransactionRollback(new Map(goalRequestsMap));
+      const snapLedger = cloneForTransactionRollback(ledgerList);
+      const snapAllocations = cloneForTransactionRollback(allocationsList);
 
       const rollbackMemory = () => {
-        ordersMap.clear(); for (const [k, v] of snapOrders) ordersMap.set(k, v);
-        itemsMap.clear(); for (const [k, v] of snapItems) itemsMap.set(k, v);
-        customersMap.clear(); for (const [k, v] of snapCustomers) customersMap.set(k, v);
-        daysMap.clear(); for (const [k, v] of snapDays) daysMap.set(k, v);
-        commandsMap.clear(); for (const [k, v] of snapCommands) commandsMap.set(k, v);
-        devicesMap.clear(); for (const [k, v] of snapDevices) devicesMap.set(k, v);
-        paymentsMap.clear(); for (const [k, v] of snapPayments) paymentsMap.set(k, v);
-        reservationsMap.clear(); for (const [k, v] of snapReservations) reservationsMap.set(k, v);
-        ledgerList.length = 0; ledgerList.push(...snapLedger);
-        allocationsList.length = 0; allocationsList.push(...snapAllocations);
+        ordersMap.clear(); for (const [k, v] of snapOrders) ordersMap.set(k, cloneForTransactionRollback(v));
+        itemsMap.clear(); for (const [k, v] of snapItems) itemsMap.set(k, cloneForTransactionRollback(v));
+        customersMap.clear(); for (const [k, v] of snapCustomers) customersMap.set(k, cloneForTransactionRollback(v));
+        daysMap.clear(); for (const [k, v] of snapDays) daysMap.set(k, cloneForTransactionRollback(v));
+        commandsMap.clear(); for (const [k, v] of snapCommands) commandsMap.set(k, cloneForTransactionRollback(v));
+        devicesMap.clear(); for (const [k, v] of snapDevices) devicesMap.set(k, cloneForTransactionRollback(v));
+        paymentsMap.clear(); for (const [k, v] of snapPayments) paymentsMap.set(k, cloneForTransactionRollback(v));
+        reservationsMap.clear(); for (const [k, v] of snapReservations) reservationsMap.set(k, cloneForTransactionRollback(v));
+        goalsMap.clear(); for (const [k, v] of snapGoals) goalsMap.set(k, cloneForTransactionRollback(v));
+        goalRequestsMap.clear(); for (const [k, v] of snapGoalRequests) goalRequestsMap.set(k, cloneForTransactionRollback(v));
+        ledgerList.length = 0; ledgerList.push(...cloneForTransactionRollback(snapLedger));
+        allocationsList.length = 0; allocationsList.push(...cloneForTransactionRollback(snapAllocations));
       };
 
       try {
         const postCommitActions: (() => void)[] = [];
 
         const result = await localDb.runTransaction(
-          ['kvStore', 'outbox'],
+          ['kvStore', 'outbox', 'mutationSnapshots'],
           'readwrite',
           (tx) => {
             const txCtx = createTransactionalRepoContext(tx, postCommitActions);
@@ -1939,35 +2072,64 @@ export const getAuthoritativeBinVerifier = (): BinVerifierFn | undefined => {
   return undefined;
 };
 
-// Default Regular Admin Auth Context
-export const defaultAdminAuth = new AuthorizationContext({
-  id: 'admin_authenticated',
-  username: 'admin',
-  fullName: 'مدير المنظومة',
-  role: 'ADMIN',
-  permissions: ['orders:view', 'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'customers:view', 'customers:create'],
-  isSuperAdmin: false,
-});
+export const getCurrentAdminAuthorizationContext = (): AuthorizationContext => {
+  return getAuthorizedAdminContext();
+};
+
+// Test-only compatibility actor. It is deliberately unauthorised in production.
+const isTestRuntime = () =>
+  (typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || Boolean(process.env?.VITEST))) ||
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.MODE === 'test');
+
+export const defaultAdminAuth = new AuthorizationContext(
+  isTestRuntime()
+    ? {
+        id: 'admin_test_session',
+        username: 'test-admin',
+        fullName: 'Test Admin',
+        role: 'ADMIN',
+        permissions: [
+          'orders:view', 'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel',
+          'customers:view', 'customers:create', 'customers:edit', 'customers:deactivate',
+          'customers:debt-limit', 'customers:charger-exemption', 'customers:financial-view',
+          'finance:view', 'finance:create-payment', 'finance:approve-payment', 'finance:refund',
+          'finance:correction', 'finance:credit-adjustment', 'devices:view', 'devices:manage',
+          'devices:pricing', 'devices:charger-policy', 'settings:manage',
+        ],
+        isSuperAdmin: false,
+      }
+    : null,
+  getAuthoritativeBinVerifier()
+);
 
 export const getAuthorizedAdminContext = (bin?: string): AuthorizationContext => {
   const { actorAdminId } = getAuthenticatedIdentity();
+  let storedSession: any = null;
+  try {
+    const storage = getLocalStorage();
+    const raw = storage?.getItem('app_auth_session');
+    storedSession = raw ? JSON.parse(raw) : null;
+  } catch {
+    storedSession = null;
+  }
+
+  // Never invent an ADMIN actor or default permissions. Offline authorization must
+  // be derived from the authenticated session cached after a successful server login.
+  if (!storedSession?.userId || !storedSession?.role || !Array.isArray(storedSession.permissions)) {
+    return new AuthorizationContext(null, getAuthoritativeBinVerifier());
+  }
+
+  const role = storedSession.role;
+  const permissions = storedSession.permissions;
+
   return new AuthorizationContext(
     {
-      id: actorAdminId,
-      username: 'admin',
-      fullName: 'مدير المنظومة',
-      role: 'ADMIN',
-      permissions: [
-        'orders:view',
-        'orders:create',
-        'orders:edit',
-        'orders:deliver',
-        'orders:cancel',
-        'customers:view',
-        'customers:create',
-        'settings:manage',
-      ],
-      isSuperAdmin: true,
+      id: storedSession.userId,
+      username: storedSession.username || storedSession.email?.split('@')[0] || 'admin',
+      fullName: storedSession.fullName || 'مدير المنظومة',
+      role,
+      permissions,
+      isSuperAdmin: role === 'SUPER_ADMIN',
     },
     getAuthoritativeBinVerifier()
   );
@@ -2101,7 +2263,9 @@ export const getOrdersForDay = async (
         ? 'UNPAID'
         : (alloc?.paymentStatus || 'UNPAID');
 
-    const orderItems = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
+    const allOrderItems = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id);
+    const orderItems = allOrderItems.filter((i) => i.status !== 'cancelled');
+    const projectedStatus = calculateOrderProjection(allOrderItems, ord.status);
 
     const uiItems: UIOrderDeviceItem[] = orderItems.map((i) => {
       const devName = getItemLocalizedDeviceName(i.deviceTypeId, locale, i.deviceNameSnapshot);
@@ -2126,7 +2290,7 @@ export const getOrdersForDay = async (
       createdAt: ord.createdAt,
       items: uiItems,
       note: ord.notes,
-      status: ord.status,
+      status: projectedStatus,
       paymentStatus,
     });
   }
@@ -2516,7 +2680,7 @@ export const getCustomerOrders = async (
       orderNumber: ord.displayNumber,
       dayId: ord.dayId,
       createdAt: ord.createdAt,
-      status: ord.status,
+      status: projectedStatus,
       paymentStatus,
       totalMinor,
       itemCount: items.length,
@@ -2740,7 +2904,16 @@ export const updateCustomer = async (
     version: cust.version + 1,
   };
 
-  await repoContext.customerRepo.save(updated);
+  const customerAuth = getAuthorizedAdminContext();
+  const updateResult = await phase5UseCases.updateCustomer(customerAuth, updated.id, {
+    name: updated.name,
+    phone: updated.phone,
+    debtLimitMinor: updated.debtLimitMinor,
+    isActive: updated.isActive,
+  });
+  if (!updateResult.success) {
+    throw new Error(('error' in updateResult ? updateResult.error : undefined) || 'فشل تحديث بيانات العميل');
+  }
   const currentBalanceMinor = await repoContext.customerRepo.getBalance(updated.id);
 
   return {
@@ -2758,7 +2931,7 @@ export const updateCustomer = async (
 export const addNewCustomer = async (
   name: string,
   phone: string,
-  debtLimitMinor: number = -2000
+  debtLimitMinor: number = 2000
 ): Promise<UICustomerItem> => {
   const newId = crypto.randomUUID();
   const newCust: CustomerEntity = {
@@ -2803,7 +2976,7 @@ export interface UIEditOrderDetail {
   customerPhone: string;
   debtLimitMinor: number;
   customerBalanceSnapshotMinor?: number;
-  status: 'pending' | 'delivered' | 'cancelled';
+  status: 'pending' | 'charging' | 'delivered' | 'cancelled';
   createdAt: string;
   notes?: string;
   items: UIEditOrderItem[];
@@ -2871,7 +3044,7 @@ export const getOrderForEdit = async (
     customerPhone: cust ? cust.phone || '' : '',
     debtLimitMinor: cust ? cust.debtLimitMinor : -2000,
     customerBalanceSnapshotMinor: snapshotMinor,
-    status: (order.status === 'delivered' || order.status === 'cancelled') ? order.status : 'pending',
+    status: calculateOrderProjection(orderItems, order.status),
     createdAt: order.createdAt,
     notes: order.notes,
     items: uiItems,
@@ -2889,24 +3062,12 @@ export const deliverSingleOrderItem = async (
     const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin);
     if (result.success) {
       const item = result.data;
-      const order = await repoContext.orderRepo.findById(item.orderId);
-      if (order && order.status !== 'cancelled') {
-        const allItems = await repoContext.itemRepo.findByOrderId(order.id);
-        const activeItems = allItems.filter((i) => i.status !== 'cancelled');
-        const allDelivered = activeItems.length > 0 && activeItems.every((i) => i.status === 'delivered');
-        if (allDelivered && order.status !== 'delivered') {
-          order.status = 'delivered';
-          order.updatedAt = new Date().toISOString();
-          order.version += 1;
-          await repoContext.orderRepo.save(order);
-        }
-      }
       notifyStore('all');
       return { success: true, item: result.data };
     }
     return { success: false, error: 'فشل تسليم الجهاز' };
   } catch (err: any) {
-    return { success: false, error: err.message || 'حدث خطأ أثناء تسليم الجهاز' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -2934,16 +3095,10 @@ export const deliverEntireOrder = async (
       }
     }
 
-    if (orderEntity.status !== 'delivered') {
-      orderEntity.status = 'delivered';
-      orderEntity.updatedAt = new Date().toISOString();
-      orderEntity.version += 1;
-      await repoContext.orderRepo.save(orderEntity);
-    }
     notifyStore('all');
     return { success: true, deliveredCount: count };
   } catch (err: any) {
-    return { success: false, error: err.message || 'فشل تسليم الطلب' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -2961,18 +3116,18 @@ export const updateOrderWithPhase5Engine = async (
 
     // 1. Update Order Notes if changed
     if (newNotes !== (order.notes || '')) {
-      await phase5UseCases.editOrderNotes(defaultAdminAuth, orderId, newNotes);
+      await phase5UseCases.editOrderNotes(getAuthorizedAdminContext(), orderId, newNotes);
     }
 
     // 2. Remove specified existing items during edit
     for (const itemId of existingItemIdsToRemove) {
-      await phase5UseCases.removeOrderItemDuringEdit(defaultAdminAuth, itemId);
+      await phase5UseCases.removeOrderItemDuringEdit(getAuthorizedAdminContext(bin), itemId);
     }
 
     // 3. Add new items using addOrderItem Use Case
     for (const item of newItemsToAdd) {
       const itemRes = await phase5UseCases.addOrderItem(
-        defaultAdminAuth,
+        getAuthorizedAdminContext(bin),
         orderId,
         item.deviceTypeId,
         item.hasCharger
@@ -2983,9 +3138,15 @@ export const updateOrderWithPhase5Engine = async (
       }
     }
 
-    // 4. Update status if changed
+    // 4. Update status if changed. Enforce the same transition contract locally
+    // before anything is persisted/queued; the server remains authoritative.
     if (newStatus !== order.status) {
-      if (newStatus === 'delivered') {
+      if (newStatus === 'pending') {
+        const currentStatus = order.status as any;
+        if (currentStatus !== 'pending') {
+          throw new ConflictError(`Invalid order status transition from '${currentStatus}' to 'pending'`);
+        }
+      } else if (newStatus === 'delivered') {
         const deliverRes = await deliverEntireOrder(orderId, bin || '');
         if (!deliverRes.success) {
           return { success: false, error: deliverRes.error || 'فشل تسليم الطلب' };
@@ -2994,28 +3155,11 @@ export const updateOrderWithPhase5Engine = async (
         const auth = getAuthorizedAdminContext(bin);
         await auth.verifyBin(bin || '');
         await phase5UseCases.cancelOrder(auth, orderId, bin || '');
-      } else if (newStatus === 'pending') {
-        order.status = 'pending';
-        order.updatedAt = new Date().toISOString();
-        order.version += 1;
-        await repoContext.orderRepo.save(order);
       }
     } else {
-      // Re-evaluate order status based on remaining active items
-      const allItems = await repoContext.itemRepo.findByOrderId(orderId);
-      const activeItems = allItems.filter((i) => i.status !== 'cancelled');
-      const allDelivered = activeItems.length > 0 && activeItems.every((i) => i.status === 'delivered');
-      if (allDelivered && order.status !== 'delivered') {
-        order.status = 'delivered';
-        order.updatedAt = new Date().toISOString();
-        order.version += 1;
-        await repoContext.orderRepo.save(order);
-      } else if (!allDelivered && order.status === 'delivered') {
-        order.status = 'pending';
-        order.updatedAt = new Date().toISOString();
-        order.version += 1;
-        await repoContext.orderRepo.save(order);
-      }
+      // Order.status is server-authoritative. The client may display a projection
+      // from Effective OrderItem state, but it must never persist that projection
+      // as an authoritative Order mutation.
     }
 
     return { success: true };
@@ -3029,7 +3173,7 @@ export const updateOrderWithPhase5Engine = async (
     if (err instanceof ConflictError) {
       return { success: false, error: 'تعارض في بيانات السجل. يرجى المحاولة مرة أخرى.' };
     }
-    return { success: false, error: err.message || 'حدث خطأ غير متوقع أثناء حفظ التعديلات.' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -3062,18 +3206,12 @@ export const deliverAllOrdersInDay = async (
         }
       }
 
-      if (orderEntity.status !== 'delivered') {
-        orderEntity.status = 'delivered';
-        orderEntity.updatedAt = new Date().toISOString();
-        orderEntity.version += 1;
-        await repoContext.orderRepo.save(orderEntity);
-        if (deliveredInThisOrder) count++;
-      }
+      if (deliveredInThisOrder) count++;
     }
 
     return { success: true, deliveredCount: count };
   } catch (err: any) {
-    return { success: false, error: err.message || 'فشلت عملية تسليم جميع الطلبات' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -3208,54 +3346,25 @@ export const createOrderWithPhase5Engine = async (
   }
 
   await ensureBusinessDayEntityExists(dayId);
-
   const commandId = crypto.randomUUID();
 
   try {
-    // 1. Invoke Authoritative Phase 5 createOrder Use Case
-    const createResult = await phase5UseCases.createOrder(
-      defaultAdminAuth,
+    // One transaction owns the complete aggregate creation:
+    // order + every item + outbox commands + initial ledger entries.
+    const result = await phase5UseCases.createOrderWithItems(
+      getAuthorizedAdminContext(),
       commandId,
       dayId,
       customerId,
-      notes,
-      { items, dayId, customerId }
+      items,
+      notes
     );
 
-    if (!createResult.success) {
-      const err = (createResult as any).error || 'فشل إنشاء الطلب';
-      return { success: false, error: err };
+    if (!result.success) {
+      return { success: false, error: presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء الطلب') };
     }
 
-    const orderEntity = createResult.data;
-
-    // 2. Add items via Authoritative Phase 5 addOrderItem Use Case
-    let itemsAddedCount = 0;
-    for (const item of items) {
-      const itemResult = await phase5UseCases.addOrderItem(
-        defaultAdminAuth,
-        orderEntity.id,
-        item.deviceTypeId,
-        item.hasCharger
-      );
-
-      if (!itemResult.success) {
-        const err = (itemResult as any).error || 'فشل إضافة الأجهزة للطلب';
-        // Cleanup incomplete order from local store
-        ordersMap.delete(orderEntity.id);
-        localDb.remove('orders', orderEntity.id).catch(() => {});
-        return { success: false, error: err };
-      }
-      itemsAddedCount++;
-    }
-
-    if (itemsAddedCount === 0) {
-      ordersMap.delete(orderEntity.id);
-      localDb.remove('orders', orderEntity.id).catch(() => {});
-      return { success: false, error: 'لم يتم إضافة أجهزة للطلب' };
-    }
-
-    // 3. Retrieve created order for UI return
+    const orderEntity = result.data.order;
     const dayOrders = await getOrdersForDay(dayId);
     const createdUIOrder = dayOrders.find((o) => o.id === orderEntity.id);
 
@@ -3274,7 +3383,7 @@ export const createOrderWithPhase5Engine = async (
       return { success: false, error: 'تعارض في بيانات السجل. يرجى المحاولة مرة أخرى.' };
     }
 
-    return { success: false, error: err.message || 'حدث خطأ غير متوقع أثناء حفظ الطلب.' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -3827,7 +3936,6 @@ export const createNewBusinessDay = async (
   }
 
   const dayId = crypto.randomUUID();
-  console.log('[TRACE] UI_CREATE_DAY_START', { dayId, businessDate: dateStr });
 
   const newDay: BusinessDayEntity = {
     id: dayId,
@@ -3840,9 +3948,8 @@ export const createNewBusinessDay = async (
 
   try {
     await repoContext.dayRepo.save(newDay);
-    console.log('[TRACE] LOCAL_SAVE_SUCCESS', { dayId });
   } catch (err: any) {
-    console.error('[TRACE] LOCAL_SAVE_FAILURE', { dayId, error: err?.message });
+    console.error('Failed to save local business day:', err);
     return { success: false, error: err?.message || 'Failed to save local business day' };
   }
 
@@ -4057,6 +4164,7 @@ export const topUpCustomerBalance = async (
   const commandId =
     idempotencyKey ||
     crypto.randomUUID();
+  const { actorAdminId } = getAuthenticatedIdentity();
 
   // Idempotency check: if already processed, return previous transaction result
   if (idempotencyKey) {
@@ -4094,8 +4202,6 @@ export const topUpCustomerBalance = async (
     const txId = atomicServerRes.transactionId || crypto.randomUUID();
     const prevBalance = await repoContext.customerRepo.getBalance(cust.id);
     const newBal = atomicServerRes.newBalanceMinor ?? (prevBalance + amountMinor);
-    const { actorAdminId } = getAuthenticatedIdentity();
-
     const ledgerRecord: FinancialLedgerEntity = {
       id: txId,
       customerId: cust.id,
@@ -4129,24 +4235,8 @@ export const topUpCustomerBalance = async (
     };
   }
 
-  // Create authorized context with finance permissions and authoritative verifier
-  const { actorAdminId } = getAuthenticatedIdentity();
-  const authContext = new AuthorizationContext(
-    {
-      id: actorAdminId,
-      username: 'admin',
-      fullName: 'مشرف العمليات المالية',
-      role: 'SUPER_ADMIN',
-      permissions: [
-        'finance:create-payment',
-        'finance:credit-adjustment',
-        'finance:approve-payment',
-        'finance:view',
-      ],
-      isSuperAdmin: true,
-    },
-    getAuthoritativeBinVerifier()
-  );
+  // Use the authenticated actor and server-backed permissions for offline/local projection.
+  const authContext = getAuthorizedAdminContext(bin);
 
   try {
     // Authoritative verifyBin (rejects if verifier missing, invalid, or fails)
@@ -4164,7 +4254,7 @@ export const topUpCustomerBalance = async (
       return {
         success: false,
         newBalanceMinor: 0,
-        error: result.error || 'فشلت عملية شحن الرصيد',
+        error: presentError(('error' in result ? result.error : undefined) || 'فشلت عملية شحن الرصيد'),
       };
     }
 
@@ -4210,7 +4300,7 @@ export const topUpCustomerBalance = async (
       transactionId: result.data?.id,
     };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'فشلت العملية';
+    const msg = presentError(err);
     return {
       success: false,
       newBalanceMinor: 0,
@@ -4236,14 +4326,6 @@ export interface UIDeviceTypeItem {
   hasHistoricalOrders: boolean;
 }
 
-const devicesAdminAuth = new AuthorizationContext({
-  id: 'admin_devices',
-  username: 'admin',
-  fullName: 'مدير الأجهزة',
-  role: 'ADMIN',
-  permissions: ['devices:manage'],
-  isSuperAdmin: false,
-});
 
 export const getAllDeviceTypes = async (): Promise<UIDeviceTypeItem[]> => {
   await ensureStoreHydrated();
@@ -4294,10 +4376,10 @@ export const addDeviceTypeWithPhase5 = async (
   try {
     const all = await repoContext.deviceRepo.findAll();
     const maxOrder = all.reduce((max, d) => Math.max(max, d.sortOrder ?? 0), 0);
-    const targetOrder = sortOrder !== undefined ? sortOrder : maxOrder + 1;
+    const targetOrder = (sortOrder !== undefined && sortOrder > 0) ? Math.floor(sortOrder) : maxOrder + 1;
 
     const res = await phase5UseCases.createDeviceType(
-      devicesAdminAuth,
+      getAuthorizedAdminContext(),
       trimmedAr,
       'smartphone',
       priceMinor,
@@ -4314,7 +4396,7 @@ export const addDeviceTypeWithPhase5 = async (
 
     return { success: true, data: res.data };
   } catch (err: any) {
-    return { success: false, error: err.message || 'حدث خطأ غير متوقع أثناء إضافة نوع الجهاز' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -4359,13 +4441,13 @@ export const updateDeviceTypeWithPhase5 = async (
     if (updates.isActive !== undefined) patch.isActive = updates.isActive;
     if (updates.sortOrder !== undefined) patch.sortOrder = updates.sortOrder;
 
-    const res = await phase5UseCases.updateDeviceType(devicesAdminAuth, id, patch);
+    const res = await phase5UseCases.updateDeviceType(getAuthorizedAdminContext(), id, patch);
     if (!res.success) {
       return { success: false, error: (res as any).error || 'فشل تحديث نوع الجهاز' };
     }
     return { success: true, data: res.data };
   } catch (err: any) {
-    return { success: false, error: err.message || 'حدث خطأ غير متوقع أثناء تحديث نوع الجهاز' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -4380,7 +4462,7 @@ export const updateCustomerChargerFeeExemptionWithPhase5 = async (
     await phase5UseCases.updateCustomerChargerFeeExemption(auth, customerId, exempt, bin);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message || 'فشل تحديث استثناء رسوم الشاحن' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -4389,10 +4471,10 @@ export const reorderDeviceTypesWithPhase5 = async (
 ): Promise<{ success: boolean; error?: string }> => {
   await ensureStoreHydrated();
   try {
-    await phase5UseCases.reorderDeviceTypes(devicesAdminAuth, ordering);
+    await phase5UseCases.reorderDeviceTypes(getAuthorizedAdminContext(), ordering);
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message || 'فشل إعادة ترتيب أنواع الأجهزة' };
+    return { success: false, error: presentError(err) };
   }
 };
 
@@ -4409,13 +4491,13 @@ export const deleteDeviceTypeWithPhase5 = async (
       };
     }
 
-    const res = await phase5UseCases.deleteDeviceType(devicesAdminAuth, id);
+    const res = await phase5UseCases.deleteDeviceType(getAuthorizedAdminContext(), id);
     if (!res.success) {
       return { success: false, error: (res as any).error || 'فشل حذف نوع الجهاز' };
     }
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err.message || 'حدث خطأ غير متوقع أثناء حذف نوع الجهاز' };
+    return { success: false, error: presentError(err) };
   }
 };
 

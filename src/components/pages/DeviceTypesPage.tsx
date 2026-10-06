@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
+import { presentError } from '../../domain/errors';
 import {
   UIDeviceTypeItem,
   getAllDeviceTypes,
@@ -58,7 +59,7 @@ export const DeviceTypesPage: React.FC = () => {
       const items = await getAllDeviceTypes();
       setDeviceTypes(items);
     } catch (err: any) {
-      setErrorMessage(err.message || t('errorOccurred'));
+      setErrorMessage(presentError(err, locale) || t('errorOccurred'));
     } finally {
       setIsLoading(false);
     }
@@ -168,7 +169,7 @@ export const DeviceTypesPage: React.FC = () => {
       await loadDeviceTypes();
       setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err: any) {
-      setFormError(err.message || t('errorOccurred'));
+      setFormError(presentError(err, locale) || t('errorOccurred'));
     } finally {
       setIsSubmitting(false);
     }
@@ -190,7 +191,7 @@ export const DeviceTypesPage: React.FC = () => {
         setErrorMessage(res.error || t('errorOccurred'));
       }
     } catch (err: any) {
-      setErrorMessage(err.message || t('errorOccurred'));
+      setErrorMessage(presentError(err, locale) || t('errorOccurred'));
     }
   };
 
@@ -266,7 +267,7 @@ export const DeviceTypesPage: React.FC = () => {
         setTimeout(() => setSuccessMessage(''), 3000);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || t('errorOccurred'));
+      setErrorMessage(presentError(err, locale) || t('errorOccurred'));
     } finally {
       setIsDeleting(false);
     }

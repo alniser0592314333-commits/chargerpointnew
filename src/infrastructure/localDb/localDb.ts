@@ -9,6 +9,7 @@ export interface OutboxRecord {
   commandType: string;
   aggregateType: string;
   aggregateId: ID;
+  mutationKey?: string;
   payload: unknown;
   payloadHash?: string;
   expectedVersion?: number;
@@ -27,6 +28,18 @@ export interface OutboxRecord {
   dependencies?: ID[];
   priority?: number;
   resetGeneration?: number;
+}
+
+
+export interface MutationSnapshotRecord {
+  commandId: ID;
+  createdAt: Timestamp;
+  records: Array<{
+    table: string;
+    id: ID;
+    existed: boolean;
+    data?: unknown;
+  }>;
 }
 
 export type SyncStatus = 'READY' | 'RECONCILIATION_REQUIRED' | 'STALE' | 'INITIALIZING';
@@ -95,9 +108,21 @@ export interface BackupSnapshotData {
   payments: any[];
   paymentAllocations: any[];
   deviceTypes: any[];
+  goals?: any[];
+  goalRequests?: any[];
   qrTokens?: any[];
   orderNumberReservations?: any[];
+  // Exact local outbox checkpoint. Required to restore an offline snapshot
+  // without losing unsynced work that was present when the backup was taken.
+  outbox?: OutboxRecord[];
+  syncHistory?: SyncHistoryRecord[];
   syncState?: SyncStateRecord | null;
+  // Recovery-critical local metadata. These are part of an exact offline restore.
+  deletedDeviceTypeMarkers?: any[];
+  mutationSnapshots?: MutationSnapshotRecord[];
+  changeLog?: any[];
+  systemSettings?: any[];
+  authoritativeCheckpoint?: { checkpointId?: string; checkpointSequence?: number; integrityHash?: string; authoritativeMaxSequence?: number };
   consolidationMetadata?: {
     onlineRecordCount: number;
     offlineRecordCount: number;
@@ -134,15 +159,22 @@ export interface BackupSnapshotRecord {
   data: BackupSnapshotData;
 }
 
+const cloneForRollback = <T>(value: T): T => {
+  if (typeof structuredClone === 'function') return structuredClone(value);
+  if (value === undefined) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+};
+
 export class IndexedDBLocalDatabase {
   private dbName = 'OrderSystemOfflineDB';
-  private dbVersion = 3;
+  private dbVersion = 5;
   private db: IDBDatabase | null = null;
   private memoryFallback = new Map<string, Map<ID, any>>();
   private memoryOutbox = new Map<ID, OutboxRecord>();
   private memorySyncState = new Map<string, SyncStateRecord>();
   private memorySyncHistory = new Map<ID, SyncHistoryRecord>();
   private memorySnapshots = new Map<ID, BackupSnapshotRecord>();
+  private memoryMutationSnapshots = new Map<ID, MutationSnapshotRecord>();
   private isBrowser = typeof window !== 'undefined' && typeof indexedDB !== 'undefined';
   private hydrationPromise: Promise<void> | null = null;
   private isHydrated = false;
@@ -189,6 +221,9 @@ export class IndexedDBLocalDatabase {
           }
           if (!db.objectStoreNames.contains('backupSnapshots')) {
             db.createObjectStore('backupSnapshots', { keyPath: 'snapshotId' });
+          }
+          if (!db.objectStoreNames.contains('mutationSnapshots')) {
+            db.createObjectStore('mutationSnapshots', { keyPath: 'commandId' });
           }
         };
       } catch (err) {
@@ -321,6 +356,26 @@ export class IndexedDBLocalDatabase {
       });
     }
 
+    // 5. Hydrate mutationSnapshots
+    if (this.db.objectStoreNames.contains('mutationSnapshots')) {
+      await new Promise<void>((resolve) => {
+        try {
+          const tx = this.db!.transaction('mutationSnapshots', 'readonly');
+          const store = tx.objectStore('mutationSnapshots');
+          const req = store.openCursor();
+          req.onsuccess = (e) => {
+            const cursor = (e.target as IDBRequest).result as IDBCursorWithValue;
+            if (cursor) {
+              const val = cursor.value as MutationSnapshotRecord;
+              if (val?.commandId) this.memoryMutationSnapshots.set(val.commandId, val);
+              cursor.continue();
+            } else resolve();
+          };
+          req.onerror = () => resolve();
+        } catch { resolve(); }
+      });
+    }
+
     // 5. Hydrate backupSnapshots
     if (this.db.objectStoreNames.contains('backupSnapshots')) {
       await new Promise<void>((resolve) => {
@@ -414,7 +469,39 @@ export class IndexedDBLocalDatabase {
     }
   }
 
-    async list<T>(table: string): Promise<T[]> {
+    async captureRecoverySnapshot(): Promise<{
+    tables: Record<string, any[]>;
+    outbox: OutboxRecord[];
+    syncHistory: SyncHistoryRecord[];
+    syncState: SyncStateRecord | null;
+    mutationSnapshots: MutationSnapshotRecord[];
+  }> {
+    await this.ensureHydrated();
+    const clone = <T>(value: T): T => cloneForRollback(value);
+    const tableNames = [
+      'customers','businessDays','orders','orderItems','financialLedger','payments',
+      'paymentAllocations','deviceTypes','goals','goalRequests','qr_tokens','qrTokens',
+      'orderNumberReservations','deletedDeviceTypeMarkers','changeLog'
+    ];
+    const tables: Record<string, any[]> = {};
+    for (const name of tableNames) {
+      tables[name] = Array.from(this.getMemoryTable(name).values()).map(clone);
+    }
+    const uniqueHistory = new Map<string, SyncHistoryRecord>();
+    for (const h of this.memorySyncHistory.values()) {
+      const key = h.historyId || h.commandId || h.entityId;
+      if (key) uniqueHistory.set(String(key), clone(h));
+    }
+    return {
+      tables,
+      outbox: Array.from(this.memoryOutbox.values()).map(clone),
+      syncHistory: Array.from(uniqueHistory.values()),
+      syncState: clone(this.memorySyncState.get('global') || null),
+      mutationSnapshots: Array.from(this.memoryMutationSnapshots.values()).map(clone),
+    };
+  }
+
+  async list<T>(table: string): Promise<T[]> {
     await this.ensureHydrated();
     const tableMap = this.getMemoryTable(table);
     return Array.from(tableMap.values());
@@ -468,8 +555,9 @@ export class IndexedDBLocalDatabase {
 
     // Also clear sync history when performing an operational clear
     this.memorySyncHistory.clear();
+    this.memoryMutationSnapshots.clear();
 
-    const storesToClear = ['syncHistory'];
+    const storesToClear = ['syncHistory', 'mutationSnapshots'];
     if (options?.clearOutbox) {
       this.memoryOutbox.clear();
       storesToClear.push('outbox');
@@ -510,19 +598,19 @@ export class IndexedDBLocalDatabase {
   ): Promise<T> {
     const snapshotFallback = new Map<string, Map<ID, any>>();
     for (const [table, map] of this.memoryFallback.entries()) {
-      snapshotFallback.set(table, new Map(map));
+      snapshotFallback.set(table, cloneForRollback(new Map(map)));
     }
     const snapshotOutbox = new Map<ID, OutboxRecord>();
     for (const [id, record] of this.memoryOutbox.entries()) {
-      snapshotOutbox.set(id, { ...record });
+      snapshotOutbox.set(id, cloneForRollback(record));
     }
     const snapshotSyncState = new Map<string, SyncStateRecord>();
     for (const [table, record] of this.memorySyncState.entries()) {
-      snapshotSyncState.set(table, { ...record });
+      snapshotSyncState.set(table, cloneForRollback(record));
     }
     const snapshotSyncHistory = new Map<ID, SyncHistoryRecord>();
     for (const [id, record] of this.memorySyncHistory.entries()) {
-      snapshotSyncHistory.set(id, { ...record });
+      snapshotSyncHistory.set(id, cloneForRollback(record));
     }
 
     const rollbackMemory = () => {
@@ -530,9 +618,9 @@ export class IndexedDBLocalDatabase {
       for (const [table, map] of snapshotFallback.entries()) {
         this.memoryFallback.set(table, new Map(map));
       }
-      this.memoryOutbox = new Map(snapshotOutbox);
-      this.memorySyncState = new Map(snapshotSyncState);
-      this.memorySyncHistory = new Map(snapshotSyncHistory);
+      this.memoryOutbox = cloneForRollback(new Map(snapshotOutbox));
+      this.memorySyncState = cloneForRollback(new Map(snapshotSyncState));
+      this.memorySyncHistory = cloneForRollback(new Map(snapshotSyncHistory));
     };
 
     if (!this.db) {
@@ -631,6 +719,70 @@ export class IndexedDBLocalDatabase {
     });
   }
 
+  async saveMutationSnapshot(record: MutationSnapshotRecord): Promise<void> {
+    await this.ensureHydrated();
+    this.memoryMutationSnapshots.set(record.commandId, cloneForRollback(record));
+    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
+      const tx = this.db.transaction('mutationSnapshots', 'readwrite');
+      tx.objectStore('mutationSnapshots').put(record);
+    }
+  }
+
+  saveMutationSnapshotWithTx(tx: IDBTransaction, record: MutationSnapshotRecord): void {
+    this.memoryMutationSnapshots.set(record.commandId, cloneForRollback(record));
+    if (tx?.objectStore) tx.objectStore('mutationSnapshots').put(record);
+  }
+
+  async listMutationSnapshots(): Promise<MutationSnapshotRecord[]> {
+    await this.ensureHydrated();
+    return Array.from(this.memoryMutationSnapshots.values()).map(cloneForRollback);
+  }
+
+  async getMutationSnapshot(commandId: ID): Promise<MutationSnapshotRecord | null> {
+    await this.ensureHydrated();
+    return this.memoryMutationSnapshots.get(commandId) || null;
+  }
+
+  getMutationSnapshotSync(commandId: ID): MutationSnapshotRecord | null {
+    return this.memoryMutationSnapshots.get(commandId) || null;
+  }
+
+  async deleteMutationSnapshot(commandId: ID): Promise<void> {
+    await this.ensureHydrated();
+    this.memoryMutationSnapshots.delete(commandId);
+    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
+      const tx = this.db.transaction('mutationSnapshots', 'readwrite');
+      tx.objectStore('mutationSnapshots').delete(commandId);
+    }
+  }
+
+  deleteMutationSnapshotWithTx(tx: IDBTransaction, commandId: ID): void {
+    this.memoryMutationSnapshots.delete(commandId);
+    if (tx?.objectStore) tx.objectStore('mutationSnapshots').delete(commandId);
+  }
+
+  rollbackMutationSnapshotWithTx(tx: IDBTransaction, commandId: ID): void {
+    const snapshot = this.memoryMutationSnapshots.get(commandId);
+    if (!snapshot) return;
+    for (const record of snapshot.records) {
+      const table = this.getMemoryTable(record.table);
+      const current = table.get(record.id);
+      const currentVersion = Number((current as any)?.version ?? -1);
+      const snapshotVersion = Number((record.data as any)?.version ?? -1);
+      // Never overwrite a newer authoritative delta with an old optimistic snapshot.
+      if (current && currentVersion > snapshotVersion) continue;
+      if (record.existed) {
+        table.set(record.id, cloneForRollback(record.data));
+        tx.objectStore('kvStore').put({ key: `${record.table}:${record.id}`, table: record.table, id: record.id, item: cloneForRollback(record.data) }, `${record.table}:${record.id}`);
+      } else {
+        table.delete(record.id);
+        tx.objectStore('kvStore').delete(`${record.table}:${record.id}`);
+      }
+    }
+    this.memoryMutationSnapshots.delete(commandId);
+    tx.objectStore('mutationSnapshots').delete(commandId);
+  }
+
   async saveOutbox(record: OutboxRecord): Promise<void> {
     await this.ensureHydrated();
     this.memoryOutbox.set(record.commandId, record);
@@ -706,6 +858,19 @@ export class IndexedDBLocalDatabase {
     }
   }
 
+  clearOutboxWithTx(tx: IDBTransaction): void {
+    this.memoryOutbox.clear();
+    if (tx && typeof tx.objectStore === 'function') {
+      try {
+        const store = tx.objectStore('outbox');
+        if (store && typeof store.clear === 'function') store.clear();
+      } catch (err) {
+        console.warn('Failed to clear outbox in transaction:', err);
+        throw err;
+      }
+    }
+  }
+
   clearOperationalTablesWithTx(tx: IDBTransaction): void {
     const operationalTables = [
       'customers',
@@ -732,12 +897,13 @@ export class IndexedDBLocalDatabase {
       }
     }
 
-    // syncHistory is cleared to ensure a clean slate for the new generation
+    // syncHistory and mutation snapshots are cleared to ensure a clean slate for the new generation
     this.memorySyncHistory.clear();
+    this.memoryMutationSnapshots.clear();
 
     if (tx && typeof tx.objectStore === 'function') {
       try {
-        const storesToCheck = ['kvStore', 'syncHistory'];
+        const storesToCheck = ['kvStore', 'syncHistory', 'mutationSnapshots'];
         for (const storeName of storesToCheck) {
           try {
             const hasStore = tx.db.objectStoreNames.contains(storeName);
@@ -1163,12 +1329,13 @@ export class IndexedDBLocalDatabase {
     this.memoryOutbox.clear();
     this.memorySyncState.clear();
     this.memorySyncHistory.clear();
+    this.memoryMutationSnapshots.clear();
     if (!options?.preserveSnapshots) {
       this.memorySnapshots.clear();
     }
     if (this.db) {
       try {
-        const storeNames = ['kvStore', 'outbox', 'syncState', 'syncHistory'].filter((s) =>
+        const storeNames = ['kvStore', 'outbox', 'syncState', 'syncHistory', 'mutationSnapshots'].filter((s) =>
           this.db!.objectStoreNames.contains(s)
         );
         if (!options?.preserveSnapshots && this.db!.objectStoreNames.contains('backupSnapshots')) {

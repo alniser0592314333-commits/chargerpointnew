@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useI18n } from "../../i18n/i18nContext";
+import { presentError } from '../../domain/errors';
 import { useTheme } from "../../theme/themeContext";
 import { AppLogo } from "../qr/AppLogo";
 import { BackupDataManagement } from "../settings/BackupDataManagement";

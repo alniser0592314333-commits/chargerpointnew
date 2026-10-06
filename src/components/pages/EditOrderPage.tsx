@@ -5,6 +5,7 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Plus, Trash2, AlertTriangle, Check, ChevronDown } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
+import { presentError } from '../../domain/errors';
 import {
   UIEditOrderDetail,
   UIEditOrderItem,
@@ -279,9 +280,9 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
       }
     } catch (err: any) {
       if (isBinModalOpen) {
-        setBinError(err.message || 'حدث خطأ أثناء التأكيد');
+        setBinError(presentError(err, locale) || 'حدث خطأ أثناء التأكيد');
       } else {
-        setErrorMessage(err.message || t('errorOccurred'));
+        setErrorMessage(presentError(err, locale) || t('errorOccurred'));
       }
     } finally {
       setIsSaving(false);
