@@ -654,7 +654,13 @@ WHEN 'UPDATE_ORDER' THEN
                 v_current_balance := public.calculate_customer_authoritative_balance(v_rec_item.customer_id);
                 v_projected_balance := v_current_balance - v_authoritative_final_charge;
 
-                IF v_rec_item.debt_limit_minor > 0 AND v_projected_balance < (-v_rec_item.debt_limit_minor) THEN
+                IF (
+                    (v_rec_item.debt_limit_minor > 0 AND v_projected_balance < (-v_rec_item.debt_limit_minor))
+                    OR
+                    (v_rec_item.debt_limit_minor < 0 AND v_projected_balance < v_rec_item.debt_limit_minor)
+                    OR
+                    (v_rec_item.debt_limit_minor = 0 AND v_projected_balance < 0)
+                ) THEN
                     RAISE EXCEPTION 'Debt Limit Exceeded: Customer debt limit % exceeded by projected balance %',
                         v_rec_item.debt_limit_minor, v_projected_balance;
                 END IF;
