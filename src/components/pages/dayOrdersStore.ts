@@ -2292,7 +2292,9 @@ export const getDeviceDisplayName = (
  * - Fully covered orders are marked PAID.
  */
 export const computeCustomerOrderPaymentStatuses = (
-  customerId: string
+  customerId: string,
+  effectiveOrdersMap: Map<string, OrderEntity> = ordersMap,
+  effectiveItemsMap: Map<string, OrderItemEntity> = itemsMap
 ): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
 
@@ -2318,7 +2320,7 @@ export const computeCustomerOrderPaymentStatuses = (
   let availableCredits = Math.max(0, totalCreditsMinor - nonOrderDebitsMinor);
 
   // 2. Get all non-cancelled orders for this customer, sorted chronologically (Oldest FIRST - FIFO)
-  const custOrders = Array.from(ordersMap.values())
+  const custOrders = Array.from(effectiveOrdersMap.values())
     .filter((o) => o.customerId === customerId && o.status !== 'cancelled')
     .sort((a, b) => {
       const timeA = new Date(a.createdAt).getTime();
@@ -2329,7 +2331,7 @@ export const computeCustomerOrderPaymentStatuses = (
 
   // 3. Allocate credits in FIFO sequence
   for (const ord of custOrders) {
-    const items = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
+    const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     if (totalMinor <= 0) {
@@ -2373,7 +2375,48 @@ export const getOrdersForDay = async (
 ): Promise<UIDayOrderDetail[]> => {
   await ensureStoreHydrated();
   await sanitizeAndResequenceOrderNumbers();
-  const allOrders = Array.from(ordersMap.values()).filter((o) => isSameDayId(o.dayId, dayId));
+
+  // Build the read model from authoritative local rows plus pending optimistic
+  // overlays. Mutations are intentionally not written into the base maps here:
+  // overlays remain the source of truth until sync commits the server state.
+  const effectiveOrdersMap = new Map(ordersMap);
+  const effectiveItemsMap = new Map(itemsMap);
+
+  for (const overlay of localDb.listOverlaysSync()) {
+    if (overlay.status !== 'PENDING') continue;
+
+    const payload = (overlay.patch || overlay.entityPayload || {}) as Record<string, unknown>;
+
+    if (overlay.entityType === 'orders') {
+      const base = effectiveOrdersMap.get(overlay.entityId);
+      const effective = {
+        ...(base || {}),
+        ...payload,
+        id: overlay.entityId,
+      } as OrderEntity;
+
+      if (overlay.operation === 'DELETE') {
+        effectiveOrdersMap.delete(overlay.entityId);
+      } else {
+        effectiveOrdersMap.set(overlay.entityId, effective);
+      }
+    } else if (overlay.entityType === 'order_items') {
+      const base = effectiveItemsMap.get(overlay.entityId);
+      const effective = {
+        ...(base || {}),
+        ...payload,
+        id: overlay.entityId,
+      } as OrderItemEntity;
+
+      if (overlay.operation === 'DELETE') {
+        effectiveItemsMap.delete(overlay.entityId);
+      } else {
+        effectiveItemsMap.set(overlay.entityId, effective);
+      }
+    }
+  }
+
+  const allOrders = Array.from(effectiveOrdersMap.values()).filter((o) => isSameDayId(o.dayId, dayId));
 
   const customerAllocationMaps = new Map<
     string,
@@ -2384,7 +2427,7 @@ export const getOrdersForDay = async (
   for (const ord of allOrders) {
     const cust = customersMap.get(ord.customerId);
     if (cust && !customerAllocationMaps.has(cust.id)) {
-      customerAllocationMaps.set(cust.id, computeCustomerOrderPaymentStatuses(cust.id));
+      customerAllocationMaps.set(cust.id, computeCustomerOrderPaymentStatuses(cust.id, effectiveOrdersMap, effectiveItemsMap));
     }
     const alloc = cust ? customerAllocationMaps.get(cust.id)?.get(ord.id) : undefined;
     const paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' =
@@ -2392,7 +2435,7 @@ export const getOrdersForDay = async (
         ? 'UNPAID'
         : (alloc?.paymentStatus || 'UNPAID');
 
-    const allOrderItems = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id);
+    const allOrderItems = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id);
     const orderItems = allOrderItems.filter((i) => i.status !== 'cancelled');
     const projectedStatus = calculateOrderProjection(allOrderItems, ord.status);
 
