@@ -577,7 +577,7 @@ export class FinalUseCases {
     const patch: Partial<OrderEntity> = {
       notes: notes?.trim() || undefined,
       updatedAt: new Date().toISOString(),
-      version: existing.version,
+      version: existing.version + 1,
     };
 
     const commandId = crypto.randomUUID();
@@ -624,7 +624,7 @@ export class FinalUseCases {
     const patch: Partial<OrderItemEntity> = {
       status: 'cancelled',
       updatedAt: new Date().toISOString(),
-      version: item.version,
+      version: item.version + 1,
     };
 
     const commandId = crypto.randomUUID();
@@ -701,6 +701,20 @@ export class FinalUseCases {
         await this.createOverlay(itemCommandId, mutationKey, 'order_items', itemToCancel.id, 'PATCH', itemPatch as Record<string, unknown>);
     }
 
+    await this.createOverlay(
+      commandId,
+      mutationKey,
+      'orders',
+      orderId,
+      'PATCH',
+      {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        version: order.version + 1,
+      }
+    );
+
     await this.deps.commandRepo.record(commandId, 'CANCEL_ORDER', {
       id: commandId,
       aggregateId: orderId,
@@ -708,7 +722,7 @@ export class FinalUseCases {
       bin,
     }, order.version);
 
-    return { success: true, data: order };
+    return { success: true, data: { ...order, status: 'cancelled', cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: order.version + 1 } };
   }
 
   async cancelOrderItem(
@@ -739,7 +753,7 @@ export class FinalUseCases {
       status: 'cancelled',
       cancelledAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      version: existingItem.version,
+      version: existingItem.version + 1,
     };
 
     if (this.deps.mutationSnapshotRepo) {
@@ -777,8 +791,8 @@ export class FinalUseCases {
   ): Promise<Result<CustomerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('customers:create');
-    if (!Number.isInteger(debtLimitMinor) || debtLimitMinor < 0) {
-      throw new BusinessRuleViolation('Debt limit must be a non-negative integer in minor units');
+    if (!Number.isInteger(debtLimitMinor)) {
+      throw new BusinessRuleViolation('Debt limit must be an integer in minor units');
     }
 
     const customerId = commandId || crypto.randomUUID();
@@ -807,18 +821,24 @@ export class FinalUseCases {
   async updateCustomer(auth: AuthorizationContext, customerId: ID, updates: Partial<CustomerEntity>): Promise<Result<CustomerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('customers:edit');
-    if (updates.debtLimitMinor !== undefined && (!Number.isInteger(updates.debtLimitMinor) || updates.debtLimitMinor < 0)) {
-      throw new BusinessRuleViolation('Debt limit must be a non-negative integer in minor units');
+    if (updates.debtLimitMinor !== undefined && !Number.isInteger(updates.debtLimitMinor)) {
+      throw new BusinessRuleViolation('Debt limit must be an integer in minor units');
     }
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
 
-    Object.assign(customer, updates, { updatedAt: new Date().toISOString(), version: customer.version + 1 });
-    
+    const updatedCustomer: CustomerEntity = {
+      ...customer,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      version: customer.version + 1,
+    };
+
     return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.customerRepo.save(customer);
-      ctx.commandRepo.record(crypto.randomUUID(), 'UPDATE_CUSTOMER', customer);
-      return { success: true, data: customer };
+      const commandId = crypto.randomUUID();
+      ctx.customerRepo.save(updatedCustomer);
+      ctx.commandRepo.record(commandId, 'UPDATE_CUSTOMER', updatedCustomer, customer.version);
+      return { success: true, data: updatedCustomer };
     });
   }
 
@@ -949,26 +969,31 @@ export class FinalUseCases {
     const device = await this.deps.deviceRepo.findById(deviceId);
     if (!device) throw new NotFoundError('Device type not found');
 
-    Object.assign(device, updates, { updatedAt: new Date().toISOString(), version: device.version + 1 });
-    
+    const updatedDevice: DeviceTypeEntity = {
+      ...device,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      version: device.version + 1,
+    };
+
     return this.deps.transactionManager.runInTransaction((ctx) => {
       const commandId = crypto.randomUUID();
-      ctx.deviceRepo.save(device);
+      ctx.deviceRepo.save(updatedDevice);
       ctx.commandRepo.record(commandId, 'UPDATE_DEVICE_TYPE', {
-        id: device.id,
-        deviceTypeId: device.id,
-        name: device.name,
-        arabicName: device.nameAr || device.name,
-        englishName: device.nameEn || device.name,
-        icon: device.icon,
-        basePriceMinor: device.basePriceMinor,
-        chargerFeeEnabled: device.chargerFeeEnabled,
-        chargerFeeApplicable: device.chargerFeeApplicable ?? device.chargerFeeEnabled,
-        sortOrder: device.sortOrder,
-        isActive: device.isActive,
-        version: device.version,
-      }, device.version - 1);
-      return { success: true, data: device };
+        id: updatedDevice.id,
+        deviceTypeId: updatedDevice.id,
+        name: updatedDevice.name,
+        arabicName: updatedDevice.nameAr || updatedDevice.name,
+        englishName: updatedDevice.nameEn || updatedDevice.name,
+        icon: updatedDevice.icon,
+        basePriceMinor: updatedDevice.basePriceMinor,
+        chargerFeeEnabled: updatedDevice.chargerFeeEnabled,
+        chargerFeeApplicable: updatedDevice.chargerFeeApplicable ?? updatedDevice.chargerFeeEnabled,
+        sortOrder: updatedDevice.sortOrder,
+        isActive: updatedDevice.isActive,
+        version: updatedDevice.version,
+      }, device.version);
+      return { success: true, data: updatedDevice };
     });
   }
 
@@ -1190,11 +1215,21 @@ export class FinalUseCases {
     });
   }
 
-  async createCustomerCredit(auth: AuthorizationContext, customerId: ID, amountMinor: number, bin: string): Promise<Result<FinancialLedgerEntity>> {
+  async createCustomerCredit(
+    auth: AuthorizationContext,
+    customerId: ID,
+    amountMinor: number,
+    bin: string,
+    commandId?: ID
+  ): Promise<Result<FinancialLedgerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('finance:credit-adjustment');
     await auth.verifyBin(bin);
     DomainInvariants.assertValidPaymentAmount(amountMinor);
+
+    const customer = await this.deps.customerRepo.findById(customerId);
+    if (!customer) throw new NotFoundError('Customer not found');
+    DomainInvariants.assertCustomerActive(customer);
 
     const event: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
       eventType: 'CREDIT_ADJUSTMENT',
@@ -1213,7 +1248,33 @@ export class FinalUseCases {
       ]);
     }
 
-    await this.createOverlay(txId, mutationKey, 'ledger', txId, 'CREATE', { id: txId, createdAt, ...event } as unknown as Record<string, unknown>);
+    await this.createOverlay(
+      txId,
+      mutationKey,
+      'ledger',
+      txId,
+      'CREATE',
+      { id: txId, createdAt, ...event } as unknown as Record<string, unknown>
+    );
+
+    const payment: PaymentEntity = {
+      id: txId,
+      customerId,
+      amountMinor,
+      paymentMethod: 'CASH',
+      reference: 'Customer credit',
+      actorAdminId: actor.id,
+      commandId: txId,
+      createdAt,
+    };
+    await this.createOverlay(
+      `${txId}:payment`,
+      mutationKey,
+      'payments',
+      txId,
+      'CREATE',
+      payment as unknown as Record<string, unknown>
+    );
 
     await this.deps.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
       id: txId,
@@ -1221,6 +1282,7 @@ export class FinalUseCases {
       amountMinor,
       actorAdminId: actor.id,
       createdAt,
+      bin,
     });
 
     return { success: true, data: { id: txId, createdAt, ...event } };
@@ -1267,6 +1329,12 @@ export class FinalUseCases {
     await auth.verifyBin(bin);
     DomainInvariants.assertValidPaymentAmount(amountMinor);
 
+    const referenceLedger = await this.deps.ledgerRepo.findAll();
+    const referenced = referenceLedger.find((entry) => entry.id === referenceEventId);
+    if (!referenced || referenced.customerId !== customerId) {
+      throw new BusinessRuleViolation('Referenced financial event not found for this customer');
+    }
+
     return this.deps.transactionManager.runInTransaction((ctx) => {
       const event: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
         eventType: 'REFUND',
@@ -1285,6 +1353,7 @@ export class FinalUseCases {
         referenceEventId,
         actorAdminId: actor.id,
         createdAt,
+        bin,
       });
       return { success: true, data: { id: commandId, createdAt, ...event } };
     });
@@ -1368,22 +1437,25 @@ export class FinalUseCases {
     const day = await this.deps.dayRepo.findById(dayId);
     if (!day) throw new NotFoundError('Business day not found');
 
-    day.isClosed = true;
-    day.closedAt = new Date().toISOString();
-    day.closedBy = actor.id;
-    day.version += 1;
+    const updatedDay: BusinessDayEntity = {
+      ...day,
+      isClosed: true,
+      closedAt: new Date().toISOString(),
+      closedBy: actor.id,
+      version: day.version + 1,
+    };
 
     return this.deps.transactionManager.runInTransaction((ctx) => {
-      ctx.dayRepo.save(day);
+      ctx.dayRepo.save(updatedDay);
       const commandId = crypto.randomUUID();
       ctx.commandRepo.record(commandId, 'CLOSE_DAY', {
         id: day.id,
         aggregateId: day.id,
         dayId: day.id,
         closedAt: day.closedAt,
-        closedBy: day.closedBy,
-      });
-      return { success: true, data: day };
+        closedBy: updatedDay.closedBy,
+      }, day.version);
+      return { success: true, data: updatedDay };
     });
   }
 
@@ -1516,8 +1588,9 @@ export class FinalUseCases {
     auth.assertPermission('goals:manage');
 
     if (!this.deps.goalRepo) throw new Error('Goal repository not configured');
-    const goal = await this.deps.goalRepo.findById(goalId);
-    if (!goal) throw new NotFoundError('Goal not found');
+    const goalRecord = await this.deps.goalRepo.findById(goalId);
+    if (!goalRecord) throw new NotFoundError('Goal not found');
+    const goal = { ...goalRecord };
 
     DomainInvariants.assertGoalEditable(goal);
 
@@ -1646,8 +1719,9 @@ export class FinalUseCases {
       throw new Error('Goal repositories not configured');
     }
 
-    const req = await this.deps.goalRequestRepo.findById(requestId);
-    if (!req) throw new NotFoundError('Goal request not found');
+    const reqRecord = await this.deps.goalRequestRepo.findById(requestId);
+    if (!reqRecord) throw new NotFoundError('Goal request not found');
+    const req = { ...reqRecord };
     if (req.status !== 'PENDING') throw new BusinessRuleViolation(`Request is already ${req.status}`);
 
     const existingActive = await this.deps.goalRepo.findActiveByCustomerId(req.customerId);
@@ -1707,8 +1781,9 @@ export class FinalUseCases {
 
     if (!this.deps.goalRequestRepo) throw new Error('Goal request repo not configured');
 
-    const req = await this.deps.goalRequestRepo.findById(requestId);
-    if (!req) throw new NotFoundError('Goal request not found');
+    const reqRecord = await this.deps.goalRequestRepo.findById(requestId);
+    if (!reqRecord) throw new NotFoundError('Goal request not found');
+    const req = { ...reqRecord };
     if (req.status !== 'PENDING') throw new BusinessRuleViolation(`Request is already ${req.status}`);
 
     req.status = 'REJECTED';
@@ -1735,10 +1810,12 @@ export class FinalUseCases {
     const repos = ctx || this.deps;
     if (!repos.goalRepo) return { success: true as const, data: { hasActiveGoal: false } };
 
-    const goal = await repos.goalRepo.findActiveByCustomerId(customerId);
-    if (!goal || goal.status !== 'ACTIVE') {
+    const goalRecord = await repos.goalRepo.findActiveByCustomerId(customerId);
+    if (!goalRecord || goalRecord.status !== 'ACTIVE') {
       return { success: true as const, data: { hasActiveGoal: false } };
     }
+
+    const goal = { ...goalRecord };
 
     // Count qualifying delivered order items in window [goal.startedAt, goal.expiresAt]
     const ledger = await repos.ledgerRepo.findByCustomer(customerId);

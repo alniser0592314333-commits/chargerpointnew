@@ -31,7 +31,6 @@ import {
   rpcRotateCustomerQr,
   rpcGetOrCreateOrderQr,
   rpcVerifyAdminBin,
-  rpcExecuteCustomerTopUpAtomic,
   getSupabaseStatus,
   invokeSupabaseRestGet,
   invokeSupabaseRestUpsert,
@@ -294,6 +293,7 @@ export const applyRemoteChange = (change: {
   entityId: string;
   action: 'INSERT' | 'UPDATE' | 'DELETE' | 'TOMBSTONE';
   payload: any;
+  version?: number;
   changedAt: string;
 }, tx?: IDBTransaction): void => {
   const p = change.payload || {};
@@ -422,15 +422,23 @@ export const applyRemoteChange = (change: {
       return;
     }
     const previousItem = itemsMap.get(change.entityId);
-    const incomingItemVersion = Number(p.version ?? 1);
+    const incomingItemVersion = Number(change.version ?? p.version ?? (previousItem ? Number(previousItem.version ?? 0) + 1 : 1));
     if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
       return;
     }
-    const rawStatus = String(p.status || p.item_status || p.deliveryStatus || p.delivery_status || previousItem?.status || 'charging').toLowerCase();
+    const rawStatus = String(
+      p.status ||
+      p.item_status ||
+      p.deliveryStatus ||
+      p.delivery_status ||
+      (String(p.financialStatus || p.financial_status || '').toUpperCase() === 'RECOGNIZED' ? 'delivered' : '') ||
+      previousItem?.status ||
+      'charging'
+    ).toLowerCase();
     const normalizedStatus: ItemStatus =
       rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending' || rawStatus === 'charging'
         ? (rawStatus as ItemStatus)
-        : 'charging';
+        : (previousItem?.status || 'charging');
 
     const entity: OrderItemEntity = {
       ...p,
@@ -457,7 +465,7 @@ export const applyRemoteChange = (change: {
       financiallyRecognizedAt: p.financiallyRecognizedAt || p.financially_recognized_at || undefined,
       cancelledAt: p.cancelledAt || p.cancelled_at || undefined,
       deletedAt: p.deletedAt || p.deleted_at || undefined,
-      version: p.version || 1,
+      version: incomingItemVersion,
     };
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
     itemsMap.set(entity.id, entity);
@@ -470,13 +478,33 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('financialLedger', change.entityId);
       return;
     }
+    const ledgerEventType = p.eventType || p.event_type;
+    const ledgerOrderId = p.orderId || p.order_id || undefined;
+    const ledgerOrderItemId = p.orderItemId || p.order_item_id || undefined;
+    const derivedOrder = ledgerOrderId ? ordersMap.get(ledgerOrderId) : undefined;
+    const derivedItem = ledgerOrderItemId ? itemsMap.get(ledgerOrderItemId) : undefined;
+    const rawLedgerAmount = Number(p.amountMinor ?? p.amount_minor ?? 0);
+    const normalizedLedgerAmount =
+      (ledgerEventType === 'CHARGE' || ledgerEventType === 'ORDER_ITEM_CHARGE') && rawLedgerAmount > 0
+        ? -rawLedgerAmount
+        : rawLedgerAmount;
+
+    const derivedCustomerId =
+      p.customerId ||
+      p.customer_id ||
+      derivedOrder?.customerId ||
+      (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined);
+    if (!derivedCustomerId) {
+      throw new Error(`Cannot apply financial ledger change ${change.entityId} without customer identity`);
+    }
+
     const entity: FinancialLedgerEntity = {
       id: p.id || change.entityId,
-      eventType: p.eventType || p.event_type,
-      amountMinor: p.amountMinor ?? p.amount_minor ?? 0,
-      orderId: p.orderId || p.order_id || undefined,
-      orderItemId: p.orderItemId || p.order_item_id || undefined,
-      customerId: p.customerId || p.customer_id,
+      eventType: ledgerEventType,
+      amountMinor: normalizedLedgerAmount,
+      orderId: ledgerOrderId || derivedItem?.orderId,
+      orderItemId: ledgerOrderItemId,
+      customerId: derivedCustomerId,
       actorAdminId: p.actorAdminId || p.actor_admin_id || undefined,
       referenceId: p.referenceId || p.reference_id || undefined,
       metadata: p.metadata ?? undefined,
@@ -840,13 +868,29 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       invokeSupabaseRestGet<any>('payment_allocations', 'select=*'),
     ]);
 
+    const remoteReads = [daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes];
+    const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
+    if (failedRemoteRead) {
+      // Never clear a healthy local read model because one authoritative table
+      // failed to load. The caller can retry the reconciliation later.
+      console.warn('Authoritative hydration aborted because a required table failed to load:', failedRemoteRead.error);
+      return false;
+    }
+
     let updatedAny = false;
 
-    // At this point all authoritative tables have returned successfully.
+    // At this point every required authoritative table has returned successfully.
     // Replace the local operational snapshot atomically at the bootstrap level;
     // otherwise records deleted remotely could survive in IndexedDB and reappear
     // after a browser restart.
-    await localDb.clearOperationalData({ clearOutbox: false, clearSyncState: false });
+    // A remote bootstrap is a read-model reconciliation. Preserve any local
+    // aggregate that still has an outbox command so an online refresh cannot
+    // erase work that has not yet reached the server.
+    await localDb.clearOperationalData({
+      clearOutbox: false,
+      clearSyncState: false,
+      preservePendingMutations: true,
+    });
     customersMap.clear();
     devicesMap.clear();
     daysMap.clear();
@@ -1511,11 +1555,31 @@ function createTransactionalRepoContext(
     },
     itemRepo: {
       findByOrderId: (orderId: string) => {
-        const res: OrderItemEntity[] = [];
+        const effective = new Map<string, OrderItemEntity>();
         itemsMap.forEach((it) => {
-          if (it.orderId === orderId) res.push(it);
+          if (it.orderId === orderId) effective.set(it.id, it);
         });
-        return res;
+
+        // Repository reads must include the same pending projections used by
+        // the UI; otherwise sequential offline adds can reuse itemSequence.
+        for (const overlay of localDb.listOverlaysSync()) {
+          if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+          const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
+          const base = effective.get(overlay.entityId);
+          const candidate = {
+            ...(base || {}),
+            ...(overlay.operation === 'CREATE' ? patch : patch),
+            id: overlay.entityId,
+          } as OrderItemEntity;
+          if (candidate.orderId !== orderId) continue;
+          if (overlay.operation === 'DELETE') {
+            effective.delete(overlay.entityId);
+          } else {
+            effective.set(overlay.entityId, candidate);
+          }
+        }
+
+        return Array.from(effective.values());
       },
       save: (it: OrderItemEntity) => {
         itemsMap.set(it.id, it);
@@ -1614,22 +1678,18 @@ function createTransactionalRepoContext(
     commandRepo: {
       get: (cmdId: string) => commandsMap.get(cmdId) || null,
       record: (cmdId: string, type: string, payload: any, expectedVersion?: number) => {
-        commandsMap.set(cmdId, { type, payload });
-        const { actorAdminId, deviceId } = getAuthenticatedIdentity();
-        
-        const existingOutbox = localDb.listOutboxSync();
-        const hasProcessed = existingOutbox.some(
-          r => r.commandId === cmdId && r.status !== 'pending'
-        );
-        const hasHistory = localDb.getHistorySync(cmdId);
-
-        let finalCommandId: string;
-        if (hasProcessed || hasHistory) {
-          finalCommandId = crypto.randomUUID();
-        } else {
-          finalCommandId = cmdId;
+        const existingCommand = commandsMap.get(cmdId);
+        if (existingCommand) {
+          const sameType = existingCommand.type === type;
+          const samePayload = JSON.stringify(existingCommand.payload) === JSON.stringify(payload);
+          if (!sameType || !samePayload) {
+            throw new ConflictError('Command id is already associated with a different operation');
+          }
+          // Idempotent local retry: do not create a second outbox record.
+          return;
         }
 
+        const { actorAdminId, deviceId } = getAuthenticatedIdentity();
         const currentGen = getCurrentSyncGeneration();
         const payloadRecord = (payload && typeof payload === 'object') ? (payload as any) : {};
         const aggregateId =
@@ -1641,7 +1701,7 @@ function createTransactionalRepoContext(
               : payloadRecord.entityId || payloadRecord.deviceTypeId || payloadRecord.orderId || payloadRecord.customerId || payloadRecord.dayId || payloadRecord.id || cmdId);
 
         const record: OutboxRecord = {
-          commandId: finalCommandId,
+          commandId: cmdId,
           commandType: type,
           aggregateType:
             type === 'CREATE_ORDER' || type === 'UPDATE_ORDER' || type === 'CANCEL_ORDER'
@@ -1682,7 +1742,7 @@ function createTransactionalRepoContext(
         postCommitActions.push(() => {
           syncEventEmitter.emit({
             type: 'command_status_changed',
-            commandId: finalCommandId,
+            commandId: cmdId,
             groupId: record.groupId,
             newState: currentGen === -1 ? 'PENDING_RECONCILIATION' : 'PENDING',
             timestamp: new Date().toISOString(),
@@ -1848,11 +1908,56 @@ export const repoContext: RepositoryContext = {
     getBalance: async (id) => {
       await ensureStoreHydrated();
       let bal = 0;
+
+      // Start from authoritative ledger rows.
       ledgerList.forEach((l) => {
-        if (l.customerId === id) {
-          bal += l.amountMinor;
-        }
+        if (l.customerId === id) bal += l.amountMinor;
       });
+
+      // Then project pending local financial commands until their authoritative
+      // ledger rows arrive. This keeps debt-limit checks and customer balances
+      // consistent across offline, online, and reconciliation paths.
+      const overlays = await localDb.listOverlays();
+      const authoritativeChargeItems = new Set(
+        ledgerList
+          .filter((l) => l.customerId === id && (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.orderItemId)
+          .map((l) => l.orderItemId as string)
+      );
+
+      for (const overlay of overlays) {
+        if (overlay.status !== 'PENDING') continue;
+
+        if (overlay.entityType === 'ledger' || overlay.entityType === 'financial_ledger') {
+          const payload = (overlay.entityPayload || overlay.patch || {}) as any;
+          if (payload.customerId === id || payload.customer_id === id) {
+            bal += Number(payload.amountMinor ?? payload.amount_minor ?? 0);
+          }
+          continue;
+        }
+
+        if (overlay.entityType === 'order_items' && overlay.operation === 'PATCH') {
+          const payload = (overlay.patch || {}) as any;
+          const itemId = overlay.entityId;
+          if (
+            String(payload.status || '').toLowerCase() === 'delivered' ||
+            String(payload.financialStatus || payload.financial_status || '').toUpperCase() === 'RECOGNIZED'
+          ) {
+            if (authoritativeChargeItems.has(itemId)) continue;
+            const item = itemsMap.get(itemId);
+            if (!item) continue;
+            const order = ordersMap.get(item.orderId);
+            if (!order || order.customerId !== id) continue;
+            bal -= Number(
+              item.finalChargeSnapshotMinor ??
+              item.totalPriceMinor ??
+              payload.finalChargeSnapshotMinor ??
+              payload.totalPriceMinor ??
+              0
+            );
+          }
+        }
+      }
+
       return bal;
     },
   },
@@ -2957,20 +3062,18 @@ export const addNewCustomer = async (
   phone: string,
   debtLimitMinor: number = 2000
 ): Promise<UICustomerItem> => {
-  const newId = crypto.randomUUID();
-  const newCust: CustomerEntity = {
-    id: newId,
+  const result = await phase5UseCases.createCustomer(
+    getAuthorizedAdminContext(),
     name,
     phone,
-    isActive: true,
     debtLimitMinor,
-    chargerFeeExempt: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  };
+    false
+  );
+  if (!result.success) {
+    throw new Error(presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء العميل'));
+  }
 
-  await repoContext.customerRepo.save(newCust);
+  const newCust = result.data;
   return {
     id: newCust.id,
     name: newCust.name,
@@ -3354,7 +3457,10 @@ export const ensureBusinessDayEntityExists = async (dayId: string): Promise<Busi
       updatedAt: new Date().toISOString(),
       version: 1,
     };
-    await repoContext.dayRepo.save(day);
+    // Recovery/read-model repair only: an orphaned order reference must not
+    // manufacture an OPEN_DAY command and mutate the authoritative server.
+    daysMap.set(day.id, day);
+    await localDb.set('businessDays', day.id, day);
   }
   return day;
 };
@@ -3889,17 +3995,16 @@ export const getTodayHomeData = async (
 
 export const createTodayBusinessDay = async (dateStr: string): Promise<string> => {
   await ensureStoreHydrated();
-  const dayId = crypto.randomUUID();
-  const newDay: BusinessDayEntity = {
-    id: dayId,
-    businessDate: dateStr,
-    isClosed: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  };
-  await repoContext.dayRepo.save(newDay);
-  return dayId;
+
+  const result = await phase5UseCases.createBusinessDay(
+    getAuthorizedAdminContext(),
+    dateStr,
+    crypto.randomUUID()
+  );
+  if (!result.success) {
+    throw new Error(presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء اليوم'));
+  }
+  return result.data.id;
 };
 
 export interface UIDaySummary {
@@ -3959,25 +4064,23 @@ export const createNewBusinessDay = async (
     return { success: false, error: 'اليوم موجود بالفعل بهذا التاريخ' };
   }
 
-  const dayId = crypto.randomUUID();
-
-  const newDay: BusinessDayEntity = {
-    id: dayId,
-    businessDate: dateStr,
-    isClosed: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    version: 1,
-  };
-
   try {
-    await repoContext.dayRepo.save(newDay);
+    const result = await phase5UseCases.createBusinessDay(
+      getAuthorizedAdminContext(),
+      dateStr,
+      crypto.randomUUID()
+    );
+    if (!result.success) {
+      return {
+        success: false,
+        error: presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء اليوم'),
+      };
+    }
+    return { success: true, dayId: result.data.id };
   } catch (err: any) {
-    console.error('Failed to save local business day:', err);
-    return { success: false, error: err?.message || 'Failed to save local business day' };
+    console.error('Failed to create business day:', err);
+    return { success: false, error: err?.message || 'Failed to create business day' };
   }
-
-  return { success: true, dayId };
 };
 
 export interface UIFinancialsOverviewData {
@@ -4185,10 +4288,15 @@ export const topUpCustomerBalance = async (
   const isUUID = (str?: string): boolean =>
     Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str));
 
-  const commandId =
-    idempotencyKey ||
-    crypto.randomUUID();
-  const { actorAdminId } = getAuthenticatedIdentity();
+  if (idempotencyKey && !isUUID(idempotencyKey)) {
+    return {
+      success: false,
+      newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id),
+      error: 'Invalid idempotency key: expected UUID',
+    };
+  }
+
+  const commandId = idempotencyKey || crypto.randomUUID();
 
   // Idempotency check: if already processed, return previous transaction result
   if (idempotencyKey) {
@@ -4203,62 +4311,6 @@ export const topUpCustomerBalance = async (
     }
   }
 
-  // If Supabase is configured and not running under a test-supplied runtimeBinVerifier, execute atomic server-side verification and mutation (No TOCTOU)
-  if (getSupabaseStatus().isConfigured && !runtimeBinVerifier) {
-    const serverCommandId = isUUID(commandId) ? commandId : crypto.randomUUID();
-    const atomicServerRes = await rpcExecuteCustomerTopUpAtomic({
-      commandId: serverCommandId,
-      customerId: cust.id,
-      amountMinor,
-      bin,
-      note: note?.trim(),
-    });
-
-    if (!atomicServerRes.success) {
-      return {
-        success: false,
-        newBalanceMinor: 0,
-        error: atomicServerRes.error || 'رمز التحقق (BIN) غير صحيح أو تم رفض العملية على الخادم',
-      };
-    }
-
-    // Atomic server mutation succeeded: sync local state with server authoritative result
-    const txId = atomicServerRes.transactionId || crypto.randomUUID();
-    const prevBalance = await repoContext.customerRepo.getBalance(cust.id);
-    const newBal = atomicServerRes.newBalanceMinor ?? (prevBalance + amountMinor);
-    const ledgerRecord: FinancialLedgerEntity = {
-      id: txId,
-      customerId: cust.id,
-      amountMinor,
-      eventType: 'CREDIT_ADJUSTMENT',
-      actorAdminId,
-      createdAt: new Date().toISOString(),
-      metadata: { note: note?.trim(), commandId },
-    };
-    ledgerList.push(ledgerRecord);
-    await initDbIfNeeded();
-    await localDb.set('financialLedger', txId, ledgerRecord);
-
-    const paymentRecord: PaymentEntity = {
-      id: txId,
-      customerId: cust.id,
-      amountMinor,
-      paymentMethod: 'CASH',
-      reference: note?.trim() || 'شحن رصيد نقدي',
-      actorAdminId,
-      commandId,
-      createdAt: ledgerRecord.createdAt,
-    };
-    paymentsMap.set(txId, paymentRecord);
-    await localDb.set('payments', txId, paymentRecord);
-
-    return {
-      success: true,
-      transactionId: txId,
-      newBalanceMinor: newBal,
-    };
-  }
-
   // Use the authenticated actor and server-backed permissions for offline/local projection.
   const authContext = getAuthorizedAdminContext(bin);
 
@@ -4271,7 +4323,8 @@ export const topUpCustomerBalance = async (
       authContext,
       cust.id,
       amountMinor,
-      bin
+      bin,
+      commandId
     );
 
     if (!result.success) {
@@ -4282,39 +4335,8 @@ export const topUpCustomerBalance = async (
       };
     }
 
-    // Explicitly register authoritative command into outbox path
-    await repoContext.commandRepo.record(commandId, 'CREATE_CUSTOMER_CREDIT', {
-      customerId: cust.id,
-      amountMinor,
-      note: note?.trim(),
-      transactionId: result.data?.id,
-    });
-
-    // If note or transaction is recorded, update metadata and payments
-    if (result.data?.id) {
-      const txId = result.data.id;
-      const lastRecord = ledgerList.find((l) => l.id === txId) || ledgerList[ledgerList.length - 1];
-      if (lastRecord && lastRecord.customerId === cust.id) {
-        lastRecord.metadata = { ...lastRecord.metadata, note: note?.trim(), commandId };
-        await initDbIfNeeded();
-        await localDb.set('financialLedger', lastRecord.id, lastRecord);
-      }
-
-      const paymentRecord: PaymentEntity = {
-        id: txId,
-        customerId: cust.id,
-        amountMinor,
-        paymentMethod: 'CASH',
-        reference: note?.trim() || 'شحن رصيد نقدي',
-        actorAdminId,
-        commandId,
-        createdAt: lastRecord?.createdAt || new Date().toISOString(),
-      };
-      paymentsMap.set(txId, paymentRecord);
-      await initDbIfNeeded();
-      await localDb.set('payments', txId, paymentRecord);
-    }
-
+    // The use case owns both the ledger/payment optimistic projections and the
+    // single outbox command. Do not write a second local payment or command here.
     // Authoritative fresh balance
     const newBalanceMinor = await repoContext.customerRepo.getBalance(cust.id);
 
