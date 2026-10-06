@@ -161,7 +161,7 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
     // pull must not overwrite pending local intent, so mark it authoritative
     // before testing same-UUID remote reconciliation.
     await localDb.removeOverlay(cust.id);
-    await localDb.removeOutbox(cust.id);
+    await localDb.deleteOutbox(cust.id);
 
     // Simulate remote pull delivering the exact same UUID from change_log
     await applyRemoteChange({
