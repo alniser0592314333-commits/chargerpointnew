@@ -390,7 +390,7 @@ export class MockServerSyncTransport implements ServerSyncTransport {
 
 export class SyncEngine {
   private isSyncing = false;
-  public onDeltaApplied?: (change: ChangeLogEntry, tx?: IDBTransaction) => Promise<boolean | void> | boolean | void;
+  public onDeltaApplied?: (change: ChangeLogEntry, tx?: IDBTransaction) => boolean | void;
 
   constructor(private transport: ServerSyncTransport) {}
 
@@ -654,7 +654,7 @@ export class SyncEngine {
           for (const change of sortedChanges) {
             try {
               const applied = this.onDeltaApplied
-                ? await this.onDeltaApplied(change, tx) !== false
+                ? this.onDeltaApplied(change, tx) !== false
                 : (() => {
                     if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
                       localDb.removeWithTx(tx, change.entityType, change.entityId);
