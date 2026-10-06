@@ -634,7 +634,44 @@ export class IndexedDBLocalDatabase {
     }
   }
 
-  async clearOperationalData(options?: { clearOutbox?: boolean; clearSyncState?: boolean }): Promise<void> {
+  async clearOperationalData(options?: {
+    clearOutbox?: boolean;
+    clearSyncState?: boolean;
+    preservePendingMutations?: boolean;
+  }): Promise<void> {
+    const preservedRows: Array<{ table: string; id: ID; item: any }> = [];
+    const preservedHistory: SyncHistoryRecord[] = [];
+    const preservedSnapshots: MutationSnapshotRecord[] = [];
+
+    if (options?.preservePendingMutations) {
+      const protectedStatuses = new Set<OutboxRecord['status']>([
+        'pending',
+        'PENDING_RECONCILIATION',
+        'READY',
+        'syncing',
+        'accepted',
+        'blocked',
+        'conflict',
+      ]);
+      for (const outbox of this.memoryOutbox.values()) {
+        if (!protectedStatuses.has(outbox.status)) continue;
+        if (!outbox.aggregateType || !outbox.aggregateId || outbox.aggregateType === 'COMMAND') continue;
+        const tableMap = this.memoryFallback.get(outbox.aggregateType);
+        const row = tableMap?.get(outbox.aggregateId);
+        if (row !== undefined) {
+          preservedRows.push({
+            table: outbox.aggregateType,
+            id: outbox.aggregateId,
+            item: cloneForRollback(row),
+          });
+        }
+        const history = this.memorySyncHistory.get(outbox.commandId);
+        if (history) preservedHistory.push(cloneForRollback(history));
+        const snapshot = this.memoryMutationSnapshots.get(outbox.commandId);
+        if (snapshot) preservedSnapshots.push(cloneForRollback(snapshot));
+      }
+    }
+
     const operationalTables = [
       'customers',
       'deviceTypes',
@@ -681,6 +718,21 @@ export class IndexedDBLocalDatabase {
           }
         }
       } catch {}
+    }
+
+    // A generation reset is a remote read-model reset, not permission to erase
+    // unsynced local work. Restore every protected aggregate after the reset and
+    // restore its sync metadata so the outbox can continue normally.
+    if (options?.preservePendingMutations) {
+      for (const row of preservedRows) {
+        await this.set(row.table, row.id, row.item);
+      }
+      for (const history of preservedHistory) {
+        await this.saveHistory(history);
+      }
+      for (const snapshot of preservedSnapshots) {
+        await this.saveMutationSnapshot(snapshot);
+      }
     }
   }
 
