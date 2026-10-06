@@ -145,6 +145,14 @@ describe('Offline reactivity and delivery targeting regression', () => {
     expect(scopes).toContain('orders');
     expect(scopes).toContain('payments');
     expect(scopes).toContain('financialLedger');
+
+    const persistedPayment = await localDb.get<any>('payments', paymentResult.data?.id);
+    expect(persistedPayment?.id).toBe(paymentResult.data?.id);
+
+    const paymentCommand = (await localDb.listOutbox()).find(
+      (command) => command.commandId === paymentResult.data?.id && command.commandType === 'CREATE_PAYMENT'
+    );
+    expect(paymentCommand).toBeTruthy();
   });
 
   it('when a delivered order receives a new device, choosing Delivered targets only the new charging item', async () => {
