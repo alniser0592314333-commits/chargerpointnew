@@ -355,12 +355,14 @@ export class FinalUseCases {
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.itemRepo.save(item);
+      const parentCreate = ctx.commandRepo.get(orderId);
       ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
         id: item.id,
         aggregateId: orderId,
         orderId,
         deviceTypeId,
         hasCharger,
+        ...(parentCreate?.type === 'CREATE_ORDER' ? { dependencyCommandId: orderId } : {}),
         ...(groupId ? { groupId } : {}),
         deviceNameSnapshot: item.deviceNameSnapshot,
         deviceIconSnapshot: item.deviceIconSnapshot,
@@ -684,8 +686,17 @@ export class FinalUseCases {
     const commandId = crypto.randomUUID();
     if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
     await this.deps.transactionManager.runInTransaction((ctx) => {
+      const parentAdd = ctx.commandRepo.get(item.id);
       ctx.itemRepo.save({...item,...patch});
-      ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{id:commandId,aggregateId:item.id,itemId:item.id,orderItemId:item.id,orderId:order.id,bin},item.version);
+      ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
+        id:commandId,
+        aggregateId:item.id,
+        itemId:item.id,
+        orderItemId:item.id,
+        orderId:order.id,
+        bin,
+        ...(parentAdd?.type === 'ADD_ORDER_ITEM' ? { dependencyCommandId: item.id } : {}),
+      },item.version);
     });
     try { await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>); } catch(e) { console.warn('Delivery pending projection failed; local item is authoritative.',e); }
     return {success:true,data:{...item,...patch} as OrderItemEntity};
