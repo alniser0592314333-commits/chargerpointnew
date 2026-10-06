@@ -263,4 +263,73 @@ describe('Offline reactivity and delivery targeting regression', () => {
     expect(addCommands).toHaveLength(2);
     expect(addCommands.every((command) => command.payload.dependencyCommandId === commandId)).toBe(true);
   });
+  it('persists delivery state in the local read model atomically with its outbox command', async () => {
+    await seedBaseOrder();
+    const orderId = 'order-delivery-persist';
+    const itemId = 'item-delivery-persist';
+
+    await repoContext.orderRepo.save({
+      id: orderId, dayId: 'day-regression', customerId: 'cust-regression',
+      displayNumber: 10, internalSequence: 10, status: 'charging',
+      customerBalanceSnapshotMinor: 0, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+    await repoContext.itemRepo.save({
+      id: itemId, orderId, deviceTypeId: 'device-regression', itemSequence: 1,
+      status: 'charging', financialStatus: 'PENDING', deviceNameSnapshot: 'Regression Device',
+      deviceIconSnapshot: 'smartphone', basePriceSnapshotMinor: 2000,
+      chargerFeeEnabledSnapshot: false, customerChargerFeeExemptSnapshot: false,
+      chargerFeeSnapshotMinor: 0, hasCharger: false, unitPriceMinor: 2000,
+      totalPriceMinor: 2000, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+
+    const result = await phase5UseCases.deliverOrderItem(superAdminAuth, itemId, '1234');
+    expect(result.success).toBe(true);
+
+    const persisted = await localDb.get<any>('orderItems', itemId);
+    expect(persisted?.status).toBe('delivered');
+    expect(persisted?.financialStatus).toBe('RECOGNIZED');
+
+    const command = (await localDb.listOutbox()).find(
+      (c) => c.commandType === 'DELIVER_ORDER_ITEM' && c.payload.itemId === itemId
+    );
+    expect(command).toBeTruthy();
+    expect(command?.expectedVersion).toBe(1);
+  });
+
+  it('persists order note edits and item cancellation in the local read model before sync', async () => {
+    await seedBaseOrder();
+    const orderId = 'order-edit-persist';
+    const itemId = 'item-cancel-persist';
+
+    await repoContext.orderRepo.save({
+      id: orderId, dayId: 'day-regression', customerId: 'cust-regression',
+      displayNumber: 11, internalSequence: 11, status: 'charging',
+      customerBalanceSnapshotMinor: 0, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+    await repoContext.itemRepo.save({
+      id: itemId, orderId, deviceTypeId: 'device-regression', itemSequence: 1,
+      status: 'charging', financialStatus: 'PENDING', deviceNameSnapshot: 'Regression Device',
+      deviceIconSnapshot: 'smartphone', basePriceSnapshotMinor: 2000,
+      chargerFeeEnabledSnapshot: false, customerChargerFeeExemptSnapshot: false,
+      chargerFeeSnapshotMinor: 0, hasCharger: false, unitPriceMinor: 2000,
+      totalPriceMinor: 2000, createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(), version: 1,
+    });
+
+    const noteResult = await phase5UseCases.editOrderNotes(superAdminAuth, orderId, 'offline note');
+    expect(noteResult.success).toBe(true);
+    const cancelledResult = await phase5UseCases.removeOrderItemDuringEdit(superAdminAuth, itemId);
+    expect(cancelledResult.success).toBe(true);
+
+    expect((await localDb.get<any>('orders', orderId))?.notes).toBe('offline note');
+    expect((await localDb.get<any>('orderItems', itemId))?.status).toBe('cancelled');
+
+    const outbox = await localDb.listOutbox();
+    expect(outbox.some((c) => c.commandType === 'UPDATE_ORDER' && c.payload.orderId === orderId)).toBe(true);
+    expect(outbox.some((c) => c.commandType === 'CANCEL_ORDER_ITEM' && c.payload.itemId === itemId)).toBe(true);
+  });
+
 });
