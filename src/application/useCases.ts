@@ -357,9 +357,15 @@ export class FinalUseCases {
     };
 
     const mutationKey = `order:${orderId}`;
+    const reopenedOrder =
+      order.status === 'delivered'
+        ? { ...order, status: 'charging' as const, updatedAt: new Date().toISOString(), version: order.version + 1 }
+        : null;
+
     if (this.deps.mutationSnapshotRepo) {
       await this.deps.mutationSnapshotRepo.capture(itemId, [
         { table: 'orderItems', id: item.id, existed: false },
+        ...(reopenedOrder ? [{ table: 'orders', id: order.id, existed: true, data: order }] : []),
       ]);
     }
 
@@ -368,6 +374,7 @@ export class FinalUseCases {
      * only a pending projection; the local entity row is the durable read model.
      */
     await this.deps.transactionManager.runInTransaction((ctx) => {
+      if (reopenedOrder) ctx.orderRepo.save(reopenedOrder);
       ctx.itemRepo.save(item);
       ctx.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
         id: item.id,
@@ -650,9 +657,21 @@ undefined
       updatedAt: deliveredAt,
       version: item.version + 1,
     };
-    if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
+    const projectedItems = (await this.deps.itemRepo.findByOrderId(order.id))
+      .filter(i => i.status !== 'cancelled')
+      .map(i => i.id === item.id ? ({ ...i, ...patch }) : i);
+    const allProjectedDelivered = projectedItems.length > 0 && projectedItems.every(i => i.status === 'delivered');
+    const projectedOrder = allProjectedDelivered
+      ? { ...order, status: 'delivered' as const, updatedAt: deliveredAt, version: order.version + 1 }
+      : null;
+
+    if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[
+      {table:'orderItems',id:item.id,existed:true,data:item},
+      ...(projectedOrder ? [{table:'orders',id:order.id,existed:true,data:order}] : []),
+    ]);
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.itemRepo.save({...item,...patch});
+      if (projectedOrder) ctx.orderRepo.save(projectedOrder);
       ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{
         id: commandId,
         itemId: item.id,
