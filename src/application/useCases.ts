@@ -525,7 +525,7 @@ export class FinalUseCases {
 
         ctx.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
           id: item.id,
-          aggregateId: order.id,
+          aggregateId: item.id,
           orderId: order.id,
           deviceTypeId: item.deviceTypeId,
           hasCharger: item.hasCharger,
@@ -619,7 +619,7 @@ export class FinalUseCases {
     if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orderItems',id:item.id,existed:true,data:item}]);
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.itemRepo.save({...item,...patch});
-      ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{id:commandId,itemId:item.id,orderItemId:item.id,orderId:order.id,bin},item.version);
+      ctx.commandRepo.record(commandId,'DELIVER_ORDER_ITEM',{id:commandId,aggregateId:item.id,itemId:item.id,orderItemId:item.id,orderId:order.id,bin},item.version);
     });
     try { await this.createOverlay(commandId,`order:${order.id}`,'order_items',itemId,'PATCH',patch as Record<string,unknown>); } catch(e) { console.warn('Delivery pending projection failed; local item is authoritative.',e); }
     return {success:true,data:{...item,...patch} as OrderItemEntity};
@@ -660,6 +660,7 @@ export class FinalUseCases {
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.commandRepo.record(commandId, 'DELIVER_ORDER_ITEM', {
         id: commandId,
+        aggregateId: item.id,
         itemId: item.id,
         orderItemId: item.id,
         orderId: order.id,
