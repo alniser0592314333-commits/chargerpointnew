@@ -840,7 +840,9 @@ class DefaultAuthService implements AuthService {
           // Auth subject. This preserves offline reload while preventing a forged
           // app_auth_session from becoming an authenticated admin session.
           if (this.isSupabaseConfigured()) {
-            if (!storedSupabase?.user?.id || !storedSession.authUserId || storedSession.authUserId !== storedSupabase.user.id) {
+            const serverConfirmed = Boolean(serverProfile?.authenticated && serverProfile.is_admin);
+            const subjectBound = Boolean(storedSupabase?.user?.id && storedSession.authUserId && storedSession.authUserId === storedSupabase.user.id);
+            if (!serverConfirmed && !subjectBound) {
               storage.removeItem(SESSION_STORAGE_KEY);
               inMemorySession = null;
               return null;
