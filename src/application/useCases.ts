@@ -165,6 +165,14 @@ export class FinalUseCases {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:create');
 
+    // Closed business days are immutable for regular admins. This guard must
+    // exist at the order boundary itself; relying on addOrderItem is too late
+    // because it leaves a ghost order/outbox command possible.
+    const dayIsClosed = await this.deps.dayRepo.isClosed(dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) {
+      throw new ClosedDayError();
+    }
+
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
     if (!customer.isActive) throw new InactiveCustomerError();
