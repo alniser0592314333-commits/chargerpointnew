@@ -495,7 +495,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     await new Promise((resolve) => setTimeout(resolve, 80));
 
     const outbox = await localDb.listOutbox();
-    const deleteCmd = outbox.find(o => o.commandType === 'DELETE_DEVICE_TYPE');
+    const deleteCmd = outbox.find(o => o.commandType === 'RETIRE_DEVICE_TYPE');
     expect(deleteCmd).toBeDefined();
 
     await engine.synchronize();
