@@ -172,8 +172,14 @@ BEGIN
                 v_required_perm := 'finance:credit-adjustment';
             WHEN 'REFUND_PAYMENT', 'CREATE_REFUND' THEN
                 v_required_perm := 'payments:refund';
-            WHEN 'CREATE_GOAL' THEN
+            WHEN 'CREATE_GOAL', 'UPDATE_GOAL_CONFIG', 'UPDATE_GOAL_PROGRESS' THEN
                 v_required_perm := 'goals:manage';
+            WHEN 'RECORD_GOAL_REQUEST' THEN
+                v_required_perm := 'goals:manage';
+            WHEN 'APPROVE_GOAL_REQUEST', 'REJECT_GOAL_REQUEST' THEN
+                v_required_perm := 'goals:approve';
+            WHEN 'CLOSE_DAY' THEN
+                v_required_perm := 'settings:manage';
             ELSE
                 v_required_perm := 'settings:manage';
             END CASE;
@@ -415,7 +421,7 @@ BEGIN
             PERFORM public.record_canonical_change('business_days', v_entity_uuid, 'INSERT', p_payload, 1);
             v_result := jsonb_build_object('businessDayId', v_entity_uuid);
 
-        WHEN 'CLOSE_BUSINESS_DAY' THEN
+        WHEN 'CLOSE_BUSINESS_DAY', 'CLOSE_DAY' THEN
             v_day_uuid := (COALESCE(p_payload->>'dayId', p_payload->>'day_id', p_payload->>'id'))::UUID;
             
             IF NOT EXISTS (SELECT 1 FROM public.business_days WHERE id = v_day_uuid) THEN
@@ -995,6 +1001,212 @@ WHEN 'UPDATE_ORDER' THEN
                 'totalAmountMinor', (COALESCE(p_payload->>'amountMinor', p_payload->>'amount_minor'))::BIGINT,
                 'customerCreditRemainder', v_unallocated_amount
             );
+
+        WHEN 'RECORD_GOAL_REQUEST' THEN
+            v_entity_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
+            v_customer_uuid := (p_payload->>'customerId')::UUID;
+            IF v_customer_uuid IS NULL THEN
+                RAISE EXCEPTION 'Invalid goal request: customerId is required' USING ERRCODE='P2201';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM public.customers WHERE id = v_customer_uuid AND status <> 'DELETED') THEN
+                RAISE EXCEPTION 'Customer Not Found: ID %', v_customer_uuid USING ERRCODE='23503';
+            END IF;
+
+            INSERT INTO public.goal_requests (
+                id, customer_id, requested_target, status, version, created_at, updated_at
+            )
+            VALUES (
+                v_entity_uuid,
+                v_customer_uuid,
+                (p_payload->>'requestedTarget')::INTEGER,
+                'PENDING',
+                1,
+                NOW(),
+                NOW()
+            )
+            ON CONFLICT (id) DO NOTHING;
+
+            PERFORM public.record_canonical_change('goal_requests', v_entity_uuid, 'INSERT', p_payload, 1);
+            v_result := jsonb_build_object('requestId', v_entity_uuid, 'status', 'PENDING');
+
+        WHEN 'APPROVE_GOAL_REQUEST' THEN
+            v_entity_uuid := (p_payload->>'requestId')::UUID;
+            IF v_entity_uuid IS NULL THEN
+                RAISE EXCEPTION 'Invalid goal approval: requestId is required' USING ERRCODE='P2201';
+            END IF;
+
+            SELECT * INTO v_rec_goal_request
+            FROM public.goal_requests
+            WHERE id = v_entity_uuid
+            FOR UPDATE;
+
+            IF v_rec_goal_request.id IS NULL THEN
+                RAISE EXCEPTION 'Goal request not found: ID %', v_entity_uuid USING ERRCODE='23503';
+            END IF;
+            IF v_rec_goal_request.status <> 'PENDING' THEN
+                RAISE EXCEPTION 'Goal request is already %', v_rec_goal_request.status USING ERRCODE='P0001';
+            END IF;
+
+            v_entity_uuid := COALESCE((p_payload->>'resultingGoalId')::UUID, gen_random_uuid());
+            IF EXISTS (
+                SELECT 1 FROM public.goals
+                WHERE customer_id = v_rec_goal_request.customer_id AND status = 'ACTIVE'
+            ) THEN
+                RAISE EXCEPTION 'Customer already has an active goal' USING ERRCODE='P0001';
+            END IF;
+
+            INSERT INTO public.goals (
+                id, customer_id, target_quantity, current_progress, bonus_amount_minor,
+                duration_days, status, started_at, expires_at, version, created_at, updated_at
+            )
+            VALUES (
+                v_entity_uuid,
+                v_rec_goal_request.customer_id,
+                COALESCE((p_payload->>'targetQuantity')::INTEGER, v_rec_goal_request.requested_target, 10),
+                0,
+                COALESCE((p_payload->>'bonusAmountMinor')::BIGINT, 500),
+                COALESCE((p_payload->>'durationDays')::INTEGER, 7),
+                'ACTIVE',
+                NOW(),
+                COALESCE((p_payload->>'expiresAt')::TIMESTAMPTZ, NOW() + make_interval(days => COALESCE((p_payload->>'durationDays')::INTEGER, 7))),
+                1,
+                NOW(),
+                NOW()
+            );
+
+            UPDATE public.goal_requests
+            SET status = 'APPROVED',
+                reviewed_by = v_actor_id,
+                reviewed_at = NOW(),
+                resulting_goal_id = v_entity_uuid,
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_rec_goal_request.id;
+
+            PERFORM public.record_canonical_change('goals', v_entity_uuid, 'INSERT', jsonb_build_object('id', v_entity_uuid, 'customer_id', v_rec_goal_request.customer_id), 1);
+            PERFORM public.record_canonical_change('goal_requests', v_rec_goal_request.id, 'UPDATE', jsonb_build_object('id', v_rec_goal_request.id, 'status', 'APPROVED', 'resulting_goal_id', v_entity_uuid), v_rec_goal_request.version + 1);
+            v_result := jsonb_build_object('requestId', v_rec_goal_request.id, 'goalId', v_entity_uuid, 'status', 'APPROVED');
+
+        WHEN 'REJECT_GOAL_REQUEST' THEN
+            v_entity_uuid := (p_payload->>'requestId')::UUID;
+            IF v_entity_uuid IS NULL THEN
+                RAISE EXCEPTION 'Invalid goal rejection: requestId is required' USING ERRCODE='P2201';
+            END IF;
+
+            SELECT status, version INTO v_current_status, v_current_version
+            FROM public.goal_requests
+            WHERE id = v_entity_uuid
+            FOR UPDATE;
+
+            IF v_current_status IS NULL THEN
+                RAISE EXCEPTION 'Goal request not found: ID %', v_entity_uuid USING ERRCODE='23503';
+            END IF;
+            IF v_current_status <> 'PENDING' THEN
+                RAISE EXCEPTION 'Goal request is already %', v_current_status USING ERRCODE='P0001';
+            END IF;
+
+            UPDATE public.goal_requests
+            SET status = 'REJECTED',
+                reviewed_by = v_actor_id,
+                reviewed_at = NOW(),
+                rejection_reason = p_payload->>'rejectionReason',
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_entity_uuid;
+
+            PERFORM public.record_canonical_change('goal_requests', v_entity_uuid, 'UPDATE',
+                jsonb_build_object('id', v_entity_uuid, 'status', 'REJECTED', 'rejection_reason', p_payload->>'rejectionReason'),
+                v_current_version + 1);
+            v_result := jsonb_build_object('requestId', v_entity_uuid, 'status', 'REJECTED');
+
+        WHEN 'UPDATE_GOAL_CONFIG' THEN
+            v_entity_uuid := (p_payload->>'id')::UUID;
+            IF v_entity_uuid IS NULL THEN
+                RAISE EXCEPTION 'Invalid goal update: id is required' USING ERRCODE='P2201';
+            END IF;
+
+            SELECT * INTO v_rec_goal
+            FROM public.goals
+            WHERE id = v_entity_uuid
+            FOR UPDATE;
+
+            IF v_rec_goal.id IS NULL THEN
+                RAISE EXCEPTION 'Goal not found: ID %', v_entity_uuid USING ERRCODE='23503';
+            END IF;
+
+            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
+            IF v_expected_version IS NOT NULL AND v_rec_goal.version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Goal version mismatch. Expected %, current %', v_expected_version, v_rec_goal.version USING ERRCODE='P0409';
+            END IF;
+
+            UPDATE public.goals
+            SET target_quantity = COALESCE((p_payload->>'targetQuantity')::INTEGER, target_quantity),
+                duration_days = COALESCE((p_payload->>'durationDays')::INTEGER, duration_days),
+                bonus_amount_minor = COALESCE((p_payload->>'bonusAmountMinor')::BIGINT, bonus_amount_minor),
+                expires_at = COALESCE((p_payload->>'expiresAt')::TIMESTAMPTZ, expires_at),
+                status = COALESCE(p_payload->>'status', status),
+                completed_at = COALESCE((p_payload->>'completedAt')::TIMESTAMPTZ, completed_at),
+                bonus_ledger_id = COALESCE((p_payload->>'bonusLedgerId')::UUID, bonus_ledger_id),
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_entity_uuid;
+
+            PERFORM public.record_canonical_change('goals', v_entity_uuid, 'UPDATE', p_payload, v_rec_goal.version + 1);
+            v_result := jsonb_build_object('goalId', v_entity_uuid, 'version', v_rec_goal.version + 1);
+
+        WHEN 'UPDATE_GOAL_PROGRESS' THEN
+            v_entity_uuid := COALESCE((p_payload->>'goalId')::UUID, (p_payload->>'id')::UUID);
+            IF v_entity_uuid IS NULL THEN
+                RAISE EXCEPTION 'Invalid goal progress update: goalId is required' USING ERRCODE='P2201';
+            END IF;
+
+            SELECT * INTO v_rec_goal
+            FROM public.goals
+            WHERE id = v_entity_uuid
+            FOR UPDATE;
+
+            IF v_rec_goal.id IS NULL THEN
+                RAISE EXCEPTION 'Goal not found: ID %', v_entity_uuid USING ERRCODE='23503';
+            END IF;
+
+            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
+            IF v_expected_version IS NOT NULL AND v_rec_goal.version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Goal version mismatch. Expected %, current %', v_expected_version, v_rec_goal.version USING ERRCODE='P0409';
+            END IF;
+
+            IF COALESCE((p_payload->>'bonusGranted')::BOOLEAN, FALSE)
+               AND p_payload->>'bonusLedgerId' IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM public.financial_ledger WHERE id = (p_payload->>'bonusLedgerId')::UUID) THEN
+                INSERT INTO public.financial_ledger (
+                    id, event_type, amount_minor, customer_id, actor_admin_id, reference_id, metadata, created_at
+                )
+                VALUES (
+                    (p_payload->>'bonusLedgerId')::UUID,
+                    'BONUS',
+                    COALESCE((p_payload->>'bonusAmountMinor')::BIGINT, v_rec_goal.bonus_amount_minor),
+                    v_rec_goal.customer_id,
+                    v_actor_id,
+                    v_entity_uuid,
+                    jsonb_build_object('reason','GOAL_COMPLETED','goalId',v_entity_uuid),
+                    NOW()
+                );
+            END IF;
+
+            UPDATE public.goals
+            SET current_progress = COALESCE((p_payload->>'currentProgress')::INTEGER, current_progress),
+                status = COALESCE(p_payload->>'status', status),
+                completed_at = COALESCE((p_payload->>'completedAt')::TIMESTAMPTZ, completed_at),
+                bonus_ledger_id = COALESCE((p_payload->>'bonusLedgerId')::UUID, bonus_ledger_id),
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_entity_uuid;
+
+            PERFORM public.record_canonical_change('goals', v_entity_uuid, 'UPDATE', p_payload, v_rec_goal.version + 1);
+            IF COALESCE((p_payload->>'bonusGranted')::BOOLEAN, FALSE) THEN
+                PERFORM public.record_canonical_change('financial_ledger', (p_payload->>'bonusLedgerId')::UUID, 'INSERT',
+                    jsonb_build_object('event_type','BONUS','amount_minor',COALESCE((p_payload->>'bonusAmountMinor')::BIGINT, v_rec_goal.bonus_amount_minor),'customer_id',v_rec_goal.customer_id,'reference_id',v_entity_uuid),1);
+            END IF;
+            v_result := jsonb_build_object('goalId', v_entity_uuid, 'version', v_rec_goal.version + 1);
 
         WHEN 'SET_SYSTEM_SETTING' THEN
             INSERT INTO public.system_settings (key, value_type, value_string, value_number, value_boolean, value_json, updated_at, updated_by)
