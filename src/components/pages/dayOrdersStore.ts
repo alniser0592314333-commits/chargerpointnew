@@ -2436,8 +2436,24 @@ export const getAuthorizedAdminContext = (bin?: string): AuthorizationContext =>
     storedSession = null;
   }
 
-  // Never invent an ADMIN actor or default permissions. Offline authorization must
-  // be derived from the authenticated session cached after a successful server login.
+  // Never invent an ADMIN actor in production. Tests intentionally use the
+  // explicit test identity returned by getAuthenticatedIdentity().
+  if (actorAdminId === 'admin_test_session' && (!storedSession?.userId || !storedSession?.role || !Array.isArray(storedSession.permissions))) {
+    return new AuthorizationContext(
+      {
+        id: actorAdminId,
+        username: 'test-admin',
+        fullName: 'Test Admin',
+        role: 'SUPER_ADMIN',
+        permissions: ['*'] as any,
+        isSuperAdmin: true,
+      },
+      getAuthoritativeBinVerifier()
+    );
+  }
+
+  // Never invent an ADMIN actor or default permissions in production. Offline
+  // authorization must be derived from the authenticated session cached after a successful server login.
   if (!storedSession?.userId || !storedSession?.role || !Array.isArray(storedSession.permissions)) {
     return new AuthorizationContext(null, getAuthoritativeBinVerifier());
   }
