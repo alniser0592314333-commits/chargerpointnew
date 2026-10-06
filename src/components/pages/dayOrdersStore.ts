@@ -3517,6 +3517,9 @@ export const deliverEntireOrder = async (
   await ensureStoreHydrated();
   try {
     const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (offline && bin.trim()) {
+      return { success: false, error: 'لا يمكن التحقق من رمز الأمان بدون اتصال.' };
+    }
     const auth = getAuthorizedAdminContext(bin);
     const orderEntity = await repoContext.orderRepo.findById(orderId);
     if (!orderEntity) return { success: false, error: 'الطلب غير موجود' };
@@ -3654,6 +3657,9 @@ export const deliverAllOrdersInDay = async (
   await ensureStoreHydrated();
   try {
     const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (offline && bin.trim()) {
+      return { success: false, error: 'لا يمكن التحقق من رمز الأمان بدون اتصال.' };
+    }
     const auth = getAuthorizedAdminContext(bin);
     const dayOrders = await getOrdersForDay(dayId);
     let count = 0;
