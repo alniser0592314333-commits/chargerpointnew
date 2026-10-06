@@ -321,6 +321,20 @@ create table if not exists public.audit_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.qr_payment_submissions (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid not null references public.customers(id) on delete restrict,
+  amount_minor bigint not null check(amount_minor > 0),
+  receipt_url text,
+  note text,
+  status text not null default 'PENDING' check(status in ('PENDING','APPROVED','REJECTED')),
+  reviewed_by uuid references public.admins(id),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  version integer not null default 1
+);
+
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   admin_id uuid references public.admins(id),
