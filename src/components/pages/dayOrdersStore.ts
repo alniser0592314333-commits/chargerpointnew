@@ -422,15 +422,23 @@ export const applyRemoteChange = (change: {
       return;
     }
     const previousItem = itemsMap.get(change.entityId);
-    const incomingItemVersion = Number(p.version ?? 1);
+    const incomingItemVersion = Number(change.version ?? p.version ?? (previousItem ? Number(previousItem.version ?? 0) + 1 : 1));
     if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
       return;
     }
-    const rawStatus = String(p.status || p.item_status || p.deliveryStatus || p.delivery_status || previousItem?.status || 'charging').toLowerCase();
+    const rawStatus = String(
+      p.status ||
+      p.item_status ||
+      p.deliveryStatus ||
+      p.delivery_status ||
+      (String(p.financialStatus || p.financial_status || '').toUpperCase() === 'RECOGNIZED' ? 'delivered' : '') ||
+      previousItem?.status ||
+      'charging'
+    ).toLowerCase();
     const normalizedStatus: ItemStatus =
       rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending' || rawStatus === 'charging'
         ? (rawStatus as ItemStatus)
-        : 'charging';
+        : (previousItem?.status || 'charging');
 
     const entity: OrderItemEntity = {
       ...p,
@@ -457,7 +465,7 @@ export const applyRemoteChange = (change: {
       financiallyRecognizedAt: p.financiallyRecognizedAt || p.financially_recognized_at || undefined,
       cancelledAt: p.cancelledAt || p.cancelled_at || undefined,
       deletedAt: p.deletedAt || p.deleted_at || undefined,
-      version: p.version || 1,
+      version: incomingItemVersion,
     };
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
     itemsMap.set(entity.id, entity);
