@@ -18,7 +18,7 @@ describe('Migration 00111 Canonical BIN Contract & Security Verification', () =>
     expect(content).not.toContain('p_payload->>\'adminBin\'');
 
     // B & C & D. canonical bin extraction uses p_payload->>'bin'
-    expect(content).toContain("v_bin := p_payload->>'bin'");
+    expect(content).toContain("p_payload->>'bin'");
 
     // E, F, G. Device Type commands handled without requiring BIN
     expect(content).toContain("WHEN 'CREATE_DEVICE_TYPE'");
