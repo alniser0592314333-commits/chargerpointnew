@@ -546,7 +546,7 @@ WHEN 'UPDATE_ORDER' THEN
             v_has_charger := COALESCE((p_payload->>'hasCharger')::BOOLEAN, (p_payload->>'has_charger')::BOOLEAN, FALSE);
             
             IF v_charger_applicable AND (NOT v_customer_exempt) AND (NOT v_has_charger) THEN
-                v_authoritative_charger_fee := COALESCE((p_payload->>'chargerFeeSnapshotMinor')::BIGINT, (p_payload->>'charger_fee_snapshot_minor')::BIGINT, 500);
+                v_authoritative_charger_fee := COALESCE((p_payload->>'chargerFeeSnapshotMinor')::BIGINT, (p_payload->>'charger_fee_snapshot_minor')::BIGINT, 50);
             ELSE
                 v_authoritative_charger_fee := 0;
             END IF;
@@ -636,11 +636,11 @@ WHEN 'UPDATE_ORDER' THEN
                     RAISE EXCEPTION 'Device Type Not Found for Item: ID %', v_rec_item.device_type_id USING ERRCODE = '23503';
                 END IF;
 
-                SELECT COALESCE(value_number, 500)
+                SELECT COALESCE(value_number, 50)
                 INTO v_setting_charger_fee
                 FROM public.system_settings
                 WHERE key = 'default_charger_fee_minor';
-                IF v_setting_charger_fee IS NULL THEN v_setting_charger_fee := 500; END IF;
+                IF v_setting_charger_fee IS NULL THEN v_setting_charger_fee := 50; END IF;
 
                 IF v_charger_applicable AND (NOT v_rec_item.charger_fee_exempt) AND (NOT v_rec_item.has_charger) THEN
                     v_authoritative_charger_fee := v_setting_charger_fee;
