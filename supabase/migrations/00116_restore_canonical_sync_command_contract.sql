@@ -589,6 +589,10 @@ BEGIN
             v_result := jsonb_build_object('orderItemId', v_item_uuid, 'provisionalFinalChargeMinor', v_authoritative_final_charge);
 
         WHEN 'DELIVER_ORDER_ITEM' THEN
+            v_expected_version := COALESCE(
+                (p_payload->>'expectedVersion')::INTEGER,
+                (p_payload->>'expected_version')::INTEGER
+            );
             v_item_uuid := (COALESCE(p_payload->>'itemId', p_payload->>'orderItemId', p_payload->>'id'))::UUID;
 
             SELECT oi.*, o.customer_id, c.status AS cust_status, c.debt_limit_minor, c.charger_fee_exempt
@@ -600,6 +604,11 @@ BEGIN
 
             IF v_rec_item.id IS NULL THEN
                 RAISE EXCEPTION 'Order Item Not Found: ID %', v_item_uuid USING ERRCODE = '23503';
+            END IF;
+
+            IF v_expected_version IS NOT NULL AND v_rec_item.version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version
+                    USING ERRCODE = 'P0409';
             END IF;
 
             IF v_rec_item.cust_status = 'DELETED' THEN
@@ -813,6 +822,10 @@ BEGIN
             END IF;
 
         WHEN 'CANCEL_ORDER_ITEM' THEN
+            v_expected_version := COALESCE(
+                (p_payload->>'expectedVersion')::INTEGER,
+                (p_payload->>'expected_version')::INTEGER
+            );
             v_item_uuid := (COALESCE(p_payload->>'itemId', p_payload->>'orderItemId', p_payload->>'id'))::UUID;
 
             SELECT oi.*, o.customer_id
@@ -823,6 +836,11 @@ BEGIN
 
             IF v_rec_item.id IS NULL THEN
                 RAISE EXCEPTION 'Order Item Not Found: ID %', v_item_uuid USING ERRCODE = '23503';
+            END IF;
+
+            IF v_expected_version IS NOT NULL AND v_rec_item.version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version
+                    USING ERRCODE = 'P0409';
             END IF;
 
             IF v_rec_item.operational_status = 'CANCELLED' THEN
@@ -1072,7 +1090,10 @@ BEGIN
     RETURN public.execute_canonical_sync_command(
         p_command_id,
         p_command_type,
-        p_payload,
+        CASE
+            WHEN p_expected_version IS NULL THEN p_payload
+            ELSE p_payload || jsonb_build_object('expectedVersion', p_expected_version)
+        END,
         COALESCE(p_payload->>'payloadHash', 'no_hash'),
         COALESCE(p_payload->>'deviceId', 'default_device'),
         auth.uid()
