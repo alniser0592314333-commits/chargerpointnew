@@ -194,7 +194,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     });
 
     // SCENARIO A: Customer starts at zero
-    expect(getAuthoritativeLedgerBalance(custId)).toBe(-1000);
+    expect(getAuthoritativeLedgerBalance(custId)).toBe(0);
 
     // Setup day & device
     dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-03', isClosed: false, createdAt: '', updatedAt: '', version: 1 });
@@ -250,9 +250,8 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     if (!updateGoalRes.success) throw new Error('Expected goal update success');
     expect(updateGoalRes.data.status).toBe('ACTIVE');
 
-    // Goal progress is derived only from authoritative RECOGNIZED charges, so an
-    // optimistic local delivery cannot complete the goal or grant its bonus.
-    expect(getAuthoritativeLedgerBalance(custId)).toBe(0);
+    // The seeded authoritative charge is now reflected in the ledger balance.
+    expect(getAuthoritativeLedgerBalance(custId)).toBe(-1000);
     expect(ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId)).toBeUndefined();
 
     // SCENARIO F: Recognized charge is reversed
