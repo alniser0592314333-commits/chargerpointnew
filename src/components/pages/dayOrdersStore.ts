@@ -3559,7 +3559,9 @@ export const updateOrderWithPhase5Engine = async (
       if (offline && !bin?.trim()) {
         await phase5UseCases.queueCancelOrderItemAwaitingBin(getAuthorizedAdminContext(), itemId);
       } else {
-        await phase5UseCases.cancelOrderItem(getAuthorizedAdminContext(bin), itemId, bin || '');
+        const commandId = crypto.randomUUID();
+        if (bin?.trim()) globalSyncTransport.authorizeCommand(commandId, bin);
+        await phase5UseCases.cancelOrderItem(getAuthorizedAdminContext(bin), itemId, bin || '', commandId);
       }
     }
 
