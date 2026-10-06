@@ -41,6 +41,7 @@ DECLARE
     v_order_uuid UUID;
     v_item_uuid UUID;
     v_item_existed BOOLEAN := FALSE;
+    v_order_reopened BOOLEAN := FALSE;
     v_customer_uuid UUID;
     v_device_type_uuid UUID;
     v_payment_uuid UUID;
@@ -561,6 +562,11 @@ WHEN 'UPDATE_ORDER' THEN
             v_authoritative_discount := COALESCE((p_payload->>'discountSnapshotMinor')::BIGINT, (p_payload->>'discount_snapshot_minor')::BIGINT, 0);
             v_authoritative_final_charge := GREATEST(0, v_base_price + v_authoritative_charger_fee - v_authoritative_discount);
 
+            SELECT EXISTS (
+                SELECT 1 FROM public.orders
+                WHERE id = v_order_uuid AND status = 'delivered'
+            ) INTO v_order_reopened;
+
             UPDATE public.orders
             SET status = 'charging', updated_at = NOW(), version = version + 1
             WHERE id = v_order_uuid AND status = 'delivered';
@@ -625,10 +631,7 @@ WHEN 'UPDATE_ORDER' THEN
 
             -- Adding a device to a previously delivered order reopens the parent
             -- order. Publish that parent version as part of the same command.
-            IF EXISTS (
-                SELECT 1 FROM public.orders
-                WHERE id = v_order_uuid AND status = 'charging'
-            ) THEN
+            IF v_order_reopened THEN
                 PERFORM public.record_canonical_change(
                     'orders', v_order_uuid, 'UPDATE',
                     jsonb_build_object('id', v_order_uuid, 'status', 'charging'),
