@@ -786,6 +786,9 @@ export class SyncEngine {
         const candidates = outboxItems.filter(
           i =>
             !processedInCycle.has(i.commandId) &&
+            // Protected offline intents stay local until an operator enters BIN
+            // in Sync Center. Never send them to the server without authorization.
+            (i as any).payload?.authorizationState !== 'PENDING_BIN' &&
             (i.status === 'pending' ||
               i.status === 'blocked' ||
               i.status === 'conflict' ||
