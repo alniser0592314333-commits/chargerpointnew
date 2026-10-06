@@ -157,6 +157,12 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
     const cust = await addNewCustomer('عميل المزامنة التام', '0599000777');
     expect(cust.id).toMatch(UUID_REGEX);
 
+    // The local CREATE_CUSTOMER command is still pending at this point. A real
+    // pull must not overwrite pending local intent, so mark it authoritative
+    // before testing same-UUID remote reconciliation.
+    await localDb.removeOverlay(cust.id);
+    await localDb.removeOutbox(cust.id);
+
     // Simulate remote pull delivering the exact same UUID from change_log
     await applyRemoteChange({
       sequenceId: 100,
