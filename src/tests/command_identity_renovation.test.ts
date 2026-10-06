@@ -104,7 +104,9 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     await engine.synchronize();
     
     let refreshedCreateCmd = await localDb.getOutbox(createCmd!.commandId);
-    expect(refreshedCreateCmd?.status).toBe('accepted');
+    expect(refreshedCreateCmd).toBeUndefined();
+    const createHistory = await localDb.getHistoryByCommandId(createCmd!.commandId);
+    expect(['SUCCESS', 'SUCCEEDED']).toContain(createHistory?.state);
 
     // B. Edit notes (should get a NEW fresh command ID because original is accepted)
     const editRes = await updateOrderWithPhase5Engine(orderId, 'Updated notes', 'pending', [], []);
