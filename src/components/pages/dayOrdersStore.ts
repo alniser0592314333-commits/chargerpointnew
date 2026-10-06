@@ -3547,9 +3547,14 @@ export const updateOrderWithPhase5Engine = async (
         }
       }
     } else if (newStatus === 'cancelled' && order.status !== 'cancelled') {
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
       const auth = getAuthorizedAdminContext(bin);
-      await auth.verifyBin(bin || '');
-      await phase5UseCases.cancelOrder(auth, orderId, bin || '');
+      if (offline && !bin?.trim()) {
+        await phase5UseCases.queueCancelOrderAwaitingBin(auth, orderId);
+      } else {
+        await auth.verifyBin(bin || '');
+        await phase5UseCases.cancelOrder(auth, orderId, bin || '');
+      }
     }
 
     return { success: true };
