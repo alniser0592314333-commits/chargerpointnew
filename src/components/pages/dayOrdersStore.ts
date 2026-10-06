@@ -4560,7 +4560,26 @@ export const topUpCustomerBalance = async (
     };
   }
 
-  const commandId = idempotencyKey || crypto.randomUUID();
+  const commandId = idempotencyKey || crypto.randomUUID();\n\n  const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+  if (offline) {
+    try {
+      const queued = await phase5UseCases.queueCustomerCreditAwaitingBin(
+        getAuthorizedAdminContext(), cust.id, amountMinor, commandId
+      );
+      if (!queued.success) {
+        return { success: false, newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id), error: (queued as any).error || 'فشلت جدولة شحن الرصيد' };
+      }
+      return {
+        success: true,
+        transactionId: queued.data?.id || commandId,
+        newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id),
+      };
+    } catch (err: unknown) {
+      return { success: false, newBalanceMinor: await repoContext.customerRepo.getBalance(cust.id), error: presentError(err) };
+    }
+  }
+
+
 
   // Idempotency check: if already processed, return previous transaction result
   if (idempotencyKey) {
