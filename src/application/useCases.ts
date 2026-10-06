@@ -193,18 +193,25 @@ export class FinalUseCases {
 
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
 
-    // Phase 1.1: Use Overlay
     const mutationKey = `order:${orderId}`;
+
     if (this.deps.mutationSnapshotRepo) {
       await this.deps.mutationSnapshotRepo.capture(orderId, [
         { table: 'orders', id: order.id, existed: false },
       ]);
     }
-    await this.createOverlay(orderId, mutationKey, 'orders', orderId, 'CREATE', order as unknown as Record<string, unknown>);
 
-    await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
+    /*
+     * Keep the legacy createOrder contract safe for any existing caller:
+     * persist the local entity and its CREATE_ORDER outbox command atomically.
+     * The overlay remains only as the pending projection layer.
+     */
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.orderRepo.save(order);
+      ctx.commandRepo.record(orderId, 'CREATE_ORDER', {
         ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash : {}),
         id: orderId,
+        aggregateId: orderId,
         dayId: order.dayId,
         customerId: order.customerId,
         notes: order.notes,
@@ -212,8 +219,24 @@ export class FinalUseCases {
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
         displayNumber: order.displayNumber,
         orderNumber: (order as any).orderNumber ?? order.displayNumber,
+      });
     });
-    
+
+    try {
+      await this.createOverlay(
+        orderId,
+        mutationKey,
+        'orders',
+        orderId,
+        'CREATE',
+        order as unknown as Record<string, unknown>
+      );
+    } catch (overlayError) {
+      console.warn(
+        'Failed to persist order pending overlay; base local state is authoritative.',
+        overlayError
+      );
+    }
     return { success: true, data: order };
   }
 
