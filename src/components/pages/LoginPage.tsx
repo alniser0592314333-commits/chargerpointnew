@@ -86,7 +86,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         if (!isMounted) return;
 
         setIsBootstrapped(bootstrapped);
-        setUiState("NORMAL_LOGIN");
+        setUiState(bootstrapped ? "NORMAL_LOGIN" : "SYSTEM_BOOTSTRAPPED_FALSE_NO_SESSION");
       } catch (err: any) {
         if (isMounted) {
           setError(

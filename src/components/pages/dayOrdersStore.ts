@@ -2809,7 +2809,7 @@ export const getCustomerOrders = async (
       orderNumber: ord.displayNumber,
       dayId: ord.dayId,
       createdAt: ord.createdAt,
-      status: projectedStatus,
+      status: ord.status,
       paymentStatus,
       totalMinor,
       itemCount: items.length,
@@ -3232,7 +3232,7 @@ export const deliverEntireOrder = async (
 export const updateOrderWithPhase5Engine = async (
   orderId: string,
   newNotes: string,
-  newStatus: 'pending' | 'delivered' | 'cancelled',
+  newStatus: 'pending' | 'charging' | 'delivered' | 'cancelled',
   newItemsToAdd: { deviceTypeId: string; hasCharger: boolean }[],
   existingItemIdsToRemove: string[],
   bin?: string

@@ -44,7 +44,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
 
   // Editable Form State
-  const [status, setStatus] = useState<'pending' | 'delivered' | 'cancelled'>('pending');
+  const [status, setStatus] = useState<'pending' | 'charging' | 'delivered' | 'cancelled'>('pending');
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
   const statusMenuRef = useRef<HTMLDivElement | null>(null);
 

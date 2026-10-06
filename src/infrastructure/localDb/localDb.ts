@@ -31,15 +31,24 @@ export interface OutboxRecord {
 }
 
 
+export interface MutationSnapshotItem {
+  table: string;
+  id: ID;
+  previousRecord: any | null;
+  existed: boolean;
+}
+
 export interface MutationSnapshotRecord {
   commandId: ID;
+  mutationKey?: string;
   createdAt: Timestamp;
-  records: Array<{
+  records?: Array<{
     table: string;
     id: ID;
     existed: boolean;
     data?: unknown;
   }>;
+  items?: MutationSnapshotItem[];
 }
 
 export type SyncStatus = 'READY' | 'RECONCILIATION_REQUIRED' | 'STALE' | 'INITIALIZING';
@@ -164,20 +173,6 @@ const cloneForRollback = <T>(value: T): T => {
   if (value === undefined) return value;
   return JSON.parse(JSON.stringify(value)) as T;
 };
-
-export interface MutationSnapshotItem {
-  table: string;
-  id: ID;
-  previousRecord: any | null;
-  existed: boolean;
-}
-
-export interface MutationSnapshotRecord {
-  commandId: ID;
-  mutationKey: string;
-  items: MutationSnapshotItem[];
-  createdAt: Timestamp;
-}
 
 export interface OptimisticOverlayRecord {
   commandId: ID;
@@ -907,7 +902,22 @@ export class IndexedDBLocalDatabase {
 
   async getMutationSnapshot(commandId: ID): Promise<MutationSnapshotRecord | null> {
     await this.ensureHydrated();
-    return this.memoryMutationSnapshots.get(commandId) || null;
+    if (this.memoryMutationSnapshots.has(commandId)) {
+      return this.memoryMutationSnapshots.get(commandId)!;
+    }
+    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
+      return new Promise((resolve) => {
+        try {
+          const tx = this.db!.transaction('mutationSnapshots', 'readonly');
+          const req = tx.objectStore('mutationSnapshots').get(commandId);
+          req.onsuccess = () => resolve((req.result as MutationSnapshotRecord) || null);
+          req.onerror = () => resolve(null);
+        } catch {
+          resolve(null);
+        }
+      });
+    }
+    return null;
   }
 
   getMutationSnapshotSync(commandId: ID): MutationSnapshotRecord | null {
@@ -931,7 +941,7 @@ export class IndexedDBLocalDatabase {
   rollbackMutationSnapshotWithTx(tx: IDBTransaction, commandId: ID): void {
     const snapshot = this.memoryMutationSnapshots.get(commandId);
     if (!snapshot) return;
-    for (const record of snapshot.records) {
+    for (const record of (snapshot.records || [])) {
       const table = this.getMemoryTable(record.table);
       const current = table.get(record.id);
       const currentVersion = Number((current as any)?.version ?? -1);
@@ -1526,38 +1536,6 @@ export class IndexedDBLocalDatabase {
     }
   }
 
-  async saveMutationSnapshot(record: MutationSnapshotRecord): Promise<void> {
-    await this.ensureHydrated();
-    this.memoryMutationSnapshots.set(record.commandId, record);
-    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
-      try {
-        const tx = this.db.transaction('mutationSnapshots', 'readwrite');
-        tx.objectStore('mutationSnapshots').put(record);
-      } catch (err) {
-        console.warn('Failed to persist mutation snapshot:', err);
-      }
-    }
-  }
-
-  async getMutationSnapshot(commandId: ID): Promise<MutationSnapshotRecord | null> {
-    await this.ensureHydrated();
-    if (this.memoryMutationSnapshots.has(commandId)) {
-      return this.memoryMutationSnapshots.get(commandId)!;
-    }
-    if (this.db && this.db.objectStoreNames.contains('mutationSnapshots')) {
-      return new Promise((resolve) => {
-        try {
-          const tx = this.db!.transaction('mutationSnapshots', 'readonly');
-          const req = tx.objectStore('mutationSnapshots').get(commandId);
-          req.onsuccess = () => resolve((req.result as MutationSnapshotRecord) || null);
-          req.onerror = () => resolve(null);
-        } catch {
-          resolve(null);
-        }
-      });
-    }
-    return null;
-  }
 
   async removeMutationSnapshot(commandId: ID): Promise<void> {
     await this.ensureHydrated();
@@ -1592,7 +1570,7 @@ export class IndexedDBLocalDatabase {
           const kvStore = tx.objectStore('kvStore');
           const snapStore = tx.objectStore('mutationSnapshots');
 
-          for (const item of snapshot.items) {
+          for (const item of (snapshot.items || [])) {
             const kvKey = `${item.table}:${item.id}`;
             if (item.existed && item.previousRecord) {
               kvStore.put({ key: kvKey, table: item.table, id: item.id, item: item.previousRecord }, kvKey);
@@ -1603,7 +1581,7 @@ export class IndexedDBLocalDatabase {
           snapStore.delete(commandId);
 
           tx.oncomplete = () => {
-            for (const item of snapshot.items) {
+            for (const item of (snapshot.items || [])) {
               const tableMap = this.getMemoryTable(item.table);
               if (item.existed && item.previousRecord) {
                 tableMap.set(item.id, item.previousRecord);
@@ -1623,7 +1601,7 @@ export class IndexedDBLocalDatabase {
     } else {
       // Memory fallback atomic execution
       try {
-        for (const item of snapshot.items) {
+        for (const item of (snapshot.items || [])) {
           const tableMap = this.getMemoryTable(item.table);
           if (item.existed && item.previousRecord) {
             tableMap.set(item.id, item.previousRecord);

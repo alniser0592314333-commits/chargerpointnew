@@ -417,40 +417,68 @@ create index if not exists idx_outbox_commands on public.processed_commands(comm
 
 create or replace function public.is_system_bootstrapped()
 returns boolean language sql stable security definer set search_path=public
-as $$ select exists(select 1 from public.admins where role='SUPER_ADMIN' and is_active=true) $;
+as $$ 
+  select exists(
+    select 1 from public.admins 
+    where role in ('SUPER_ADMIN', 'Super Admin') 
+      and is_active = true 
+      and auth_user_id is not null 
+      and auth_user_id <> '00000000-0000-0000-0000-000000000000'::uuid
+  ) 
+$$;
 
 create or replace function public.bootstrap_first_super_admin(p_username text,p_full_name text,p_bin text)
 returns jsonb language plpgsql security definer set search_path=public as $$
 declare v_id uuid; v_email text;
 begin
- if exists(select 1 from public.admins where role='SUPER_ADMIN' and is_active=true) then
+ if exists(
+   select 1 from public.admins 
+   where role in ('SUPER_ADMIN', 'Super Admin') 
+     and is_active = true 
+     and auth_user_id is not null 
+     and auth_user_id <> '00000000-0000-0000-0000-000000000000'::uuid
+ ) then
   return jsonb_build_object('success',false,'code','ALREADY_BOOTSTRAPPED');
  end if;
  if auth.uid() is null then raise exception 'Authentication required' using errcode='P0001'; end if;
  select email into v_email from auth.users where id=auth.uid();
- insert into public.admins(auth_user_id,username,full_name,email,role,permissions,bin_hash)
- values(auth.uid(),p_username,p_full_name,v_email,'SUPER_ADMIN',
+ if v_email is null then
+   v_email := auth.jwt()->>'email';
+ end if;
+
+ insert into public.admins(auth_user_id,username,full_name,email,role,permissions,bin_hash,is_active)
+ values(auth.uid(),trim(p_username),coalesce(nullif(trim(p_full_name),''),trim(p_username)),v_email,'SUPER_ADMIN',
  array['orders:view','orders:create','orders:edit','orders:deliver','orders:cancel','orders:correct',
  'customers:view','customers:create','customers:edit','customers:deactivate','customers:debt-limit',
  'customers:charger-exemption','customers:financial-view','finance:view','finance:create-payment',
  'finance:approve-payment','finance:refund','finance:correction','finance:credit-adjustment',
  'devices:view','devices:manage','devices:pricing','devices:charger-policy','settings:manage',
  'admin:manage','sync:manage','sync:view','goals:view','goals:manage','goals:request','goals:approve']::text[],
- crypt(p_bin,gen_salt('bf'))) returning id into v_id;
+ crypt(p_bin,gen_salt('bf')),true)
+ on conflict(auth_user_id) do update set
+   role = 'SUPER_ADMIN',
+   is_active = true,
+   username = excluded.username,
+   full_name = excluded.full_name,
+   bin_hash = excluded.bin_hash,
+   permissions = excluded.permissions,
+   updated_at = now()
+ returning id into v_id;
+
  return jsonb_build_object('success',true,'admin_id',v_id);
 end $$;
 
 create or replace function public.get_email_by_username(p_username text)
 returns text language sql stable security definer set search_path=public
-as $$ select email from public.admins where lower(username)=lower(p_username) and is_active=true limit 1 $;
+as $$ select email from public.admins where lower(username)=lower(p_username) and is_active=true limit 1 $$;
 
 create or replace function public.rpc_fetch_admins()
 returns setof jsonb language sql security definer set search_path=public
-as $$ select jsonb_build_object('id',a.id,'username',a.username,'full_name',a.full_name,'email',a.email,'role',a.role,'is_active',a.is_active,'version',a.version,'created_at',a.created_at) from public.admins a where public.current_admin_id() is not null order by a.created_at $;
+as $$ select jsonb_build_object('id',a.id,'username',a.username,'full_name',a.full_name,'email',a.email,'role',a.role,'is_active',a.is_active,'version',a.version,'created_at',a.created_at) from public.admins a where public.current_admin_id() is not null order by a.created_at $$;
 
 create or replace function public.get_global_app_identity()
 returns jsonb language sql stable security definer set search_path=public
-as $$ select jsonb_build_object('id',id,'app_name',app_name,'white_logo_url',white_logo_url,'dark_logo_url',dark_logo_url,'version',version,'updated_at',updated_at,'updated_by',updated_by) from public.global_app_identity order by updated_at desc limit 1 $;
+as $$ select jsonb_build_object('id',id,'app_name',app_name,'white_logo_url',white_logo_url,'dark_logo_url',dark_logo_url,'version',version,'updated_at',updated_at,'updated_by',updated_by) from public.global_app_identity order by updated_at desc limit 1 $$;
 
 create or replace function public.update_global_app_identity(p_app_name text,p_white_logo_url text,p_dark_logo_url text)
 returns jsonb language plpgsql security definer set search_path=public
@@ -505,20 +533,88 @@ create or replace function public.get_current_admin_profile()
 returns jsonb
 language plpgsql security definer set search_path=public
 as $$
-declare a public.admins;
+declare 
+  a public.admins;
+  v_email text;
 begin
-  select * into a from public.admins where auth_user_id=auth.uid() limit 1;
-  if a.id is null then
-    return jsonb_build_object('authenticated',true,'is_admin',false);
+  if auth.uid() is null then
+    return jsonb_build_object('authenticated',false,'is_admin',false);
   end if;
+
+  -- 1. Look up admin by auth_user_id directly
+  select * into a from public.admins where auth_user_id=auth.uid() limit 1;
+
+  -- 2. If not found, look up by verified email and auto-link auth_user_id
+  if a.id is null then
+    select email into v_email from auth.users where id=auth.uid();
+    if v_email is null then
+      v_email := auth.jwt()->>'email';
+    end if;
+
+    if v_email is not null then
+      select * into a from public.admins where email is not null and lower(email)=lower(v_email) limit 1;
+      if a.id is not null then
+        update public.admins set auth_user_id=auth.uid(), updated_at=now() where id=a.id;
+        a.auth_user_id:=auth.uid();
+      end if;
+    end if;
+  end if;
+
+  if a.id is null then
+    return jsonb_build_object('authenticated',true,'is_admin',false,'auth_user_id',auth.uid());
+  end if;
+
   return jsonb_build_object(
-    'authenticated',true,'is_admin',a.is_active,'is_active',a.is_active,
-    'admin_id',a.id,'auth_user_id',a.auth_user_id,'username',a.username,
-    'full_name',a.full_name,'email',a.email,'role',a.role,
+    'authenticated',true,
+    'is_admin',true,
+    'is_active',coalesce(a.is_active,true),
+    'admin_id',a.id,
+    'auth_user_id',a.auth_user_id,
+    'username',a.username,
+    'full_name',a.full_name,
+    'email',a.email,
+    'role',a.role,
     'permissions',coalesce(a.permissions,'{}'::text[])
   );
 end;
 $$;
+
+create or replace function public.protect_super_admin_account()
+returns trigger as $$
+begin
+    -- Exclude disposable test UUIDs from invariant enforcement
+    if coalesce(old.auth_user_id, '00000000-0000-0000-0000-000000000000'::uuid) = '00000000-0000-0000-0000-000000000000'::uuid then
+        return case when tg_op = 'DELETE' then old else new end;
+    end if;
+
+    if tg_op = 'DELETE' then
+        if old.role in ('SUPER_ADMIN', 'Super Admin') then
+            raise exception 'Security Invariant Violation: Super Admin account cannot be deleted.';
+        end if;
+        return old;
+    end if;
+
+    if tg_op = 'UPDATE' then
+        if old.role in ('SUPER_ADMIN', 'Super Admin') then
+            if new.role not in ('SUPER_ADMIN', 'Super Admin') then
+                raise exception 'Security Invariant Violation: Super Admin authority cannot be demoted or removed.';
+            end if;
+            if new.is_active = false then
+                raise exception 'Security Invariant Violation: Super Admin account cannot be disabled or suspended.';
+            end if;
+        end if;
+        return new;
+    end if;
+
+    return new;
+end;
+$$ language plpgsql security definer set search_path=public;
+
+drop trigger if exists trg_protect_super_admin_account on public.admins;
+create trigger trg_protect_super_admin_account
+before update or delete on public.admins
+for each row
+execute function public.protect_super_admin_account();
 
 create or replace function public.record_canonical_change(
   p_entity_type text,p_entity_id uuid,p_action text,p_payload jsonb,p_version integer
@@ -612,12 +708,17 @@ begin
     when 'ADD_ORDER_ITEM' then 'orders:edit'
     when 'DELIVER_ORDER_ITEM' then 'orders:deliver'
     when 'CANCEL_ORDER_ITEM' then 'orders:cancel'
-    when 'CREATE_PAYMENT','POST_PAYMENT' then 'finance:create-payment'
-    when 'CREATE_CUSTOMER_CREDIT','CONSUME_CUSTOMER_CREDIT' then 'finance:credit-adjustment'
+    when 'CREATE_PAYMENT' then 'finance:create-payment'
+    when 'POST_PAYMENT' then 'finance:create-payment'
+    when 'CREATE_CUSTOMER_CREDIT' then 'finance:credit-adjustment'
+    when 'CONSUME_CUSTOMER_CREDIT' then 'finance:credit-adjustment'
     when 'CREATE_REFUND' then 'finance:refund'
-    when 'CREATE_GOAL','UPDATE_GOAL_CONFIG','UPDATE_GOAL_PROGRESS' then 'goals:manage'
+    when 'CREATE_GOAL' then 'goals:manage'
+    when 'UPDATE_GOAL_CONFIG' then 'goals:manage'
+    when 'UPDATE_GOAL_PROGRESS' then 'goals:manage'
     when 'RECORD_GOAL_REQUEST' then 'goals:request'
-    when 'APPROVE_GOAL_REQUEST','REJECT_GOAL_REQUEST' then 'goals:approve'
+    when 'APPROVE_GOAL_REQUEST' then 'goals:approve'
+    when 'REJECT_GOAL_REQUEST' then 'goals:approve'
     else null
   end;
 
@@ -760,7 +861,7 @@ begin
       v_order:=(p_payload->>'orderId')::uuid;
       perform 1 from public.orders where id=v_order and status<>'cancelled' for update;
       if not found then raise exception 'Order not found or cancelled' using errcode='P0006'; end if;
-      select dt.base_price_minor,dt.icon,coalesce(dt.name_ar,dt.name),coalesce(dt.name_en,dt.name),dt.charger_fee_enabled,dt.charger_fee_applicable,
+      select dt.base_price_minor,dt.icon,coalesce(dt.name_ar,dt.name) as name,dt.charger_fee_enabled,dt.charger_fee_applicable,
              c.charger_fee_exempt
       into r
       from public.orders o join public.customers c on c.id=o.customer_id join public.device_types dt on dt.id=(p_payload->>'deviceTypeId')::uuid
@@ -863,7 +964,7 @@ begin
         where o.customer_id=v_customer and oi.financial_status='RECOGNIZED'
         group by oi.id,oi.order_id,oi.final_charge_snapshot_minor,oi.created_at
         having greatest(0,oi.final_charge_snapshot_minor-coalesce(sum(pa.allocated_amount_minor),0))>0
-        order by oi.created_at,oi.id for update loop
+        order by oi.created_at,oi.id loop
         exit when v_amount<=0;
         v_final:=least(v_amount,r.due);
         insert into public.payment_allocations(payment_id,order_item_id,order_id,allocated_amount_minor)
@@ -1053,7 +1154,7 @@ begin
  return v_token;
 end $$;
 
-do $ begin
+do $$ begin
  if not exists(select 1 from pg_type where typname='public_customer_qr_result') then
   create type public.public_customer_qr_result as (customer_name text, customer_code text);
  end if;

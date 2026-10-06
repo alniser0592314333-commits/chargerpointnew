@@ -69,7 +69,7 @@ describe('Phase 1.1 — Overlay Integration', () => {
   });
 
   it('Test 2: ADD_ORDER_ITEM -> mutationKey is "order:<orderId>"', async () => {
-    await useCases.addItem(auth, 'cmd-item-1', 'cmd-ord-1', 'dev-1', false);
+    await useCases.addOrderItem(auth, 'cmd-ord-1', 'dev-1', false, 'cmd-item-1');
 
     const overlays = await localDb.listOverlays();
     expect(overlays[0].mutationKey).toBe('order:cmd-ord-1');

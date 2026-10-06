@@ -11,5 +11,8 @@ export async function query(sql) {
     body: JSON.stringify({ query: sql })
   });
   const data = await res.json();
+  if (data.error || data.message) {
+    throw new Error(data.error || data.message);
+  }
   return data;
 }

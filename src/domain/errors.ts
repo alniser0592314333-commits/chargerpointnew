@@ -93,3 +93,11 @@ export class OrderNumberReservationExhaustedError extends DomainError {
   }
 }
 
+export function presentError(error: any): string {
+  if (!error) return 'Unknown error';
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && 'message' in error) return String(error.message);
+  return JSON.stringify(error);
+}
+

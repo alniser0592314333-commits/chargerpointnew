@@ -94,7 +94,7 @@ export interface RepositoryContext {
     capture(commandId: ID, records: Array<{ table: string; id: ID; existed: boolean; data?: unknown }>): Promise<void> | void;
     clear(commandId: ID): Promise<void> | void;
   };
-  overlayRepo: {
+  overlayRepo?: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
@@ -132,6 +132,7 @@ export class FinalUseCases {
     operation: 'CREATE' | 'PATCH' | 'DELETE',
     patchOrPayload: Record<string, unknown> | null
   ) {
+    if (!this.deps.overlayRepo) return;
     const sequence = await this.deps.overlayRepo.getNextSequence();
     
     const overlay: OptimisticOverlayRecord = {
@@ -209,7 +210,8 @@ export class FinalUseCases {
         notes: order.notes,
         ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
-        orderNumber: order.orderNumber,
+        displayNumber: order.displayNumber,
+        orderNumber: (order as any).orderNumber ?? order.displayNumber,
     });
     
     return { success: true, data: order };
