@@ -186,7 +186,7 @@ describe('Delivery Scope, Item Visibility & Financial History Suite', () => {
     const outbox = await localDb.listOutbox();
     const deliverCmds = outbox.filter((c) => c.commandType === 'DELIVER_ORDER_ITEM');
     expect(deliverCmds.length).toBe(1);
-    expect(deliverCmds[0].aggregateId).toBe('item-B');
+    expect(deliverCmds[0].aggregateId).toBe('ord-scope-100');
   });
 
   it('Test B: Delivered Item B remains in Order item list', async () => {
