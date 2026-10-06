@@ -1566,15 +1566,6 @@ export class FinalUseCases {
       ]);
     }
 
-    await this.createOverlay(
-      txId,
-      mutationKey,
-      'ledger',
-      txId,
-      'CREATE',
-      { id: txId, createdAt, ...event } as unknown as Record<string, unknown>
-    );
-
     const payment: PaymentEntity = {
       id: txId,
       customerId,
@@ -1585,23 +1576,43 @@ export class FinalUseCases {
       commandId: txId,
       createdAt,
     };
-    await this.createOverlay(
-      `${txId}:payment`,
-      mutationKey,
-      'payments',
-      txId,
-      'CREATE',
-      payment as unknown as Record<string, unknown>
-    );
 
-    await this.deps.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
-      id: txId,
-      customerId,
-      amountMinor,
-      actorAdminId: actor.id,
-      createdAt,
-      bin,
+    // Authorized credit is a real local-first financial mutation. Persist the
+    // ledger and payment together with the outbox command so balance/financial
+    // pages do not depend on an overlay that can disappear before sync.
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.ledgerRepo.append({ id: txId, createdAt, ...event });
+      ctx.paymentRepo.save(payment);
+      ctx.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
+        id: txId,
+        customerId,
+        amountMinor,
+        actorAdminId: actor.id,
+        createdAt,
+        bin,
+      });
     });
+
+    try {
+      await this.createOverlay(
+        txId,
+        mutationKey,
+        'ledger',
+        txId,
+        'CREATE',
+        { id: txId, createdAt, ...event } as unknown as Record<string, unknown>
+      );
+      await this.createOverlay(
+        `${txId}:payment`,
+        mutationKey,
+        'payments',
+        txId,
+        'CREATE',
+        payment as unknown as Record<string, unknown>
+      );
+    } catch (overlayError) {
+      console.warn('Credit pending projection failed; durable local financial rows remain authoritative.', overlayError);
+    }
 
     return { success: true, data: { id: txId, createdAt, ...event } };
   }
