@@ -1904,11 +1904,39 @@ export const repoContext: RepositoryContext = {
   itemRepo: {
     findByOrderId: async (orderId) => {
       await ensureStoreHydrated();
-      const res: OrderItemEntity[] = [];
+
+      // Return the effective local item set, not only base IndexedDB rows.
+      // An item added to an already-delivered order can exist only as a pending
+      // CREATE overlay. deliverEntireOrder() and deliverAllOrdersInDay() use this
+      // repository method to decide which items to deliver; ignoring overlays
+      // makes the new device appear in the UI but silently skips its delivery.
+      const effective = new Map<string, OrderItemEntity>();
+
       itemsMap.forEach((it) => {
-        if (it.orderId === orderId) res.push(it);
+        if (it.orderId === orderId) effective.set(it.id, it);
       });
-      return res;
+
+      for (const overlay of localDb.listOverlaysSync()) {
+        if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+
+        const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
+        const base = effective.get(overlay.entityId);
+        const candidate = {
+          ...(base || {}),
+          ...patch,
+          id: overlay.entityId,
+        } as OrderItemEntity;
+
+        if (candidate.orderId !== orderId) continue;
+
+        if (overlay.operation === 'DELETE') {
+          effective.delete(overlay.entityId);
+        } else {
+          effective.set(overlay.entityId, candidate);
+        }
+      }
+
+      return Array.from(effective.values());
     },
     save: async (it) => {
       await ensureStoreHydrated();
@@ -1995,6 +2023,23 @@ export const repoContext: RepositoryContext = {
           .map((l) => l.orderItemId as string)
       );
 
+      const effectiveItems = new Map<string, OrderItemEntity>(itemsMap);
+      for (const overlay of overlays) {
+        if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+        const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
+        const base = effectiveItems.get(overlay.entityId);
+        const candidate = {
+          ...(base || {}),
+          ...patch,
+          id: overlay.entityId,
+        } as OrderItemEntity;
+        if (overlay.operation === 'DELETE') {
+          effectiveItems.delete(overlay.entityId);
+        } else {
+          effectiveItems.set(overlay.entityId, candidate);
+        }
+      }
+
       for (const overlay of overlays) {
         if (overlay.status !== 'PENDING') continue;
 
@@ -2014,7 +2059,7 @@ export const repoContext: RepositoryContext = {
             String(payload.financialStatus || payload.financial_status || '').toUpperCase() === 'RECOGNIZED'
           ) {
             if (authoritativeChargeItems.has(itemId)) continue;
-            const item = itemsMap.get(itemId);
+            const item = effectiveItems.get(itemId);
             if (!item) continue;
             const order = ordersMap.get(item.orderId);
             if (!order || order.customerId !== id) continue;
