@@ -1686,6 +1686,10 @@ export class IndexedDBLocalDatabase {
     return Array.from(this.memoryOverlays.values());
   }
 
+  listOverlaysSync(): OptimisticOverlayRecord[] {
+    return Array.from(this.memoryOverlays.values());
+  }
+
   async getNextSequence(): Promise<number> {
     await this.ensureHydrated();
     this.overlaySequence += 1;
