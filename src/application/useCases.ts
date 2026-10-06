@@ -1455,7 +1455,7 @@ export class FinalUseCases {
         closedAt: day.closedAt,
         closedBy: day.closedBy,
       });
-      return { success: true, data: day };
+      return { success: true, data: updatedDay };
     });
   }
 
