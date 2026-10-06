@@ -794,7 +794,7 @@ export class FinalUseCases {
       ...(orderStatusChanged ? [{table:'orders',id:order.id,existed:true,data:order}] : []),
     ]);
     const parentAdd = await this.deps.commandRepo.get(item.id);
-    await this.deps.transactionManager.runInTransaction((ctx) => {
+    await this.deps.transactionManager.runInTransaction(async (ctx) => {
       if (orderStatusChanged) ctx.orderRepo.save(nextOrder);
       // Delivery is projected through the optimistic overlay first. Keeping the
       // base order-item row unchanged until the authoritative server delta is
