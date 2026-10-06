@@ -3487,7 +3487,7 @@ export const deliverSingleOrderItem = async (
 ): Promise<{ success: boolean; item?: OrderItemEntity; error?: string }> => {
   await ensureStoreHydrated();
   try {
-    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const offline = typeof navigator === 'undefined' || !navigator.onLine;
     const auth = getAuthorizedAdminContext(bin);
     if (offline && !bin.trim()) {
       const queued = await phase5UseCases.queueDeliveryAwaitingBin(auth, orderItemId);
@@ -3516,7 +3516,7 @@ export const deliverEntireOrder = async (
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
-    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const offline = typeof navigator === 'undefined' || !navigator.onLine;
     if (offline && bin.trim()) {
       return { success: false, error: 'لا يمكن التحقق من رمز الأمان بدون اتصال.' };
     }
@@ -3574,7 +3574,7 @@ export const updateOrderWithPhase5Engine = async (
     // pending BIN authorization instead of creating an unauthorized local
     // cancellation that the server would later reject.
     for (const itemId of existingItemIdsToRemove) {
-      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const offline = typeof navigator === 'undefined' || !navigator.onLine;
       if (offline && !bin?.trim()) {
         await phase5UseCases.queueCancelOrderItemAwaitingBin(getAuthorizedAdminContext(), itemId);
       } else {
@@ -3625,7 +3625,7 @@ export const updateOrderWithPhase5Engine = async (
         }
       }
     } else if (newStatus === 'cancelled' && order.status !== 'cancelled') {
-      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const offline = typeof navigator === 'undefined' || !navigator.onLine;
       const auth = getAuthorizedAdminContext(bin);
       if (offline && !bin?.trim()) {
         await phase5UseCases.queueCancelOrderAwaitingBin(auth, orderId);
@@ -3656,7 +3656,7 @@ export const deliverAllOrdersInDay = async (
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
-    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const offline = typeof navigator === 'undefined' || !navigator.onLine;
     if (offline && bin.trim()) {
       return { success: false, error: 'لا يمكن التحقق من رمز الأمان بدون اتصال.' };
     }
@@ -4609,7 +4609,7 @@ export const topUpCustomerBalance = async (
 ): Promise<TopUpCustomerBalanceResult> => {
   await ensureStoreHydrated();
   const { customerId, amountMinor, bin, note, idempotencyKey } = params;
-  const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+  const offline = typeof navigator === 'undefined' || !navigator.onLine;
 
   if (!offline) {
     const binValidation = validateBinFormat(bin);
