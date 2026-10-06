@@ -174,7 +174,17 @@ export class FinalUseCases {
       // retries the same id after that point, the durable local aggregate is
       // the idempotent result and must be returned instead of recreated.
       const existingOrder = await this.deps.orderRepo.findById(commandId);
-      if (existingOrder) return { success: true, data: existingOrder };
+      if (existingOrder) {
+        const requestedNotes = notes ?? '';
+        if (
+          existingOrder.dayId !== dayId ||
+          existingOrder.customerId !== customerId ||
+          (existingOrder.notes ?? '') !== requestedNotes
+        ) {
+          throw new IdempotencyConflictError();
+        }
+        return { success: true, data: existingOrder };
+      }
     }
     if (existingCommand) {
       if (existingCommand.type !== 'CREATE_ORDER') {
