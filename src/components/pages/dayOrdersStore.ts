@@ -293,6 +293,7 @@ export const applyRemoteChange = (change: {
   entityId: string;
   action: 'INSERT' | 'UPDATE' | 'DELETE' | 'TOMBSTONE';
   payload: any;
+  version?: number;
   changedAt: string;
 }, tx?: IDBTransaction): void => {
   const p = change.payload || {};
