@@ -931,8 +931,10 @@ WHEN 'UPDATE_ORDER' THEN
             INSERT INTO public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,created_at)
             VALUES(gen_random_uuid(),'CREDIT_ADJUSTMENT',v_unallocated_amount,v_customer_uuid,v_actor_id,v_payment_uuid,NOW())
             RETURNING id INTO v_ledger_uuid;
-            PERFORM public.record_canonical_change('payments',v_payment_uuid,'INSERT',p_payload,1);
-            PERFORM public.record_canonical_change('financial_ledger',v_ledger_uuid,'INSERT',jsonb_build_object('event_type','CREDIT_ADJUSTMENT','amount_minor',v_unallocated_amount,'customer_id',v_customer_uuid),1);
+            SELECT to_jsonb(p) INTO v_canonical_payload FROM public.payments p WHERE p.id = v_payment_uuid;
+            PERFORM public.record_canonical_change('payments',v_payment_uuid,'INSERT',v_canonical_payload,1);
+            SELECT to_jsonb(l) INTO v_canonical_payload FROM public.financial_ledger l WHERE l.id = v_ledger_uuid;
+            PERFORM public.record_canonical_change('financial_ledger',v_ledger_uuid,'INSERT',v_canonical_payload,1);
             v_result:=jsonb_build_object('paymentId',v_payment_uuid,'ledgerEntryId',v_ledger_uuid,'amountMinor',v_unallocated_amount);
 
         WHEN 'CONSUME_CUSTOMER_CREDIT' THEN
@@ -1052,12 +1054,10 @@ WHEN 'UPDATE_ORDER' THEN
                 END IF;
             END LOOP;
 
-            PERFORM public.record_canonical_change('payments', v_payment_uuid, 'INSERT', p_payload, 1);
-            PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', jsonb_build_object(
-                'event_type', 'PAYMENT',
-                'amount_minor', (COALESCE(p_payload->>'amountMinor', p_payload->>'amount_minor'))::BIGINT,
-                'customer_id', v_customer_uuid
-            ), 1);
+            SELECT to_jsonb(p) INTO v_canonical_payload FROM public.payments p WHERE p.id = v_payment_uuid;
+            PERFORM public.record_canonical_change('payments', v_payment_uuid, 'INSERT', v_canonical_payload, 1);
+            SELECT to_jsonb(l) INTO v_canonical_payload FROM public.financial_ledger l WHERE l.id = v_ledger_uuid;
+            PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', v_canonical_payload, 1);
 
             v_result := jsonb_build_object(
                 'paymentId', v_payment_uuid,
