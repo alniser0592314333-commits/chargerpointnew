@@ -1555,11 +1555,31 @@ function createTransactionalRepoContext(
     },
     itemRepo: {
       findByOrderId: (orderId: string) => {
-        const res: OrderItemEntity[] = [];
+        const effective = new Map<string, OrderItemEntity>();
         itemsMap.forEach((it) => {
-          if (it.orderId === orderId) res.push(it);
+          if (it.orderId === orderId) effective.set(it.id, it);
         });
-        return res;
+
+        // Repository reads must include the same pending projections used by
+        // the UI; otherwise sequential offline adds can reuse itemSequence.
+        for (const overlay of localDb.listOverlaysSync()) {
+          if (overlay.status !== 'PENDING' || overlay.entityType !== 'order_items') continue;
+          const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderItemEntity>;
+          const base = effective.get(overlay.entityId);
+          const candidate = {
+            ...(base || {}),
+            ...(overlay.operation === 'CREATE' ? patch : patch),
+            id: overlay.entityId,
+          } as OrderItemEntity;
+          if (candidate.orderId !== orderId) continue;
+          if (overlay.operation === 'DELETE') {
+            effective.delete(overlay.entityId);
+          } else {
+            effective.set(overlay.entityId, candidate);
+          }
+        }
+
+        return Array.from(effective.values());
       },
       save: (it: OrderItemEntity) => {
         itemsMap.set(it.id, it);
