@@ -531,6 +531,13 @@ export class FinalUseCases {
       });
     }
 
+    // An aggregate created with items must expose the same operational state the
+    // server will reach after its ADD_ORDER_ITEM commands: CHARGING for normal
+    // intake, DELIVERED when a closed-day Super Admin auto-delivers every item.
+    // Leaving this row as PENDING creates a local/server state split immediately.
+    order.status = preparedItems.every(item => item.status === 'delivered') ? 'delivered' : 'charging';
+    order.updatedAt = now;
+
     const mutationKey = `order:${order.id}`;
 
     if (this.deps.mutationSnapshotRepo) {
