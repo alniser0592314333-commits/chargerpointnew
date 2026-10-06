@@ -239,9 +239,11 @@ export function calculateAuthoritativeGoalProgress(
   for (const item of customerItems) {
     if (item.deletedAt) continue;
     const isDelivered = item.status && item.status.toLowerCase() === 'delivered';
+    // Operational delivery is not financial recognition. Offline/optimistic
+    // delivery may set status='delivered' before the server commits the charge.
+    // Goals advance only from an authoritative RECOGNIZED item.
     const isRecognized =
-      (item.financialStatus && item.financialStatus.toUpperCase() === 'RECOGNIZED') ||
-      item.status === 'delivered';
+      item.financialStatus?.toUpperCase() === 'RECOGNIZED';
 
     if (isDelivered && isRecognized && item.deliveredAt) {
       const deliveredTime = new Date(item.deliveredAt).getTime();
