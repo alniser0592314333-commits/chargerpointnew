@@ -43,7 +43,7 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
         p_aggregate_type: null,
         p_aggregate_id: null,
         p_payload: { ...p, payloadHash, resetGeneration: req.resetGeneration !== undefined ? req.resetGeneration : null },
-        p_expected_version: req.expectedVersion || null,
+        p_expected_version: req.expectedVersion ?? null,
       });
 
       if (!rpcError && rpcData) {
