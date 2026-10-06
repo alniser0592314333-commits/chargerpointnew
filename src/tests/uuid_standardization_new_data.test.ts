@@ -10,6 +10,7 @@ import {
   clearAllOperationalData,
   phase5UseCases,
   getOrdersForDay,
+  getDefaultLedger,
   setRuntimeBinVerifier,
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
@@ -202,7 +203,7 @@ describe('UUID STANDARDIZATION — NEW BUSINESS DATA ONLY', () => {
     const orderItem = allItems.find((i: any) => i.orderId === orderId);
     expect(orderItem).toBeDefined();
     const chargeId = crypto.randomUUID();
-    await localDb.set('financialLedger', chargeId, {
+    const authoritativeCharge: FinancialLedgerEntity = {
       id: chargeId,
       eventType: 'CHARGE',
       amountMinor: -2000,
@@ -210,7 +211,9 @@ describe('UUID STANDARDIZATION — NEW BUSINESS DATA ONLY', () => {
       orderId,
       orderItemId: orderItem.id,
       createdAt: new Date().toISOString(),
-    });
+    };
+    getDefaultLedger().push(authoritativeCharge);
+    await localDb.set('financialLedger', chargeId, authoritativeCharge);
 
     // Use recordPayment to trigger FIFO allocation
     const paymentId = crypto.randomUUID();
