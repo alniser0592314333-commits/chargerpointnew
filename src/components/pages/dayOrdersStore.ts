@@ -1802,7 +1802,7 @@ function createTransactionalRepoContext(
         const aggregateId =
           payloadRecord.aggregateId ||
           ((type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM')
-            ? payloadRecord.orderId
+            ? (payloadRecord.itemId || payloadRecord.orderItemId || payloadRecord.orderId)
             : type === 'PAYMENT' || type === 'POST_PAYMENT' || type === 'CREATE_PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
               ? payloadRecord.customerId
               : payloadRecord.entityId || payloadRecord.deviceTypeId || payloadRecord.orderId || payloadRecord.customerId || payloadRecord.dayId || payloadRecord.id || cmdId);
