@@ -1216,6 +1216,29 @@ export class FinalUseCases {
     auth.assertPermission('finance:create-payment');
     DomainInvariants.assertValidPaymentAmount(amountMinor);
 
+    // CREATE_PAYMENT is command-idempotent. A retry of the same request must
+    // return the existing local payment instead of generating a new timestamp,
+    // conflicting with the command payload, or creating duplicate overlays.
+    const existingPaymentCommand = await this.deps.commandRepo.get(commandId);
+    if (existingPaymentCommand) {
+      if (existingPaymentCommand.type !== 'CREATE_PAYMENT') {
+        throw new IdempotencyConflictError('Command ID is already associated with a different operation');
+      }
+      const p = (existingPaymentCommand.payload || {}) as any;
+      if (
+        p.customerId !== customerId ||
+        Number(p.amountMinor) !== amountMinor ||
+        String(p.paymentMethod) !== String(paymentMethod) ||
+        String(p.reference || '') !== String(reference || '')
+      ) {
+        throw new IdempotencyConflictError('CREATE_PAYMENT command was reused with different payment data');
+      }
+      const existingPayment = await this.deps.paymentRepo.findByCustomer(customerId);
+      const found = existingPayment.find((payment) => payment.id === commandId);
+      if (found) return { success: true, data: found };
+      throw new IdempotencyConflictError('CREATE_PAYMENT command exists but its local payment is missing');
+    }
+
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
 
