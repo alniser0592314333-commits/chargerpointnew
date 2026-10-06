@@ -1228,7 +1228,33 @@ export class FinalUseCases {
       ]);
     }
 
-    await this.createOverlay(txId, mutationKey, 'ledger', txId, 'CREATE', { id: txId, createdAt, ...event } as unknown as Record<string, unknown>);
+    await this.createOverlay(
+      txId,
+      mutationKey,
+      'ledger',
+      txId,
+      'CREATE',
+      { id: txId, createdAt, ...event } as unknown as Record<string, unknown>
+    );
+
+    const payment: PaymentEntity = {
+      id: txId,
+      customerId,
+      amountMinor,
+      paymentMethod: 'CASH',
+      reference: 'Customer credit',
+      actorAdminId: actor.id,
+      commandId: txId,
+      createdAt,
+    };
+    await this.createOverlay(
+      `${txId}:payment`,
+      mutationKey,
+      'payments',
+      txId,
+      'CREATE',
+      payment as unknown as Record<string, unknown>
+    );
 
     await this.deps.commandRepo.record(txId, 'CREATE_CUSTOMER_CREDIT', {
       id: txId,
