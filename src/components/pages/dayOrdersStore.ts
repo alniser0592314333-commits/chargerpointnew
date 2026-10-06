@@ -2640,7 +2640,10 @@ export const computeCustomerOrderPaymentStatuses = (
     const p = (overlay.entityPayload || overlay.patch || {}) as any;
     const overlayCustomerId = p.customerId || p.customer_id;
     if (overlayCustomerId !== customerId) continue;
-    if (overlay.entityType === 'ledger' && (p.eventType || p.event_type) === 'PAYMENT') {
+    if (
+      overlay.entityType === 'ledger' &&
+      ['PAYMENT', 'CREDIT_ADJUSTMENT'].includes(p.eventType || p.event_type)
+    ) {
       effectiveLedger.push({
         id: 'pending-' + overlay.entityId,
         eventType: 'PAYMENT',
