@@ -3489,9 +3489,17 @@ export const updateOrderWithPhase5Engine = async (
       await phase5UseCases.editOrderNotes(getAuthorizedAdminContext(), orderId, newNotes);
     }
 
-    // 2. Remove specified existing items during edit
+    // 2. Remove specified existing items during edit.
+    // Item cancellation is financially protected: offline requests become
+    // pending BIN authorization instead of creating an unauthorized local
+    // cancellation that the server would later reject.
     for (const itemId of existingItemIdsToRemove) {
-      await phase5UseCases.removeOrderItemDuringEdit(getAuthorizedAdminContext(bin), itemId);
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+      if (offline && !bin?.trim()) {
+        await phase5UseCases.queueCancelOrderItemAwaitingBin(getAuthorizedAdminContext(), itemId);
+      } else {
+        await phase5UseCases.cancelOrderItem(getAuthorizedAdminContext(bin), itemId, bin || '');
+      }
     }
 
     // 3. Add new items using addOrderItem Use Case
