@@ -869,6 +869,13 @@ begin
         bonus_ledger_id=coalesce((p_payload->>'bonusLedgerId')::uuid,bonus_ledger_id),updated_at=now(),version=version+1
       where id=v_goal;
       if not found then raise exception 'Goal not found' using errcode='P0006'; end if;
+      if coalesce(p_payload->>'status','')='COMPLETED' and (p_payload->>'bonusLedgerId') is not null then
+        insert into public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,metadata)
+        select (p_payload->>'bonusLedgerId')::uuid,'BONUS',coalesce((p_payload->>'bonusAmountMinor')::bigint,0),
+          customer_id,v_actor,v_goal,jsonb_build_object('reason','GOAL_COMPLETED_VIA_CONFIG_UPDATE','goalId',v_goal)
+        from public.goals where id=v_goal
+        on conflict(id) do nothing;
+      end if;
       v_result:=jsonb_build_object('goalId',v_goal);
 
     when 'UPDATE_GOAL_PROGRESS' then
@@ -878,6 +885,13 @@ begin
         bonus_ledger_id=coalesce((p_payload->>'bonusLedgerId')::uuid,bonus_ledger_id),updated_at=now(),version=version+1
       where id=v_goal;
       if not found then raise exception 'Goal not found' using errcode='P0006'; end if;
+      if coalesce((p_payload->>'bonusGranted')::boolean,false) and (p_payload->>'bonusLedgerId') is not null then
+        insert into public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,metadata)
+        select (p_payload->>'bonusLedgerId')::uuid,'BONUS',coalesce((p_payload->>'bonusAmountMinor')::bigint,0),
+          customer_id,v_actor,v_goal,jsonb_build_object('reason','GOAL_COMPLETED','goalId',v_goal)
+        from public.goals where id=v_goal
+        on conflict(id) do nothing;
+      end if;
       v_result:=jsonb_build_object('goalId',v_goal);
 
     when 'RECORD_GOAL_REQUEST' then
@@ -890,7 +904,15 @@ begin
       v_request:=(p_payload->>'requestId')::uuid;
       update public.goal_requests set status='APPROVED',reviewed_by=v_actor,reviewed_at=now(),resulting_goal_id=coalesce((p_payload->>'resultingGoalId')::uuid,resulting_goal_id),updated_at=now(),version=version+1 where id=v_request;
       if not found then raise exception 'Goal request not found' using errcode='P0006'; end if;
-      v_result:=jsonb_build_object('requestId',v_request);
+      v_goal:=coalesce((p_payload->>'resultingGoalId')::uuid,gen_random_uuid());
+      insert into public.goals(id,customer_id,target_quantity,current_progress,bonus_amount_minor,duration_days,status,started_at,expires_at)
+      select v_goal,customer_id,coalesce((p_payload->>'targetQuantity')::integer,coalesce(requested_target,10)),0,
+        coalesce((p_payload->>'bonusAmountMinor')::bigint,0),
+        coalesce((p_payload->>'durationDays')::integer,7),'ACTIVE',now(),
+        now() + make_interval(days => coalesce((p_payload->>'durationDays')::integer,7))
+      from public.goal_requests where id=v_request
+      on conflict(id) do nothing;
+      v_result:=jsonb_build_object('requestId',v_request,'goalId',v_goal);
 
     when 'REJECT_GOAL_REQUEST' then
       v_request:=(p_payload->>'requestId')::uuid;
