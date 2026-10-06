@@ -589,6 +589,20 @@ export class FinalUseCases {
       for (const item of preparedItems) {
         ctx.itemRepo.save(item);
 
+        if (item.status === 'delivered') {
+          ctx.ledgerRepo.append({
+            id: crypto.randomUUID(),
+            eventType: 'ORDER_ITEM_CHARGE',
+            amountMinor: -item.totalPriceMinor,
+            customerId,
+            orderId: order.id,
+            orderItemId: item.id,
+            actorAdminId: actor.id,
+            referenceId: item.id,
+            createdAt: now,
+          });
+        }
+
         ctx.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
           id: item.id,
           aggregateId: item.id,
@@ -893,9 +907,36 @@ export class FinalUseCases {
     const items=await this.deps.itemRepo.findByOrderId(orderId); const activeItems=items.filter(i=>i.status!=='cancelled');
     const commandId=crypto.randomUUID(); const cancelledAt=new Date().toISOString();
     const updatedOrder={...order,status:'cancelled' as const,cancelledAt,updatedAt:cancelledAt,version:order.version+1};
-    const updatedItems=activeItems.map(item=>({...item,status:'cancelled' as const,cancelledAt,updatedAt:cancelledAt,version:item.version+1}));
+    const updatedItems=activeItems.map(item=>({
+      ...item,
+      status:'cancelled' as const,
+      financialStatus: (item.financialStatus === 'RECOGNIZED' || item.status === 'delivered') ? 'REVERSED' as const : item.financialStatus,
+      cancelledAt,
+      updatedAt:cancelledAt,
+      version:item.version+1
+    }));
     if(this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.capture(commandId,[{table:'orders',id:order.id,existed:true,data:order},...activeItems.map(i=>({table:'orderItems',id:i.id,existed:true,data:i}))]);
-    await this.deps.transactionManager.runInTransaction((ctx)=>{ctx.orderRepo.save(updatedOrder);for(const item of updatedItems)ctx.itemRepo.save(item);ctx.commandRepo.record(commandId,'CANCEL_ORDER',{id:commandId,aggregateId:orderId,orderId,bin},order.version);});
+    await this.deps.transactionManager.runInTransaction((ctx)=>{
+      ctx.orderRepo.save(updatedOrder);
+      for(const item of updatedItems) {
+        ctx.itemRepo.save(item);
+        if (item.financialStatus === 'REVERSED') {
+          const originalCharge = Math.abs(item.totalPriceMinor);
+          ctx.ledgerRepo.append({
+            id: crypto.randomUUID(),
+            eventType: 'REVERSAL',
+            amountMinor: originalCharge,
+            customerId: order.customerId,
+            orderId: order.id,
+            orderItemId: item.id,
+            actorAdminId: actor.id,
+            referenceId: commandId,
+            createdAt: cancelledAt,
+          });
+        }
+      }
+      ctx.commandRepo.record(commandId,'CANCEL_ORDER',{id:commandId,aggregateId:orderId,orderId,bin},order.version);
+    });
     try{for(const item of updatedItems)await this.createOverlay(`${commandId}:${item.id}`,`order:${orderId}`,'order_items',item.id,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:item.version});await this.createOverlay(commandId,`order:${orderId}`,'orders',orderId,'PATCH',{status:'cancelled',cancelledAt,updatedAt:cancelledAt,version:updatedOrder.version});}catch(e){console.warn('Cancellation projections failed; local aggregate is authoritative.',e);}
     return {success:true,data:updatedOrder};
   }
@@ -943,6 +984,19 @@ export class FinalUseCases {
 
     await this.deps.transactionManager.runInTransaction((ctx) => {
       ctx.itemRepo.save({ ...existingItem, ...patch } as OrderItemEntity);
+      if (cancellationWasFinanciallyRecognized) {
+        ctx.ledgerRepo.append({
+          id: crypto.randomUUID(),
+          eventType: 'REVERSAL',
+          amountMinor: Math.abs(existingItem.totalPriceMinor),
+          customerId: order.customerId,
+          orderId: order.id,
+          orderItemId: existingItem.id,
+          actorAdminId: actor.id,
+          referenceId: commandId,
+          createdAt: patch.updatedAt,
+        });
+      }
       ctx.commandRepo.record(commandId, 'CANCEL_ORDER_ITEM', {
         id: commandId,
         aggregateId: order.id,
