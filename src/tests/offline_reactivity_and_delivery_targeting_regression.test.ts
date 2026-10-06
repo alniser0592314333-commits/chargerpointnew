@@ -210,7 +210,9 @@ describe('Offline reactivity and delivery targeting regression', () => {
     const addCommands = outbox.filter((c) => c.commandType === 'ADD_ORDER_ITEM');
     const deliverCommands = outbox.filter((c) => c.commandType === 'DELIVER_ORDER_ITEM');
 
-    expect(addCommands).toHaveLength(2);
+    // Seeded repository rows are persistence-only and must not manufacture
+    // outbox commands. Only the newly added device belongs in this queue.
+    expect(addCommands).toHaveLength(1);
     expect(deliverCommands).toHaveLength(1);
     expect((deliverCommands[0].payload as any).itemId).not.toBe('item-already-delivered');
 
