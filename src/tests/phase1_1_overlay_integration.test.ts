@@ -26,8 +26,8 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
 
     const deps: RepositoryContext = {
       orderRepo: {
-        findById: async (id) => orders.get(id) || null,
-        save: async (o) => { orders.set(o.id, { ...o }); },
+        findById: async (id: string) => orders.get(id) || null,
+        save: async (o: OrderEntity) => { orders.set(o.id, { ...o }); },
         countForDay: async () => orders.size,
       },
       deviceRepo: {
@@ -40,7 +40,7 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
         save: async () => {},
       },
       transactionManager: {
-        runInTransaction: async (work) => work(deps),
+        runInTransaction: async <T>(work: (ctx: RepositoryContext) => T) => work(deps),
       },
       commandRepo: {
         get: async () => null,
@@ -48,12 +48,12 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
       },
       overlayRepo: {
         getNextSequence: async () => overlays.length + 1,
-        save: async (o) => { overlays.push(o); },
+        save: async (o: any) => { overlays.push(o); },
       },
       itemRepo: {
-        findByOrderId: async (orderId) => Array.from(items.values()).filter(i => i.orderId === orderId),
-        save: async (i) => { items.set(i.id, { ...i }); },
-        findById: async (id) => items.get(id) || null,
+        findByOrderId: async (orderId: string) => Array.from(items.values()).filter((i: OrderItemEntity) => i.orderId === orderId),
+        save: async (i: OrderItemEntity) => { items.set(i.id, { ...i }); },
+        findById: async (id: string) => items.get(id) || null,
       },
       customerRepo: {
         findById: async () => ({
@@ -109,10 +109,12 @@ describe('Phase 1.1 — Local-first mutation integration', () => {
   it('DELIVER_ORDER_ITEM is operationally optimistic but financially unrecognized until sync', async () => {
     const orderResult = await useCases.createOrder(auth, 'cmd-order', 'day-1', 'c1');
     expect(orderResult.success).toBe(true);
-    const order = orderResult.data as OrderEntity;
+    if (!orderResult.success) throw new Error(orderResult.error);
+    const order = orderResult.data;
     const itemResult = await useCases.addOrderItem(auth, order.id, 'dev-1', false, 'cmd-item');
     expect(itemResult.success).toBe(true);
-    const item = itemResult.data as OrderItemEntity;
+    if (!itemResult.success) throw new Error(itemResult.error);
+    const item = itemResult.data;
 
     const result = await useCases.deliverOrderItem(auth, item.id, '1234', 'cmd-deliver');
     expect(result.success).toBe(true);
