@@ -3062,20 +3062,6 @@ export const addNewCustomer = async (
   phone: string,
   debtLimitMinor: number = 2000
 ): Promise<UICustomerItem> => {
-  const existing = Array.from(customersMap.values()).find(
-    (customer) => customer.name.trim() === name.trim() && (customer.phone || '') === (phone || '')
-  );
-  if (existing) {
-    return {
-      id: existing.id,
-      name: existing.name,
-      code: getCustomerCode(existing),
-      phone: existing.phone || '',
-      debtLimitMinor: existing.debtLimitMinor,
-      chargerFeeExempt: existing.chargerFeeExempt,
-    };
-  }
-
   const result = await phase5UseCases.createCustomer(
     getAuthorizedAdminContext(),
     name,
