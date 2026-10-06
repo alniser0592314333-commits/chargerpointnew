@@ -3723,15 +3723,15 @@ export const deliverEntireOrder = async (
     const items = await repoContext.itemRepo.findByOrderId(orderId);
     const activeItems = items.filter((i) => i.status !== 'cancelled');
     if (activeItems.length === 0) return { success: false, error: 'لا يمكن تسليم طلب فارغ' };
+    if (offline) {
+      return { success: false, error: 'لا يمكن تسليم الأجهزة بدون اتصال للتحقق من رمز BIN' };
+    }
+    await auth.verifyBin(bin);
 
     let count = 0;
 
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
-        if (offline) {
-          return { success: false, error: 'لا يمكن تسليم الأجهزة بدون اتصال للتحقق من رمز BIN' };
-        }
-        await auth.verifyBin(bin);
         await phase5UseCases.deliverOrderItem(auth, item.id, bin);
         count++;
       }
