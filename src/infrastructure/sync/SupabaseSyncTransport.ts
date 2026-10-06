@@ -47,9 +47,30 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
       });
 
       if (!rpcError && rpcData) {
+        // The RPC response is part of the server contract. HTTP/RPC reachability
+        // alone is never success: a structured { success: false } response must
+        // remain a failed command so the outbox can surface the real reason.
+        const response = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as any;
+        if (response?.success !== true) {
+          return {
+            success: false,
+            error: response?.error || response?.message || 'Server rejected sync command',
+            code: response?.code,
+            errorClass: response?.errorClass,
+            failureStage: response?.failureStage || 'REMOTE_EXECUTION',
+            rpcReached: true,
+            serverVersion: response?.serverVersion,
+            errorDetails: response?.details || response?.errorDetails,
+            errorHint: response?.hint || response?.errorHint,
+          };
+        }
+
         return {
           success: true,
-          serverVersion: (req.expectedVersion || 0) + 1,
+          serverVersion: typeof response.serverVersion === 'number'
+            ? response.serverVersion
+            : (req.expectedVersion !== undefined ? req.expectedVersion + 1 : undefined),
+          result: response.result ?? response,
           rpcReached: true,
         };
       }
