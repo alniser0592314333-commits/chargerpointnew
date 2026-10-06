@@ -637,6 +637,34 @@ export class FinalUseCases {
     };
   }
 
+  /**
+   * Queue a protected order cancellation while offline. No financial reversal
+   * or authoritative status change is applied locally until the server verifies BIN.
+   */
+  async queueCancelOrderAwaitingBin(
+    auth: AuthorizationContext,
+    orderId: ID
+  ): Promise<Result<OrderEntity>> {
+    auth.requireAuth();
+    auth.assertPermission('orders:cancel');
+
+    const order = await this.deps.orderRepo.findById(orderId);
+    if (!order) throw new NotFoundError('Order not found');
+    validateOrderTransition(order.status, 'cancelled');
+
+    const commandId = crypto.randomUUID();
+    await this.deps.transactionManager.runInTransaction((ctx) => {
+      ctx.commandRepo.record(commandId, 'CANCEL_ORDER', {
+        id: commandId,
+        aggregateId: orderId,
+        orderId,
+        authorizationState: 'PENDING_BIN',
+      }, order.version);
+    });
+
+    return { success: true, data: order };
+  }
+
   async editOrderNotes(auth: AuthorizationContext, orderId: ID, notes?: string): Promise<Result<OrderEntity>> {
     const actor=auth.requireAuth(); auth.assertPermission('orders:edit');
     const existing=await this.deps.orderRepo.findById(orderId); if(!existing) throw new NotFoundError('Order not found');
