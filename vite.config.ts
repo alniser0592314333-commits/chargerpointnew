@@ -66,8 +66,10 @@ export default defineConfig(() => {
       }),
     ],
     define: {
-      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL || 'https://ydhcyamtgioyrxfarkwk.supabase.co'),
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_dXsrK8ltM6DCZ88HgfP27w_bxb3rvGN'),
+      // Tests and local builds must never silently target an unrelated Supabase project.
+      // Production/CI must provide these explicitly through VITE_SUPABASE_* environment variables.
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL || ''),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || ''),
     },
     test: {
       setupFiles: ['./src/tests/vitest.setup.ts'],
