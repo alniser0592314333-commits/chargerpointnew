@@ -550,6 +550,25 @@ function replacementField(row: any, ...keys: string[]): any {
 }
 
 export function validateReplacementData(data: Partial<BackupSnapshotData>): void {
+  // Defensive normalization: custom preview/replacement callers may bypass
+  // normalizeReplacementLocalData. Canonicalize legacy QR identities here too.
+  if (Array.isArray(data.qrTokens)) {
+    data.qrTokens = data.qrTokens.map((raw: any) => normalizeQrTokenEntity(raw));
+    const qrMap = new Map<string, string>();
+    for (const raw of data.qrTokens) {
+      if (typeof raw?.id === 'string') {
+        const legacy = raw.id.match(/^(.+):qr$/i);
+        if (legacy) qrMap.set(raw.id, stableLegacyQrUuid(legacy[1], raw.tokenType || raw.token_type || 'ORDER'));
+      }
+    }
+    if (qrMap.size && Array.isArray(data.orders)) {
+      data.orders = data.orders.map((row: any) => {
+        const old = row?.qrTokenId ?? row?.qr_token_id;
+        const mapped = typeof old === 'string' ? (qrMap.get(old) || old) : old;
+        return mapped === old ? row : { ...row, qrTokenId: mapped, qr_token_id: mapped };
+      });
+    }
+  }
   const collections: Record<string, any[]> = {
     device_types: data.deviceTypes || [],
     business_days: data.businessDays || [],
