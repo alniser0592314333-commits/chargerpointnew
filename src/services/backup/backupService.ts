@@ -442,9 +442,9 @@ export function normalizeQrTokenEntity(q: any): any {
   if (!q) return q;
 
   // QR identity is durable data. A legacy local placeholder such as
-  // "<order-uuid>:qr" is migrated exactly once at restore/normalization time
-  // into a real UUID + random public token. Once that canonical identity exists,
-  // every subsequent backup/restore preserves it verbatim.
+  // "<order-uuid>:qr" is canonicalized to a stable UUID for the server,
+  // while the real public token is preserved verbatim. Never invent a
+  // predictable public token.
   const legacyId =
     typeof q.id === 'string' && /:qr$/i.test(q.id)
       ? q.id.replace(/:qr$/i, '')
@@ -465,16 +465,10 @@ export function normalizeQrTokenEntity(q: any): any {
     ? stableLegacyQrUuid(legacyId!, tokenType)
     : q.id;
 
-  const generatedPublicToken =
-    legacyPlaceholder && !(q.publicToken ?? q.public_token ?? q.token)
-      ? 'legacy-' + legacyId
-      : null;
-
   const publicToken =
     q.publicToken ??
     q.public_token ??
     q.token ??
-    generatedPublicToken ??
     null;
   const tokenHash =
     q.tokenHash ??
