@@ -726,6 +726,18 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     if (!REPLACEMENT_UUID_RE.test(String(targetId || ''))) throw new SnapshotFormatError(`QR token ${row.id} has invalid targetId`);
   }
 
+  for (const row of collections.order_number_reservations) {
+    requireRef('business_days', replacementField(row, 'businessDayId', 'business_day_id'), `Order reservation ${row.id}`);
+    const deviceId = replacementField(row, 'deviceId', 'device_id');
+    if (deviceId) requireRef('device_types', deviceId, `Order reservation ${row.id}`);
+    const start = Number(replacementField(row, 'startNumber', 'start_number'));
+    const end = Number(replacementField(row, 'endNumber', 'end_number'));
+    const next = Number(replacementField(row, 'nextNumber', 'next_number'));
+    if (![start, end, next].every(Number.isSafeInteger) || start <= 0 || end < start || next < start || next > end + 1) {
+      throw new SnapshotFormatError(`Order reservation ${row.id} has invalid number range`);
+    }
+  }
+
   // Active QR uniqueness is a server invariant. Reject duplicate active target/type
   // combinations before a destructive call instead of discovering them after DELETE.
   const activeQrKeys = new Set<string>();
