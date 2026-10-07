@@ -201,17 +201,17 @@ BEGIN
 
   /* Clear dependent business data first. Sync history is intentionally reset
      because reset_generation above makes every pre-replacement command stale. */
-  DELETE FROM public.payment_allocations;
-  DELETE FROM public.financial_ledger;
-  DELETE FROM public.payments;
-  DELETE FROM public.order_items;
-  DELETE FROM public.orders;
-  DELETE FROM public.qr_tokens;
-  DELETE FROM public.customers;
-  DELETE FROM public.business_days;
-  DELETE FROM public.device_types;
-  DELETE FROM public.change_log;
-  DELETE FROM public.processed_commands;
+  DELETE FROM public.payment_allocations WHERE true;
+  DELETE FROM public.financial_ledger WHERE true;
+  DELETE FROM public.payments WHERE true;
+  DELETE FROM public.order_items WHERE true;
+  DELETE FROM public.orders WHERE true;
+  DELETE FROM public.qr_tokens WHERE true;
+  DELETE FROM public.customers WHERE true;
+  DELETE FROM public.business_days WHERE true;
+  DELETE FROM public.device_types WHERE true;
+  DELETE FROM public.change_log WHERE true;
+  DELETE FROM public.processed_commands WHERE true;
 
   /* ---------- REBUILD PARENTS ---------- */
   FOR v_item IN SELECT * FROM jsonb_array_elements(coalesce(p_payload->'device_types','[]'::jsonb)) LOOP
