@@ -387,12 +387,17 @@ export function normalizePaymentAllocationEntity(a: any): any {
   return {
     id: a.id,
     paymentId: a.paymentId || a.payment_id,
+    payment_id: a.paymentId || a.payment_id,
+    orderItemId: a.orderItemId || a.order_item_id,
+    order_item_id: a.orderItemId || a.order_item_id,
     orderId: a.orderId || a.order_id,
+    order_id: a.orderId || a.order_id,
     allocatedAmountMinor: a.allocatedAmountMinor ?? a.allocated_amount_minor ?? 0,
+    allocated_amount_minor: a.allocatedAmountMinor ?? a.allocated_amount_minor ?? 0,
     createdAt: a.createdAt || a.created_at || new Date().toISOString(),
+    created_at: a.createdAt || a.created_at || new Date().toISOString(),
   };
 }
-
 export function normalizeQrTokenEntity(q: any): any {
   if (!q) return q;
 
@@ -474,6 +479,129 @@ export interface CreateSnapshotOptions {
   name?: string;
   bin?: string;
   customOnlineData?: Partial<BackupSnapshotData>;
+}
+
+const REPLACEMENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function replacementField(row: any, ...keys: string[]): any {
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null) return row[key];
+  }
+  return undefined;
+}
+
+export function validateReplacementData(data: Partial<BackupSnapshotData>): void {
+  const collections: Record<string, any[]> = {
+    device_types: data.deviceTypes || [],
+    business_days: data.businessDays || [],
+    customers: data.customers || [],
+    qr_tokens: data.qrTokens || [],
+    orders: data.orders || [],
+    order_items: data.orderItems || [],
+    payments: data.payments || [],
+    financial_ledger: data.financialLedger || [],
+    payment_allocations: data.paymentAllocations || [],
+  };
+
+  const ids = new Map<string, Set<string>>();
+  for (const [table, rows] of Object.entries(collections)) {
+    if (!Array.isArray(rows)) throw new SnapshotFormatError(`Replacement collection ${table} is not an array`);
+    ids.set(table, new Set());
+    for (const row of rows) {
+      const id = String(row?.id || '').trim();
+      if (!REPLACEMENT_UUID_RE.test(id)) {
+        throw new SnapshotFormatError(`Invalid ${table} ID: ${id || '<missing>'}`);
+      }
+      if (ids.get(table)!.has(id)) throw new SnapshotFormatError(`Duplicate ${table} ID: ${id}`);
+      ids.get(table)!.add(id);
+    }
+  }
+
+  const has = (table: string, id: any) => Boolean(id && ids.get(table)?.has(String(id)));
+  const requireRef = (table: string, id: any, owner: string) => {
+    if (!has(table, id)) throw new SnapshotFormatError(`${owner} references missing ${table} ${id || '<missing>'}`);
+  };
+
+  for (const row of collections.orders) {
+    const status = String(replacementField(row, 'status') || 'pending').toLowerCase();
+    if (!['pending', 'charging', 'delivered', 'cancelled'].includes(status)) {
+      throw new SnapshotFormatError(`Order ${row.id} has unsupported status ${status}`);
+    }
+    requireRef('business_days', replacementField(row, 'dayId', 'day_id'), `Order ${row.id}`);
+    requireRef('customers', replacementField(row, 'customerId', 'customer_id'), `Order ${row.id}`);
+  }
+
+  for (const row of collections.order_items) {
+    const status = String(replacementField(row, 'status') || 'charging').toLowerCase();
+    const operational = String(replacementField(row, 'operationalStatus', 'operational_status') || 'CHARGING').toUpperCase();
+    const financial = String(replacementField(row, 'financialStatus', 'financial_status') || 'UNRECOGNIZED').toUpperCase();
+    const payment = String(replacementField(row, 'paymentStatus', 'payment_status') || 'UNPAID').toUpperCase();
+    if (!['charging', 'delivered', 'cancelled'].includes(status)) throw new SnapshotFormatError(`Order item ${row.id} has unsupported status ${status}`);
+    if (!['CHARGING', 'DELIVERED', 'CANCELLED'].includes(operational)) throw new SnapshotFormatError(`Order item ${row.id} has unsupported operational status ${operational}`);
+    if (!['UNRECOGNIZED', 'RECOGNIZED', 'REVERSED'].includes(financial)) throw new SnapshotFormatError(`Order item ${row.id} has unsupported financial status ${financial}`);
+    if (!['UNPAID', 'PARTIALLY_PAID', 'PAID'].includes(payment)) throw new SnapshotFormatError(`Order item ${row.id} has unsupported payment status ${payment}`);
+    requireRef('orders', replacementField(row, 'orderId', 'order_id'), `Order item ${row.id}`);
+    requireRef('device_types', replacementField(row, 'deviceTypeId', 'device_type_id'), `Order item ${row.id}`);
+    const replacementId = replacementField(row, 'replacementOfItemId', 'replacement_of_item_id');
+    if (replacementId) requireRef('order_items', replacementId, `Order item ${row.id}`);
+  }
+
+  for (const row of collections.payments) {
+    const amount = Number(replacementField(row, 'amountMinor', 'amount_minor') ?? 0);
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new SnapshotFormatError(`Payment ${row.id} has invalid amount`);
+    requireRef('customers', replacementField(row, 'customerId', 'customer_id'), `Payment ${row.id}`);
+  }
+
+  for (const row of collections.financial_ledger) {
+    requireRef('customers', replacementField(row, 'customerId', 'customer_id'), `Ledger ${row.id}`);
+    const orderId = replacementField(row, 'orderId', 'order_id');
+    const itemId = replacementField(row, 'orderItemId', 'order_item_id');
+    const linkedId = replacementField(row, 'linkedLedgerId', 'linked_ledger_id');
+    if (orderId) requireRef('orders', orderId, `Ledger ${row.id}`);
+    if (itemId) requireRef('order_items', itemId, `Ledger ${row.id}`);
+    if (linkedId) requireRef('financial_ledger', linkedId, `Ledger ${row.id}`);
+  }
+
+  for (const row of collections.payment_allocations) {
+    const amount = Number(replacementField(row, 'allocatedAmountMinor', 'allocated_amount_minor') ?? 0);
+    if (!Number.isSafeInteger(amount) || amount <= 0) throw new SnapshotFormatError(`Payment allocation ${row.id} has invalid amount`);
+    requireRef('payments', replacementField(row, 'paymentId', 'payment_id'), `Payment allocation ${row.id}`);
+    const orderId = replacementField(row, 'orderId', 'order_id');
+    requireRef('orders', orderId, `Payment allocation ${row.id}`);
+    const itemId = replacementField(row, 'orderItemId', 'order_item_id');
+    if (itemId) {
+      requireRef('order_items', itemId, `Payment allocation ${row.id}`);
+      const item = collections.order_items.find((x) => x.id === itemId);
+      if (item && String(replacementField(item, 'orderId', 'order_id')) !== String(orderId)) {
+        throw new SnapshotFormatError(`Payment allocation ${row.id} points to an item from a different order`);
+      }
+    } else {
+      const candidates = collections.order_items.filter((x) => String(replacementField(x, 'orderId', 'order_id')) === String(orderId));
+      if (candidates.length !== 1) {
+        throw new SnapshotFormatError(`Payment allocation ${row.id} is missing orderItemId and its order does not have exactly one item`);
+      }
+    }
+  }
+
+  for (const row of collections.qr_tokens) {
+    const publicToken = replacementField(row, 'publicToken', 'public_token', 'token');
+    const targetId = replacementField(row, 'targetId', 'target_id', 'entityId', 'entity_id');
+    if (!publicToken) throw new SnapshotFormatError(`QR token ${row.id} is missing publicToken`);
+    if (!REPLACEMENT_UUID_RE.test(String(targetId || ''))) throw new SnapshotFormatError(`QR token ${row.id} has invalid targetId`);
+  }
+
+  // Active QR uniqueness is a server invariant. Reject duplicate active target/type
+  // combinations before a destructive call instead of discovering them after DELETE.
+  const activeQrKeys = new Set<string>();
+  for (const row of collections.qr_tokens) {
+    const active = replacementField(row, 'isActive', 'is_active') ?? true;
+    if (Boolean(active)) {
+      const type = String(replacementField(row, 'tokenType', 'token_type', 'entityType', 'entity_type') || 'ORDER').toUpperCase();
+      const key = `${String(replacementField(row, 'targetId', 'target_id', 'entityId', 'entity_id'))}::${type}`;
+      if (activeQrKeys.has(key)) throw new SnapshotFormatError(`Duplicate active QR token for ${key}`);
+      activeQrKeys.add(key);
+    }
+  }
 }
 
 export class BackupService {
@@ -1199,6 +1327,8 @@ export class BackupService {
       ? { ...(await this.captureLocalData()), ...customLocalData }
       : await this.captureLocalData();
 
+    validateReplacementData(local);
+
     const tables: Array<{ key: keyof BackupSnapshotData; name: string }> = [
       { key: 'deviceTypes', name: 'device_types' },
       { key: 'businessDays', name: 'business_days' },
@@ -1304,169 +1434,185 @@ export class BackupService {
     auth.requireAuth();
     auth.assertPermission('settings:manage');
 
-    if (!bin || !bin.trim()) {
-      throw new AuthorizationError('BIN is required for Local -> Online Replacement.');
+    if (!bin || !/^\d{4,}$/.test(bin.trim())) {
+      throw new AuthorizationError('BIN must contain at least 4 numeric digits.');
     }
 
-    // 1. Gather Local Business Data
     const localData = options?.customLocalData
       ? { ...(await this.captureLocalData()), ...options.customLocalData }
       : await this.captureLocalData();
 
-    // 2. HARD SAFETY GATE: never allow an empty local dataset to replace cloud data.
-    // This prevents the destructive sequence:
-    // local capture = empty -> server purge -> empty reconstruction.
-    // An intentionally empty cloud must use the explicit Online Reset workflow.
-    const localBusinessCounts = [
-      (localData.customers || []).length,
-      (localData.businessDays || []).length,
-      (localData.orders || []).length,
-      (localData.orderItems || []).length,
-      (localData.payments || []).length,
-      (localData.financialLedger || []).length,
-      (localData.paymentAllocations || []).length,
-      (localData.deviceTypes || []).length,
-      (localData.qrTokens || []).length,
-    ];
-    const localBusinessEntityCount = localBusinessCounts.reduce((sum, count) => sum + count, 0);
+    const localBusinessEntityCount =
+      (localData.customers || []).length +
+      (localData.businessDays || []).length +
+      (localData.orders || []).length +
+      (localData.orderItems || []).length +
+      (localData.payments || []).length +
+      (localData.financialLedger || []).length +
+      (localData.paymentAllocations || []).length +
+      (localData.deviceTypes || []).length +
+      (localData.qrTokens || []).length;
+
     if (localBusinessEntityCount === 0) {
       throw new Error(
-        'SAFE_REPLACE_BLOCKED: Local business data is empty. Cloud data was not modified. Restore/recover the local data first, then retry.'
+        'SAFE_REPLACE_BLOCKED: Local business data is empty. Cloud data was not modified.'
       );
     }
 
-    // 3. Strict Pre-Validation of payment_allocations
+    // Complete local preflight before taking the destructive RPC path.
+    validateReplacementData(localData);
+
     const allocations = localData.paymentAllocations || [];
     for (const alloc of allocations) {
-      if (!alloc.id || !alloc.id.trim()) {
-        throw new Error('Invalid allocation ID: ID cannot be null, empty, or whitespace');
-      }
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(alloc.id)) {
-        throw new Error(`Invalid allocation ID ${alloc.id}: malformed UUID format`);
-      }
-      const paymentId = (alloc as any).paymentId || (alloc as any).payment_id;
-      if (!paymentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(paymentId)) {
-        throw new Error(`Invalid paymentId ${paymentId} in allocation ${alloc.id}`);
-      }
-      const orderId = (alloc as any).orderId || (alloc as any).order_id;
-      if (!orderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
-        throw new Error(`Invalid orderId ${orderId} in allocation ${alloc.id}`);
-      }
-      const amount = (alloc as any).allocatedAmountMinor ?? (alloc as any).allocated_amount_minor;
-      if (typeof amount !== 'number' || amount <= 0) {
-        throw new Error(`Invalid allocatedAmountMinor ${amount} in allocation ${alloc.id}: must be positive`);
+      const amount = Number((alloc as any).allocatedAmountMinor ?? (alloc as any).allocated_amount_minor);
+      if (!Number.isSafeInteger(amount) || amount <= 0) {
+        throw new Error(`Invalid payment allocation amount for ${alloc.id}`);
       }
     }
 
-    // 3. Authoritative Online Safety Snapshot before mutation
     const onlineSafetyData = await this.captureOnlineData(options?.customOnlineSafetyData);
-    const safetySnapshot = await this.createSnapshot(
-      'ONLINE',
-      auth,
-      {
-        name: options?.safetySnapshotName || `Pre-Replacement Safety Snapshot ${new Date().toISOString()}`,
-        bin: bin.trim(),
-        customOnlineData: onlineSafetyData,
-      }
-    );
+    const safetySnapshot = await this.createSnapshot('ONLINE', auth, {
+      name: options?.safetySnapshotName || `Pre-Replacement Safety Snapshot ${new Date().toISOString()}`,
+      bin: bin.trim(),
+      customOnlineData: onlineSafetyData,
+    });
 
-    // 4. Build replacement payload with exact DB naming and robust fallbacks
     const payload = {
-      device_types: (localData.deviceTypes || []).map((d) => ({
+      device_types: (localData.deviceTypes || []).map((d: any) => ({
         id: d.id,
         name: d.name,
-        name_ar: d.nameAr || (d as any).name_ar || d.name,
-        name_en: d.nameEn || (d as any).name_en || d.name,
+        name_ar: d.nameAr ?? d.name_ar ?? d.name,
+        name_en: d.nameEn ?? d.name_en ?? d.name,
         icon: d.icon || 'smartphone',
-        base_price_minor: d.basePriceMinor ?? (d as any).base_price_minor ?? 0,
-        charger_fee_enabled: d.chargerFeeEnabled ?? (d as any).charger_fee_enabled ?? true,
-        is_active: d.isActive ?? (d as any).is_active ?? true,
-        sort_order: d.sortOrder ?? (d as any).sort_order ?? 0,
+        base_price_minor: d.basePriceMinor ?? d.base_price_minor ?? 0,
+        charger_fee_enabled: d.chargerFeeEnabled ?? d.charger_fee_enabled ?? true,
+        charger_fee_applicable: d.chargerFeeApplicable ?? d.charger_fee_applicable ?? true,
+        is_active: d.isActive ?? d.is_active ?? true,
+        status: d.status ?? 'ACTIVE',
+        sort_order: d.sortOrder ?? d.sort_order ?? 0,
+        created_at: d.createdAt ?? d.created_at,
+        updated_at: d.updatedAt ?? d.updated_at,
+        deleted_at: d.deletedAt ?? d.deleted_at,
+        version: d.version ?? 1,
       })),
-      business_days: (localData.businessDays || []).map((b) => ({
+      business_days: (localData.businessDays || []).map((b: any) => ({
         id: b.id,
-        business_date: b.businessDate || (b as any).business_date || '',
-        is_closed: b.isClosed ?? (b as any).is_closed ?? false,
+        business_date: b.businessDate ?? b.business_date ?? b.date,
+        display_number: b.displayNumber ?? b.display_number ?? 1,
+        status: b.status ?? (b.isClosed ?? b.is_closed ? 'CLOSED' : 'OPEN'),
+        is_closed: b.isClosed ?? b.is_closed ?? false,
+        opened_at: b.openedAt ?? b.opened_at,
+        closed_at: b.closedAt ?? b.closed_at,
+        closed_by: b.closedBy ?? b.closed_by,
+        created_at: b.createdAt ?? b.created_at,
+        updated_at: b.updatedAt ?? b.updated_at,
+        version: b.version ?? 1,
       })),
-      customers: (localData.customers || []).map((c) => ({
+      customers: (localData.customers || []).map((c: any) => ({
         id: c.id,
         name: c.name,
-        phone: c.phone || (c as any).phone_number || (c as any).phoneNumber || '',
-        debt_limit_minor: c.debtLimitMinor ?? (c as any).debt_limit_minor ?? 0,
-        charger_fee_exempt: c.chargerFeeExempt ?? (c as any).charger_fee_exempt ?? false,
-        is_active: c.isActive ?? (c as any).is_active ?? true,
+        phone: c.phone ?? c.phone_number ?? c.phoneNumber ?? null,
+        status: c.status ?? (c.isActive ?? c.is_active ?? true ? 'ACTIVE' : 'DELETED'),
+        is_active: c.isActive ?? c.is_active ?? true,
+        notes: c.notes ?? '',
+        debt_limit_minor: c.debtLimitMinor ?? c.debt_limit_minor ?? 0,
+        charger_fee_exempt: c.chargerFeeExempt ?? c.charger_fee_exempt ?? false,
+        created_at: c.createdAt ?? c.created_at,
+        updated_at: c.updatedAt ?? c.updated_at,
+        deleted_at: c.deletedAt ?? c.deleted_at,
+        version: c.version ?? 1,
       })),
-      qr_tokens: (localData.qrTokens || []).map((q) => ({
+      qr_tokens: (localData.qrTokens || []).map((q: any) => ({
         id: q.id,
-        // Preserve the exact public QR capability handle. If a legacy record
-        // has no stored hash, the server replacement RPC derives SHA-256 from
-        // this stable public token; it must never replace the public token.
-        token_hash: q.tokenHash || (q as any).token_hash || null,
-        public_token: q.publicToken || (q as any).public_token || q.token,
-        token_type: q.tokenType || (q as any).token_type || q.entityType || q.entity_type || 'ORDER',
-        target_id: q.targetId || (q as any).target_id || q.entityId || q.entity_id,
-        is_active: q.isActive ?? (q as any).is_active ?? true,
-        expires_at: q.expiresAt || (q as any).expires_at || null,
+        public_token: q.publicToken ?? q.public_token ?? q.token,
+        token_type: q.tokenType ?? q.token_type ?? q.entityType ?? q.entity_type ?? 'ORDER',
+        target_id: q.targetId ?? q.target_id ?? q.entityId ?? q.entity_id,
+        is_active: q.isActive ?? q.is_active ?? true,
+        expires_at: q.expiresAt ?? q.expires_at ?? null,
+        created_at: q.createdAt ?? q.created_at,
       })),
-      orders: (localData.orders || []).map((o) => ({
+      orders: (localData.orders || []).map((o: any) => ({
         id: o.id,
-        day_id: o.dayId || (o as any).day_id,
-        customer_id: o.customerId || (o as any).customer_id,
-        display_number: o.displayNumber ?? (o as any).display_number ?? 1,
-        internal_sequence: o.internalSequence ?? (o as any).internal_sequence ?? 0,
+        day_id: o.dayId ?? o.day_id,
+        customer_id: o.customerId ?? o.customer_id,
+        display_number: o.displayNumber ?? o.display_number ?? 1,
+        internal_sequence: o.internalSequence ?? o.internal_sequence ?? 0,
         status: o.status || 'pending',
-        notes: o.notes || '',
-        created_at: o.createdAt || (o as any).created_at,
+        notes: o.notes ?? '',
+        qr_token_id: o.qrTokenId ?? o.qr_token_id ?? null,
+        charging_at: o.chargingAt ?? o.charging_at ?? null,
+        delivered_at: o.deliveredAt ?? o.delivered_at ?? null,
+        cancelled_at: o.cancelledAt ?? o.cancelled_at ?? null,
+        created_at: o.createdAt ?? o.created_at,
+        updated_at: o.updatedAt ?? o.updated_at,
+        deleted_at: o.deletedAt ?? o.deleted_at,
+        version: o.version ?? 1,
       })),
-      order_items: (localData.orderItems || []).map((i) => ({
+      order_items: (localData.orderItems || []).map((i: any) => ({
         id: i.id,
-        order_id: i.orderId || (i as any).order_id,
-        device_type_id: i.deviceTypeId || (i as any).device_type_id,
-        item_sequence: i.itemSequence ?? (i as any).item_sequence ?? 1,
+        order_id: i.orderId ?? i.order_id,
+        device_type_id: i.deviceTypeId ?? i.device_type_id,
+        item_sequence: i.itemSequence ?? i.item_sequence ?? 1,
+        operational_status: i.operationalStatus ?? i.operational_status ?? (i.status === 'delivered' ? 'DELIVERED' : i.status === 'cancelled' ? 'CANCELLED' : 'CHARGING'),
+        financial_status: i.financialStatus ?? i.financial_status ?? (i.status === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
+        payment_status: i.paymentStatus ?? i.payment_status ?? 'UNPAID',
         status: i.status || 'charging',
-        device_name_snapshot: i.deviceNameSnapshot || (i as any).device_name_snapshot || '',
-        device_icon_snapshot: i.deviceIconSnapshot || (i as any).device_icon_snapshot || 'smartphone',
-        base_price_snapshot_minor: i.basePriceSnapshotMinor ?? (i as any).base_price_snapshot_minor ?? 0,
-        charger_fee_enabled_snapshot: i.chargerFeeEnabledSnapshot ?? (i as any).charger_fee_enabled_snapshot ?? false,
-        customer_charger_fee_exempt_snapshot: i.customerChargerFeeExemptSnapshot ?? (i as any).customer_charger_fee_exempt_snapshot ?? false,
-        charger_fee_snapshot_minor: i.chargerFeeSnapshotMinor ?? (i as any).charger_fee_snapshot_minor ?? 0,
-        has_charger: i.hasCharger ?? (i as any).has_charger ?? false,
-        unit_price_minor: i.unitPriceMinor ?? (i as any).unit_price_minor ?? 0,
-        total_price_minor: i.totalPriceMinor ?? (i as any).total_price_minor ?? 0,
-        created_at: i.createdAt || (i as any).created_at,
+        device_name_snapshot: i.deviceNameSnapshot ?? i.device_name_snapshot ?? '',
+        device_icon_snapshot: i.deviceIconSnapshot ?? i.device_icon_snapshot ?? 'smartphone',
+        base_price_snapshot_minor: i.basePriceSnapshotMinor ?? i.base_price_snapshot_minor ?? 0,
+        charger_fee_snapshot_minor: i.chargerFeeSnapshotMinor ?? i.charger_fee_snapshot_minor ?? 0,
+        discount_snapshot_minor: i.discountSnapshotMinor ?? i.discount_snapshot_minor ?? 0,
+        final_charge_snapshot_minor: i.finalChargeSnapshotMinor ?? i.final_charge_snapshot_minor ?? i.totalPriceMinor ?? i.total_price_minor ?? 0,
+        unit_price_minor: i.unitPriceMinor ?? i.unit_price_minor ?? 0,
+        total_price_minor: i.totalPriceMinor ?? i.total_price_minor ?? 0,
+        has_charger: i.hasCharger ?? i.has_charger ?? false,
+        charger_fee_enabled_snapshot: i.chargerFeeEnabledSnapshot ?? i.charger_fee_enabled_snapshot ?? true,
+        customer_charger_fee_exempt_snapshot: i.customerChargerFeeExemptSnapshot ?? i.customer_charger_fee_exempt_snapshot ?? false,
+        delivered_at: i.deliveredAt ?? i.delivered_at ?? null,
+        financially_recognized_at: i.financiallyRecognizedAt ?? i.financially_recognized_at ?? null,
+        cancelled_at: i.cancelledAt ?? i.cancelled_at ?? null,
+        replacement_of_item_id: i.replacementOfItemId ?? i.replacement_of_item_id ?? null,
+        notes: i.notes ?? null,
+        created_at: i.createdAt ?? i.created_at,
+        updated_at: i.updatedAt ?? i.updated_at,
+        deleted_at: i.deletedAt ?? i.deleted_at,
+        version: i.version ?? 1,
       })),
-      payments: (localData.payments || []).map((p) => ({
+      payments: (localData.payments || []).map((p: any) => ({
         id: p.id,
-        customer_id: p.customerId || (p as any).customer_id,
-        amount_minor: p.amountMinor ?? (p as any).amount_minor ?? 0,
-        payment_method: p.paymentMethod || (p as any).payment_method || 'CASH',
-        reference: p.reference || '',
-        actor_admin_id: p.actorAdminId || (p as any).actor_admin_id,
-        command_id: p.commandId || (p as any).command_id,
-        created_at: p.createdAt || (p as any).created_at,
+        customer_id: p.customerId ?? p.customer_id,
+        amount_minor: p.amountMinor ?? p.amount_minor ?? 0,
+        payment_method: p.paymentMethod ?? p.payment_method ?? 'CASH',
+        reference: p.reference ?? '',
+        actor_admin_id: p.actorAdminId ?? p.actor_admin_id ?? null,
+        command_id: p.commandId ?? p.command_id ?? null,
+        notes: p.notes ?? '',
+        created_at: p.createdAt ?? p.created_at,
       })),
-      financial_ledger: (localData.financialLedger || []).map((l) => ({
+      financial_ledger: (localData.financialLedger || []).map((l: any) => ({
         id: l.id,
-        event_type: l.eventType || (l as any).event_type,
-        amount_minor: l.amountMinor ?? (l as any).amount_minor ?? 0,
-        order_id: l.orderId || (l as any).order_id,
-        order_item_id: l.orderItemId || (l as any).order_item_id,
-        customer_id: l.customerId || (l as any).customer_id,
-        actor_admin_id: l.actorAdminId || (l as any).actor_admin_id,
-        reference_id: l.referenceId || (l as any).reference_id,
-        metadata: l.metadata,
-        created_at: l.createdAt || (l as any).created_at,
+        sequence_number: l.sequenceNumber ?? l.sequence_number ?? null,
+        event_type: l.eventType ?? l.event_type ?? 'ORDER_ITEM_CHARGE',
+        amount_minor: l.amountMinor ?? l.amount_minor ?? 0,
+        order_id: l.orderId ?? l.order_id ?? null,
+        order_item_id: l.orderItemId ?? l.order_item_id ?? null,
+        customer_id: l.customerId ?? l.customer_id,
+        actor_admin_id: l.actorAdminId ?? l.actor_admin_id ?? null,
+        reference_id: l.referenceId ?? l.reference_id ?? null,
+        linked_ledger_id: l.linkedLedgerId ?? l.linked_ledger_id ?? null,
+        metadata: l.metadata ?? {},
+        created_at: l.createdAt ?? l.created_at,
       })),
       payment_allocations: allocations.map((a: any) => ({
         id: a.id,
-        payment_id: a.paymentId || a.payment_id,
-        order_id: a.orderId || a.order_id,
+        payment_id: a.paymentId ?? a.payment_id,
+        order_item_id: a.orderItemId ?? a.order_item_id ?? null,
+        order_id: a.orderId ?? a.order_id,
         allocated_amount_minor: a.allocatedAmountMinor ?? a.allocated_amount_minor,
-        created_at: a.createdAt || a.created_at,
+        created_at: a.createdAt ?? a.created_at,
       })),
     };
 
-    // 5. Invoke atomic server RPC
     const { data, error } = await invokeSupabaseRpc<any>('replace_online_business_data', {
       p_entered_bin: bin.trim(),
       p_payload: payload,
