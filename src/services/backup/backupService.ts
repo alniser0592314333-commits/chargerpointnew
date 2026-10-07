@@ -729,7 +729,9 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
   for (const row of collections.order_number_reservations) {
     requireRef('business_days', replacementField(row, 'businessDayId', 'business_day_id'), `Order reservation ${row.id}`);
     const deviceId = replacementField(row, 'deviceId', 'device_id');
-    if (deviceId) requireRef('device_types', deviceId, `Order reservation ${row.id}`);
+    if (!REPLACEMENT_UUID_RE.test(String(deviceId || ''))) {
+      throw new SnapshotFormatError(`Order reservation ${row.id} has invalid device_id`);
+    }
     const start = Number(replacementField(row, 'startNumber', 'start_number'));
     const end = Number(replacementField(row, 'endNumber', 'end_number'));
     const next = Number(replacementField(row, 'nextNumber', 'next_number'));
