@@ -1019,6 +1019,12 @@ export class BackupService {
     const consolidatedPayments = reconcileTable(online.payments, offline.payments, 'payments');
     const consolidatedAllocations = reconcileTable(online.paymentAllocations, offline.paymentAllocations, 'payment_allocations');
     const consolidatedDevices = reconcileTable(online.deviceTypes, offline.deviceTypes, 'device_types');
+    const consolidatedQrTokens = reconcileTable(online.qrTokens || [], offline.qrTokens || [], 'qr_tokens');
+    const consolidatedReservations = reconcileTable(
+      online.orderNumberReservations || [],
+      offline.orderNumberReservations || [],
+      'order_number_reservations'
+    );
 
     const countEntities = (data: BackupSnapshotData): number => {
       return (
@@ -1029,7 +1035,9 @@ export class BackupService {
         data.financialLedger.length +
         data.payments.length +
         data.paymentAllocations.length +
-        data.deviceTypes.length
+        data.deviceTypes.length +
+        (data.qrTokens || []).length +
+        (data.orderNumberReservations || []).length
       );
     };
 
@@ -1045,7 +1053,8 @@ export class BackupService {
       payments: consolidatedPayments,
       paymentAllocations: consolidatedAllocations,
       deviceTypes: consolidatedDevices,
-      qrTokens: offline.qrTokens || online.qrTokens || [],
+      qrTokens: consolidatedQrTokens,
+      orderNumberReservations: consolidatedReservations,
       syncState: online.syncState || offline.syncState || null,
       consolidationMetadata: {
         onlineRecordCount,
