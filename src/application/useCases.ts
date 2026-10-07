@@ -485,11 +485,12 @@ export class FinalUseCases {
   async deliverOrderItem(
     auth: AuthorizationContext,
     itemId: ID,
-    bin: string
+    bin: string,
+    options?: { deferBinVerification?: boolean }
   ): Promise<Result<OrderItemEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:deliver');
-    await auth.verifyBin(bin);
+    if (!options?.deferBinVerification) await auth.verifyBin(bin);
 
     const item = await this.deps.itemRepo.findById(itemId);
     if (!item) throw new NotFoundError('Item not found');
@@ -1222,11 +1223,12 @@ export class FinalUseCases {
     customerId: ID,
     amountMinor: number,
     bin: string,
-    commandId?: ID
+    commandId?: ID,
+    options?: { deferBinVerification?: boolean }
   ): Promise<Result<FinancialLedgerEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('finance:credit-adjustment');
-    await auth.verifyBin(bin);
+    if (!options?.deferBinVerification) await auth.verifyBin(bin);
     DomainInvariants.assertValidPaymentAmount(amountMinor);
 
     const customer = await this.deps.customerRepo.findById(customerId);
