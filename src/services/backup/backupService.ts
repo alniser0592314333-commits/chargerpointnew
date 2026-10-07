@@ -1755,7 +1755,6 @@ export class BackupService {
         financially_recognized_at: i.financiallyRecognizedAt ?? i.financially_recognized_at ?? null,
         cancelled_at: i.cancelledAt ?? i.cancelled_at ?? null,
         replacement_of_item_id: i.replacementOfItemId ?? i.replacement_of_item_id ?? null,
-        notes: i.notes ?? null,
         created_at: i.createdAt ?? i.created_at,
         updated_at: i.updatedAt ?? i.updated_at,
         deleted_at: i.deletedAt ?? i.deleted_at,
