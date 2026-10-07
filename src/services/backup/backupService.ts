@@ -172,6 +172,7 @@ export function normalizeCustomerEntity(c: any): any {
     id: c.id,
     name: c.name,
     phone: c.phone || c.phone_number || c.phoneNumber || '',
+    status: c.status || (Boolean(activeVal) ? 'ACTIVE' : 'DELETED'),
     isActive: Boolean(activeVal),
     is_active: Boolean(activeVal),
     notes: c.notes || '',
@@ -181,6 +182,8 @@ export function normalizeCustomerEntity(c: any): any {
     charger_fee_exempt: Boolean(exemptVal),
     createdAt: c.createdAt || c.created_at || new Date().toISOString(),
     updatedAt: c.updatedAt || c.updated_at || c.createdAt || c.created_at || new Date().toISOString(),
+    deletedAt: c.deletedAt || c.deleted_at,
+    deleted_at: c.deletedAt || c.deleted_at,
     version: c.version || 1,
   };
 }
@@ -198,8 +201,13 @@ export function normalizeBusinessDayEntity(b: any): any {
     id: b.id,
     businessDate,
     business_date: businessDate,
+    displayNumber: b.displayNumber ?? b.display_number ?? 1,
+    display_number: b.displayNumber ?? b.display_number ?? 1,
+    status: b.status || (Boolean(closedVal) ? 'CLOSED' : 'OPEN'),
     isClosed: Boolean(closedVal),
     is_closed: Boolean(closedVal),
+    openedAt: b.openedAt || b.opened_at || new Date().toISOString(),
+    opened_at: b.openedAt || b.opened_at || new Date().toISOString(),
     closedAt: b.closedAt || b.closed_at,
     closedBy: b.closedBy || b.closed_by,
     createdAt: b.createdAt || b.created_at || new Date().toISOString(),
@@ -231,6 +239,9 @@ export function normalizeDeviceTypeEntity(d: any): any {
     base_price_minor: basePrice,
     chargerFeeEnabled: Boolean(chargerVal),
     charger_fee_enabled: Boolean(chargerVal),
+    chargerFeeApplicable: Boolean(d.chargerFeeApplicable ?? d.charger_fee_applicable ?? chargerVal),
+    charger_fee_applicable: Boolean(d.chargerFeeApplicable ?? d.charger_fee_applicable ?? chargerVal),
+    status: d.status || (Boolean(activeVal) ? 'ACTIVE' : 'DELETED'),
     isActive: Boolean(activeVal),
     is_active: Boolean(activeVal),
     sortOrder: d.sortOrder ?? d.sort_order ?? 0,
@@ -1133,6 +1144,8 @@ export class BackupService {
       payments: sanitizedData.payments.length,
       paymentAllocations: sanitizedData.paymentAllocations.length,
       deviceTypes: sanitizedData.deviceTypes.length,
+      qrTokens: (sanitizedData.qrTokens || []).length,
+      orderNumberReservations: (sanitizedData.orderNumberReservations || []).length,
     };
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
