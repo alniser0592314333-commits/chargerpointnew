@@ -2460,59 +2460,166 @@ export const getDeviceDisplayName = (
  * - Orders with remaining unpaid balance are marked PARTIAL (if partially covered) or UNPAID (if 0 covered).
  * - Fully covered orders are marked PAID.
  */
-export const computeCustomerOrderPaymentStatuses = (
-  customerId: string,
-  effectiveOrdersMap: Map<string, OrderEntity> = ordersMap,
-  effectiveItemsMap: Map<string, OrderItemEntity> = itemsMap
-): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
-  const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
+export type PaymentProjectionIndexes = {
+  recognizedItemsByCustomer: Map<
+    string,
+    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
+  >;
+  recognizedItemsByOrder: Map<
+    string,
+    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
+  >;
+  allocatedByItem: Map<string, number>;
+  pendingPaymentsByCustomer: Map<string, Array<{ createdAt: string; amountMinor: number }>>;
+  ordersByCustomer: Map<string, OrderEntity[]>;
+  itemsByOrder: Map<string, OrderItemEntity[]>;
+};
 
-  // Mirror the server CREATE_PAYMENT rule: only financially recognized
-  // (delivered) items can receive FIFO payment allocations. A wallet credit
-  // by itself must never make an undelivered order appear paid.
-  const recognizedItems = Array.from(effectiveItemsMap.values())
-    .filter((item) => {
-      if (item.status === 'cancelled') return false;
-      const financialStatus = String((item as any).financialStatus || (item as any).financial_status || '').toUpperCase();
-      return financialStatus === 'RECOGNIZED' || item.status === 'delivered';
-    })
-    .map((item) => ({
+const buildPaymentProjectionIndexes = (
+  effectiveOrdersMap: Map<string, OrderEntity>,
+  effectiveItemsMap: Map<string, OrderItemEntity>
+): PaymentProjectionIndexes => {
+  const recognizedItemsByCustomer = new Map<
+    string,
+    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
+  >();
+  const recognizedItemsByOrder = new Map<
+    string,
+    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
+  >();
+  const allocatedByItem = new Map<string, number>();
+  const pendingPaymentsByCustomer = new Map<string, Array<{ createdAt: string; amountMinor: number }>>();
+  const ordersByCustomer = new Map<string, OrderEntity[]>();
+  const itemsByOrder = new Map<string, OrderItemEntity[]>();
+
+  for (const item of effectiveItemsMap.values()) {
+    let orderItems = itemsByOrder.get(item.orderId);
+    if (!orderItems) {
+      orderItems = [];
+      itemsByOrder.set(item.orderId, orderItems);
+    }
+    orderItems.push(item);
+
+    if (item.status === 'cancelled') continue;
+    const financialStatus = String(
+      (item as any).financialStatus || (item as any).financial_status || ''
+    ).toUpperCase();
+    if (financialStatus !== 'RECOGNIZED' && item.status !== 'delivered') continue;
+
+    const totalMinor = Number(
+      (item as any).finalChargeSnapshotMinor ??
+      (item as any).final_charge_snapshot_minor ??
+      item.totalPriceMinor ??
+      0
+    );
+    if (totalMinor <= 0) continue;
+
+    const recognized = {
       itemId: item.id,
       orderId: item.orderId,
-      totalMinor: Number((item as any).finalChargeSnapshotMinor ?? (item as any).final_charge_snapshot_minor ?? item.totalPriceMinor ?? 0),
+      totalMinor,
       createdAt: item.createdAt,
-    }))
-    .filter((item) => item.totalMinor > 0)
-    .sort((a, b) => {
+    };
+
+    let customerId = effectiveOrdersMap.get(item.orderId)?.customerId;
+    if (customerId) {
+      let list = recognizedItemsByCustomer.get(customerId);
+      if (!list) {
+        list = [];
+        recognizedItemsByCustomer.set(customerId, list);
+      }
+      list.push(recognized);
+    }
+
+    let orderList = recognizedItemsByOrder.get(item.orderId);
+    if (!orderList) {
+      orderList = [];
+      recognizedItemsByOrder.set(item.orderId, orderList);
+    }
+    orderList.push(recognized);
+  }
+
+  for (const list of recognizedItemsByCustomer.values()) {
+    list.sort((a, b) => {
       const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       return byTime !== 0 ? byTime : a.itemId.localeCompare(b.itemId);
     });
+  }
+  for (const list of recognizedItemsByOrder.values()) {
+    list.sort((a, b) => {
+      const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return byTime !== 0 ? byTime : a.itemId.localeCompare(b.itemId);
+    });
+  }
 
-  const allocatedByItem = new Map<string, number>();
   for (const allocation of allocationsList) {
     if (!allocation.orderItemId) continue;
     allocatedByItem.set(
       allocation.orderItemId,
-      (allocatedByItem.get(allocation.orderItemId) || 0) + Number(allocation.allocatedAmountMinor || 0)
+      (allocatedByItem.get(allocation.orderItemId) || 0) +
+        Number(allocation.allocatedAmountMinor || 0)
     );
   }
 
+  for (const overlay of localDb.listOverlaysSync()) {
+    if (
+      overlay.status !== 'PENDING' ||
+      overlay.entityType !== 'payments' ||
+      overlay.operation !== 'CREATE'
+    ) {
+      continue;
+    }
+    const payload = (overlay.entityPayload || overlay.patch || {}) as any;
+    const customerId = payload.customerId || payload.customer_id;
+    const amountMinor = Number(payload.amountMinor ?? payload.amount_minor ?? 0);
+    if (!customerId || amountMinor <= 0) continue;
+
+    let list = pendingPaymentsByCustomer.get(customerId);
+    if (!list) {
+      list = [];
+      pendingPaymentsByCustomer.set(customerId, list);
+    }
+    list.push({ createdAt: overlay.createdAt, amountMinor });
+  }
+
+  for (const list of pendingPaymentsByCustomer.values()) {
+    list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }
+
+  for (const order of effectiveOrdersMap.values()) {
+    let list = ordersByCustomer.get(order.customerId);
+    if (!list) {
+      list = [];
+      ordersByCustomer.set(order.customerId, list);
+    }
+    list.push(order);
+  }
+
+  return {
+    recognizedItemsByCustomer,
+    recognizedItemsByOrder,
+    allocatedByItem,
+    pendingPaymentsByCustomer,
+    ordersByCustomer,
+    itemsByOrder,
+  };
+};
+
+const computeCustomerOrderPaymentStatuses = (
+  customerId: string,
+  effectiveOrdersMap: Map<string, OrderEntity> = ordersMap,
+  effectiveItemsMap: Map<string, OrderItemEntity> = itemsMap,
+  indexes?: PaymentProjectionIndexes
+): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
+  const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
+  const projection = indexes || buildPaymentProjectionIndexes(effectiveOrdersMap, effectiveItemsMap);
+
+  const recognizedItems = projection.recognizedItemsByCustomer.get(customerId) || [];
+  const allocatedByItem = new Map(projection.allocatedByItem);
+
   // Project pending local CREATE_PAYMENT commands exactly as the server will.
   // The unallocated remainder is wallet credit and does not pay an order.
-  const pendingPayments = localDb.listOverlaysSync()
-    .filter((overlay) => overlay.status === 'PENDING' && overlay.entityType === 'payments' && overlay.operation === 'CREATE')
-    .map((overlay) => {
-      const payload = (overlay.entityPayload || overlay.patch || {}) as any;
-      return {
-        createdAt: overlay.createdAt,
-        amountMinor: Number(payload.amountMinor ?? payload.amount_minor ?? 0),
-        customerId: payload.customerId || payload.customer_id,
-      };
-    })
-    .filter((payment) => payment.customerId === customerId && payment.amountMinor > 0)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-  for (const payment of pendingPayments) {
+  for (const payment of projection.pendingPaymentsByCustomer.get(customerId) || []) {
     let remaining = payment.amountMinor;
     for (const item of recognizedItems) {
       if (remaining <= 0) break;
@@ -2525,30 +2632,33 @@ export const computeCustomerOrderPaymentStatuses = (
     }
   }
 
-  const custOrders = Array.from(effectiveOrdersMap.values())
-    .filter((order) => order.customerId === customerId && order.status !== 'cancelled')
+  const custOrders = (projection.ordersByCustomer.get(customerId) || [])
+    .filter((order) => order.status !== 'cancelled')
     .sort((a, b) => {
       const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       return byTime !== 0 ? byTime : (a.displayNumber || 0) - (b.displayNumber || 0);
     });
 
   for (const order of custOrders) {
-    const orderItems = Array.from(effectiveItemsMap.values())
-      .filter((item) => item.orderId === order.id && item.status !== 'cancelled');
+    const orderItems = (projection.itemsByOrder.get(order.id) || [])
+      .filter((item) => item.status !== 'cancelled');
 
-    const displayTotalMinor = orderItems.reduce((sum, item) => sum + Number(item.totalPriceMinor || 0), 0);
+    const displayTotalMinor = orderItems.reduce(
+      (sum, item) => sum + Number(item.totalPriceMinor || 0),
+      0
+    );
+
     if (displayTotalMinor <= 0) {
       result.set(order.id, { paymentStatus: 'PAID', allocatedAmountMinor: 0, totalMinor: 0 });
       continue;
     }
 
-    const recognizedTotalMinor = recognizedItems
-      .filter((item) => item.orderId === order.id)
-      .reduce((sum, item) => sum + item.totalMinor, 0);
-
-    const allocatedMinor = recognizedItems
-      .filter((item) => item.orderId === order.id)
-      .reduce((sum, item) => sum + Math.min(item.totalMinor, allocatedByItem.get(item.itemId) || 0), 0);
+    const recognizedForOrder = projection.recognizedItemsByOrder.get(order.id) || [];
+    const recognizedTotalMinor = recognizedForOrder.reduce((sum, item) => sum + item.totalMinor, 0);
+    const allocatedMinor = recognizedForOrder.reduce(
+      (sum, item) => sum + Math.min(item.totalMinor, allocatedByItem.get(item.itemId) || 0),
+      0
+    );
 
     if (recognizedTotalMinor <= 0) {
       result.set(order.id, {
@@ -2580,11 +2690,10 @@ export const getOrdersForDay = async (
   locale: Locale = 'ar'
 ): Promise<UIDayOrderDetail[]> => {
   await ensureStoreHydrated();
-  await sanitizeAndResequenceOrderNumbers();
 
-  // Build the read model from authoritative local rows plus pending optimistic
-  // overlays. Mutations are intentionally not written into the base maps here:
-  // overlays remain the source of truth until sync commits the server state.
+  // Order numbers are sanitized once during store hydration. Re-running the
+  // full historical scan on every page open added unnecessary latency without
+  // changing the authoritative data.
   const effectiveOrdersMap = new Map(ordersMap);
   const effectiveItemsMap = new Map(itemsMap);
 
@@ -2623,7 +2732,7 @@ export const getOrdersForDay = async (
   }
 
   const allOrders = Array.from(effectiveOrdersMap.values()).filter((o) => isSameDayId(o.dayId, dayId));
-
+  const indexes = buildPaymentProjectionIndexes(effectiveOrdersMap, effectiveItemsMap);
   const customerAllocationMaps = new Map<
     string,
     Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>
@@ -2633,15 +2742,19 @@ export const getOrdersForDay = async (
   for (const ord of allOrders) {
     const cust = customersMap.get(ord.customerId);
     if (cust && !customerAllocationMaps.has(cust.id)) {
-      customerAllocationMaps.set(cust.id, computeCustomerOrderPaymentStatuses(cust.id, effectiveOrdersMap, effectiveItemsMap));
+      customerAllocationMaps.set(
+        cust.id,
+        computeCustomerOrderPaymentStatuses(cust.id, effectiveOrdersMap, effectiveItemsMap, indexes)
+      );
     }
+
     const alloc = cust ? customerAllocationMaps.get(cust.id)?.get(ord.id) : undefined;
     const paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' =
       ord.status === 'cancelled'
         ? 'UNPAID'
         : (alloc?.paymentStatus || 'UNPAID');
 
-    const allOrderItems = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id);
+    const allOrderItems = indexes.itemsByOrder.get(ord.id) || [];
     const orderItems = allOrderItems.filter((i) => i.status !== 'cancelled');
     const projectedStatus = calculateOrderProjection(allOrderItems, ord.status);
 
