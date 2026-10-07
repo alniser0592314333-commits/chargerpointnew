@@ -638,6 +638,17 @@ export class SyncEngine {
         }
       }
 
+      // A generation change invalidates the previously pulled cursor window.
+      // Re-pull from sequence 0 after local reconciliation so the rebuilt
+      // operational read model receives the complete authoritative snapshot.
+      if (serverGen > localGen || wasReconciling) {
+        const rebuiltPull = await this.transport.pullChanges(0);
+        if (rebuiltPull.serverResetGeneration === undefined || rebuiltPull.serverResetGeneration !== serverGen) {
+          throw new Error('Authoritative reset generation changed during reconciliation; retry sync');
+        }
+        pullRes = rebuiltPull;
+      }
+
       if (pullRes.changes.length > 0) {
         const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
         await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
