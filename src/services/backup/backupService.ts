@@ -585,6 +585,15 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
     deviceTypes: (data.deviceTypes || []).map(normalizeDeviceTypeEntity),
     qrTokens: (data.qrTokens || []).map(normalizeQrTokenEntity),
     orderNumberReservations: (data.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity),
+    goals: (data.goals || []).map(sanitizeEntity),
+    goalRequests: (data.goalRequests || []).map(sanitizeEntity),
+    outbox: (data.outbox || []).map(sanitizeEntity),
+    syncHistory: (data.syncHistory || []).map(sanitizeEntity),
+    mutationSnapshots: (data.mutationSnapshots || []).map(sanitizeEntity),
+    optimisticOverlays: (data.optimisticOverlays || []).map(sanitizeEntity),
+    deletedDeviceTypeMarkers: (data.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+    changeLog: (data.changeLog || []).map(sanitizeEntity),
+    systemSettings: (data.systemSettings || []).map(sanitizeEntity),
     syncState: data.syncState || null,
     consolidationMetadata: data.consolidationMetadata,
   };
@@ -753,24 +762,9 @@ export class BackupService {
    * Captures current offline business data from IndexedDB kvStore.
    */
   async captureOfflineData(): Promise<BackupSnapshotData> {
-    // QR legacy migration is a data migration, not a backup-format transform.
-    // Run it before capturing so every backup sees the same canonical local model.
-    const { migrateLegacyQrTokenIdentities } = await import('../../components/pages/dayOrdersStore');
-    await migrateLegacyQrTokenIdentities();
-
-    const customers = (await localDb.list('customers')).map(sanitizeEntity);
-    const businessDays = (await localDb.list('businessDays')).map(sanitizeEntity);
-    const orders = (await localDb.list('orders')).map(sanitizeEntity).map(normalizeOrderEntity);
-    const orderItems = (await localDb.list('orderItems')).map(sanitizeEntity).map(normalizeOrderItemEntity);
-    const financialLedger = (await localDb.list('financialLedger')).map(sanitizeEntity).map(normalizeFinancialLedgerEntity);
-    const payments = (await localDb.list('payments')).map(sanitizeEntity).map(normalizePaymentEntity);
-    const paymentAllocations = (await localDb.list('paymentAllocations')).map(sanitizeEntity).map(normalizePaymentAllocationEntity);
-    const deviceTypes = (await localDb.list('deviceTypes')).map(sanitizeEntity).map(normalizeDeviceTypeEntity);
-    const qrTokens = (await localDb.list('qr_tokens')).map(sanitizeEntity).map(normalizeQrTokenEntity);
-    const orderNumberReservations = (await localDb.list('orderNumberReservations')).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity);
-    const syncState = await localDb.getSyncState('global');
-
-    return {
+    // Backup capture is strictly read-only. Legacy QR migrations belong to an
+    // explicit data migration, never to the act of taking a backup.
+    const [
       customers,
       businessDays,
       orders,
@@ -781,7 +775,60 @@ export class BackupService {
       deviceTypes,
       qrTokens,
       orderNumberReservations,
+      goals,
+      goalRequests,
+      outbox,
+      syncHistory,
+      mutationSnapshots,
+      optimisticOverlays,
       syncState,
+      deletedDeviceTypeMarkers,
+      changeLog,
+      systemSettings,
+    ] = await Promise.all([
+      localDb.list('customers'),
+      localDb.list('businessDays'),
+      localDb.list('orders'),
+      localDb.list('orderItems'),
+      localDb.list('financialLedger'),
+      localDb.list('payments'),
+      localDb.list('paymentAllocations'),
+      localDb.list('deviceTypes'),
+      localDb.list('qr_tokens'),
+      localDb.list('orderNumberReservations'),
+      localDb.list('goals'),
+      localDb.list('goalRequests'),
+      localDb.listOutbox(),
+      localDb.listHistory(),
+      localDb.listMutationSnapshots(),
+      localDb.listOverlays(),
+      localDb.getSyncState('global'),
+      localDb.listIntentionalDeviceTypeDeletions(),
+      localDb.list('changeLog'),
+      localDb.list('systemSettings'),
+    ]);
+
+    return {
+      customers: customers.map(sanitizeEntity),
+      businessDays: businessDays.map(sanitizeEntity),
+      orders: orders.map(sanitizeEntity).map(normalizeOrderEntity),
+      orderItems: orderItems.map(sanitizeEntity).map(normalizeOrderItemEntity),
+      financialLedger: financialLedger.map(sanitizeEntity).map(normalizeFinancialLedgerEntity),
+      payments: payments.map(sanitizeEntity).map(normalizePaymentEntity),
+      paymentAllocations: paymentAllocations.map(sanitizeEntity).map(normalizePaymentAllocationEntity),
+      deviceTypes: deviceTypes.map(sanitizeEntity).map(normalizeDeviceTypeEntity),
+      goals: goals.map(sanitizeEntity),
+      goalRequests: goalRequests.map(sanitizeEntity),
+      qrTokens: qrTokens.map(sanitizeEntity).map(normalizeQrTokenEntity),
+      orderNumberReservations: orderNumberReservations.map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
+      outbox: outbox.map(sanitizeEntity),
+      syncHistory: syncHistory.map(sanitizeEntity),
+      mutationSnapshots: mutationSnapshots.map(sanitizeEntity),
+      optimisticOverlays: optimisticOverlays.map(sanitizeEntity),
+      syncState: syncState ? sanitizeEntity(syncState) : null,
+      deletedDeviceTypeMarkers: deletedDeviceTypeMarkers.map(sanitizeEntity),
+      changeLog: changeLog.map(sanitizeEntity),
+      systemSettings: systemSettings.map(sanitizeEntity),
     };
   }
 
@@ -808,6 +855,15 @@ export class BackupService {
         deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity),
         qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity),
         orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity),
+        goals: (customOnlineData.goals || []).map(sanitizeEntity),
+        goalRequests: (customOnlineData.goalRequests || []).map(sanitizeEntity),
+        outbox: (customOnlineData.outbox || []).map(sanitizeEntity),
+        syncHistory: (customOnlineData.syncHistory || []).map(sanitizeEntity),
+        mutationSnapshots: (customOnlineData.mutationSnapshots || []).map(sanitizeEntity),
+        optimisticOverlays: (customOnlineData.optimisticOverlays || []).map(sanitizeEntity),
+        deletedDeviceTypeMarkers: (customOnlineData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+        changeLog: (customOnlineData.changeLog || []).map(sanitizeEntity),
+        systemSettings: (customOnlineData.systemSettings || []).map(sanitizeEntity),
         syncState: customOnlineData.syncState || null,
       });
     }
@@ -854,6 +910,8 @@ export class BackupService {
       deviceTypes,
       qrTokens,
       orderNumberReservations,
+      goals,
+      goalRequests,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
       fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
@@ -865,6 +923,8 @@ export class BackupService {
       fetchTable('device_types').then((rows) => rows.map(normalizeDeviceTypeEntity)),
       fetchTable('qr_tokens').then((rows) => rows.map(normalizeQrTokenEntity)),
       fetchTable('order_number_reservations').then((rows) => rows.map(normalizeOrderNumberReservationEntity)),
+      fetchTable('goals'),
+      fetchTable('goal_requests'),
     ]);
 
     return {
@@ -878,6 +938,8 @@ export class BackupService {
       deviceTypes,
       qrTokens,
       orderNumberReservations,
+      goals,
+      goalRequests,
       syncState: null,
     };
   }
@@ -1053,6 +1115,16 @@ export class BackupService {
       offline.orderNumberReservations || [],
       'order_number_reservations'
     );
+    const consolidatedGoals = reconcileTable(
+      online.goals || [],
+      offline.goals || [],
+      'goals'
+    );
+    const consolidatedGoalRequests = reconcileTable(
+      online.goalRequests || [],
+      offline.goalRequests || [],
+      'goal_requests'
+    );
 
     const countEntities = (data: BackupSnapshotData): number => {
       return (
@@ -1065,7 +1137,9 @@ export class BackupService {
         data.paymentAllocations.length +
         data.deviceTypes.length +
         (data.qrTokens || []).length +
-        (data.orderNumberReservations || []).length
+        (data.orderNumberReservations || []).length +
+        (data.goals || []).length +
+        (data.goalRequests || []).length
       );
     };
 
@@ -1083,6 +1157,18 @@ export class BackupService {
       deviceTypes: consolidatedDevices,
       qrTokens: consolidatedQrTokens,
       orderNumberReservations: consolidatedReservations,
+      // Consolidated backup must retain the local operational checkpoint as
+      // well as the reconciled business rows. Otherwise a pending DELETE/PATCH
+      // can disappear and be resurrected by the next sync.
+      goals: consolidatedGoals,
+      goalRequests: consolidatedGoalRequests,
+      outbox: offline.outbox || [],
+      syncHistory: offline.syncHistory || [],
+      mutationSnapshots: offline.mutationSnapshots || [],
+      optimisticOverlays: offline.optimisticOverlays || [],
+      deletedDeviceTypeMarkers: offline.deletedDeviceTypeMarkers || [],
+      changeLog: offline.changeLog || [],
+      systemSettings: offline.systemSettings || [],
       syncState: online.syncState || offline.syncState || null,
       consolidationMetadata: {
         onlineRecordCount,
@@ -1146,6 +1232,15 @@ export class BackupService {
       deviceTypes: rawData.deviceTypes.map(sanitizeEntity),
       qrTokens: (rawData.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (rawData.orderNumberReservations || []).map(sanitizeEntity),
+      goals: (rawData.goals || []).map(sanitizeEntity),
+      goalRequests: (rawData.goalRequests || []).map(sanitizeEntity),
+      outbox: (rawData.outbox || []).map(sanitizeEntity),
+      syncHistory: (rawData.syncHistory || []).map(sanitizeEntity),
+      mutationSnapshots: (rawData.mutationSnapshots || []).map(sanitizeEntity),
+      optimisticOverlays: (rawData.optimisticOverlays || []).map(sanitizeEntity),
+      deletedDeviceTypeMarkers: (rawData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+      changeLog: (rawData.changeLog || []).map(sanitizeEntity),
+      systemSettings: (rawData.systemSettings || []).map(sanitizeEntity),
       syncState: rawData.syncState ? sanitizeEntity(rawData.syncState) : null,
       consolidationMetadata: rawData.consolidationMetadata
         ? sanitizeEntity(rawData.consolidationMetadata)
@@ -1163,6 +1258,15 @@ export class BackupService {
       deviceTypes: sanitizedData.deviceTypes.length,
       qrTokens: (sanitizedData.qrTokens || []).length,
       orderNumberReservations: (sanitizedData.orderNumberReservations || []).length,
+      goals: (sanitizedData.goals || []).length,
+      goalRequests: (sanitizedData.goalRequests || []).length,
+      outbox: (sanitizedData.outbox || []).length,
+      syncHistory: (sanitizedData.syncHistory || []).length,
+      mutationSnapshots: (sanitizedData.mutationSnapshots || []).length,
+      optimisticOverlays: (sanitizedData.optimisticOverlays || []).length,
+      deletedDeviceTypeMarkers: (sanitizedData.deletedDeviceTypeMarkers || []).length,
+      changeLog: (sanitizedData.changeLog || []).length,
+      systemSettings: (sanitizedData.systemSettings || []).length,
     };
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
@@ -1269,26 +1373,57 @@ export class BackupService {
     // touching local operational tables. A checksum proves integrity, not semantic validity.
     validateReplacementData(d);
 
-    // 5. Bind the restored operational state to the CURRENT server generation.
-    // Otherwise the next sync preflight could interpret this restore as stale and
-    // clear the freshly restored local read model.
-    const { data: restoreServerGeneration, error: restoreGenerationError } =
-      await invokeSupabaseRpc<any>('get_server_reset_generation', {});
-    if (restoreGenerationError || restoreServerGeneration === null || restoreServerGeneration === undefined) {
-      throw new Error(restoreGenerationError || 'Failed to read authoritative server reset generation before restore');
+    // 5. A restore is destructive to the current local read model, so create
+    // a recovery snapshot first. The snapshot itself is read-only and preserves
+    // the exact pre-restore local state, including pending sync work.
+    const preRestore = await this.captureOfflineData();
+    const preRestoreCount =
+      (preRestore.customers || []).length +
+      (preRestore.orders || []).length +
+      (preRestore.orderItems || []).length +
+      (preRestore.outbox || []).length;
+    if (preRestoreCount > 0) {
+      await this.createSnapshot('OFFLINE', auth, {
+        name: `Pre-Restore Local Safety Snapshot ${new Date().toISOString()}`,
+        bin: options?.bin,
+        customOnlineData: preRestore,
+      });
     }
-    const authoritativeRestoreGeneration = Number(restoreServerGeneration);
 
-    // 5. Staged Transactional Replacement of Business Data inside atomic runTransaction
-    // Notice: backupSnapshots is explicitly PRESERVED and protected!
+    // 6. Never make a local restore depend on the network. If the server
+    // generation is unavailable, restore safely but mark the local state as
+    // RECONCILIATION_REQUIRED so no stale local outbox can be pushed.
+    let authoritativeRestoreGeneration: number | null = null;
+    try {
+      const { data: generation, error: generationError } =
+        await invokeSupabaseRpc<any>('get_server_reset_generation', {});
+      if (!generationError && generation !== null && generation !== undefined) {
+        const parsed = Number(generation);
+        if (Number.isSafeInteger(parsed) && parsed >= 0) {
+          authoritativeRestoreGeneration = parsed;
+        }
+      }
+    } catch {
+      authoritativeRestoreGeneration = null;
+    }
+
+    const restoredGeneration =
+      authoritativeRestoreGeneration ??
+      (Number.isSafeInteger(Number(d.syncState?.resetGeneration))
+        ? Number(d.syncState?.resetGeneration)
+        : -1);
+    const requiresReconciliation = authoritativeRestoreGeneration === null;
+
+    // 7. Fully restore the snapshot atomically. For an OFFLINE snapshot this
+    // includes the outbox, history, mutation snapshots, overlays and deletion
+    // markers; for an ONLINE snapshot those collections are normally empty.
     await localDb.runTransaction(
-      ['kvStore', 'outbox', 'syncState', 'syncHistory'],
+      ['kvStore', 'outbox', 'syncState', 'syncHistory', 'mutationSnapshots', 'optimisticOverlays'],
       'readwrite',
       (tx) => {
         localDb.clearOperationalTablesWithTx(tx);
         localDb.clearOutboxWithTx(tx);
 
-        // Populate operational stores from snapshot
         for (const c of d.customers) localDb.setWithTx(tx, 'customers', c.id, c);
         for (const b of d.businessDays) localDb.setWithTx(tx, 'businessDays', b.id, b);
         for (const o of d.orders) localDb.setWithTx(tx, 'orders', o.id, o);
@@ -1296,31 +1431,52 @@ export class BackupService {
         for (const l of d.financialLedger || []) localDb.setWithTx(tx, 'financialLedger', l.id, l);
         for (const p of d.payments || []) localDb.setWithTx(tx, 'payments', p.id, p);
         for (const a of d.paymentAllocations || []) {
-           // Ensure camelCase consistency for entities stored in kvStore
-           const normAlloc: PaymentAllocationEntity = {
-             id: a.id,
-             paymentId: a.paymentId || a.payment_id,
-             orderItemId: a.orderItemId || a.order_item_id,
-             orderId: a.orderId || a.order_id,
-             allocatedAmountMinor: a.allocatedAmountMinor ?? a.allocated_amount_minor ?? 0,
-             createdAt: a.createdAt || a.created_at,
-           };
-           localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
+          const normAlloc: PaymentAllocationEntity = {
+            id: a.id,
+            paymentId: a.paymentId || a.payment_id,
+            orderItemId: a.orderItemId || a.order_item_id,
+            orderId: a.orderId || a.order_id,
+            allocatedAmountMinor: a.allocatedAmountMinor ?? a.allocated_amount_minor ?? 0,
+            createdAt: a.createdAt || a.created_at,
+          };
+          localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of d.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
-        for (const q of d.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
-        for (const r of d.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
+        for (const goal of d.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
+        for (const request of d.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
+        for (const q of d.qrTokens || []) {
+          const normalizedQr = normalizeQrTokenEntity(q);
+          localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr);
+        }
+        for (const reservation of d.orderNumberReservations || []) {
+          localDb.setWithTx(tx, 'orderNumberReservations', reservation.id, reservation);
+        }
+        for (const marker of d.deletedDeviceTypeMarkers || []) {
+          if (marker?.id) localDb.setWithTx(tx, 'deletedDeviceTypeMarkers', marker.id, marker);
+        }
+        for (const row of d.changeLog || []) {
+          if (row?.id) localDb.setWithTx(tx, 'changeLog', row.id, row);
+        }
+        for (const row of d.systemSettings || []) {
+          if (row?.id) localDb.setWithTx(tx, 'systemSettings', row.id, row);
+        }
 
-        localDb.setSyncStateWithTx(tx, {
+        for (const outbox of d.outbox || []) localDb.saveOutboxWithTx(tx, outbox);
+        for (const history of d.syncHistory || []) localDb.saveHistoryWithTx(tx, history);
+        for (const mutation of d.mutationSnapshots || []) localDb.saveMutationSnapshotWithTx(tx, mutation);
+        for (const overlay of d.optimisticOverlays || []) localDb.saveOverlayWithTx(tx, overlay);
+
+        const restoredSyncState: SyncStateRecord = {
           ...(d.syncState || {
             table: 'global',
             lastAppliedChangeSequence: 0,
             lastPulledAt: '',
           }),
-          resetGeneration: authoritativeRestoreGeneration,
-          reconciliationRequired: false,
-          status: 'READY',
-        });
+          resetGeneration: restoredGeneration,
+          reconciliationRequired: requiresReconciliation,
+          status: requiresReconciliation ? 'RECONCILIATION_REQUIRED' : 'READY',
+        };
+        localDb.setSyncStateWithTx(tx, restoredSyncState);
       }
     );
 
@@ -1356,6 +1512,22 @@ export class BackupService {
 
     await auth.verifyBin(options?.bin as any);
 
+    // Deleting local business data is destructive. Preserve a complete local
+    // recovery point first so the operation is reversible.
+    const currentLocal = await this.captureOfflineData();
+    const currentLocalCount =
+      (currentLocal.customers || []).length +
+      (currentLocal.orders || []).length +
+      (currentLocal.orderItems || []).length +
+      (currentLocal.outbox || []).length;
+    if (currentLocalCount > 0) {
+      await this.createSnapshot('OFFLINE', auth, {
+        name: `Pre-Local-Delete Recovery Snapshot ${new Date().toISOString()}`,
+        bin: options?.bin,
+        customOnlineData: currentLocal,
+      });
+    }
+
     await localDb.clearOperationalTables({ clearOutbox: true, clearSyncState: true });
     await localDb.setLocalResetMarker(true);
 
@@ -1384,6 +1556,22 @@ export class BackupService {
     auth.assertPermission('settings:manage');
 
     await auth.verifyBin(options?.bin as any);
+
+    // Always preserve the current local state before an authoritative
+    // Online -> Local replacement. This includes unsynced outbox work.
+    const preRestore = await this.captureOfflineData();
+    const preRestoreCount =
+      (preRestore.customers || []).length +
+      (preRestore.orders || []).length +
+      (preRestore.orderItems || []).length +
+      (preRestore.outbox || []).length;
+    if (preRestoreCount > 0) {
+      await this.createSnapshot('OFFLINE', auth, {
+        name: `Pre-Online-Restore Local Safety Snapshot ${new Date().toISOString()}`,
+        bin: options?.bin,
+        customOnlineData: preRestore,
+      });
+    }
 
     const onlineData = await this.captureOnlineData(options?.customOnlineData);
     validateReplacementData(onlineData);
@@ -1423,6 +1611,8 @@ export class BackupService {
           localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of onlineData.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
+        for (const goal of onlineData.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
+        for (const request of onlineData.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
         for (const q of onlineData.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
         for (const r of onlineData.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
@@ -1613,8 +1803,10 @@ export class BackupService {
       throw new AuthorizationError('BIN must contain at least 4 numeric digits.');
     }
 
+    // If a preview froze a payload, execute that exact payload. Do not
+    // recapture local state between preview and destructive execution.
     const localRaw = options?.customLocalData
-      ? { ...(await this.captureLocalData()), ...options.customLocalData }
+      ? options.customLocalData
       : await this.captureLocalData();
     const localData = normalizeReplacementLocalData(localRaw);
 
@@ -1963,7 +2155,28 @@ export class BackupService {
     if (localRecoveryCount > 0) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Cloud-Reset Local Recovery Snapshot ${new Date().toISOString()}`,
+        bin: bin.trim(),
         customOnlineData: localRecoveryData,
+      });
+    }
+
+    // Also checkpoint the authoritative cloud state that is about to be
+    // destroyed. A local snapshot alone is not a cloud backup when the two
+    // sides differ.
+    const onlineRecoveryData = await this.captureOnlineData();
+    const onlineRecoveryCount =
+      (onlineRecoveryData.customers || []).length +
+      (onlineRecoveryData.orders || []).length +
+      (onlineRecoveryData.orderItems || []).length +
+      (onlineRecoveryData.payments || []).length +
+      (onlineRecoveryData.financialLedger || []).length +
+      (onlineRecoveryData.goals || []).length +
+      (onlineRecoveryData.goalRequests || []).length;
+    if (onlineRecoveryCount > 0) {
+      await this.createSnapshot('ONLINE', auth, {
+        name: `Pre-Cloud-Reset Authoritative Cloud Snapshot ${new Date().toISOString()}`,
+        bin: bin.trim(),
+        customOnlineData: onlineRecoveryData,
       });
     }
 
@@ -2001,6 +2214,15 @@ export class BackupService {
       deviceTypes: (snapshot.data.deviceTypes || []).map(sanitizeEntity),
       qrTokens: (snapshot.data.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (snapshot.data.orderNumberReservations || []).map(sanitizeEntity),
+      goals: (snapshot.data.goals || []).map(sanitizeEntity),
+      goalRequests: (snapshot.data.goalRequests || []).map(sanitizeEntity),
+      outbox: (snapshot.data.outbox || []).map(sanitizeEntity),
+      syncHistory: (snapshot.data.syncHistory || []).map(sanitizeEntity),
+      mutationSnapshots: (snapshot.data.mutationSnapshots || []).map(sanitizeEntity),
+      optimisticOverlays: (snapshot.data.optimisticOverlays || []).map(sanitizeEntity),
+      deletedDeviceTypeMarkers: (snapshot.data.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+      changeLog: (snapshot.data.changeLog || []).map(sanitizeEntity),
+      systemSettings: (snapshot.data.systemSettings || []).map(sanitizeEntity),
       syncState: snapshot.data.syncState ? sanitizeEntity(snapshot.data.syncState) : null,
       consolidationMetadata: snapshot.data.consolidationMetadata
         ? sanitizeEntity(snapshot.data.consolidationMetadata)
@@ -2139,6 +2361,21 @@ export class BackupService {
     if (d.orderNumberReservations && !Array.isArray(d.orderNumberReservations)) {
       return { valid: false, error: 'Collection "orderNumberReservations" must be an array if present', errorCode: 'INVALID_DATA_COLLECTION' };
     }
+    for (const [name, value] of [
+      ['outbox', d.outbox],
+      ['syncHistory', d.syncHistory],
+      ['mutationSnapshots', d.mutationSnapshots],
+      ['optimisticOverlays', d.optimisticOverlays],
+      ['deletedDeviceTypeMarkers', d.deletedDeviceTypeMarkers],
+      ['changeLog', d.changeLog],
+      ['systemSettings', d.systemSettings],
+      ['goals', d.goals],
+      ['goalRequests', d.goalRequests],
+    ] as Array<[string, unknown]>) {
+      if (value !== undefined && !Array.isArray(value)) {
+        return { valid: false, error: `Collection "${name}" must be an array if present`, errorCode: 'INVALID_DATA_COLLECTION' };
+      }
+    }
 
     // Sanitize entity collections recursively from secrets
     const sanitizedData: BackupSnapshotData = {
@@ -2152,6 +2389,15 @@ export class BackupService {
       deviceTypes: (d.deviceTypes || []).map(sanitizeEntity),
       qrTokens: (d.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (d.orderNumberReservations || []).map(sanitizeEntity),
+      goals: (d.goals || []).map(sanitizeEntity),
+      goalRequests: (d.goalRequests || []).map(sanitizeEntity),
+      outbox: (d.outbox || []).map(sanitizeEntity),
+      syncHistory: (d.syncHistory || []).map(sanitizeEntity),
+      mutationSnapshots: (d.mutationSnapshots || []).map(sanitizeEntity),
+      optimisticOverlays: (d.optimisticOverlays || []).map(sanitizeEntity),
+      deletedDeviceTypeMarkers: (d.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+      changeLog: (d.changeLog || []).map(sanitizeEntity),
+      systemSettings: (d.systemSettings || []).map(sanitizeEntity),
       syncState: d.syncState ? sanitizeEntity(d.syncState) : null,
       consolidationMetadata: d.consolidationMetadata ? sanitizeEntity(d.consolidationMetadata) : undefined,
     };
@@ -2283,7 +2529,32 @@ export class BackupService {
       targetSnapshotName = `${portableFile.snapshotName} (Imported)`;
     }
 
-    const sanitizedData = portableFile.data;
+    const sanitizedData: BackupSnapshotData = {
+      ...portableFile.data,
+      // Portable files are untrusted input. Never allow an imported outbox to
+      // execute automatically after restore; it must be reconciled explicitly
+      // against the current server generation.
+      outbox: (portableFile.data.outbox || []).map((item) => ({
+        ...item,
+        status: 'blocked',
+        lastError: 'Imported backup command blocked pending reconciliation',
+        retryCount: Number(item.retryCount || 0),
+      })),
+      syncState: portableFile.data.syncState
+        ? {
+            ...portableFile.data.syncState,
+            reconciliationRequired: true,
+            status: 'RECONCILIATION_REQUIRED',
+          }
+        : {
+            table: 'global',
+            lastAppliedChangeSequence: 0,
+            lastPulledAt: '',
+            resetGeneration: -1,
+            reconciliationRequired: true,
+            status: 'RECONCILIATION_REQUIRED',
+          },
+    };
     const checksum = computeSnapshotChecksum(sanitizedData);
 
     const record: BackupSnapshotRecord = {
