@@ -74,6 +74,8 @@ export const SyncCenter: React.FC = () => {
   const [sessionFilter, setSessionFilter] = useState<'ALL' | 'SYNCED' | 'PENDING' | 'BLOCKED' | 'FAILED'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedBinCommandIds, setSelectedBinCommandIds] = useState<string[]>([]);
+  const [isBinModalOpen, setIsBinModalOpen] = useState<boolean>(false);
+  const [binInput, setBinInput] = useState<string>('');
 
   const sessionStartTime = useMemo(() => getSessionStartTime(), []);
 
@@ -268,21 +270,29 @@ export const SyncCenter: React.FC = () => {
       return;
     }
 
-    const bin = typeof window !== 'undefined'
-      ? window.prompt(
-          locale === 'ar'
-            ? `أدخل BIN مرة واحدة للـ ${commandIds.length} عمليات المحددة:`
-            : `Enter BIN once for the ${commandIds.length} selected operations:`
-        )
-      : null;
+    setSelectedBinCommandIds(commandIds);
+    setBinInput('');
+    setIsBinModalOpen(true);
+  };
 
-    if (!bin || !/^\d{4,}$/.test(bin.trim())) {
-      showToast(locale === 'ar' ? 'BIN غير صالح' : 'Invalid BIN', 'error');
+  const handleConfirmBin = async () => {
+    const commandIds = selectedBinCommandIds;
+    const normalizedBin = binInput.trim();
+
+    if (commandIds.length === 0) {
+      setIsBinModalOpen(false);
+      showToast(locale === 'ar' ? 'حدد عملية واحدة على الأقل' : 'Select at least one operation', 'error');
       return;
     }
 
+    if (!/^\d{4,}$/.test(normalizedBin)) {
+      showToast(locale === 'ar' ? 'BIN غير صالح: يجب أن يحتوي على 4 أرقام على الأقل' : 'Invalid BIN: enter at least 4 digits', 'error');
+      return;
+    }
+
+    setIsBinModalOpen(false);
+
     try {
-      const normalizedBin = bin.trim();
       const outbox = await localDb.listOutbox();
       const selected = outbox.filter((o) => commandIds.includes(o.commandId) && isBinRequiredCommand(o));
 
@@ -306,6 +316,7 @@ export const SyncCenter: React.FC = () => {
       }
 
       setSelectedBinCommandIds([]);
+      setBinInput('');
       await refreshSyncData();
       await handleManualSync();
     } catch (err: any) {
@@ -925,6 +936,61 @@ export const SyncCenter: React.FC = () => {
               </div>
             </div>
           )}
+
+
+          <Modal
+            isOpen={isBinModalOpen}
+            onClose={() => {
+              setIsBinModalOpen(false);
+              setBinInput('');
+            }}
+            title={locale === 'ar' ? 'إدخال BIN' : 'Enter BIN'}
+            className="max-w-md"
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-[#8eb698]">
+                {locale === 'ar'
+                  ? `أدخل BIN مرة واحدة لاعتماد ${selectedBinCommandIds.length} عمليات محددة. سيتم التحقق من كل عملية من الخادم.`
+                  : `Enter BIN once to authorize ${selectedBinCommandIds.length} selected operations. The server will validate each command.`}
+              </p>
+              <input
+                type="password"
+                value={binInput}
+                onChange={(e) => setBinInput(e.target.value.replace(/\\D/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    void handleConfirmBin();
+                  }
+                }}
+                inputMode="numeric"
+                autoFocus
+                autoComplete="off"
+                maxLength={32}
+                placeholder={locale === 'ar' ? 'أدخل BIN هنا' : 'Enter BIN here'}
+                className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-[#14423b] bg-white dark:bg-[#041714] text-gray-900 dark:text-[#daf1de] outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsBinModalOpen(false);
+                    setBinInput('');
+                  }}
+                >
+                  {locale === 'ar' ? 'إلغاء' : 'Cancel'}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleConfirmBin()}
+                  disabled={!/^\\d{4,}$/.test(binInput.trim()) || isSyncing || !isOnline}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {locale === 'ar' ? 'اعتماد ومزامنة' : 'Authorize & Sync'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
 
           {/* Prominent Action Banner when Blocked Items Exist */}
           {blockedCount > 0 && (
