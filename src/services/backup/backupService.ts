@@ -1222,7 +1222,29 @@ export class BackupService {
       ? { ...(await this.captureLocalData()), ...options.customLocalData }
       : await this.captureLocalData();
 
-    // 2. Strict Pre-Validation of payment_allocations
+    // 2. HARD SAFETY GATE: never allow an empty local dataset to replace cloud data.
+    // This prevents the destructive sequence:
+    // local capture = empty -> server purge -> empty reconstruction.
+    // An intentionally empty cloud must use the explicit Online Reset workflow.
+    const localBusinessCounts = [
+      (localData.customers || []).length,
+      (localData.businessDays || []).length,
+      (localData.orders || []).length,
+      (localData.orderItems || []).length,
+      (localData.payments || []).length,
+      (localData.financialLedger || []).length,
+      (localData.paymentAllocations || []).length,
+      (localData.deviceTypes || []).length,
+      (localData.qrTokens || []).length,
+    ];
+    const localBusinessEntityCount = localBusinessCounts.reduce((sum, count) => sum + count, 0);
+    if (localBusinessEntityCount === 0) {
+      throw new Error(
+        'SAFE_REPLACE_BLOCKED: Local business data is empty. Cloud data was not modified. Restore/recover the local data first, then retry.'
+      );
+    }
+
+    // 3. Strict Pre-Validation of payment_allocations
     const allocations = localData.paymentAllocations || [];
     for (const alloc of allocations) {
       if (!alloc.id || !alloc.id.trim()) {
