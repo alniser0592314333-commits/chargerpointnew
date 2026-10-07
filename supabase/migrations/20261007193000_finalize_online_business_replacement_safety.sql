@@ -168,6 +168,49 @@ BEGIN
     RAISE EXCEPTION 'Replacement rejected: duplicate active QR target';
   END IF;$);
 
+  /* Preserve GENERATED ALWAYS identity values from the offline snapshot by
+     explicitly overriding the system-generated value. Then advance both
+     backing sequences so future inserts remain collision-free. */
+  v := replace(v,
+    $    ) VALUES (
+      v_id,
+      coalesce((v_item->>'day_id',v_item->>'dayId')::uuid,$,
+    $    ) OVERRIDING SYSTEM VALUE VALUES (
+      v_id,
+      coalesce((v_item->>'day_id',v_item->>'dayId')::uuid,$);
+
+  v := replace(v,
+    $    INSERT INTO public.financial_ledger(
+      id,sequence_number,event_type,amount_minor,order_id,order_item_id,customer_id,actor_admin_id,
+      reference_id,linked_ledger_id,metadata,created_at
+    ) VALUES ($,
+    $    INSERT INTO public.financial_ledger(
+      id,sequence_number,event_type,amount_minor,order_id,order_item_id,customer_id,actor_admin_id,
+      reference_id,linked_ledger_id,metadata,created_at
+    ) OVERRIDING SYSTEM VALUE VALUES ($);
+
+  v := replace(v,
+    $    INSERT INTO public.orders(
+      id,day_id,customer_id,display_number,internal_sequence,status,customer_balance_snapshot_minor,
+      notes,qr_token_id,charging_at,delivered_at,cancelled_at,created_at,updated_at,deleted_at,version
+    ) VALUES ($,
+    $    INSERT INTO public.orders(
+      id,day_id,customer_id,display_number,internal_sequence,status,customer_balance_snapshot_minor,
+      notes,qr_token_id,charging_at,delivered_at,cancelled_at,created_at,updated_at,deleted_at,version
+    ) OVERRIDING SYSTEM VALUE VALUES ($);
+
+  v := replace(v,
+    $  /* ---------- ORDER ITEMS ---------- */$,
+    $  /* ---------- IDENTITY SEQUENCE REPAIR ---------- */
+  PERFORM setval('public.orders_internal_sequence_seq',
+    GREATEST(COALESCE((SELECT max(internal_sequence) FROM public.orders),0),1),
+    (SELECT count(*) > 0 FROM public.orders));
+  PERFORM setval('public.financial_ledger_sequence_number_seq',
+    GREATEST(COALESCE((SELECT max(sequence_number) FROM public.financial_ledger),0),1),
+    (SELECT count(*) > 0 FROM public.financial_ledger));
+
+  /* ---------- ORDER ITEMS ---------- */$);
+
   EXECUTE v;
 END
 $patch$;
