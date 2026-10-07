@@ -1,24 +1,6 @@
--- Migration 00117: finalize the authoritative execute_sync_command wrapper.
--- The implementation remains in execute_sync_command_impl; this wrapper adds
--- reset-generation protection and preserves expected-version forwarding.
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'public'
-          AND p.proname = 'execute_sync_command_impl'
-          AND pg_get_function_identity_arguments(p.oid) =
-              'p_command_id uuid, p_command_type text, p_aggregate_type text, p_aggregate_id uuid, p_payload jsonb, p_expected_version integer'
-    ) THEN
-        ALTER FUNCTION public.execute_sync_command(
-            uuid, text, text, uuid, jsonb, integer
-        ) RENAME TO execute_sync_command_impl;
-    END IF;
-END
-$$;
+-- Migration 00117: finalize the runtime execute_sync_command contract.
+-- The canonical processor in 00116 owns business logic. This wrapper adds the
+-- transport expected-version forwarding and stale-reset protection.
 
 CREATE OR REPLACE FUNCTION public.execute_sync_command(
     p_command_id uuid,
@@ -31,7 +13,7 @@ CREATE OR REPLACE FUNCTION public.execute_sync_command(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_server_gen BIGINT;
@@ -49,8 +31,8 @@ BEGIN
      WHERE key = 'server_reset_generation';
 
     v_server_gen := COALESCE(v_server_gen, 1);
-
     v_payload := COALESCE(p_payload, '{}'::jsonb);
+
     v_cmd_gen := COALESCE(
         (v_payload->>'resetGeneration')::BIGINT,
         (v_payload->>'reset_generation')::BIGINT,
@@ -74,18 +56,16 @@ BEGIN
         );
     END IF;
 
-    RETURN public.execute_sync_command_impl(
+    RETURN public.execute_canonical_sync_command(
         p_command_id,
         p_command_type,
-        p_aggregate_type,
-        p_aggregate_id,
         v_payload,
-        p_expected_version
+        COALESCE(v_payload->>'payloadHash', 'no_hash'),
+        COALESCE(v_payload->>'deviceId', 'default_device'),
+        auth.uid()
     );
 END;
 $function$;
 
 REVOKE EXECUTE ON FUNCTION public.execute_sync_command(uuid,text,text,uuid,jsonb,integer) FROM PUBLIC, anon;
-REVOKE EXECUTE ON FUNCTION public.execute_sync_command_impl(uuid,text,text,uuid,jsonb,integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.execute_sync_command(uuid,text,text,uuid,jsonb,integer) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.execute_sync_command_impl(uuid,text,text,uuid,jsonb,integer) TO authenticated;
