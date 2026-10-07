@@ -238,7 +238,7 @@ export const SyncCenter: React.FC = () => {
     const bin = typeof window !== 'undefined'
       ? window.prompt(locale === 'ar' ? 'أدخل BIN للسماح بتنفيذ العملية المعلقة:' : 'Enter BIN to authorize the queued operation:')
       : null;
-    if (!bin || !/^\\d{4,}$/.test(bin.trim())) {
+    if (!bin || !/^\d{4,}$/.test(bin.trim())) {
       showToast(locale === 'ar' ? 'BIN غير صالح' : 'Invalid BIN', 'error');
       return;
     }
