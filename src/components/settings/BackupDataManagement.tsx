@@ -414,9 +414,13 @@ export const BackupDataManagement: React.FC = () => {
       const auth = await getAuthContext();
       await backupService.deleteOnlineBusinessData(auth, cleanBin);
 
-      // Post-reset local operational state cleanup
-      // Clear local operational tables & outbox so stale local data cannot overwrite reset server
-      await localDb.clearOperationalTables();
+      // Post-reset local cleanup must include the outbox, mutation snapshots,
+      // overlays and sync state. Leaving a pending command here could repopulate
+      // the freshly reset cloud on the next sync cycle.
+      await localDb.clearOperationalTables({
+        clearOutbox: true,
+        clearSyncState: true,
+      });
       await localDb.setLocalResetMarker(true);
       await reloadStoreFromLocal();
 
