@@ -413,6 +413,31 @@ export function normalizePaymentAllocationEntity(a: any): any {
     created_at: a.createdAt || a.created_at || new Date().toISOString(),
   };
 }
+export function normalizeOrderNumberReservationEntity(r: any): any {
+  if (!r) return r;
+  return {
+    id: r.id,
+    businessDayId: r.businessDayId || r.business_day_id,
+    business_day_id: r.businessDayId || r.business_day_id,
+    deviceId: r.deviceId || r.device_id,
+    device_id: r.deviceId || r.device_id,
+    startNumber: r.startNumber ?? r.start_number,
+    start_number: r.startNumber ?? r.start_number,
+    endNumber: r.endNumber ?? r.end_number,
+    end_number: r.endNumber ?? r.end_number,
+    nextNumber: r.nextNumber ?? r.next_number,
+    next_number: r.nextNumber ?? r.next_number,
+    status: r.status || 'ACTIVE',
+    commandId: r.commandId || r.command_id,
+    command_id: r.commandId || r.command_id,
+    createdAt: r.createdAt || r.created_at || new Date().toISOString(),
+    created_at: r.createdAt || r.created_at || new Date().toISOString(),
+    updatedAt: r.updatedAt || r.updated_at || r.createdAt || r.created_at || new Date().toISOString(),
+    updated_at: r.updatedAt || r.updated_at || r.createdAt || r.created_at || new Date().toISOString(),
+    version: r.version || 1,
+  };
+}
+
 export function normalizeQrTokenEntity(q: any): any {
   if (!q) return q;
 
@@ -536,7 +561,7 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
     paymentAllocations: (data.paymentAllocations || []).map(normalizePaymentAllocationEntity),
     deviceTypes: (data.deviceTypes || []).map(normalizeDeviceTypeEntity),
     qrTokens: (data.qrTokens || []).map(normalizeQrTokenEntity),
-    orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity),
+    orderNumberReservations: (data.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity),
     syncState: data.syncState || null,
     consolidationMetadata: data.consolidationMetadata,
   };
@@ -579,6 +604,7 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     payments: data.payments || [],
     financial_ledger: data.financialLedger || [],
     payment_allocations: data.paymentAllocations || [],
+    order_number_reservations: data.orderNumberReservations || [],
   };
 
   const ids = new Map<string, Set<string>>();
@@ -782,6 +808,7 @@ export class BackupService {
       paymentAllocations,
       deviceTypes,
       qrTokens,
+      orderNumberReservations,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
       fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
@@ -792,6 +819,7 @@ export class BackupService {
       fetchTable('payment_allocations').then((rows) => rows.map(normalizePaymentAllocationEntity)),
       fetchTable('device_types').then((rows) => rows.map(normalizeDeviceTypeEntity)),
       fetchTable('qr_tokens').then((rows) => rows.map(normalizeQrTokenEntity)),
+      fetchTable('order_number_reservations').then((rows) => rows.map(normalizeOrderNumberReservationEntity)),
     ]);
 
     return {
@@ -804,6 +832,7 @@ export class BackupService {
       paymentAllocations,
       deviceTypes,
       qrTokens,
+      orderNumberReservations,
       syncState: null,
     };
   }
@@ -1418,6 +1447,7 @@ export class BackupService {
       { key: 'payments', name: 'payments' },
       { key: 'financialLedger', name: 'financial_ledger' },
       { key: 'paymentAllocations', name: 'payment_allocations' },
+      { key: 'orderNumberReservations', name: 'order_number_reservations' },
     ];
 
     const summary: Record<
@@ -1531,7 +1561,8 @@ export class BackupService {
       (localData.financialLedger || []).length +
       (localData.paymentAllocations || []).length +
       (localData.deviceTypes || []).length +
-      (localData.qrTokens || []).length;
+      (localData.qrTokens || []).length +
+      (localData.orderNumberReservations || []).length;
 
     if (localBusinessEntityCount === 0) {
       throw new Error(
@@ -1682,6 +1713,19 @@ export class BackupService {
         linked_ledger_id: l.linkedLedgerId ?? l.linked_ledger_id ?? null,
         metadata: l.metadata ?? {},
         created_at: l.createdAt ?? l.created_at,
+      })),
+      order_number_reservations: (localData.orderNumberReservations || []).map((r: any) => ({
+        id: r.id,
+        business_day_id: r.businessDayId ?? r.business_day_id,
+        device_id: r.deviceId ?? r.device_id,
+        start_number: r.startNumber ?? r.start_number,
+        end_number: r.endNumber ?? r.end_number,
+        next_number: r.nextNumber ?? r.next_number,
+        status: r.status ?? 'ACTIVE',
+        command_id: r.commandId ?? r.command_id ?? null,
+        created_at: r.createdAt ?? r.created_at,
+        updated_at: r.updatedAt ?? r.updated_at,
+        version: r.version ?? 1,
       })),
       payment_allocations: allocations.map((a: any) => ({
         id: a.id,
