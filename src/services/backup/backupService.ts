@@ -1809,13 +1809,68 @@ export class BackupService {
       })),
     };
 
-    const { data, error } = await invokeSupabaseRpc<any>('replace_online_business_data', {
-      p_entered_bin: bin.trim(),
-      p_payload: payload,
-    });
+    let data: any = null;
+    let error: any = null;
+
+    try {
+      const rpcResult = await invokeSupabaseRpc<any>('replace_online_business_data', {
+        p_entered_bin: bin.trim(),
+        p_payload: payload,
+      });
+      data = rpcResult.data;
+      error = rpcResult.error;
+    } catch (rpcError: any) {
+      error = rpcError?.message || String(rpcError);
+    }
 
     if (error || !data || !data.success) {
-      throw new Error(error || 'Local -> Online Replacement failed on server');
+      // The request can be ambiguous: PostgreSQL may have committed the atomic
+      // replacement while the HTTP response was lost. Never blindly retry a
+      // destructive replacement. Instead, read the authoritative cloud state
+      // and compare it with the exact normalized payload we intended to promote.
+      // If it matches, the replacement definitely committed; recover its current
+      // generation and continue local reconciliation without replaying the RPC.
+      try {
+        const cloudAfterFailure = normalizeReplacementLocalData(await this.captureOnlineData());
+        const localChecksum = computeSnapshotChecksum(normalizeReplacementLocalData(localData));
+        const cloudChecksum = computeSnapshotChecksum(cloudAfterFailure);
+
+        if (localChecksum === cloudChecksum) {
+          const generationResult = await invokeSupabaseRpc<any>('get_server_reset_generation', {});
+          const recoveredGeneration = Number(generationResult.data);
+
+          if (generationResult.error || !Number.isSafeInteger(recoveredGeneration) || recoveredGeneration < 0) {
+            throw new Error('Replacement committed but authoritative server generation could not be recovered');
+          }
+
+          data = {
+            success: true,
+            operation: 'REPLACE_ONLINE_BUSINESS_DATA',
+            replacementId: 'recovered-after-response-loss',
+            completedAt: new Date().toISOString(),
+            serverResetGeneration: recoveredGeneration,
+            counts: {
+              device_types: cloudAfterFailure.deviceTypes.length,
+              business_days: cloudAfterFailure.businessDays.length,
+              customers: cloudAfterFailure.customers.length,
+              qr_tokens: cloudAfterFailure.qrTokens.length,
+              orders: cloudAfterFailure.orders.length,
+              order_items: cloudAfterFailure.orderItems.length,
+              payments: cloudAfterFailure.payments.length,
+              financial_ledger: cloudAfterFailure.financialLedger.length,
+              payment_allocations: cloudAfterFailure.paymentAllocations.length,
+              order_number_reservations: cloudAfterFailure.orderNumberReservations.length,
+            },
+          };
+          error = null;
+        }
+      } catch (verificationError: any) {
+        error = error || verificationError?.message || String(verificationError);
+      }
+
+      if (error || !data || !data.success) {
+        throw new Error(error || 'Local -> Online Replacement failed on server');
+      }
     }
 
     // The replacement RPC deliberately creates a new authoritative reset generation
