@@ -1645,6 +1645,7 @@ export const BackupDataManagement: React.FC = () => {
                         payments: locale === 'ar' ? 'سندات الدفع' : 'Payments',
                         financial_ledger: locale === 'ar' ? 'السجل المالي' : 'Financial Ledger',
                         payment_allocations: locale === 'ar' ? 'توزيعات المدفوعات' : 'Payment Allocations',
+                        order_number_reservations: locale === 'ar' ? 'حجوزات أرقام الطلبات' : 'Order Number Reservations',
                       };
                       return (
                         <tr key={key} className={key === 'payment_allocations' ? 'bg-amber-50/40 dark:bg-amber-950/20 font-medium' : ''}>
