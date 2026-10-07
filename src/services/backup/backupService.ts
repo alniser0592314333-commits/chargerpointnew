@@ -1844,15 +1844,14 @@ export class BackupService {
     const currentSyncState = await localDb.getSyncState('global');
     const promotedSyncState: SyncStateRecord = {
       ...(currentSyncState || {
-        key: 'global',
+        table: 'global',
         lastAppliedChangeSequence: 0,
         lastPulledAt: '',
-        lastPushedAt: '',
         resetGeneration: authoritativeGeneration,
         status: 'READY',
         reconciliationRequired: false,
       }),
-      key: 'global',
+      table: 'global',
       lastAppliedChangeSequence: 0,
       lastPulledAt: new Date().toISOString(),
       resetGeneration: authoritativeGeneration,
