@@ -2476,10 +2476,7 @@ const buildPaymentProjectionIndexes = (
   effectiveOrdersMap: Map<string, OrderEntity>,
   effectiveItemsMap: Map<string, OrderItemEntity>
 ): PaymentProjectionIndexes => {
-  const recognizedItemsByCustomer = new Map<
-    string,
-    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
-  >();
+  const recognizedItems: Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }> = [];
   const recognizedItemsByOrder = new Map<
     string,
     Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
