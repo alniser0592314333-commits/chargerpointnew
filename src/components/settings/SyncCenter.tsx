@@ -956,7 +956,7 @@ export const SyncCenter: React.FC = () => {
               <input
                 type="password"
                 value={binInput}
-                onChange={(e) => setBinInput(e.target.value.replace(/\\D/g, ''))}
+                onChange={(e) => setBinInput(e.target.value.replace(/\D/g, ''))}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     void handleConfirmBin();
@@ -983,7 +983,7 @@ export const SyncCenter: React.FC = () => {
                 <Button
                   type="button"
                   onClick={() => void handleConfirmBin()}
-                  disabled={!/^\\d{4,}$/.test(binInput.trim()) || isSyncing || !isOnline}
+                  disabled={!/^\d{4,}$/.test(binInput.trim()) || isSyncing || !isOnline}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   {locale === 'ar' ? 'اعتماد ومزامنة' : 'Authorize & Sync'}
