@@ -4283,23 +4283,79 @@ export interface UIDaySummary {
 export const getDaysList = async (): Promise<UIDaySummary[]> => {
   await ensureStoreHydrated();
 
-  // Reconcile missing BusinessDayEntities for any order with an unrepresented dayId
+  // The Days screen is a summary/read-only view. Do not call getOrdersForDay()
+  // here: that function intentionally performs the full per-order payment/status
+  // projection needed by the selected day's detail screen. Calling it for every
+  // day turns opening the Days screen into a full historical read.
+  //
+  // Build the summary from the already-hydrated local maps in a single pass.
+  // Pending order/item overlays are included so the summary remains consistent
+  // with the local-first UI while offline.
   for (const ord of ordersMap.values()) {
     if (ord.dayId && !daysMap.has(ord.dayId)) {
       await ensureBusinessDayEntityExists(ord.dayId);
     }
   }
 
+  const effectiveOrdersMap = new Map(ordersMap);
+  const effectiveItemsMap = new Map(itemsMap);
+
+  for (const overlay of localDb.listOverlaysSync()) {
+    if (overlay.status !== 'PENDING') continue;
+
+    const payload = (overlay.patch || overlay.entityPayload || {}) as Record<string, unknown>;
+
+    if (overlay.entityType === 'orders') {
+      const base = effectiveOrdersMap.get(overlay.entityId);
+      const effective = {
+        ...(base || {}),
+        ...payload,
+        id: overlay.entityId,
+      } as OrderEntity;
+
+      if (overlay.operation === 'DELETE') {
+        effectiveOrdersMap.delete(overlay.entityId);
+      } else {
+        effectiveOrdersMap.set(overlay.entityId, effective);
+      }
+    } else if (overlay.entityType === 'order_items') {
+      const base = effectiveItemsMap.get(overlay.entityId);
+      const effective = {
+        ...(base || {}),
+        ...payload,
+        id: overlay.entityId,
+      } as OrderItemEntity;
+
+      if (overlay.operation === 'DELETE') {
+        effectiveItemsMap.delete(overlay.entityId);
+      } else {
+        effectiveItemsMap.set(overlay.entityId, effective);
+      }
+    }
+  }
+
+  const orderCountByDay = new Map<string, number>();
+  for (const order of effectiveOrdersMap.values()) {
+    if (!order.dayId || order.status === 'cancelled') continue;
+    orderCountByDay.set(order.dayId, (orderCountByDay.get(order.dayId) || 0) + 1);
+  }
+
+  const totalValueByDay = new Map<string, number>();
+  for (const item of effectiveItemsMap.values()) {
+    if (item.status === 'cancelled') continue;
+
+    const order = effectiveOrdersMap.get(item.orderId);
+    if (!order?.dayId || order.status === 'cancelled') continue;
+
+    totalValueByDay.set(
+      order.dayId,
+      (totalValueByDay.get(order.dayId) || 0) + Number(item.totalPriceMinor || 0)
+    );
+  }
+
   const result: UIDaySummary[] = [];
 
   for (const day of daysMap.values()) {
-    const orders = await getOrdersForDay(day.id);
-    let totalValueMinor = 0;
-    for (const ord of orders) {
-      for (const item of ord.items) {
-        totalValueMinor += item.priceMinor;
-      }
-    }
     const resolvedDate =
       day.businessDate ||
       (day as any).business_date ||
@@ -4311,8 +4367,8 @@ export const getDaysList = async (): Promise<UIDaySummary[]> => {
       id: day.id,
       date: resolvedDate,
       isClosed: day.isClosed ?? (day as any).is_closed ?? false,
-      orderCount: orders.length,
-      totalOrderValueMinor: totalValueMinor,
+      orderCount: orderCountByDay.get(day.id) || 0,
+      totalOrderValueMinor: totalValueByDay.get(day.id) || 0,
     });
   }
 
