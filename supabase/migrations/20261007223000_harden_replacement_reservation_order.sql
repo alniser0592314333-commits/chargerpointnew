@@ -101,36 +101,6 @@ BEGIN
   END LOOP;
  
 
-  /* ---------- ORDER NUMBER RESERVATIONS: business_days must exist first ---------- */
-  FOR v_item IN SELECT * FROM jsonb_array_elements(coalesce(p_payload->'order_number_reservations','[]'::jsonb)) LOOP
-    v_id := (v_item->>'id')::uuid;
-    INSERT INTO public.order_number_reservations(
-      id,business_day_id,device_id,start_number,end_number,next_number,status,command_id,created_at,updated_at,version
-    ) VALUES (
-      v_id,
-      coalesce((v_item->>'business_day_id'),(v_item->>'businessDayId'))::uuid,
-      coalesce((v_item->>'device_id'),(v_item->>'deviceId'))::uuid,
-      coalesce((v_item->>'start_number')::integer,(v_item->>'startNumber')::integer),
-      coalesce((v_item->>'end_number')::integer,(v_item->>'endNumber')::integer),
-      coalesce((v_item->>'next_number')::integer,(v_item->>'nextNumber')::integer),
-      upper(coalesce(v_item->>'status','ACTIVE')),
-      CASE WHEN coalesce(v_item->>'command_id',v_item->>'commandId') ~* '^[0-9a-f-]{36}$' THEN coalesce(v_item->>'command_id',v_item->>'commandId')::uuid ELSE NULL END,
-      coalesce((v_item->>'created_at')::timestamptz,(v_item->>'createdAt')::timestamptz,now()),
-      coalesce((v_item->>'updated_at')::timestamptz,(v_item->>'updatedAt')::timestamptz,now()),
-      coalesce((v_item->>'version')::integer,1)
-    );
-  END LOOP;
-
- IF EXISTS (
-    SELECT 1 FROM (
-      SELECT (x->>'id') id,count(*) c FROM jsonb_array_elements(coalesce(p_payload->'business_days','[]'::jsonb)) x
-      GROUP BY 1 HAVING count(*) > 1
-    ) d
-  ) THEN RAISE EXCEPTION 'Duplicate business_day ID in replacement payload'; END IF;
-
-  FOR v_item IN SELECT * FROM jsonb_array_elements(coalesce(p_payload->'customers','[]'::jsonb)) LOOP
-    IF (v_item->>'id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN RAISE EXCEPTION 'Invalid customer ID'; END IF;
-  END LOOP;
   IF EXISTS (
     SELECT 1 FROM (
       SELECT (x->>'id') id,count(*) c FROM jsonb_array_elements(coalesce(p_payload->'customers','[]'::jsonb)) x
@@ -346,6 +316,38 @@ BEGIN
       coalesce((v_item->>'version')::integer,1)
     );
   END LOOP;
+
+  /* ---------- ORDER NUMBER RESERVATIONS: business_days must exist first ---------- */
+  FOR v_item IN SELECT * FROM jsonb_array_elements(coalesce(p_payload->'order_number_reservations','[]'::jsonb)) LOOP
+    v_id := (v_item->>'id')::uuid;
+    INSERT INTO public.order_number_reservations(
+      id,business_day_id,device_id,start_number,end_number,next_number,status,command_id,created_at,updated_at,version
+    ) VALUES (
+      v_id,
+      coalesce((v_item->>'business_day_id'),(v_item->>'businessDayId'))::uuid,
+      coalesce((v_item->>'device_id'),(v_item->>'deviceId'))::uuid,
+      coalesce((v_item->>'start_number')::integer,(v_item->>'startNumber')::integer),
+      coalesce((v_item->>'end_number')::integer,(v_item->>'endNumber')::integer),
+      coalesce((v_item->>'next_number')::integer,(v_item->>'nextNumber')::integer),
+      upper(coalesce(v_item->>'status','ACTIVE')),
+      CASE WHEN coalesce(v_item->>'command_id',v_item->>'commandId') ~* '^[0-9a-f-]{36}$' THEN coalesce(v_item->>'command_id',v_item->>'commandId')::uuid ELSE NULL END,
+      coalesce((v_item->>'created_at')::timestamptz,(v_item->>'createdAt')::timestamptz,now()),
+      coalesce((v_item->>'updated_at')::timestamptz,(v_item->>'updatedAt')::timestamptz,now()),
+      coalesce((v_item->>'version')::integer,1)
+    );
+  END LOOP;
+
+ IF EXISTS (
+    SELECT 1 FROM (
+      SELECT (x->>'id') id,count(*) c FROM jsonb_array_elements(coalesce(p_payload->'business_days','[]'::jsonb)) x
+      GROUP BY 1 HAVING count(*) > 1
+    ) d
+  ) THEN RAISE EXCEPTION 'Duplicate business_day ID in replacement payload'; END IF;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(coalesce(p_payload->'customers','[]'::jsonb)) LOOP
+    IF (v_item->>'id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN RAISE EXCEPTION 'Invalid customer ID'; END IF;
+  END LOOP;
+
 
   FOR v_item IN SELECT * FROM jsonb_array_elements(coalesce(p_payload->'customers','[]'::jsonb)) LOOP
     v_id := (v_item->>'id')::uuid;
