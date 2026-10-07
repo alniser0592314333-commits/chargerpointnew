@@ -296,18 +296,28 @@ export function normalizeOrderItemEntity(i: any): any {
   const chargerFeeSnap = i.chargerFeeSnapshotMinor ?? i.charger_fee_snapshot_minor ?? 0;
   const hasCharger = i.hasCharger ?? i.has_charger ?? false;
 
-  const rawStatus = (
+  const rawStatus = String(
     i.status ||
     i.deliveryStatus ||
     i.delivery_status ||
     'charging'
-  );
+  ).toLowerCase();
   const normalizedStatus = (rawStatus === 'delivered' || rawStatus === 'cancelled' || rawStatus === 'pending')
     ? rawStatus
     : 'charging';
-  const finStatus = i.financialStatus || i.financial_status || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED');
-  const payStatus = i.paymentStatus || i.payment_status || 'UNPAID';
-
+  const operationalStatus = String(
+    i.operationalStatus ??
+    i.operational_status ??
+    (normalizedStatus === 'delivered' ? 'DELIVERED' : normalizedStatus === 'cancelled' ? 'CANCELLED' : 'CHARGING')
+  ).toUpperCase();
+  const finStatus = String(
+    i.financialStatus ??
+    i.financial_status ??
+    (operationalStatus === 'DELIVERED' ? 'RECOGNIZED' : 'UNRECOGNIZED')
+  ).toUpperCase();
+  const payStatus = String(i.paymentStatus ?? i.payment_status ?? 'UNPAID').toUpperCase();
+  const discountSnap = i.discountSnapshotMinor ?? i.discount_snapshot_minor ?? 0;
+  const finalChargeSnap = i.finalChargeSnapshotMinor ?? i.final_charge_snapshot_minor ?? totalPrice;
   return {
     id: i.id,
     orderId,
@@ -317,6 +327,8 @@ export function normalizeOrderItemEntity(i: any): any {
     itemSequence: seq,
     item_sequence: seq,
     status: normalizedStatus,
+    operationalStatus,
+    operational_status: operationalStatus,
     financialStatus: finStatus,
     financial_status: finStatus,
     paymentStatus: payStatus,
@@ -333,6 +345,12 @@ export function normalizeOrderItemEntity(i: any): any {
     customer_charger_fee_exempt_snapshot: Boolean(custExemptSnap),
     chargerFeeSnapshotMinor: chargerFeeSnap,
     charger_fee_snapshot_minor: chargerFeeSnap,
+    discountSnapshotMinor: discountSnap,
+    discount_snapshot_minor: discountSnap,
+    finalChargeSnapshotMinor: finalChargeSnap,
+    final_charge_snapshot_minor: finalChargeSnap,
+    cancelledAt: i.cancelledAt || i.cancelled_at,
+    cancelled_at: i.cancelledAt || i.cancelled_at,
     hasCharger: Boolean(hasCharger),
     has_charger: Boolean(hasCharger),
     unitPriceMinor: unitPrice,
@@ -714,14 +732,14 @@ export class BackupService {
 
     const customers = (await localDb.list('customers')).map(sanitizeEntity);
     const businessDays = (await localDb.list('businessDays')).map(sanitizeEntity);
-    const orders = (await localDb.list('orders')).map(sanitizeEntity);
-    const orderItems = (await localDb.list('orderItems')).map(sanitizeEntity);
-    const financialLedger = (await localDb.list('financialLedger')).map(sanitizeEntity);
-    const payments = (await localDb.list('payments')).map(sanitizeEntity);
-    const paymentAllocations = (await localDb.list('paymentAllocations')).map(sanitizeEntity);
-    const deviceTypes = (await localDb.list('deviceTypes')).map(sanitizeEntity);
+    const orders = (await localDb.list('orders')).map(sanitizeEntity).map(normalizeOrderEntity);
+    const orderItems = (await localDb.list('orderItems')).map(sanitizeEntity).map(normalizeOrderItemEntity);
+    const financialLedger = (await localDb.list('financialLedger')).map(sanitizeEntity).map(normalizeFinancialLedgerEntity);
+    const payments = (await localDb.list('payments')).map(sanitizeEntity).map(normalizePaymentEntity);
+    const paymentAllocations = (await localDb.list('paymentAllocations')).map(sanitizeEntity).map(normalizePaymentAllocationEntity);
+    const deviceTypes = (await localDb.list('deviceTypes')).map(sanitizeEntity).map(normalizeDeviceTypeEntity);
     const qrTokens = (await localDb.list('qr_tokens')).map(sanitizeEntity).map(normalizeQrTokenEntity);
-    const orderNumberReservations = (await localDb.list('orderNumberReservations')).map(sanitizeEntity);
+    const orderNumberReservations = (await localDb.list('orderNumberReservations')).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity);
     const syncState = await localDb.getSyncState('global');
 
     return {
