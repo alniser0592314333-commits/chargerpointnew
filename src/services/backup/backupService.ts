@@ -908,7 +908,17 @@ export class BackupService {
       throw new SnapshotFormatError('Invalid snapshot entity collections structure');
     }
 
-    // 4. Staged Transactional Replacement of Business Data inside atomic runTransaction
+    // 4. Bind the restored operational state to the CURRENT server generation.
+    // Otherwise the next sync preflight could interpret this restore as stale and
+    // clear the freshly restored local read model.
+    const { data: restoreServerGeneration, error: restoreGenerationError } =
+      await invokeSupabaseRpc<any>('get_server_reset_generation', {});
+    if (restoreGenerationError || restoreServerGeneration === null || restoreServerGeneration === undefined) {
+      throw new Error(restoreGenerationError || 'Failed to read authoritative server reset generation before restore');
+    }
+    const authoritativeRestoreGeneration = Number(restoreServerGeneration);
+
+    // 5. Staged Transactional Replacement of Business Data inside atomic runTransaction
     // Notice: backupSnapshots is explicitly PRESERVED and protected!
     await localDb.runTransaction(
       ['kvStore', 'outbox', 'syncState', 'syncHistory'],
@@ -938,13 +948,16 @@ export class BackupService {
         for (const q of d.qrTokens || []) localDb.setWithTx(tx, 'qr_tokens', q.id, q);
         for (const r of d.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
-        if (d.syncState) {
-          localDb.setSyncStateWithTx(tx, {
-            ...d.syncState,
-            reconciliationRequired: true,
-            status: 'RECONCILIATION_REQUIRED',
-          });
-        }
+        localDb.setSyncStateWithTx(tx, {
+          ...(d.syncState || {
+            table: 'global',
+            lastAppliedChangeSequence: 0,
+            lastPulledAt: '',
+          }),
+          resetGeneration: authoritativeRestoreGeneration,
+          reconciliationRequired: false,
+          status: 'READY',
+        });
       }
     );
 
@@ -1011,6 +1024,15 @@ export class BackupService {
 
     const onlineData = await this.captureOnlineData(options?.customOnlineData);
 
+    // Bind the restored local read model to the CURRENT server generation so
+    // the next sync cannot mistake this authoritative online restore for stale data.
+    const { data: restoreServerGeneration, error: restoreGenerationError } =
+      await invokeSupabaseRpc<any>('get_server_reset_generation', {});
+    if (restoreGenerationError || restoreServerGeneration === null || restoreServerGeneration === undefined) {
+      throw new Error(restoreGenerationError || 'Failed to read authoritative server reset generation before restore');
+    }
+    const authoritativeRestoreGeneration = Number(restoreServerGeneration);
+
     // Staged clean and populate inside atomic runTransaction
     await localDb.runTransaction(
       ['kvStore', 'outbox', 'syncState', 'syncHistory'],
@@ -1038,13 +1060,16 @@ export class BackupService {
         for (const q of onlineData.qrTokens || []) localDb.setWithTx(tx, 'qr_tokens', q.id, q);
         for (const r of onlineData.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
-        if (onlineData.syncState) {
-          localDb.setSyncStateWithTx(tx, {
-            ...onlineData.syncState,
-            reconciliationRequired: true,
-            status: 'RECONCILIATION_REQUIRED',
-          });
-        }
+        localDb.setSyncStateWithTx(tx, {
+          ...(onlineData.syncState || {
+            table: 'global',
+            lastAppliedChangeSequence: 0,
+            lastPulledAt: '',
+          }),
+          resetGeneration: authoritativeRestoreGeneration,
+          reconciliationRequired: false,
+          status: 'READY',
+        });
       }
     );
 
