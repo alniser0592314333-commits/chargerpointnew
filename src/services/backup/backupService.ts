@@ -1409,6 +1409,7 @@ export class BackupService {
       'readwrite',
       (tx) => {
         localDb.clearOperationalTablesWithTx(tx);
+        localDb.clearOutboxWithTx(tx);
 
         for (const c of onlineData.customers) localDb.setWithTx(tx, 'customers', c.id, c);
         for (const b of onlineData.businessDays) localDb.setWithTx(tx, 'businessDays', b.id, b);
@@ -1420,6 +1421,7 @@ export class BackupService {
           const normAlloc: PaymentAllocationEntity = {
             id: a.id,
             paymentId: a.paymentId || a.payment_id,
+            orderItemId: a.orderItemId || a.order_item_id,
             orderId: a.orderId || a.order_id,
             allocatedAmountMinor: a.allocatedAmountMinor ?? a.allocated_amount_minor ?? 0,
             createdAt: a.createdAt || a.created_at,
