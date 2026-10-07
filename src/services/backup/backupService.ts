@@ -1794,8 +1794,10 @@ export class BackupService {
       throw new AuthorizationError('BIN must contain at least 4 numeric digits.');
     }
 
+    // If a preview froze a payload, execute that exact payload. Do not
+    // recapture local state between preview and destructive execution.
     const localRaw = options?.customLocalData
-      ? { ...(await this.captureLocalData()), ...options.customLocalData }
+      ? options.customLocalData
       : await this.captureLocalData();
     const localData = normalizeReplacementLocalData(localRaw);
 
