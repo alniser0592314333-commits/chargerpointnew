@@ -368,7 +368,18 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
               <Button
                 variant="secondary"
                 size="md"
-                onClick={() => {
+                onClick={async () => {
+                  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                    setIsSubmitting(true);
+                    try {
+                      const res = await deliverAllOrdersInDay(dayId, '');
+                      if (res.success) loadOrders();
+                      else setBinError(res.error || 'تعذر وضع العملية في طابور المزامنة');
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                    return;
+                  }
                   setBinError('');
                   setBinInput('');
                   setIsDeliverAllModalOpen(true);
