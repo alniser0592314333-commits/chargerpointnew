@@ -2324,6 +2324,21 @@ export class BackupService {
     if (d.orderNumberReservations && !Array.isArray(d.orderNumberReservations)) {
       return { valid: false, error: 'Collection "orderNumberReservations" must be an array if present', errorCode: 'INVALID_DATA_COLLECTION' };
     }
+    for (const [name, value] of [
+      ['outbox', d.outbox],
+      ['syncHistory', d.syncHistory],
+      ['mutationSnapshots', d.mutationSnapshots],
+      ['optimisticOverlays', d.optimisticOverlays],
+      ['deletedDeviceTypeMarkers', d.deletedDeviceTypeMarkers],
+      ['changeLog', d.changeLog],
+      ['systemSettings', d.systemSettings],
+      ['goals', d.goals],
+      ['goalRequests', d.goalRequests],
+    ] as Array<[string, unknown]>) {
+      if (value !== undefined && !Array.isArray(value)) {
+        return { valid: false, error: `Collection "${name}" must be an array if present`, errorCode: 'INVALID_DATA_COLLECTION' };
+      }
+    }
 
     // Sanitize entity collections recursively from secrets
     const sanitizedData: BackupSnapshotData = {
@@ -2477,7 +2492,32 @@ export class BackupService {
       targetSnapshotName = `${portableFile.snapshotName} (Imported)`;
     }
 
-    const sanitizedData = portableFile.data;
+    const sanitizedData: BackupSnapshotData = {
+      ...portableFile.data,
+      // Portable files are untrusted input. Never allow an imported outbox to
+      // execute automatically after restore; it must be reconciled explicitly
+      // against the current server generation.
+      outbox: (portableFile.data.outbox || []).map((item) => ({
+        ...item,
+        status: 'blocked',
+        lastError: 'Imported backup command blocked pending reconciliation',
+        retryCount: Number(item.retryCount || 0),
+      })),
+      syncState: portableFile.data.syncState
+        ? {
+            ...portableFile.data.syncState,
+            reconciliationRequired: true,
+            status: 'RECONCILIATION_REQUIRED',
+          }
+        : {
+            table: 'global',
+            lastAppliedChangeSequence: 0,
+            lastPulledAt: '',
+            resetGeneration: -1,
+            reconciliationRequired: true,
+            status: 'RECONCILIATION_REQUIRED',
+          },
+    };
     const checksum = computeSnapshotChecksum(sanitizedData);
 
     const record: BackupSnapshotRecord = {
