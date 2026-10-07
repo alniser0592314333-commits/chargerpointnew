@@ -1106,6 +1106,16 @@ export class BackupService {
       offline.orderNumberReservations || [],
       'order_number_reservations'
     );
+    const consolidatedGoals = reconcileTable(
+      online.goals || [],
+      offline.goals || [],
+      'goals'
+    );
+    const consolidatedGoalRequests = reconcileTable(
+      online.goalRequests || [],
+      offline.goalRequests || [],
+      'goal_requests'
+    );
 
     const countEntities = (data: BackupSnapshotData): number => {
       return (
@@ -1139,8 +1149,8 @@ export class BackupService {
       // Consolidated backup must retain the local operational checkpoint as
       // well as the reconciled business rows. Otherwise a pending DELETE/PATCH
       // can disappear and be resurrected by the next sync.
-      goals: offline.goals || online.goals || [],
-      goalRequests: offline.goalRequests || online.goalRequests || [],
+      goals: consolidatedGoals,
+      goalRequests: consolidatedGoalRequests,
       outbox: offline.outbox || [],
       syncHistory: offline.syncHistory || [],
       mutationSnapshots: offline.mutationSnapshots || [],
