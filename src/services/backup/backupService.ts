@@ -721,7 +721,6 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     if (type === 'ORDER') requireRef('orders', targetId, `QR token ${row.id}`);
     if (type === 'CUSTOMER') requireRef('customers', targetId, `QR token ${row.id}`);
     const publicToken = replacementField(row, 'publicToken', 'public_token', 'token');
-    const targetId = replacementField(row, 'targetId', 'target_id', 'entityId', 'entity_id');
     if (!publicToken) throw new SnapshotFormatError(`QR token ${row.id} is missing publicToken`);
     if (!REPLACEMENT_UUID_RE.test(String(targetId || ''))) throw new SnapshotFormatError(`QR token ${row.id} has invalid targetId`);
   }
