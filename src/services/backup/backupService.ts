@@ -1368,6 +1368,7 @@ export class BackupService {
     await auth.verifyBin(options?.bin as any);
 
     const onlineData = await this.captureOnlineData(options?.customOnlineData);
+    validateReplacementData(onlineData);
 
     // Bind the restored local read model to the CURRENT server generation so
     // the next sync cannot mistake this authoritative online restore for stale data.
