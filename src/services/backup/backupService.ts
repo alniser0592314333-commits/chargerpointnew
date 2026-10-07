@@ -707,11 +707,6 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
       if (item && String(replacementField(item, 'orderId', 'order_id')) !== String(orderId)) {
         throw new SnapshotFormatError(`Payment allocation ${row.id} points to an item from a different order`);
       }
-    } else {
-      const candidates = collections.order_items.filter((x) => String(replacementField(x, 'orderId', 'order_id')) === String(orderId));
-      if (candidates.length !== 1) {
-        throw new SnapshotFormatError(`Payment allocation ${row.id} is missing orderItemId and its order does not have exactly one item`);
-      }
     }
   }
 
