@@ -1412,6 +1412,29 @@ export class BackupService {
       throw new AuthorizationError('BIN is required for Online Business Reset.');
     }
 
+    // Capture a local recovery snapshot before a destructive cloud reset.
+    // The reset generation may legitimately reconcile/clear the local operational
+    // read model afterward; this snapshot preserves the pre-reset local state
+    // without changing the operational database or sync semantics.
+    const localRecoveryData = await this.captureLocalData();
+    const localRecoveryCount =
+      (localRecoveryData.customers || []).length +
+      (localRecoveryData.businessDays || []).length +
+      (localRecoveryData.orders || []).length +
+      (localRecoveryData.orderItems || []).length +
+      (localRecoveryData.financialLedger || []).length +
+      (localRecoveryData.payments || []).length +
+      (localRecoveryData.paymentAllocations || []).length +
+      (localRecoveryData.deviceTypes || []).length +
+      (localRecoveryData.qrTokens || []).length;
+
+    if (localRecoveryCount > 0) {
+      await this.createSnapshot('OFFLINE', auth, {
+        name: `Pre-Cloud-Reset Local Recovery Snapshot ${new Date().toISOString()}`,
+        customOnlineData: localRecoveryData,
+      });
+    }
+
     const { data, error } = await invokeSupabaseRpc<any>('reset_online_business_data', {
       p_entered_bin: bin.trim(),
     });
