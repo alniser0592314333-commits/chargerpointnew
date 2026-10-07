@@ -2120,7 +2120,26 @@ export class BackupService {
     if (localRecoveryCount > 0) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Cloud-Reset Local Recovery Snapshot ${new Date().toISOString()}`,
+        bin: bin.trim(),
         customOnlineData: localRecoveryData,
+      });
+    }
+
+    // Also checkpoint the authoritative cloud state that is about to be
+    // destroyed. A local snapshot alone is not a cloud backup when the two
+    // sides differ.
+    const onlineRecoveryData = await this.captureOnlineData();
+    const onlineRecoveryCount =
+      (onlineRecoveryData.customers || []).length +
+      (onlineRecoveryData.orders || []).length +
+      (onlineRecoveryData.orderItems || []).length +
+      (onlineRecoveryData.payments || []).length +
+      (onlineRecoveryData.financialLedger || []).length;
+    if (onlineRecoveryCount > 0) {
+      await this.createSnapshot('ONLINE', auth, {
+        name: `Pre-Cloud-Reset Authoritative Cloud Snapshot ${new Date().toISOString()}`,
+        bin: bin.trim(),
+        customOnlineData: onlineRecoveryData,
       });
     }
 
