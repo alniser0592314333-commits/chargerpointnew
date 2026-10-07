@@ -129,6 +129,8 @@ export interface BackupSnapshotData {
   // Recovery-critical local metadata. These are part of an exact offline restore.
   deletedDeviceTypeMarkers?: any[];
   mutationSnapshots?: MutationSnapshotRecord[];
+  // Exact optimistic UI overlays checkpointed with offline backups.
+  optimisticOverlays?: OptimisticOverlayRecord[];
   changeLog?: any[];
   systemSettings?: any[];
   authoritativeCheckpoint?: { checkpointId?: string; checkpointSequence?: number; integrityHash?: string; authoritativeMaxSequence?: number };
@@ -597,6 +599,7 @@ export class IndexedDBLocalDatabase {
       syncHistory: Array.from(uniqueHistory.values()),
       syncState: clone(this.memorySyncState.get('global') || null),
       mutationSnapshots: Array.from(this.memoryMutationSnapshots.values()).map(clone),
+      optimisticOverlays: Array.from(this.memoryOverlays.values()).map(clone),
     };
   }
 
@@ -703,8 +706,9 @@ export class IndexedDBLocalDatabase {
     // Also clear sync history when performing an operational clear
     this.memorySyncHistory.clear();
     this.memoryMutationSnapshots.clear();
+    this.memoryOverlays.clear();
 
-    const storesToClear = ['syncHistory', 'mutationSnapshots'];
+    const storesToClear = ['syncHistory', 'mutationSnapshots', 'optimisticOverlays'];
     if (options?.clearOutbox) {
       this.memoryOutbox.clear();
       storesToClear.push('outbox');
@@ -774,6 +778,14 @@ export class IndexedDBLocalDatabase {
     for (const [id, record] of this.memorySyncHistory.entries()) {
       snapshotSyncHistory.set(id, cloneForRollback(record));
     }
+    const snapshotMutationSnapshots = new Map<ID, MutationSnapshotRecord>();
+    for (const [id, record] of this.memoryMutationSnapshots.entries()) {
+      snapshotMutationSnapshots.set(id, cloneForRollback(record));
+    }
+    const snapshotOverlays = new Map<ID, OptimisticOverlayRecord>();
+    for (const [id, record] of this.memoryOverlays.entries()) {
+      snapshotOverlays.set(id, cloneForRollback(record));
+    }
 
     const rollbackMemory = () => {
       this.memoryFallback = new Map();
@@ -783,6 +795,8 @@ export class IndexedDBLocalDatabase {
       this.memoryOutbox = cloneForRollback(new Map(snapshotOutbox));
       this.memorySyncState = cloneForRollback(new Map(snapshotSyncState));
       this.memorySyncHistory = cloneForRollback(new Map(snapshotSyncHistory));
+      this.memoryMutationSnapshots = cloneForRollback(new Map(snapshotMutationSnapshots));
+      this.memoryOverlays = cloneForRollback(new Map(snapshotOverlays));
     };
 
     if (!this.db) {
@@ -1077,10 +1091,11 @@ export class IndexedDBLocalDatabase {
     // syncHistory and mutation snapshots are cleared to ensure a clean slate for the new generation
     this.memorySyncHistory.clear();
     this.memoryMutationSnapshots.clear();
+    this.memoryOverlays.clear();
 
     if (tx && typeof tx.objectStore === 'function') {
       try {
-        const storesToCheck = ['kvStore', 'syncHistory', 'mutationSnapshots'];
+        const storesToCheck = ['kvStore', 'syncHistory', 'mutationSnapshots', 'optimisticOverlays'];
         for (const storeName of storesToCheck) {
           try {
             const hasStore = tx.db.objectStoreNames.contains(storeName);
@@ -1628,6 +1643,18 @@ export class IndexedDBLocalDatabase {
         store.put(record);
       } catch (err) {
         console.warn('Failed to persist optimistic overlay to IndexedDB:', err);
+      }
+    }
+  }
+
+  saveOverlayWithTx(tx: IDBTransaction, record: OptimisticOverlayRecord): void {
+    this.memoryOverlays.set(record.commandId, record);
+    if (tx?.objectStore) {
+      try {
+        tx.objectStore('optimisticOverlays').put(record);
+      } catch (err) {
+        console.warn('Failed to persist optimistic overlay in transaction:', err);
+        throw err;
       }
     }
   }

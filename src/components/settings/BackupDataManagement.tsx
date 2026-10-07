@@ -8,8 +8,9 @@ import {
   backupService,
   CreateSnapshotOptions,
   PortableBackupFile,
+  computeSnapshotChecksum,
 } from '../../services/backup/backupService';
-import { localDb, BackupSnapshotRecord, BackupSourceType } from '../../infrastructure/localDb/localDb';
+import { localDb, BackupSnapshotRecord, BackupSourceType, BackupSnapshotData } from '../../infrastructure/localDb/localDb';
 import { authService } from '../../services/auth/authService';
 import { rpcVerifyAdminBin } from '../../services/supabase/client';
 import { AuthorizationContext, ActorAdmin } from '../../application/authContext';
@@ -76,6 +77,8 @@ export const BackupDataManagement: React.FC = () => {
   const [replaceOnlineBin, setReplaceOnlineBin] = useState<string>('');
   const [isDiffLoading, setIsDiffLoading] = useState<boolean>(false);
   const [diffData, setDiffData] = useState<any | null>(null);
+  const [replaceOnlineSourceData, setReplaceOnlineSourceData] = useState<BackupSnapshotData | null>(null);
+  const [replaceOnlineSourceChecksum, setReplaceOnlineSourceChecksum] = useState<string | null>(null);
 
   // Clear Sync History State
   const [isClearSyncHistoryOpen, setIsClearSyncHistoryOpen] = useState<boolean>(false);
@@ -414,9 +417,13 @@ export const BackupDataManagement: React.FC = () => {
       const auth = await getAuthContext();
       await backupService.deleteOnlineBusinessData(auth, cleanBin);
 
-      // Post-reset local operational state cleanup
-      // Clear local operational tables & outbox so stale local data cannot overwrite reset server
-      await localDb.clearOperationalTables();
+      // Post-reset local cleanup must include the outbox, mutation snapshots,
+      // overlays and sync state. Leaving a pending command here could repopulate
+      // the freshly reset cloud on the next sync cycle.
+      await localDb.clearOperationalTables({
+        clearOutbox: true,
+        clearSyncState: true,
+      });
       await localDb.setLocalResetMarker(true);
       await reloadStoreFromLocal();
 
@@ -462,13 +469,18 @@ export const BackupDataManagement: React.FC = () => {
     setIsReplaceOnlineOpen(true);
     setReplaceOnlineBin('');
     setDiffData(null);
+    setReplaceOnlineSourceData(null);
+    setReplaceOnlineSourceChecksum(null);
     setIsDiffLoading(true);
     try {
       const [online, local] = await Promise.all([
         backupService.captureOnlineData(),
         backupService.captureLocalData(),
       ]);
+      const frozenChecksum = computeSnapshotChecksum(local);
       const diff = await backupService.previewReplacementDiff(online, local);
+      setReplaceOnlineSourceData(local);
+      setReplaceOnlineSourceChecksum(frozenChecksum);
       setDiffData(diff);
     } catch (err: any) {
       console.warn('Failed to calculate replacement diff:', err);
@@ -497,7 +509,16 @@ export const BackupDataManagement: React.FC = () => {
     try {
       setIsActionLoading(true);
       const auth = await getAuthContext();
-      const res = await backupService.replaceOnlineWithLocalData(auth, cleanBin);
+      if (!replaceOnlineSourceData || !replaceOnlineSourceChecksum) {
+        throw new Error('Replacement preview is missing or expired. Reopen the preview before executing.');
+      }
+      const frozenChecksumNow = computeSnapshotChecksum(replaceOnlineSourceData);
+      if (frozenChecksumNow !== replaceOnlineSourceChecksum) {
+        throw new Error('Replacement preview payload changed. Reopen the preview before executing.');
+      }
+      const res = await backupService.replaceOnlineWithLocalData(auth, cleanBin, {
+        customLocalData: replaceOnlineSourceData,
+      });
 
       console.log('[LIVE_RUNTIME_REPLACEMENT_REPORT]', {
         success: res.success,
@@ -516,6 +537,8 @@ export const BackupDataManagement: React.FC = () => {
       );
       setIsReplaceOnlineOpen(false);
       setReplaceOnlineBin('');
+      setReplaceOnlineSourceData(null);
+      setReplaceOnlineSourceChecksum(null);
       await fetchSnapshots();
     } catch (err: any) {
       console.warn('Replace online data error:', err);
