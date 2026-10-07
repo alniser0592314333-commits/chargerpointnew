@@ -84,10 +84,36 @@ BEGIN
     $$  ALTER TABLE public.qr_tokens DISABLE TRIGGER trg_change_capture;
   ALTER TABLE public.order_number_reservations DISABLE TRIGGER trg_change_capture;$$);
 
-  v := replace(v,
-    $$  DELETE FROM public.payment_allocations;$$,
-    $$  DELETE FROM public.order_number_reservations;
-  DELETE FROM public.payment_allocations;$$);
+  /* Guard every destructive DELETE in the generated function.
+     Fail closed if any expected bare DELETE survives the patch. */
+  v := replace(v, $$DELETE FROM public.order_number_reservations;$$, $$DELETE FROM public.order_number_reservations WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.payment_allocations;$$, $$DELETE FROM public.payment_allocations WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.financial_ledger;$$, $$DELETE FROM public.financial_ledger WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.payments;$$, $$DELETE FROM public.payments WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.order_items;$$, $$DELETE FROM public.order_items WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.orders;$$, $$DELETE FROM public.orders WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.qr_tokens;$$, $$DELETE FROM public.qr_tokens WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.customers;$$, $$DELETE FROM public.customers WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.business_days;$$, $$DELETE FROM public.business_days WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.device_types;$$, $$DELETE FROM public.device_types WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.change_log;$$, $$DELETE FROM public.change_log WHERE true;$$);
+  v := replace(v, $$DELETE FROM public.processed_commands;$$, $$DELETE FROM public.processed_commands WHERE true;$$);
+
+  IF position($$DELETE FROM public.order_number_reservations;$$ in v) > 0
+     OR position($$DELETE FROM public.payment_allocations;$$ in v) > 0
+     OR position($$DELETE FROM public.financial_ledger;$$ in v) > 0
+     OR position($$DELETE FROM public.payments;$$ in v) > 0
+     OR position($$DELETE FROM public.order_items;$$ in v) > 0
+     OR position($$DELETE FROM public.orders;$$ in v) > 0
+     OR position($$DELETE FROM public.qr_tokens;$$ in v) > 0
+     OR position($$DELETE FROM public.customers;$$ in v) > 0
+     OR position($$DELETE FROM public.business_days;$$ in v) > 0
+     OR position($$DELETE FROM public.device_types;$$ in v) > 0
+     OR position($$DELETE FROM public.change_log;$$ in v) > 0
+     OR position($$DELETE FROM public.processed_commands;$$ in v) > 0
+  THEN
+    RAISE EXCEPTION 'Replacement hardening failed: an unguarded DELETE remains in replace_online_business_data';
+  END IF;
 
   v := replace(v,
     $$  FOR v_item IN SELECT * FROM jsonb_array_elements(coalesce(p_payload->'business_days',p_payload->'businessDays','[]'::jsonb)) LOOP
