@@ -1562,6 +1562,8 @@ export class BackupService {
           localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of onlineData.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
+        for (const goal of onlineData.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
+        for (const request of onlineData.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
         for (const q of onlineData.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
         for (const r of onlineData.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
