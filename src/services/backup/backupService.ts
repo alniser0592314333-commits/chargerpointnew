@@ -656,6 +656,8 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     }
     requireRef('business_days', replacementField(row, 'dayId', 'day_id'), `Order ${row.id}`);
     requireRef('customers', replacementField(row, 'customerId', 'customer_id'), `Order ${row.id}`);
+    const qrId = replacementField(row, 'qrTokenId', 'qr_token_id');
+    if (qrId) requireRef('qr_tokens', qrId, `Order ${row.id}`);
   }
 
   for (const row of collections.order_items) {
@@ -694,8 +696,11 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     if (!Number.isSafeInteger(amount) || amount <= 0) throw new SnapshotFormatError(`Payment allocation ${row.id} has invalid amount`);
     requireRef('payments', replacementField(row, 'paymentId', 'payment_id'), `Payment allocation ${row.id}`);
     const orderId = replacementField(row, 'orderId', 'order_id');
-    requireRef('orders', orderId, `Payment allocation ${row.id}`);
     const itemId = replacementField(row, 'orderItemId', 'order_item_id');
+    if (!orderId && !itemId) {
+      throw new SnapshotFormatError(`Payment allocation ${row.id} must reference an order or order item`);
+    }
+    if (orderId) requireRef('orders', orderId, `Payment allocation ${row.id}`);
     if (itemId) {
       requireRef('order_items', itemId, `Payment allocation ${row.id}`);
       const item = collections.order_items.find((x) => x.id === itemId);
@@ -711,6 +716,10 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
   }
 
   for (const row of collections.qr_tokens) {
+    const type = String(replacementField(row, 'tokenType', 'token_type', 'entityType', 'entity_type') || 'ORDER').toUpperCase();
+    const targetId = replacementField(row, 'targetId', 'target_id', 'entityId', 'entity_id');
+    if (type === 'ORDER') requireRef('orders', targetId, `QR token ${row.id}`);
+    if (type === 'CUSTOMER') requireRef('customers', targetId, `QR token ${row.id}`);
     const publicToken = replacementField(row, 'publicToken', 'public_token', 'token');
     const targetId = replacementField(row, 'targetId', 'target_id', 'entityId', 'entity_id');
     if (!publicToken) throw new SnapshotFormatError(`QR token ${row.id} is missing publicToken`);
