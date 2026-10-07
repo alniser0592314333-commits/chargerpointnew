@@ -846,6 +846,15 @@ export class BackupService {
         deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity),
         qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity),
         orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity),
+        goals: (customOnlineData.goals || []).map(sanitizeEntity),
+        goalRequests: (customOnlineData.goalRequests || []).map(sanitizeEntity),
+        outbox: (customOnlineData.outbox || []).map(sanitizeEntity),
+        syncHistory: (customOnlineData.syncHistory || []).map(sanitizeEntity),
+        mutationSnapshots: (customOnlineData.mutationSnapshots || []).map(sanitizeEntity),
+        optimisticOverlays: (customOnlineData.optimisticOverlays || []).map(sanitizeEntity),
+        deletedDeviceTypeMarkers: (customOnlineData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+        changeLog: (customOnlineData.changeLog || []).map(sanitizeEntity),
+        systemSettings: (customOnlineData.systemSettings || []).map(sanitizeEntity),
         syncState: customOnlineData.syncState || null,
       });
     }
@@ -1184,6 +1193,15 @@ export class BackupService {
       deviceTypes: rawData.deviceTypes.map(sanitizeEntity),
       qrTokens: (rawData.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (rawData.orderNumberReservations || []).map(sanitizeEntity),
+      goals: (rawData.goals || []).map(sanitizeEntity),
+      goalRequests: (rawData.goalRequests || []).map(sanitizeEntity),
+      outbox: (rawData.outbox || []).map(sanitizeEntity),
+      syncHistory: (rawData.syncHistory || []).map(sanitizeEntity),
+      mutationSnapshots: (rawData.mutationSnapshots || []).map(sanitizeEntity),
+      optimisticOverlays: (rawData.optimisticOverlays || []).map(sanitizeEntity),
+      deletedDeviceTypeMarkers: (rawData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+      changeLog: (rawData.changeLog || []).map(sanitizeEntity),
+      systemSettings: (rawData.systemSettings || []).map(sanitizeEntity),
       syncState: rawData.syncState ? sanitizeEntity(rawData.syncState) : null,
       consolidationMetadata: rawData.consolidationMetadata
         ? sanitizeEntity(rawData.consolidationMetadata)
@@ -1201,6 +1219,15 @@ export class BackupService {
       deviceTypes: sanitizedData.deviceTypes.length,
       qrTokens: (sanitizedData.qrTokens || []).length,
       orderNumberReservations: (sanitizedData.orderNumberReservations || []).length,
+      goals: (sanitizedData.goals || []).length,
+      goalRequests: (sanitizedData.goalRequests || []).length,
+      outbox: (sanitizedData.outbox || []).length,
+      syncHistory: (sanitizedData.syncHistory || []).length,
+      mutationSnapshots: (sanitizedData.mutationSnapshots || []).length,
+      optimisticOverlays: (sanitizedData.optimisticOverlays || []).length,
+      deletedDeviceTypeMarkers: (sanitizedData.deletedDeviceTypeMarkers || []).length,
+      changeLog: (sanitizedData.changeLog || []).length,
+      systemSettings: (sanitizedData.systemSettings || []).length,
     };
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
