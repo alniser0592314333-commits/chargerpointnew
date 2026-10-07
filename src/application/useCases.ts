@@ -654,11 +654,12 @@ export class FinalUseCases {
   async cancelOrder(
     auth: AuthorizationContext,
     orderId: ID,
-    bin: string
+    bin: string,
+    options?: { deferBinVerification?: boolean }
   ): Promise<Result<OrderEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:cancel');
-    await auth.verifyBin(bin);
+    if (!options?.deferBinVerification) await auth.verifyBin(bin);
 
     const order = await this.deps.orderRepo.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');
