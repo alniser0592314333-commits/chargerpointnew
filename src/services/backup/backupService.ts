@@ -1508,6 +1508,22 @@ export class BackupService {
 
     await auth.verifyBin(options?.bin as any);
 
+    // Always preserve the current local state before an authoritative
+    // Online -> Local replacement. This includes unsynced outbox work.
+    const preRestore = await this.captureOfflineData();
+    const preRestoreCount =
+      (preRestore.customers || []).length +
+      (preRestore.orders || []).length +
+      (preRestore.orderItems || []).length +
+      (preRestore.outbox || []).length;
+    if (preRestoreCount > 0) {
+      await this.createSnapshot('OFFLINE', auth, {
+        name: `Pre-Online-Restore Local Safety Snapshot ${new Date().toISOString()}`,
+        bin: options?.bin,
+        customOnlineData: preRestore,
+      });
+    }
+
     const onlineData = await this.captureOnlineData(options?.customOnlineData);
     validateReplacementData(onlineData);
 
