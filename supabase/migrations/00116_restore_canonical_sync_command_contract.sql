@@ -737,10 +737,10 @@ WHEN 'UPDATE_ORDER' THEN
                 WHERE id = v_item_uuid;
 
                 INSERT INTO public.financial_ledger (
-                    event_type, amount_minor, order_id, order_item_id, customer_id, actor_admin_id, metadata, created_at
+                    id, event_type, amount_minor, order_id, order_item_id, customer_id, actor_admin_id, metadata, created_at
                 )
                 VALUES (
-                    'ORDER_ITEM_CHARGE',
+                    p_command_id, 'ORDER_ITEM_CHARGE',
                     -v_authoritative_final_charge,
                     v_rec_item.order_id,
                     v_item_uuid,
