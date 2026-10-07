@@ -2160,7 +2160,9 @@ export class BackupService {
       (onlineRecoveryData.orders || []).length +
       (onlineRecoveryData.orderItems || []).length +
       (onlineRecoveryData.payments || []).length +
-      (onlineRecoveryData.financialLedger || []).length;
+      (onlineRecoveryData.financialLedger || []).length +
+      (onlineRecoveryData.goals || []).length +
+      (onlineRecoveryData.goalRequests || []).length;
     if (onlineRecoveryCount > 0) {
       await this.createSnapshot('ONLINE', auth, {
         name: `Pre-Cloud-Reset Authoritative Cloud Snapshot ${new Date().toISOString()}`,
