@@ -396,13 +396,30 @@ export function normalizePaymentAllocationEntity(a: any): any {
 export function normalizeQrTokenEntity(q: any): any {
   if (!q) return q;
 
-  // QR identity is durable data. Never regenerate or replace a public QR token
-  // merely because a snapshot is exported/imported or normalized between
-  // camelCase and snake_case representations.
+  // QR identity is durable data. A legacy local placeholder such as
+  // "<order-uuid>:qr" is migrated exactly once at restore/normalization time
+  // into a real UUID + random public token. Once that canonical identity exists,
+  // every subsequent backup/restore preserves it verbatim.
+  const legacyPlaceholder =
+    typeof q.id === 'string' &&
+    /:qr$/i.test(q.id) &&
+    !(q.publicToken ?? q.public_token ?? q.token);
+
+  const generatedId =
+    legacyPlaceholder && typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : q.id;
+
+  const generatedPublicToken =
+    legacyPlaceholder && typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID().replace(/-/g, '')
+      : null;
+
   const publicToken =
     q.publicToken ??
     q.public_token ??
     q.token ??
+    generatedPublicToken ??
     null;
   const tokenHash =
     q.tokenHash ??
@@ -419,12 +436,18 @@ export function normalizeQrTokenEntity(q: any): any {
     q.target_id ??
     q.entityId ??
     q.entity_id ??
-    null;
+    (typeof q.id === 'string' && /:qr$/i.test(q.id) ? q.id.replace(/:qr$/i, '') : null);
   const isActive = q.isActive ?? q.is_active ?? true;
   const expiresAt = q.expiresAt ?? q.expires_at ?? null;
 
+  if (legacyPlaceholder && (!generatedId || generatedId === q.id || !publicToken || !targetId)) {
+    throw new SnapshotFormatError(
+      'Legacy QR placeholder could not be safely migrated to a permanent QR identity'
+    );
+  }
+
   return {
-    id: q.id,
+    id: generatedId,
     publicToken,
     public_token: publicToken,
     tokenHash,
@@ -437,8 +460,6 @@ export function normalizeQrTokenEntity(q: any): any {
     is_active: Boolean(isActive),
     expiresAt,
     expires_at: expiresAt,
-    // Keep legacy aliases so older local snapshots remain readable, but the
-    // canonical persisted identity above is what backup/restore must preserve.
     token: publicToken,
     entityType: tokenType,
     entity_type: tokenType,
@@ -1377,11 +1398,15 @@ export class BackupService {
       })),
       qr_tokens: (localData.qrTokens || []).map((q) => ({
         id: q.id,
-        token_hash: q.tokenHash || (q as any).token_hash || q.publicToken || (q as any).public_token,
-        public_token: q.publicToken || (q as any).public_token,
-        token_type: q.tokenType || (q as any).token_type || 'CUSTOMER',
-        target_id: q.targetId || (q as any).target_id,
+        // Preserve the exact public QR capability handle. If a legacy record
+        // has no stored hash, the server replacement RPC derives SHA-256 from
+        // this stable public token; it must never replace the public token.
+        token_hash: q.tokenHash || (q as any).token_hash || null,
+        public_token: q.publicToken || (q as any).public_token || q.token,
+        token_type: q.tokenType || (q as any).token_type || q.entityType || q.entity_type || 'ORDER',
+        target_id: q.targetId || (q as any).target_id || q.entityId || q.entity_id,
         is_active: q.isActive ?? (q as any).is_active ?? true,
+        expires_at: q.expiresAt || (q as any).expires_at || null,
       })),
       orders: (localData.orders || []).map((o) => ({
         id: o.id,
