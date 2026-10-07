@@ -1605,6 +1605,13 @@ export const BackupDataManagement: React.FC = () => {
             </div>
           ) : diffData?.summary ? (
             <div className="space-y-2">
+              {diffData.totalLocal === 0 && (
+                <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-[11px] text-rose-800 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">
+                  {locale === 'ar'
+                    ? 'تم إيقاف الاستبدال الآمن: قاعدة البيانات المحلية التشغيلية فارغة. لم يتم لمس السحابة. استرجع البيانات المحلية أولاً ثم أعد المعاينة.'
+                    : 'Safe replacement is blocked: the local operational database is empty. The cloud was not modified. Restore/recover local data first, then preview again.'}
+                </div>
+              )}
               <div className="flex justify-between items-center text-[11px] font-bold text-gray-700 dark:text-[#daf1de]">
                 <span>{locale === 'ar' ? 'جدول الفروقات بين المحلي والسحابي:' : 'Entity Diff Summary:'}</span>
                 <span className="text-gray-500">
@@ -1692,7 +1699,7 @@ export const BackupDataManagement: React.FC = () => {
               type="submit"
               variant="danger"
               size="sm"
-              disabled={isActionLoading || !replaceOnlineBin.trim() || isDiffLoading}
+              disabled={isActionLoading || !replaceOnlineBin.trim() || isDiffLoading || !diffData || diffData.totalLocal === 0}
               className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
             >
               {isActionLoading ? (
