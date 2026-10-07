@@ -233,6 +233,41 @@ export const SyncCenter: React.FC = () => {
     }
   };
 
+  // Supply BIN for a sensitive command intentionally queued while offline.
+  const handleProvideBinForBlockedCommand = async (commandId: string) => {
+    const bin = typeof window !== 'undefined'
+      ? window.prompt(locale === 'ar' ? 'أدخل BIN للسماح بتنفيذ العملية المعلقة:' : 'Enter BIN to authorize the queued operation:')
+      : null;
+    if (!bin || !/^\\d{4,}$/.test(bin.trim())) {
+      showToast(locale === 'ar' ? 'BIN غير صالح' : 'Invalid BIN', 'error');
+      return;
+    }
+    try {
+      const outbox = await localDb.listOutbox();
+      const target = outbox.find((o) => o.commandId === commandId);
+      if (!target) return;
+      const payload = ((target.payload || {}) as any);
+      target.payload = { ...payload, bin: bin.trim(), deferBinVerification: false };
+      target.status = 'pending';
+      target.retryCount = 0;
+      target.lastError = undefined;
+      await localDb.saveOutbox(target);
+      const hist = await localDb.getHistoryByCommandId(commandId);
+      if (hist) {
+        hist.state = 'PENDING';
+        hist.errorClass = undefined;
+        hist.errorMessage = undefined;
+        hist.retryEligible = undefined;
+        hist.updatedAt = new Date().toISOString();
+        await localDb.saveHistory(hist);
+      }
+      await refreshSyncData();
+      await handleManualSync();
+    } catch (err: any) {
+      showToast(err?.message || (locale === 'ar' ? 'تعذر تجهيز العملية للمزامنة' : 'Failed to authorize queued operation'), 'error');
+    }
+  };
+
   // Remove single outbox item from queue
   const handleRemoveSingleOutbox = async (commandId: string) => {
     try {
@@ -763,6 +798,21 @@ export const SyncCenter: React.FC = () => {
                     : `${blockedCount} operations are currently blocked in queue.`}
                 </span>
               </div>
+
+              {binRequiredCount > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={async () => {
+                    const target = outboxRecords.find((o) => o.status === 'blocked' && String(o.lastError || '') === 'BIN_REQUIRED');
+                    if (target) await handleProvideBinForBlockedCommand(target.commandId);
+                  }}
+                  disabled={isSyncing || !isOnline}
+                  className="text-xs h-8 px-4 cursor-pointer font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {locale === 'ar' ? 'إدخال BIN للعملية المعلقة' : 'Enter BIN for queued operation'}
+                </Button>
+              )}
 
               <Button
                 type="button"
