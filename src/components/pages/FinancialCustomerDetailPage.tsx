@@ -102,7 +102,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
   // Open Top-up Modal Flow
   const handleOpenTopUp = () => {
     setIsTopUpOpen(true);
-    setTopUpStep(1);
+    setTopUpStep(typeof navigator !== 'undefined' && navigator.onLine === false ? 2 : 1);
     setBinInput('');
     setAmountInput('');
     setNoteInput('');
