@@ -5,6 +5,9 @@ import {
   getOrdersForDay,
   getCustomerOrders,
   topUpCustomerBalance,
+  deliverSingleOrderItem,
+  phase5UseCases,
+  getAuthorizedAdminContext,
   createOrderWithPhase5Engine,
   resetStoreMemory,
   seedDemoOperationalData,
@@ -49,16 +52,11 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     expect(custOrder?.paymentStatus).toBe('UNPAID');
   });
 
-  it('2. Order for customer with positive real balance is PAID (مدفوع)', async () => {
+  it('2. A delivered order is PAID only after an actual payment, not from wallet credit alone', async () => {
     const custId = 'cust-5';
     const dayId = 'day-2026-10-02';
 
-    // Top up 10000 minor (100 NIS)
-    await topUpCustomerBalance({
-      customerId: custId,
-      amountMinor: 10000,
-      bin: '1234',
-    });
+    await topUpCustomerBalance({ customerId: custId, amountMinor: 10000, bin: '1234' });
 
     const ordRes = await createOrderWithPhase5Engine(
       dayId,
@@ -66,25 +64,32 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
       [{ deviceTypeId: 'dev-1', hasCharger: false }]
     );
     expect(ordRes.success).toBe(true);
-    const orderId = ordRes.order!.id;
+    const order = ordRes.order!;
+    const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
+    expect(delivery.success).toBe(true);
 
-    const statuses = computeCustomerOrderPaymentStatuses(custId);
-    expect(statuses.get(orderId)?.paymentStatus).toBe('PAID');
+    const auth = getAuthorizedAdminContext('1234');
+    const payment = await phase5UseCases.recordPayment(
+      auth, crypto.randomUUID(), custId, 10000, 'CASH', 'FIFO TEST'
+    );
+    expect(payment.success).toBe(true);
 
-    const custOrders = await getCustomerOrders(custId);
-    expect(custOrders.find((o) => o.id === orderId)?.paymentStatus).toBe('PAID');
+    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
+    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
+
+    const statuses = computeCustomerOrderPaymentStatuses(
+      custId,
+      new Map([[order.id, order]]),
+      effectiveItems
+    );
+    expect(statuses.get(order.id)?.paymentStatus).toBe('PAID');
   });
 
-  it('3. Order for customer with insufficient balance is PARTIAL (مدفوع جزئي)', async () => {
+  it('3. A delivered order with insufficient actual payment is PARTIAL', async () => {
     const custId = 'cust-5';
     const dayId = 'day-2026-10-02';
 
-    // Top up 1000 minor (10 NIS), dev-1 price is 4550 minor
-    await topUpCustomerBalance({
-      customerId: custId,
-      amountMinor: 1000,
-      bin: '1234',
-    });
+    await topUpCustomerBalance({ customerId: custId, amountMinor: 10000, bin: '1234' });
 
     const ordRes = await createOrderWithPhase5Engine(
       dayId,
@@ -92,71 +97,93 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
       [{ deviceTypeId: 'dev-1', hasCharger: false }]
     );
     expect(ordRes.success).toBe(true);
-    const orderId = ordRes.order!.id;
+    const order = ordRes.order!;
+    const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
+    expect(delivery.success).toBe(true);
 
-    const statuses = computeCustomerOrderPaymentStatuses(custId);
-    expect(statuses.get(orderId)?.paymentStatus).toBe('PARTIAL');
-    expect(statuses.get(orderId)?.allocatedAmountMinor).toBe(1000);
+    const auth = getAuthorizedAdminContext('1234');
+    const payment = await phase5UseCases.recordPayment(
+      auth, crypto.randomUUID(), custId, 1000, 'CASH', 'FIFO TEST PARTIAL'
+    );
+    expect(payment.success).toBe(true);
 
-    const custOrders = await getCustomerOrders(custId);
-    expect(custOrders.find((o) => o.id === orderId)?.paymentStatus).toBe('PARTIAL');
+    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
+    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
+
+    const statuses = computeCustomerOrderPaymentStatuses(
+      custId,
+      new Map([[order.id, order]]),
+      effectiveItems
+    );
+    expect(statuses.get(order.id)?.paymentStatus).toBe('PARTIAL');
+    expect(statuses.get(order.id)?.allocatedAmountMinor).toBe(1000);
   });
 
-  it('4. FIFO Multi-order sequence: 3 orders, paying incrementally', async () => {
+  it('4. FIFO multi-order sequence uses actual payments and only recognized items', async () => {
     const custId = 'cust-5';
     const dayId = 'day-2026-10-02';
 
-    // Order 1 (Oldest)
-    const ord1Res = await createOrderWithPhase5Engine(dayId, custId, [{ deviceTypeId: 'dev-2', hasCharger: false }]);
-    const order1Id = ord1Res.order!.id;
-    const order1Total = ord1Res.order!.items.reduce((s, i) => s + i.priceMinor, 0);
+    await topUpCustomerBalance({ customerId: custId, amountMinor: 20000, bin: '1234' });
 
-    // Order 2 (Second)
-    const ord2Res = await createOrderWithPhase5Engine(dayId, custId, [{ deviceTypeId: 'dev-2', hasCharger: false }]);
-    const order2Id = ord2Res.order!.id;
-    const order2Total = ord2Res.order!.items.reduce((s, i) => s + i.priceMinor, 0);
+    const orders: Array<{ id: string; itemId: string; total: number; order: any; deliveredItem: any }> = [];
+    for (let n = 0; n < 3; n++) {
+      const res = await createOrderWithPhase5Engine(
+        dayId,
+        custId,
+        [{ deviceTypeId: 'dev-2', hasCharger: false }]
+      );
+      expect(res.success).toBe(true);
+      const order = res.order!;
+      const item = order.items[0];
+      const delivery = await deliverSingleOrderItem(item.id, '1234');
+      expect(delivery.success).toBe(true);
+      orders.push({
+        id: order.id,
+        itemId: item.id,
+        total: item.priceMinor,
+        order,
+        deliveredItem: delivery.item ?? item,
+      });
+    }
 
-    // Order 3 (Third)
-    const ord3Res = await createOrderWithPhase5Engine(dayId, custId, [{ deviceTypeId: 'dev-2', hasCharger: false }]);
-    const order3Id = ord3Res.order!.id;
-    const order3Total = ord3Res.order!.items.reduce((s, i) => s + i.priceMinor, 0);
+    const effectiveOrders = new Map(orders.map((entry) => [entry.id, entry.order]));
+    const effectiveItems = new Map<string, any>();
+    for (const entry of orders) {
+      effectiveItems.set(entry.itemId, entry.deliveredItem);
+    }
 
-    // Step A: Initially with 0 payment, all 3 orders must be UNPAID
-    let alloc = computeCustomerOrderPaymentStatuses(custId);
-    expect(alloc.get(order1Id)?.paymentStatus).toBe('UNPAID');
-    expect(alloc.get(order2Id)?.paymentStatus).toBe('UNPAID');
-    expect(alloc.get(order3Id)?.paymentStatus).toBe('UNPAID');
+    const auth = getAuthorizedAdminContext('1234');
 
-    // Step B: Customer pays Order1 total + half of Order2 total
-    const partialAmount = order1Total + Math.floor(order2Total / 2);
-    await topUpCustomerBalance({ customerId: custId, amountMinor: partialAmount, bin: '1234' });
+    const firstAmount = orders[0].total + Math.floor(orders[1].total / 2);
+    const p1 = await phase5UseCases.recordPayment(
+      auth, crypto.randomUUID(), custId, firstAmount, 'CASH', 'FIFO TEST 1'
+    );
+    expect(p1.success).toBe(true);
 
-    alloc = computeCustomerOrderPaymentStatuses(custId);
-    // Order 1 (oldest) gets full amount -> PAID
-    expect(alloc.get(order1Id)?.paymentStatus).toBe('PAID');
-    expect(alloc.get(order1Id)?.allocatedAmountMinor).toBe(order1Total);
+    let statuses = computeCustomerOrderPaymentStatuses(
+      custId, effectiveOrders, effectiveItems
+    );
+    expect(statuses.get(orders[0].id)?.paymentStatus).toBe('PAID');
+    expect(statuses.get(orders[0].id)?.allocatedAmountMinor).toBe(orders[0].total);
+    expect(statuses.get(orders[1].id)?.paymentStatus).toBe('PARTIAL');
+    expect(statuses.get(orders[1].id)?.allocatedAmountMinor).toBe(Math.floor(orders[1].total / 2));
+    expect(statuses.get(orders[2].id)?.paymentStatus).toBe('UNPAID');
 
-    // Order 2 (second) gets partial amount -> PARTIAL
-    expect(alloc.get(order2Id)?.paymentStatus).toBe('PARTIAL');
-    expect(alloc.get(order2Id)?.allocatedAmountMinor).toBe(Math.floor(order2Total / 2));
+    const secondAmount =
+      (orders[1].total - Math.floor(orders[1].total / 2)) +
+      Math.floor(orders[2].total / 2);
+    const p2 = await phase5UseCases.recordPayment(
+      auth, crypto.randomUUID(), custId, secondAmount, 'CASH', 'FIFO TEST 2'
+    );
+    expect(p2.success).toBe(true);
 
-    // Order 3 (third) gets 0 -> UNPAID
-    expect(alloc.get(order3Id)?.paymentStatus).toBe('UNPAID');
-    expect(alloc.get(order3Id)?.allocatedAmountMinor).toBe(0);
-
-    // Step C: Customer pays remaining of Order2 + partial of Order3
-    const remainingToPay = (order2Total - Math.floor(order2Total / 2)) + Math.floor(order3Total / 2);
-    await topUpCustomerBalance({ customerId: custId, amountMinor: remainingToPay, bin: '1234' });
-
-    alloc = computeCustomerOrderPaymentStatuses(custId);
-    // Order 1 is PAID
-    expect(alloc.get(order1Id)?.paymentStatus).toBe('PAID');
-
-    // Order 2 is PAID
-    expect(alloc.get(order2Id)?.paymentStatus).toBe('PAID');
-
-    // Order 3 is PARTIAL
-    expect(alloc.get(order3Id)?.paymentStatus).toBe('PARTIAL');
-    expect(alloc.get(order3Id)?.allocatedAmountMinor).toBe(Math.floor(order3Total / 2));
+    statuses = computeCustomerOrderPaymentStatuses(
+      custId, effectiveOrders, effectiveItems
+    );
+    expect(statuses.get(orders[0].id)?.paymentStatus).toBe('PAID');
+    expect(statuses.get(orders[1].id)?.paymentStatus).toBe('PAID');
+    expect(statuses.get(orders[2].id)?.paymentStatus).toBe('PARTIAL');
+    expect(statuses.get(orders[2].id)?.allocatedAmountMinor).toBe(Math.floor(orders[2].total / 2));
   });
+
 });
