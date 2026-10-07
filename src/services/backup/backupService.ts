@@ -901,6 +901,8 @@ export class BackupService {
       deviceTypes,
       qrTokens,
       orderNumberReservations,
+      goals,
+      goalRequests,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
       fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
@@ -912,6 +914,8 @@ export class BackupService {
       fetchTable('device_types').then((rows) => rows.map(normalizeDeviceTypeEntity)),
       fetchTable('qr_tokens').then((rows) => rows.map(normalizeQrTokenEntity)),
       fetchTable('order_number_reservations').then((rows) => rows.map(normalizeOrderNumberReservationEntity)),
+      fetchTable('goals'),
+      fetchTable('goal_requests'),
     ]);
 
     return {
@@ -925,6 +929,8 @@ export class BackupService {
       deviceTypes,
       qrTokens,
       orderNumberReservations,
+      goals,
+      goalRequests,
       syncState: null,
     };
   }
