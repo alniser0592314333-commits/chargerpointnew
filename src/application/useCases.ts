@@ -431,7 +431,7 @@ export class FinalUseCases {
       if (autoDeliver) {
         const deliveryCommandId = crypto.randomUUID();
         ctx.ledgerRepo.append({
-          id: crypto.randomUUID(),
+          id: deliveryCommandId,
           eventType: 'ORDER_ITEM_CHARGE',
           amountMinor: -item.totalPriceMinor,
           customerId: order.customerId,
