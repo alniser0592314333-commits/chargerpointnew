@@ -425,14 +425,16 @@ export function normalizeQrTokenEntity(q: any): any {
     /:qr$/i.test(q.id) &&
     !(q.publicToken ?? q.public_token ?? q.token);
 
-  const generatedId =
-    legacyPlaceholder && typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID()
-      : q.id;
+  const generatedId = legacyPlaceholder
+    ? stableLegacyQrUuid(
+        q.id.replace(/:qr$/i, ''),
+        q.tokenType ?? q.token_type ?? q.entityType ?? q.entity_type ?? 'ORDER'
+      )
+    : q.id;
 
   const generatedPublicToken =
-    legacyPlaceholder && typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID().replace(/-/g, '')
+    legacyPlaceholder && !(q.publicToken ?? q.public_token ?? q.token)
+      ? 'legacy-' + q.id.replace(/:qr$/i, '')
       : null;
 
   const publicToken =
@@ -497,6 +499,18 @@ export interface CreateSnapshotOptions {
 }
 
 const REPLACEMENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function stableLegacyQrUuid(targetId: string, tokenType: string): string {
+  const input = String(tokenType).toUpperCase() + ':' + targetId;
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  const h = hash.toString(16).padStart(8, '0');
+  const base = targetId.replace(/-/g, '').padEnd(24, '0').slice(0, 24);
+  return h + '-' + base.slice(0, 4) + '-5' + base.slice(5, 8) + '-8' + base.slice(9, 12) + '-' + base.slice(12, 24);
+}
 
 function replacementField(row: any, ...keys: string[]): any {
   for (const key of keys) {
