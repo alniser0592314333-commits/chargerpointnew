@@ -1128,7 +1128,9 @@ export class BackupService {
         data.paymentAllocations.length +
         data.deviceTypes.length +
         (data.qrTokens || []).length +
-        (data.orderNumberReservations || []).length
+        (data.orderNumberReservations || []).length +
+        (data.goals || []).length +
+        (data.goalRequests || []).length
       );
     };
 
