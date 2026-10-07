@@ -42,6 +42,9 @@ import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTra
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
 
+const isBrowserOffline = (): boolean =>
+  typeof navigator !== 'undefined' && navigator.onLine === false;
+
 const cloneForTransactionRollback = <T>(value: T): T => {
   if (typeof structuredClone === 'function') return structuredClone(value);
   if (value === undefined) return value;
@@ -1907,7 +1910,23 @@ export const repoContext: RepositoryContext = {
   orderRepo: {
     findById: async (id) => {
       await ensureStoreHydrated();
-      return ordersMap.get(id) || null;
+      let effective = ordersMap.get(id) || null;
+      const overlays = localDb.listOverlaysSync()
+        .filter((overlay) => overlay.status === 'PENDING' && overlay.entityType === 'orders' && overlay.entityId === id)
+        .sort((a, b) => a.sequence !== b.sequence ? a.sequence - b.sequence : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      for (const overlay of overlays) {
+        if (overlay.operation === 'DELETE') {
+          effective = null;
+          continue;
+        }
+        const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+        effective = overlay.operation === 'CREATE'
+          ? ({ ...patch, id } as OrderEntity)
+          : effective
+            ? ({ ...effective, ...patch, id } as OrderEntity)
+            : ({ ...patch, id } as OrderEntity);
+      }
+      return effective;
     },
     save: async (o) => {
       await ensureStoreHydrated();
@@ -3410,13 +3429,14 @@ export const getOrderForEdit = async (
 
 export const deliverSingleOrderItem = async (
   orderItemId: string,
-  bin: string
+  bin: string = ''
 ): Promise<{ success: boolean; item?: OrderItemEntity; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = isBrowserOffline();
     const auth = getAuthorizedAdminContext(bin);
-    await auth.verifyBin(bin);
-    const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin);
+    if (!offline) await auth.verifyBin(bin);
+    const result = await phase5UseCases.deliverOrderItem(auth, orderItemId, bin, { deferBinVerification: offline });
     if (result.success) {
       const item = result.data;
       notifyStore('all');
@@ -3430,12 +3450,13 @@ export const deliverSingleOrderItem = async (
 
 export const deliverEntireOrder = async (
   orderId: string,
-  bin: string
+  bin: string = ''
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = isBrowserOffline();
     const auth = getAuthorizedAdminContext(bin);
-    await auth.verifyBin(bin);
+    if (!offline) await auth.verifyBin(bin);
     const orderEntity = await repoContext.orderRepo.findById(orderId);
     if (!orderEntity) return { success: false, error: 'الطلب غير موجود' };
     if (orderEntity.status === 'cancelled') return { success: false, error: 'الطلب ملغى' };
@@ -3447,7 +3468,7 @@ export const deliverEntireOrder = async (
     let count = 0;
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
-        await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+        await phase5UseCases.deliverOrderItem(auth, item.id, bin, { deferBinVerification: offline });
         count++;
       }
     }
@@ -3523,8 +3544,13 @@ export const updateOrderWithPhase5Engine = async (
       }
     } else if (newStatus === 'cancelled' && order.status !== 'cancelled') {
       const auth = getAuthorizedAdminContext(bin);
-      await auth.verifyBin(bin || '');
-      await phase5UseCases.cancelOrder(auth, orderId, bin || '');
+      if (isBrowserOffline()) {
+        // Cancellation remains local-first offline; the server will enforce BIN when the queued command is authorized online.
+        await phase5UseCases.cancelOrderOfflineDeferred(auth, orderId);
+      } else {
+        await auth.verifyBin(bin || '');
+        await phase5UseCases.cancelOrder(auth, orderId, bin || '');
+      }
     }
 
     return { success: true };
@@ -3544,12 +3570,13 @@ export const updateOrderWithPhase5Engine = async (
 
 export const deliverAllOrdersInDay = async (
   dayId: string,
-  bin: string
+  bin: string = ''
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
+    const offline = isBrowserOffline();
     const auth = getAuthorizedAdminContext(bin);
-    await auth.verifyBin(bin);
+    if (!offline) await auth.verifyBin(bin);
     const dayOrders = await getOrdersForDay(dayId);
     let count = 0;
 
@@ -3566,7 +3593,7 @@ export const deliverAllOrdersInDay = async (
       let deliveredInThisOrder = false;
       for (const item of items) {
         if (item.status !== 'delivered' && item.status !== 'cancelled') {
-          await phase5UseCases.deliverOrderItem(auth, item.id, bin);
+          await phase5UseCases.deliverOrderItem(auth, item.id, bin, { deferBinVerification: offline });
           deliveredInThisOrder = true;
         }
       }
@@ -4492,7 +4519,8 @@ export const topUpCustomerBalance = async (
   await ensureStoreHydrated();
   const { customerId, amountMinor, bin, note, idempotencyKey } = params;
 
-  const binValidation = validateBinFormat(bin);
+  const offline = isBrowserOffline();
+  const binValidation = offline ? { valid: true } : validateBinFormat(bin);
   if (!binValidation.valid) {
     return {
       success: false,
@@ -4554,7 +4582,7 @@ export const topUpCustomerBalance = async (
 
   try {
     // Authoritative verifyBin (rejects if verifier missing, invalid, or fails)
-    await authContext.verifyBin(bin);
+    if (!offline) await authContext.verifyBin(bin);
 
     // Authoritative createCustomerCredit useCase execution (verifies BIN and appends ledger)
     const result = await phase5UseCases.createCustomerCredit(
@@ -4562,7 +4590,8 @@ export const topUpCustomerBalance = async (
       cust.id,
       amountMinor,
       bin,
-      commandId
+      commandId,
+      { deferBinVerification: offline }
     );
 
     if (!result.success) {
