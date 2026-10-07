@@ -1334,26 +1334,57 @@ export class BackupService {
     // touching local operational tables. A checksum proves integrity, not semantic validity.
     validateReplacementData(d);
 
-    // 5. Bind the restored operational state to the CURRENT server generation.
-    // Otherwise the next sync preflight could interpret this restore as stale and
-    // clear the freshly restored local read model.
-    const { data: restoreServerGeneration, error: restoreGenerationError } =
-      await invokeSupabaseRpc<any>('get_server_reset_generation', {});
-    if (restoreGenerationError || restoreServerGeneration === null || restoreServerGeneration === undefined) {
-      throw new Error(restoreGenerationError || 'Failed to read authoritative server reset generation before restore');
+    // 5. A restore is destructive to the current local read model, so create
+    // a recovery snapshot first. The snapshot itself is read-only and preserves
+    // the exact pre-restore local state, including pending sync work.
+    const preRestore = await this.captureOfflineData();
+    const preRestoreCount =
+      (preRestore.customers || []).length +
+      (preRestore.orders || []).length +
+      (preRestore.orderItems || []).length +
+      (preRestore.outbox || []).length;
+    if (preRestoreCount > 0) {
+      await this.createSnapshot('OFFLINE', auth, {
+        name: `Pre-Restore Local Safety Snapshot ${new Date().toISOString()}`,
+        bin: options?.bin,
+        customOnlineData: preRestore,
+      });
     }
-    const authoritativeRestoreGeneration = Number(restoreServerGeneration);
 
-    // 5. Staged Transactional Replacement of Business Data inside atomic runTransaction
-    // Notice: backupSnapshots is explicitly PRESERVED and protected!
+    // 6. Never make a local restore depend on the network. If the server
+    // generation is unavailable, restore safely but mark the local state as
+    // RECONCILIATION_REQUIRED so no stale local outbox can be pushed.
+    let authoritativeRestoreGeneration: number | null = null;
+    try {
+      const { data: generation, error: generationError } =
+        await invokeSupabaseRpc<any>('get_server_reset_generation', {});
+      if (!generationError && generation !== null && generation !== undefined) {
+        const parsed = Number(generation);
+        if (Number.isSafeInteger(parsed) && parsed >= 0) {
+          authoritativeRestoreGeneration = parsed;
+        }
+      }
+    } catch {
+      authoritativeRestoreGeneration = null;
+    }
+
+    const restoredGeneration =
+      authoritativeRestoreGeneration ??
+      (Number.isSafeInteger(Number(d.syncState?.resetGeneration))
+        ? Number(d.syncState?.resetGeneration)
+        : -1);
+    const requiresReconciliation = authoritativeRestoreGeneration === null;
+
+    // 7. Fully restore the snapshot atomically. For an OFFLINE snapshot this
+    // includes the outbox, history, mutation snapshots, overlays and deletion
+    // markers; for an ONLINE snapshot those collections are normally empty.
     await localDb.runTransaction(
-      ['kvStore', 'outbox', 'syncState', 'syncHistory'],
+      ['kvStore', 'outbox', 'syncState', 'syncHistory', 'mutationSnapshots', 'optimisticOverlays'],
       'readwrite',
       (tx) => {
         localDb.clearOperationalTablesWithTx(tx);
         localDb.clearOutboxWithTx(tx);
 
-        // Populate operational stores from snapshot
         for (const c of d.customers) localDb.setWithTx(tx, 'customers', c.id, c);
         for (const b of d.businessDays) localDb.setWithTx(tx, 'businessDays', b.id, b);
         for (const o of d.orders) localDb.setWithTx(tx, 'orders', o.id, o);
@@ -1361,31 +1392,52 @@ export class BackupService {
         for (const l of d.financialLedger || []) localDb.setWithTx(tx, 'financialLedger', l.id, l);
         for (const p of d.payments || []) localDb.setWithTx(tx, 'payments', p.id, p);
         for (const a of d.paymentAllocations || []) {
-           // Ensure camelCase consistency for entities stored in kvStore
-           const normAlloc: PaymentAllocationEntity = {
-             id: a.id,
-             paymentId: a.paymentId || a.payment_id,
-             orderItemId: a.orderItemId || a.order_item_id,
-             orderId: a.orderId || a.order_id,
-             allocatedAmountMinor: a.allocatedAmountMinor ?? a.allocated_amount_minor ?? 0,
-             createdAt: a.createdAt || a.created_at,
-           };
-           localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
+          const normAlloc: PaymentAllocationEntity = {
+            id: a.id,
+            paymentId: a.paymentId || a.payment_id,
+            orderItemId: a.orderItemId || a.order_item_id,
+            orderId: a.orderId || a.order_id,
+            allocatedAmountMinor: a.allocatedAmountMinor ?? a.allocated_amount_minor ?? 0,
+            createdAt: a.createdAt || a.created_at,
+          };
+          localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of d.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
-        for (const q of d.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
-        for (const r of d.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
+        for (const goal of d.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
+        for (const request of d.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
+        for (const q of d.qrTokens || []) {
+          const normalizedQr = normalizeQrTokenEntity(q);
+          localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr);
+        }
+        for (const reservation of d.orderNumberReservations || []) {
+          localDb.setWithTx(tx, 'orderNumberReservations', reservation.id, reservation);
+        }
+        for (const marker of d.deletedDeviceTypeMarkers || []) {
+          if (marker?.id) localDb.setWithTx(tx, 'deletedDeviceTypeMarkers', marker.id, marker);
+        }
+        for (const row of d.changeLog || []) {
+          if (row?.id) localDb.setWithTx(tx, 'changeLog', row.id, row);
+        }
+        for (const row of d.systemSettings || []) {
+          if (row?.id) localDb.setWithTx(tx, 'systemSettings', row.id, row);
+        }
 
-        localDb.setSyncStateWithTx(tx, {
+        for (const outbox of d.outbox || []) localDb.saveOutboxWithTx(tx, outbox);
+        for (const history of d.syncHistory || []) localDb.saveHistoryWithTx(tx, history);
+        for (const mutation of d.mutationSnapshots || []) localDb.saveMutationSnapshotWithTx(tx, mutation);
+        for (const overlay of d.optimisticOverlays || []) localDb.saveOverlayWithTx(tx, overlay);
+
+        const restoredSyncState: SyncStateRecord = {
           ...(d.syncState || {
             table: 'global',
             lastAppliedChangeSequence: 0,
             lastPulledAt: '',
           }),
-          resetGeneration: authoritativeRestoreGeneration,
-          reconciliationRequired: false,
-          status: 'READY',
-        });
+          resetGeneration: restoredGeneration,
+          reconciliationRequired: requiresReconciliation,
+          status: requiresReconciliation ? 'RECONCILIATION_REQUIRED' : 'READY',
+        };
+        localDb.setSyncStateWithTx(tx, restoredSyncState);
       }
     );
 
