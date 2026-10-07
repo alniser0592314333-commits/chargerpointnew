@@ -753,24 +753,9 @@ export class BackupService {
    * Captures current offline business data from IndexedDB kvStore.
    */
   async captureOfflineData(): Promise<BackupSnapshotData> {
-    // QR legacy migration is a data migration, not a backup-format transform.
-    // Run it before capturing so every backup sees the same canonical local model.
-    const { migrateLegacyQrTokenIdentities } = await import('../../components/pages/dayOrdersStore');
-    await migrateLegacyQrTokenIdentities();
-
-    const customers = (await localDb.list('customers')).map(sanitizeEntity);
-    const businessDays = (await localDb.list('businessDays')).map(sanitizeEntity);
-    const orders = (await localDb.list('orders')).map(sanitizeEntity).map(normalizeOrderEntity);
-    const orderItems = (await localDb.list('orderItems')).map(sanitizeEntity).map(normalizeOrderItemEntity);
-    const financialLedger = (await localDb.list('financialLedger')).map(sanitizeEntity).map(normalizeFinancialLedgerEntity);
-    const payments = (await localDb.list('payments')).map(sanitizeEntity).map(normalizePaymentEntity);
-    const paymentAllocations = (await localDb.list('paymentAllocations')).map(sanitizeEntity).map(normalizePaymentAllocationEntity);
-    const deviceTypes = (await localDb.list('deviceTypes')).map(sanitizeEntity).map(normalizeDeviceTypeEntity);
-    const qrTokens = (await localDb.list('qr_tokens')).map(sanitizeEntity).map(normalizeQrTokenEntity);
-    const orderNumberReservations = (await localDb.list('orderNumberReservations')).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity);
-    const syncState = await localDb.getSyncState('global');
-
-    return {
+    // Backup capture is strictly read-only. Legacy QR migrations belong to an
+    // explicit data migration, never to the act of taking a backup.
+    const [
       customers,
       businessDays,
       orders,
@@ -781,7 +766,60 @@ export class BackupService {
       deviceTypes,
       qrTokens,
       orderNumberReservations,
+      goals,
+      goalRequests,
+      outbox,
+      syncHistory,
+      mutationSnapshots,
+      optimisticOverlays,
       syncState,
+      deletedDeviceTypeMarkers,
+      changeLog,
+      systemSettings,
+    ] = await Promise.all([
+      localDb.list('customers'),
+      localDb.list('businessDays'),
+      localDb.list('orders'),
+      localDb.list('orderItems'),
+      localDb.list('financialLedger'),
+      localDb.list('payments'),
+      localDb.list('paymentAllocations'),
+      localDb.list('deviceTypes'),
+      localDb.list('qr_tokens'),
+      localDb.list('orderNumberReservations'),
+      localDb.list('goals'),
+      localDb.list('goalRequests'),
+      localDb.listOutbox(),
+      localDb.listHistory(),
+      localDb.listMutationSnapshots(),
+      localDb.listOverlays(),
+      localDb.getSyncState('global'),
+      localDb.listIntentionalDeviceTypeDeletions(),
+      localDb.list('changeLog'),
+      localDb.list('systemSettings'),
+    ]);
+
+    return {
+      customers: customers.map(sanitizeEntity),
+      businessDays: businessDays.map(sanitizeEntity),
+      orders: orders.map(sanitizeEntity).map(normalizeOrderEntity),
+      orderItems: orderItems.map(sanitizeEntity).map(normalizeOrderItemEntity),
+      financialLedger: financialLedger.map(sanitizeEntity).map(normalizeFinancialLedgerEntity),
+      payments: payments.map(sanitizeEntity).map(normalizePaymentEntity),
+      paymentAllocations: paymentAllocations.map(sanitizeEntity).map(normalizePaymentAllocationEntity),
+      deviceTypes: deviceTypes.map(sanitizeEntity).map(normalizeDeviceTypeEntity),
+      goals: goals.map(sanitizeEntity),
+      goalRequests: goalRequests.map(sanitizeEntity),
+      qrTokens: qrTokens.map(sanitizeEntity).map(normalizeQrTokenEntity),
+      orderNumberReservations: orderNumberReservations.map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
+      outbox: outbox.map(sanitizeEntity),
+      syncHistory: syncHistory.map(sanitizeEntity),
+      mutationSnapshots: mutationSnapshots.map(sanitizeEntity),
+      optimisticOverlays: optimisticOverlays.map(sanitizeEntity),
+      syncState: syncState ? sanitizeEntity(syncState) : null,
+      deletedDeviceTypeMarkers: deletedDeviceTypeMarkers.map(sanitizeEntity),
+      changeLog: changeLog.map(sanitizeEntity),
+      systemSettings: systemSettings.map(sanitizeEntity),
     };
   }
 
