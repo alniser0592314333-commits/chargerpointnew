@@ -2485,14 +2485,13 @@ export const computeCustomerOrderPaymentStatuses = (
     .map((overlay) => {
       const payload = (overlay.entityPayload || overlay.patch || {}) as any;
       return {
-        sequence: Number(overlay.sequence || 0),
         createdAt: overlay.createdAt,
         amountMinor: Number(payload.amountMinor ?? payload.amount_minor ?? 0),
         customerId: payload.customerId || payload.customer_id,
       };
     })
     .filter((payment) => payment.customerId === customerId && payment.amountMinor > 0)
-    .sort((a, b) => a.sequence - b.sequence || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   for (const payment of pendingPayments) {
     let remaining = payment.amountMinor;
