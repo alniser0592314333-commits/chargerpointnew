@@ -1814,6 +1814,53 @@ export class BackupService {
       throw new Error(error || 'Local -> Online Replacement failed on server');
     }
 
+    // The replacement RPC deliberately creates a new authoritative reset generation
+    // and clears the server change log. The local database is already the exact
+    // dataset that was promoted to the cloud, so it must be promoted to the same
+    // generation as well. Otherwise the next normal sync would see a generation
+    // jump, clear the local operational read model, and then find no change-log
+    // rows to rebuild it from.
+    const authoritativeGeneration = Number(data.serverResetGeneration);
+    if (!Number.isSafeInteger(authoritativeGeneration) || authoritativeGeneration < 0) {
+      throw new Error('Local -> Online Replacement returned an invalid server reset generation');
+    }
+
+    // Every pending outbox command is already represented by the authoritative
+    // local snapshot that was just promoted. Replaying those commands after the
+    // replacement would duplicate writes or resurrect pre-replacement state.
+    const pendingOutbox = await localDb.listOutbox();
+    for (const item of pendingOutbox) {
+      await localDb.deleteOutbox(item.commandId);
+    }
+    await localDb.clearSyncHistory();
+
+    // The cloud replacement clears change_log, so discard the local delta cursor
+    // data as well. Business entities themselves are intentionally preserved.
+    const localChangeLog = await localDb.list('changeLog');
+    for (const change of localChangeLog) {
+      await localDb.remove('changeLog', change.id);
+    }
+
+    const currentSyncState = await localDb.getSyncState('global');
+    const promotedSyncState: SyncStateRecord = {
+      ...(currentSyncState || {
+        key: 'global',
+        lastAppliedChangeSequence: 0,
+        lastPulledAt: '',
+        lastPushedAt: '',
+        resetGeneration: authoritativeGeneration,
+        status: 'READY',
+        reconciliationRequired: false,
+      }),
+      key: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: new Date().toISOString(),
+      resetGeneration: authoritativeGeneration,
+      status: 'READY',
+      reconciliationRequired: false,
+    };
+    await localDb.setSyncState(promotedSyncState);
+
     return {
       success: true,
       operation: data.operation || 'REPLACE_ONLINE_BUSINESS_DATA',
