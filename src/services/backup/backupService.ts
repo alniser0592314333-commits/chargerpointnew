@@ -1248,7 +1248,11 @@ export class BackupService {
       throw new SnapshotFormatError('Invalid snapshot entity collections structure');
     }
 
-    // 4. Bind the restored operational state to the CURRENT server generation.
+    // 4. Re-run the same relational preflight used by cloud replacement before
+    // touching local operational tables. A checksum proves integrity, not semantic validity.
+    validateReplacementData(d);
+
+    // 5. Bind the restored operational state to the CURRENT server generation.
     // Otherwise the next sync preflight could interpret this restore as stale and
     // clear the freshly restored local read model.
     const { data: restoreServerGeneration, error: restoreGenerationError } =
