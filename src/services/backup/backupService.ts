@@ -1721,7 +1721,6 @@ export class BackupService {
         internal_sequence: o.internalSequence ?? o.internal_sequence ?? 0,
         customer_balance_snapshot_minor: o.customerBalanceSnapshotMinor ?? o.customer_balance_snapshot_minor ?? 0,
         status: o.status || 'pending',
-        customer_balance_snapshot_minor: o.customerBalanceSnapshotMinor ?? o.customer_balance_snapshot_minor ?? 0,
         notes: o.notes ?? '',
         qr_token_id: o.qrTokenId ?? o.qr_token_id ?? null,
         charging_at: o.chargingAt ?? o.charging_at ?? null,
