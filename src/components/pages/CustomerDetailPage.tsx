@@ -128,7 +128,7 @@ const [isLoading, setIsLoading] = useState(true);
       return;
     }
     setIsTopUpModalOpen(true);
-    setTopUpStep(1);
+    setTopUpStep(typeof navigator !== 'undefined' && navigator.onLine === false ? 2 : 1);
     setTopUpBin('');
     setTopUpAmountNIS('');
     setTopUpNote('');
