@@ -353,20 +353,27 @@ export function normalizeFinancialLedgerEntity(l: any): any {
   if (!l) return l;
   return {
     id: l.id,
-    eventType:
-      l.eventType ||
-      l.event_type ||
-      l.entryType ||
-      l.entry_type ||
-      'ORDER_ITEM_CHARGE',
+    sequenceNumber: l.sequenceNumber ?? l.sequence_number,
+    sequence_number: l.sequenceNumber ?? l.sequence_number,
+    eventType: l.eventType || l.event_type || l.entryType || l.entry_type || 'ORDER_ITEM_CHARGE',
+    event_type: l.eventType || l.event_type || l.entryType || l.entry_type || 'ORDER_ITEM_CHARGE',
     amountMinor: l.amountMinor ?? l.amount_minor ?? 0,
+    amount_minor: l.amountMinor ?? l.amount_minor ?? 0,
     orderId: l.orderId || l.order_id,
+    order_id: l.orderId || l.order_id,
     orderItemId: l.orderItemId || l.order_item_id,
+    order_item_id: l.orderItemId || l.order_item_id,
     customerId: l.customerId || l.customer_id,
+    customer_id: l.customerId || l.customer_id,
     actorAdminId: l.actorAdminId || l.actor_admin_id,
+    actor_admin_id: l.actorAdminId || l.actor_admin_id,
     referenceId: l.referenceId || l.reference_id,
-    metadata: l.metadata,
+    reference_id: l.referenceId || l.reference_id,
+    linkedLedgerId: l.linkedLedgerId || l.linked_ledger_id,
+    linked_ledger_id: l.linkedLedgerId || l.linked_ledger_id,
+    metadata: l.metadata ?? {},
     createdAt: l.createdAt || l.created_at || new Date().toISOString(),
+    created_at: l.createdAt || l.created_at || new Date().toISOString(),
   };
 }
 
@@ -375,10 +382,18 @@ export function normalizePaymentEntity(p: any): any {
   return {
     id: p.id,
     customerId: p.customerId || p.customer_id,
+    customer_id: p.customerId || p.customer_id,
     amountMinor: p.amountMinor ?? p.amount_minor ?? 0,
+    amount_minor: p.amountMinor ?? p.amount_minor ?? 0,
     paymentMethod: p.paymentMethod || p.payment_method || 'CASH',
-    notes: p.notes || '',
+    payment_method: p.paymentMethod || p.payment_method || 'CASH',
+    reference: p.reference ?? '',
+    actorAdminId: p.actorAdminId || p.actor_admin_id,
+    actor_admin_id: p.actorAdminId || p.actor_admin_id,
+    commandId: p.commandId || p.command_id,
+    command_id: p.commandId || p.command_id,
     createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+    created_at: p.createdAt || p.created_at || new Date().toISOString(),
   };
 }
 
