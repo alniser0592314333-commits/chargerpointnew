@@ -512,6 +512,34 @@ function stableLegacyQrUuid(targetId: string, tokenType: string): string {
   return h + '-' + base.slice(0, 4) + '-5' + base.slice(5, 8) + '-8' + base.slice(9, 12) + '-' + base.slice(12, 24);
 }
 
+function canonicalizeLegacyQrReference(value: any, tokenType = 'ORDER'): any {
+  if (typeof value !== 'string' || !/:qr$/i.test(value)) return value;
+  return stableLegacyQrUuid(value.replace(/:qr$/i, ''), tokenType);
+}
+
+function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): BackupSnapshotData {
+  const orders = (data.orders || []).map((row: any) => {
+    const order = normalizeOrderEntity(row);
+    const qrTokenId = canonicalizeLegacyQrReference(order.qrTokenId, 'ORDER');
+    return { ...order, qrTokenId, qr_token_id: qrTokenId };
+  });
+
+  return {
+    customers: (data.customers || []).map(normalizeCustomerEntity),
+    businessDays: (data.businessDays || []).map(normalizeBusinessDayEntity),
+    orders,
+    orderItems: (data.orderItems || []).map(normalizeOrderItemEntity),
+    financialLedger: (data.financialLedger || []).map(normalizeFinancialLedgerEntity),
+    payments: (data.payments || []).map(normalizePaymentEntity),
+    paymentAllocations: (data.paymentAllocations || []).map(normalizePaymentAllocationEntity),
+    deviceTypes: (data.deviceTypes || []).map(normalizeDeviceTypeEntity),
+    qrTokens: (data.qrTokens || []).map(normalizeQrTokenEntity),
+    orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity),
+    syncState: data.syncState || null,
+    consolidationMetadata: data.consolidationMetadata,
+  };
+}
+
 function replacementField(row: any, ...keys: string[]): any {
   for (const key of keys) {
     if (row?.[key] !== undefined && row?.[key] !== null) return row[key];
@@ -646,7 +674,7 @@ export class BackupService {
     const payments = (await localDb.list('payments')).map(sanitizeEntity);
     const paymentAllocations = (await localDb.list('paymentAllocations')).map(sanitizeEntity);
     const deviceTypes = (await localDb.list('deviceTypes')).map(sanitizeEntity);
-    const qrTokens = (await localDb.list('qr_tokens')).map(sanitizeEntity);
+    const qrTokens = (await localDb.list('qr_tokens')).map(sanitizeEntity).map(normalizeQrTokenEntity);
     const orderNumberReservations = (await localDb.list('orderNumberReservations')).map(sanitizeEntity);
     const syncState = await localDb.getSyncState('global');
 
@@ -1352,9 +1380,10 @@ export class BackupService {
     totalToDelete: number;
   }> {
     const online = await this.captureOnlineData(customOnlineData);
-    const local = customLocalData
+    const localRaw = customLocalData
       ? { ...(await this.captureLocalData()), ...customLocalData }
       : await this.captureLocalData();
+    const local = normalizeReplacementLocalData(localRaw);
 
     validateReplacementData(local);
 
@@ -1467,9 +1496,10 @@ export class BackupService {
       throw new AuthorizationError('BIN must contain at least 4 numeric digits.');
     }
 
-    const localData = options?.customLocalData
+    const localRaw = options?.customLocalData
       ? { ...(await this.captureLocalData()), ...options.customLocalData }
       : await this.captureLocalData();
+    const localData = normalizeReplacementLocalData(localRaw);
 
     const localBusinessEntityCount =
       (localData.customers || []).length +
