@@ -200,7 +200,7 @@ BEGIN
     ) OVERRIDING SYSTEM VALUE VALUES ($);
 
   v := replace(v,
-    $  /* ---------- ORDER ITEMS ---------- */$,
+    $  /* Second pass for self-references. */$,
     $  /* ---------- IDENTITY SEQUENCE REPAIR ---------- */
   PERFORM setval('public.orders_internal_sequence_seq',
     GREATEST(COALESCE((SELECT max(internal_sequence) FROM public.orders),0),1),
@@ -209,7 +209,7 @@ BEGIN
     GREATEST(COALESCE((SELECT max(sequence_number) FROM public.financial_ledger),0),1),
     (SELECT count(*) > 0 FROM public.financial_ledger));
 
-  /* ---------- ORDER ITEMS ---------- */$);
+  /* Second pass for self-references. */$);
 
   EXECUTE v;
 END
