@@ -803,7 +803,7 @@ export class BackupService {
    */
   async captureOnlineData(customOnlineData?: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
     if (customOnlineData) {
-      return {
+      return normalizeReplacementLocalData({
         customers: (customOnlineData.customers || []).map(sanitizeEntity),
         businessDays: (customOnlineData.businessDays || []).map(sanitizeEntity),
         orders: (customOnlineData.orders || []).map(sanitizeEntity),
@@ -815,7 +815,7 @@ export class BackupService {
         qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity),
         orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity),
         syncState: customOnlineData.syncState || null,
-      };
+      });
     }
 
     const fetchTable = async (table: string): Promise<any[]> => {
