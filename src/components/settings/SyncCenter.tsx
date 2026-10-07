@@ -73,6 +73,7 @@ export const SyncCenter: React.FC = () => {
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [sessionFilter, setSessionFilter] = useState<'ALL' | 'SYNCED' | 'PENDING' | 'BLOCKED' | 'FAILED'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedBinCommandIds, setSelectedBinCommandIds] = useState<string[]>([]);
 
   const sessionStartTime = useMemo(() => getSessionStartTime(), []);
 
@@ -160,6 +161,32 @@ export const SyncCenter: React.FC = () => {
 
   const failedCount = activeFailedCount;
 
+  // Sensitive commands that require an admin BIN before the server can execute them.
+  // This also recognizes older queued commands that reached the server without the
+  // deferred-BIN marker, so they can be recovered safely from the Sync Center.
+  const isBinRequiredCommand = (item: OutboxRecord): boolean => {
+    const binCommands = new Set(['DELIVER_ORDER_ITEM', 'CANCEL_ORDER', 'CREATE_CUSTOMER_CREDIT']);
+    if (!binCommands.has(item.commandType)) return false;
+
+    const payload = (item.payload || {}) as any;
+    const bin = String(payload?.bin || '').trim();
+    if (bin.length >= 4 && payload?.deferBinVerification !== true) return false;
+
+    const error = String(item.lastError || '');
+    return (
+      payload?.deferBinVerification === true ||
+      error === 'BIN_REQUIRED' ||
+      /BIN is required/i.test(error) ||
+      /Authorization required:\s*BIN/i.test(error)
+    );
+  };
+
+  const binRequiredItems = useMemo(
+    () => outboxRecords.filter(isBinRequiredCommand),
+    [outboxRecords]
+  );
+  const binRequiredCount = binRequiredItems.length;
+
   // Determine Primary Sync State
   const deriveMainState = (): MainSyncState => {
     if (!isOnline) return 'OFFLINE';
@@ -233,39 +260,66 @@ export const SyncCenter: React.FC = () => {
     }
   };
 
-  // Supply BIN for a sensitive command intentionally queued while offline.
-  const handleProvideBinForBlockedCommand = async (commandId: string) => {
+  // Apply one BIN to an explicitly selected batch. The BIN is never stored in React
+  // state and is sent separately with every command, where the server validates it.
+  const handleProvideBinForCommands = async (commandIds: string[]) => {
+    if (commandIds.length === 0) {
+      showToast(locale === 'ar' ? 'حدد عملية واحدة على الأقل' : 'Select at least one operation', 'error');
+      return;
+    }
+
     const bin = typeof window !== 'undefined'
-      ? window.prompt(locale === 'ar' ? 'أدخل BIN للسماح بتنفيذ العملية المعلقة:' : 'Enter BIN to authorize the queued operation:')
+      ? window.prompt(
+          locale === 'ar'
+            ? `أدخل BIN مرة واحدة للـ ${commandIds.length} عمليات المحددة:`
+            : `Enter BIN once for the ${commandIds.length} selected operations:`
+        )
       : null;
+
     if (!bin || !/^\d{4,}$/.test(bin.trim())) {
       showToast(locale === 'ar' ? 'BIN غير صالح' : 'Invalid BIN', 'error');
       return;
     }
+
     try {
+      const normalizedBin = bin.trim();
       const outbox = await localDb.listOutbox();
-      const target = outbox.find((o) => o.commandId === commandId);
-      if (!target) return;
-      const payload = ((target.payload || {}) as any);
-      target.payload = { ...payload, bin: bin.trim(), deferBinVerification: false };
-      target.status = 'pending';
-      target.retryCount = 0;
-      target.lastError = undefined;
-      await localDb.saveOutbox(target);
-      const hist = await localDb.getHistoryByCommandId(commandId);
-      if (hist) {
-        hist.state = 'PENDING';
-        hist.errorClass = undefined;
-        hist.errorMessage = undefined;
-        hist.retryEligible = undefined;
-        hist.updatedAt = new Date().toISOString();
-        await localDb.saveHistory(hist);
+      const selected = outbox.filter((o) => commandIds.includes(o.commandId) && isBinRequiredCommand(o));
+
+      for (const target of selected) {
+        const payload = ((target.payload || {}) as any);
+        target.payload = { ...payload, bin: normalizedBin, deferBinVerification: false };
+        target.status = 'pending';
+        target.retryCount = 0;
+        target.lastError = undefined;
+        await localDb.saveOutbox(target);
+
+        const hist = await localDb.getHistoryByCommandId(target.commandId);
+        if (hist) {
+          hist.state = 'PENDING';
+          hist.errorClass = undefined;
+          hist.errorMessage = undefined;
+          hist.retryEligible = undefined;
+          hist.updatedAt = new Date().toISOString();
+          await localDb.saveHistory(hist);
+        }
       }
+
+      setSelectedBinCommandIds([]);
       await refreshSyncData();
       await handleManualSync();
     } catch (err: any) {
-      showToast(err?.message || (locale === 'ar' ? 'تعذر تجهيز العملية للمزامنة' : 'Failed to authorize queued operation'), 'error');
+      showToast(
+        err?.message ||
+          (locale === 'ar' ? 'تعذر تجهيز العمليات للمزامنة' : 'Failed to authorize queued operations'),
+        'error'
+      );
     }
+  };
+
+  // Supply BIN for one sensitive command.
+  const handleProvideBinForBlockedCommand = async (commandId: string) => {
+    await handleProvideBinForCommands([commandId]);
   };
 
   // Remove single outbox item from queue
@@ -787,6 +841,91 @@ export const SyncCenter: React.FC = () => {
             </div>
           </div>
 
+          {/* Dedicated BIN authorization queue. This is independent from dependency-blocked items. */}
+          {binRequiredCount > 0 && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800/80 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 text-emerald-900 dark:text-emerald-200 text-xs">
+                  <ShieldAlert className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <div className="font-bold">
+                      {locale === 'ar' ? `عمليات تحتاج BIN (${binRequiredCount})` : `Operations requiring BIN (${binRequiredCount})`}
+                    </div>
+                    <div className="text-[11px] opacity-80">
+                      {locale === 'ar'
+                        ? 'حدد العمليات التي تريد اعتمادها، ثم أدخل BIN مرة واحدة. الخادم يتحقق من كل عملية بشكل مستقل.'
+                        : 'Select the operations to authorize, then enter BIN once. The server validates each command independently.'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedBinCommandIds(
+                        selectedBinCommandIds.length === binRequiredItems.length
+                          ? []
+                          : binRequiredItems.map((o) => o.commandId)
+                      )
+                    }
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                  >
+                    {selectedBinCommandIds.length === binRequiredItems.length
+                      ? (locale === 'ar' ? 'إلغاء تحديد الكل' : 'Clear all')
+                      : (locale === 'ar' ? 'تحديد الكل' : 'Select all')}
+                  </button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleProvideBinForCommands(selectedBinCommandIds)}
+                    disabled={isSyncing || !isOnline || selectedBinCommandIds.length === 0}
+                    className="text-xs h-8 px-4 cursor-pointer font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {locale === 'ar'
+                      ? `إدخال BIN (${selectedBinCommandIds.length})`
+                      : `Enter BIN (${selectedBinCommandIds.length})`}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                {binRequiredItems.map((item) => {
+                  const payload = (item.payload || {}) as any;
+                  const checked = selectedBinCommandIds.includes(item.commandId);
+                  return (
+                    <label
+                      key={item.commandId}
+                      className="flex items-center gap-2.5 p-2 rounded-xl bg-white/70 dark:bg-[#06201c]/70 border border-emerald-200/70 dark:border-[#123832] cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedBinCommandIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== item.commandId)
+                              : [...prev, item.commandId]
+                          )
+                        }
+                        className="w-4 h-4 accent-emerald-600"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-gray-900 dark:text-[#daf1de] truncate">
+                          {translateCommandType(item.commandType, payload)}
+                        </div>
+                        <div className="text-[10px] text-gray-500 dark:text-[#8eb698] truncate">
+                          {payload?.customerName || payload?.customer_name || payload?.name || item.aggregateId}
+                          {item.lastError ? ` — ${item.lastError}` : ''}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Prominent Action Banner when Blocked Items Exist */}
           {blockedCount > 0 && (
             <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -798,21 +937,6 @@ export const SyncCenter: React.FC = () => {
                     : `${blockedCount} operations are currently blocked in queue.`}
                 </span>
               </div>
-
-              {binRequiredCount > 0 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={async () => {
-                    const target = outboxRecords.find((o) => o.status === 'blocked' && String(o.lastError || '') === 'BIN_REQUIRED');
-                    if (target) await handleProvideBinForBlockedCommand(target.commandId);
-                  }}
-                  disabled={isSyncing || !isOnline}
-                  className="text-xs h-8 px-4 cursor-pointer font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  {locale === 'ar' ? 'إدخال BIN للعملية المعلقة' : 'Enter BIN for queued operation'}
-                </Button>
-              )}
 
               <Button
                 type="button"
