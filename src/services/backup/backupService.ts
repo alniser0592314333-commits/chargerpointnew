@@ -707,6 +707,11 @@ export class BackupService {
    * Captures current offline business data from IndexedDB kvStore.
    */
   async captureOfflineData(): Promise<BackupSnapshotData> {
+    // QR legacy migration is a data migration, not a backup-format transform.
+    // Run it before capturing so every backup sees the same canonical local model.
+    const { migrateLegacyQrTokenIdentities } = await import('../../components/pages/dayOrdersStore');
+    await migrateLegacyQrTokenIdentities();
+
     const customers = (await localDb.list('customers')).map(sanitizeEntity);
     const businessDays = (await localDb.list('businessDays')).map(sanitizeEntity);
     const orders = (await localDb.list('orders')).map(sanitizeEntity);
