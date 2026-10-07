@@ -778,6 +778,14 @@ export class IndexedDBLocalDatabase {
     for (const [id, record] of this.memorySyncHistory.entries()) {
       snapshotSyncHistory.set(id, cloneForRollback(record));
     }
+    const snapshotMutationSnapshots = new Map<ID, MutationSnapshotRecord>();
+    for (const [id, record] of this.memoryMutationSnapshots.entries()) {
+      snapshotMutationSnapshots.set(id, cloneForRollback(record));
+    }
+    const snapshotOverlays = new Map<ID, OptimisticOverlayRecord>();
+    for (const [id, record] of this.memoryOverlays.entries()) {
+      snapshotOverlays.set(id, cloneForRollback(record));
+    }
 
     const rollbackMemory = () => {
       this.memoryFallback = new Map();
@@ -787,6 +795,8 @@ export class IndexedDBLocalDatabase {
       this.memoryOutbox = cloneForRollback(new Map(snapshotOutbox));
       this.memorySyncState = cloneForRollback(new Map(snapshotSyncState));
       this.memorySyncHistory = cloneForRollback(new Map(snapshotSyncHistory));
+      this.memoryMutationSnapshots = cloneForRollback(new Map(snapshotMutationSnapshots));
+      this.memoryOverlays = cloneForRollback(new Map(snapshotOverlays));
     };
 
     if (!this.db) {
