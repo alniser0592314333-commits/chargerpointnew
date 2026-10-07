@@ -2461,10 +2461,7 @@ export const getDeviceDisplayName = (
  * - Fully covered orders are marked PAID.
  */
 export type PaymentProjectionIndexes = {
-  recognizedItemsByCustomer: Map<
-    string,
-    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
-  >;
+  recognizedItems: Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>;
   recognizedItemsByOrder: Map<
     string,
     Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
@@ -2521,15 +2518,7 @@ const buildPaymentProjectionIndexes = (
       createdAt: item.createdAt,
     };
 
-    let customerId = effectiveOrdersMap.get(item.orderId)?.customerId;
-    if (customerId) {
-      let list = recognizedItemsByCustomer.get(customerId);
-      if (!list) {
-        list = [];
-        recognizedItemsByCustomer.set(customerId, list);
-      }
-      list.push(recognized);
-    }
+    recognizedItems.push(recognized);
 
     let orderList = recognizedItemsByOrder.get(item.orderId);
     if (!orderList) {
@@ -2539,12 +2528,10 @@ const buildPaymentProjectionIndexes = (
     orderList.push(recognized);
   }
 
-  for (const list of recognizedItemsByCustomer.values()) {
-    list.sort((a, b) => {
-      const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return byTime !== 0 ? byTime : a.itemId.localeCompare(b.itemId);
-    });
-  }
+  recognizedItems.sort((a, b) => {
+    const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    return byTime !== 0 ? byTime : a.itemId.localeCompare(b.itemId);
+  });
   for (const list of recognizedItemsByOrder.values()) {
     list.sort((a, b) => {
       const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -2596,7 +2583,7 @@ const buildPaymentProjectionIndexes = (
   }
 
   return {
-    recognizedItemsByCustomer,
+    recognizedItems,
     recognizedItemsByOrder,
     allocatedByItem,
     pendingPaymentsByCustomer,
@@ -2614,7 +2601,7 @@ const computeCustomerOrderPaymentStatuses = (
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
   const projection = indexes || buildPaymentProjectionIndexes(effectiveOrdersMap, effectiveItemsMap);
 
-  const recognizedItems = projection.recognizedItemsByCustomer.get(customerId) || [];
+  const recognizedItems = projection.recognizedItems;
   const allocatedByItem = new Map(projection.allocatedByItem);
 
   // Project pending local CREATE_PAYMENT commands exactly as the server will.
