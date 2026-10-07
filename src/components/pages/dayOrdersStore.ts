@@ -2448,72 +2448,110 @@ export const computeCustomerOrderPaymentStatuses = (
 ): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
 
-  // 1. Calculate available total customer credits (real payments and positive adjustments)
-  const totalCreditsMinor = ledgerList
-    .filter(
-      (l) =>
-        l.customerId === customerId &&
-        (l.eventType === 'PAYMENT' || l.eventType === 'CREDIT_ADJUSTMENT') &&
-        l.amountMinor > 0
-    )
-    .reduce((sum, l) => sum + l.amountMinor, 0);
-
-  // Minus explicit refunds or negative non-order adjustments
-  const nonOrderDebitsMinor = ledgerList
-    .filter(
-      (l) =>
-        l.customerId === customerId &&
-        (l.eventType === 'REFUND' || (l.eventType === 'CREDIT_ADJUSTMENT' && l.amountMinor < 0))
-    )
-    .reduce((sum, l) => sum + Math.abs(l.amountMinor), 0);
-
-  let availableCredits = Math.max(0, totalCreditsMinor - nonOrderDebitsMinor);
-
-  // 2. Get all non-cancelled orders for this customer, sorted chronologically (Oldest FIRST - FIFO)
-  const custOrders = Array.from(effectiveOrdersMap.values())
-    .filter((o) => o.customerId === customerId && o.status !== 'cancelled')
+  // Mirror the server CREATE_PAYMENT rule: only financially recognized
+  // (delivered) items can receive FIFO payment allocations. A wallet credit
+  // by itself must never make an undelivered order appear paid.
+  const recognizedItems = Array.from(effectiveItemsMap.values())
+    .filter((item) => {
+      if (item.status === 'cancelled') return false;
+      const financialStatus = String((item as any).financialStatus || (item as any).financial_status || '').toUpperCase();
+      return financialStatus === 'RECOGNIZED' || item.status === 'delivered';
+    })
+    .map((item) => ({
+      itemId: item.id,
+      orderId: item.orderId,
+      totalMinor: Number((item as any).finalChargeSnapshotMinor ?? (item as any).final_charge_snapshot_minor ?? item.totalPriceMinor ?? 0),
+      createdAt: item.createdAt,
+    }))
+    .filter((item) => item.totalMinor > 0)
     .sort((a, b) => {
-      const timeA = new Date(a.createdAt).getTime();
-      const timeB = new Date(b.createdAt).getTime();
-      if (timeA !== timeB) return timeA - timeB;
-      return (a.displayNumber || 0) - (b.displayNumber || 0);
+      const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return byTime !== 0 ? byTime : a.itemId.localeCompare(b.itemId);
     });
 
-  // 3. Allocate credits in FIFO sequence
-  for (const ord of custOrders) {
-    const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
-    const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
+  const allocatedByItem = new Map<string, number>();
+  for (const allocation of allocationsList) {
+    if (!allocation.orderItemId) continue;
+    allocatedByItem.set(
+      allocation.orderItemId,
+      (allocatedByItem.get(allocation.orderItemId) || 0) + Number(allocation.allocatedAmountMinor || 0)
+    );
+  }
 
-    if (totalMinor <= 0) {
-      result.set(ord.id, {
-        paymentStatus: 'PAID',
+  // Project pending local CREATE_PAYMENT commands exactly as the server will.
+  // The unallocated remainder is wallet credit and does not pay an order.
+  const pendingPayments = localDb.listOverlaysSync()
+    .filter((overlay) => overlay.status === 'PENDING' && overlay.entityType === 'payments' && overlay.operation === 'CREATE')
+    .map((overlay) => {
+      const payload = (overlay.entityPayload || overlay.patch || {}) as any;
+      return {
+        sequence: Number(overlay.sequence || 0),
+        createdAt: overlay.createdAt,
+        amountMinor: Number(payload.amountMinor ?? payload.amount_minor ?? 0),
+        customerId: payload.customerId || payload.customer_id,
+      };
+    })
+    .filter((payment) => payment.customerId === customerId && payment.amountMinor > 0)
+    .sort((a, b) => a.sequence - b.sequence || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  for (const payment of pendingPayments) {
+    let remaining = payment.amountMinor;
+    for (const item of recognizedItems) {
+      if (remaining <= 0) break;
+      const alreadyAllocated = allocatedByItem.get(item.itemId) || 0;
+      const outstanding = Math.max(0, item.totalMinor - alreadyAllocated);
+      if (outstanding <= 0) continue;
+      const amount = Math.min(remaining, outstanding);
+      allocatedByItem.set(item.itemId, alreadyAllocated + amount);
+      remaining -= amount;
+    }
+  }
+
+  const custOrders = Array.from(effectiveOrdersMap.values())
+    .filter((order) => order.customerId === customerId && order.status !== 'cancelled')
+    .sort((a, b) => {
+      const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return byTime !== 0 ? byTime : (a.displayNumber || 0) - (b.displayNumber || 0);
+    });
+
+  for (const order of custOrders) {
+    const orderItems = Array.from(effectiveItemsMap.values())
+      .filter((item) => item.orderId === order.id && item.status !== 'cancelled');
+
+    const displayTotalMinor = orderItems.reduce((sum, item) => sum + Number(item.totalPriceMinor || 0), 0);
+    if (displayTotalMinor <= 0) {
+      result.set(order.id, { paymentStatus: 'PAID', allocatedAmountMinor: 0, totalMinor: 0 });
+      continue;
+    }
+
+    const recognizedTotalMinor = recognizedItems
+      .filter((item) => item.orderId === order.id)
+      .reduce((sum, item) => sum + item.totalMinor, 0);
+
+    const allocatedMinor = recognizedItems
+      .filter((item) => item.orderId === order.id)
+      .reduce((sum, item) => sum + Math.min(item.totalMinor, allocatedByItem.get(item.itemId) || 0), 0);
+
+    if (recognizedTotalMinor <= 0) {
+      result.set(order.id, {
+        paymentStatus: 'UNPAID',
         allocatedAmountMinor: 0,
-        totalMinor: 0,
+        totalMinor: displayTotalMinor,
       });
       continue;
     }
 
-    if (availableCredits >= totalMinor) {
-      result.set(ord.id, {
-        paymentStatus: 'PAID',
-        allocatedAmountMinor: totalMinor,
-        totalMinor,
-      });
-      availableCredits -= totalMinor;
-    } else if (availableCredits > 0) {
-      result.set(ord.id, {
-        paymentStatus: 'PARTIAL',
-        allocatedAmountMinor: availableCredits,
-        totalMinor,
-      });
-      availableCredits = 0;
-    } else {
-      result.set(ord.id, {
-        paymentStatus: 'UNPAID',
-        allocatedAmountMinor: 0,
-        totalMinor,
-      });
-    }
+    const boundedAllocated = Math.min(allocatedMinor, recognizedTotalMinor);
+    result.set(order.id, {
+      paymentStatus:
+        boundedAllocated >= recognizedTotalMinor
+          ? 'PAID'
+          : boundedAllocated > 0
+            ? 'PARTIAL'
+            : 'UNPAID',
+      allocatedAmountMinor: boundedAllocated,
+      totalMinor: recognizedTotalMinor,
+    });
   }
 
   return result;
