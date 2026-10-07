@@ -929,7 +929,7 @@ WHEN 'UPDATE_ORDER' THEN
             VALUES(v_payment_uuid,v_customer_uuid,v_unallocated_amount,'CASH',COALESCE(p_payload->>'reference','Customer credit'),v_actor_id,p_command_id,NOW())
             ON CONFLICT(id) DO NOTHING;
             INSERT INTO public.financial_ledger(id,event_type,amount_minor,customer_id,actor_admin_id,reference_id,created_at)
-            VALUES(gen_random_uuid(),'CREDIT_ADJUSTMENT',v_unallocated_amount,v_customer_uuid,v_actor_id,v_payment_uuid,NOW())
+            VALUES(p_command_id,'CREDIT_ADJUSTMENT',v_unallocated_amount,v_customer_uuid,v_actor_id,v_payment_uuid,NOW())
             RETURNING id INTO v_ledger_uuid;
             SELECT to_jsonb(p) INTO v_canonical_payload FROM public.payments p WHERE p.id = v_payment_uuid;
             PERFORM public.record_canonical_change('payments',v_payment_uuid,'INSERT',v_canonical_payload,1);
@@ -1301,10 +1301,10 @@ WHEN 'UPDATE_ORDER' THEN
             ON CONFLICT (id) DO NOTHING;
 
             INSERT INTO public.financial_ledger (
-                event_type, amount_minor, customer_id, actor_admin_id, reference_id, metadata, created_at
+                id, event_type, amount_minor, customer_id, actor_admin_id, reference_id, metadata, created_at
             )
             SELECT
-                'PAYMENT',
+                p_command_id, 'PAYMENT',
                 COALESCE((p_payload->>'amountMinor')::BIGINT, (p_payload->>'amount_minor')::BIGINT),
                 v_customer_uuid,
                 v_actor_id,
