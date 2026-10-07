@@ -1479,6 +1479,22 @@ export class BackupService {
 
     await auth.verifyBin(options?.bin as any);
 
+    // Deleting local business data is destructive. Preserve a complete local
+    // recovery point first so the operation is reversible.
+    const currentLocal = await this.captureOfflineData();
+    const currentLocalCount =
+      (currentLocal.customers || []).length +
+      (currentLocal.orders || []).length +
+      (currentLocal.orderItems || []).length +
+      (currentLocal.outbox || []).length;
+    if (currentLocalCount > 0) {
+      await this.createSnapshot('OFFLINE', auth, {
+        name: `Pre-Local-Delete Recovery Snapshot ${new Date().toISOString()}`,
+        bin: options?.bin,
+        customOnlineData: currentLocal,
+      });
+    }
+
     await localDb.clearOperationalTables({ clearOutbox: true, clearSyncState: true });
     await localDb.setLocalResetMarker(true);
 
