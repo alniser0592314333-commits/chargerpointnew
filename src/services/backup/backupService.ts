@@ -395,12 +395,57 @@ export function normalizePaymentAllocationEntity(a: any): any {
 
 export function normalizeQrTokenEntity(q: any): any {
   if (!q) return q;
+
+  // QR identity is durable data. Never regenerate or replace a public QR token
+  // merely because a snapshot is exported/imported or normalized between
+  // camelCase and snake_case representations.
+  const publicToken =
+    q.publicToken ??
+    q.public_token ??
+    q.token ??
+    null;
+  const tokenHash =
+    q.tokenHash ??
+    q.token_hash ??
+    null;
+  const tokenType =
+    q.tokenType ??
+    q.token_type ??
+    q.entityType ??
+    q.entity_type ??
+    'ORDER';
+  const targetId =
+    q.targetId ??
+    q.target_id ??
+    q.entityId ??
+    q.entity_id ??
+    null;
+  const isActive = q.isActive ?? q.is_active ?? true;
+  const expiresAt = q.expiresAt ?? q.expires_at ?? null;
+
   return {
     id: q.id,
-    token: q.token,
-    entityType: q.entityType || q.entity_type,
-    entityId: q.entityId || q.entity_id,
+    publicToken,
+    public_token: publicToken,
+    tokenHash,
+    token_hash: tokenHash,
+    tokenType,
+    token_type: tokenType,
+    targetId,
+    target_id: targetId,
+    isActive: Boolean(isActive),
+    is_active: Boolean(isActive),
+    expiresAt,
+    expires_at: expiresAt,
+    // Keep legacy aliases so older local snapshots remain readable, but the
+    // canonical persisted identity above is what backup/restore must preserve.
+    token: publicToken,
+    entityType: tokenType,
+    entity_type: tokenType,
+    entityId: targetId,
+    entity_id: targetId,
     createdAt: q.createdAt || q.created_at || new Date().toISOString(),
+    created_at: q.createdAt || q.created_at || new Date().toISOString(),
   };
 }
 
