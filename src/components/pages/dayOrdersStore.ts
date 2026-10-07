@@ -756,9 +756,9 @@ const getLocalStorage = () => {
   return null;
 };
 
-export const CURRENT_MIGRATION_VERSION = '6.10.4D';
+export const CURRENT_MIGRATION_VERSION = '6.10.5D';
 
-const LEGACY_QR_MIGRATION_MARKER = 'legacy_qr_identity_migration_v1';
+const LEGACY_QR_MIGRATION_MARKER = 'legacy_qr_identity_migration_v2';
 
 const persistQrTokenCanonical = async (token: QrTokenEntity, previousKey?: string): Promise<void> => {
   await localDb.set('qr_tokens', token.id, token);
@@ -775,6 +775,23 @@ export const migrateLegacyQrTokenIdentities = async (): Promise<void> => {
   const legacyTokens = tokens.filter(
     (q) => typeof q?.id === 'string' && /:qr$/i.test(q.id),
   );
+
+  // Repair the canonical token hash contract for every existing local QR.
+  // Older offline customer QR creation stored the public token itself as tokenHash.
+  for (const raw of tokens) {
+    if (typeof raw?.id !== 'string' || /:qr$/i.test(raw.id)) continue;
+    const publicToken = String(raw.publicToken ?? raw.public_token ?? raw.token ?? '').trim();
+    if (!publicToken) {
+      throw new Error(`QR ${raw.id} cannot be migrated: missing public token`);
+    }
+    const expectedHash = await computeTokenHash(publicToken);
+    const currentHash = String(raw.tokenHash ?? raw.token_hash ?? '').trim();
+    if (currentHash !== expectedHash) {
+      await persistQrTokenCanonical(
+        { ...raw, tokenHash: expectedHash, token_hash: expectedHash, publicToken, public_token: publicToken },
+      );
+    }
+  }
 
   if (legacyTokens.length === 0) {
     storage?.setItem(LEGACY_QR_MIGRATION_MARKER, 'done');
