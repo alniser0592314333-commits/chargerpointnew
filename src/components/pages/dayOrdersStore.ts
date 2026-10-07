@@ -756,7 +756,82 @@ const getLocalStorage = () => {
   return null;
 };
 
-export const CURRENT_MIGRATION_VERSION = '6.10.3D';
+export const CURRENT_MIGRATION_VERSION = '6.10.4D';
+
+const LEGACY_QR_MIGRATION_MARKER = 'legacy_qr_identity_migration_v1';
+
+const persistQrTokenCanonical = async (token: QrTokenEntity, previousKey?: string): Promise<void> => {
+  await localDb.set('qr_tokens', token.id, token);
+  if (previousKey && previousKey !== token.id) {
+    await localDb.remove('qr_tokens', previousKey);
+  }
+};
+
+export const migrateLegacyQrTokenIdentities = async (): Promise<void> => {
+  const storage = getLocalStorage();
+  if (storage?.getItem(LEGACY_QR_MIGRATION_MARKER) === 'done') return;
+
+  const tokens = await localDb.list<any>('qr_tokens');
+  const legacyTokens = tokens.filter(
+    (q) => typeof q?.id === 'string' && /:qr$/i.test(q.id),
+  );
+
+  if (legacyTokens.length === 0) {
+    storage?.setItem(LEGACY_QR_MIGRATION_MARKER, 'done');
+    return;
+  }
+
+  const orders = await localDb.list<any>('orders');
+  const canonicalByLegacyId = new Map<string, string>();
+
+  for (const raw of legacyTokens) {
+    const legacyId = String(raw.id);
+    const targetFromId = legacyId.replace(/:qr$/i, '');
+    const tokenType = String(raw.tokenType ?? raw.token_type ?? raw.entityType ?? raw.entity_type ?? 'ORDER').toUpperCase();
+    const targetId = raw.targetId ?? raw.target_id ?? raw.entityId ?? raw.entity_id ?? targetFromId;
+
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(targetId))) {
+      throw new Error(`Legacy QR ${legacyId} cannot be migrated: invalid targetId ${targetId}`);
+    }
+    if (tokenType !== 'ORDER' && tokenType !== 'CUSTOMER') {
+      throw new Error(`Legacy QR ${legacyId} cannot be migrated: invalid tokenType ${tokenType}`);
+    }
+
+    const publicToken = String(raw.publicToken ?? raw.public_token ?? raw.token ?? '').trim() || generateSecurePublicToken();
+    const tokenHash = String(raw.tokenHash ?? raw.token_hash ?? '').trim() || await computeTokenHash(publicToken);
+    const canonicalId = globalThis.crypto?.randomUUID?.();
+
+    if (!canonicalId) {
+      throw new Error(`Legacy QR ${legacyId} cannot be migrated: crypto.randomUUID is unavailable`);
+    }
+
+    const canonical: QrTokenEntity = {
+      id: canonicalId,
+      tokenHash,
+      publicToken,
+      tokenType: tokenType as QrTokenEntity['tokenType'],
+      targetId: String(targetId),
+      isActive: Boolean(raw.isActive ?? raw.is_active ?? true),
+      expiresAt: raw.expiresAt ?? raw.expires_at,
+      createdAt: raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+    };
+
+    await persistQrTokenCanonical(canonical, legacyId);
+    canonicalByLegacyId.set(legacyId, canonical.id);
+  }
+
+  for (const order of orders) {
+    const oldId = order?.qrTokenId ?? order?.qr_token_id;
+    const mappedId = typeof oldId === 'string' ? canonicalByLegacyId.get(oldId) : undefined;
+    if (mappedId) {
+      await localDb.set('orders', order.id, { ...order, qrTokenId: mappedId, qr_token_id: mappedId });
+    }
+  }
+
+  storage?.setItem(LEGACY_QR_MIGRATION_MARKER, 'done');
+};
+
+
 
 // Clean Operational Reset helper (sets all operational data to ZERO while retaining device types & config)
 export const clearAllOperationalData = async (): Promise<void> => {
@@ -1146,6 +1221,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     await runCleanBootMigrationIfNeeded();
     
     await initDbIfNeeded();
+    await migrateLegacyQrTokenIdentities();
 
     const storage = getLocalStorage();
     const isResetPending = storage?.getItem('sys_operational_reset') === 'true';
