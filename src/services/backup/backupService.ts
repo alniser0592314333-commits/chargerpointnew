@@ -1467,7 +1467,8 @@ export class BackupService {
       onlineData.payments.length +
       onlineData.paymentAllocations.length +
       onlineData.deviceTypes.length +
-      (onlineData.qrTokens || []).length;
+      (onlineData.qrTokens || []).length +
+      (onlineData.orderNumberReservations || []).length;
 
     return {
       success: true,
