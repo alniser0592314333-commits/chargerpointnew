@@ -770,9 +770,45 @@ export class SyncEngine {
         }
 
         const outboxItems = await localDb.listOutbox();
+
+        // Offline-sensitive commands may be created without a BIN because the
+        // server cannot be contacted while offline. Never send such a command
+        // with an empty credential. Keep it visibly blocked until the admin
+        // supplies the BIN once connectivity is restored.
+        for (const item of outboxItems) {
+          const payload = (item.payload || {}) as any;
+          if (
+            (item.status === 'pending' || item.status === 'blocked' || item.status === 'syncing') &&
+            payload?.deferBinVerification === true &&
+            (!payload?.bin || String(payload.bin).trim().length < 4)
+          ) {
+            item.status = 'blocked';
+            item.lastError = 'BIN_REQUIRED';
+            await localDb.saveOutbox(item);
+            const hist = await localDb.getHistoryByCommandId(item.commandId);
+            if (hist) {
+              hist.state = 'BLOCKED';
+              hist.errorClass = 'AUTHORIZATION';
+              hist.errorMessage = 'BIN_REQUIRED';
+              hist.retryEligible = false;
+              hist.updatedAt = new Date().toISOString();
+              await localDb.saveHistory(hist);
+            }
+            syncEventEmitter.emit({
+              type: 'command_status_changed',
+              commandId: item.commandId,
+              groupId: item.groupId,
+              newState: 'BLOCKED',
+              error: 'BIN_REQUIRED',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+
         const candidates = outboxItems.filter(
           i =>
             !processedInCycle.has(i.commandId) &&
+            !((i.payload as any)?.deferBinVerification === true && (!((i.payload as any)?.bin) || String((i.payload as any)?.bin).trim().length < 4)) &&
             (i.status === 'pending' ||
               i.status === 'blocked' ||
               i.status === 'conflict' ||
