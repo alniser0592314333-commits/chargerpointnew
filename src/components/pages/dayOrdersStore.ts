@@ -4023,7 +4023,7 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
     const qrRecord: QrTokenEntity = {
       id: crypto.randomUUID(),
       publicToken,
-      tokenHash: publicToken,
+      tokenHash: await computeTokenHash(publicToken),
       tokenType: 'CUSTOMER',
       targetId: customerId,
       isActive: true,
