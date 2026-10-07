@@ -3821,7 +3821,7 @@ export const getOrCreateOrderQrToken = async (orderId: string): Promise<string> 
       createdAt: new Date().toISOString(),
     };
 
-    await localDb.set('qr_tokens', newToken.publicToken || newToken.id, newToken);
+    await persistQrTokenCanonical(newToken);
     return publicToken;
   })();
 
@@ -4030,7 +4030,7 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
       createdAt: new Date().toISOString(),
     };
 
-    await localDb.set('qr_tokens', publicToken, qrRecord);
+    await persistQrTokenCanonical(qrRecord);
     return publicToken;
   })();
 
@@ -4066,7 +4066,7 @@ export const rotateCustomerQrToken = async (customerId: string): Promise<string>
   for (const token of allTokens) {
     if (token.targetId === customerId && token.tokenType === 'CUSTOMER' && token.isActive) {
       token.isActive = false;
-      await localDb.set('qr_tokens', token.publicToken || token.id, token);
+      await persistQrTokenCanonical(token);
     }
   }
 
@@ -4082,7 +4082,7 @@ export const rotateCustomerQrToken = async (customerId: string): Promise<string>
     createdAt: new Date().toISOString(),
   };
 
-  await localDb.set('qr_tokens', newPublicToken, newRecord);
+  await persistQrTokenCanonical(newRecord);
   return newPublicToken;
 };
 
