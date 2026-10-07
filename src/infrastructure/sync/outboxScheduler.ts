@@ -167,6 +167,7 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     'DELIVER_ORDER_ITEM',
     'CANCEL_ORDER_ITEM',
     'CANCEL_ORDER',
+    'UPDATE_ORDER',
   ]);
   const currentOrderId =
     typeof payload.orderId === 'string'
