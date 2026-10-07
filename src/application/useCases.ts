@@ -554,6 +554,7 @@ export class FinalUseCases {
         orderItemId: item.id,
         orderId: order.id,
         bin,
+        ...(options?.deferBinVerification ? { deferBinVerification: true } : {}),
     }, item.version);
 
     return { success: true as const, data: { ...item, ...patch } as OrderItemEntity };
@@ -724,6 +725,7 @@ export class FinalUseCases {
       aggregateId: orderId,
       orderId,
       bin,
+      ...(options?.deferBinVerification ? { deferBinVerification: true } : {}),
     }, order.version);
 
     return { success: true, data: { ...order, status: 'cancelled', cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: order.version + 1 } };
@@ -1288,6 +1290,7 @@ export class FinalUseCases {
       actorAdminId: actor.id,
       createdAt,
       bin,
+      ...(options?.deferBinVerification ? { deferBinVerification: true } : {}),
     });
 
     return { success: true, data: { id: txId, createdAt, ...event } };
