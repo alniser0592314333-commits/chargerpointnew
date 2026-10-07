@@ -1136,6 +1136,18 @@ export class BackupService {
       deviceTypes: consolidatedDevices,
       qrTokens: consolidatedQrTokens,
       orderNumberReservations: consolidatedReservations,
+      // Consolidated backup must retain the local operational checkpoint as
+      // well as the reconciled business rows. Otherwise a pending DELETE/PATCH
+      // can disappear and be resurrected by the next sync.
+      goals: offline.goals || online.goals || [],
+      goalRequests: offline.goalRequests || online.goalRequests || [],
+      outbox: offline.outbox || [],
+      syncHistory: offline.syncHistory || [],
+      mutationSnapshots: offline.mutationSnapshots || [],
+      optimisticOverlays: offline.optimisticOverlays || [],
+      deletedDeviceTypeMarkers: offline.deletedDeviceTypeMarkers || [],
+      changeLog: offline.changeLog || [],
+      systemSettings: offline.systemSettings || [],
       syncState: online.syncState || offline.syncState || null,
       consolidationMetadata: {
         onlineRecordCount,
