@@ -157,6 +157,49 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     }
   }
 
+  // 5. Serialize mutations within the same order.
+  // An order is a causal stream: a later item mutation must not jump over
+  // an earlier delivery/cancellation that is still waiting for authorization.
+  // This is deliberately limited to order mutations; customer payments,
+  // credits, goals, and unrelated entities remain independently schedulable.
+  const orderMutationTypes = new Set([
+    'ADD_ORDER_ITEM',
+    'DELIVER_ORDER_ITEM',
+    'CANCEL_ORDER_ITEM',
+    'CANCEL_ORDER',
+  ]);
+  const currentOrderId =
+    typeof payload.orderId === 'string'
+      ? payload.orderId
+      : item.aggregateType === 'orders' && typeof item.aggregateId === 'string'
+        ? item.aggregateId
+        : undefined;
+
+  if (currentOrderId && orderMutationTypes.has(item.commandType)) {
+    const currentCreatedAt = new Date(item.createdAt || 0).getTime();
+    const previousOrderMutations = allOutbox
+      .filter(other => {
+        if (other.commandId === item.commandId || !orderMutationTypes.has(other.commandType)) return false;
+        const otherPayload = (other.payload || {}) as any;
+        const otherOrderId =
+          typeof otherPayload.orderId === 'string'
+            ? otherPayload.orderId
+            : other.aggregateType === 'orders' && typeof other.aggregateId === 'string'
+              ? other.aggregateId
+              : undefined;
+        if (otherOrderId !== currentOrderId) return false;
+        return new Date(other.createdAt || 0).getTime() < currentCreatedAt;
+      })
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    // Depend only on the immediately preceding order mutation. If it is
+    // accepted the dependency is satisfied; if it is blocked/failed, this
+    // command remains blocked behind it instead of overtaking it.
+    if (previousOrderMutations.length > 0) {
+      deps.add(previousOrderMutations[0].commandId);
+    }
+  }
+
   // Remove self-references
   deps.delete(item.commandId);
   return Array.from(deps);
