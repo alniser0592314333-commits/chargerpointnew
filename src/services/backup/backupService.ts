@@ -1011,7 +1011,7 @@ export class BackupService {
            localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of d.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
-        for (const q of d.qrTokens || []) localDb.setWithTx(tx, 'qr_tokens', q.id, q);
+        for (const q of d.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
         for (const r of d.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
         localDb.setSyncStateWithTx(tx, {
@@ -1123,7 +1123,7 @@ export class BackupService {
           localDb.setWithTx(tx, 'paymentAllocations', normAlloc.id, normAlloc);
         }
         for (const dev of onlineData.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
-        for (const q of onlineData.qrTokens || []) localDb.setWithTx(tx, 'qr_tokens', q.id, q);
+        for (const q of onlineData.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
         for (const r of onlineData.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
         localDb.setSyncStateWithTx(tx, {
