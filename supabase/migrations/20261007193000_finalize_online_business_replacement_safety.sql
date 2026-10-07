@@ -119,6 +119,29 @@ BEGIN
     $$  ALTER TABLE public.qr_tokens ENABLE TRIGGER trg_change_capture;
   ALTER TABLE public.order_number_reservations ENABLE TRIGGER trg_change_capture;$$);
 
+  v := replace(v,
+    $  /* ---------- POST-REBUILD INVARIANTS ---------- */$,
+    $  /* ---------- POST-REBUILD INVARIANTS ---------- */
+  IF EXISTS (
+    SELECT 1
+    FROM public.qr_tokens q
+    LEFT JOIN public.orders o ON upper(q.token_type) = 'ORDER' AND o.id = q.target_id
+    LEFT JOIN public.customers c ON upper(q.token_type) = 'CUSTOMER' AND c.id = q.target_id
+    WHERE (upper(q.token_type) = 'ORDER' AND o.id IS NULL)
+       OR (upper(q.token_type) = 'CUSTOMER' AND c.id IS NULL)
+  ) THEN
+    RAISE EXCEPTION 'Replacement rejected: QR token target does not exist';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.qr_tokens q
+    WHERE q.is_active = true
+    GROUP BY q.target_id, q.token_type
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Replacement rejected: duplicate active QR target';
+  END IF;$);
+
   EXECUTE v;
 END
 $patch$;
