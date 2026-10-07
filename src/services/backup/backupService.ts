@@ -420,21 +420,29 @@ export function normalizeQrTokenEntity(q: any): any {
   // "<order-uuid>:qr" is migrated exactly once at restore/normalization time
   // into a real UUID + random public token. Once that canonical identity exists,
   // every subsequent backup/restore preserves it verbatim.
-  const legacyPlaceholder =
-    typeof q.id === 'string' &&
-    /:qr$/i.test(q.id) &&
-    !(q.publicToken ?? q.public_token ?? q.token);
+  const legacyId =
+    typeof q.id === 'string' && /:qr$/i.test(q.id)
+      ? q.id.replace(/:qr$/i, '')
+      : null;
+  const legacyPlaceholder = Boolean(legacyId);
 
+  const tokenType =
+    q.tokenType ??
+    q.token_type ??
+    q.entityType ??
+    q.entity_type ??
+    'ORDER';
+
+  // Legacy placeholder IDs are never valid server primary keys. Canonicalize
+  // them deterministically even when a real public token already exists, while
+  // preserving that real public token unchanged.
   const generatedId = legacyPlaceholder
-    ? stableLegacyQrUuid(
-        q.id.replace(/:qr$/i, ''),
-        q.tokenType ?? q.token_type ?? q.entityType ?? q.entity_type ?? 'ORDER'
-      )
+    ? stableLegacyQrUuid(legacyId!, tokenType)
     : q.id;
 
   const generatedPublicToken =
     legacyPlaceholder && !(q.publicToken ?? q.public_token ?? q.token)
-      ? 'legacy-' + q.id.replace(/:qr$/i, '')
+      ? 'legacy-' + legacyId
       : null;
 
   const publicToken =
@@ -447,18 +455,12 @@ export function normalizeQrTokenEntity(q: any): any {
     q.tokenHash ??
     q.token_hash ??
     null;
-  const tokenType =
-    q.tokenType ??
-    q.token_type ??
-    q.entityType ??
-    q.entity_type ??
-    'ORDER';
   const targetId =
     q.targetId ??
     q.target_id ??
     q.entityId ??
     q.entity_id ??
-    (typeof q.id === 'string' && /:qr$/i.test(q.id) ? q.id.replace(/:qr$/i, '') : null);
+    legacyId;
   const isActive = q.isActive ?? q.is_active ?? true;
   const expiresAt = q.expiresAt ?? q.expires_at ?? null;
 
