@@ -3546,7 +3546,7 @@ export const updateOrderWithPhase5Engine = async (
       const auth = getAuthorizedAdminContext(bin);
       if (isBrowserOffline()) {
         // Cancellation remains local-first offline; the server will enforce BIN when the queued command is authorized online.
-        await phase5UseCases.cancelOrderOfflineDeferred(auth, orderId);
+        await phase5UseCases.cancelOrder(auth, orderId, '', { deferBinVerification: true });
       } else {
         await auth.verifyBin(bin || '');
         await phase5UseCases.cancelOrder(auth, orderId, bin || '');
