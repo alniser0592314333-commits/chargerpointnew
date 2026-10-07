@@ -1292,6 +1292,7 @@ export class BackupService {
       'readwrite',
       (tx) => {
         localDb.clearOperationalTablesWithTx(tx);
+        localDb.clearOutboxWithTx(tx);
 
         // Populate operational stores from snapshot
         for (const c of d.customers) localDb.setWithTx(tx, 'customers', c.id, c);
