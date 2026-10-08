@@ -579,6 +579,7 @@ export const applyRemoteChange = (change: {
     const entity: PaymentAllocationEntity = {
       id: p.id || change.entityId,
       paymentId: p.paymentId || p.payment_id,
+      orderItemId: p.orderItemId || p.order_item_id,
       orderId: p.orderId || p.order_id,
       allocatedAmountMinor: p.allocatedAmountMinor ?? p.allocated_amount_minor ?? 0,
       createdAt: p.createdAt || p.created_at || new Date().toISOString(),
@@ -1202,6 +1203,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         const entity: PaymentAllocationEntity = {
           id: a.id,
           paymentId: a.payment_id,
+          orderItemId: a.order_item_id,
           orderId: a.order_id,
           allocatedAmountMinor: a.allocated_amount_minor,
           createdAt: a.created_at,
@@ -2645,13 +2647,48 @@ const buildPaymentProjectionIndexes = (
     });
   }
 
+  // Apply authoritative item-level allocations first. Older local snapshots may
+  // contain allocation rows created before orderItemId was persisted locally.
+  // Those legacy rows are reconstructed deterministically at order-item level
+  // using the same canonical FIFO ordering used by the server.
+  const legacyAllocations: PaymentAllocationEntity[] = [];
   for (const allocation of allocationsList) {
-    if (!allocation.orderItemId) continue;
-    allocatedByItem.set(
-      allocation.orderItemId,
-      (allocatedByItem.get(allocation.orderItemId) || 0) +
-        Number(allocation.allocatedAmountMinor || 0)
-    );
+    if (allocation.orderItemId) {
+      allocatedByItem.set(
+        allocation.orderItemId,
+        (allocatedByItem.get(allocation.orderItemId) || 0) +
+          Number(allocation.allocatedAmountMinor || 0)
+      );
+    } else {
+      legacyAllocations.push(allocation);
+    }
+  }
+
+  legacyAllocations.sort((a, b) => {
+    const timeA = new Date(a.createdAt).getTime();
+    const timeB = new Date(b.createdAt).getTime();
+    if (timeA !== timeB) return timeA - timeB;
+    return a.id.localeCompare(b.id);
+  });
+
+  for (const allocation of legacyAllocations) {
+    if (!allocation.orderId) continue;
+
+    let remaining = Number(allocation.allocatedAmountMinor || 0);
+    if (remaining <= 0) continue;
+
+    const orderItems = recognizedItemsByOrder.get(allocation.orderId) || [];
+    for (const item of orderItems) {
+      if (remaining <= 0) break;
+
+      const alreadyAllocated = allocatedByItem.get(item.itemId) || 0;
+      const outstanding = Math.max(0, item.totalMinor - alreadyAllocated);
+      if (outstanding <= 0) continue;
+
+      const amount = Math.min(remaining, outstanding);
+      allocatedByItem.set(item.itemId, alreadyAllocated + amount);
+      remaining -= amount;
+    }
   }
 
   for (const overlay of localDb.listOverlaysSync()) {
