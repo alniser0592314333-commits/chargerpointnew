@@ -928,6 +928,7 @@ export class BackupService {
       orderNumberReservations,
       goals,
       goalRequests,
+      systemSettings,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
       fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
@@ -941,7 +942,12 @@ export class BackupService {
       fetchTable('order_number_reservations').then((rows) => rows.map(normalizeOrderNumberReservationEntity)),
       fetchTable('goals'),
       fetchTable('goal_requests'),
+      fetchTable('system_settings'),
     ]);
+
+    const serverResetGeneration = Number(
+      systemSettings.find((row: any) => row.key === 'server_reset_generation')?.value_number
+    );
 
     return {
       customers,
@@ -956,7 +962,17 @@ export class BackupService {
       orderNumberReservations,
       goals,
       goalRequests,
-      syncState: null,
+      systemSettings,
+      syncState: Number.isSafeInteger(serverResetGeneration) && serverResetGeneration >= 0
+        ? {
+            table: 'global',
+            lastAppliedChangeSequence: 0,
+            lastPulledAt: new Date().toISOString(),
+            resetGeneration: serverResetGeneration,
+            reconciliationRequired: false,
+            status: 'READY',
+          }
+        : null,
     };
   }
 
