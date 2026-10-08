@@ -5,24 +5,9 @@ export interface BeforeInstallPromptEvent extends Event {
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let initialized = false;
-const SERVER_SNAPSHOT = { installable: false, installed: false };
-let snapshot = SERVER_SNAPSHOT;
-
 const listeners = new Set<() => void>();
 
-const computeSnapshot = () => ({
-  installable: Boolean(deferredPrompt),
-  installed: isPWARunningStandalone(),
-});
-
 const notify = () => {
-  const nextSnapshot = computeSnapshot();
-  if (
-    nextSnapshot.installable !== snapshot.installable ||
-    nextSnapshot.installed !== snapshot.installed
-  ) {
-    snapshot = nextSnapshot;
-  }
   listeners.forEach((listener) => listener());
 };
 
@@ -54,7 +39,6 @@ export function initializePWAInstallCapture(): void {
     // Display-mode observation is optional; install events remain authoritative.
   }
 
-  snapshot = computeSnapshot();
 }
 
 export function subscribePWAInstall(listener: () => void): () => void {
