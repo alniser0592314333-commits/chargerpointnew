@@ -1,5 +1,3 @@
-import { useSyncExternalStore } from 'react';
-
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -70,6 +68,13 @@ export function getDeferredInstallPrompt(): BeforeInstallPromptEvent | null {
   return deferredPrompt;
 }
 
+export function getPWAInstallState() {
+  return {
+    installable: Boolean(deferredPrompt),
+    installed: isPWARunningStandalone(),
+  };
+}
+
 export function isPWARunningStandalone(): boolean {
   if (typeof window === 'undefined') return false;
 
@@ -99,12 +104,4 @@ export async function promptPWAInstall(): Promise<boolean> {
   notify();
 
   return outcome === 'accepted';
-}
-
-export function usePWAInstallSnapshot() {
-  return useSyncExternalStore(
-    subscribePWAInstall,
-    () => snapshot,
-    () => SERVER_SNAPSHOT,
-  );
 }
