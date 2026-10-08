@@ -86,6 +86,58 @@ export function computeSnapshotChecksum(data: unknown): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+export function canonicalizeSnapshotForComparison(data: any): any {
+  const collectionKeys = new Set([
+    'customers',
+    'businessDays',
+    'orders',
+    'orderItems',
+    'financialLedger',
+    'payments',
+    'paymentAllocations',
+    'deviceTypes',
+    'qrTokens',
+    'orderNumberReservations',
+    'goals',
+    'goalRequests',
+    'outbox',
+    'syncHistory',
+    'mutationSnapshots',
+    'optimisticOverlays',
+    'deletedDeviceTypeMarkers',
+    'changeLog',
+    'systemSettings',
+  ]);
+
+  const clone = (value: any, key?: string): any => {
+    if (value === null || value === undefined) return value;
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) {
+      const cloned = value.map((item) => clone(item));
+      if (key && collectionKeys.has(key)) {
+        return cloned.sort((a, b) => {
+          const aKey = String(a?.id ?? a?.sequence_id ?? a?.sequenceId ?? a?.historyId ?? a?.commandId ?? '');
+          const bKey = String(b?.id ?? b?.sequence_id ?? b?.sequenceId ?? b?.historyId ?? b?.commandId ?? '');
+          return aKey.localeCompare(bKey);
+        });
+      }
+      return cloned;
+    }
+    if (typeof value !== 'object') return value;
+    const out: Record<string, any> = {};
+    for (const k of Object.keys(value).sort()) {
+      if (value[k] !== undefined) out[k] = clone(value[k], k);
+    }
+    return out;
+  };
+
+  return clone(data);
+}
+
+export async function computeCanonicalSnapshotSha256(data: unknown): Promise<string> {
+  return computeSnapshotSha256(canonicalizeSnapshotForComparison(data));
+}
+
 export async function computeSnapshotSha256(data: unknown): Promise<string> {
   const canonicalStringify = (obj: any): string => {
     if (obj === null || obj === undefined) return 'null';
@@ -483,7 +535,10 @@ export function normalizeOrderNumberReservationEntity(r: any): any {
   };
 }
 
-export function normalizeQrTokenEntity(q: any): any {
+export function normalizeQrTokenEntity(
+  q: any,
+  options?: { allowLegacyPlaceholder?: boolean }
+): any {
   if (!q) return q;
 
   // QR identity is durable data. A legacy local placeholder such as
@@ -529,9 +584,37 @@ export function normalizeQrTokenEntity(q: any): any {
   const expiresAt = q.expiresAt ?? q.expires_at ?? null;
 
   if (legacyPlaceholder && (!generatedId || generatedId === q.id || !publicToken || !targetId)) {
-    throw new SnapshotFormatError(
-      'Legacy QR placeholder could not be safely migrated to a permanent QR identity'
-    );
+    if (!options?.allowLegacyPlaceholder) {
+      throw new SnapshotFormatError(
+        'Legacy QR placeholder could not be safely migrated to a permanent QR identity'
+      );
+    }
+
+    // Backup capture is read-only. Preserve the legacy record exactly enough
+    // to restore/inspect it later; destructive paths remain strict and will
+    // reject it until a real public token and permanent UUID identity exist.
+    return {
+      ...sanitizeEntity(q),
+      id: q.id,
+      publicToken,
+      public_token: publicToken,
+      tokenHash,
+      token_hash: tokenHash,
+      tokenType,
+      token_type: tokenType,
+      targetId,
+      target_id: targetId,
+      isActive: Boolean(isActive),
+      is_active: Boolean(isActive),
+      expiresAt,
+      expires_at: expiresAt,
+      token: publicToken,
+      entityType: tokenType,
+      entity_type: tokenType,
+      entityId: targetId,
+      entity_id: targetId,
+      _legacyQrPlaceholder: true,
+    };
   }
 
   return {
@@ -562,6 +645,7 @@ export interface CreateSnapshotOptions {
   name?: string;
   bin?: string;
   customOnlineData?: Partial<BackupSnapshotData>;
+  customOfflineData?: Partial<BackupSnapshotData>;
 }
 
 const REPLACEMENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -872,7 +956,7 @@ export class BackupService {
       deviceTypes: deviceTypes.map(sanitizeEntity).map(normalizeDeviceTypeEntity),
       goals: goals.map(sanitizeEntity),
       goalRequests: goalRequests.map(sanitizeEntity),
-      qrTokens: qrTokens.map(sanitizeEntity).map(normalizeQrTokenEntity),
+      qrTokens: qrTokens.map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: orderNumberReservations.map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
       outbox: outbox.map(sanitizeEntity),
       syncHistory: syncHistory.map(sanitizeEntity),
@@ -886,6 +970,39 @@ export class BackupService {
   }
 
   /**
+   * Captures an already-read local dataset without performing a second read.
+   * This is used by destructive-operation safety checkpoints so the snapshot
+   * exactly matches the state that was preflighted.
+   */
+  async captureOfflineDataFromData(data: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
+    return {
+      customers: (data.customers || []).map(sanitizeEntity),
+      businessDays: (data.businessDays || []).map(sanitizeEntity),
+      orders: (data.orders || []).map(sanitizeEntity).map(normalizeOrderEntity),
+      orderItems: (data.orderItems || []).map(sanitizeEntity).map(normalizeOrderItemEntity),
+      financialLedger: (data.financialLedger || []).map(sanitizeEntity).map(normalizeFinancialLedgerEntity),
+      payments: (data.payments || []).map(sanitizeEntity).map(normalizePaymentEntity),
+      paymentAllocations: (data.paymentAllocations || []).map(sanitizeEntity).map(normalizePaymentAllocationEntity),
+      deviceTypes: (data.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
+      goals: (data.goals || []).map(sanitizeEntity),
+      goalRequests: (data.goalRequests || []).map(sanitizeEntity),
+      qrTokens: (data.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
+      orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
+      outbox: (data.outbox || []).map(sanitizeEntity),
+      syncHistory: (data.syncHistory || []).map(sanitizeEntity),
+      mutationSnapshots: (data.mutationSnapshots || []).map(sanitizeEntity),
+      optimisticOverlays: (data.optimisticOverlays || []).map(sanitizeEntity),
+      syncState: data.syncState ? sanitizeEntity(data.syncState) : null,
+      deletedDeviceTypeMarkers: (data.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+      changeLog: (data.changeLog || []).map(sanitizeEntity),
+      systemSettings: (data.systemSettings || []).map(sanitizeEntity),
+      consolidationMetadata: data.consolidationMetadata
+        ? sanitizeEntity(data.consolidationMetadata)
+        : undefined,
+    };
+  }
+
+  /**
    * Alias for captureOfflineData to provide semantic consistency across Local -> Online pipelines.
    */
   async captureLocalData(): Promise<BackupSnapshotData> {
@@ -893,21 +1010,25 @@ export class BackupService {
   }
 
   /**
-   * Captures authoritative online business data from PostgreSQL via Supabase REST.
+   * Captures an authoritative, single-statement cloud snapshot from PostgreSQL via RPC.
    */
   async captureOnlineData(customOnlineData?: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
     if (customOnlineData) {
-      return normalizeReplacementLocalData({
-        customers: (customOnlineData.customers || []).map(sanitizeEntity),
-        businessDays: (customOnlineData.businessDays || []).map(sanitizeEntity),
-        orders: (customOnlineData.orders || []).map(sanitizeEntity),
-        orderItems: (customOnlineData.orderItems || []).map(sanitizeEntity),
-        financialLedger: (customOnlineData.financialLedger || []).map(sanitizeEntity),
-        payments: (customOnlineData.payments || []).map(sanitizeEntity),
-        paymentAllocations: (customOnlineData.paymentAllocations || []).map(sanitizeEntity),
-        deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity),
-        qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity),
-        orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity),
+      // Custom data is used by backup/recovery callers as an already-captured
+      // dataset. Keep capture read-only and preserve legacy QR placeholders;
+      // strict QR identity validation remains exclusive to destructive
+      // replacement/restore paths.
+      return {
+        customers: (customOnlineData.customers || []).map(sanitizeEntity).map(normalizeCustomerEntity),
+        businessDays: (customOnlineData.businessDays || []).map(sanitizeEntity).map(normalizeBusinessDayEntity),
+        orders: (customOnlineData.orders || []).map(sanitizeEntity).map(normalizeOrderEntity),
+        orderItems: (customOnlineData.orderItems || []).map(sanitizeEntity).map(normalizeOrderItemEntity),
+        financialLedger: (customOnlineData.financialLedger || []).map(sanitizeEntity).map(normalizeFinancialLedgerEntity),
+        payments: (customOnlineData.payments || []).map(sanitizeEntity).map(normalizePaymentEntity),
+        paymentAllocations: (customOnlineData.paymentAllocations || []).map(sanitizeEntity).map(normalizePaymentAllocationEntity),
+        deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
+        qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
+        orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
         goals: (customOnlineData.goals || []).map(sanitizeEntity),
         goalRequests: (customOnlineData.goalRequests || []).map(sanitizeEntity),
         outbox: (customOnlineData.outbox || []).map(sanitizeEntity),
@@ -917,74 +1038,43 @@ export class BackupService {
         deletedDeviceTypeMarkers: (customOnlineData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
         changeLog: (customOnlineData.changeLog || []).map(sanitizeEntity),
         systemSettings: (customOnlineData.systemSettings || []).map(sanitizeEntity),
-        syncState: customOnlineData.syncState || null,
-      });
+        syncState: customOnlineData.syncState ? sanitizeEntity(customOnlineData.syncState) : null,
+        consolidationMetadata: customOnlineData.consolidationMetadata
+          ? sanitizeEntity(customOnlineData.consolidationMetadata)
+          : undefined,
+      };
     }
 
-    const fetchTable = async (table: string, orderColumn = 'id'): Promise<any[]> => {
-      const pageSize = 1000;
-      let offset = 0;
-      const allRows: any[] = [];
-      let hasMore = true;
+    const { data: authoritative, error } = await invokeSupabaseRpc<any>(
+      'capture_authoritative_business_snapshot',
+      {}
+    );
 
-      while (hasMore) {
-        const { data, error } = await invokeSupabaseRestGet<any>(
-          table,
-          `select=*&order=${orderColumn}.asc&limit=${pageSize}&offset=${offset}`
-        );
+    if (error) {
+      throw new Error(`Failed to capture authoritative online snapshot: ${error}`);
+    }
+    if (!authoritative || typeof authoritative !== 'object' || Array.isArray(authoritative)) {
+      throw new Error('Failed to capture authoritative online snapshot: invalid server response');
+    }
 
-        if (error) {
-          throw new Error(`Failed to fetch online table "${table}" at offset ${offset}: ${error}`);
-        }
-
-        if (!data || !Array.isArray(data)) {
-          throw new Error(`Invalid response format fetching online table "${table}" at offset ${offset}: expected array`);
-        }
-
-        allRows.push(...data);
-        if (data.length < pageSize) {
-          hasMore = false;
-        } else {
-          offset += pageSize;
-        }
-      }
-
-      return allRows.map(sanitizeEntity);
-    };
-
-    const [
-      customers,
-      businessDays,
-      orders,
-      orderItems,
-      financialLedger,
-      payments,
-      paymentAllocations,
-      deviceTypes,
-      qrTokens,
-      orderNumberReservations,
-      goals,
-      goalRequests,
-      systemSettings,
-      changeLog,
-    ] = await Promise.all([
-      fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
-      fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
-      fetchTable('orders').then((rows) => rows.map(normalizeOrderEntity)),
-      fetchTable('order_items').then((rows) => rows.map(normalizeOrderItemEntity)),
-      fetchTable('financial_ledger').then((rows) => rows.map(normalizeFinancialLedgerEntity)),
-      fetchTable('payments').then((rows) => rows.map(normalizePaymentEntity)),
-      fetchTable('payment_allocations').then((rows) => rows.map(normalizePaymentAllocationEntity)),
-      fetchTable('device_types').then((rows) => rows.map(normalizeDeviceTypeEntity)),
-      fetchTable('qr_tokens').then((rows) => rows.map(normalizeQrTokenEntity)),
-      fetchTable('order_number_reservations').then((rows) => rows.map(normalizeOrderNumberReservationEntity)),
-      fetchTable('goals'),
-      fetchTable('goal_requests'),
-      fetchTable('system_settings'),
-      fetchTable('change_log', 'sequence_id'),
-    ]);
+    const customers = (authoritative.customers || []).map(normalizeCustomerEntity);
+    const businessDays = (authoritative.business_days || authoritative.businessDays || []).map(normalizeBusinessDayEntity);
+    const orders = (authoritative.orders || []).map(normalizeOrderEntity);
+    const orderItems = (authoritative.order_items || authoritative.orderItems || []).map(normalizeOrderItemEntity);
+    const financialLedger = (authoritative.financial_ledger || authoritative.financialLedger || []).map(normalizeFinancialLedgerEntity);
+    const payments = (authoritative.payments || []).map(normalizePaymentEntity);
+    const paymentAllocations = (authoritative.payment_allocations || authoritative.paymentAllocations || []).map(normalizePaymentAllocationEntity);
+    const deviceTypes = (authoritative.device_types || authoritative.deviceTypes || []).map(normalizeDeviceTypeEntity);
+    const qrTokens = (authoritative.qr_tokens || authoritative.qrTokens || []).map(normalizeQrTokenEntity);
+    const orderNumberReservations = (authoritative.order_number_reservations || authoritative.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity);
+    const goals = (authoritative.goals || []).map(sanitizeEntity);
+    const goalRequests = (authoritative.goal_requests || authoritative.goalRequests || []).map(sanitizeEntity);
+    const systemSettings = (authoritative.system_settings || authoritative.systemSettings || []).map(sanitizeEntity);
+    const changeLog = (authoritative.change_log || authoritative.changeLog || []).map(sanitizeEntity);
 
     const serverResetGeneration = Number(
+      authoritative.server_reset_generation ??
+      authoritative.serverResetGeneration ??
       systemSettings.find((row: any) => row.key === 'server_reset_generation')?.value_number
     );
     const maxChangeSequence = changeLog.reduce(
@@ -1281,7 +1371,9 @@ export class BackupService {
     let rawData: BackupSnapshotData;
 
     if (sourceType === 'OFFLINE') {
-      rawData = await this.captureOfflineData();
+      rawData = options?.customOfflineData
+        ? await this.captureOfflineDataFromData(options.customOfflineData)
+        : await this.captureOfflineData();
     } else if (sourceType === 'ONLINE') {
       rawData = await this.captureOnlineData(options?.customOnlineData);
     } else if (sourceType === 'CONSOLIDATED') {
@@ -1458,7 +1550,7 @@ export class BackupService {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
-        customOnlineData: preRestore,
+        customOfflineData: preRestore,
       });
     }
 
@@ -1618,7 +1710,7 @@ export class BackupService {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Local-Delete Recovery Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
-        customOnlineData: currentLocal,
+        customOfflineData: currentLocal,
       });
     }
 
@@ -1658,7 +1750,7 @@ export class BackupService {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Online-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
-        customOnlineData: preRestore,
+        customOfflineData: preRestore,
       });
     }
 
@@ -1835,11 +1927,19 @@ export class BackupService {
 
       let toInsert = 0;
       let toUpdate = 0;
+      const onlineById = new Map(onlineList.filter((x) => x?.id).map((x) => [x.id, x]));
+
       for (const item of localList) {
-        if (onlineIdSet.has(item.id)) {
-          toUpdate++;
-        } else {
+        if (!onlineIdSet.has(item.id)) {
           toInsert++;
+          continue;
+        }
+
+        const onlineItem = onlineById.get(item.id);
+        const localHash = canonicalizeSnapshotForComparison(item);
+        const onlineHash = canonicalizeSnapshotForComparison(onlineItem);
+        if (JSON.stringify(localHash) !== JSON.stringify(onlineHash)) {
+          toUpdate++;
         }
       }
 
@@ -2152,8 +2252,8 @@ export class BackupService {
       // generation and continue local reconciliation without replaying the RPC.
       try {
         const cloudAfterFailure = normalizeReplacementLocalData(await this.captureOnlineData());
-        const localChecksum = await computeSnapshotSha256(normalizeReplacementLocalData(localData));
-        const cloudChecksum = await computeSnapshotSha256(cloudAfterFailure);
+        const localChecksum = await computeCanonicalSnapshotSha256(normalizeReplacementLocalData(localData));
+        const cloudChecksum = await computeCanonicalSnapshotSha256(cloudAfterFailure);
 
         if (localChecksum === cloudChecksum) {
           const generationResult = await invokeSupabaseRpc<any>('get_server_reset_generation', {});
@@ -2610,7 +2710,7 @@ export class BackupService {
           sanitizedData.paymentAllocations.length +
           sanitizedData.deviceTypes.length
         ),
-        checksum: computedChecksum,
+        checksum: computedSha256,
         description: parsed.metadata.description,
       },
       data: sanitizedData,
