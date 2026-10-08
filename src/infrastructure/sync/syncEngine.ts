@@ -412,7 +412,13 @@ export class SyncEngine {
     let currentGen = syncState?.resetGeneration;
     let status: 'pending' | 'PENDING_RECONCILIATION' = 'pending';
 
-    if (syncState?.status === 'RECONCILIATION_REQUIRED' || syncState?.reconciliationRequired || currentGen === undefined) {
+    if (syncState?.cloudResetPending) {
+      // The cloud was intentionally reset while the local operational dataset was
+      // preserved. New local mutations remain safely queued, but no automatic
+      // upload is permitted until an explicit Local -> Online replacement.
+      currentGen = -1;
+      status = 'PENDING_RECONCILIATION';
+    } else if (syncState?.status === 'RECONCILIATION_REQUIRED' || syncState?.reconciliationRequired || currentGen === undefined) {
       currentGen = -1;
       status = 'PENDING_RECONCILIATION';
     }
@@ -490,6 +496,18 @@ export class SyncEngine {
 
     this.isSyncing = true;
     syncEventEmitter.emit({ type: 'sync_started', timestamp: new Date().toISOString() });
+
+    // An intentional cloud reset creates a deliberate one-way safety barrier:
+    // keep the local dataset authoritative and block both push and pull until the
+    // user explicitly performs Local -> Online replacement. This check is before
+    // any network call, so neither a background scheduler nor manual sync can
+    // erase local data or repopulate the freshly reset cloud.
+    const cloudResetState = await localDb.getSyncState('global');
+    if (cloudResetState?.cloudResetPending) {
+      syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
+      this.isSyncing = false;
+      return { pushed: 0, pulled: 0 };
+    }
     let pushedCount = 0;
     let pulledCount = 0;
 
