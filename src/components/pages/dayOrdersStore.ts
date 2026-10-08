@@ -2618,14 +2618,30 @@ const buildPaymentProjectionIndexes = (
     orderList.push(recognized);
   }
 
+  const orderSequenceById = new Map<string, number>();
+  for (const order of effectiveOrdersMap.values()) {
+    orderSequenceById.set(order.id, Number(order.internalSequence ?? 0));
+  }
+  const itemSequenceById = new Map<string, number>();
+  for (const item of effectiveItemsMap.values()) {
+    itemSequenceById.set(item.id, Number(item.itemSequence ?? 0));
+  }
+
   recognizedItems.sort((a, b) => {
-    const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    return byTime !== 0 ? byTime : a.itemId.localeCompare(b.itemId);
+    const orderSeqA = orderSequenceById.get(a.orderId) ?? 0;
+    const orderSeqB = orderSequenceById.get(b.orderId) ?? 0;
+    if (orderSeqA !== orderSeqB) return orderSeqA - orderSeqB;
+    const itemSeqA = itemSequenceById.get(a.itemId) ?? 0;
+    const itemSeqB = itemSequenceById.get(b.itemId) ?? 0;
+    if (itemSeqA !== itemSeqB) return itemSeqA - itemSeqB;
+    return a.itemId.localeCompare(b.itemId);
   });
   for (const list of recognizedItemsByOrder.values()) {
     list.sort((a, b) => {
-      const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return byTime !== 0 ? byTime : a.itemId.localeCompare(b.itemId);
+      const itemSeqA = itemSequenceById.get(a.itemId) ?? 0;
+      const itemSeqB = itemSequenceById.get(b.itemId) ?? 0;
+      if (itemSeqA !== itemSeqB) return itemSeqA - itemSeqB;
+      return a.itemId.localeCompare(b.itemId);
     });
   }
 
@@ -2712,8 +2728,10 @@ const computeCustomerOrderPaymentStatuses = (
   const custOrders = (projection.ordersByCustomer.get(customerId) || [])
     .filter((order) => order.status !== 'cancelled')
     .sort((a, b) => {
-      const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      return byTime !== 0 ? byTime : (a.displayNumber || 0) - (b.displayNumber || 0);
+      const seqA = Number(a.internalSequence ?? 0);
+      const seqB = Number(b.internalSequence ?? 0);
+      if (seqA !== seqB) return seqA - seqB;
+      return a.id.localeCompare(b.id);
     });
 
   for (const order of custOrders) {
@@ -4830,14 +4848,19 @@ export const topUpCustomerBalance = async (
     // Authoritative verifyBin (rejects if verifier missing, invalid, or fails)
     if (!offline) await authContext.verifyBin(bin);
 
-    // Authoritative createCustomerCredit useCase execution (verifies BIN and appends ledger)
-    const result = await phase5UseCases.createCustomerCredit(
+    // A customer payment is a real payment, not an administrative credit adjustment.
+    // Keep the existing credit-adjustment command reserved for explicit credit operations.
+    if (!offline) await authContext.verifyBin(bin);
+
+    const result = await phase5UseCases.recordPayment(
       authContext,
+      commandId,
       cust.id,
       amountMinor,
-      bin,
-      commandId,
-      { deferBinVerification: offline }
+      'CASH',
+      note?.trim() || undefined,
+      undefined,
+      bin
     );
 
     if (!result.success) {
