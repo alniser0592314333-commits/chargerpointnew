@@ -125,6 +125,10 @@ export class SyncBridge {
         };
 
         // 2. Fetch remote change log from transport (pull-only)
+        if (syncState.cloudResetPending) {
+          return { pulled: 0 };
+        }
+
         const pullRes = await (globalSyncEngine as any).transport.pullChanges(syncState.lastAppliedChangeSequence);
 
         if (pullRes.changes.length > 0) {
