@@ -437,15 +437,15 @@ export const BackupDataManagement: React.FC = () => {
       };
       await localDb.setSyncState(pendingSyncState);
 
+      let cloudResetReturned = false;
       try {
         const result = await backupService.deleteOnlineBusinessData(auth, cleanBin);
+        cloudResetReturned = true;
         const authoritativeGeneration = Number(result.serverResetGeneration);
         if (!Number.isSafeInteger(authoritativeGeneration) || authoritativeGeneration < 0) {
           throw new Error('Online Business Reset returned an invalid server reset generation');
         }
 
-        // Preserve every local business table. Only the sync cursor/generation is
-        // reset, and the barrier remains until explicit Local -> Online replacement.
         await localDb.setSyncState({
           ...pendingSyncState,
           lastAppliedChangeSequence: 0,
@@ -457,8 +457,12 @@ export const BackupDataManagement: React.FC = () => {
         });
         await reloadStoreFromLocal();
       } catch (resetError) {
-        // If the cloud reset did not complete, restore the exact previous sync state.
-        await localDb.setSyncState(previousSyncState);
+        // Once the reset call returned, keep the barrier even if its response
+        // metadata is unusable; removing it could allow the next sync to erase
+        // the preserved local dataset.
+        if (!cloudResetReturned) {
+          await localDb.setSyncState(previousSyncState);
+        }
         throw resetError;
       }
 
