@@ -645,6 +645,7 @@ export interface CreateSnapshotOptions {
   name?: string;
   bin?: string;
   customOnlineData?: Partial<BackupSnapshotData>;
+  customOfflineData?: Partial<BackupSnapshotData>;
 }
 
 const REPLACEMENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -965,6 +966,39 @@ export class BackupService {
       deletedDeviceTypeMarkers: deletedDeviceTypeMarkers.map(sanitizeEntity),
       changeLog: changeLog.map(sanitizeEntity),
       systemSettings: systemSettings.map(sanitizeEntity),
+    };
+  }
+
+  /**
+   * Captures an already-read local dataset without performing a second read.
+   * This is used by destructive-operation safety checkpoints so the snapshot
+   * exactly matches the state that was preflighted.
+   */
+  async captureOfflineDataFromData(data: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
+    return {
+      customers: (data.customers || []).map(sanitizeEntity),
+      businessDays: (data.businessDays || []).map(sanitizeEntity),
+      orders: (data.orders || []).map(sanitizeEntity).map(normalizeOrderEntity),
+      orderItems: (data.orderItems || []).map(sanitizeEntity).map(normalizeOrderItemEntity),
+      financialLedger: (data.financialLedger || []).map(sanitizeEntity).map(normalizeFinancialLedgerEntity),
+      payments: (data.payments || []).map(sanitizeEntity).map(normalizePaymentEntity),
+      paymentAllocations: (data.paymentAllocations || []).map(sanitizeEntity).map(normalizePaymentAllocationEntity),
+      deviceTypes: (data.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
+      goals: (data.goals || []).map(sanitizeEntity),
+      goalRequests: (data.goalRequests || []).map(sanitizeEntity),
+      qrTokens: (data.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
+      orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
+      outbox: (data.outbox || []).map(sanitizeEntity),
+      syncHistory: (data.syncHistory || []).map(sanitizeEntity),
+      mutationSnapshots: (data.mutationSnapshots || []).map(sanitizeEntity),
+      optimisticOverlays: (data.optimisticOverlays || []).map(sanitizeEntity),
+      syncState: data.syncState ? sanitizeEntity(data.syncState) : null,
+      deletedDeviceTypeMarkers: (data.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
+      changeLog: (data.changeLog || []).map(sanitizeEntity),
+      systemSettings: (data.systemSettings || []).map(sanitizeEntity),
+      consolidationMetadata: data.consolidationMetadata
+        ? sanitizeEntity(data.consolidationMetadata)
+        : undefined,
     };
   }
 
@@ -1337,7 +1371,9 @@ export class BackupService {
     let rawData: BackupSnapshotData;
 
     if (sourceType === 'OFFLINE') {
-      rawData = await this.captureOfflineData();
+      rawData = options?.customOfflineData
+        ? await this.captureOfflineDataFromData(options.customOfflineData)
+        : await this.captureOfflineData();
     } else if (sourceType === 'ONLINE') {
       rawData = await this.captureOnlineData(options?.customOnlineData);
     } else if (sourceType === 'CONSOLIDATED') {
