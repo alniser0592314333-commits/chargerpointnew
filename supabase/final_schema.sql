@@ -1396,7 +1396,7 @@ BEGIN
       USING ERRCODE = '23503';
   END IF;
 
-  IF p_new_bin IS NULL OR p_new_bin = '' OR NOT (p_new_bin ~ '^\\d{4,}$') THEN
+  IF p_new_bin IS NULL OR p_new_bin = '' OR NOT (p_new_bin ~ '^[0-9]{4,}$') THEN
     RAISE EXCEPTION 'BIN must be at least 4 numeric digits'
       USING ERRCODE = '22023';
   END IF;
@@ -1711,7 +1711,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  IF p_bin IS NULL OR p_bin = '' OR NOT (p_bin ~ '^\\d{4,}$') THEN
+  IF p_bin IS NULL OR p_bin = '' OR NOT (p_bin ~ '^[0-9]{4,}$') THEN
     RAISE EXCEPTION 'BIN must be at least 4 numeric digits'
       USING ERRCODE = '22023';
   END IF;
