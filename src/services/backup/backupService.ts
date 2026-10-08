@@ -921,7 +921,7 @@ export class BackupService {
       });
     }
 
-    const fetchTable = async (table: string): Promise<any[]> => {
+    const fetchTable = async (table: string, orderColumn = 'id'): Promise<any[]> => {
       const pageSize = 1000;
       let offset = 0;
       const allRows: any[] = [];
@@ -930,7 +930,7 @@ export class BackupService {
       while (hasMore) {
         const { data, error } = await invokeSupabaseRestGet<any>(
           table,
-          `select=*&order=id.asc&limit=${pageSize}&offset=${offset}`
+          `select=*&order=${orderColumn}.asc&limit=${pageSize}&offset=${offset}`
         );
 
         if (error) {
@@ -966,6 +966,7 @@ export class BackupService {
       goals,
       goalRequests,
       systemSettings,
+      changeLog,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
       fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
@@ -980,10 +981,15 @@ export class BackupService {
       fetchTable('goals'),
       fetchTable('goal_requests'),
       fetchTable('system_settings'),
+      fetchTable('change_log', 'sequence_id'),
     ]);
 
     const serverResetGeneration = Number(
       systemSettings.find((row: any) => row.key === 'server_reset_generation')?.value_number
+    );
+    const maxChangeSequence = changeLog.reduce(
+      (max: number, row: any) => Math.max(max, Number(row?.sequence_id ?? row?.sequenceId ?? 0)),
+      0
     );
 
     return {
@@ -1000,10 +1006,11 @@ export class BackupService {
       goals,
       goalRequests,
       systemSettings,
+      changeLog,
       syncState: Number.isSafeInteger(serverResetGeneration) && serverResetGeneration >= 0
         ? {
             table: 'global',
-            lastAppliedChangeSequence: 0,
+            lastAppliedChangeSequence: maxChangeSequence,
             lastPulledAt: new Date().toISOString(),
             resetGeneration: serverResetGeneration,
             reconciliationRequired: false,
@@ -1694,6 +1701,14 @@ export class BackupService {
         for (const dev of onlineData.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
         for (const goal of onlineData.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
         for (const request of onlineData.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
+        for (const row of onlineData.changeLog || []) {
+          const key = row?.sequence_id ?? row?.sequenceId;
+          if (key !== undefined && key !== null) localDb.setWithTx(tx, 'changeLog', String(key), row);
+        }
+        for (const row of onlineData.systemSettings || []) {
+          const key = row?.key ?? row?.id;
+          if (key !== undefined && key !== null) localDb.setWithTx(tx, 'systemSettings', String(key), row);
+        }
         for (const q of onlineData.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
         for (const r of onlineData.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
