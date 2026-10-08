@@ -1677,7 +1677,12 @@ export async function rpcFetchAuditLogs(): Promise<{ data: AuditLog[] | null; er
 }
 
 export async function rpcFetchCustomPermissions(): Promise<{ data: CustomPermission[] | null; error: string | null }> {
-  const { data, error } = await invokeSupabaseRestGet<CustomPermission>('admin_custom_permissions', 'select=*');
+  // Custom permissions are security-sensitive admin data. Read them through the
+  // authoritative SECURITY DEFINER RPC instead of direct PostgREST table access,
+  // which is subject to table RLS and can return an empty set even when rows exist.
+  const { data, error } = await invokeSupabaseRpc<CustomPermission[]>(
+    'rpc_fetch_custom_permissions'
+  );
   return { data, error };
 }
 
