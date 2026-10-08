@@ -203,7 +203,7 @@ export const AdminManagementPage: React.FC = () => {
     if (!authoritativeSession) {
       throw new Error(locale === "ar" ? "الجلسة غير صالحة أو انتهت. يرجى تسجيل الدخول مجدداً." : "Your session is invalid or expired. Please sign in again.");
     }
-    const normalizedRole = String(authoritativeSession.role || "").toUpperCase().replace(/\\s+/g, "_");
+    const normalizedRole = String(authoritativeSession.role || "").toUpperCase().replace(/\s+/g, "_");
     if (normalizedRole !== "SUPER_ADMIN") {
       throw new Error(locale === "ar" ? "غير مصرح: يجب أن تكون Super Admin لتنفيذ هذا الإجراء." : "Unauthorized: Super Admin authorization is required for this operation.");
     }
