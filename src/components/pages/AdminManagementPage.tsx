@@ -3,6 +3,7 @@ import { useI18n } from "../../i18n/i18nContext";
 import { Button } from "../ui/Button";
 import { authService, UserSession } from "../../services/auth/authService";
 import {
+  assertOnlineForSensitiveOperation,
   AdminRow,
   AuditLog,
   CustomPermission,
@@ -196,6 +197,19 @@ export const AdminManagementPage: React.FC = () => {
     clearForm();
   };
 
+  const requireOnlineSuperAdmin = async (): Promise<UserSession> => {
+    assertOnlineForSensitiveOperation(locale === "ar" ? "هذا الإجراء الإداري الحساس" : "This sensitive administrative operation");
+    const authoritativeSession = await authService.getCurrentSession(true);
+    if (!authoritativeSession) {
+      throw new Error(locale === "ar" ? "الجلسة غير صالحة أو انتهت. يرجى تسجيل الدخول مجدداً." : "Your session is invalid or expired. Please sign in again.");
+    }
+    const normalizedRole = String(authoritativeSession.role || "").toUpperCase().replace(/\\s+/g, "_");
+    if (normalizedRole !== "SUPER_ADMIN") {
+      throw new Error(locale === "ar" ? "غير مصرح: يجب أن تكون Super Admin لتنفيذ هذا الإجراء." : "Unauthorized: Super Admin authorization is required for this operation.");
+    }
+    return authoritativeSession;
+  };
+
   // Create Subordinate Admin Mutation
   const handleCreateAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,8 +218,9 @@ export const AdminManagementPage: React.FC = () => {
     setActionLoading(true);
 
     try {
-      // 1. Validate that we have loaded the admins list and have currentAdminSession
-      if (!currentAdminSession) {
+      const authoritativeSession = await requireOnlineSuperAdmin();
+      // 1. Validate the authoritative server-backed session before creating an admin
+      if (!authoritativeSession) {
         throw new Error(
           locale === "ar"
             ? "جلسة العمل غير صالحة. يرجى تسجيل الدخول مجدداً."
@@ -213,7 +228,7 @@ export const AdminManagementPage: React.FC = () => {
         );
       }
 
-      const loggedInAdmin = admins.find((a) => a.email === currentAdminSession.email);
+      const loggedInAdmin = admins.find((a) => a.email === authoritativeSession.email);
       if (!loggedInAdmin) {
         throw new Error(
           locale === "ar"
@@ -304,6 +319,7 @@ export const AdminManagementPage: React.FC = () => {
     setActionLoading(true);
 
     try {
+      await requireOnlineSuperAdmin();
       const res = await rpcUpdateAdminPassword(selectedAdmin.id, password, callerBin);
       if (res.error) throw new Error(res.error);
 
@@ -330,6 +346,7 @@ export const AdminManagementPage: React.FC = () => {
     setActionLoading(true);
 
     try {
+      await requireOnlineSuperAdmin();
       const res = await rpcUpdateAdminBin(selectedAdmin.id, bin, callerBin);
       if (res.error) throw new Error(res.error);
 
@@ -356,6 +373,7 @@ export const AdminManagementPage: React.FC = () => {
     setActionLoading(true);
 
     try {
+      await requireOnlineSuperAdmin();
       const res = await rpcSuspendAdmin(selectedAdmin.id, callerBin);
       if (res.error) throw new Error(res.error);
 
@@ -382,6 +400,7 @@ export const AdminManagementPage: React.FC = () => {
     setActionLoading(true);
 
     try {
+      await requireOnlineSuperAdmin();
       const res = await rpcActivateAdmin(selectedAdmin.id, callerBin);
       if (res.error) throw new Error(res.error);
 
@@ -456,6 +475,7 @@ export const AdminManagementPage: React.FC = () => {
     setActionLoading(true);
 
     try {
+      await requireOnlineSuperAdmin();
       const activeKeys = Object.entries(tempPermissions)
         .filter(([_, isGranted]) => isGranted === true)
         .map(([key]) => key);
