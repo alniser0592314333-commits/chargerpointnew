@@ -618,7 +618,7 @@ export const BackupDataManagement: React.FC = () => {
     try {
       setIsActionLoading(true);
       const text = await file.text();
-      const validation = backupService.validateAndParsePortableBackup(text);
+      const validation = await backupService.validateAndParsePortableBackup(text);
 
       if (!validation.valid || !validation.portableFile) {
         showToast(
