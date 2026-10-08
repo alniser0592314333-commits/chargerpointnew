@@ -62,22 +62,21 @@ export function sanitizeFileName(name: string): string {
  */
 export function computeSnapshotChecksum(data: unknown): string {
   const canonicalStringify = (obj: any): string => {
-    if (obj === null || obj === undefined) {
-      return 'null';
-    }
-    if (obj instanceof Date) {
-      return JSON.stringify(obj.toISOString());
-    }
-    if (typeof obj !== 'object') {
-      return JSON.stringify(obj);
-    }
+    if (obj === null || obj === undefined) return 'null';
+    if (obj instanceof Date) return JSON.stringify(obj.toISOString());
+    if (typeof obj !== 'object') return JSON.stringify(obj);
     if (Array.isArray(obj)) {
-      return '[' + obj.map((item) => (item === undefined ? 'null' : canonicalStringify(item))).join(',') + ']';
+      return '[' + obj.map((item) => canonicalStringify(item)).join(',') + ']';
     }
-    const keys = Object.keys(obj).filter((k) => obj[k] !== undefined).sort();
+    const keys = Object.keys(obj)
+      .filter((k) => obj[k] !== undefined)
+      .sort();
     return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(obj[k])).join(',') + '}';
   };
 
+  // Browser-safe deterministic SHA-256. This is intentionally async-capable
+  // through the companion helper below; this synchronous fallback is retained
+  // only for legacy metadata compatibility.
   const str = canonicalStringify(data);
   let hash = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
@@ -85,6 +84,23 @@ export function computeSnapshotChecksum(data: unknown): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export async function computeSnapshotSha256(data: unknown): Promise<string> {
+  const canonicalStringify = (obj: any): string => {
+    if (obj === null || obj === undefined) return 'null';
+    if (obj instanceof Date) return JSON.stringify(obj.toISOString());
+    if (typeof obj !== 'object') return JSON.stringify(obj);
+    if (Array.isArray(obj)) return '[' + obj.map(canonicalStringify).join(',') + ']';
+    const keys = Object.keys(obj).filter((k) => obj[k] !== undefined).sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(obj[k])).join(',') + '}';
+  };
+  const bytes = new TextEncoder().encode(canonicalStringify(data));
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('SHA-256 is unavailable in this runtime; refusing to create an unverified backup');
 }
 
 const FORBIDDEN_EXACT_NORMALIZED_KEYS = new Set([
