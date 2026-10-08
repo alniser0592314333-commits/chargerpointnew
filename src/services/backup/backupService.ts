@@ -1749,8 +1749,12 @@ export class BackupService {
       onlineData.payments.length +
       onlineData.paymentAllocations.length +
       onlineData.deviceTypes.length +
+      (onlineData.goals || []).length +
+      (onlineData.goalRequests || []).length +
       (onlineData.qrTokens || []).length +
-      (onlineData.orderNumberReservations || []).length;
+      (onlineData.orderNumberReservations || []).length +
+      (onlineData.changeLog || []).length +
+      (onlineData.systemSettings || []).length;
 
     return {
       success: true,
