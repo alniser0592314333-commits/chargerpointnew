@@ -1367,10 +1367,11 @@ export class BackupService {
 
     // 2. Validate Integrity Checksum
     const expectedChecksum = snapshot.metadata.checksum;
-    const computedChecksum = computeSnapshotChecksum(snapshot.data);
-    if (expectedChecksum !== computedChecksum) {
+    const computedLegacyChecksum = computeSnapshotChecksum(snapshot.data);
+    const computedSha256 = await computeSnapshotSha256(snapshot.data);
+    if (expectedChecksum !== computedSha256 && expectedChecksum !== computedLegacyChecksum) {
       throw new SnapshotIntegrityError(
-        `Snapshot checksum mismatch. Expected ${expectedChecksum}, computed ${computedChecksum}. Data may be corrupted or tampered.`
+        `Snapshot checksum mismatch. Expected ${expectedChecksum}; SHA-256 ${computedSha256}; legacy ${computedLegacyChecksum}. Data may be corrupted or tampered.`
       );
     }
 
@@ -2419,12 +2420,13 @@ export class BackupService {
     };
 
     // Checksum verification
-    const computedChecksum = computeSnapshotChecksum(sanitizedData);
+    const computedLegacyChecksum = computeSnapshotChecksum(sanitizedData);
+    const computedSha256 = await computeSnapshotSha256(sanitizedData);
     const expectedChecksum = parsed.metadata.checksum;
-    if (expectedChecksum && expectedChecksum !== computedChecksum) {
+    if (expectedChecksum && expectedChecksum !== computedSha256 && expectedChecksum !== computedLegacyChecksum) {
       return {
         valid: false,
-        error: `Integrity check failed: checksum mismatch. File checksum "${expectedChecksum}" does not match computed data checksum "${computedChecksum}". Data may be corrupted or tampered.`,
+        error: `Integrity check failed: checksum mismatch. File checksum "${expectedChecksum}" does not match computed SHA-256 "${computedSha256}" or legacy checksum "${computedLegacyChecksum}". Data may be corrupted or tampered.`,
         errorCode: 'CHECKSUM_MISMATCH',
       };
     }
