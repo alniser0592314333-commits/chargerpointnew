@@ -980,17 +980,21 @@ export class BackupService {
    */
   async captureOnlineData(customOnlineData?: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
     if (customOnlineData) {
-      return normalizeReplacementLocalData({
-        customers: (customOnlineData.customers || []).map(sanitizeEntity),
-        businessDays: (customOnlineData.businessDays || []).map(sanitizeEntity),
-        orders: (customOnlineData.orders || []).map(sanitizeEntity),
-        orderItems: (customOnlineData.orderItems || []).map(sanitizeEntity),
-        financialLedger: (customOnlineData.financialLedger || []).map(sanitizeEntity),
-        payments: (customOnlineData.payments || []).map(sanitizeEntity),
-        paymentAllocations: (customOnlineData.paymentAllocations || []).map(sanitizeEntity),
-        deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity),
-        qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity),
-        orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity),
+      // Custom data is used by backup/recovery callers as an already-captured
+      // dataset. Keep capture read-only and preserve legacy QR placeholders;
+      // strict QR identity validation remains exclusive to destructive
+      // replacement/restore paths.
+      return {
+        customers: (customOnlineData.customers || []).map(sanitizeEntity).map(normalizeCustomerEntity),
+        businessDays: (customOnlineData.businessDays || []).map(sanitizeEntity).map(normalizeBusinessDayEntity),
+        orders: (customOnlineData.orders || []).map(sanitizeEntity).map(normalizeOrderEntity),
+        orderItems: (customOnlineData.orderItems || []).map(sanitizeEntity).map(normalizeOrderItemEntity),
+        financialLedger: (customOnlineData.financialLedger || []).map(sanitizeEntity).map(normalizeFinancialLedgerEntity),
+        payments: (customOnlineData.payments || []).map(sanitizeEntity).map(normalizePaymentEntity),
+        paymentAllocations: (customOnlineData.paymentAllocations || []).map(sanitizeEntity).map(normalizePaymentAllocationEntity),
+        deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
+        qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
+        orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
         goals: (customOnlineData.goals || []).map(sanitizeEntity),
         goalRequests: (customOnlineData.goalRequests || []).map(sanitizeEntity),
         outbox: (customOnlineData.outbox || []).map(sanitizeEntity),
@@ -1000,8 +1004,11 @@ export class BackupService {
         deletedDeviceTypeMarkers: (customOnlineData.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
         changeLog: (customOnlineData.changeLog || []).map(sanitizeEntity),
         systemSettings: (customOnlineData.systemSettings || []).map(sanitizeEntity),
-        syncState: customOnlineData.syncState || null,
-      });
+        syncState: customOnlineData.syncState ? sanitizeEntity(customOnlineData.syncState) : null,
+        consolidationMetadata: customOnlineData.consolidationMetadata
+          ? sanitizeEntity(customOnlineData.consolidationMetadata)
+          : undefined,
+      };
     }
 
     const { data: authoritative, error } = await invokeSupabaseRpc<any>(
