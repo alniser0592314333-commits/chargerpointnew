@@ -416,17 +416,51 @@ export const BackupDataManagement: React.FC = () => {
     try {
       setIsActionLoading(true);
       const auth = await getAuthContext();
-      await backupService.deleteOnlineBusinessData(auth, cleanBin);
 
-      // Post-reset local cleanup must include the outbox, mutation snapshots,
-      // overlays and sync state. Leaving a pending command here could repopulate
-      // the freshly reset cloud on the next sync cycle.
-      await localDb.clearOperationalTables({
-        clearOutbox: true,
-        clearSyncState: true,
-      });
-      await localDb.setLocalResetMarker(true);
-      await reloadStoreFromLocal();
+      // Arm the local safety barrier before the cloud reset starts. This closes the
+      // race where a background sync could observe the new empty cloud between the
+      // server reset and local state update.
+      const previousSyncState = await localDb.getSyncState('global');
+      const pendingSyncState = {
+        ...(previousSyncState || {
+          table: 'global',
+          lastAppliedChangeSequence: 0,
+          lastPulledAt: '',
+          resetGeneration: -1,
+          reconciliationRequired: false,
+          status: 'READY' as const,
+        }),
+        table: 'global',
+        status: 'CLOUD_RESET_PENDING' as const,
+        cloudResetPending: true,
+        reconciliationRequired: false,
+      };
+      await localDb.setSyncState(pendingSyncState);
+
+      try {
+        const result = await backupService.deleteOnlineBusinessData(auth, cleanBin);
+        const authoritativeGeneration = Number(result.serverResetGeneration);
+        if (!Number.isSafeInteger(authoritativeGeneration) || authoritativeGeneration < 0) {
+          throw new Error('Online Business Reset returned an invalid server reset generation');
+        }
+
+        // Preserve every local business table. Only the sync cursor/generation is
+        // reset, and the barrier remains until explicit Local -> Online replacement.
+        await localDb.setSyncState({
+          ...pendingSyncState,
+          lastAppliedChangeSequence: 0,
+          lastPulledAt: new Date().toISOString(),
+          resetGeneration: authoritativeGeneration,
+          status: 'CLOUD_RESET_PENDING' as const,
+          cloudResetPending: true,
+          reconciliationRequired: false,
+        });
+        await reloadStoreFromLocal();
+      } catch (resetError) {
+        // If the cloud reset did not complete, restore the exact previous sync state.
+        await localDb.setSyncState(previousSyncState);
+        throw resetError;
+      }
 
       showToast(
         locale === 'ar'
