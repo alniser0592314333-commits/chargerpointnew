@@ -51,7 +51,7 @@ export interface MutationSnapshotRecord {
   items?: MutationSnapshotItem[];
 }
 
-export type SyncStatus = 'READY' | 'RECONCILIATION_REQUIRED' | 'STALE' | 'INITIALIZING';
+export type SyncStatus = 'READY' | 'RECONCILIATION_REQUIRED' | 'STALE' | 'INITIALIZING' | 'CLOUD_RESET_PENDING';
 
 export interface SyncHistoryRecord {
   historyId: ID;
@@ -103,6 +103,8 @@ export interface SyncStateRecord {
   lastPulledAt: Timestamp;
   resetGeneration?: number;
   reconciliationRequired?: boolean;
+  /** True only after an intentional cloud business-data reset. Local data is preserved and automatic sync/pull is blocked until explicit Local -> Online replacement. */
+  cloudResetPending?: boolean;
   status?: SyncStatus;
 }
 
