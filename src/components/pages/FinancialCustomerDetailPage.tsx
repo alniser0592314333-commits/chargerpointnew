@@ -10,7 +10,8 @@ import {
   UICustomerDetail,
   UICustomerOrderSummary,
   UICustomerFinancialItem,
-} from './dayOrdersStore';
+,
+  useStoreSubscription} from './dayOrdersStore';
 import { Button } from '../ui/Button';
 import {
   ArrowDownLeft,
@@ -43,6 +44,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
   const [financialHistory, setFinancialHistory] = useState<UICustomerFinancialItem[]>([]);
   const [orders, setOrders] = useState<UICustomerOrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const paymentStoreVersion = useStoreSubscription(['orderItems', 'paymentAllocations', 'payments', 'financialLedger']);
 
   // Selector between Financial Ledger and Order History
   const [activeView, setActiveView] = useState<'financial' | 'orders'>('financial');
@@ -90,6 +92,11 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
     setLoading(true);
     loadData();
   }, [customerId, locale]);
+
+  // Refresh when authoritative payment/allocation deltas reach the local store.
+  useEffect(() => {
+    if (paymentStoreVersion > 0) loadData();
+  }, [paymentStoreVersion]);
 
   const toggleExpandFinancial = (id: string) => {
     setExpandedFinancialId((prev) => (prev === id ? null : id));
