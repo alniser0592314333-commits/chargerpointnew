@@ -18,7 +18,7 @@ describe('Backup recovery hardening', () => {
     await localDb.clear();
   });
 
-  it('captures and restores pending outbox and optimistic overlay state', async () => {
+  it('captures pending outbox and optimistic overlay state, then quarantines it when server generation cannot be verified', async () => {
     const customerId = '00000000-0000-0000-0000-000000000010';
     await localDb.set('customers', customerId, {
       id: customerId,
@@ -69,7 +69,8 @@ describe('Backup recovery hardening', () => {
 
     expect(await localDb.listOutbox()).toHaveLength(1);
     expect(await localDb.listOverlays()).toHaveLength(1);
-    expect((await localDb.getOutbox('00000000-0000-0000-0000-000000000020'))?.status).toBe('pending');
+    expect((await localDb.getOutbox('00000000-0000-0000-0000-000000000020'))?.status).toBe('rejected');
+    expect((await localDb.getOutbox('00000000-0000-0000-0000-000000000020'))?.lastError).toBe('BACKUP_GENERATION_MISMATCH_REQUIRES_MANUAL_REVIEW');
   });
 
   it('creates a recovery snapshot before destructive local deletion', async () => {
