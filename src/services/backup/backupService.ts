@@ -1286,7 +1286,7 @@ export class BackupService {
     };
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
-    const checksum = computeSnapshotChecksum(sanitizedData);
+    const checksum = await computeSnapshotSha256(sanitizedData);
     const now = new Date();
     const snapshotId = `snap_${now.getTime()}_${Math.random().toString(36).substring(2, 9)}`;
     const snapshotName =
@@ -2245,7 +2245,7 @@ export class BackupService {
         : undefined,
     };
 
-    const checksum = computeSnapshotChecksum(sanitizedData);
+    const checksum = await computeSnapshotSha256(sanitizedData);
 
     const portableData: PortableBackupFile = {
       formatIdentifier: PORTABLE_BACKUP_FORMAT_IDENTIFIER,
@@ -2571,7 +2571,7 @@ export class BackupService {
             status: 'RECONCILIATION_REQUIRED',
           },
     };
-    const checksum = computeSnapshotChecksum(sanitizedData);
+    const checksum = await computeSnapshotSha256(sanitizedData);
 
     const record: BackupSnapshotRecord = {
       snapshotId: targetSnapshotId,
