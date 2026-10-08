@@ -2380,7 +2380,7 @@ export class BackupService {
   /**
    * Validates untrusted external portable backup file content prior to any database write.
    */
-  validateAndParsePortableBackup(jsonString: string): {
+  async validateAndParsePortableBackup(jsonString: string): Promise<{
     valid: boolean;
     portableFile?: PortableBackupFile;
     error?: string;
