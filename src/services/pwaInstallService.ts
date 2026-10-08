@@ -7,10 +7,8 @@ export interface BeforeInstallPromptEvent extends Event {
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let initialized = false;
-let snapshot = {
-  installable: false,
-  installed: false,
-};
+const SERVER_SNAPSHOT = { installable: false, installed: false };
+let snapshot = SERVER_SNAPSHOT;
 
 const listeners = new Set<() => void>();
 
@@ -97,6 +95,6 @@ export function usePWAInstallSnapshot() {
   return useSyncExternalStore(
     subscribePWAInstall,
     () => snapshot,
-    () => ({ installable: false, installed: false }),
+    () => SERVER_SNAPSHOT,
   );
 }
