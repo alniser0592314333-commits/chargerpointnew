@@ -35,9 +35,20 @@ ALTER TABLE public.global_app_identity
   ALTER COLUMN singleton SET DEFAULT TRUE,
   ALTER COLUMN singleton SET NOT NULL;
 
-ALTER TABLE public.global_app_identity
-  ADD CONSTRAINT global_app_identity_singleton_true_chk
-  CHECK (singleton = TRUE);
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'public.global_app_identity'::regclass
+      AND conname = 'global_app_identity_singleton_true_chk'
+  ) THEN
+    ALTER TABLE public.global_app_identity
+      ADD CONSTRAINT global_app_identity_singleton_true_chk
+      CHECK (singleton = TRUE);
+  END IF;
+END
+$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS global_app_identity_singleton_uidx
   ON public.global_app_identity (singleton);
