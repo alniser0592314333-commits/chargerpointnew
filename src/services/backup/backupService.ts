@@ -62,22 +62,21 @@ export function sanitizeFileName(name: string): string {
  */
 export function computeSnapshotChecksum(data: unknown): string {
   const canonicalStringify = (obj: any): string => {
-    if (obj === null || obj === undefined) {
-      return 'null';
-    }
-    if (obj instanceof Date) {
-      return JSON.stringify(obj.toISOString());
-    }
-    if (typeof obj !== 'object') {
-      return JSON.stringify(obj);
-    }
+    if (obj === null || obj === undefined) return 'null';
+    if (obj instanceof Date) return JSON.stringify(obj.toISOString());
+    if (typeof obj !== 'object') return JSON.stringify(obj);
     if (Array.isArray(obj)) {
-      return '[' + obj.map((item) => (item === undefined ? 'null' : canonicalStringify(item))).join(',') + ']';
+      return '[' + obj.map((item) => canonicalStringify(item)).join(',') + ']';
     }
-    const keys = Object.keys(obj).filter((k) => obj[k] !== undefined).sort();
+    const keys = Object.keys(obj)
+      .filter((k) => obj[k] !== undefined)
+      .sort();
     return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(obj[k])).join(',') + '}';
   };
 
+  // Browser-safe deterministic SHA-256. This is intentionally async-capable
+  // through the companion helper below; this synchronous fallback is retained
+  // only for legacy metadata compatibility.
   const str = canonicalStringify(data);
   let hash = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
@@ -85,6 +84,23 @@ export function computeSnapshotChecksum(data: unknown): string {
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export async function computeSnapshotSha256(data: unknown): Promise<string> {
+  const canonicalStringify = (obj: any): string => {
+    if (obj === null || obj === undefined) return 'null';
+    if (obj instanceof Date) return JSON.stringify(obj.toISOString());
+    if (typeof obj !== 'object') return JSON.stringify(obj);
+    if (Array.isArray(obj)) return '[' + obj.map(canonicalStringify).join(',') + ']';
+    const keys = Object.keys(obj).filter((k) => obj[k] !== undefined).sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalStringify(obj[k])).join(',') + '}';
+  };
+  const bytes = new TextEncoder().encode(canonicalStringify(data));
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  throw new Error('SHA-256 is unavailable in this runtime; refusing to create an unverified backup');
 }
 
 const FORBIDDEN_EXACT_NORMALIZED_KEYS = new Set([
@@ -757,6 +773,17 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
   }
 }
 
+function hasRecoverableSnapshotData(data: Partial<BackupSnapshotData>): boolean {
+  const collections: Array<keyof BackupSnapshotData> = [
+    'customers','businessDays','orders','orderItems','financialLedger','payments',
+    'paymentAllocations','deviceTypes','goals','goalRequests','qrTokens',
+    'orderNumberReservations','outbox','syncHistory','mutationSnapshots',
+    'optimisticOverlays','deletedDeviceTypeMarkers','changeLog','systemSettings',
+  ];
+  return collections.some((key) => Array.isArray(data[key]) && (data[key] as any[]).length > 0)
+    || Boolean(data.syncState);
+}
+
 export class BackupService {
   /**
    * Captures current offline business data from IndexedDB kvStore.
@@ -912,6 +939,7 @@ export class BackupService {
       orderNumberReservations,
       goals,
       goalRequests,
+      systemSettings,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
       fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
@@ -925,7 +953,12 @@ export class BackupService {
       fetchTable('order_number_reservations').then((rows) => rows.map(normalizeOrderNumberReservationEntity)),
       fetchTable('goals'),
       fetchTable('goal_requests'),
+      fetchTable('system_settings'),
     ]);
+
+    const serverResetGeneration = Number(
+      systemSettings.find((row: any) => row.key === 'server_reset_generation')?.value_number
+    );
 
     return {
       customers,
@@ -940,7 +973,17 @@ export class BackupService {
       orderNumberReservations,
       goals,
       goalRequests,
-      syncState: null,
+      systemSettings,
+      syncState: Number.isSafeInteger(serverResetGeneration) && serverResetGeneration >= 0
+        ? {
+            table: 'global',
+            lastAppliedChangeSequence: 0,
+            lastPulledAt: new Date().toISOString(),
+            resetGeneration: serverResetGeneration,
+            reconciliationRequired: false,
+            status: 'READY',
+          }
+        : null,
     };
   }
 
@@ -1270,7 +1313,7 @@ export class BackupService {
     };
 
     const totalEntities = Object.values(recordCounts).reduce((sum, n) => sum + n, 0);
-    const checksum = computeSnapshotChecksum(sanitizedData);
+    const checksum = await computeSnapshotSha256(sanitizedData);
     const now = new Date();
     const snapshotId = `snap_${now.getTime()}_${Math.random().toString(36).substring(2, 9)}`;
     const snapshotName =
@@ -1351,10 +1394,11 @@ export class BackupService {
 
     // 2. Validate Integrity Checksum
     const expectedChecksum = snapshot.metadata.checksum;
-    const computedChecksum = computeSnapshotChecksum(snapshot.data);
-    if (expectedChecksum !== computedChecksum) {
+    const computedLegacyChecksum = computeSnapshotChecksum(snapshot.data);
+    const computedSha256 = await computeSnapshotSha256(snapshot.data);
+    if (expectedChecksum !== computedSha256 && expectedChecksum !== computedLegacyChecksum) {
       throw new SnapshotIntegrityError(
-        `Snapshot checksum mismatch. Expected ${expectedChecksum}, computed ${computedChecksum}. Data may be corrupted or tampered.`
+        `Snapshot checksum mismatch. Expected ${expectedChecksum}; SHA-256 ${computedSha256}; legacy ${computedLegacyChecksum}. Data may be corrupted or tampered.`
       );
     }
 
@@ -1377,12 +1421,7 @@ export class BackupService {
     // a recovery snapshot first. The snapshot itself is read-only and preserves
     // the exact pre-restore local state, including pending sync work.
     const preRestore = await this.captureOfflineData();
-    const preRestoreCount =
-      (preRestore.customers || []).length +
-      (preRestore.orders || []).length +
-      (preRestore.orderItems || []).length +
-      (preRestore.outbox || []).length;
-    if (preRestoreCount > 0) {
+    if (hasRecoverableSnapshotData(preRestore)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
@@ -1407,12 +1446,38 @@ export class BackupService {
       authoritativeRestoreGeneration = null;
     }
 
+    const snapshotGenerationValue = Number(d.syncState?.resetGeneration);
+    const snapshotGeneration =
+      Number.isSafeInteger(snapshotGenerationValue) && snapshotGenerationValue >= 0
+        ? snapshotGenerationValue
+        : null;
+
+    const generationMismatch =
+      authoritativeRestoreGeneration !== null &&
+      (snapshotGeneration === null || snapshotGeneration !== authoritativeRestoreGeneration);
+
+    const requiresReconciliation =
+      authoritativeRestoreGeneration === null || generationMismatch;
+
     const restoredGeneration =
       authoritativeRestoreGeneration ??
-      (Number.isSafeInteger(Number(d.syncState?.resetGeneration))
-        ? Number(d.syncState?.resetGeneration)
-        : -1);
-    const requiresReconciliation = authoritativeRestoreGeneration === null;
+      snapshotGeneration ??
+      -1;
+
+    // A restored outbox is only safe to replay when the snapshot was taken
+    // against the exact same authoritative server generation. If the generation
+    // differs (or the snapshot has no generation proof), quarantine those commands
+    // instead of allowing sync to reinterpret them as fresh work.
+    const restoredOutbox = (d.outbox || []).map((item: any) => {
+      if (!generationMismatch && authoritativeRestoreGeneration !== null) {
+        return item;
+      }
+      return {
+        ...item,
+        status: 'rejected',
+        lastError: 'BACKUP_GENERATION_MISMATCH_REQUIRES_MANUAL_REVIEW',
+      };
+    });
 
     // 7. Fully restore the snapshot atomically. For an OFFLINE snapshot this
     // includes the outbox, history, mutation snapshots, overlays and deletion
@@ -1461,7 +1526,7 @@ export class BackupService {
           if (row?.id) localDb.setWithTx(tx, 'systemSettings', row.id, row);
         }
 
-        for (const outbox of d.outbox || []) localDb.saveOutboxWithTx(tx, outbox);
+        for (const outbox of restoredOutbox) localDb.saveOutboxWithTx(tx, outbox);
         for (const history of d.syncHistory || []) localDb.saveHistoryWithTx(tx, history);
         for (const mutation of d.mutationSnapshots || []) localDb.saveMutationSnapshotWithTx(tx, mutation);
         for (const overlay of d.optimisticOverlays || []) localDb.saveOverlayWithTx(tx, overlay);
@@ -1515,12 +1580,7 @@ export class BackupService {
     // Deleting local business data is destructive. Preserve a complete local
     // recovery point first so the operation is reversible.
     const currentLocal = await this.captureOfflineData();
-    const currentLocalCount =
-      (currentLocal.customers || []).length +
-      (currentLocal.orders || []).length +
-      (currentLocal.orderItems || []).length +
-      (currentLocal.outbox || []).length;
-    if (currentLocalCount > 0) {
+    if (hasRecoverableSnapshotData(currentLocal)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Local-Delete Recovery Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
@@ -1560,12 +1620,7 @@ export class BackupService {
     // Always preserve the current local state before an authoritative
     // Online -> Local replacement. This includes unsynced outbox work.
     const preRestore = await this.captureOfflineData();
-    const preRestoreCount =
-      (preRestore.customers || []).length +
-      (preRestore.orders || []).length +
-      (preRestore.orderItems || []).length +
-      (preRestore.outbox || []).length;
-    if (preRestoreCount > 0) {
+    if (hasRecoverableSnapshotData(preRestore)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Online-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
@@ -2018,8 +2073,8 @@ export class BackupService {
       // generation and continue local reconciliation without replaying the RPC.
       try {
         const cloudAfterFailure = normalizeReplacementLocalData(await this.captureOnlineData());
-        const localChecksum = computeSnapshotChecksum(normalizeReplacementLocalData(localData));
-        const cloudChecksum = computeSnapshotChecksum(cloudAfterFailure);
+        const localChecksum = await computeSnapshotSha256(normalizeReplacementLocalData(localData));
+        const cloudChecksum = await computeSnapshotSha256(cloudAfterFailure);
 
         if (localChecksum === cloudChecksum) {
           const generationResult = await invokeSupabaseRpc<any>('get_server_reset_generation', {});
@@ -2141,18 +2196,7 @@ export class BackupService {
     // read model afterward; this snapshot preserves the pre-reset local state
     // without changing the operational database or sync semantics.
     const localRecoveryData = await this.captureLocalData();
-    const localRecoveryCount =
-      (localRecoveryData.customers || []).length +
-      (localRecoveryData.businessDays || []).length +
-      (localRecoveryData.orders || []).length +
-      (localRecoveryData.orderItems || []).length +
-      (localRecoveryData.financialLedger || []).length +
-      (localRecoveryData.payments || []).length +
-      (localRecoveryData.paymentAllocations || []).length +
-      (localRecoveryData.deviceTypes || []).length +
-      (localRecoveryData.qrTokens || []).length;
-
-    if (localRecoveryCount > 0) {
+    if (hasRecoverableSnapshotData(localRecoveryData)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Cloud-Reset Local Recovery Snapshot ${new Date().toISOString()}`,
         bin: bin.trim(),
@@ -2164,15 +2208,7 @@ export class BackupService {
     // destroyed. A local snapshot alone is not a cloud backup when the two
     // sides differ.
     const onlineRecoveryData = await this.captureOnlineData();
-    const onlineRecoveryCount =
-      (onlineRecoveryData.customers || []).length +
-      (onlineRecoveryData.orders || []).length +
-      (onlineRecoveryData.orderItems || []).length +
-      (onlineRecoveryData.payments || []).length +
-      (onlineRecoveryData.financialLedger || []).length +
-      (onlineRecoveryData.goals || []).length +
-      (onlineRecoveryData.goalRequests || []).length;
-    if (onlineRecoveryCount > 0) {
+    if (hasRecoverableSnapshotData(onlineRecoveryData)) {
       await this.createSnapshot('ONLINE', auth, {
         name: `Pre-Cloud-Reset Authoritative Cloud Snapshot ${new Date().toISOString()}`,
         bin: bin.trim(),
@@ -2229,7 +2265,7 @@ export class BackupService {
         : undefined,
     };
 
-    const checksum = computeSnapshotChecksum(sanitizedData);
+    const checksum = await computeSnapshotSha256(sanitizedData);
 
     const portableData: PortableBackupFile = {
       formatIdentifier: PORTABLE_BACKUP_FORMAT_IDENTIFIER,
@@ -2403,12 +2439,13 @@ export class BackupService {
     };
 
     // Checksum verification
-    const computedChecksum = computeSnapshotChecksum(sanitizedData);
+    const computedLegacyChecksum = computeSnapshotChecksum(sanitizedData);
+    const computedSha256 = await computeSnapshotSha256(sanitizedData);
     const expectedChecksum = parsed.metadata.checksum;
-    if (expectedChecksum && expectedChecksum !== computedChecksum) {
+    if (expectedChecksum && expectedChecksum !== computedSha256 && expectedChecksum !== computedLegacyChecksum) {
       return {
         valid: false,
-        error: `Integrity check failed: checksum mismatch. File checksum "${expectedChecksum}" does not match computed data checksum "${computedChecksum}". Data may be corrupted or tampered.`,
+        error: `Integrity check failed: checksum mismatch. File checksum "${expectedChecksum}" does not match computed SHA-256 "${computedSha256}" or legacy checksum "${computedLegacyChecksum}". Data may be corrupted or tampered.`,
         errorCode: 'CHECKSUM_MISMATCH',
       };
     }
@@ -2555,7 +2592,7 @@ export class BackupService {
             status: 'RECONCILIATION_REQUIRED',
           },
     };
-    const checksum = computeSnapshotChecksum(sanitizedData);
+    const checksum = await computeSnapshotSha256(sanitizedData);
 
     const record: BackupSnapshotRecord = {
       snapshotId: targetSnapshotId,
