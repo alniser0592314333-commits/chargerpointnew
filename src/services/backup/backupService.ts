@@ -1556,7 +1556,8 @@ export class BackupService {
           if (row?.id) localDb.setWithTx(tx, 'changeLog', row.id, row);
         }
         for (const row of d.systemSettings || []) {
-          if (row?.id) localDb.setWithTx(tx, 'systemSettings', row.id, row);
+          const key = row?.key ?? row?.id;
+          if (key !== undefined && key !== null) localDb.setWithTx(tx, 'systemSettings', String(key), row);
         }
 
         for (const outbox of restoredOutbox) localDb.saveOutboxWithTx(tx, outbox);
