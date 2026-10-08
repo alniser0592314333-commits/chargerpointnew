@@ -9,6 +9,7 @@ import {
   CreateSnapshotOptions,
   PortableBackupFile,
   computeSnapshotChecksum,
+  computeSnapshotSha256,
 } from '../../services/backup/backupService';
 import { localDb, BackupSnapshotRecord, BackupSourceType, BackupSnapshotData } from '../../infrastructure/localDb/localDb';
 import { authService } from '../../services/auth/authService';
@@ -477,7 +478,7 @@ export const BackupDataManagement: React.FC = () => {
         backupService.captureOnlineData(),
         backupService.captureLocalData(),
       ]);
-      const frozenChecksum = computeSnapshotChecksum(local);
+      const frozenChecksum = await computeSnapshotSha256(local);
       const diff = await backupService.previewReplacementDiff(online, local);
       setReplaceOnlineSourceData(local);
       setReplaceOnlineSourceChecksum(frozenChecksum);
@@ -512,10 +513,22 @@ export const BackupDataManagement: React.FC = () => {
       if (!replaceOnlineSourceData || !replaceOnlineSourceChecksum) {
         throw new Error('Replacement preview is missing or expired. Reopen the preview before executing.');
       }
-      const frozenChecksumNow = computeSnapshotChecksum(replaceOnlineSourceData);
+      const frozenChecksumNow = await computeSnapshotSha256(replaceOnlineSourceData);
       if (frozenChecksumNow !== replaceOnlineSourceChecksum) {
         throw new Error('Replacement preview payload changed. Reopen the preview before executing.');
       }
+
+      // The preview freezes a specific local payload. Before destructive execution,
+      // re-read the live local database and prove it is still byte-for-byte equivalent
+      // under the same canonical SHA-256. If anything changed meanwhile (including
+      // a new order/payment/delete), refuse the replacement rather than silently
+      // overwriting the newer local state.
+      const currentLocalData = await backupService.captureLocalData();
+      const currentLocalChecksum = await computeSnapshotSha256(currentLocalData);
+      if (currentLocalChecksum !== replaceOnlineSourceChecksum) {
+        throw new Error('LOCAL_CHANGED_AFTER_PREVIEW: Local data changed after preview. Reopen the replacement preview before executing.');
+      }
+
       const res = await backupService.replaceOnlineWithLocalData(auth, cleanBin, {
         customLocalData: replaceOnlineSourceData,
       });
