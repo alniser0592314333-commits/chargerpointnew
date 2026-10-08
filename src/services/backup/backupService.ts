@@ -2385,7 +2385,7 @@ export class BackupService {
     portableFile?: PortableBackupFile;
     error?: string;
     errorCode?: string;
-  } {
+  }> {
     if (!jsonString || typeof jsonString !== 'string' || !jsonString.trim()) {
       return { valid: false, error: 'Empty backup file content', errorCode: 'EMPTY_FILE' };
     }
