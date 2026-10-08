@@ -47,7 +47,9 @@ export function parseRoute(pathAndHash: string): { pathname: string; hash: strin
     const dummyOrigin = 'http://localhost';
     const url = new URL(pathAndHash, dummyOrigin);
     return {
-      pathname: url.pathname,
+      // The installed PWA starts at /app/ while the canonical application route is /app.
+      // Normalize the trailing slash so installed and browser launches share one route state.
+      pathname: url.pathname === '/app/' ? '/app' : url.pathname,
       hash: url.hash,
       search: url.search,
     };
