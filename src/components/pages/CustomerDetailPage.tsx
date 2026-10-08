@@ -12,7 +12,8 @@ import {
   UICustomerDetail,
   UICustomerOrderSummary,
   UICustomerFinancialItem,
-} from './dayOrdersStore';
+,
+  useStoreSubscription} from './dayOrdersStore';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
@@ -74,6 +75,7 @@ export const CustomerDetailPage: React.FC<CustomerDetailPageProps> = ({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isHistoryError, setIsHistoryError] = useState(false);
 const [isLoading, setIsLoading] = useState(true);
+  const paymentStoreVersion = useStoreSubscription(['orderItems', 'paymentAllocations', 'payments', 'financialLedger']);
   const [isError, setIsError] = useState(false);
 
   // Active record view tab ('orders' or 'financial')
@@ -284,6 +286,12 @@ const [isLoading, setIsLoading] = useState(true);
   useEffect(() => {
     loadData();
   }, [customerId, locale]);
+
+  // Remote payment/allocations are applied as authoritative deltas into the local store.
+  // Refresh this page when those deltas arrive so payment badges cannot remain on the pre-payment snapshot.
+  useEffect(() => {
+    if (paymentStoreVersion > 0) loadData();
+  }, [paymentStoreVersion]);
 
   const handleOpenEditModal = () => {
     if (!customer) return;
