@@ -21,7 +21,7 @@ import {
   SnapshotFormatError,
   AuthorizationError,
 } from '../../domain/errors';
-import { invokeSupabaseRestGet, invokeSupabaseRpc } from '../supabase/client';
+import { assertOnlineForSensitiveOperation, invokeSupabaseRestGet, invokeSupabaseRpc } from '../supabase/client';
 
 export const PORTABLE_BACKUP_FORMAT_IDENTIFIER = 'ORDER_SYSTEM_PORTABLE_BACKUP';
 export const PORTABLE_BACKUP_FORMAT_VERSION = 1;
@@ -1698,6 +1698,7 @@ export class BackupService {
    * Resets local operational business data while preserving all backup snapshots.
    */
   async deleteLocalBusinessData(auth: AuthorizationContext, options?: { bin?: string }): Promise<void> {
+    assertOnlineForSensitiveOperation('Deleting local business data');
     auth.requireAuth();
     auth.assertPermission('settings:manage');
 
@@ -1725,6 +1726,7 @@ export class BackupService {
    * Clears local sync history while preserving all backup snapshots.
    */
   async clearSyncHistory(auth: AuthorizationContext): Promise<void> {
+    assertOnlineForSensitiveOperation('Clearing sync history');
     auth.requireAuth();
     auth.assertPermission('settings:manage');
     await localDb.clearSyncHistory();
@@ -1738,6 +1740,7 @@ export class BackupService {
     auth: AuthorizationContext,
     options?: { bin?: string; customOnlineData?: Partial<BackupSnapshotData> }
   ): Promise<{ success: boolean; restoredCount: number }> {
+    assertOnlineForSensitiveOperation('Restoring cloud data to this device');
     auth.requireAuth();
     auth.assertPermission('settings:manage');
 
@@ -1999,6 +2002,7 @@ export class BackupService {
     counts: Record<string, number>;
     safetySnapshotId: string;
   }> {
+    assertOnlineForSensitiveOperation('Replacing cloud business data');
     auth.requireAuth();
     auth.assertPermission('settings:manage');
 
@@ -2365,6 +2369,7 @@ export class BackupService {
     deletedCounts: Record<string, number>;
     serverResetGeneration: number;
   }> {
+    assertOnlineForSensitiveOperation('Deleting cloud business data');
     auth.requireAuth();
     auth.assertPermission('settings:manage');
 

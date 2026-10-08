@@ -28,6 +28,17 @@ export const getSupabaseStatus = (): SupabaseClientStub => {
   };
 };
 
+
+/**
+ * Security-sensitive mutations are never allowed to start from an offline browser state.
+ * This is only an early client-side barrier; the authoritative server RPC remains the
+ * final authorization/mutation gate. No sensitive admin/settings mutation is queued.
+ */
+export const assertOnlineForSensitiveOperation = (operationLabel = 'This operation'): void => {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error(`ONLINE_REQUIRED: ${operationLabel} requires an active internet connection and cannot run offline.`);
+  }
+};
 export interface PublicCustomerQrRpcResult {
   customer_name: string;
   customer_code: string;

@@ -1240,3 +1240,1194 @@ using (
 -- SECURITY DEFINER RPCs own all canonical writes.
 
 commit;
+
+
+-- ============================================================================
+-- Canonical Admin Management Security Contract (2026-10-08)
+-- ============================================================================
+-- Canonical Admin Management Security + Online-only execution contract
+-- Date: 2026-10-08
+--
+-- Goals:
+-- 1. One server-side Super Admin authorization gate for subordinate-admin mutations.
+-- 2. Preserve existing mutation semantics and audit actions.
+-- 3. Never introduce an offline/outbox path for security-sensitive admin mutations.
+-- 4. Return explicit authorization errors so the client cannot look like it silently reset.
+
+CREATE OR REPLACE FUNCTION public.authorize_super_admin_admin_management(
+  p_caller_bin TEXT
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+  v_caller_bin_hash VARCHAR(255);
+  v_caller_role VARCHAR(50);
+  v_caller_is_active BOOLEAN;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required'
+      USING ERRCODE = '28000';
+  END IF;
+
+  SELECT id, bin_hash, role, is_active
+  INTO v_caller_id, v_caller_bin_hash, v_caller_role, v_caller_is_active
+  FROM public.admins
+  WHERE auth_user_id = auth.uid()
+  LIMIT 1
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Caller admin profile not found'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF v_caller_is_active IS NOT TRUE THEN
+    RAISE EXCEPTION 'Caller admin profile is suspended'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF upper(replace(trim(coalesce(v_caller_role, '')), ' ', '_')) <> 'SUPER_ADMIN' THEN
+    RAISE EXCEPTION 'Unauthorized operation: SUPER_ADMIN role required'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF p_caller_bin IS NULL OR trim(p_caller_bin) = '' THEN
+    RAISE EXCEPTION 'Authorization BIN is required'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF v_caller_bin_hash IS NULL
+     OR crypt(trim(p_caller_bin), v_caller_bin_hash) <> v_caller_bin_hash THEN
+    RAISE EXCEPTION 'Invalid authorization BIN credential'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN v_caller_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.authorize_super_admin_admin_management(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.authorize_super_admin_admin_management(TEXT) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.rpc_update_admin_password(
+  p_target_admin_id UUID,
+  p_new_password TEXT,
+  p_caller_bin TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+  v_target_auth_user_id UUID;
+  v_encrypted_password TEXT;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_caller_bin);
+
+  SELECT auth_user_id INTO v_target_auth_user_id
+  FROM public.admins
+  WHERE id = p_target_admin_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Target admin account not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  IF p_new_password IS NULL OR p_new_password = '' OR length(p_new_password) < 6 THEN
+    RAISE EXCEPTION 'Password must be at least 6 characters'
+      USING ERRCODE = '22023';
+  END IF;
+
+  v_encrypted_password := crypt(p_new_password, gen_salt('bf', 10));
+
+  UPDATE auth.users
+  SET encrypted_password = v_encrypted_password,
+      updated_at = NOW()
+  WHERE id = v_target_auth_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Target authentication account not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  UPDATE public.admins
+  SET version = version + 1,
+      updated_at = NOW()
+  WHERE id = p_target_admin_id;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_PASSWORD_RESET',
+    p_target_admin_id,
+    jsonb_build_object('timestamp', NOW())
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rpc_update_admin_bin(
+  p_target_admin_id UUID,
+  p_new_bin TEXT,
+  p_caller_bin TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+  v_new_bin_hash VARCHAR(255);
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_caller_bin);
+
+  IF NOT EXISTS (SELECT 1 FROM public.admins WHERE id = p_target_admin_id) THEN
+    RAISE EXCEPTION 'Target admin account not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  IF p_new_bin IS NULL OR p_new_bin = '' OR NOT (p_new_bin ~ '^[0-9]{4,}$') THEN
+    RAISE EXCEPTION 'BIN must be at least 4 numeric digits'
+      USING ERRCODE = '22023';
+  END IF;
+
+  v_new_bin_hash := crypt(trim(p_new_bin), gen_salt('bf', 10));
+
+  UPDATE public.admins
+  SET bin_hash = v_new_bin_hash,
+      version = version + 1,
+      updated_at = NOW()
+  WHERE id = p_target_admin_id;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_BIN_RESET',
+    p_target_admin_id,
+    jsonb_build_object('timestamp', NOW())
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rpc_set_admin_custom_permissions(
+  p_target_admin_id UUID,
+  p_permissions TEXT[],
+  p_bin TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+  v_perm TEXT;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_bin);
+
+  IF NOT EXISTS (SELECT 1 FROM public.admins WHERE id = p_target_admin_id) THEN
+    RAISE EXCEPTION 'Target admin not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  DELETE FROM public.admin_custom_permissions
+  WHERE admin_id = p_target_admin_id;
+
+  IF p_permissions IS NOT NULL AND array_length(p_permissions, 1) > 0 THEN
+    FOREACH v_perm IN ARRAY p_permissions LOOP
+      IF v_perm IS NOT NULL AND trim(v_perm) <> '' THEN
+        INSERT INTO public.admin_custom_permissions (
+          admin_id,
+          permission,
+          is_grant
+        ) VALUES (
+          p_target_admin_id,
+          trim(v_perm),
+          TRUE
+        )
+        ON CONFLICT (admin_id, permission) DO UPDATE SET
+          is_grant = TRUE;
+      END IF;
+    END LOOP;
+  END IF;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_CUSTOM_PERMISSIONS_UPDATED',
+    p_target_admin_id,
+    jsonb_build_object(
+      'permissions_count', COALESCE(array_length(p_permissions, 1), 0),
+      'timestamp', NOW()
+    )
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rpc_grant_custom_permission(
+  p_target_admin_id UUID,
+  p_permission VARCHAR,
+  p_is_grant BOOLEAN,
+  p_bin TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_bin);
+
+  IF NOT EXISTS (SELECT 1 FROM public.admins WHERE id = p_target_admin_id) THEN
+    RAISE EXCEPTION 'Target admin not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  INSERT INTO public.admin_custom_permissions (
+    admin_id,
+    permission,
+    is_grant
+  ) VALUES (
+    p_target_admin_id,
+    p_permission,
+    p_is_grant
+  )
+  ON CONFLICT (admin_id, permission) DO UPDATE SET
+    is_grant = EXCLUDED.is_grant;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    CASE
+      WHEN p_is_grant = TRUE THEN 'ADMIN_PERMISSION_GRANTED'::VARCHAR(100)
+      ELSE 'ADMIN_PERMISSION_REVOKED'::VARCHAR(100)
+    END,
+    p_target_admin_id,
+    jsonb_build_object('permission', p_permission, 'is_grant', p_is_grant)
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rpc_revoke_custom_permission(
+  p_target_admin_id UUID,
+  p_permission VARCHAR,
+  p_bin TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_bin);
+
+  IF NOT EXISTS (SELECT 1 FROM public.admins WHERE id = p_target_admin_id) THEN
+    RAISE EXCEPTION 'Target admin not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  DELETE FROM public.admin_custom_permissions
+  WHERE admin_id = p_target_admin_id
+    AND permission = p_permission;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_PERMISSION_REVOKED',
+    p_target_admin_id,
+    jsonb_build_object('permission', p_permission, 'is_revocation', TRUE)
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rpc_suspend_admin(
+  p_target_admin_id UUID,
+  p_bin TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_bin);
+
+  IF NOT EXISTS (SELECT 1 FROM public.admins WHERE id = p_target_admin_id) THEN
+    RAISE EXCEPTION 'Target admin not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  IF v_caller_id = p_target_admin_id THEN
+    RAISE EXCEPTION 'Cannot suspend own administrator account'
+      USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE public.admins
+  SET is_active = FALSE,
+      disabled_at = NOW(),
+      disabled_by = v_caller_id,
+      updated_at = NOW(),
+      version = version + 1
+  WHERE id = p_target_admin_id;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_SUSPENDED',
+    p_target_admin_id,
+    jsonb_build_object('timestamp', NOW())
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rpc_activate_admin(
+  p_target_admin_id UUID,
+  p_bin TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_bin);
+
+  IF NOT EXISTS (SELECT 1 FROM public.admins WHERE id = p_target_admin_id) THEN
+    RAISE EXCEPTION 'Target admin not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  UPDATE public.admins
+  SET is_active = TRUE,
+      disabled_at = NULL,
+      disabled_by = NULL,
+      updated_at = NOW(),
+      version = version + 1
+  WHERE id = p_target_admin_id;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_ACTIVATED',
+    p_target_admin_id,
+    jsonb_build_object('timestamp', NOW())
+  );
+END;
+$$;
+
+-- Creation is also an online-only sensitive mutation. It remains a direct RPC;
+-- it is never placed in the application's offline Outbox.
+CREATE OR REPLACE FUNCTION public.rpc_create_admin(
+  p_username TEXT,
+  p_email TEXT,
+  p_password TEXT,
+  p_full_name TEXT,
+  p_role TEXT,
+  p_bin TEXT,
+  p_caller_bin TEXT
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+  v_new_user_id UUID;
+  v_new_admin_id UUID;
+  v_clean_email VARCHAR(255);
+  v_clean_username VARCHAR(100);
+  v_clean_full_name VARCHAR(200);
+  v_clean_role VARCHAR(50);
+  v_encrypted_password TEXT;
+  v_bin_hash VARCHAR(255);
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_caller_bin);
+
+  v_clean_email := trim(lower(p_email));
+  v_clean_username := trim(p_username);
+  v_clean_full_name := trim(p_full_name);
+  v_clean_role := trim(p_role);
+
+  IF v_clean_role IN ('SUPER_ADMIN', 'Super Admin') THEN
+    RAISE EXCEPTION 'Cannot create subordinate accounts with SUPER_ADMIN role'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF v_clean_username = '' THEN
+    RAISE EXCEPTION 'Username cannot be empty'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF v_clean_email = '' THEN
+    RAISE EXCEPTION 'Email cannot be empty'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF p_password IS NULL OR p_password = '' OR length(p_password) < 6 THEN
+    RAISE EXCEPTION 'Password must be at least 6 characters'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF p_bin IS NULL OR p_bin = '' OR NOT (p_bin ~ '^[0-9]{4,}$') THEN
+    RAISE EXCEPTION 'BIN must be at least 4 numeric digits'
+      USING ERRCODE = '22023';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM auth.users WHERE email = v_clean_email) THEN
+    RAISE EXCEPTION 'An account with this email already exists'
+      USING ERRCODE = '23505';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.admins WHERE username = v_clean_username) THEN
+    RAISE EXCEPTION 'An admin account with this username already exists'
+      USING ERRCODE = '23505';
+  END IF;
+
+  v_encrypted_password := crypt(p_password, gen_salt('bf', 10));
+  v_bin_hash := crypt(trim(p_bin), gen_salt('bf', 10));
+
+  INSERT INTO auth.users (
+    id,
+    instance_id,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    aud,
+    role,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at
+  ) VALUES (
+    gen_random_uuid(),
+    '00000000-0000-0000-0000-000000000000'::UUID,
+    v_clean_email,
+    v_encrypted_password,
+    NOW(),
+    'authenticated',
+    'authenticated',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object(
+      'sub', v_clean_email,
+      'username', v_clean_username,
+      'full_name', v_clean_full_name,
+      'email', v_clean_email,
+      'email_verified', TRUE,
+      'phone_verified', FALSE
+    ),
+    NOW(),
+    NOW()
+  )
+  RETURNING id INTO v_new_user_id;
+
+  INSERT INTO auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at,
+    email
+  ) VALUES (
+    gen_random_uuid(),
+    v_new_user_id,
+    jsonb_build_object(
+      'sub', v_new_user_id::text,
+      'email', v_clean_email,
+      'email_verified', TRUE,
+      'phone_verified', FALSE
+    ),
+    'email',
+    v_new_user_id::text,
+    NOW(),
+    NOW(),
+    NOW(),
+    v_clean_email
+  );
+
+  INSERT INTO public.admins (
+    id,
+    auth_user_id,
+    username,
+    full_name,
+    email,
+    role,
+    is_active,
+    bin_hash,
+    version,
+    created_at,
+    updated_at
+  ) VALUES (
+    gen_random_uuid(),
+    v_new_user_id,
+    v_clean_username,
+    v_clean_full_name,
+    v_clean_email,
+    v_clean_role,
+    TRUE,
+    v_bin_hash,
+    1,
+    NOW(),
+    NOW()
+  )
+  RETURNING id INTO v_new_admin_id;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_CREATED',
+    v_new_admin_id,
+    jsonb_build_object(
+      'username', v_clean_username,
+      'role', v_clean_role,
+      'timestamp', NOW()
+    )
+  );
+
+  RETURN v_new_admin_id;
+END;
+$$;
+
+-- The public Data API must not expose the authorization helper to anonymous callers.
+REVOKE ALL ON FUNCTION public.authorize_super_admin_admin_management(TEXT) FROM anon;
+REVOKE ALL ON FUNCTION public.authorize_super_admin_admin_management(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.authorize_super_admin_admin_management(TEXT) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- BIN crypt type correction
+-- Fix pgcrypto crypt(text,text) calls where admins.bin_hash is varchar.
+-- This is a type-contract correction only; no credential/data values are changed.
+
+CREATE OR REPLACE FUNCTION public.authorize_super_admin_admin_management(
+  p_caller_bin TEXT
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_id UUID;
+  v_caller_bin_hash TEXT;
+  v_caller_role TEXT;
+  v_caller_is_active BOOLEAN;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
+  END IF;
+
+  SELECT id, bin_hash::text, role::text, is_active
+  INTO v_caller_id, v_caller_bin_hash, v_caller_role, v_caller_is_active
+  FROM public.admins
+  WHERE auth_user_id = auth.uid()
+  LIMIT 1
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Caller admin profile not found' USING ERRCODE = '42501';
+  END IF;
+
+  IF v_caller_is_active IS NOT TRUE THEN
+    RAISE EXCEPTION 'Caller admin profile is suspended' USING ERRCODE = '42501';
+  END IF;
+
+  IF upper(replace(trim(coalesce(v_caller_role, '')), ' ', '_')) <> 'SUPER_ADMIN' THEN
+    RAISE EXCEPTION 'Unauthorized operation: SUPER_ADMIN role required' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_caller_bin IS NULL OR trim(p_caller_bin) = '' THEN
+    RAISE EXCEPTION 'Authorization BIN is required' USING ERRCODE = '22023';
+  END IF;
+
+  IF v_caller_bin_hash IS NULL
+     OR crypt(trim(p_caller_bin)::text, v_caller_bin_hash::text) <> v_caller_bin_hash::text THEN
+    RAISE EXCEPTION 'Invalid authorization BIN credential' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN v_caller_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.verify_admin_bin(p_bin TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.admins a
+    WHERE a.id = public.current_admin_id()
+      AND a.is_active
+      AND a.bin_hash IS NOT NULL
+      AND crypt(p_bin::text, a.bin_hash::text) = a.bin_hash::text
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.create_authoritative_backup_checkpoint(
+  p_entered_bin TEXT,
+  p_notes TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_bin_verified BOOLEAN := FALSE;
+    v_chk_id UUID := gen_random_uuid();
+    v_seq BIGINT;
+    v_manifest JSONB;
+    v_snapshot JSONB;
+    v_integrity_hash TEXT;
+    v_max_seq BIGINT;
+    v_count_settings INT;
+    v_count_customers INT;
+    v_count_days INT;
+    v_count_devices INT;
+    v_count_orders INT;
+    v_count_items INT;
+    v_count_payments INT;
+    v_count_allocations INT;
+    v_count_ledger INT;
+    v_count_goals INT;
+    v_count_goal_requests INT;
+    v_ledger_sum BIGINT;
+BEGIN
+    IF auth.uid() IS NOT NULL THEN
+        SELECT public.verify_admin_bin(p_entered_bin) INTO v_bin_verified;
+    ELSE
+        SELECT (crypt(trim(p_entered_bin)::text, bin_hash::text) = bin_hash::text)
+        INTO v_bin_verified
+        FROM public.admins
+        WHERE role IN ('SUPER_ADMIN', 'Super Admin') AND is_active = TRUE
+        LIMIT 1;
+    END IF;
+
+    IF v_bin_verified IS NOT TRUE THEN
+        RAISE EXCEPTION 'Security Authorization Failed: Invalid BIN';
+    END IF;
+
+    SELECT count(*) INTO v_count_settings FROM public.system_settings;
+    SELECT count(*) INTO v_count_customers FROM public.customers;
+    SELECT count(*) INTO v_count_days FROM public.business_days;
+    SELECT count(*) INTO v_count_devices FROM public.device_types;
+    SELECT count(*) INTO v_count_orders FROM public.orders;
+    SELECT count(*) INTO v_count_items FROM public.order_items;
+    SELECT count(*) INTO v_count_payments FROM public.payments;
+    SELECT count(*) INTO v_count_allocations FROM public.payment_allocations;
+    SELECT count(*), COALESCE(SUM(amount_minor), 0) INTO v_count_ledger, v_ledger_sum FROM public.financial_ledger;
+    SELECT count(*) INTO v_count_goals FROM public.goals;
+    SELECT count(*) INTO v_count_goal_requests FROM public.goal_requests;
+    SELECT COALESCE(MAX(sequence_id), 0) INTO v_max_seq FROM public.change_log;
+
+    v_snapshot := jsonb_build_object(
+        'systemSettings', COALESCE((SELECT jsonb_agg(row_to_json(s)) FROM public.system_settings s), '[]'::jsonb),
+        'customers', COALESCE((SELECT jsonb_agg(row_to_json(c)) FROM public.customers c), '[]'::jsonb),
+        'deviceTypes', COALESCE((SELECT jsonb_agg(row_to_json(d)) FROM public.device_types d), '[]'::jsonb),
+        'businessDays', COALESCE((SELECT jsonb_agg(row_to_json(b)) FROM public.business_days b), '[]'::jsonb),
+        'orders', COALESCE((SELECT jsonb_agg(row_to_json(o)) FROM public.orders o), '[]'::jsonb),
+        'orderItems', COALESCE((SELECT jsonb_agg(row_to_json(oi)) FROM public.order_items oi), '[]'::jsonb),
+        'payments', COALESCE((SELECT jsonb_agg(row_to_json(p)) FROM public.payments p), '[]'::jsonb),
+        'paymentAllocations', COALESCE((SELECT jsonb_agg(row_to_json(pa)) FROM public.payment_allocations pa), '[]'::jsonb),
+        'financialLedger', COALESCE((SELECT jsonb_agg(row_to_json(fl)) FROM public.financial_ledger fl), '[]'::jsonb),
+        'goals', COALESCE((SELECT jsonb_agg(row_to_json(g)) FROM public.goals g), '[]'::jsonb),
+        'goalRequests', COALESCE((SELECT jsonb_agg(row_to_json(gr)) FROM public.goal_requests gr), '[]'::jsonb)
+    );
+
+    v_integrity_hash := md5(format('%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s:%s',
+        v_count_settings, v_count_customers, v_count_days, v_count_devices,
+        v_count_orders, v_count_items, v_count_payments, v_count_allocations,
+        v_count_ledger, v_ledger_sum, v_count_goals, v_count_goal_requests
+    ));
+
+    v_manifest := jsonb_build_object(
+        'checkpointId', v_chk_id,
+        'schemaVersion', 1,
+        'formatVersion', '1.0',
+        'authoritativeMaxSequence', v_max_seq,
+        'createdAt', NOW(),
+        'counts', jsonb_build_object(
+            'systemSettings', v_count_settings,
+            'customers', v_count_customers,
+            'businessDays', v_count_days,
+            'deviceTypes', v_count_devices,
+            'orders', v_count_orders,
+            'orderItems', v_count_items,
+            'payments', v_count_payments,
+            'paymentAllocations', v_count_allocations,
+            'financialLedger', v_count_ledger,
+            'goals', v_count_goals,
+            'goalRequests', v_count_goal_requests
+        ),
+        'financialIntegrity', jsonb_build_object('totalLedgerSumMinor', v_ledger_sum)
+    );
+
+    INSERT INTO public.backup_checkpoints (checkpoint_id, checkpoint_type, manifest, integrity_hash, snapshot_data, created_at)
+    VALUES (v_chk_id, COALESCE(p_notes, 'MANUAL'), v_manifest, v_integrity_hash, v_snapshot, NOW())
+    RETURNING checkpoint_sequence INTO v_seq;
+
+    RETURN jsonb_build_object(
+        'success', TRUE,
+        'checkpointId', v_chk_id,
+        'checkpointSequence', v_seq,
+        'integrityHash', v_integrity_hash,
+        'manifest', v_manifest
+    );
+END;
+$$;
+
+-- restore_authoritative_backup_checkpoint is only a type-contract correction in
+-- its authentication branch; keep the existing restore body unchanged by replacing
+-- the two affected crypt expressions through a body-level recreation below.
+CREATE OR REPLACE FUNCTION public.restore_authoritative_backup_checkpoint(
+  p_entered_bin TEXT,
+  p_checkpoint_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_bin_verified BOOLEAN := FALSE;
+    v_chk RECORD;
+    v_rec RECORD;
+BEGIN
+    IF auth.uid() IS NOT NULL THEN
+        SELECT public.verify_admin_bin(p_entered_bin) INTO v_bin_verified;
+    ELSE
+        SELECT (crypt(trim(p_entered_bin)::text, bin_hash::text) = bin_hash::text)
+        INTO v_bin_verified
+        FROM public.admins
+        WHERE role IN ('SUPER_ADMIN', 'Super Admin') AND is_active = TRUE
+        LIMIT 1;
+    END IF;
+
+    IF v_bin_verified IS NOT TRUE THEN
+        RAISE EXCEPTION 'Security Authorization Failed: Invalid BIN';
+    END IF;
+
+    SELECT * INTO v_chk
+    FROM public.backup_checkpoints
+    WHERE checkpoint_id = p_checkpoint_id;
+
+    IF v_chk.checkpoint_id IS NULL THEN
+        RAISE EXCEPTION 'Backup Checkpoint Not Found: ID %', p_checkpoint_id;
+    END IF;
+
+    ALTER TABLE public.financial_ledger DISABLE TRIGGER trg_immutable_financial_ledger;
+    ALTER TABLE public.order_items DISABLE TRIGGER trg_freeze_recognized_order_item;
+
+    DELETE FROM public.goal_requests;
+    DELETE FROM public.goals;
+    DELETE FROM public.payment_allocations;
+    DELETE FROM public.financial_ledger;
+    DELETE FROM public.payments;
+    DELETE FROM public.order_items;
+    DELETE FROM public.orders;
+    DELETE FROM public.business_days;
+    DELETE FROM public.customers;
+    DELETE FROM public.device_types;
+    DELETE FROM public.system_settings;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'systemSettings') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'systemSettings') AS x(
+            key VARCHAR(100), value_type VARCHAR(20), value_string TEXT, value_number BIGINT, value_boolean BOOLEAN, value_json JSONB, description TEXT, updated_at TIMESTAMPTZ, updated_by UUID
+        ) LOOP
+            INSERT INTO public.system_settings (key, value_type, value_string, value_number, value_boolean, value_json, description, updated_at, updated_by)
+            VALUES (v_rec.key, v_rec.value_type, v_rec.value_string, v_rec.value_number, v_rec.value_boolean, v_rec.value_json, v_rec.description, COALESCE(v_rec.updated_at, NOW()), v_rec.updated_by);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'customers') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'customers') AS x(
+            id UUID, name VARCHAR(200), phone VARCHAR(50), status VARCHAR(20), is_active BOOLEAN, notes TEXT, debt_limit_minor BIGINT, charger_fee_exempt BOOLEAN, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, deleted_at TIMESTAMPTZ, version INTEGER
+        ) LOOP
+            INSERT INTO public.customers (id, name, phone, status, is_active, notes, debt_limit_minor, charger_fee_exempt, created_at, updated_at, deleted_at, version)
+            VALUES (v_rec.id, v_rec.name, v_rec.phone, v_rec.status, v_rec.is_active, v_rec.notes, v_rec.debt_limit_minor, v_rec.charger_fee_exempt, v_rec.created_at, v_rec.updated_at, v_rec.deleted_at, v_rec.version);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'deviceTypes') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'deviceTypes') AS x(
+            id UUID, name VARCHAR(200), name_ar VARCHAR(200), name_en VARCHAR(200), icon VARCHAR(50), base_price_minor BIGINT, charger_fee_enabled BOOLEAN, charger_fee_applicable BOOLEAN, is_active BOOLEAN, status VARCHAR(20), sort_order INTEGER, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, deleted_at TIMESTAMPTZ, version INTEGER
+        ) LOOP
+            INSERT INTO public.device_types (id, name, name_ar, name_en, icon, base_price_minor, charger_fee_enabled, charger_fee_applicable, is_active, status, sort_order, created_at, updated_at, deleted_at, version)
+            VALUES (v_rec.id, v_rec.name, v_rec.name_ar, v_rec.name_en, v_rec.icon, v_rec.base_price_minor, v_rec.charger_fee_enabled, v_rec.charger_fee_applicable, v_rec.is_active, v_rec.status, v_rec.sort_order, v_rec.created_at, v_rec.updated_at, v_rec.deleted_at, v_rec.version);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'businessDays') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'businessDays') AS x(
+            id UUID, business_date DATE, display_number INTEGER, status VARCHAR(20), is_closed BOOLEAN, opened_at TIMESTAMPTZ, closed_at TIMESTAMPTZ, closed_by UUID, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, version INTEGER
+        ) LOOP
+            INSERT INTO public.business_days (id, business_date, display_number, status, is_closed, opened_at, closed_at, closed_by, created_at, updated_at, version)
+            VALUES (v_rec.id, v_rec.business_date, v_rec.display_number, v_rec.status, v_rec.is_closed, v_rec.opened_at, v_rec.closed_at, v_rec.closed_by, v_rec.created_at, v_rec.updated_at, v_rec.version);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'orders') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'orders') AS x(
+            id UUID, day_id UUID, customer_id UUID, display_number INTEGER, status VARCHAR(20), notes TEXT, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, deleted_at TIMESTAMPTZ, version INTEGER
+        ) LOOP
+            INSERT INTO public.orders (id, day_id, customer_id, display_number, status, notes, created_at, updated_at, deleted_at, version)
+            VALUES (v_rec.id, v_rec.day_id, v_rec.customer_id, v_rec.display_number, v_rec.status::order_status, v_rec.notes, v_rec.created_at, v_rec.updated_at, v_rec.deleted_at, v_rec.version);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'orderItems') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'orderItems') AS x(
+            id UUID, order_id UUID, device_type_id UUID, item_sequence INTEGER, operational_status VARCHAR(20), financial_status VARCHAR(20), payment_status VARCHAR(20), status VARCHAR(20), device_name_snapshot VARCHAR(150), device_icon_snapshot VARCHAR(100), base_price_snapshot_minor BIGINT, charger_fee_snapshot_minor BIGINT, discount_snapshot_minor BIGINT, final_charge_snapshot_minor BIGINT, unit_price_minor BIGINT, total_price_minor BIGINT, has_charger BOOLEAN, charger_fee_enabled_snapshot BOOLEAN, customer_charger_fee_exempt_snapshot BOOLEAN, delivered_at TIMESTAMPTZ, financially_recognized_at TIMESTAMPTZ, cancelled_at TIMESTAMPTZ, replacement_of_item_id UUID, notes TEXT, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ, deleted_at TIMESTAMPTZ, version INTEGER
+        ) LOOP
+            INSERT INTO public.order_items (id, order_id, device_type_id, item_sequence, operational_status, financial_status, payment_status, status, device_name_snapshot, device_icon_snapshot, base_price_snapshot_minor, charger_fee_snapshot_minor, discount_snapshot_minor, final_charge_snapshot_minor, unit_price_minor, total_price_minor, has_charger, charger_fee_enabled_snapshot, customer_charger_fee_exempt_snapshot, delivered_at, financially_recognized_at, cancelled_at, replacement_of_item_id, notes, created_at, updated_at, deleted_at, version)
+            VALUES (v_rec.id, v_rec.order_id, v_rec.device_type_id, v_rec.item_sequence, v_rec.operational_status, v_rec.financial_status, v_rec.payment_status, v_rec.status::item_status, v_rec.device_name_snapshot, v_rec.device_icon_snapshot, v_rec.base_price_snapshot_minor, v_rec.charger_fee_snapshot_minor, v_rec.discount_snapshot_minor, v_rec.final_charge_snapshot_minor, v_rec.unit_price_minor, v_rec.total_price_minor, v_rec.has_charger, v_rec.charger_fee_enabled_snapshot, v_rec.customer_charger_fee_exempt_snapshot, v_rec.delivered_at, v_rec.financially_recognized_at, v_rec.cancelled_at, v_rec.replacement_of_item_id, v_rec.notes, v_rec.created_at, v_rec.updated_at, v_rec.deleted_at, v_rec.version);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'payments') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'payments') AS x(
+            id UUID, customer_id UUID, amount_minor BIGINT, payment_method VARCHAR(50), reference TEXT, actor_admin_id UUID, command_id UUID, created_at TIMESTAMPTZ
+        ) LOOP
+            INSERT INTO public.payments (id, customer_id, amount_minor, payment_method, reference, actor_admin_id, command_id, created_at)
+            VALUES (v_rec.id, v_rec.customer_id, v_rec.amount_minor, v_rec.payment_method, v_rec.reference, v_rec.actor_admin_id, v_rec.command_id, v_rec.created_at);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'paymentAllocations') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'paymentAllocations') AS x(
+            id UUID, payment_id UUID, order_item_id UUID, order_id UUID, allocated_amount_minor BIGINT, created_at TIMESTAMPTZ
+        ) LOOP
+            INSERT INTO public.payment_allocations (id, payment_id, order_item_id, order_id, allocated_amount_minor, created_at)
+            VALUES (v_rec.id, v_rec.payment_id, v_rec.order_item_id, v_rec.order_id, v_rec.allocated_amount_minor, v_rec.created_at);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'financialLedger') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'financialLedger') AS x(
+            id UUID, sequence_number BIGINT, event_type VARCHAR(30), amount_minor BIGINT, order_id UUID, order_item_id UUID, customer_id UUID, actor_admin_id UUID, reference_id UUID, linked_ledger_id UUID, metadata JSONB, created_at TIMESTAMPTZ
+        ) LOOP
+            INSERT INTO public.financial_ledger (id, sequence_number, event_type, amount_minor, order_id, order_item_id, customer_id, actor_admin_id, reference_id, linked_ledger_id, metadata, created_at)
+            VALUES (v_rec.id, v_rec.sequence_number, v_rec.event_type::ledger_event_type, v_rec.amount_minor, v_rec.order_id, v_rec.order_item_id, v_rec.customer_id, v_rec.actor_admin_id, v_rec.reference_id, v_rec.linked_ledger_id, v_rec.metadata, v_rec.created_at);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'goals') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'goals') AS x(
+            id UUID, customer_id UUID, target_quantity INTEGER, current_progress INTEGER, bonus_amount_minor BIGINT, duration_days INTEGER, status VARCHAR(20), started_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, completed_at TIMESTAMPTZ, bonus_ledger_id UUID, version INTEGER, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+        ) LOOP
+            INSERT INTO public.goals (id, customer_id, target_quantity, current_progress, bonus_amount_minor, duration_days, status, started_at, expires_at, completed_at, bonus_ledger_id, version, created_at, updated_at)
+            VALUES (v_rec.id, v_rec.customer_id, v_rec.target_quantity, v_rec.current_progress, v_rec.bonus_amount_minor, v_rec.duration_days, v_rec.status, v_rec.started_at, v_rec.expires_at, v_rec.completed_at, v_rec.bonus_ledger_id, v_rec.version, v_rec.created_at, v_rec.updated_at);
+        END LOOP;
+    END IF;
+
+    IF jsonb_typeof(v_chk.snapshot_data->'goalRequests') = 'array' THEN
+        FOR v_rec IN SELECT * FROM jsonb_to_recordset(v_chk.snapshot_data->'goalRequests') AS x(
+            id UUID, customer_id UUID, requested_target INTEGER, status VARCHAR(20), reviewed_by UUID, reviewed_at TIMESTAMPTZ, rejection_reason TEXT, resulting_goal_id UUID, version INTEGER, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+        ) LOOP
+            INSERT INTO public.goal_requests (id, customer_id, requested_target, status, reviewed_by, reviewed_at, rejection_reason, resulting_goal_id, version, created_at, updated_at)
+            VALUES (v_rec.id, v_rec.customer_id, v_rec.requested_target, v_rec.status, v_rec.reviewed_by, v_rec.reviewed_at, v_rec.rejection_reason, v_rec.resulting_goal_id, v_rec.version, v_rec.created_at, v_rec.updated_at);
+        END LOOP;
+    END IF;
+
+    ALTER TABLE public.financial_ledger ENABLE TRIGGER trg_immutable_financial_ledger;
+    ALTER TABLE public.order_items ENABLE TRIGGER trg_freeze_recognized_order_item;
+
+    PERFORM public.record_canonical_change('system', p_checkpoint_id, 'UPDATE', jsonb_build_object('restoredCheckpointId', p_checkpoint_id), 1);
+
+    RETURN jsonb_build_object(
+        'success', TRUE,
+        'restoredCheckpointId', p_checkpoint_id,
+        'message', 'Checkpoint restored successfully in single atomic transaction'
+    );
+EXCEPTION WHEN OTHERS THEN
+    ALTER TABLE public.financial_ledger ENABLE TRIGGER trg_immutable_financial_ledger;
+    ALTER TABLE public.order_items ENABLE TRIGGER trg_freeze_recognized_order_item;
+    RAISE;
+END;
+$$;
+
+NOTIFY pgrst, 'reload schema';
+
+
+
+-- BIN security/recovery pgcrypto schema correction (2026-10-08)
+-- Correct all remaining BIN security/recovery functions to use pgcrypto functions
+-- from the actual public schema, preserving existing behavior and defaults.
+
+CREATE OR REPLACE FUNCTION public.issue_bin_recovery_proof(p_current_password TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+    v_admin_id UUID;
+    v_is_active BOOLEAN;
+    v_bin_status VARCHAR(20);
+    v_failed_attempts INT;
+    v_encrypted_password TEXT;
+    v_token TEXT;
+    v_token_hash TEXT;
+    v_expires_at TIMESTAMPTZ;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN json_build_object('success', FALSE, 'error', 'Authentication required');
+    END IF;
+
+    IF p_current_password IS NULL OR length(p_current_password) < 1 THEN
+        RETURN json_build_object('success', FALSE, 'error', 'Current password is required');
+    END IF;
+
+    SELECT id, is_active, COALESCE(bin_status, 'ACTIVE'), COALESCE(bin_failed_attempts, 0)
+    INTO v_admin_id, v_is_active, v_bin_status, v_failed_attempts
+    FROM public.admins
+    WHERE auth_user_id = auth.uid();
+
+    IF NOT FOUND OR v_is_active IS NOT TRUE THEN
+        RETURN json_build_object('success', FALSE, 'error', 'Active admin profile not found');
+    END IF;
+
+    IF v_bin_status != 'LOCKED' AND v_failed_attempts < 3 THEN
+        RETURN json_build_object(
+            'success', FALSE,
+            'error', 'RECOVERY_NOT_PERMITTED: BIN recovery is only permitted when account is locked after 3 failed attempts'
+        );
+    END IF;
+
+    SELECT encrypted_password INTO v_encrypted_password
+    FROM auth.users
+    WHERE id = auth.uid();
+
+    IF NOT FOUND OR v_encrypted_password IS NULL THEN
+        RETURN json_build_object('success', FALSE, 'error', 'User credentials not found');
+    END IF;
+
+    IF crypt(p_current_password::text, v_encrypted_password::text) <> v_encrypted_password::text THEN
+        RETURN json_build_object('success', FALSE, 'error', 'INVALID_PASSWORD');
+    END IF;
+
+    UPDATE public.admin_bin_recovery_proofs
+    SET is_used = TRUE, used_at = NOW()
+    WHERE auth_user_id = auth.uid() AND is_used IS FALSE;
+
+    v_token := encode(gen_random_bytes(32), 'hex');
+    v_token_hash := encode(digest(v_token::text, 'sha256'), 'hex');
+    v_expires_at := NOW() + INTERVAL '2 minutes';
+
+    INSERT INTO public.admin_bin_recovery_proofs (
+        admin_id, auth_user_id, proof_token_hash, purpose, issued_at, expires_at, is_used
+    ) VALUES (
+        v_admin_id, auth.uid(), v_token_hash, 'BIN_RECOVERY', NOW(), v_expires_at, FALSE
+    );
+
+    RETURN json_build_object(
+        'success', TRUE,
+        'proof_token', v_token,
+        'expires_in_seconds', 120,
+        'purpose', 'BIN_RECOVERY'
+    );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.recover_and_reset_admin_bin(
+    p_new_bin TEXT,
+    p_recovery_proof TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+    v_admin_id UUID;
+    v_is_active BOOLEAN;
+    v_bin_status VARCHAR(20);
+    v_failed_attempts INT;
+    v_proof_id UUID;
+    v_proof_token_hash TEXT;
+    v_new_bin_hash VARCHAR(255);
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN json_build_object('success', FALSE, 'error', 'Authentication required');
+    END IF;
+
+    IF p_recovery_proof IS NULL OR length(trim(p_recovery_proof)) < 16 THEN
+        RETURN json_build_object(
+            'success', FALSE,
+            'error', 'PROOF_REQUIRED: Valid recovery authorization proof is required to change BIN'
+        );
+    END IF;
+
+    IF p_new_bin IS NULL OR length(trim(p_new_bin)) < 4 OR NOT (trim(p_new_bin) ~ '^[0-9]{4,}$') THEN
+        RETURN json_build_object(
+            'success', FALSE,
+            'error', 'Valid numeric BIN of at least 4 digits is required'
+        );
+    END IF;
+
+    v_proof_token_hash := encode(digest(trim(p_recovery_proof)::text, 'sha256'), 'hex');
+
+    SELECT id, admin_id
+    INTO v_proof_id, v_admin_id
+    FROM public.admin_bin_recovery_proofs
+    WHERE auth_user_id = auth.uid()
+      AND proof_token_hash = v_proof_token_hash
+      AND purpose = 'BIN_RECOVERY'
+      AND is_used IS FALSE
+      AND expires_at > NOW()
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN json_build_object(
+            'success', FALSE,
+            'error', 'INVALID_OR_EXPIRED_PROOF: Recovery proof is invalid, expired, or already used'
+        );
+    END IF;
+
+    UPDATE public.admin_bin_recovery_proofs
+    SET is_used = TRUE, used_at = NOW()
+    WHERE id = v_proof_id;
+
+    SELECT id, is_active, COALESCE(bin_status, 'ACTIVE'), COALESCE(bin_failed_attempts, 0)
+    INTO v_admin_id, v_is_active, v_bin_status, v_failed_attempts
+    FROM public.admins
+    WHERE id = v_admin_id AND auth_user_id = auth.uid()
+    FOR UPDATE;
+
+    IF NOT FOUND OR v_is_active IS NOT TRUE THEN
+        RETURN json_build_object('success', FALSE, 'error', 'Active admin profile not found');
+    END IF;
+
+    IF v_bin_status != 'LOCKED' AND v_failed_attempts < 3 THEN
+        RETURN json_build_object(
+            'success', FALSE,
+            'error', 'RECOVERY_NOT_PERMITTED: BIN recovery is only allowed when account is in LOCKED state'
+        );
+    END IF;
+
+    v_new_bin_hash := crypt(trim(p_new_bin)::text, gen_salt('bf', 10));
+
+    UPDATE public.admins
+    SET bin_hash = v_new_bin_hash,
+        bin_failed_attempts = 0,
+        bin_status = 'ACTIVE',
+        bin_locked_at = NULL,
+        updated_at = NOW(),
+        version = version + 1
+    WHERE id = v_admin_id;
+
+    RETURN json_build_object('success', TRUE, 'status', 'ACTIVE', 'message', 'BIN_RESET_SUCCESS');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_admin_bin(
+    p_bin TEXT,
+    p_admin_id UUID DEFAULT NULL
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_caller_admin_id UUID;
+    v_caller_role VARCHAR(50);
+    v_caller_active BOOLEAN;
+    v_target_id UUID;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Authentication required';
+    END IF;
+
+    IF p_bin IS NULL OR length(trim(p_bin)) < 4 OR NOT (trim(p_bin) ~ '^[0-9]{4,}$') THEN
+        RAISE EXCEPTION 'BIN must be at least 4 numeric digits';
+    END IF;
+
+    SELECT id, role, is_active
+    INTO v_caller_admin_id, v_caller_role, v_caller_active
+    FROM public.admins
+    WHERE auth_user_id = auth.uid()
+    LIMIT 1;
+
+    IF NOT FOUND OR v_caller_active IS NOT TRUE THEN
+        RAISE EXCEPTION 'Authenticated admin account is inactive or not found';
+    END IF;
+
+    IF p_admin_id IS NOT NULL AND p_admin_id != v_caller_admin_id THEN
+        IF v_caller_role NOT IN ('SUPER_ADMIN', 'Super Admin') THEN
+            RAISE EXCEPTION 'Unauthorized: Only Super Admin can update another admin BIN';
+        END IF;
+
+        SELECT id INTO v_target_id FROM public.admins WHERE id = p_admin_id;
+        IF v_target_id IS NULL THEN
+            RAISE EXCEPTION 'Target admin not found';
+        END IF;
+    ELSE
+        v_target_id := v_caller_admin_id;
+    END IF;
+
+    UPDATE public.admins
+    SET bin_hash = crypt(trim(p_bin)::text, gen_salt('bf', 10)),
+        updated_at = NOW(),
+        version = version + 1
+    WHERE id = v_target_id;
+
+    RETURN TRUE;
+END;
+$$;
+
+NOTIFY pgrst, 'reload schema';
+
