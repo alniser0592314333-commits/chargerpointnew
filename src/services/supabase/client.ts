@@ -412,7 +412,8 @@ export async function invokeSupabaseRestGet<T>(
   table: string,
   queryParams: string = 'select=*',
   customAuthToken?: string,
-  allowAnonymous: boolean = false
+  allowAnonymous: boolean = false,
+  isRetry: boolean = false
 ): Promise<{ data: T[] | null; error: string | null }> {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
     return { data: null, error: 'SUPABASE_NOT_CONFIGURED' };
@@ -443,6 +444,31 @@ export async function invokeSupabaseRestGet<T>(
       if (errText && (errText.includes('inactive or disabled') || errText.includes('ACCESS_DENIED_INACTIVE'))) {
         triggerSuspension();
       }
+
+      // REST GET must use the same single-refresh authentication contract as RPC.
+      // A stale access token otherwise makes every cloud backup/capture fail even
+      // though the stored refresh token can still recover the session.
+      const isExpired = res.status === 401 && !isRetry && (
+        errText.includes('JWT expired') ||
+        errText.includes('PGRST301') ||
+        errText.includes('PGRST303') ||
+        errText.includes('token is expired') ||
+        errText.toLowerCase().includes('jwt')
+      );
+
+      if (isExpired) {
+        const { session: refreshedSession } = await supabaseRefreshToken();
+        if (refreshedSession?.access_token) {
+          return invokeSupabaseRestGet<T>(
+            table,
+            queryParams,
+            refreshedSession.access_token,
+            allowAnonymous,
+            true
+          );
+        }
+      }
+
       return { data: null, error: `REST GET ${table} failed [${res.status}]: ${errText}` };
     }
 
@@ -471,7 +497,8 @@ export async function invokeSupabaseRestUpsert<T>(
   payload: Record<string, unknown> | Record<string, unknown>[],
   onConflict?: string,
   customAuthToken?: string,
-  allowAnonymous: boolean = false
+  allowAnonymous: boolean = false,
+  isRetry: boolean = false
 ): Promise<{ data: T | null; error: string | null }> {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
     return { data: null, error: 'SUPABASE_NOT_CONFIGURED' };
@@ -504,6 +531,29 @@ export async function invokeSupabaseRestUpsert<T>(
       if (errText && (errText.includes('inactive or disabled') || errText.includes('ACCESS_DENIED_INACTIVE'))) {
         triggerSuspension();
       }
+
+      const isExpired = res.status === 401 && !isRetry && (
+        errText.includes('JWT expired') ||
+        errText.includes('PGRST301') ||
+        errText.includes('PGRST303') ||
+        errText.includes('token is expired') ||
+        errText.toLowerCase().includes('jwt')
+      );
+
+      if (isExpired) {
+        const { session: refreshedSession } = await supabaseRefreshToken();
+        if (refreshedSession?.access_token) {
+          return invokeSupabaseRestUpsert<T>(
+            table,
+            payload,
+            onConflict,
+            refreshedSession.access_token,
+            allowAnonymous,
+            true
+          );
+        }
+      }
+
       return { data: null, error: `REST UPSERT ${table} failed [${res.status}]: ${errText}` };
     }
 
