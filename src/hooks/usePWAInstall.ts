@@ -11,10 +11,13 @@ export function usePWAInstall() {
     installable: false,
     installed: false,
   }));
+  const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
     initializePWAInstallCapture();
     setState(getPWAInstallState());
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
 
     return subscribePWAInstall(() => {
       setState(getPWAInstallState());
@@ -26,6 +29,7 @@ export function usePWAInstall() {
   return {
     isInstallable: state.installable,
     isInstalled: state.installed,
+    isIOS,
     install,
   };
 }
