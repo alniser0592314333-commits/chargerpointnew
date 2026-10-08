@@ -2362,6 +2362,7 @@ export class BackupService {
     resetId: string;
     completedAt: string;
     deletedCounts: Record<string, number>;
+    serverResetGeneration: number;
   }> {
     auth.requireAuth();
     auth.assertPermission('settings:manage');
