@@ -4854,8 +4854,6 @@ export const topUpCustomerBalance = async (
 
     // A customer payment is a real payment, not an administrative credit adjustment.
     // Keep the existing credit-adjustment command reserved for explicit credit operations.
-    if (!offline) await authContext.verifyBin(bin);
-
     const result = await phase5UseCases.recordPayment(
       authContext,
       commandId,
