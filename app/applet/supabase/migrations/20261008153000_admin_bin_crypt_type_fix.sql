@@ -70,7 +70,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.create_authoritative_backup_checkpoint(
   p_entered_bin TEXT,
-  p_notes TEXT
+  p_notes TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
