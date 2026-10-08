@@ -1,5 +1,3 @@
-import { useSyncExternalStore } from 'react';
-
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -7,24 +5,9 @@ export interface BeforeInstallPromptEvent extends Event {
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let initialized = false;
-const SERVER_SNAPSHOT = { installable: false, installed: false };
-let snapshot = SERVER_SNAPSHOT;
-
 const listeners = new Set<() => void>();
 
-const computeSnapshot = () => ({
-  installable: Boolean(deferredPrompt),
-  installed: isPWARunningStandalone(),
-});
-
 const notify = () => {
-  const nextSnapshot = computeSnapshot();
-  if (
-    nextSnapshot.installable !== snapshot.installable ||
-    nextSnapshot.installed !== snapshot.installed
-  ) {
-    snapshot = nextSnapshot;
-  }
   listeners.forEach((listener) => listener());
 };
 
@@ -56,7 +39,6 @@ export function initializePWAInstallCapture(): void {
     // Display-mode observation is optional; install events remain authoritative.
   }
 
-  snapshot = computeSnapshot();
 }
 
 export function subscribePWAInstall(listener: () => void): () => void {
@@ -68,6 +50,13 @@ export function subscribePWAInstall(listener: () => void): () => void {
 export function getDeferredInstallPrompt(): BeforeInstallPromptEvent | null {
   initializePWAInstallCapture();
   return deferredPrompt;
+}
+
+export function getPWAInstallState() {
+  return {
+    installable: Boolean(deferredPrompt),
+    installed: isPWARunningStandalone(),
+  };
 }
 
 export function isPWARunningStandalone(): boolean {
@@ -99,12 +88,4 @@ export async function promptPWAInstall(): Promise<boolean> {
   notify();
 
   return outcome === 'accepted';
-}
-
-export function usePWAInstallSnapshot() {
-  return useSyncExternalStore(
-    subscribePWAInstall,
-    () => snapshot,
-    () => SERVER_SNAPSHOT,
-  );
 }

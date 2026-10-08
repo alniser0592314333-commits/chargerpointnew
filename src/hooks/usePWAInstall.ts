@@ -2,27 +2,33 @@ import { useEffect, useState } from 'react';
 import {
   initializePWAInstallCapture,
   promptPWAInstall,
-  usePWAInstallSnapshot,
+  subscribePWAInstall,
+  getPWAInstallState,
 } from '../services/pwaInstallService';
 
 export function usePWAInstall() {
-  const { installable, installed } = usePWAInstallSnapshot();
+  const [state, setState] = useState(() => ({
+    installable: false,
+    installed: false,
+  }));
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
     initializePWAInstallCapture();
-
+    setState(getPWAInstallState());
     const userAgent = window.navigator.userAgent.toLowerCase();
     setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+
+    return subscribePWAInstall(() => {
+      setState(getPWAInstallState());
+    });
   }, []);
 
-  const install = async () => {
-    return promptPWAInstall();
-  };
+  const install = async () => promptPWAInstall();
 
   return {
-    isInstallable: installable,
-    isInstalled: installed,
+    isInstallable: state.installable,
+    isInstalled: state.installed,
     isIOS,
     install,
   };
