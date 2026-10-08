@@ -80,26 +80,26 @@ describe('Phase B.8: Portable Backup Export, Validation, Import & Restoration', 
     const exported = await backupService.exportSnapshotToPortableFormat(snap.snapshotId);
 
     // 1. Valid file passes validation
-    const validResult = backupService.validateAndParsePortableBackup(exported.fileContent);
+    const validResult = await backupService.validateAndParsePortableBackup(exported.fileContent);
     expect(validResult.valid).toBe(true);
     expect(validResult.portableFile).toBeDefined();
 
     // 2. Bad JSON syntax fails
-    const invalidJsonResult = backupService.validateAndParsePortableBackup('{ bad json ');
+    const invalidJsonResult = await backupService.validateAndParsePortableBackup('{ bad json ');
     expect(invalidJsonResult.valid).toBe(false);
     expect(invalidJsonResult.errorCode).toBe('INVALID_JSON');
 
     // 3. Unrecognized format identifier fails
     const badFormat = JSON.parse(exported.fileContent);
     badFormat.formatIdentifier = 'INVALID_FORMAT_ID';
-    const badFormatResult = backupService.validateAndParsePortableBackup(JSON.stringify(badFormat));
+    const badFormatResult = await backupService.validateAndParsePortableBackup(JSON.stringify(badFormat));
     expect(badFormatResult.valid).toBe(false);
     expect(badFormatResult.errorCode).toBe('UNRECOGNIZED_FORMAT');
 
     // 4. Checksum mismatch fails
     const tampered = JSON.parse(exported.fileContent);
     tampered.data.customers.push({ id: 'cust_hacked', name: 'Hacked Customer' });
-    const tamperedResult = backupService.validateAndParsePortableBackup(JSON.stringify(tampered));
+    const tamperedResult = await backupService.validateAndParsePortableBackup(JSON.stringify(tampered));
     expect(tamperedResult.valid).toBe(false);
     expect(tamperedResult.errorCode).toBe('CHECKSUM_MISMATCH');
   });
