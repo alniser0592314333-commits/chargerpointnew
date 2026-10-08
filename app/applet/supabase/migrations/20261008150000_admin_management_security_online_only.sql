@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION public.authorize_super_admin_admin_management(
 RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -54,7 +54,7 @@ BEGIN
   END IF;
 
   IF v_caller_bin_hash IS NULL
-     OR extensions.crypt(trim(p_caller_bin), v_caller_bin_hash) <> v_caller_bin_hash THEN
+     OR crypt(trim(p_caller_bin), v_caller_bin_hash) <> v_caller_bin_hash THEN
     RAISE EXCEPTION 'Invalid authorization BIN credential'
       USING ERRCODE = '42501';
   END IF;
@@ -74,7 +74,7 @@ CREATE OR REPLACE FUNCTION public.rpc_update_admin_password(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -97,7 +97,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  v_encrypted_password := extensions.crypt(p_new_password, extensions.gen_salt('bf', 10));
+  v_encrypted_password := crypt(p_new_password, gen_salt('bf', 10));
 
   UPDATE auth.users
   SET encrypted_password = v_encrypted_password,
@@ -136,7 +136,7 @@ CREATE OR REPLACE FUNCTION public.rpc_update_admin_bin(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -154,7 +154,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  v_new_bin_hash := extensions.crypt(trim(p_new_bin), extensions.gen_salt('bf', 10));
+  v_new_bin_hash := crypt(trim(p_new_bin), gen_salt('bf', 10));
 
   UPDATE public.admins
   SET bin_hash = v_new_bin_hash,
@@ -184,7 +184,7 @@ CREATE OR REPLACE FUNCTION public.rpc_set_admin_custom_permissions(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -244,7 +244,7 @@ CREATE OR REPLACE FUNCTION public.rpc_grant_custom_permission(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -293,7 +293,7 @@ CREATE OR REPLACE FUNCTION public.rpc_revoke_custom_permission(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -330,7 +330,7 @@ CREATE OR REPLACE FUNCTION public.rpc_suspend_admin(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -376,7 +376,7 @@ CREATE OR REPLACE FUNCTION public.rpc_activate_admin(
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -424,7 +424,7 @@ CREATE OR REPLACE FUNCTION public.rpc_create_admin(
 RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -479,8 +479,8 @@ BEGIN
       USING ERRCODE = '23505';
   END IF;
 
-  v_encrypted_password := extensions.crypt(p_password, extensions.gen_salt('bf', 10));
-  v_bin_hash := extensions.crypt(trim(p_bin), extensions.gen_salt('bf', 10));
+  v_encrypted_password := crypt(p_password, gen_salt('bf', 10));
+  v_bin_hash := crypt(trim(p_bin), gen_salt('bf', 10));
 
   INSERT INTO auth.users (
     id,
