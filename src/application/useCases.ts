@@ -1075,7 +1075,8 @@ export class FinalUseCases {
     amountMinor: number,
     paymentMethod: string,
     reference?: string,
-    resetGeneration?: number
+    resetGeneration?: number,
+    bin?: string
   ): Promise<Result<PaymentEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('finance:create-payment');
@@ -1122,7 +1123,8 @@ export class FinalUseCases {
     // 3. Outbox Recording
     await this.deps.commandRepo.record(commandId, 'CREATE_PAYMENT', {
       ...payment,
-      resetGeneration
+      resetGeneration,
+      ...(bin ? { bin } : {})
     });
 
     return { success: true, data: payment };
