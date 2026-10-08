@@ -11,8 +11,15 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg', 'pwa-192x192.png', 'pwa-512x512.png'],
-        manifest: {
+        // AI Studio may provide its own root-scoped service worker in production.
+        // Keep this PWA worker scoped to the authenticated application routes so
+        // both workers can coexist without replacing each other at scope '/'.
+        scope: '/app/',
+        // The canonical manifest is the checked-in public/manifest.webmanifest.
+        // Do not emit a second manifest from vite-plugin-pwa.
+        manifest: false,
+        includeAssets: undefined,
+        /* manifest: {
           id: '/',
           name: 'منظومة إدارة الطلبات والزبائن',
           short_name: 'إدارة الطلبات',
@@ -48,9 +55,10 @@ export default defineConfig(() => {
               purpose: 'any',
             },
           ],
-        },
+        }, */
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          navigateFallbackAllowlist: [/^\/app(?:\/.*)?$/],
           navigateFallbackDenylist: [/^\/rest\/v1\//, /^https:\/\/.*\.supabase\.co\/.*/],
           runtimeCaching: [
             {
