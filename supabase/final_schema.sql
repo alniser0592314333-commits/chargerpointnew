@@ -65,15 +65,19 @@ values ('server_reset_generation','number',1,'Authoritative remote dataset gener
 on conflict(key) do nothing;
 
 create table if not exists public.global_app_identity (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key,
+  singleton boolean not null default true unique check (singleton = true),
   app_name text not null default 'نظام إدارة شحن الأجهزة',
   white_logo_url text,
   dark_logo_url text,
   version integer not null default 1,
   updated_at timestamptz not null default now(),
-  updated_by uuid references public.admins(id)
+  updated_by uuid references public.admins(id),
+  constraint global_app_identity_canonical_id_chk
+    check (id = '00000000-0000-0000-0000-000000000001')
 );
-insert into public.global_app_identity(id) values('00000000-0000-0000-0000-000000000001')
+insert into public.global_app_identity(id, singleton)
+values('00000000-0000-0000-0000-000000000001', true)
 on conflict(id) do nothing;
 
 create table if not exists public.app_canonical_state (
@@ -478,12 +482,25 @@ as $$ select jsonb_build_object('id',a.id,'username',a.username,'full_name',a.fu
 
 create or replace function public.get_global_app_identity()
 returns jsonb language sql stable security definer set search_path=public
-as $$ select jsonb_build_object('id',id,'app_name',app_name,'white_logo_url',white_logo_url,'dark_logo_url',dark_logo_url,'version',version,'updated_at',updated_at,'updated_by',updated_by) from public.global_app_identity order by updated_at desc limit 1 $$;
+as $
+  select jsonb_build_object(
+    'id',id,
+    'app_name',app_name,
+    'white_logo_url',white_logo_url,
+    'dark_logo_url',dark_logo_url,
+    'version',version,
+    'updated_at',updated_at,
+    'updated_by',updated_by
+  )
+  from public.global_app_identity
+  where id='00000000-0000-0000-0000-000000000001'
+    and singleton=true
+  limit 1
+$;
 
 create or replace function public.update_global_app_identity(p_app_name text,p_white_logo_url text,p_dark_logo_url text)
 returns jsonb language plpgsql security definer set search_path=public
-as $$
-declare v_id uuid;
+as $
 begin
  if not exists(select 1 from public.admins a where a.id=public.current_admin_id() and (a.role='SUPER_ADMIN' or 'settings:manage'=any(a.permissions))) then
   raise exception 'Forbidden' using errcode='P4003';
@@ -491,14 +508,14 @@ begin
  update public.global_app_identity set
    app_name=coalesce(p_app_name,app_name),
    white_logo_url=p_white_logo_url,
-   dark_logo_url=p_dark_logo,
+   dark_logo_url=p_dark_logo_url,
    version=version+1,
    updated_at=now(),
    updated_by=public.current_admin_id()
  where id='00000000-0000-0000-0000-000000000001'
- returning id into v_id;
+   and singleton=true;
  return public.get_global_app_identity();
-end $$;
+end $;
 
 create or replace function public.current_admin_id()
 returns uuid
