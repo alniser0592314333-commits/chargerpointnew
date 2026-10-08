@@ -1550,7 +1550,7 @@ export class BackupService {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
-        customOnlineData: preRestore,
+        customOfflineData: preRestore,
       });
     }
 
@@ -1710,7 +1710,7 @@ export class BackupService {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Local-Delete Recovery Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
-        customOnlineData: currentLocal,
+        customOfflineData: currentLocal,
       });
     }
 
@@ -1750,7 +1750,7 @@ export class BackupService {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Online-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
-        customOnlineData: preRestore,
+        customOfflineData: preRestore,
       });
     }
 
