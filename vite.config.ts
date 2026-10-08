@@ -18,44 +18,6 @@ export default defineConfig(() => {
         // The canonical manifest is the checked-in public/manifest.webmanifest.
         // Do not emit a second manifest from vite-plugin-pwa.
         manifest: false,
-        includeAssets: undefined,
-        /* manifest: {
-          id: '/',
-          name: 'منظومة إدارة الطلبات والزبائن',
-          short_name: 'إدارة الطلبات',
-          description: 'منظومة إدارة الطلبات والزبائن - هيكل هندسي احترافي متكامل يدعم العمل دون إنترنت.',
-          theme_color: '#082622',
-          background_color: '#082622',
-          display: 'standalone',
-          start_url: '/',
-          scope: '/',
-          icons: [
-            {
-              src: '/pwa-192x192.png',
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: '/pwa-512x512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: '/pwa-maskable-512x512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'maskable',
-            },
-            {
-              src: '/icon.svg',
-              sizes: '512x512',
-              type: 'image/svg+xml',
-              purpose: 'any',
-            },
-          ],
-        }, */
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           navigateFallbackAllowlist: [/^\/app(?:\/.*)?$/],
