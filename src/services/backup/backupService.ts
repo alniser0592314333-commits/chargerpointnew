@@ -86,6 +86,58 @@ export function computeSnapshotChecksum(data: unknown): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+export function canonicalizeSnapshotForComparison(data: any): any {
+  const collectionKeys = new Set([
+    'customers',
+    'businessDays',
+    'orders',
+    'orderItems',
+    'financialLedger',
+    'payments',
+    'paymentAllocations',
+    'deviceTypes',
+    'qrTokens',
+    'orderNumberReservations',
+    'goals',
+    'goalRequests',
+    'outbox',
+    'syncHistory',
+    'mutationSnapshots',
+    'optimisticOverlays',
+    'deletedDeviceTypeMarkers',
+    'changeLog',
+    'systemSettings',
+  ]);
+
+  const clone = (value: any, key?: string): any => {
+    if (value === null || value === undefined) return value;
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) {
+      const cloned = value.map((item) => clone(item));
+      if (key && collectionKeys.has(key)) {
+        return cloned.sort((a, b) => {
+          const aKey = String(a?.id ?? a?.sequence_id ?? a?.sequenceId ?? a?.historyId ?? a?.commandId ?? '');
+          const bKey = String(b?.id ?? b?.sequence_id ?? b?.sequenceId ?? b?.historyId ?? b?.commandId ?? '');
+          return aKey.localeCompare(bKey);
+        });
+      }
+      return cloned;
+    }
+    if (typeof value !== 'object') return value;
+    const out: Record<string, any> = {};
+    for (const k of Object.keys(value).sort()) {
+      if (value[k] !== undefined) out[k] = clone(value[k], k);
+    }
+    return out;
+  };
+
+  return clone(data);
+}
+
+export async function computeCanonicalSnapshotSha256(data: unknown): Promise<string> {
+  return computeSnapshotSha256(canonicalizeSnapshotForComparison(data));
+}
+
 export async function computeSnapshotSha256(data: unknown): Promise<string> {
   const canonicalStringify = (obj: any): string => {
     if (obj === null || obj === undefined) return 'null';
@@ -483,7 +535,10 @@ export function normalizeOrderNumberReservationEntity(r: any): any {
   };
 }
 
-export function normalizeQrTokenEntity(q: any): any {
+export function normalizeQrTokenEntity(
+  q: any,
+  options?: { allowLegacyPlaceholder?: boolean }
+): any {
   if (!q) return q;
 
   // QR identity is durable data. A legacy local placeholder such as
@@ -529,9 +584,37 @@ export function normalizeQrTokenEntity(q: any): any {
   const expiresAt = q.expiresAt ?? q.expires_at ?? null;
 
   if (legacyPlaceholder && (!generatedId || generatedId === q.id || !publicToken || !targetId)) {
-    throw new SnapshotFormatError(
-      'Legacy QR placeholder could not be safely migrated to a permanent QR identity'
-    );
+    if (!options?.allowLegacyPlaceholder) {
+      throw new SnapshotFormatError(
+        'Legacy QR placeholder could not be safely migrated to a permanent QR identity'
+      );
+    }
+
+    // Backup capture is read-only. Preserve the legacy record exactly enough
+    // to restore/inspect it later; destructive paths remain strict and will
+    // reject it until a real public token and permanent UUID identity exist.
+    return {
+      ...sanitizeEntity(q),
+      id: q.id,
+      publicToken,
+      public_token: publicToken,
+      tokenHash,
+      token_hash: tokenHash,
+      tokenType,
+      token_type: tokenType,
+      targetId,
+      target_id: targetId,
+      isActive: Boolean(isActive),
+      is_active: Boolean(isActive),
+      expiresAt,
+      expires_at: expiresAt,
+      token: publicToken,
+      entityType: tokenType,
+      entity_type: tokenType,
+      entityId: targetId,
+      entity_id: targetId,
+      _legacyQrPlaceholder: true,
+    };
   }
 
   return {
@@ -872,7 +955,7 @@ export class BackupService {
       deviceTypes: deviceTypes.map(sanitizeEntity).map(normalizeDeviceTypeEntity),
       goals: goals.map(sanitizeEntity),
       goalRequests: goalRequests.map(sanitizeEntity),
-      qrTokens: qrTokens.map(sanitizeEntity).map(normalizeQrTokenEntity),
+      qrTokens: qrTokens.map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: orderNumberReservations.map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
       outbox: outbox.map(sanitizeEntity),
       syncHistory: syncHistory.map(sanitizeEntity),
@@ -921,70 +1004,36 @@ export class BackupService {
       });
     }
 
-    const fetchTable = async (table: string, orderColumn = 'id'): Promise<any[]> => {
-      const pageSize = 1000;
-      let offset = 0;
-      const allRows: any[] = [];
-      let hasMore = true;
+    const { data: authoritative, error } = await invokeSupabaseRpc<any>(
+      'capture_authoritative_business_snapshot',
+      {}
+    );
 
-      while (hasMore) {
-        const { data, error } = await invokeSupabaseRestGet<any>(
-          table,
-          `select=*&order=${orderColumn}.asc&limit=${pageSize}&offset=${offset}`
-        );
+    if (error) {
+      throw new Error(`Failed to capture authoritative online snapshot: ${error}`);
+    }
+    if (!authoritative || typeof authoritative !== 'object' || Array.isArray(authoritative)) {
+      throw new Error('Failed to capture authoritative online snapshot: invalid server response');
+    }
 
-        if (error) {
-          throw new Error(`Failed to fetch online table "${table}" at offset ${offset}: ${error}`);
-        }
-
-        if (!data || !Array.isArray(data)) {
-          throw new Error(`Invalid response format fetching online table "${table}" at offset ${offset}: expected array`);
-        }
-
-        allRows.push(...data);
-        if (data.length < pageSize) {
-          hasMore = false;
-        } else {
-          offset += pageSize;
-        }
-      }
-
-      return allRows.map(sanitizeEntity);
-    };
-
-    const [
-      customers,
-      businessDays,
-      orders,
-      orderItems,
-      financialLedger,
-      payments,
-      paymentAllocations,
-      deviceTypes,
-      qrTokens,
-      orderNumberReservations,
-      goals,
-      goalRequests,
-      systemSettings,
-      changeLog,
-    ] = await Promise.all([
-      fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
-      fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
-      fetchTable('orders').then((rows) => rows.map(normalizeOrderEntity)),
-      fetchTable('order_items').then((rows) => rows.map(normalizeOrderItemEntity)),
-      fetchTable('financial_ledger').then((rows) => rows.map(normalizeFinancialLedgerEntity)),
-      fetchTable('payments').then((rows) => rows.map(normalizePaymentEntity)),
-      fetchTable('payment_allocations').then((rows) => rows.map(normalizePaymentAllocationEntity)),
-      fetchTable('device_types').then((rows) => rows.map(normalizeDeviceTypeEntity)),
-      fetchTable('qr_tokens').then((rows) => rows.map(normalizeQrTokenEntity)),
-      fetchTable('order_number_reservations').then((rows) => rows.map(normalizeOrderNumberReservationEntity)),
-      fetchTable('goals'),
-      fetchTable('goal_requests'),
-      fetchTable('system_settings'),
-      fetchTable('change_log', 'sequence_id'),
-    ]);
+    const customers = (authoritative.customers || []).map(normalizeCustomerEntity);
+    const businessDays = (authoritative.business_days || authoritative.businessDays || []).map(normalizeBusinessDayEntity);
+    const orders = (authoritative.orders || []).map(normalizeOrderEntity);
+    const orderItems = (authoritative.order_items || authoritative.orderItems || []).map(normalizeOrderItemEntity);
+    const financialLedger = (authoritative.financial_ledger || authoritative.financialLedger || []).map(normalizeFinancialLedgerEntity);
+    const payments = (authoritative.payments || []).map(normalizePaymentEntity);
+    const paymentAllocations = (authoritative.payment_allocations || authoritative.paymentAllocations || []).map(normalizePaymentAllocationEntity);
+    const deviceTypes = (authoritative.device_types || authoritative.deviceTypes || []).map(normalizeDeviceTypeEntity);
+    const qrTokens = (authoritative.qr_tokens || authoritative.qrTokens || []).map(normalizeQrTokenEntity);
+    const orderNumberReservations = (authoritative.order_number_reservations || authoritative.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity);
+    const goals = (authoritative.goals || []).map(sanitizeEntity);
+    const goalRequests = (authoritative.goal_requests || authoritative.goalRequests || []).map(sanitizeEntity);
+    const systemSettings = (authoritative.system_settings || authoritative.systemSettings || []).map(sanitizeEntity);
+    const changeLog = (authoritative.change_log || authoritative.changeLog || []).map(sanitizeEntity);
 
     const serverResetGeneration = Number(
+      authoritative.server_reset_generation ??
+      authoritative.serverResetGeneration ??
       systemSettings.find((row: any) => row.key === 'server_reset_generation')?.value_number
     );
     const maxChangeSequence = changeLog.reduce(
@@ -992,32 +1041,7 @@ export class BackupService {
       0
     );
 
-    return {
-      customers,
-      businessDays,
-      orders,
-      orderItems,
-      financialLedger,
-      payments,
-      paymentAllocations,
-      deviceTypes,
-      qrTokens,
-      orderNumberReservations,
-      goals,
-      goalRequests,
-      systemSettings,
-      changeLog,
-      syncState: Number.isSafeInteger(serverResetGeneration) && serverResetGeneration >= 0
-        ? {
-            table: 'global',
-            lastAppliedChangeSequence: maxChangeSequence,
-            lastPulledAt: new Date().toISOString(),
-            resetGeneration: serverResetGeneration,
-            reconciliationRequired: false,
-            status: 'READY',
-          }
-        : null,
-    };
+
   }
 
   /**
@@ -1835,11 +1859,19 @@ export class BackupService {
 
       let toInsert = 0;
       let toUpdate = 0;
+      const onlineById = new Map(onlineList.filter((x) => x?.id).map((x) => [x.id, x]));
+
       for (const item of localList) {
-        if (onlineIdSet.has(item.id)) {
-          toUpdate++;
-        } else {
+        if (!onlineIdSet.has(item.id)) {
           toInsert++;
+          continue;
+        }
+
+        const onlineItem = onlineById.get(item.id);
+        const localHash = canonicalizeSnapshotForComparison(item);
+        const onlineHash = canonicalizeSnapshotForComparison(onlineItem);
+        if (JSON.stringify(localHash) !== JSON.stringify(onlineHash)) {
+          toUpdate++;
         }
       }
 
@@ -2152,8 +2184,8 @@ export class BackupService {
       // generation and continue local reconciliation without replaying the RPC.
       try {
         const cloudAfterFailure = normalizeReplacementLocalData(await this.captureOnlineData());
-        const localChecksum = await computeSnapshotSha256(normalizeReplacementLocalData(localData));
-        const cloudChecksum = await computeSnapshotSha256(cloudAfterFailure);
+        const localChecksum = await computeCanonicalSnapshotSha256(normalizeReplacementLocalData(localData));
+        const cloudChecksum = await computeCanonicalSnapshotSha256(cloudAfterFailure);
 
         if (localChecksum === cloudChecksum) {
           const generationResult = await invokeSupabaseRpc<any>('get_server_reset_generation', {});
@@ -2610,7 +2642,7 @@ export class BackupService {
           sanitizedData.paymentAllocations.length +
           sanitizedData.deviceTypes.length
         ),
-        checksum: computedChecksum,
+        checksum: computedSha256,
         description: parsed.metadata.description,
       },
       data: sanitizedData,
