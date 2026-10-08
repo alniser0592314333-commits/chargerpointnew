@@ -2336,6 +2336,7 @@ export class BackupService {
       resetGeneration: authoritativeGeneration,
       status: 'READY',
       reconciliationRequired: false,
+      cloudResetPending: false,
     };
     await localDb.setSyncState(promotedSyncState);
 
