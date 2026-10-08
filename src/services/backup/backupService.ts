@@ -2035,8 +2035,8 @@ export class BackupService {
       // generation and continue local reconciliation without replaying the RPC.
       try {
         const cloudAfterFailure = normalizeReplacementLocalData(await this.captureOnlineData());
-        const localChecksum = computeSnapshotChecksum(normalizeReplacementLocalData(localData));
-        const cloudChecksum = computeSnapshotChecksum(cloudAfterFailure);
+        const localChecksum = await computeSnapshotSha256(normalizeReplacementLocalData(localData));
+        const cloudChecksum = await computeSnapshotSha256(cloudAfterFailure);
 
         if (localChecksum === cloudChecksum) {
           const generationResult = await invokeSupabaseRpc<any>('get_server_reset_generation', {});
