@@ -11,16 +11,17 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        // AI Studio may provide its own root-scoped service worker in production.
-        // Keep this PWA worker scoped to the authenticated application routes so
-        // both workers can coexist without replacing each other at scope '/'.
-        scope: '/app/',
+        // The deployed application is served from the origin root.
+        // Keep the PWA service worker and manifest aligned with the real app entry point.
+        scope: '/',
         // The canonical manifest is the checked-in public/manifest.webmanifest.
         // Do not emit a second manifest from vite-plugin-pwa.
         manifest: false,
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          navigateFallbackAllowlist: [/^\/app(?:\/.*)?$/],
+          // This is a root-scoped SPA. Navigation requests should fall back to
+          // index.html except for API paths, which must remain network-only.
+          navigateFallbackAllowlist: [/^(?!\/rest\/v1\/).*/],
           navigateFallbackDenylist: [/^\/rest\/v1\//, /^https:\/\/.*\.supabase\.co\/.*/],
           runtimeCaching: [
             {
