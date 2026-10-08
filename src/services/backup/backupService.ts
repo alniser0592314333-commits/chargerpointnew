@@ -1041,7 +1041,32 @@ export class BackupService {
       0
     );
 
-
+    return {
+      customers,
+      businessDays,
+      orders,
+      orderItems,
+      financialLedger,
+      payments,
+      paymentAllocations,
+      deviceTypes,
+      qrTokens,
+      orderNumberReservations,
+      goals,
+      goalRequests,
+      systemSettings,
+      changeLog,
+      syncState: Number.isSafeInteger(serverResetGeneration) && serverResetGeneration >= 0
+        ? {
+            table: 'global',
+            lastAppliedChangeSequence: maxChangeSequence,
+            lastPulledAt: new Date().toISOString(),
+            resetGeneration: serverResetGeneration,
+            reconciliationRequired: false,
+            status: 'READY',
+          }
+        : null,
+    };
   }
 
   /**
