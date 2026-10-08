@@ -653,6 +653,8 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     financial_ledger: data.financialLedger || [],
     payment_allocations: data.paymentAllocations || [],
     order_number_reservations: data.orderNumberReservations || [],
+    goals: data.goals || [],
+    goal_requests: data.goalRequests || [],
   };
 
   const ids = new Map<string, Set<string>>();
@@ -743,6 +745,30 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     const publicToken = replacementField(row, 'publicToken', 'public_token', 'token');
     if (!publicToken) throw new SnapshotFormatError(`QR token ${row.id} is missing publicToken`);
     if (!REPLACEMENT_UUID_RE.test(String(targetId || ''))) throw new SnapshotFormatError(`QR token ${row.id} has invalid targetId`);
+  }
+
+  for (const row of (collections.goals || [])) {
+    const target = Number(replacementField(row, 'targetQuantity', 'target_quantity') ?? 0);
+    const progress = Number(replacementField(row, 'currentProgress', 'current_progress') ?? 0);
+    const bonus = Number(replacementField(row, 'bonusAmountMinor', 'bonus_amount_minor') ?? 0);
+    const duration = Number(replacementField(row, 'durationDays', 'duration_days') ?? 0);
+    if (!Number.isSafeInteger(target) || target <= 0) throw new SnapshotFormatError(`Goal ${row.id} has invalid target quantity`);
+    if (!Number.isSafeInteger(progress) || progress < 0) throw new SnapshotFormatError(`Goal ${row.id} has invalid current progress`);
+    if (!Number.isSafeInteger(bonus) || bonus < 0) throw new SnapshotFormatError(`Goal ${row.id} has invalid bonus amount`);
+    if (!Number.isSafeInteger(duration) || duration <= 0) throw new SnapshotFormatError(`Goal ${row.id} has invalid duration`);
+    requireRef('customers', replacementField(row, 'customerId', 'customer_id'), `Goal ${row.id}`);
+    const bonusLedgerId = replacementField(row, 'bonusLedgerId', 'bonus_ledger_id');
+    if (bonusLedgerId) requireRef('financial_ledger', bonusLedgerId, `Goal ${row.id}`);
+  }
+
+  for (const row of (collections.goal_requests || [])) {
+    requireRef('customers', replacementField(row, 'customerId', 'customer_id'), `Goal request ${row.id}`);
+    const resultingGoalId = replacementField(row, 'resultingGoalId', 'resulting_goal_id');
+    if (resultingGoalId) requireRef('goals', resultingGoalId, `Goal request ${row.id}`);
+    const reviewedBy = replacementField(row, 'reviewedBy', 'reviewed_by');
+    if (reviewedBy && !REPLACEMENT_UUID_RE.test(String(reviewedBy))) {
+      throw new SnapshotFormatError(`Goal request ${row.id} has invalid reviewed_by`);
+    }
   }
 
   for (const row of collections.order_number_reservations) {
@@ -895,7 +921,7 @@ export class BackupService {
       });
     }
 
-    const fetchTable = async (table: string): Promise<any[]> => {
+    const fetchTable = async (table: string, orderColumn = 'id'): Promise<any[]> => {
       const pageSize = 1000;
       let offset = 0;
       const allRows: any[] = [];
@@ -904,7 +930,7 @@ export class BackupService {
       while (hasMore) {
         const { data, error } = await invokeSupabaseRestGet<any>(
           table,
-          `select=*&order=id.asc&limit=${pageSize}&offset=${offset}`
+          `select=*&order=${orderColumn}.asc&limit=${pageSize}&offset=${offset}`
         );
 
         if (error) {
@@ -940,6 +966,7 @@ export class BackupService {
       goals,
       goalRequests,
       systemSettings,
+      changeLog,
     ] = await Promise.all([
       fetchTable('customers').then((rows) => rows.map(normalizeCustomerEntity)),
       fetchTable('business_days').then((rows) => rows.map(normalizeBusinessDayEntity)),
@@ -954,10 +981,15 @@ export class BackupService {
       fetchTable('goals'),
       fetchTable('goal_requests'),
       fetchTable('system_settings'),
+      fetchTable('change_log', 'sequence_id'),
     ]);
 
     const serverResetGeneration = Number(
       systemSettings.find((row: any) => row.key === 'server_reset_generation')?.value_number
+    );
+    const maxChangeSequence = changeLog.reduce(
+      (max: number, row: any) => Math.max(max, Number(row?.sequence_id ?? row?.sequenceId ?? 0)),
+      0
     );
 
     return {
@@ -974,10 +1006,11 @@ export class BackupService {
       goals,
       goalRequests,
       systemSettings,
+      changeLog,
       syncState: Number.isSafeInteger(serverResetGeneration) && serverResetGeneration >= 0
         ? {
             table: 'global',
-            lastAppliedChangeSequence: 0,
+            lastAppliedChangeSequence: maxChangeSequence,
             lastPulledAt: new Date().toISOString(),
             resetGeneration: serverResetGeneration,
             reconciliationRequired: false,
@@ -1523,7 +1556,8 @@ export class BackupService {
           if (row?.id) localDb.setWithTx(tx, 'changeLog', row.id, row);
         }
         for (const row of d.systemSettings || []) {
-          if (row?.id) localDb.setWithTx(tx, 'systemSettings', row.id, row);
+          const key = row?.key ?? row?.id;
+          if (key !== undefined && key !== null) localDb.setWithTx(tx, 'systemSettings', String(key), row);
         }
 
         for (const outbox of restoredOutbox) localDb.saveOutboxWithTx(tx, outbox);
@@ -1668,6 +1702,14 @@ export class BackupService {
         for (const dev of onlineData.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
         for (const goal of onlineData.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
         for (const request of onlineData.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
+        for (const row of onlineData.changeLog || []) {
+          const key = row?.sequence_id ?? row?.sequenceId;
+          if (key !== undefined && key !== null) localDb.setWithTx(tx, 'changeLog', String(key), row);
+        }
+        for (const row of onlineData.systemSettings || []) {
+          const key = row?.key ?? row?.id;
+          if (key !== undefined && key !== null) localDb.setWithTx(tx, 'systemSettings', String(key), row);
+        }
         for (const q of onlineData.qrTokens || []) { const normalizedQr = normalizeQrTokenEntity(q); localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr); }
         for (const r of onlineData.orderNumberReservations || []) localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
 
@@ -1707,8 +1749,12 @@ export class BackupService {
       onlineData.payments.length +
       onlineData.paymentAllocations.length +
       onlineData.deviceTypes.length +
+      (onlineData.goals || []).length +
+      (onlineData.goalRequests || []).length +
       (onlineData.qrTokens || []).length +
-      (onlineData.orderNumberReservations || []).length;
+      (onlineData.orderNumberReservations || []).length +
+      (onlineData.changeLog || []).length +
+      (onlineData.systemSettings || []).length;
 
     return {
       success: true,
@@ -1759,6 +1805,8 @@ export class BackupService {
       { key: 'financialLedger', name: 'financial_ledger' },
       { key: 'paymentAllocations', name: 'payment_allocations' },
       { key: 'orderNumberReservations', name: 'order_number_reservations' },
+      { key: 'goals', name: 'goals' },
+      { key: 'goalRequests', name: 'goal_requests' },
     ];
 
     const summary: Record<
@@ -1875,7 +1923,9 @@ export class BackupService {
       (localData.paymentAllocations || []).length +
       (localData.deviceTypes || []).length +
       (localData.qrTokens || []).length +
-      (localData.orderNumberReservations || []).length;
+      (localData.orderNumberReservations || []).length +
+      (localData.goals || []).length +
+      (localData.goalRequests || []).length;
 
     if (localBusinessEntityCount === 0) {
       throw new Error(
@@ -2039,6 +2089,35 @@ export class BackupService {
         created_at: r.createdAt ?? r.created_at,
         updated_at: r.updatedAt ?? r.updated_at,
         version: r.version ?? 1,
+      })),
+      goals: (localData.goals || []).map((g: any) => ({
+        id: g.id,
+        customer_id: g.customerId ?? g.customer_id,
+        target_quantity: g.targetQuantity ?? g.target_quantity,
+        current_progress: g.currentProgress ?? g.current_progress ?? 0,
+        bonus_amount_minor: g.bonusAmountMinor ?? g.bonus_amount_minor ?? 0,
+        duration_days: g.durationDays ?? g.duration_days,
+        status: g.status ?? 'ACTIVE',
+        started_at: g.startedAt ?? g.started_at,
+        expires_at: g.expiresAt ?? g.expires_at,
+        completed_at: g.completedAt ?? g.completed_at ?? null,
+        bonus_ledger_id: g.bonusLedgerId ?? g.bonus_ledger_id ?? null,
+        created_at: g.createdAt ?? g.created_at,
+        updated_at: g.updatedAt ?? g.updated_at,
+        version: g.version ?? 1,
+      })),
+      goal_requests: (localData.goalRequests || []).map((g: any) => ({
+        id: g.id,
+        customer_id: g.customerId ?? g.customer_id,
+        requested_target: g.requestedTarget ?? g.requested_target,
+        status: g.status ?? 'PENDING',
+        reviewed_by: g.reviewedBy ?? g.reviewed_by ?? null,
+        reviewed_at: g.reviewedAt ?? g.reviewed_at ?? null,
+        rejection_reason: g.rejectionReason ?? g.rejection_reason ?? null,
+        resulting_goal_id: g.resultingGoalId ?? g.resulting_goal_id ?? null,
+        created_at: g.createdAt ?? g.created_at,
+        updated_at: g.updatedAt ?? g.updated_at,
+        version: g.version ?? 1,
       })),
       payment_allocations: allocations.map((a: any) => ({
         id: a.id,

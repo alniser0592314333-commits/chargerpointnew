@@ -696,7 +696,8 @@ export class IndexedDBLocalDatabase {
       'qr_tokens',
       'orderNumberReservations',
       'changeLog',
-      'deletedDeviceTypeMarkers'
+      'deletedDeviceTypeMarkers',
+      'systemSettings'
     ];
 
     for (const table of operationalTables) {
@@ -1079,6 +1080,7 @@ export class IndexedDBLocalDatabase {
       'changeLog',
       'goals',
       'goalRequests',
+      'systemSettings',
     ];
 
     for (const table of operationalTables) {
