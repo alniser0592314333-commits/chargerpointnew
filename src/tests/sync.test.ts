@@ -86,4 +86,70 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     await expect(p2).rejects.toThrow('Sync cycle already in progress');
     await p1;
   });
+
+  it('23. Cloud reset pending blocks automatic push and pull while preserving local state', async () => {
+    await localDb.set('customers', 'cust_reset_guard', {
+      id: 'cust_reset_guard',
+      name: 'Local Customer',
+    });
+
+    let transportCalls = 0;
+    const guardedTransport = {
+      pushCommand: async () => {
+        transportCalls++;
+        throw new Error('push must not run');
+      },
+      pullChanges: async () => {
+        transportCalls++;
+        throw new Error('pull must not run');
+      },
+    };
+    const guardedEngine = new SyncEngine(guardedTransport);
+
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: new Date().toISOString(),
+      resetGeneration: 9,
+      status: 'CLOUD_RESET_PENDING',
+      cloudResetPending: true,
+      reconciliationRequired: false,
+    });
+
+    const result = await guardedEngine.synchronize();
+
+    expect(result).toEqual({ pushed: 0, pulled: 0 });
+    expect(transportCalls).toBe(0);
+    expect(await localDb.get('customers', 'cust_reset_guard')).toEqual({
+      id: 'cust_reset_guard',
+      name: 'Local Customer',
+    });
+  });
+
+  it('24. New local mutations remain quarantined until explicit replacement', async () => {
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: new Date().toISOString(),
+      resetGeneration: 9,
+      status: 'CLOUD_RESET_PENDING',
+      cloudResetPending: true,
+      reconciliationRequired: false,
+    });
+
+    await engine.queueCommand(
+      'cmd_cloud_reset_pending',
+      'CREATE_ORDER',
+      'orders',
+      'ord_cloud_reset_pending',
+      { id: 'ord_cloud_reset_pending' },
+      'dev_1',
+      'admin_1'
+    );
+
+    const outbox = await localDb.listOutbox();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0].status).toBe('PENDING_RECONCILIATION');
+    expect(outbox[0].resetGeneration).toBe(-1);
+  });
 });
