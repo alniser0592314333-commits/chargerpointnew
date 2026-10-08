@@ -7,7 +7,7 @@ CREATE OR REPLACE FUNCTION public.authorize_super_admin_admin_management(
 RETURNS UUID
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_caller_id UUID;
@@ -43,7 +43,7 @@ BEGIN
   END IF;
 
   IF v_caller_bin_hash IS NULL
-     OR extensions.crypt(trim(p_caller_bin)::text, v_caller_bin_hash::text) <> v_caller_bin_hash::text THEN
+     OR crypt(trim(p_caller_bin)::text, v_caller_bin_hash::text) <> v_caller_bin_hash::text THEN
     RAISE EXCEPTION 'Invalid authorization BIN credential' USING ERRCODE = '42501';
   END IF;
 
@@ -56,7 +56,7 @@ RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
   SELECT EXISTS (
     SELECT 1
@@ -64,7 +64,7 @@ AS $$
     WHERE a.id = public.current_admin_id()
       AND a.is_active
       AND a.bin_hash IS NOT NULL
-      AND extensions.crypt(p_bin::text, a.bin_hash::text) = a.bin_hash::text
+      AND crypt(p_bin::text, a.bin_hash::text) = a.bin_hash::text
   );
 $$;
 
@@ -75,7 +75,7 @@ CREATE OR REPLACE FUNCTION public.create_authoritative_backup_checkpoint(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_bin_verified BOOLEAN := FALSE;
@@ -101,7 +101,7 @@ BEGIN
     IF auth.uid() IS NOT NULL THEN
         SELECT public.verify_admin_bin(p_entered_bin) INTO v_bin_verified;
     ELSE
-        SELECT (extensions.crypt(trim(p_entered_bin)::text, bin_hash::text) = bin_hash::text)
+        SELECT (crypt(trim(p_entered_bin)::text, bin_hash::text) = bin_hash::text)
         INTO v_bin_verified
         FROM public.admins
         WHERE role IN ('SUPER_ADMIN', 'Super Admin') AND is_active = TRUE
@@ -191,7 +191,7 @@ CREATE OR REPLACE FUNCTION public.restore_authoritative_backup_checkpoint(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, extensions, pg_temp
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_bin_verified BOOLEAN := FALSE;
@@ -201,7 +201,7 @@ BEGIN
     IF auth.uid() IS NOT NULL THEN
         SELECT public.verify_admin_bin(p_entered_bin) INTO v_bin_verified;
     ELSE
-        SELECT (extensions.crypt(trim(p_entered_bin)::text, bin_hash::text) = bin_hash::text)
+        SELECT (crypt(trim(p_entered_bin)::text, bin_hash::text) = bin_hash::text)
         INTO v_bin_verified
         FROM public.admins
         WHERE role IN ('SUPER_ADMIN', 'Super Admin') AND is_active = TRUE
