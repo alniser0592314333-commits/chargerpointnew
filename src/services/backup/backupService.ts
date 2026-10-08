@@ -773,6 +773,17 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
   }
 }
 
+function hasRecoverableSnapshotData(data: Partial<BackupSnapshotData>): boolean {
+  const collections: Array<keyof BackupSnapshotData> = [
+    'customers','businessDays','orders','orderItems','financialLedger','payments',
+    'paymentAllocations','deviceTypes','goals','goalRequests','qrTokens',
+    'orderNumberReservations','outbox','syncHistory','mutationSnapshots',
+    'optimisticOverlays','deletedDeviceTypeMarkers','changeLog','systemSettings',
+  ];
+  return collections.some((key) => Array.isArray(data[key]) && (data[key] as any[]).length > 0)
+    || Boolean(data.syncState);
+}
+
 export class BackupService {
   /**
    * Captures current offline business data from IndexedDB kvStore.
@@ -1410,12 +1421,7 @@ export class BackupService {
     // a recovery snapshot first. The snapshot itself is read-only and preserves
     // the exact pre-restore local state, including pending sync work.
     const preRestore = await this.captureOfflineData();
-    const preRestoreCount =
-      (preRestore.customers || []).length +
-      (preRestore.orders || []).length +
-      (preRestore.orderItems || []).length +
-      (preRestore.outbox || []).length;
-    if (preRestoreCount > 0) {
+    if (hasRecoverableSnapshotData(preRestore)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
@@ -1574,12 +1580,7 @@ export class BackupService {
     // Deleting local business data is destructive. Preserve a complete local
     // recovery point first so the operation is reversible.
     const currentLocal = await this.captureOfflineData();
-    const currentLocalCount =
-      (currentLocal.customers || []).length +
-      (currentLocal.orders || []).length +
-      (currentLocal.orderItems || []).length +
-      (currentLocal.outbox || []).length;
-    if (currentLocalCount > 0) {
+    if (hasRecoverableSnapshotData(currentLocal)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Local-Delete Recovery Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
@@ -1619,12 +1620,7 @@ export class BackupService {
     // Always preserve the current local state before an authoritative
     // Online -> Local replacement. This includes unsynced outbox work.
     const preRestore = await this.captureOfflineData();
-    const preRestoreCount =
-      (preRestore.customers || []).length +
-      (preRestore.orders || []).length +
-      (preRestore.orderItems || []).length +
-      (preRestore.outbox || []).length;
-    if (preRestoreCount > 0) {
+    if (hasRecoverableSnapshotData(preRestore)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Online-Restore Local Safety Snapshot ${new Date().toISOString()}`,
         bin: options?.bin,
@@ -2200,18 +2196,7 @@ export class BackupService {
     // read model afterward; this snapshot preserves the pre-reset local state
     // without changing the operational database or sync semantics.
     const localRecoveryData = await this.captureLocalData();
-    const localRecoveryCount =
-      (localRecoveryData.customers || []).length +
-      (localRecoveryData.businessDays || []).length +
-      (localRecoveryData.orders || []).length +
-      (localRecoveryData.orderItems || []).length +
-      (localRecoveryData.financialLedger || []).length +
-      (localRecoveryData.payments || []).length +
-      (localRecoveryData.paymentAllocations || []).length +
-      (localRecoveryData.deviceTypes || []).length +
-      (localRecoveryData.qrTokens || []).length;
-
-    if (localRecoveryCount > 0) {
+    if (hasRecoverableSnapshotData(localRecoveryData)) {
       await this.createSnapshot('OFFLINE', auth, {
         name: `Pre-Cloud-Reset Local Recovery Snapshot ${new Date().toISOString()}`,
         bin: bin.trim(),
@@ -2223,15 +2208,7 @@ export class BackupService {
     // destroyed. A local snapshot alone is not a cloud backup when the two
     // sides differ.
     const onlineRecoveryData = await this.captureOnlineData();
-    const onlineRecoveryCount =
-      (onlineRecoveryData.customers || []).length +
-      (onlineRecoveryData.orders || []).length +
-      (onlineRecoveryData.orderItems || []).length +
-      (onlineRecoveryData.payments || []).length +
-      (onlineRecoveryData.financialLedger || []).length +
-      (onlineRecoveryData.goals || []).length +
-      (onlineRecoveryData.goalRequests || []).length;
-    if (onlineRecoveryCount > 0) {
+    if (hasRecoverableSnapshotData(onlineRecoveryData)) {
       await this.createSnapshot('ONLINE', auth, {
         name: `Pre-Cloud-Reset Authoritative Cloud Snapshot ${new Date().toISOString()}`,
         bin: bin.trim(),
