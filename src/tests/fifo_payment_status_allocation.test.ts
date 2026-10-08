@@ -186,4 +186,56 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     expect(statuses.get(orders[2].id)?.allocatedAmountMinor).toBe(Math.floor(orders[2].total / 2));
   });
 
+
+  it('5. Customer top-up records CREATE_PAYMENT, not CREATE_CUSTOMER_CREDIT', async () => {
+    const custId = 'cust-5';
+    const result = await topUpCustomerBalance({
+      customerId: custId,
+      amountMinor: 1000,
+      bin: '1234',
+      idempotencyKey: crypto.randomUUID(),
+    });
+
+    expect(result.success).toBe(true);
+    const commands = await (phase5UseCases as any).deps.commandRepo.get(
+      result.transactionId
+    );
+    expect(commands?.type).toBe('CREATE_PAYMENT');
+  });
+
+  it('6. A pending payment cannot retroactively pay an order created after the payment', async () => {
+    const custId = 'cust-5';
+    const dayId = 'day-2026-10-02';
+
+    const payment = await topUpCustomerBalance({
+      customerId: custId,
+      amountMinor: 10000,
+      bin: '1234',
+      idempotencyKey: crypto.randomUUID(),
+    });
+    expect(payment.success).toBe(true);
+
+    const ordRes = await createOrderWithPhase5Engine(
+      dayId,
+      custId,
+      [{ deviceTypeId: 'dev-1', hasCharger: false }]
+    );
+    expect(ordRes.success).toBe(true);
+    const order = ordRes.order!;
+    const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
+    expect(delivery.success).toBe(true);
+
+    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
+    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
+
+    const statuses = computeCustomerOrderPaymentStatuses(
+      custId,
+      new Map([[order.id, order]]),
+      effectiveItems
+    );
+
+    expect(statuses.get(order.id)?.paymentStatus).toBe('UNPAID');
+    expect(statuses.get(order.id)?.allocatedAmountMinor).toBe(0);
+  });
+
 });
