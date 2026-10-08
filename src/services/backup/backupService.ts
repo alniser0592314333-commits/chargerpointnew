@@ -976,7 +976,7 @@ export class BackupService {
   }
 
   /**
-   * Captures authoritative online business data from PostgreSQL via Supabase REST.
+   * Captures an authoritative, single-statement cloud snapshot from PostgreSQL via RPC.
    */
   async captureOnlineData(customOnlineData?: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
     if (customOnlineData) {
