@@ -7,9 +7,24 @@ export interface BeforeInstallPromptEvent extends Event {
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let initialized = false;
+const SERVER_SNAPSHOT = { installable: false, installed: false };
+let snapshot = SERVER_SNAPSHOT;
+
 const listeners = new Set<() => void>();
 
+const computeSnapshot = () => ({
+  installable: Boolean(deferredPrompt),
+  installed: isPWARunningStandalone(),
+});
+
 const notify = () => {
+  const nextSnapshot = computeSnapshot();
+  if (
+    nextSnapshot.installable !== snapshot.installable ||
+    nextSnapshot.installed !== snapshot.installed
+  ) {
+    snapshot = nextSnapshot;
+  }
   listeners.forEach((listener) => listener());
 };
 
@@ -27,6 +42,21 @@ export function initializePWAInstallCapture(): void {
     deferredPrompt = null;
     notify();
   });
+
+  try {
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const handleDisplayModeChange = () => notify();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleDisplayModeChange);
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(handleDisplayModeChange);
+    }
+  } catch {
+    // Display-mode observation is optional; install events remain authoritative.
+  }
+
+  snapshot = computeSnapshot();
 }
 
 export function subscribePWAInstall(listener: () => void): () => void {
@@ -55,7 +85,6 @@ export async function promptPWAInstall(): Promise<boolean> {
   await promptEvent.prompt();
   const { outcome } = await promptEvent.userChoice;
 
-  // The browser owns the prompt lifecycle. Do not retain a consumed event.
   deferredPrompt = null;
   notify();
 
@@ -65,10 +94,7 @@ export async function promptPWAInstall(): Promise<boolean> {
 export function usePWAInstallSnapshot() {
   return useSyncExternalStore(
     subscribePWAInstall,
-    () => ({
-      installable: Boolean(deferredPrompt),
-      installed: isPWARunningStandalone(),
-    }),
-    () => ({ installable: false, installed: false }),
+    () => snapshot,
+    () => SERVER_SNAPSHOT,
   );
 }

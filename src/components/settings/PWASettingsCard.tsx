@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const PWASettingsCard: React.FC = () => {
-  const { locale, t } = useI18n();
+  const { locale } = useI18n();
   const { isInstallable, isInstalled, install } = usePWAInstall();
 
   const [showUnsupportedModal, setShowUnsupportedModal] = useState(false);
@@ -35,6 +35,8 @@ export const PWASettingsCard: React.FC = () => {
         const success = await install();
         if (success) {
           setInstallSuccess(true);
+        } else {
+          setShowUnsupportedModal(true);
         }
       } catch (err) {
         console.warn('PWA Install trigger exception:', err);
@@ -43,9 +45,66 @@ export const PWASettingsCard: React.FC = () => {
         setIsInstalling(false);
       }
     } else {
-      // Browser/environment does not support direct beforeinstallprompt trigger
+      // beforeinstallprompt is not exposed by every browser. This is not proof
+      // that the PWA itself is unsupported; the browser may expose installation
+      // only through its own UI (notably Samsung Internet).
       setShowUnsupportedModal(true);
     }
+  };
+
+  const getInstallInstructions = () => {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : '';
+    const isSamsung = ua.includes('samsungbrowser');
+    const isChrome = ua.includes('chrome') && !isSamsung;
+    const isIOS = /iphone|ipad|ipod/.test(ua);
+
+    if (locale === 'en') {
+      if (isSamsung) {
+        return {
+          title: 'Install from Samsung Internet',
+          body: 'Samsung Internet can install this PWA even when it does not expose the in-page installation prompt. Open the browser menu or use the Install icon / Add to Apps screen option.',
+        };
+      }
+      if (isChrome) {
+        return {
+          title: 'Install from Google Chrome',
+          body: 'Open the Chrome menu (⋮) and choose “Install app” or “Add to Home screen”. If Chrome shows an install icon in the address bar, you can use that as well.',
+        };
+      }
+      if (isIOS) {
+        return {
+          title: 'Install on iPhone / iPad',
+          body: 'Open this site in Safari, tap Share, then choose “Add to Home Screen”. iOS browsers do not expose the beforeinstallprompt API used by the in-page button.',
+        };
+      }
+      return {
+        title: 'Use your browser installation option',
+        body: 'The browser did not expose the in-page installation prompt. Use its Install app / Add to Home screen option from the browser menu.',
+      };
+    }
+
+    if (isSamsung) {
+      return {
+        title: 'التثبيت من Samsung Internet',
+        body: 'متصفح Samsung Internet يستطيع تثبيت المنظومة حتى عندما لا يوفّر نافذة التثبيت داخل الصفحة. افتح قائمة المتصفح أو استخدم أيقونة التثبيت واختر إضافة إلى شاشة التطبيقات.',
+      };
+    }
+    if (isChrome) {
+      return {
+        title: 'التثبيت من Google Chrome',
+        body: 'افتح قائمة Chrome (⋮) واختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية». إذا ظهرت أيقونة التثبيت بجانب شريط العنوان يمكنك استخدامها مباشرة.',
+      };
+    }
+    if (isIOS) {
+      return {
+        title: 'التثبيت على iPhone / iPad',
+        body: 'افتح المنظومة في Safari، اضغط مشاركة، ثم اختر «إضافة إلى الشاشة الرئيسية». متصفحات iOS لا توفر واجهة beforeinstallprompt التي يعتمد عليها زر التثبيت داخل الصفحة.',
+      };
+    }
+    return {
+      title: 'استخدم خيار التثبيت في المتصفح',
+      body: 'المتصفح الحالي لم يوفّر نافذة التثبيت داخل الصفحة. افتح قائمة المتصفح واستخدم خيار «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».',
+    };
   };
 
   const handleConfirmUninstallAndExit = async () => {
@@ -62,9 +121,10 @@ export const PWASettingsCard: React.FC = () => {
     }
   };
 
+  const installInstructions = getInstallInstructions();
+
   return (
     <div className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-2xl p-5 shadow-xs space-y-4 transition-colors mt-6">
-      {/* 1. Card Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-[#0f302b]">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] flex items-center justify-center text-emerald-600 dark:text-[#8eb698] shrink-0 border border-emerald-100 dark:border-[#14423b]">
@@ -89,28 +149,26 @@ export const PWASettingsCard: React.FC = () => {
               {isInstalled
                 ? locale === 'en'
                   ? 'The system is currently running as an official installed Web App on this device.'
-                  : 'أنت تقوم حالياً بتشغيل المنظومة مباشرة كتطبيق ويب كلي مثبّت على هذا الجهاز.'
+                  : 'أنت تقوم حالياً بتشغيل المنظومة كتطبيق ويب مثبّت على هذا الجهاز.'
                 : locale === 'en'
-                  ? 'Click the install button to install directly to your device home screen.'
-                  : 'اضغط على زر التثبيت أدناه لتنزيل المنظومة وتثبيتها مباشرة على جهازك.'}
+                  ? 'Install the system as a Web App on this device.'
+                  : 'ثبّت المنظومة كتطبيق ويب على هذا الجهاز.'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* 2. Success Notification Banner */}
       {installSuccess && (
         <div className="flex items-center gap-2.5 p-3 rounded-xl bg-emerald-50 dark:bg-[#0e3a33] border border-emerald-200 dark:border-[#14423b] text-emerald-800 dark:text-[#a3e6be] text-xs font-semibold">
           <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span>
             {locale === 'en'
               ? 'Application installed successfully! You can now launch it directly from your home screen.'
-              : 'تم تثبيت المنظومة بنجاح على جهازك! يمكنك الآن فتحها واستخدامها مباشرة من الشاشة الرئيسية.'}
+              : 'تم تثبيت المنظومة بنجاح على جهازك! يمكنك الآن فتحها مباشرة من الشاشة الرئيسية.'}
           </span>
         </div>
       )}
 
-      {/* 3. Action Area */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
         <div className="text-xs text-gray-600 dark:text-[#8eb698] space-y-1">
           {isInstalled ? (
@@ -119,7 +177,7 @@ export const PWASettingsCard: React.FC = () => {
               <span>
                 {locale === 'en'
                   ? 'Application is active in standalone app mode.'
-                  : 'التطبيق مثبّت ومفعّل ويعمل في نمط الشاشة المستقلة (Standalone Mode).'}
+                  : 'التطبيق مثبّت ومفعّل ويعمل في نمط الشاشة المستقلة.'}
               </span>
             </div>
           ) : (
@@ -127,8 +185,8 @@ export const PWASettingsCard: React.FC = () => {
               <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>
                 {locale === 'en'
-                  ? 'Click install to begin automatic direct installation.'
-                  : 'اضغط على زر التثبيت ليبدأ التنزيل والتثبيت المباشر فوراً على جهازك.'}
+                  ? 'Use the install button, or the browser install option if the browser does not expose an in-page prompt.'
+                  : 'استخدم زر التثبيت، أو خيار التثبيت من المتصفح إذا لم يوفّر المتصفح نافذة التثبيت داخل الصفحة.'}
               </span>
             </div>
           )}
@@ -144,7 +202,7 @@ export const PWASettingsCard: React.FC = () => {
               className="text-xs font-semibold border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer h-9 px-4 gap-1.5"
             >
               <LogOut className="w-3.5 h-3.5" />
-              {locale === 'en' ? 'Uninstall & Exit System' : 'إلغاء التثبيت وتنسيق الجلسة'}
+              {locale === 'en' ? 'Uninstall & Exit System' : 'إلغاء التثبيت والخروج'}
             </Button>
           ) : (
             <Button
@@ -168,7 +226,6 @@ export const PWASettingsCard: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Modal: Unsupported Browser / Environment Modal */}
       {showUnsupportedModal && !isInstalled && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] p-6 shadow-2xl space-y-4">
@@ -176,9 +233,7 @@ export const PWASettingsCard: React.FC = () => {
               <div className="flex items-center gap-2.5 text-amber-600 dark:text-amber-400">
                 <AlertCircle className="w-5 h-5 shrink-0" />
                 <h3 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">
-                  {locale === 'en'
-                    ? 'Direct Installation Unsupported'
-                    : 'المتصفح الحالي لا يدعم التثبيت المباشر التلقائي'}
+                  {installInstructions.title}
                 </h3>
               </div>
               <button
@@ -193,13 +248,11 @@ export const PWASettingsCard: React.FC = () => {
               <div className="bg-amber-50 dark:bg-[#1a2818] border border-amber-200 dark:border-amber-900/40 p-3.5 rounded-xl text-amber-900 dark:text-amber-300">
                 <p className="font-semibold mb-1">
                   {locale === 'en'
-                    ? 'Your current browser or preview window does not support direct automatic Web App installation.'
-                    : 'عفواً، المتصفح الحالي أو نافذة المعاينة الحالية لا تدعم إطلاق التثبيت المباشر التلقائي لبرامج الويب (PWA).'}
+                    ? 'The browser did not expose the in-page installation prompt.'
+                    : 'المتصفح لم يوفّر نافذة التثبيت المباشر داخل الصفحة.'}
                 </p>
                 <p className="text-[11px] text-amber-800 dark:text-amber-400">
-                  {locale === 'en'
-                    ? 'Please open the link directly in Google Chrome, Microsoft Edge, or Samsung Internet to enable direct 1-click installation.'
-                    : 'لتشغيل التثبيت التلقائي الفوري بضغطة زر، يرجى فتح رابط المنظومة مباشرة في متصفح جوجل كروم (Google Chrome) أو مايكروسوفت إيدج (Microsoft Edge).'}
+                  {installInstructions.body}
                 </p>
               </div>
             </div>
@@ -219,7 +272,6 @@ export const PWASettingsCard: React.FC = () => {
         </div>
       )}
 
-      {/* 5. Modal: Uninstall Confirmation Modal */}
       {showUninstallModal && isInstalled && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] p-6 shadow-2xl space-y-4">
@@ -229,7 +281,7 @@ export const PWASettingsCard: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">
-                  {locale === 'en' ? 'Uninstall & Exit Application' : 'إلغاء التثبيت وتنسيق النظام'}
+                  {locale === 'en' ? 'Uninstall & Exit Application' : 'إلغاء التثبيت والخروج'}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-[#8eb698]">
                   {locale === 'en' ? 'PWA Uninstall Protocol' : 'تعليمات إزالة تثبيت تطبيق الويب'}
@@ -244,26 +296,36 @@ export const PWASettingsCard: React.FC = () => {
                   {locale === 'en' ? 'Browser Security Note' : 'تنبيه أمان نظام التشغيل:'}
                 </p>
                 <p>
-                  بسبب سياسات الأمان في أنظمة التشغيل (Android / iOS / Windows)، لا تملك مواقع الويب صلاحية إزالة ملفات التطبيقات المثبتة من نظام التشغيل مباشرة.
+                  {locale === 'en'
+                    ? 'Websites cannot remove installed apps from the operating system directly.'
+                    : 'بسبب سياسات الأمان في أنظمة التشغيل، لا تملك مواقع الويب صلاحية إزالة التطبيق المثبت من نظام التشغيل مباشرة.'}
                 </p>
               </div>
 
               <div className="space-y-2 bg-gray-50 dark:bg-[#041714] p-3 rounded-xl border border-gray-100 dark:border-[#123832]">
                 <p className="font-semibold text-gray-900 dark:text-[#daf1de]">
-                  لإلغاء التثبيت وحذف التطبيق من جهازك نهائياً:
+                  {locale === 'en' ? 'To uninstall the application:' : 'لإلغاء تثبيت التطبيق من جهازك:'}
                 </p>
                 <ul className="list-disc list-inside space-y-1.5 text-gray-700 dark:text-[#8eb698]">
                   <li>
-                    <strong>على الهواتف (Android / iPhone):</strong> اضغط مطولاً على أيقونة التطبيق في الشاشة الرئيسية ثم اختر <strong>إلغاء التثبيت (Uninstall / Remove App)</strong>.
+                    <strong>{locale === 'en' ? 'Android / iPhone:' : 'الهواتف (Android / iPhone):'}</strong>{' '}
+                    {locale === 'en'
+                      ? 'Long-press the app icon and choose Uninstall / Remove App.'
+                      : 'اضغط مطولاً على أيقونة التطبيق واختر إلغاء التثبيت / إزالة التطبيق.'}
                   </li>
                   <li>
-                    <strong>على الكمبيوتر (Chrome / Edge):</strong> انقر على النقاط الثلاث في أعلى نافذة التطبيق ثم اختر <strong>إلغاء تثبيت التطبيق (Uninstall)</strong>.
+                    <strong>{locale === 'en' ? 'Desktop:' : 'الكمبيوتر:'}</strong>{' '}
+                    {locale === 'en'
+                      ? 'Open the installed app menu and choose Uninstall.'
+                      : 'افتح قائمة التطبيق المثبت واختر إلغاء التثبيت.'}
                   </li>
                 </ul>
               </div>
 
               <p className="text-gray-500 dark:text-[#8eb698]">
-                الضغط على زر الخروج أدناه سيقوم بتسجيل الخروج من حسابك، إنهاء الجلسة بأمان، وطردك للصفحة الرئيسية.
+                {locale === 'en'
+                  ? 'The button below only logs you out and exits the system.'
+                  : 'زر الخروج أدناه يقوم فقط بتسجيل الخروج وإنهاء الجلسة.'}
               </p>
             </div>
 
@@ -285,7 +347,7 @@ export const PWASettingsCard: React.FC = () => {
                 className="text-xs h-8 font-bold bg-red-600 hover:bg-red-700 text-white cursor-pointer gap-1.5"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                {locale === 'en' ? 'Logout & Exit' : 'تسجيل الخروج وطرد الجلسة'}
+                {locale === 'en' ? 'Logout & Exit' : 'تسجيل الخروج والخروج'}
               </Button>
             </div>
           </div>
