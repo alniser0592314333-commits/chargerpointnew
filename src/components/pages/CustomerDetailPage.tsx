@@ -12,8 +12,8 @@ import {
   UICustomerDetail,
   UICustomerOrderSummary,
   UICustomerFinancialItem,
-,
-  useStoreSubscription} from './dayOrdersStore';
+  useStoreSubscription,
+} from './dayOrdersStore';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
