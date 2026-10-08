@@ -1424,12 +1424,38 @@ export class BackupService {
       authoritativeRestoreGeneration = null;
     }
 
+    const snapshotGenerationValue = Number(d.syncState?.resetGeneration);
+    const snapshotGeneration =
+      Number.isSafeInteger(snapshotGenerationValue) && snapshotGenerationValue >= 0
+        ? snapshotGenerationValue
+        : null;
+
+    const generationMismatch =
+      authoritativeRestoreGeneration !== null &&
+      (snapshotGeneration === null || snapshotGeneration !== authoritativeRestoreGeneration);
+
+    const requiresReconciliation =
+      authoritativeRestoreGeneration === null || generationMismatch;
+
     const restoredGeneration =
       authoritativeRestoreGeneration ??
-      (Number.isSafeInteger(Number(d.syncState?.resetGeneration))
-        ? Number(d.syncState?.resetGeneration)
-        : -1);
-    const requiresReconciliation = authoritativeRestoreGeneration === null;
+      snapshotGeneration ??
+      -1;
+
+    // A restored outbox is only safe to replay when the snapshot was taken
+    // against the exact same authoritative server generation. If the generation
+    // differs (or the snapshot has no generation proof), quarantine those commands
+    // instead of allowing sync to reinterpret them as fresh work.
+    const restoredOutbox = (d.outbox || []).map((item: any) => {
+      if (!generationMismatch && authoritativeRestoreGeneration !== null) {
+        return item;
+      }
+      return {
+        ...item,
+        status: 'rejected',
+        lastError: 'BACKUP_GENERATION_MISMATCH_REQUIRES_MANUAL_REVIEW',
+      };
+    });
 
     // 7. Fully restore the snapshot atomically. For an OFFLINE snapshot this
     // includes the outbox, history, mutation snapshots, overlays and deletion
@@ -1478,7 +1504,7 @@ export class BackupService {
           if (row?.id) localDb.setWithTx(tx, 'systemSettings', row.id, row);
         }
 
-        for (const outbox of d.outbox || []) localDb.saveOutboxWithTx(tx, outbox);
+        for (const outbox of restoredOutbox) localDb.saveOutboxWithTx(tx, outbox);
         for (const history of d.syncHistory || []) localDb.saveHistoryWithTx(tx, history);
         for (const mutation of d.mutationSnapshots || []) localDb.saveMutationSnapshotWithTx(tx, mutation);
         for (const overlay of d.optimisticOverlays || []) localDb.saveOverlayWithTx(tx, overlay);
