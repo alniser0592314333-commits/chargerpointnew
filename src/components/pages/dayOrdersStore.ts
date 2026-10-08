@@ -2716,6 +2716,10 @@ const computeCustomerOrderPaymentStatuses = (
     let remaining = payment.amountMinor;
     for (const item of recognizedItems) {
       if (remaining <= 0) break;
+      // The server can only allocate a payment against debt that existed
+      // when that payment transaction executed. Never retroactively project
+      // an earlier pending payment onto an order/item created afterward.
+      if (new Date(item.createdAt).getTime() > new Date(payment.createdAt).getTime()) continue;
       const alreadyAllocated = allocatedByItem.get(item.itemId) || 0;
       const outstanding = Math.max(0, item.totalMinor - alreadyAllocated);
       if (outstanding <= 0) continue;
