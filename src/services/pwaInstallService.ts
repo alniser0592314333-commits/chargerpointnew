@@ -72,9 +72,19 @@ export function getDeferredInstallPrompt(): BeforeInstallPromptEvent | null {
 
 export function isPWARunningStandalone(): boolean {
   if (typeof window === 'undefined') return false;
-  const mediaStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+  let mediaStandalone = false;
+  try {
+    if (typeof window.matchMedia === 'function') {
+      mediaStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    }
+  } catch {
+    // Standalone detection is optional; failure must never prevent Settings from rendering.
+  }
+
   const navigatorStandalone =
     (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+
   return mediaStandalone || navigatorStandalone;
 }
 
