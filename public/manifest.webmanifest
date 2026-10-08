@@ -1,10 +1,10 @@
 {
-  "id": "/",
+  "id": "/app/",
   "name": "منظومة إدارة الطلبات والزبائن",
   "short_name": "إدارة الطلبات",
   "description": "منظومة إدارة الطلبات والزبائن - هيكل هندسي احترافي متكامل يدعم العمل دون إنترنت.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/app/",
+  "scope": "/app/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#082622",
