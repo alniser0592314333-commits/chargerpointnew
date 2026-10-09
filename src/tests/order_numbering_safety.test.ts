@@ -213,6 +213,24 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(recordedCommands).toHaveLength(0);
   });
 
+  it('overlay sequence resumes above the highest persisted overlay after reload', async () => {
+    const now = '2026-10-09T10:00:00.000Z';
+    await localDb.saveOverlay({
+      commandId: 'persisted-high-sequence',
+      mutationKey: 'test-sequence',
+      entityType: 'orders',
+      entityId: 'order-sequence-test',
+      operation: 'PATCH',
+      patch: { displayNumber: 1 },
+      sequence: 75,
+      createdAt: now,
+      status: 'PENDING',
+    });
+
+    expect(await localDb.getNextSequence()).toBeGreaterThan(75);
+    await localDb.removeOverlay('persisted-high-sequence');
+  });
+
   it('Test LAZY RESERVATION — Zero reservations at startup/login/sync, exact reservation on first order, no new reservation until exhaustion', async () => {
     dayMap.set('day-1', {
       id: 'day-1',
