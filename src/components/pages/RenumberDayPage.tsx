@@ -20,13 +20,14 @@ import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 interface NumberedOrder {
   id: string;
   customerName: string;
+  createdAt: string;
   oldNumber: number;
   expectedVersion: number;
   newNumber: number;
 }
 
 export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const { locale } = useI18n();
+  const { locale, formatTime } = useI18n();
   const isArabic = locale === 'ar';
   const storeVersion = useStoreSubscription(['businessDays', 'orders']);
   const [session, setSession] = useState<UserSession | null>(null);
@@ -117,6 +118,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
         numbered.push({
           id: row.id,
           customerName: row.customerName,
+          createdAt: row.createdAt,
           oldNumber: row.orderNumber,
           expectedVersion: entity.version,
           newNumber: entity.displayNumber,
@@ -226,7 +228,10 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
           {orders.map((order, index) => (
             <div key={order.id} className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-[#245047] p-3">
               <div className="w-16 shrink-0 text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">#{order.oldNumber > 0 ? order.oldNumber : (isArabic ? 'ناقص' : 'missing')}</div>
-              <div className="min-w-0 flex-1 font-semibold truncate">{order.customerName}</div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold truncate">{order.customerName}</div>
+                <div className="text-xs text-gray-500 dark:text-[#8eb698]">{formatTime(order.createdAt)}</div>
+              </div>
               <label className="flex shrink-0 items-center gap-1 text-xs">
                 <span className="text-gray-500 dark:text-[#8eb698]">{isArabic ? 'الجديد' : 'New #'}</span>
                 <input
@@ -237,7 +242,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                   step={1}
                   value={order.newNumber > 0 ? String(order.newNumber) : ''}
                   disabled={loading || commandPending}
-                  aria-label={isArabic ? `رقم الطلب الجديد للزبون ${order.customerName}` : `New order number for ${order.customerName}`}
+                  aria-label={isArabic ? `رقم الطلب الجديد للزبون ${order.customerName} الساعة ${formatTime(order.createdAt)}` : `New order number for ${order.customerName} at ${formatTime(order.createdAt)}`}
                   onChange={(event) => {
                     const raw = event.currentTarget.value;
                     const nextNumber = raw === '' ? 0 : Number(raw);
@@ -274,7 +279,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
         <div className="space-y-4">
           <p className="text-sm">{isArabic ? 'سيتم إرسال ترتيب هذه الطلبات إلى المزامنة. إذا تغيّرت بيانات اليوم على الخادم، يجب رفض العملية وإعادة تحميل القائمة. لن يتم تجاهل التعارض.' : 'This order will be queued for sync. If the day changed on the server, the operation must be rejected and reviewed again.'}</p>
           <div className="max-h-64 overflow-y-auto space-y-1 text-sm">
-            {[...orders].sort((a, b) => a.newNumber - b.newNumber).map((row) => <div key={row.id} className="flex justify-between gap-3 border-b border-gray-100 dark:border-[#245047] py-1"><span className="truncate">{row.customerName}</span><span className="shrink-0 tabular-nums">#{row.oldNumber > 0 ? row.oldNumber : '—'} → #{row.newNumber}</span></div>)}
+            {[...orders].sort((a, b) => a.newNumber - b.newNumber).map((row) => <div key={row.id} className="flex justify-between gap-3 border-b border-gray-100 dark:border-[#245047] py-1"><span className="min-w-0 truncate">{row.customerName} <span className="text-xs text-gray-500">({formatTime(row.createdAt)})</span></span><span className="shrink-0 tabular-nums">#{row.oldNumber > 0 ? row.oldNumber : '—'} → #{row.newNumber}</span></div>)}
           </div>
           <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirmOpen(false)}>{isArabic ? 'إلغاء' : 'Cancel'}</Button><Button onClick={submit} disabled={loading || commandPending || Boolean(numberingValidation)}>{isArabic ? 'تأكيد وإرسال' : 'Confirm and queue'}</Button></div>
         </div>
