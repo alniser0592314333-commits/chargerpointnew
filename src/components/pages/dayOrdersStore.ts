@@ -3927,6 +3927,8 @@ export const getOrderQrCardData = async (
 
   const order = ordersMap.get(orderId) || (await localDb.get<OrderEntity>('orders', orderId));
   if (!order) return null;
+  // Never mint a QR card/token with a fabricated or invalid display number.
+  if (!Number.isInteger(order.displayNumber) || order.displayNumber <= 0) return null;
 
   const customer = customersMap.get(order.customerId) || (await localDb.get<CustomerEntity>('customers', order.customerId));
   const customerName = customer ? customer.name : order.customerId;
