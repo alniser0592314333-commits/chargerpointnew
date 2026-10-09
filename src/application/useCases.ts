@@ -1810,7 +1810,7 @@ export class FinalUseCases {
   }
 
   /**
-   * Authoritatively evaluates customer's active goal progress, handles completion & expiration
+   * Computes optimistic local progress; the server authoritatively handles completion, expiry, and rewards
    */
   async evaluateCustomerGoal(customerId: ID, ctx?: RepositoryContext): Promise<Result<{ hasActiveGoal: boolean; goal?: GoalEntity }>> {
     const repos = ctx || this.deps;
@@ -1841,8 +1841,6 @@ export class FinalUseCases {
     );
 
     const newProgress = qualifyingItemIds.size;
-    goal.currentProgress = newProgress;
-    goal.updatedAt = new Date().toISOString();
 
     // Local progress is optimistic only. The server independently recalculates
     // eligibility, status transitions, and any bonus when this command is accepted.
