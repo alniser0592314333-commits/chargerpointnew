@@ -1390,7 +1390,8 @@ export const ensureStoreHydrated = async (): Promise<void> => {
         ...o,
         dayId: o.dayId || (o as any).day_id,
         customerId: o.customerId || (o as any).customer_id,
-        displayNumber: typeof explicitNum === 'number' && explicitNum > 0 ? explicitNum : 1,
+        // Missing/invalid numbers remain explicitly invalid (0); hydration must never invent or resequence them.
+        displayNumber: typeof explicitNum === 'number' && Number.isInteger(explicitNum) && explicitNum > 0 ? explicitNum : 0,
         status: o.status ?? (o as any).status ?? (o as any).order_status ?? 'pending',
         customerBalanceSnapshotMinor:
           o.customerBalanceSnapshotMinor ??
@@ -1399,8 +1400,8 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       });
     });
 
-    // Sanitize and resequence order numbers per day to ensure sequential 1, 2, 3... order numbers
-    await sanitizeAndResequenceOrderNumbers();
+    // Never mutate order numbers during hydration. Existing conflicts are diagnostic state,
+    // not permission to rewrite identifiers shown on printed cards or QR views.
 
     // 5. Items Hydration (always read persisted data)
     itemsMap.clear();
@@ -1564,81 +1565,68 @@ export const isSameDayId = (id1?: string, id2?: string): boolean => {
   return getCanonicalDayKey(id1) === getCanonicalDayKey(id2);
 };
 
+/**
+ * Compatibility name retained for older callers. This is deliberately read-only:
+ * number conflicts must be repaired only through the authorized Settings workflow.
+ */
 export const sanitizeAndResequenceOrderNumbers = async (): Promise<void> => {
-  if (ordersMap.size === 0) return;
-
-  const ordersByDay = new Map<string, OrderEntity[]>();
-
-  for (const order of ordersMap.values()) {
-    const dayKey = getCanonicalDayKey(order.dayId);
-    let list = ordersByDay.get(dayKey);
-    if (!list) {
-      list = [];
-      ordersByDay.set(dayKey, list);
-    }
-    list.push(order);
-  }
-
-  for (const [, orders] of ordersByDay) {
-    if (orders.length <= 1) continue;
-
-    const usedNumbers = new Map<number, OrderEntity[]>();
-    const missingOrUnnumbered: OrderEntity[] = [];
-
-    for (const ord of orders) {
-      const num = ord.displayNumber;
-      if (typeof num === 'number' && num > 0) {
-        if (!usedNumbers.has(num)) {
-          usedNumbers.set(num, []);
-        }
-        usedNumbers.get(num)!.push(ord);
-      } else {
-        missingOrUnnumbered.push(ord);
-      }
-    }
-
-    const duplicateOrders: OrderEntity[] = [];
-    const occupiedNumbers = new Set<number>();
-
-    for (const [num, list] of usedNumbers.entries()) {
-      occupiedNumbers.add(num);
-      if (list.length > 1) {
-        list.sort((a, b) => {
-          const timeA = new Date(a.createdAt || 0).getTime();
-          const timeB = new Date(b.createdAt || 0).getTime();
-          if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeA - timeB;
-          return a.id.localeCompare(b.id);
-        });
-        for (let i = 1; i < list.length; i++) {
-          duplicateOrders.push(list[i]);
-        }
-      }
-    }
-
-    const needsNumber = [...missingOrUnnumbered, ...duplicateOrders];
-    if (needsNumber.length > 0) {
-      needsNumber.sort((a, b) => {
-        const timeA = new Date(a.createdAt || 0).getTime();
-        const timeB = new Date(b.createdAt || 0).getTime();
-        if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeA - timeB;
-        return a.id.localeCompare(b.id);
-      });
-
-      let nextAvailable = 1;
-      for (const ord of needsNumber) {
-        while (occupiedNumbers.has(nextAvailable)) {
-          nextAvailable++;
-        }
-        const updatedOrd = { ...ord, displayNumber: nextAvailable };
-        occupiedNumbers.add(nextAvailable);
-        ordersMap.set(ord.id, updatedOrd);
-        // READ PATH WRITE PROHIBITED: await localDb.set('orders', ord.id, ord).catch(() => {});
-      }
-    }
-  }
+  // No mutation by design. Use getOrderNumberingDiagnostics() to inspect conflicts.
 };
 
-// Helper to get current reset generation for outbox commands
+export interface OrderNumberingDiagnostic {
+  dayKey: string;
+  dayId: string;
+  orderId: string;
+  displayNumber: number;
+  issue: 'MISSING_OR_INVALID' | 'DUPLICATE';
+}
+
+/** Read-only diagnostics; never rewrites numbers and can be called on every view load. */
+export const getOrderNumberingDiagnostics = (): OrderNumberingDiagnostic[] => {
+  const seenByDay = new Map<string, Map<number, OrderEntity[]>>();
+  const diagnostics: OrderNumberingDiagnostic[] = [];
+  for (const order of ordersMap.values()) {
+    const dayKey = getCanonicalDayKey(order.dayId);
+    if (!Number.isInteger(order.displayNumber) || order.displayNumber <= 0) {
+      diagnostics.push({
+        dayKey,
+        dayId: order.dayId,
+        orderId: order.id,
+        displayNumber: order.displayNumber,
+        issue: 'MISSING_OR_INVALID',
+      });
+      continue;
+    }
+    let numbers = seenByDay.get(dayKey);
+    if (!numbers) {
+      numbers = new Map<number, OrderEntity[]>();
+      seenByDay.set(dayKey, numbers);
+    }
+    const sameNumber = numbers.get(order.displayNumber) ?? [];
+    sameNumber.push(order);
+    numbers.set(order.displayNumber, sameNumber);
+  }
+  for (const [dayKey, numbers] of seenByDay) {
+    for (const [displayNumber, sameNumber] of numbers) {
+      if (sameNumber.length < 2) continue;
+      for (const order of sameNumber) {
+        diagnostics.push({
+          dayKey,
+          dayId: order.dayId,
+          orderId: order.id,
+          displayNumber,
+          issue: 'DUPLICATE',
+        });
+      }
+    }
+  }
+  return diagnostics.sort((a, b) =>
+    a.dayKey.localeCompare(b.dayKey) ||
+    a.displayNumber - b.displayNumber ||
+    a.orderId.localeCompare(b.orderId)
+  );
+};
+
 function getCurrentSyncGeneration(): number {
   const syncState = localDb.getSyncStateSync('global');
   if (
