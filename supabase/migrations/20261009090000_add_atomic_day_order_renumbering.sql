@@ -81,7 +81,6 @@ DECLARE
     v_min_new_number INTEGER;
     v_max_new_number INTEGER;
     v_requested_display_number INTEGER;
-    v_existing_order_max BIGINT;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
@@ -495,21 +494,13 @@ BEGIN
                     USING ERRCODE = 'P0409';
             END IF;
 
-            SELECT COALESCE(MAX(display_number), 0) INTO v_existing_order_max
-            FROM public.orders
-            WHERE day_id = v_day_uuid;
-            -- Device reservations can legitimately be ahead of MAX(display_number).
-            -- Accept a higher unused reservation, but reject stale/lower numbers to prevent collisions.
-            IF v_requested_display_number <= v_existing_order_max THEN
-                RAISE EXCEPTION 'Order number conflict: requested number % is not above the current maximum %. Reload and retry after sync.',
-                    v_requested_display_number, v_existing_order_max
-                    USING ERRCODE = 'P0409';
-            END IF;
+            -- Offline devices may submit reserved numbers out of order.
+            -- Reject only an actual collision; do not require MAX+1 or contiguous numbering here.
             IF EXISTS (
                 SELECT 1 FROM public.orders
                 WHERE day_id = v_day_uuid AND display_number = v_requested_display_number
             ) THEN
-                RAISE EXCEPTION 'Order number conflict: requested number is already assigned; an authorized Renumber Day review may be required'
+                RAISE EXCEPTION 'Order number conflict: requested number is already assigned. Refresh reservations and retry; do not create a duplicate display number.'
                     USING ERRCODE = 'P0409';
             END IF;
 
