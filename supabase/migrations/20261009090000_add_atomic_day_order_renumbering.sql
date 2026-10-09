@@ -2,6 +2,23 @@
 -- This migration changes the canonical sync dispatcher only; it does not renumber existing production data.
 -- The full day is locked, every expected version/old number is checked before writes,
 -- and all changes plus audit records commit or roll back together.
+-- Dedicated immutable audit trail for controlled day-wide order renumbering.
+CREATE TABLE IF NOT EXISTS public.order_renumber_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    command_id UUID NOT NULL,
+    day_id UUID NOT NULL,
+    order_id UUID NOT NULL,
+    actor_admin_id UUID NOT NULL,
+    old_number INTEGER NOT NULL,
+    new_number INTEGER NOT NULL,
+    old_version INTEGER NOT NULL,
+    new_version INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_order_renumber_audit_day_created
+    ON public.order_renumber_audit (day_id, created_at DESC);
+REVOKE ALL ON TABLE public.order_renumber_audit FROM PUBLIC, anon, authenticated;
+
 -- Migration 00116: restore complete canonical sync command contract and enforce server-side BIN.
 -- Canonical sync command authority; runtime execute_sync_command delegates here.
 
@@ -617,9 +634,25 @@ BEGIN
                 END IF;
             END LOOP;
 
-            -- All validation passed while the complete day is locked. Apply as one transaction.
+            -- Phase 1: move all rows to temporary negative numbers while the day is locked.
+            -- This avoids unique(day_id, display_number) collisions when swapping existing numbers.
             FOR v_rec_order IN
-                SELECT o.id, o.display_number, o.version, c.value AS change_row
+                SELECT o.id, c.value AS change_row
+                FROM public.orders o
+                JOIN LATERAL jsonb_array_elements(p_payload->'changes') c(value)
+                  ON (c.value->>'id')::UUID = o.id
+                WHERE o.day_id = v_day_uuid
+                ORDER BY o.id
+            LOOP
+                UPDATE public.orders
+                SET display_number = -2147483647 + (v_rec_order.change_row->>'newNumber')::INTEGER
+                WHERE id = v_rec_order.id;
+            END LOOP;
+
+            -- Phase 2: apply final numbers and audit data. The surrounding RPC transaction
+            -- guarantees that any failure rolls back both phases and every audit/event row.
+            FOR v_rec_order IN
+                SELECT o.id, o.version, c.value AS change_row
                 FROM public.orders o
                 JOIN LATERAL jsonb_array_elements(p_payload->'changes') c(value)
                   ON (c.value->>'id')::UUID = o.id
@@ -629,7 +662,7 @@ BEGIN
                 v_old_state := jsonb_build_object(
                     'id', v_rec_order.id,
                     'dayId', v_day_uuid,
-                    'displayNumber', v_rec_order.display_number,
+                    'displayNumber', (v_rec_order.change_row->>'oldNumber')::INTEGER,
                     'version', v_rec_order.version
                 );
 
@@ -639,19 +672,14 @@ BEGIN
                     version = version + 1
                 WHERE id = v_rec_order.id;
 
-                INSERT INTO public.audit_logs (
-                    actor_admin_id, action, entity_type, entity_id,
-                    before_state, after_state, command_id, created_at
+                INSERT INTO public.order_renumber_audit (
+                    command_id, day_id, order_id, actor_admin_id,
+                    old_number, new_number, old_version, new_version, created_at
                 ) VALUES (
-                    v_actor_id, 'RENUMBER_DAY_ORDER', 'orders', v_rec_order.id,
-                    v_old_state,
-                    jsonb_build_object(
-                        'id', v_rec_order.id,
-                        'dayId', v_day_uuid,
-                        'displayNumber', (v_rec_order.change_row->>'newNumber')::INTEGER,
-                        'version', v_rec_order.version + 1
-                    ),
-                    p_command_id, NOW()
+                    p_command_id, v_day_uuid, v_rec_order.id, v_actor_id,
+                    (v_rec_order.change_row->>'oldNumber')::INTEGER,
+                    (v_rec_order.change_row->>'newNumber')::INTEGER,
+                    v_rec_order.version, v_rec_order.version + 1, NOW()
                 );
 
                 PERFORM public.record_canonical_change(
