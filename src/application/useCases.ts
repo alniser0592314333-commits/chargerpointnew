@@ -99,7 +99,7 @@ export interface RepositoryContext {
   overlayRepo?: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
     saveWithTx?(overlay: OptimisticOverlayRecord): Promise<void> | void;
-    hasPendingOrderChangesForDay?(dayId: ID): boolean;
+    hasPendingOrderChangesForDay?(dayId: ID): Promise<boolean> | boolean;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -342,7 +342,7 @@ export class FinalUseCases {
     if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingOrderChangesForDay) {
       return { success: false, error: 'Local order-overlay inspection is unavailable; no changes were queued.' };
     }
-    if (overlayRepo.hasPendingOrderChangesForDay(dayId)) {
+    if (await overlayRepo.hasPendingOrderChangesForDay(dayId)) {
       return { success: false, error: 'Pending local order changes must sync before this day can be renumbered.' };
     }
 
