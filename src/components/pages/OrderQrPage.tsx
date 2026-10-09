@@ -45,6 +45,7 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
       .catch((err) => {
         if (active) {
           console.error('Failed to load order QR data:', err);
+          setIsNumberingError(err?.message === 'ORDER_NUMBER_UNAVAILABLE');
           setIsError(true);
           setIsLoading(false);
         }
