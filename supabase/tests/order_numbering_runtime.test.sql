@@ -52,6 +52,14 @@ BEGIN
 END;
 $record_change$;
 
+CREATE FUNCTION public.get_effective_permissions(p_admin_id uuid)
+RETURNS TABLE(permission text)
+LANGUAGE sql
+STABLE
+AS $get_effective_permissions$
+  SELECT NULL::text WHERE FALSE;
+$get_effective_permissions$;
+
 CREATE FUNCTION public.verify_admin_bin(p_bin text)
 RETURNS boolean
 LANGUAGE sql
@@ -63,6 +71,12 @@ VALUES (
   '22222222-2222-4222-8222-222222222222',
   '11111111-1111-4111-8111-111111111111',
   'SUPER_ADMIN',
+  TRUE
+),
+(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'ADMIN',
   TRUE
 );
 INSERT INTO public.system_settings(key, value_number)
@@ -153,6 +167,51 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- A regular admin without the new permission must be rejected before any writes.
+SELECT set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', true);
+SET ROLE authenticated;
+DO $
+DECLARE
+  rejected_as_forbidden boolean := FALSE;
+BEGIN
+  BEGIN
+    PERFORM public.execute_canonical_sync_command(
+      'aaaaaaaa-0000-4000-8000-000000000001'::uuid,
+      'RENUMBER_DAY_ORDERS',
+      jsonb_build_object(
+        'dayId', '33333333-3333-4333-8333-333333333333',
+        'changes', jsonb_build_array(
+          jsonb_build_object('id', '44444444-4444-4444-8444-444444444444', 'expectedVersion', 2, 'oldNumber', 2, 'newNumber', 1),
+          jsonb_build_object('id', '55555555-5555-4555-8555-555555555555', 'expectedVersion', 2, 'oldNumber', 3, 'newNumber', 2),
+          jsonb_build_object('id', '66666666-6666-4666-8666-666666666666', 'expectedVersion', 2, 'oldNumber', 1, 'newNumber', 3)
+        )
+      )
+    );
+    RAISE EXCEPTION 'Expected unauthorized renumber to be rejected';
+  EXCEPTION WHEN SQLSTATE 'P4003' THEN
+    rejected_as_forbidden := TRUE;
+  END;
+  IF NOT rejected_as_forbidden THEN
+    RAISE EXCEPTION 'Renumber was not rejected for an admin lacking orders:renumber-day';
+  END IF;
+END;
+$;
+RESET ROLE;
+SELECT set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+
+DO $
+BEGIN
+  IF (SELECT COUNT(*) FROM public.order_renumber_audit) <> 3
+     OR (SELECT COUNT(*) FROM public.test_change_events WHERE entity_table = 'orders') <> 3
+     OR EXISTS (
+       SELECT 1 FROM public.processed_commands
+       WHERE command_id = 'aaaaaaaa-0000-4000-8000-000000000001'
+     ) THEN
+    RAISE EXCEPTION 'Unauthorized renumber changed data, audit, change events, or idempotency state';
+  END IF;
+END;
+$;
 
 -- A stale expected version must fail before writes and leave order numbers/audit unchanged.
 DO $$
