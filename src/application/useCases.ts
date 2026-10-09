@@ -25,7 +25,6 @@ import {
   validateItemTransition, 
   checkDebtLimit,
   generateGoalProposal,
-  calculateAuthoritativeGoalProgress,
   calculateGoalBonusCapMinor,
   randomGoalDurationDays
 } from '../domain/rules';
