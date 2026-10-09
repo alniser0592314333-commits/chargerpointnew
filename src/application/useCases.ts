@@ -1539,7 +1539,7 @@ export class FinalUseCases {
     if (!customer || !customer.isActive) throw new InactiveCustomerError();
 
     const effectiveDurationDays = durationDays ?? randomGoalDurationDays();
-    const effectiveBonusAmountMinor = bonusAmountMinor ?? Math.min(targetQuantity * 10, calculateGoalBonusCapMinor(targetQuantity));
+    const effectiveBonusAmountMinor = bonusAmountMinor ?? targetQuantity * 10;
     DomainInvariants.assertGoalParamsValid(targetQuantity, effectiveDurationDays, effectiveBonusAmountMinor);
 
     if (!this.deps.goalRepo) {
