@@ -21,6 +21,7 @@
 - Live `public.goals` schema has target, progress, bonus, duration, status, start/expiry timestamps and bonus_ledger_id, but the database duration constraint is only `duration_days > 0`; it does not enforce 3–15 or reward cap.
 - Live `public.evaluate_customer_active_goal(uuid)` counts distinct delivered, recognized order items and excludes soft-deleted items, but its EXECUTE privilege is granted to PUBLIC and anon as well as authenticated. It is SECURITY DEFINER and must be hardened.
 - Live `execute_canonical_sync_command` UPDATE_GOAL_PROGRESS branch accepts client-provided progress/status/bonus fields instead of independently verifying progress and target eligibility. This violates server-authoritative goal accounting and remains a database-side blocker.
+- The live database already has `trg_change_capture` triggers on `goals`, `goal_requests`, and `financial_ledger`; the previous goal functions also manually wrote change_log rows, creating duplicate delta events. The forward migration removes manual goal-related change-log writes and relies on full-row trigger capture.
 - The migration currently in source control and live function body are not identical; the database change must be a new forward migration, not an edit to an already-applied migration.
 - No live goal data should be mutated for tests. Existing live goal tables were reported empty during the audit; tests must use isolated fixtures/local mocks.
 
