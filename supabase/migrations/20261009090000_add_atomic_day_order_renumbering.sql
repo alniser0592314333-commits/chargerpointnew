@@ -1593,3 +1593,10 @@ BEGIN
     );
 END;
 $$;
+
+-- The canonical dispatcher is SECURITY DEFINER in the exposed public schema.
+-- Do not leave PostgreSQL's default PUBLIC EXECUTE grant in place after recreating it.
+-- The app's authenticated sync wrapper and authorized service integrations retain access;
+-- anonymous callers do not gain direct access to this privileged dispatcher.
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) TO authenticated, service_role;
