@@ -213,6 +213,40 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(recordedCommands).toHaveLength(0);
   });
 
+  it('rolls back optimistic overlays and outbox records together when the local transaction fails', async () => {
+    const now = '2026-10-09T10:00:00.000Z';
+    await expect(localDb.runTransaction(['optimisticOverlays', 'outbox'], 'readwrite', (tx) => {
+      localDb.saveOverlayWithTx(tx, {
+        commandId: 'atomic-renumber:order-a',
+        mutationKey: 'renumber-day:day-1',
+        entityType: 'orders',
+        entityId: 'order-a',
+        operation: 'PATCH',
+        patch: { displayNumber: 1 },
+        sequence: 88,
+        createdAt: now,
+        status: 'PENDING',
+      });
+      localDb.saveOutboxWithTx(tx, {
+        commandId: 'atomic-renumber',
+        commandType: 'RENUMBER_DAY_ORDERS',
+        aggregateType: 'orders',
+        aggregateId: 'day-1',
+        mutationKey: 'renumber-day:day-1',
+        payload: { dayId: 'day-1', changes: [] },
+        createdAt: now,
+        deviceId: 'device_A',
+        actorAdminId: 'admin_1',
+        status: 'pending',
+        retryCount: 0,
+      });
+      throw new Error('forced local transaction failure');
+    })).rejects.toThrow('forced local transaction failure');
+
+    expect(await localDb.getOverlay('atomic-renumber:order-a')).toBeNull();
+    expect((await localDb.listOutbox()).some((record) => record.commandId === 'atomic-renumber')).toBe(false);
+  });
+
   it('overlay sequence resumes above the highest persisted overlay after reload', async () => {
     const now = '2026-10-09T10:00:00.000Z';
     await localDb.saveOverlay({
