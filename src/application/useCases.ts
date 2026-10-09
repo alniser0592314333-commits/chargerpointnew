@@ -406,6 +406,15 @@ export class FinalUseCases {
     let reservation: OrderNumberReservationEntity | null = null;
     if (this.deps.reservationRepo) {
       reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
+      // A prior renumber can make a locally cached reservation stale. Never reuse it
+      // unless its next number is exactly the next slot after the current day count.
+      const currentDayCount = await this.deps.orderRepo.countForDay(dayId);
+      if (reservation && reservation.nextNumber !== currentDayCount + 1) {
+        reservation.status = 'EXHAUSTED';
+        reservation.updatedAt = new Date().toISOString();
+        await this.deps.reservationRepo.save(reservation);
+        reservation = null;
+      }
       if (!reservation || reservation.nextNumber > reservation.endNumber) {
         try {
           reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, commandId, 1);
