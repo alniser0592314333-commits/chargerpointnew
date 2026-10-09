@@ -18,6 +18,7 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
   const [data, setData] = useState<UIOrderQrCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  const [isNumberingError, setIsNumberingError] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -25,6 +26,7 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
     let active = true;
     setIsLoading(true);
     setIsError(false);
+    setIsNumberingError(false);
 
     getOrderQrCardData(dayId, orderId)
       .then((res) => {
@@ -34,6 +36,7 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
           } else {
             // Never render a fabricated or missing order number on a printed QR card.
             setData(null);
+            setIsNumberingError(Boolean(res));
             setIsError(true);
           }
           setIsLoading(false);
@@ -160,7 +163,7 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
         <div className="py-12 px-4 text-center space-y-3 bg-red-50 dark:bg-[#360d13] border border-red-200 dark:border-[#421419] rounded-2xl">
           <AlertTriangle className="w-8 h-8 text-red-600 dark:text-[#e07a7a] mx-auto" />
           <p className="text-sm font-bold text-red-700 dark:text-[#e07a7a]">
-            {data && (!Number.isInteger(data.orderNumber) || data.orderNumber <= 0)
+            {isNumberingError
               ? (locale === 'ar' ? 'رقم الطلب غير متاح. راجع ترقيم اليوم من الإعدادات قبل طباعة QR.' : 'Order number unavailable. Review the day numbering in Settings before printing a QR card.')
               : (locale === 'ar' ? 'الطلب غير موجود أو تعذر تحميل QR' : (t('orderNotFound') || 'Order not found or QR could not be loaded'))}
           </p>
