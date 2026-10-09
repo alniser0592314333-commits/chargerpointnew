@@ -1,0 +1,94 @@
+name: Verify application
+on:
+  push:
+    branches:
+      - fix/isolated-safe-day-renumbering-20261009
+  pull_request:
+    branches:
+      - main
+      - master
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Run order-numbering safety tests
+        run: npx vitest run src/tests/order_numbering_safety.test.ts -t 'renumbers a complete day|rejects stale day versions|rejects duplicate target numbers|atomic rollback|overlay sequence resumes' && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts
+      - name: Type-check (diagnostic; repository-wide baseline)
+        run: npm run lint
+        continue-on-error: true
+      - name: Build production bundle
+        run: npm run build
+      - name: Run full existing test suite (diagnostic)
+        run: npm test
+        continue-on-error: true
+
+  verify-supabase-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare isolated database roles
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';"
+      - name: Apply the renumbering migration to isolated PostgreSQL
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009090000_add_atomic_day_order_renumbering.sql
+      - name: Execute success and stale-conflict renumber scenarios
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/order_numbering_runtime.test.sql
+      - name: Verify dispatcher and audit-table privileges
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+            dispatcher regprocedure := 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)'::regprocedure;
+          BEGIN
+            IF has_function_privilege('anon', dispatcher, 'EXECUTE') THEN
+              RAISE EXCEPTION 'anon must not execute the SECURITY DEFINER dispatcher';
+            END IF;
+            IF NOT has_function_privilege('authenticated', dispatcher, 'EXECUTE') THEN
+              RAISE EXCEPTION 'authenticated must retain the canonical dispatcher contract';
+            END IF;
+            IF NOT has_function_privilege('service_role', dispatcher, 'EXECUTE') THEN
+              RAISE EXCEPTION 'service_role must retain the canonical dispatcher contract';
+            END IF;
+            IF has_table_privilege('authenticated', 'public.order_renumber_audit', 'SELECT')
+               OR has_table_privilege('authenticated', 'public.order_renumber_audit', 'INSERT')
+               OR has_table_privilege('anon', 'public.order_renumber_audit', 'SELECT') THEN
+              RAISE EXCEPTION 'the internal renumber audit table must not be directly exposed';
+            END IF;
+          END $$;
+          SQL
