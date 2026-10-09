@@ -170,7 +170,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     ).rejects.toThrow(/already has an active goal/);
   });
 
-  it('3. Goal Progress & Automatic Completion: Delivering qualifying items advances progress and grants bonus exactly once in financial ledger', async () => {
+  it('3. Goal Progress & Server-authoritative Completion: Client reports progress but only the server completes and grants bonus', async () => {
     const custId = 'cust-200';
     customerMap.set(custId, {
       id: custId,
@@ -249,7 +249,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(bonusEntriesAfterRetry[0].amountMinor).toBe(16);
   });
 
-  it('4. Goal Editing: Target modification where target <= currentProgress immediately triggers completion & bonus', async () => {
+  it('4. Goal Editing: Target changes remain optimistic until server confirms completion', async () => {
     const custId = 'cust-300';
     customerMap.set(custId, {
       id: custId,
@@ -393,7 +393,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(approveRes.data.goal.bonusAmountMinor).toBe(120);
   });
 
-  it('7. Comprehensive Goal Editing Boundary Cases: target > progress remains ACTIVE; target <= progress COMPLETED; editing completed goal throws', async () => {
+  it('7. Goal Editing Boundaries: Target changes remain optimistic; server-completed goals are immutable', async () => {
     const custId = 'cust-edit-bounds';
     customerMap.set(custId, {
       id: custId,
