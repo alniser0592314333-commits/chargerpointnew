@@ -87,7 +87,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   // Summary Metrics
   const orderCount = orders.length;
   const validNumberGroups = new Map<number, UIDayOrderDetail[]>();
-  const numberingIssues = orders.filter((order) => !Number.isInteger(order.orderNumber) || order.orderNumber <= 0);
+  const numberingIssues = orders.filter((order) => !Number.isInteger(order.orderNumber) || order.orderNumber <= 0 || order.orderNumber > orders.length);
   for (const order of orders) {
     if (!Number.isInteger(order.orderNumber) || order.orderNumber <= 0) continue;
     const group = validNumberGroups.get(order.orderNumber) ?? [];
@@ -261,6 +261,8 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
                 {' — '}{order.customerName}
                 {order.orderNumber > 0 && validNumberGroups.get(order.orderNumber)?.length ? (
                   <span> ({locale === 'ar' ? 'رقم مكرر' : 'duplicate number'})</span>
+                ) : order.orderNumber > orders.length ? (
+                  <span> ({locale === 'ar' ? 'رقم خارج التسلسل' : 'number outside 1..N'})</span>
                 ) : null}
               </li>
             ))}
