@@ -30,6 +30,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
   let overlays: Map<string, any>;
   let overlaySequence: number;
   let insideLocalTransaction = false;
+  let pendingOrderToInjectDayId: string | null = null;
 
   beforeEach(async () => {
     await localDb.clear();
@@ -56,6 +57,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     overlays = new Map();
     overlaySequence = 0;
     insideLocalTransaction = false;
+    pendingOrderToInjectDayId = null;
 
     const pendingOrderChangesForDay = (dayId: string) => Array.from(overlays.values()).some((overlay) => {
       if (overlay.status !== 'PENDING' || overlay.entityType !== 'orders') return false;
@@ -150,7 +152,26 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         hasPendingOrderChangesForDay: pendingOrderChangesForDay,
-        getNextSequence: async () => ++overlaySequence,
+        getNextSequence: async () => {
+          const sequence = ++overlaySequence;
+          if (pendingOrderToInjectDayId) {
+            const dayId = pendingOrderToInjectDayId;
+            pendingOrderToInjectDayId = null;
+            const now = new Date().toISOString();
+            overlays.set('pending-race-order', {
+              commandId: 'pending-race-order',
+              mutationKey: `create-order:${dayId}`,
+              entityType: 'orders',
+              entityId: 'order-pending-race',
+              operation: 'CREATE',
+              patch: { dayId, displayNumber: 3 },
+              sequence,
+              createdAt: now,
+              status: 'PENDING',
+            });
+          }
+          return sequence;
+        },
       },
       deviceRepo: {
         findById: (id: string) => deviceMap.get(id) || null,
@@ -249,6 +270,25 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error).toMatch(/pending local order changes must sync/i);
     expect(Array.from(overlays.values()).filter((overlay) => overlay.mutationKey === 'renumber-day:day-1')).toHaveLength(0);
+    expect(recordedCommands).toHaveLength(0);
+  });
+
+  it('rechecks pending order overlays inside the transaction if one appears after preflight', async () => {
+    const dayId = 'day-race';
+    const now = '2026-10-09T10:00:00.000Z';
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    orderMap.set('race-order-a', { id: 'race-order-a', dayId, customerId: 'cust-a', displayNumber: 1, internalSequence: 1, status: 'pending', createdAt: now, updatedAt: now, version: 1 });
+    orderMap.set('race-order-b', { id: 'race-order-b', dayId, customerId: 'cust-b', displayNumber: 2, internalSequence: 2, status: 'pending', createdAt: now, updatedAt: now, version: 1 });
+    pendingOrderToInjectDayId = dayId;
+
+    const result = await useCases.renumberDayOrders(auth, 'renumber-race', dayId, [
+      { id: 'race-order-a', expectedVersion: 1, oldNumber: 1, newNumber: 2 },
+      { id: 'race-order-b', expectedVersion: 1, oldNumber: 2, newNumber: 1 },
+    ]);
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toMatch(/pending local order changes must sync/i);
+    expect(Array.from(overlays.values()).filter((overlay) => overlay.mutationKey === `renumber-day:${dayId}`)).toHaveLength(0);
     expect(recordedCommands).toHaveLength(0);
   });
 
