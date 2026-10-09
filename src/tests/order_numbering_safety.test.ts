@@ -57,6 +57,14 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     overlaySequence = 0;
     insideLocalTransaction = false;
 
+    const pendingOrderChangesForDay = (dayId: string) => Array.from(overlays.values()).some((overlay) => {
+      if (overlay.status !== 'PENDING' || overlay.entityType !== 'orders') return false;
+      const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+      const baseOrder = orderMap.get(overlay.entityId);
+      const effectiveDayId = patch.dayId ?? baseOrder?.dayId;
+      return Boolean(effectiveDayId && effectiveDayId === dayId);
+    });
+
     const mockCtx: RepositoryContext = {
       orderRepo: {
         findById: (id: string) => orderMap.get(id) || null,
@@ -145,13 +153,8 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         },
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
-        hasPendingOrderChangesForDay: (dayId: string) => Array.from(overlays.values()).some((overlay) => {
-          if (overlay.status !== 'PENDING' || overlay.entityType !== 'orders') return false;
-          const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
-          const baseOrder = orderMap.get(overlay.entityId);
-          const effectiveDayId = patch.dayId ?? baseOrder?.dayId;
-          return Boolean(effectiveDayId && effectiveDayId === dayId);
-        }),
+        hasPendingOrderChangesForDay: pendingOrderChangesForDay,
+        hasPendingOrderChangesForDaySync: pendingOrderChangesForDay,
         getNextSequence: async () => ++overlaySequence,
       },
       deviceRepo: {
