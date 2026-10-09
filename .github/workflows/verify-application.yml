@@ -2,14 +2,11 @@ name: Verify application
 on:
   push:
     branches:
-      - fix/daily-order-numbering-and-renumber-workflow
       - fix/isolated-safe-day-renumbering-20261009
   pull_request:
     branches:
       - main
       - master
-      - fix/daily-order-numbering-and-renumber-workflow
-      - fix/isolated-safe-day-renumbering-20261009
 permissions:
   contents: read
 jobs:
