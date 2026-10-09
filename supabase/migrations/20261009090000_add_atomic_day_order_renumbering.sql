@@ -99,6 +99,10 @@ DECLARE
     v_max_new_number INTEGER;
     v_old_state JSONB;
     v_temp_base BIGINT;
+    v_requested_display_number INTEGER;
+    v_existing_order_count BIGINT;
+    v_existing_order_max BIGINT;
+    v_existing_distinct_count BIGINT;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
@@ -499,22 +503,36 @@ BEGIN
                 RAISE EXCEPTION 'Customer Is Deleted/Frozen: Cannot create order for soft-deleted customer %', v_customer_uuid;
             END IF;
 
-            IF NOT EXISTS (SELECT 1 FROM public.business_days WHERE id = v_day_uuid) THEN
+            -- Lock the day row shared with the renumber command; creates and renumbering serialize.
+            PERFORM id FROM public.business_days WHERE id = v_day_uuid FOR UPDATE;
+            IF NOT FOUND THEN
                 RAISE EXCEPTION 'Business Day Not Found: ID %', v_day_uuid USING ERRCODE = '23503';
             END IF;
 
-            -- Offline devices can propose the same next number. Reject collisions at
-            -- the authoritative boundary instead of accepting duplicate daily numbers.
-            IF COALESCE((p_payload->>'displayNumber')::INTEGER, (p_payload->>'display_number')::INTEGER, 1) < 1 THEN
-                RAISE EXCEPTION 'Invalid order number: display number must be positive' USING ERRCODE = 'P2201';
+            v_requested_display_number := COALESCE(
+                (p_payload->>'displayNumber')::INTEGER,
+                (p_payload->>'display_number')::INTEGER
+            );
+            IF v_requested_display_number IS NULL OR v_requested_display_number < 1 THEN
+                RAISE EXCEPTION 'Order number conflict: a valid positive display number is required; reload and review numbering'
+                    USING ERRCODE = 'P0409';
             END IF;
-            IF EXISTS (
-                SELECT 1 FROM public.orders existing
-                WHERE existing.day_id = v_day_uuid
-                  AND existing.display_number = COALESCE((p_payload->>'displayNumber')::INTEGER, (p_payload->>'display_number')::INTEGER, 1)
-                  AND existing.id <> v_entity_uuid
-            ) THEN
-                RAISE EXCEPTION 'Order number conflict [409]: this daily order number is already in use; reload and resolve the day numbering' USING ERRCODE = 'P0409';
+
+            SELECT COUNT(*), COALESCE(MAX(display_number), 0), COUNT(DISTINCT display_number)
+              INTO v_existing_order_count, v_existing_order_max, v_existing_distinct_count
+              FROM public.orders
+             WHERE day_id = v_day_uuid;
+
+            IF v_existing_order_count <> v_existing_distinct_count
+               OR v_existing_order_max <> v_existing_order_count THEN
+                RAISE EXCEPTION 'Order number conflict: this day has missing or duplicate numbers; an authorized Renumber Day review is required'
+                    USING ERRCODE = 'P0409';
+            END IF;
+
+            IF v_requested_display_number <> v_existing_order_count + 1 THEN
+                RAISE EXCEPTION 'Order number conflict: expected next number %, received %. Reload the day; do not renumber automatically.',
+                    v_existing_order_count + 1, v_requested_display_number
+                    USING ERRCODE = 'P0409';
             END IF;
 
             INSERT INTO public.orders (
@@ -524,7 +542,7 @@ BEGIN
                 v_entity_uuid,
                 v_day_uuid,
                 v_customer_uuid,
-                COALESCE((p_payload->>'displayNumber')::INTEGER, (p_payload->>'display_number')::INTEGER, 1),
+                v_requested_display_number,
                 'charging',
                 COALESCE(p_payload->>'notes', ''),
                 1,
