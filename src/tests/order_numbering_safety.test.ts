@@ -147,14 +147,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       },
       overlayRepo: {
         save: async (overlay: any) => { overlays.set(overlay.commandId, overlay); },
-        saveWithTx: (overlay: any) => {
-          if (!insideLocalTransaction) throw new Error('Overlay must be staged inside the active local transaction');
-          overlays.set(overlay.commandId, overlay);
-        },
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         hasPendingOrderChangesForDay: pendingOrderChangesForDay,
-        hasPendingOrderChangesForDaySync: pendingOrderChangesForDay,
         getNextSequence: async () => ++overlaySequence,
       },
       deviceRepo: {
@@ -171,8 +166,19 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       transactionManager: {
         runInTransaction: async (fn) => {
           insideLocalTransaction = true;
+          const transactionContext: RepositoryContext = {
+            ...mockCtx,
+            overlayRepo: {
+              ...(mockCtx.overlayRepo || {}),
+              saveWithTx: (overlay: OptimisticOverlayRecord) => {
+                if (!insideLocalTransaction) throw new Error('Overlay must be staged inside the active local transaction');
+                overlays.set(overlay.commandId, overlay);
+              },
+              hasPendingOrderChangesForDaySync: pendingOrderChangesForDay,
+            },
+          };
           try {
-            return fn(mockCtx);
+            return fn(transactionContext);
           } finally {
             insideLocalTransaction = false;
           }
