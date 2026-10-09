@@ -31,6 +31,7 @@ import { FinancialCustomerDetailPage } from './components/pages/FinancialCustome
 import { GoalsPage } from './components/pages/GoalsPage';
 import { NotificationsRequestsPage } from './components/pages/NotificationsRequestsPage';
 import { SettingsPage } from './components/pages/SettingsPage';
+import { RenumberDayPage } from './components/pages/RenumberDayPage';
 import { QrDesignSettingsPage } from './components/pages/QrDesignSettingsPage';
 import { DeviceTypesPage } from './components/pages/DeviceTypesPage';
 import { NotFoundPage } from './components/pages/NotFoundPage';
@@ -358,6 +359,11 @@ export default function App() {
         return <NotificationsRequestsPage />;
       case '/app/settings':
         return <SettingsPage onNavigate={(path) => navigate(path)} />;
+      case '/app/settings/renumber-day': {
+        const canRenumber = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\\s+/g, '_') === 'SUPER_ADMIN') || Boolean(userSession?.permissions?.includes('orders:renumber-day'));
+        if (!userSession || !canRenumber) return <UnauthorizedPage />;
+        return <RenumberDayPage onBack={() => goBack('/app/settings')} />;
+      }
       case '/app/settings/admins': {
         const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
         const hasAdminManage = isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage'));
