@@ -22,7 +22,7 @@ import {
   GoalRequestEntity,
 } from '../../domain/models';
 import { ClosedDayError, InactiveCustomerError, NotFoundError, ConflictError, OrderNumberReservationExhaustedError, presentError } from '../../domain/errors';
-import { localDb, OutboxRecord } from '../../infrastructure/localDb/localDb';
+import { localDb, OutboxRecord, OptimisticOverlayRecord } from '../../infrastructure/localDb/localDb';
 import { generateSecurePublicToken, computeTokenHash } from '../../services/supabase/qrSecurity';
 import {
   rpcResolveCustomerQr,
@@ -1648,6 +1648,11 @@ function createTransactionalRepoContext(
   postCommitActions: (() => void)[]
 ): any {
   return {
+    overlayRepo: {
+      saveWithTx: (overlay: OptimisticOverlayRecord) => {
+        localDb.saveOverlayWithTx(tx, overlay);
+      },
+    },
     orderRepo: {
       findById: (id: string) => ordersMap.get(id) || null,
       save: (o: OrderEntity) => {
@@ -2417,7 +2422,7 @@ export const repoContext: RepositoryContext = {
         const postCommitActions: (() => void)[] = [];
 
         const result = await localDb.runTransaction(
-          ['kvStore', 'outbox', 'mutationSnapshots'],
+          ['kvStore', 'outbox', 'mutationSnapshots', 'optimisticOverlays'],
           'readwrite',
           (tx) => {
             const txCtx = createTransactionalRepoContext(tx, postCommitActions);
