@@ -122,22 +122,22 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
 
   it('1. Goal Generation Proposal: Deterministically calculates target, variable duration, and reconciled bonus formula', () => {
     // 0 past items -> baseline minimum 10 target, default 10 minor/device rate = 100 minor bonus (1.00 ILS / 10 devices)
-    const proposalZero = generateGoalProposal(0);
+    const proposalZero = generateGoalProposal(0, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposalZero.targetQuantity).toBe(10);
     expect(proposalZero.durationDays).toBe(7);
     expect(proposalZero.bonusAmountMinor).toBe(100);
     expect(Number.isInteger(proposalZero.bonusAmountMinor)).toBe(true);
 
     // Baseline 8 items -> target = max(10, 8+10, ceil(8*1.25)) = 18 target
-    const proposal8 = generateGoalProposal(8, { customRatePerDeviceMinor: 8 });
+    const proposal8 = generateGoalProposal(8, { customRatePerDeviceMinor: 8, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposal8.targetQuantity).toBe(18);
     // Rate 8 minor/device (0.80 ILS per 10 devices) -> 18 * 8 = 144 minor units (1.44 ILS)
     expect(proposal8.bonusAmountMinor).toBe(144);
 
     // Baseline 20 items -> target = max(10, 20+10, ceil(20*1.25)) = 30 target
-    const proposal20 = generateGoalProposal(20, { customRatePerDeviceMinor: 13, customDurationDays: 6 });
+    const proposal20 = generateGoalProposal(20, { customRatePerDeviceMinor: 13, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposal20.targetQuantity).toBe(30);
-    expect(proposal20.durationDays).toBe(6);
+    expect(proposal20.durationDays).toBe(7);
     // Rate 13 minor/device (1.30 ILS per 10 devices) -> 30 * 13 = 390 minor units (3.90 ILS)
     expect(proposal20.bonusAmountMinor).toBe(390);
 
@@ -159,18 +159,18 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
       version: 1,
     });
 
-    const res1 = await useCases.createGoal(authAdmin, 'goal-1', custId, 15, 7, 750);
+    const res1 = await useCases.createGoal(authAdmin, 'goal-1', custId, 15, 7, 120);
     expect(res1.success).toBe(true);
     if (!res1.success) throw new Error('Expected success');
     expect(res1.data.status).toBe('ACTIVE');
 
     // Attempting to create second active goal must throw
     await expect(
-      useCases.createGoal(authAdmin, 'goal-2', custId, 20, 7, 1000)
+      useCases.createGoal(authAdmin, 'goal-2', custId, 20, 7, 160)
     ).rejects.toThrow(/already has an active goal/);
   });
 
-  it('3. Goal Progress & Automatic Completion: Delivering qualifying items advances progress and grants bonus exactly once in financial ledger', async () => {
+  it('3. Goal Progress & Server-authoritative Completion: Client reports progress but only the server completes and grants bonus', async () => {
     const custId = 'cust-200';
     customerMap.set(custId, {
       id: custId,
@@ -185,7 +185,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal with target 2
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-prog-1', custId, 2, 7, 800);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-prog-1', custId, 2, 7, 16);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected success');
     const goal = resGoal.data;
@@ -212,7 +212,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(eval1.data.goal?.status).toBe('ACTIVE');
     expect(ledgerList.some(l => l.eventType === 'BONUS')).toBe(false);
 
-    // Simulate 2nd delivered & recognized item reaching target (2/2)
+    // Simulate the 2nd delivered & recognized item reaching target (2/2).
     ledgerList.push({
       id: 'ledger-charge-2',
       eventType: 'ORDER_ITEM_CHARGE',
@@ -222,27 +222,44 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
       createdAt: new Date().toISOString(),
     });
 
+    // The client reports progress but does not authoritatively complete the goal or issue a bonus.
     const eval2 = await useCases.evaluateCustomerGoal(custId);
     expect(eval2.success).toBe(true);
     if (!eval2.success) throw new Error('Expected success');
     expect(eval2.data.goal?.currentProgress).toBe(2);
-    expect(eval2.data.goal?.status).toBe('COMPLETED');
-    expect(eval2.data.goal?.completedAt).toBeDefined();
-    expect(eval2.data.goal?.bonusLedgerId).toBeDefined();
+    expect(eval2.data.goal?.status).toBe('ACTIVE');
+    expect(eval2.data.goal?.completedAt).toBeUndefined();
+    expect(eval2.data.goal?.bonusLedgerId).toBeUndefined();
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
 
-    // Verify exactly 1 BONUS ledger entry created with 800 minor units
-    const bonusEntries = ledgerList.filter(l => l.eventType === 'BONUS' && l.customerId === custId);
-    expect(bonusEntries.length).toBe(1);
-    expect(bonusEntries[0].amountMinor).toBe(800);
-    expect(bonusEntries[0].referenceId).toBe(goal.id);
+    // Simulate the server's accepted completion event and immutable ledger bonus.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(goal.id, {
+      ...goalMap.get(goal.id)!,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-bonus-server',
+    });
+    ledgerList.push({
+      id: 'ledger-bonus-server',
+      eventType: 'BONUS',
+      amountMinor: 16,
+      customerId: custId,
+      referenceId: goal.id,
+      createdAt: serverCompletedAt,
+    });
 
-    // Idempotent re-evaluation must NEVER grant duplicate bonus
+    // Re-evaluation after authoritative completion must not grant a duplicate bonus.
     const eval3 = await useCases.evaluateCustomerGoal(custId);
+    expect(eval3.success).toBe(true);
+    if (!eval3.success) throw new Error('Expected success');
+    expect(eval3.data.hasActiveGoal).toBe(false);
     const bonusEntriesAfterRetry = ledgerList.filter(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonusEntriesAfterRetry.length).toBe(1);
+    expect(bonusEntriesAfterRetry[0].amountMinor).toBe(16);
   });
 
-  it('4. Goal Editing: Target modification where target <= currentProgress immediately triggers completion & bonus', async () => {
+  it('4. Goal Editing: Target changes remain optimistic until server confirms completion', async () => {
     const custId = 'cust-300';
     customerMap.set(custId, {
       id: custId,
@@ -257,7 +274,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal with target 10
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-edit-1', custId, 10, 7, 1000);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-edit-1', custId, 10, 7, 80);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected success');
     const goal = resGoal.data;
@@ -270,16 +287,33 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const updateRes = await useCases.updateGoalConfig(authAdmin, goal.id, { targetQuantity: 5 });
     expect(updateRes.success).toBe(true);
     if (!updateRes.success) throw new Error('Expected success');
-    expect(updateRes.data.status).toBe('COMPLETED');
-    expect(updateRes.data.completedAt).toBeDefined();
-    expect(updateRes.data.bonusLedgerId).toBeDefined();
+    expect(updateRes.data.status).toBe('ACTIVE');
+    expect(updateRes.data.completedAt).toBeUndefined();
+    expect(updateRes.data.bonusLedgerId).toBeUndefined();
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
 
+    // Completion and bonus are applied only after the authoritative server result.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(goal.id, {
+      ...updateRes.data,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-edit-server',
+    });
+    ledgerList.push({
+      id: 'ledger-edit-server',
+      eventType: 'BONUS',
+      amountMinor: 80,
+      customerId: custId,
+      referenceId: goal.id,
+      createdAt: serverCompletedAt,
+    });
     const bonus = ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonus).toBeDefined();
-    expect(bonus?.amountMinor).toBe(1000);
+    expect(bonus?.amountMinor).toBe(80);
   });
 
-  it('5. Goal Expiration: If expiry passes before target is reached, goal becomes FAILED with zero bonus', async () => {
+  it('5. Goal Expiration: Client defers expiry status to the authoritative server and grants no local bonus', async () => {
     const custId = 'cust-400';
     customerMap.set(custId, {
       id: custId,
@@ -301,7 +335,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
       customerId: custId,
       targetQuantity: 10,
       currentProgress: 3, // only reached 3 out of 10
-      bonusAmountMinor: 1000,
+      bonusAmountMinor: 80,
       durationDays: 7,
       status: 'ACTIVE',
       startedAt: pastStarted,
@@ -315,7 +349,9 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const evalRes = await useCases.evaluateCustomerGoal(custId);
     expect(evalRes.success).toBe(true);
     if (!evalRes.success) throw new Error('Expected success');
-    expect(evalRes.data.goal?.status).toBe('FAILED');
+    expect(evalRes.data.goal?.status).toBe('ACTIVE');
+    const expiryCommand = commandRecords.find((record) => record.type === 'UPDATE_GOAL_PROGRESS');
+    expect((expiryCommand?.payload as { expiresAt?: string } | undefined)?.expiresAt).toBe(pastExpires);
 
     // No bonus entry in ledger
     const bonus = ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId);
@@ -358,16 +394,16 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(reqRes2.success).toBe(true);
 
     // 4. Admin approves second request -> creates active Goal
-    const approveRes = await useCases.approveGoalRequest(authAdmin, 'req-2', 750, 7);
+    const approveRes = await useCases.approveGoalRequest(authAdmin, 'req-2', 120, 7);
     expect(approveRes.success).toBe(true);
     if (!approveRes.success) throw new Error('Expected success');
     expect(approveRes.data.request.status).toBe('APPROVED');
     expect(approveRes.data.goal.status).toBe('ACTIVE');
     expect(approveRes.data.goal.targetQuantity).toBe(15);
-    expect(approveRes.data.goal.bonusAmountMinor).toBe(750);
+    expect(approveRes.data.goal.bonusAmountMinor).toBe(120);
   });
 
-  it('7. Comprehensive Goal Editing Boundary Cases: target > progress remains ACTIVE; target <= progress COMPLETED; editing completed goal throws', async () => {
+  it('7. Goal Editing Boundaries: Target changes remain optimistic; server-completed goals are immutable', async () => {
     const custId = 'cust-edit-bounds';
     customerMap.set(custId, {
       id: custId,
@@ -382,7 +418,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal target 10, current progress 4
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-bound-1', custId, 10, 7, 500);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-bound-1', custId, 10, 7, 80);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected success');
     const goal = resGoal.data;
@@ -399,9 +435,26 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const editResB = await useCases.updateGoalConfig(authAdmin, goal.id, { targetQuantity: 4 });
     expect(editResB.success).toBe(true);
     if (!editResB.success) throw new Error('Expected success');
-    expect(editResB.data.status).toBe('COMPLETED');
-    expect(editResB.data.bonusLedgerId).toBeDefined();
+    expect(editResB.data.status).toBe('ACTIVE');
+    expect(editResB.data.bonusLedgerId).toBeUndefined();
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
 
+    // Simulate the server's accepted completion before testing immutability.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(goal.id, {
+      ...editResB.data,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-bound-server',
+    });
+    ledgerList.push({
+      id: 'ledger-bound-server',
+      eventType: 'BONUS',
+      amountMinor: 80,
+      customerId: custId,
+      referenceId: goal.id,
+      createdAt: serverCompletedAt,
+    });
     const bonusList = ledgerList.filter(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonusList.length).toBe(1);
 
@@ -429,7 +482,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal target 1
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-rev-1', custId, 1, 7, 300);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-rev-1', custId, 1, 7, 13);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected goal success');
 
@@ -446,7 +499,26 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const evalRes = await useCases.evaluateCustomerGoal(custId);
     expect(evalRes.success).toBe(true);
     if (!evalRes.success) throw new Error('Expected eval success');
-    expect(evalRes.data.goal?.status).toBe('COMPLETED');
+    expect(evalRes.data.goal?.currentProgress).toBe(1);
+    expect(evalRes.data.goal?.status).toBe('ACTIVE');
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
+
+    // Simulate the server-confirmed completion before reversing the item.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(resGoal.data.id, {
+      ...goalMap.get(resGoal.data.id)!,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-reversal-bonus-server',
+    });
+    ledgerList.push({
+      id: 'ledger-reversal-bonus-server',
+      eventType: 'BONUS',
+      amountMinor: 13,
+      customerId: custId,
+      referenceId: resGoal.data.id,
+      createdAt: serverCompletedAt,
+    });
 
     // Item-1 is reversed post-completion
     ledgerList.push({

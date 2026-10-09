@@ -138,7 +138,31 @@ export function checkDebtLimit(
 }
 
 /**
- * 7-Day Activity Analysis and Goal Parameter Generation
+ * Smart goal policy.
+ * Monetary amounts are integer minor units (agorot); 100 minor units = ₪1.
+ * Hard cap: ₪2 per 10 target devices = 20 minor units per target device.
+ */
+export const MIN_GOAL_DURATION_DAYS = 3;
+export const MAX_GOAL_DURATION_DAYS = 15;
+export const GOAL_BONUS_CAP_MINOR_PER_DEVICE = 20;
+export const MIN_GOAL_BONUS_MINOR = 80;
+
+export function randomGoalDurationDays(random: () => number = Math.random): number {
+  const sample = Math.min(0.999999999, Math.max(0, random()));
+  return MIN_GOAL_DURATION_DAYS + Math.floor(sample * (MAX_GOAL_DURATION_DAYS - MIN_GOAL_DURATION_DAYS + 1));
+}
+
+export function calculateGoalBonusCapMinor(targetQuantity: number): number {
+  if (!Number.isInteger(targetQuantity) || targetQuantity <= 0) {
+    throw new RangeError('Goal target quantity must be a positive integer.');
+  }
+  return targetQuantity * GOAL_BONUS_CAP_MINOR_PER_DEVICE;
+}
+
+/**
+ * Generates a duration-scaled target from the customer's recent seven-day delivered
+ * pace. The target includes at least 10 extra devices or 25% stretch, whichever is
+ * larger, and never drops below 10 devices.
  */
 export interface GeneratedGoalProposal {
   targetQuantity: number;
@@ -149,8 +173,12 @@ export interface GeneratedGoalProposal {
 
 export interface GenerateGoalProposalOptions {
   startedAt?: string;
-  customRatePerDeviceMinor?: number; // Rate in minor units per device (range 8..13, i.e., 80..130 minor per 10 devices = 0.8..1.3 ILS / 10 devices)
-  customDurationDays?: number; // Duration in days (range 6..7)
+  /** Optional deterministic override for tests/controlled admin workflows. */
+  customRatePerDeviceMinor?: number;
+  /** Explicit duration override; otherwise choose a random integer from 3 through 15. */
+  customDurationDays?: number;
+  /** Injectable random source for deterministic tests. */
+  random?: () => number;
 }
 
 export function generateGoalProposal(
@@ -160,35 +188,37 @@ export function generateGoalProposal(
   const startedAt = typeof options === 'string' ? options : options.startedAt || new Date().toISOString();
   const customRate = typeof options === 'object' ? options.customRatePerDeviceMinor : undefined;
   const customDuration = typeof options === 'object' ? options.customDurationDays : undefined;
+  const random = typeof options === 'object' ? options.random || Math.random : Math.random;
 
-  const safePastCount = Math.max(0, Math.floor(past7DaysDeliveredCount || 0));
+  const safePastCount = Math.max(0, Math.floor(Number.isFinite(past7DaysDeliveredCount) ? past7DaysDeliveredCount : 0));
+  const durationDays = Number.isInteger(customDuration)
+    && customDuration! >= MIN_GOAL_DURATION_DAYS
+    && customDuration! <= MAX_GOAL_DURATION_DAYS
+    ? customDuration!
+    : randomGoalDurationDays(random);
 
-  // 1. Target Quantity Algorithm:
-  // Aggregates qualifying delivered+recognized items in previous 7 days.
-  // Formula: Baseline + max(10, ceil(25% growth)), minimum target 10 devices.
-  const targetQuantity = Math.max(10, safePastCount + 10, Math.ceil(safePastCount * 1.25));
+  const expectedDevicesDuringGoal = (safePastCount / 7) * durationDays;
+  const stretchAllowance = Math.max(10, expectedDevicesDuringGoal * 0.25);
+  const targetQuantity = Math.max(10, Math.ceil(expectedDevicesDuringGoal + stretchAllowance));
 
-  // 2. Goal Duration Algorithm:
-  // Randomized / configurable between 6 and 7 days (default 7 days).
-  const durationDays = customDuration !== undefined && customDuration >= 6 && customDuration <= 7
-    ? customDuration
-    : 7;
-
-  // 3. Goal Bonus Formula (Approved Rate Reconciled):
-  // Bonus rate: 0.8 - 1.3 ILS per 10 devices = 8 - 13 minor units per target device.
-  // Default rate: 10 minor units per target device (1.00 ILS per 10 devices).
-  const ratePerDeviceMinor = customRate !== undefined && customRate >= 8 && customRate <= 13
-    ? customRate
-    : 10;
-
+  // Difficulty is the required pace relative to the customer's recent pace.
+  // The established reward band remains 8–13 agorot/device (₪0.8–₪1.3 per 10 devices);
+  // the new hard cap is 20 agorot/device and is enforced independently.
+  const difficultyRatio = expectedDevicesDuringGoal > 0
+    ? targetQuantity / expectedDevicesDuringGoal
+    : 1.5;
+  const derivedRate = 8 + Math.min(5, Math.max(0, Math.round((difficultyRatio - 1) * 10)));
+  const ratePerDeviceMinor = Number.isInteger(customRate) && customRate! >= 8 && customRate! <= 13
+    ? customRate!
+    : derivedRate;
   const rawBonusMinor = targetQuantity * ratePerDeviceMinor;
-
-  // Exact Rounding Rule: Integer minor units (Math.round). Minimum bonus rule: 80 minor units (0.80 ILS).
-  const bonusAmountMinor = Math.max(80, Math.round(rawBonusMinor));
+  const bonusAmountMinor = Math.min(
+    calculateGoalBonusCapMinor(targetQuantity),
+    Math.max(MIN_GOAL_BONUS_MINOR, Math.round(rawBonusMinor))
+  );
 
   const startDate = new Date(startedAt);
   const expiresDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
-
   return {
     targetQuantity,
     durationDays,
@@ -238,12 +268,12 @@ export function calculateAuthoritativeGoalProgress(
 
   for (const item of customerItems) {
     if (item.deletedAt) continue;
-    const isDelivered = item.status && item.status.toLowerCase() === 'delivered';
-    const isRecognized =
-      (item.financialStatus && item.financialStatus.toUpperCase() === 'RECOGNIZED') ||
-      item.status === 'delivered';
+    const isDelivered = item.status?.toLowerCase() === 'delivered';
+    const operationallyDelivered =
+      !item.operationalStatus || item.operationalStatus.toUpperCase() === 'DELIVERED';
+    const isRecognized = item.financialStatus?.toUpperCase() === 'RECOGNIZED';
 
-    if (isDelivered && isRecognized && item.deliveredAt) {
+    if (isDelivered && operationallyDelivered && isRecognized && item.deliveredAt) {
       const deliveredTime = new Date(item.deliveredAt).getTime();
       if (deliveredTime >= startTime && deliveredTime <= expiresTime) {
         qualifyingItemIds.add(item.id);

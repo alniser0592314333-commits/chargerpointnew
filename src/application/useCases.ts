@@ -25,7 +25,8 @@ import {
   validateItemTransition, 
   checkDebtLimit,
   generateGoalProposal,
-  calculateAuthoritativeGoalProgress
+  calculateGoalBonusCapMinor,
+  randomGoalDurationDays
 } from '../domain/rules';
 import { PaymentStatus } from '../domain/enums';
 import { DomainInvariants } from '../domain/invariants';
@@ -47,6 +48,7 @@ export interface RepositoryContext {
     findById(id: ID): Promise<OrderEntity | null> | (OrderEntity | null);
     save(order: OrderEntity): Promise<void> | void;
     countForDay(dayId: ID): Promise<number> | number;
+    findByDay?(dayId: ID): OrderEntity[];
   };
   reservationRepo?: {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
@@ -96,6 +98,9 @@ export interface RepositoryContext {
   };
   overlayRepo?: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
+    saveWithTx?(overlay: OptimisticOverlayRecord): Promise<void> | void;
+    hasPendingOrderChangesForDay?(dayId: ID): Promise<boolean> | boolean;
+    hasPendingOrderChangesForDaySync?(dayId: ID): boolean;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -309,6 +314,109 @@ export class FinalUseCases {
    * local transaction. This prevents a failed item validation from leaving a
    * ghost CREATE_ORDER command behind.
    */
+  /**
+   * Renumber one complete business day as a single server-authoritative command.
+   * Every row is version-checked on the server before any number is changed.
+   */
+  async renumberDayOrders(
+    auth: AuthorizationContext,
+    commandId: ID,
+    dayId: ID,
+    changes: Array<{ id: ID; expectedVersion: number; oldNumber: number; newNumber: number }>
+  ): Promise<Result<{ dayId: ID; count: number }>> {
+    auth.requireAuth();
+    auth.assertPermission('orders:renumber-day');
+    if (!dayId || !Array.isArray(changes) || changes.length === 0) {
+      return { success: false, error: 'A day and at least one order are required' };
+    }
+
+    const sortedNumbers = changes.map((change) => change.newNumber).sort((a, b) => a - b);
+    if (sortedNumbers.some((number, index) => !Number.isInteger(number) || number !== index + 1)) {
+      return { success: false, error: 'New order numbers must be contiguous from 1 without duplicates' };
+    }
+    const uniqueIds = new Set(changes.map((change) => change.id));
+    if (uniqueIds.size !== changes.length) {
+      return { success: false, error: 'The order list contains duplicate IDs' };
+    }
+
+    const overlayRepo = this.deps.overlayRepo;
+    if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingOrderChangesForDay) {
+      return { success: false, error: 'Local order-overlay inspection is unavailable; no changes were queued.' };
+    }
+    if (await overlayRepo.hasPendingOrderChangesForDay(dayId)) {
+      return { success: false, error: 'Pending local order changes must sync before this day can be renumbered.' };
+    }
+
+    // Allocate overlay ordering tokens before opening the IndexedDB transaction.
+    // Gaps in this internal sequence are harmless; order numbers are never allocated here.
+    const sequences: number[] = [];
+    for (let index = 0; index < changes.length; index++) {
+      sequences.push(await overlayRepo.getNextSequence());
+    }
+
+    // The complete-day recheck, every optimistic overlay, and the outbox command
+    // are committed by the same local transaction. A failure cannot leave a partial
+    // set of new numbers or overlays without its corresponding sync command.
+    return this.deps.transactionManager.runInTransaction((repos) => {
+      const transactionalOverlayRepo = repos.overlayRepo;
+      if (!transactionalOverlayRepo?.saveWithTx || !transactionalOverlayRepo.hasPendingOrderChangesForDaySync) {
+        return { success: false as const, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
+      }
+      if (transactionalOverlayRepo.hasPendingOrderChangesForDaySync(dayId)) {
+        return { success: false as const, error: 'Pending local order changes must sync before this day can be renumbered.' };
+      }
+
+      const currentOrders: OrderEntity[] = [];
+      for (const change of changes) {
+        const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
+        if (!order || order.dayId !== dayId) {
+          return { success: false as const, error: 'The selected day changed or an order no longer belongs to it' };
+        }
+        if (order.version !== change.expectedVersion || order.displayNumber !== change.oldNumber) {
+          return { success: false as const, error: 'The day changed while it was being edited. Reload and review before retrying.' };
+        }
+        currentOrders.push(order);
+      }
+
+      const dayOrders = repos.orderRepo.findByDay?.(dayId);
+      if (!dayOrders || dayOrders.length !== changes.length ||
+          new Set(dayOrders.map((order) => order.id)).size !== uniqueIds.size ||
+          dayOrders.some((order) => !uniqueIds.has(order.id))) {
+        return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
+      }
+
+      const now = new Date().toISOString();
+      for (let index = 0; index < changes.length; index++) {
+        const change = changes[index];
+        const order = currentOrders[index];
+        transactionalOverlayRepo.saveWithTx({
+          commandId: `${commandId}:order:${order.id}`,
+          mutationKey: `renumber-day:${dayId}`,
+          entityType: 'orders',
+          entityId: order.id,
+          operation: 'PATCH',
+          patch: { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 },
+          sequence: sequences[index],
+          createdAt: now,
+          status: 'PENDING',
+        });
+      }
+
+      repos.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
+        id: dayId,
+        aggregateId: dayId,
+        dayId,
+        changes: changes.map((change) => ({
+          id: change.id,
+          expectedVersion: change.expectedVersion,
+          oldNumber: change.oldNumber,
+          newNumber: change.newNumber,
+        })),
+      });
+      return { success: true as const, data: { dayId, count: changes.length } };
+    });
+  }
+
   async createOrderWithItems(
     auth: AuthorizationContext,
     commandId: ID,
@@ -353,6 +461,11 @@ export class FinalUseCases {
       reservation.nextNumber += 1;
       if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
       reservation.updatedAt = new Date().toISOString();
+      // Persist the advanced cursor. findActiveByDayAndDevice may return an in-memory
+      // entity, but mutating that object alone does not commit nextNumber to IndexedDB.
+      // A failed later order write may leave a harmless gap; reusing a consumed number
+      // after reload would be unsafe.
+      await this.deps.reservationRepo.save(reservation);
     } else {
       displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
     }
@@ -1511,7 +1624,9 @@ export class FinalUseCases {
     const recentCharges = ledger.filter(
       l => (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.createdAt >= sevenDaysAgo
     );
-    deliveredCount = recentCharges.length;
+    const reversedItemIds = new Set(ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId).map(l => l.orderItemId!));
+    const qualifyingItemIds = new Set(recentCharges.filter(l => l.orderItemId && !reversedItemIds.has(l.orderItemId)).map(l => l.orderItemId!));
+    deliveredCount = qualifyingItemIds.size;
 
     const proposal = generateGoalProposal(deliveredCount);
     return { success: true, data: proposal };
@@ -1525,8 +1640,8 @@ export class FinalUseCases {
     commandId: ID,
     customerId: ID,
     targetQuantity: number,
-    durationDays: number = 7,
-    bonusAmountMinor: number = 500,
+    durationDays?: number,
+    bonusAmountMinor?: number,
     groupId?: string
   ): Promise<Result<GoalEntity>> {
     const actor = auth.requireAuth();
@@ -1535,7 +1650,9 @@ export class FinalUseCases {
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer || !customer.isActive) throw new InactiveCustomerError();
 
-    DomainInvariants.assertGoalParamsValid(targetQuantity, durationDays, bonusAmountMinor);
+    const effectiveDurationDays = durationDays ?? randomGoalDurationDays();
+    const effectiveBonusAmountMinor = bonusAmountMinor ?? targetQuantity * 10;
+    DomainInvariants.assertGoalParamsValid(targetQuantity, effectiveDurationDays, effectiveBonusAmountMinor);
 
     if (!this.deps.goalRepo) {
       throw new Error('Goal repository not configured in context');
@@ -1545,7 +1662,7 @@ export class FinalUseCases {
     DomainInvariants.assertSingleActiveGoal(existingActive, customerId);
 
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(now.getTime() + effectiveDurationDays * 24 * 60 * 60 * 1000).toISOString();
     const goalId = commandId || crypto.randomUUID();
 
     const goal: GoalEntity = {
@@ -1553,8 +1670,8 @@ export class FinalUseCases {
       customerId,
       targetQuantity,
       currentProgress: 0,
-      bonusAmountMinor,
-      durationDays,
+      bonusAmountMinor: effectiveBonusAmountMinor,
+      durationDays: effectiveDurationDays,
       status: 'ACTIVE',
       startedAt: now.toISOString(),
       expiresAt,
@@ -1569,8 +1686,8 @@ export class FinalUseCases {
         id: goalId,
         customerId,
         targetQuantity,
-        durationDays,
-        bonusAmountMinor,
+        durationDays: effectiveDurationDays,
+        bonusAmountMinor: effectiveBonusAmountMinor,
         startedAt: goal.startedAt,
         expiresAt: goal.expiresAt,
         ...(groupId ? { groupId } : {}),
@@ -1612,10 +1729,13 @@ export class FinalUseCases {
     }
 
     if (params.durationDays !== undefined) {
-      if (!Number.isInteger(params.durationDays) || params.durationDays <= 0) {
-        throw new BusinessRuleViolation('Duration days must be a positive integer');
+      if (!Number.isInteger(params.durationDays) || params.durationDays < 3 || params.durationDays > 15) {
+        throw new BusinessRuleViolation('Duration must be an integer from 3 through 15 days');
       }
       goal.durationDays = params.durationDays;
+      if (params.expiresAt === undefined) {
+        goal.expiresAt = new Date(new Date(goal.startedAt).getTime() + params.durationDays * 24 * 60 * 60 * 1000).toISOString();
+      }
     }
 
     if (params.bonusAmountMinor !== undefined) {
@@ -1626,40 +1746,27 @@ export class FinalUseCases {
     }
 
     if (params.expiresAt !== undefined) {
-      goal.expiresAt = params.expiresAt;
+      const parsedExpiry = new Date(params.expiresAt);
+      if (!Number.isFinite(parsedExpiry.getTime())) throw new BusinessRuleViolation('Goal expiry must be a valid timestamp');
+      const durationFromExpiry = (parsedExpiry.getTime() - new Date(goal.startedAt).getTime()) / (24 * 60 * 60 * 1000);
+      if (!Number.isInteger(durationFromExpiry) || durationFromExpiry < 3 || durationFromExpiry > 15) {
+        throw new BusinessRuleViolation('Goal expiry must match a whole duration from 3 through 15 days after start');
+      }
+      goal.expiresAt = parsedExpiry.toISOString();
+      goal.durationDays = durationFromExpiry;
     }
+
+    if (goal.bonusAmountMinor > calculateGoalBonusCapMinor(goal.targetQuantity)) {
+      throw new FinancialInvariantViolation('Goal bonus exceeds the hard cap of 20 minor units per target device.');
+    }
+    DomainInvariants.assertGoalParamsValid(goal.targetQuantity, goal.durationDays, goal.bonusAmountMinor);
 
     goal.updatedAt = new Date().toISOString();
     goal.version += 1;
 
-    // Check if target was edited to be <= current progress -> Complete immediately & grant bonus
-    let bonusGranted = false;
-    let bonusLedgerId: string | undefined;
-
-    if (goal.targetQuantity <= goal.currentProgress && goal.status === 'ACTIVE') {
-      goal.status = 'COMPLETED';
-      goal.completedAt = new Date().toISOString();
-      bonusGranted = true;
-      bonusLedgerId = crypto.randomUUID();
-      goal.bonusLedgerId = bonusLedgerId;
-    }
-
+    // The local store persists the requested configuration, but the server alone
+    // decides whether the edited target completes the goal and issues its bonus.
     return this.deps.transactionManager.runInTransaction((ctx) => {
-      if (bonusGranted && bonusLedgerId) {
-        ctx.ledgerRepo.append({
-          id: bonusLedgerId,
-          eventType: 'BONUS',
-          amountMinor: goal.bonusAmountMinor,
-          customerId: goal.customerId,
-          referenceId: goal.id,
-          metadata: {
-            reason: 'GOAL_COMPLETED_VIA_CONFIG_UPDATE',
-            goalId: goal.id,
-            targetQuantity: goal.targetQuantity,
-            bonusAmountMinor: goal.bonusAmountMinor,
-          },
-        });
-      }
       ctx.goalRepo!.save(goal);
       ctx.commandRepo.record(crypto.randomUUID(), 'UPDATE_GOAL_CONFIG', {
         id: goal.id,
@@ -1667,9 +1774,6 @@ export class FinalUseCases {
         durationDays: goal.durationDays,
         bonusAmountMinor: goal.bonusAmountMinor,
         expiresAt: goal.expiresAt,
-        status: goal.status,
-        completedAt: goal.completedAt,
-        bonusLedgerId: goal.bonusLedgerId,
       });
       return { success: true, data: goal };
     });
@@ -1719,8 +1823,8 @@ export class FinalUseCases {
   async approveGoalRequest(
     auth: AuthorizationContext,
     requestId: ID,
-    bonusAmountMinor: number = 500,
-    durationDays: number = 7
+    bonusAmountMinor?: number,
+    durationDays?: number
   ): Promise<Result<{ request: GoalRequestEntity; goal: GoalEntity }>> {
     const actor = auth.requireAuth();
     auth.assertPermission('goals:approve');
@@ -1738,8 +1842,11 @@ export class FinalUseCases {
     DomainInvariants.assertSingleActiveGoal(existingActive, req.customerId);
 
     const targetQuantity = req.requestedTarget || 10;
+    const effectiveDurationDays = durationDays ?? randomGoalDurationDays();
+    const effectiveBonusAmountMinor = bonusAmountMinor ?? Math.min(targetQuantity * 10, calculateGoalBonusCapMinor(targetQuantity));
+    DomainInvariants.assertGoalParamsValid(targetQuantity, effectiveDurationDays, effectiveBonusAmountMinor);
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(now.getTime() + effectiveDurationDays * 24 * 60 * 60 * 1000).toISOString();
     const goalId = crypto.randomUUID();
 
     const goal: GoalEntity = {
@@ -1747,8 +1854,8 @@ export class FinalUseCases {
       customerId: req.customerId,
       targetQuantity,
       currentProgress: 0,
-      bonusAmountMinor,
-      durationDays,
+      bonusAmountMinor: effectiveBonusAmountMinor,
+      durationDays: effectiveDurationDays,
       status: 'ACTIVE',
       startedAt: now.toISOString(),
       expiresAt,
@@ -1814,7 +1921,7 @@ export class FinalUseCases {
   }
 
   /**
-   * Authoritatively evaluates customer's active goal progress, handles completion & expiration
+   * Computes optimistic local progress; the server authoritatively handles completion, expiry, and rewards
    */
   async evaluateCustomerGoal(customerId: ID, ctx?: RepositoryContext): Promise<Result<{ hasActiveGoal: boolean; goal?: GoalEntity }>> {
     const repos = ctx || this.deps;
@@ -1829,53 +1936,30 @@ export class FinalUseCases {
 
     // Count qualifying delivered order items in window [goal.startedAt, goal.expiresAt]
     const ledger = await repos.ledgerRepo.findByCustomer(customerId);
-    const qualifyingCharges = ledger.filter(
-      l =>
-        (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') &&
-        l.createdAt >= goal.startedAt &&
-        l.createdAt <= goal.expiresAt
+    const reversedItemIds = new Set(
+      ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId).map(l => l.orderItemId!)
+    );
+    const qualifyingItemIds = new Set(
+      ledger
+        .filter(l =>
+          (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') &&
+          Boolean(l.orderItemId) &&
+          l.createdAt >= goal.startedAt &&
+          l.createdAt <= goal.expiresAt &&
+          !reversedItemIds.has(l.orderItemId!)
+        )
+        .map(l => l.orderItemId!)
     );
 
-    const newProgress = qualifyingCharges.length;
+    const newProgress = qualifyingItemIds.size;
+
+    // Local progress is optimistic only. The server independently recalculates
+    // eligibility, status transitions, and any bonus when this command is accepted.
     goal.currentProgress = newProgress;
     goal.updatedAt = new Date().toISOString();
-
-    const now = new Date();
-    const isExpired = now.getTime() > new Date(goal.expiresAt).getTime();
-
-    let bonusToGrant = false;
-    let bonusLedgerId: string | undefined;
-
-    if (newProgress >= goal.targetQuantity) {
-      goal.status = 'COMPLETED';
-      goal.completedAt = now.toISOString();
-      if (!goal.bonusLedgerId) {
-        bonusToGrant = true;
-        bonusLedgerId = crypto.randomUUID();
-        goal.bonusLedgerId = bonusLedgerId;
-      }
-    } else if (isExpired) {
-      goal.status = 'FAILED';
-    }
-
     goal.version += 1;
 
     const performSave = (c: RepositoryContext) => {
-      if (bonusToGrant && bonusLedgerId) {
-        c.ledgerRepo.append({
-          id: bonusLedgerId,
-          eventType: 'BONUS',
-          amountMinor: goal.bonusAmountMinor,
-          customerId: goal.customerId,
-          referenceId: goal.id,
-          metadata: {
-            reason: 'GOAL_COMPLETED',
-            goalId: goal.id,
-            targetQuantity: goal.targetQuantity,
-            bonusAmountMinor: goal.bonusAmountMinor,
-          },
-        });
-      }
       c.goalRepo!.save(goal);
       const commandId = crypto.randomUUID();
       c.commandRepo.record(commandId, 'UPDATE_GOAL_PROGRESS', {
@@ -1883,11 +1967,6 @@ export class FinalUseCases {
         goalId: goal.id,
         customerId: goal.customerId,
         currentProgress: goal.currentProgress,
-        status: goal.status,
-        completedAt: goal.completedAt,
-        bonusLedgerId: goal.bonusLedgerId,
-        bonusGranted: bonusToGrant,
-        bonusAmountMinor: goal.bonusAmountMinor,
         startedAt: goal.startedAt,
         expiresAt: goal.expiresAt,
       }, goal.version - 1);
