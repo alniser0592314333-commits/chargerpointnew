@@ -44,6 +44,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  ListOrdered,
 } from "lucide-react";
 
 export interface SettingsPageProps {
