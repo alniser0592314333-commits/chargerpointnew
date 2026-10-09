@@ -107,6 +107,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     if (!authLoaded || !allowed || !selectedDayId) { setOrders([]); return; }
     let active = true;
     setLoading(true);
+    setOrders([]);
     Promise.all([
       getOrdersForDay(selectedDayId, locale),
       Promise.resolve(),
@@ -114,7 +115,11 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       const numbered: NumberedOrder[] = [];
       for (const row of rows as UIDayOrderDetail[]) {
         const entity = await repoContext.orderRepo.findById(row.id);
-        if (!entity) continue;
+        if (!entity) {
+          throw new Error(locale === 'ar'
+            ? 'يوجد طلب غير مثبت محليًا أو لم تكتمل مزامنته. انتظر اكتمال المزامنة ثم حدّث الصفحة قبل إعادة الترقيم.'
+            : 'An order is not yet available as a canonical local record. Wait for sync to finish, then refresh before renumbering.');
+        }
         numbered.push({
           id: row.id,
           customerName: row.customerName,
