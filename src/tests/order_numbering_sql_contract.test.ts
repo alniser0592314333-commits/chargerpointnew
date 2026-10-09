@@ -102,7 +102,7 @@ describe('Atomic day order renumbering SQL contract', () => {
       expect(end).toBeGreaterThan(start);
       const routeSection = sql.slice(start, end);
       const names = new Set<string>();
-      for (const match of routeSection.matchAll(/WHEN\\s+((?:'[A-Z_0-9]+'\\s*,?\\s*)+)THEN/gi)) {
+      for (const match of routeSection.matchAll(/WHEN\s+((?:'[A-Z_0-9]+'\s*,?\s*)+)THEN/gi)) {
         for (const name of match[1].matchAll(/'([A-Z_0-9]+)'/g)) names.add(name[1]);
       }
       return names;
