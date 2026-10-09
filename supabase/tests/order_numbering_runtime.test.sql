@@ -46,12 +46,18 @@ CREATE FUNCTION public.record_canonical_change(
   p_version integer
 ) RETURNS void
 LANGUAGE plpgsql
-AS $$
+AS $
 BEGIN
   INSERT INTO public.test_change_events(entity_table, entity_id, operation, payload, version)
   VALUES (p_table, p_id, p_operation, p_payload, p_version);
 END;
-$$;
+$;
+
+CREATE FUNCTION public.verify_admin_bin(p_bin text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS 'SELECT TRUE';
 
 INSERT INTO public.admins(id, auth_user_id, role, is_active)
 VALUES (
