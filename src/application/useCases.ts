@@ -48,6 +48,7 @@ export interface RepositoryContext {
     findById(id: ID): Promise<OrderEntity | null> | (OrderEntity | null);
     save(order: OrderEntity): Promise<void> | void;
     countForDay(dayId: ID): Promise<number> | number;
+    findByDay?(dayId: ID): Promise<OrderEntity[]> | OrderEntity[];
   };
   reservationRepo?: {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
@@ -341,8 +342,9 @@ export class FinalUseCases {
         }
         currentOrders.push({ ...order });
       }
-      if (repos.orderRepo.countForDay(dayId) !== changes.length) {
-        return { success: false as const, error: 'The selected day changed. Reload the full day before renumbering.' };
+      const dayOrders = repos.orderRepo.findByDay?.(dayId);
+      if (!dayOrders || dayOrders.length !== changes.length) {
+        return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
       }
       return { success: true as const, data: currentOrders };
     });
@@ -383,7 +385,7 @@ export class FinalUseCases {
           const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
           return Boolean(order && order.dayId === dayId &&
             order.version === change.expectedVersion && order.displayNumber === change.oldNumber);
-        }) && repos.orderRepo.countForDay(dayId) === changes.length
+        }) && Boolean(repos.orderRepo.findByDay && repos.orderRepo.findByDay(dayId).length === changes.length)
       );
       if (!stillCurrent) {
         throw new ConflictError('The day changed while the renumber preview was being saved. Reload and review again.');
