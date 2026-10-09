@@ -44,6 +44,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  ListOrdered,
 } from "lucide-react";
 
 export interface SettingsPageProps {
@@ -1032,7 +1033,42 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
           </section>
         )}
 
-        {/* GROUP 5: Account & Role Security (الحساب والأمان) */}
+        {/* GROUP 5: Manual Order Number Management */}
+        {hasPermission("orders:renumber-day") && (
+          <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
+            <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
+              {locale === "ar" ? "إدارة أرقام الطلبات" : "Order Number Management"}
+            </div>
+            <div className="rounded-xl border border-gray-200 dark:border-[#245047] p-3">
+              <button
+                type="button"
+                onClick={() => onNavigate?.("/app/settings/renumber-day")}
+                className="w-full flex items-center justify-between gap-3 text-start hover:bg-gray-50/60 dark:hover:bg-[#0b2924]/50 rounded-xl transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-gray-100 dark:bg-[#0c312b] flex items-center justify-center text-gray-700 dark:text-[#8eb698] shrink-0">
+                    <ListOrdered className="w-4 h-4 text-emerald-600 dark:text-[#8eb698]" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-[#daf1de] block">
+                      {locale === "ar" ? "تعديل أرقام الطلبات يدويًا" : "Manually edit order numbers"}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-[#8eb698] block mt-1">
+                      {locale === "ar"
+                        ? "اختر اليوم، عدّل رقم كل طلب، ثم راجع التغييرات واعتمدها. لن يعاد ترقيم الطلبات الموجودة تلقائيًا."
+                        : "Choose a day, edit each order number, and review before confirming. Existing orders are never renumbered automatically."}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de] transition-colors">
+                  {isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </div>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* GROUP 6: Account & Role Security (الحساب والأمان) */}
         <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
           <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
             {t("accountSectionTitle")}
@@ -1302,7 +1338,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
           </div>
         </section>
 
-        {/* GROUP 6: About App (حول المنظومة) */}
+        {/* GROUP 7: About App (حول المنظومة) */}
         <section className="space-y-3">
           <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
             {t("aboutSectionTitle")}
@@ -1344,7 +1380,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
           </div>
         </section>
 
-        {/* GROUP 7: Web App (PWA) Settings & Installation */}
+        {/* GROUP 8: Web App (PWA) Settings & Installation */}
         <section className="pt-2">
           <PWASettingsCard />
         </section>
