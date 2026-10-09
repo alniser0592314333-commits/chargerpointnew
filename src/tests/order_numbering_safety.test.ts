@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { localDb } from '../infrastructure/localDb/localDb';
+import { localDb, OptimisticOverlayRecord } from '../infrastructure/localDb/localDb';
 import { backupService } from '../services/backup/backupService';
 import { AuthorizationContext, ActorAdmin } from '../application/authContext';
 import { FinalUseCases, RepositoryContext } from '../application/useCases';
@@ -27,7 +27,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
   let reservationMap: Map<string, OrderNumberReservationEntity>;
   let useCases: FinalUseCases;
   let recordedCommands: Array<{ commandId: string; type: string; payload: unknown }>;
-  let overlays: Map<string, any>;
+  let overlays: Map<string, OptimisticOverlayRecord>;
   let overlaySequence: number;
   let insideLocalTransaction = false;
   let pendingOrderToInjectDayId: string | null = null;
@@ -148,7 +148,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         },
       },
       overlayRepo: {
-        save: async (overlay: any) => { overlays.set(overlay.commandId, overlay); },
+        save: async (overlay: OptimisticOverlayRecord) => { overlays.set(overlay.commandId, overlay); },
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         hasPendingOrderChangesForDay: pendingOrderChangesForDay,
