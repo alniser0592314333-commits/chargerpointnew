@@ -22,13 +22,22 @@ CREATE TABLE public.processed_commands (
 CREATE TABLE public.business_days (
   id uuid PRIMARY KEY
 );
+CREATE SEQUENCE public.order_internal_sequence_seq START 104;
+CREATE TABLE public.customers (
+  id uuid PRIMARY KEY,
+  status text NOT NULL DEFAULT 'ACTIVE'
+);
 CREATE TABLE public.orders (
   id uuid PRIMARY KEY,
   day_id uuid NOT NULL REFERENCES public.business_days(id),
+  customer_id uuid,
   display_number integer NOT NULL CHECK (display_number > 0),
+  status text NOT NULL DEFAULT 'charging',
+  notes text,
   version integer NOT NULL DEFAULT 1,
+  created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  internal_sequence bigint NOT NULL
+  internal_sequence bigint NOT NULL DEFAULT nextval('public.order_internal_sequence_seq')
 );
 CREATE TABLE public.test_change_events (
   entity_table text NOT NULL,
@@ -252,5 +261,57 @@ BEGIN
   END IF;
 END;
 $$;
+
+
+-- A stale offline reservation that now collides must be reconciled, not rejected,
+-- and the server-assigned number must be the one published to every client.
+INSERT INTO public.customers(id, status)
+VALUES ('99999999-9999-4999-8999-999999999999', 'ACTIVE');
+
+SELECT set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+SET ROLE authenticated;
+SELECT public.execute_canonical_sync_command(
+  'aaaaaaaa-1111-4111-8111-111111111111'::uuid,
+  'CREATE_ORDER',
+  jsonb_build_object(
+    'id', 'aaaaaaaa-2222-4222-8222-222222222222',
+    'dayId', '33333333-3333-4333-8333-333333333333',
+    'customerId', '99999999-9999-4999-8999-999999999999',
+    'displayNumber', 2,
+    'notes', 'offline order with a stale reserved number'
+  )
+);
+RESET ROLE;
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'aaaaaaaa-2222-4222-8222-222222222222'
+      AND display_number = 4
+  ) THEN
+    RAISE EXCEPTION 'A stale offline order number collision was not reassigned to the next free number';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.test_change_events
+    WHERE entity_table = 'orders'
+      AND entity_id = 'aaaaaaaa-2222-4222-8222-222222222222'
+      AND operation = 'INSERT'
+      AND (payload->>'displayNumber')::INTEGER = 4
+      AND (payload->>'display_number')::INTEGER = 4
+  ) THEN
+    RAISE EXCEPTION 'The canonical change event did not publish the authoritative reassigned number';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.processed_commands
+    WHERE command_id = 'aaaaaaaa-1111-4111-8111-111111111111'
+      AND result_payload->>'displayNumber' = '4'
+  ) THEN
+    RAISE EXCEPTION 'The successful CREATE_ORDER result did not report the authoritative number';
+  END IF;
+END;
+$;
 
 ROLLBACK;
