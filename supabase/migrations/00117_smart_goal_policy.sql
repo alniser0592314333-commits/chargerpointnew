@@ -26,9 +26,10 @@ SET search_path TO 'public', 'pg_temp'
 AS $wrapper$
 BEGIN
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required to evaluate a customer goal' USING ERRCODE='P0001';
-  END IF;
-  IF NOT EXISTS (
+    IF COALESCE(auth.role(), '') <> 'service_role' THEN
+      RAISE EXCEPTION 'Authentication required to evaluate a customer goal' USING ERRCODE='P0001';
+    END IF;
+  ELSIF NOT EXISTS (
     SELECT 1 FROM public.admins
     WHERE auth_user_id = auth.uid() AND is_active = TRUE
   ) THEN
