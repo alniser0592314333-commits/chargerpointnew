@@ -298,6 +298,21 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
+-- The existing client path can send displayNumber=0 while waiting for server assignment.
+SET ROLE authenticated;
+SELECT public.execute_canonical_sync_command(
+  'cccccccc-1111-4111-8111-111111111111'::uuid,
+  'CREATE_ORDER',
+  jsonb_build_object(
+    'id', 'cccccccc-2222-4222-8222-222222222222',
+    'dayId', '33333333-3333-4333-8333-333333333333',
+    'customerId', '99999999-9999-4999-8999-999999999999',
+    'displayNumber', 0,
+    'notes', 'server assigned number'
+  )
+);
+RESET ROLE;
+
 DO $offline_collision$
 BEGIN
   IF NOT EXISTS (
@@ -340,6 +355,25 @@ BEGIN
       AND (payload->>'display_number')::INTEGER = 21
   ) THEN
     RAISE EXCEPTION 'A unique out-of-order offline reservation was incorrectly forced to MAX+1 or not published';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'cccccccc-2222-4222-8222-222222222222'
+      AND display_number = 22
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.test_change_events
+    WHERE entity_table = 'orders'
+      AND entity_id = 'cccccccc-2222-4222-8222-222222222222'
+      AND operation = 'INSERT'
+      AND (payload->>'displayNumber')::INTEGER = 22
+      AND (payload->>'display_number')::INTEGER = 22
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.processed_commands
+    WHERE command_id = 'cccccccc-1111-4111-8111-111111111111'
+      AND result_payload->>'displayNumber' = '22'
+  ) THEN
+    RAISE EXCEPTION 'A server-assigned zero/missing number was not reconciled and published consistently';
   END IF;
 END;
 $offline_collision$;
