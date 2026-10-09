@@ -29,7 +29,6 @@ CREATE TABLE public.orders (
   version integer NOT NULL DEFAULT 1,
   updated_at timestamptz NOT NULL DEFAULT now(),
   internal_sequence bigint NOT NULL,
-  CONSTRAINT orders_day_id_display_number_key UNIQUE (day_id, display_number)
 );
 CREATE TABLE public.test_change_events (
   entity_table text NOT NULL,
@@ -76,6 +75,20 @@ VALUES
   ('55555555-5555-4555-8555-555555555555', '33333333-3333-4333-8333-333333333333', 2, 1, 102),
   ('66666666-6666-4666-8666-666666666666', '33333333-3333-4333-8333-333333333333', 3, 1, 103);
 
+CREATE FUNCTION public.capture_order_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $capture_order_change$
+BEGIN
+  PERFORM public.record_canonical_change('orders', NEW.id, 'UPDATE', to_jsonb(NEW), NEW.version);
+  RETURN NEW;
+END;
+$capture_order_change$;
+CREATE TRIGGER trg_change_capture
+AFTER UPDATE ON public.orders
+FOR EACH ROW EXECUTE FUNCTION public.capture_order_change();
+
 SELECT set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 SET ROLE authenticated;
 SELECT public.execute_canonical_sync_command(
@@ -118,6 +131,17 @@ BEGIN
   IF (SELECT COUNT(*) FROM public.test_change_events
       WHERE entity_table = 'orders' AND operation = 'UPDATE') <> 3 THEN
     RAISE EXCEPTION 'Expected one canonical change event per renumbered order';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.test_change_events e
+    JOIN public.orders o ON o.id = e.entity_id
+    WHERE e.entity_table = 'orders' AND e.operation = 'UPDATE'
+      AND ((e.payload->>'display_number')::INTEGER <> o.display_number
+           OR (e.payload->>'version')::INTEGER <> o.version)
+  ) THEN
+    RAISE EXCEPTION 'Change feed exposed an intermediate or stale order number/version';
   END IF;
 
   IF NOT EXISTS (
