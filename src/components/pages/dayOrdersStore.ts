@@ -427,7 +427,7 @@ export const applyRemoteChange = (change: {
       id: p.id || change.entityId,
       dayId: p.dayId || p.day_id || previousOrder?.dayId,
       customerId: p.customerId || p.customer_id || previousOrder?.customerId,
-      displayNumber: p.displayNumber ?? p.display_number ?? previousOrder?.displayNumber ?? 1,
+      displayNumber: p.displayNumber ?? p.display_number ?? previousOrder?.displayNumber ?? 0,
       internalSequence: p.internalSequence ?? p.internal_sequence ?? previousOrder?.internalSequence ?? 0,
       status: resolvedStatus,
       notes: p.notes ?? previousOrder?.notes ?? undefined,
@@ -2815,9 +2815,7 @@ export const getOrdersForDay = async (
 ): Promise<UIDayOrderDetail[]> => {
   await ensureStoreHydrated();
 
-  // Order numbers are sanitized once during store hydration. Re-running the
-  // full historical scan on every page open added unnecessary latency without
-  // changing the authoritative data.
+  // Number integrity is read-only here. Hydration and page rendering must never repair numbering.
   const effectiveOrdersMap = new Map(ordersMap);
   const effectiveItemsMap = new Map(itemsMap);
 
