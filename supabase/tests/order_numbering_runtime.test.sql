@@ -171,7 +171,7 @@ $$;
 -- A regular admin without the new permission must be rejected before any writes.
 SELECT set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', true);
 SET ROLE authenticated;
-DO $
+DO $$
 DECLARE
   rejected_as_forbidden boolean := FALSE;
 BEGIN
@@ -196,11 +196,11 @@ BEGIN
     RAISE EXCEPTION 'Renumber was not rejected for an admin lacking orders:renumber-day';
   END IF;
 END;
-$;
+$$;
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 
-DO $
+DO $$
 BEGIN
   IF (SELECT COUNT(*) FROM public.order_renumber_audit) <> 3
      OR (SELECT COUNT(*) FROM public.test_change_events WHERE entity_table = 'orders') <> 3
@@ -211,7 +211,7 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized renumber changed data, audit, change events, or idempotency state';
   END IF;
 END;
-$;
+$$;
 
 -- A stale expected version must fail before writes and leave order numbers/audit unchanged.
 DO $$
