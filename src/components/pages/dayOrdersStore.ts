@@ -264,6 +264,7 @@ const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
   switch (commandType) {
     case 'CREATE_ORDER':
     case 'UPDATE_ORDER':
+    case 'RENUMBER_DAY_ORDERS':
       return ['orders'];
     case 'CANCEL_ORDER':
       return ['orders', 'orderItems'];
