@@ -100,6 +100,7 @@ export interface RepositoryContext {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
     saveWithTx?(overlay: OptimisticOverlayRecord): Promise<void> | void;
     hasPendingOrderChangesForDay?(dayId: ID): Promise<boolean> | boolean;
+    hasPendingOrderChangesForDaySync?(dayId: ID): boolean;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -357,6 +358,14 @@ export class FinalUseCases {
     // are committed by the same local transaction. A failure cannot leave a partial
     // set of new numbers or overlays without its corresponding sync command.
     return this.deps.transactionManager.runInTransaction((repos) => {
+      const transactionalOverlayRepo = repos.overlayRepo;
+      if (!transactionalOverlayRepo?.saveWithTx || !transactionalOverlayRepo.hasPendingOrderChangesForDaySync) {
+        return { success: false as const, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
+      }
+      if (transactionalOverlayRepo.hasPendingOrderChangesForDaySync(dayId)) {
+        return { success: false as const, error: 'Pending local order changes must sync before this day can be renumbered.' };
+      }
+
       const currentOrders: OrderEntity[] = [];
       for (const change of changes) {
         const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
@@ -374,11 +383,6 @@ export class FinalUseCases {
           new Set(dayOrders.map((order) => order.id)).size !== uniqueIds.size ||
           dayOrders.some((order) => !uniqueIds.has(order.id))) {
         return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
-      }
-
-      const transactionalOverlayRepo = repos.overlayRepo;
-      if (!transactionalOverlayRepo?.saveWithTx) {
-        return { success: false as const, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
       }
 
       const now = new Date().toISOString();
