@@ -144,6 +144,14 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009090000_add_atomic_day_order_renumbering.sql
+      - name: Revoke direct access to SECURITY DEFINER goal trigger functions
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009200000_revoke_goal_trigger_function_execute.sql
+      - name: Revoke direct service-role access to the internal goal evaluator
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009201000_revoke_goal_evaluator_service_role_execute.sql
       - name: Verify final combined dispatcher contract and privileges
         env:
           PGPASSWORD: postgres
@@ -172,6 +180,17 @@ jobs:
                OR has_table_privilege('authenticated', 'public.order_renumber_audit', 'INSERT')
                OR has_table_privilege('anon', 'public.order_renumber_audit', 'SELECT') THEN
               RAISE EXCEPTION 'Renumber audit table must not be directly exposed';
+            END IF;
+            IF has_function_privilege('anon', 'public.enforce_goal_business_rules()', 'EXECUTE')
+               OR has_function_privilege('authenticated', 'public.enforce_goal_business_rules()', 'EXECUTE')
+               OR has_function_privilege('service_role', 'public.enforce_goal_business_rules()', 'EXECUTE')
+               OR has_function_privilege('anon', 'public.reconcile_active_goal_after_item_change()', 'EXECUTE')
+               OR has_function_privilege('authenticated', 'public.reconcile_active_goal_after_item_change()', 'EXECUTE')
+               OR has_function_privilege('service_role', 'public.reconcile_active_goal_after_item_change()', 'EXECUTE')
+               OR has_function_privilege('service_role', 'public.evaluate_customer_active_goal_internal(uuid)', 'EXECUTE')
+               OR has_function_privilege('authenticated', 'public.evaluate_customer_active_goal_internal(uuid)', 'EXECUTE')
+               OR has_function_privilege('anon', 'public.evaluate_customer_active_goal_internal(uuid)', 'EXECUTE') THEN
+              RAISE EXCEPTION 'Internal/trigger-only goal SECURITY DEFINER functions must not be directly executable';
             END IF;
           END $combined_check$;
           SQL
