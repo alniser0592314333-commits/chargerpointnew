@@ -402,7 +402,9 @@ export class FinalUseCases {
       });
       return { success: true as const, data: { dayId, count: changes.length } };
     } catch (error) {
-      await Promise.all(overlayIds.map((id) => this.deps.overlayRepo!.remove(id).catch(() => undefined)));
+      for (const id of overlayIds) {
+        try { await this.deps.overlayRepo!.remove(id); } catch { /* best-effort rollback of optimistic overlays */ }
+      }
       throw error;
     }
   }
