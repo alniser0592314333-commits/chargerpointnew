@@ -1666,6 +1666,9 @@ function createTransactionalRepoContext(
         });
         return maxNum;
       },
+      // A true row list is required for day-wide repairs. countForDay intentionally
+      // returns the current maximum number for sequential allocation, not row count.
+      findByDay: (dayId: string) => Array.from(ordersMap.values()).filter((o) => isSameDayId(o.dayId, dayId)),
     },
     itemRepo: {
       findByOrderId: (orderId: string) => {
