@@ -312,6 +312,6 @@ BEGIN
     RAISE EXCEPTION 'The successful CREATE_ORDER result did not report the authoritative number';
   END IF;
 END;
-$;
+$offline_collision$;
 
 ROLLBACK;
