@@ -305,6 +305,70 @@ export class FinalUseCases {
 
 
   /**
+   * Renumber one complete business day as a single server-authoritative command.
+   * Every row is version-checked on the server before any number is changed.
+   */
+  async renumberDayOrders(
+    auth: AuthorizationContext,
+    commandId: ID,
+    dayId: ID,
+    changes: Array<{ id: ID; expectedVersion: number; oldNumber: number; newNumber: number }>
+  ): Promise<Result<{ dayId: ID; count: number }>> {
+    auth.requireAuth();
+    auth.assertPermission('orders:renumber-day');
+    if (!dayId || !Array.isArray(changes) || changes.length === 0) {
+      return { success: false, error: 'A day and at least one order are required' };
+    }
+    const sortedNumbers = changes.map((change) => change.newNumber).sort((a, b) => a - b);
+    if (sortedNumbers.some((number, index) => number !== index + 1)) {
+      return { success: false, error: 'New order numbers must be contiguous from 1 without duplicates' };
+    }
+    const uniqueIds = new Set(changes.map((change) => change.id));
+    if (uniqueIds.size !== changes.length) {
+      return { success: false, error: 'The order list contains duplicate IDs' };
+    }
+
+    const currentOrders: OrderEntity[] = [];
+    for (const change of changes) {
+      const order = await this.deps.orderRepo.findById(change.id);
+      if (!order || order.dayId !== dayId) {
+        return { success: false, error: 'The selected day changed or an order no longer belongs to it' };
+      }
+      if (order.version !== change.expectedVersion || order.displayNumber !== change.oldNumber) {
+        return { success: false, error: 'The day changed while it was being edited. Reload and review before retrying.' };
+      }
+      currentOrders.push(order);
+    }
+
+    const now = new Date().toISOString();
+    const mutationKey = `renumber-day:${dayId}`;
+    for (let index = 0; index < changes.length; index++) {
+      const change = changes[index];
+      const order = currentOrders[index];
+      await this.createOverlay(
+        `${commandId}:order:${order.id}`,
+        mutationKey,
+        'orders',
+        order.id,
+        'PATCH',
+        { displayNumber: change.newNumber, internalSequence: change.newNumber, updatedAt: now, version: order.version + 1 }
+      );
+    }
+    await this.deps.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
+      id: dayId,
+      aggregateId: dayId,
+      dayId,
+      changes: changes.map((change) => ({
+        id: change.id,
+        expectedVersion: change.expectedVersion,
+        oldNumber: change.oldNumber,
+        newNumber: change.newNumber,
+      })),
+    });
+    return { success: true, data: { dayId, count: changes.length } };
+  }
+
+  /**
    * Atomic order aggregate creation. The order row, every order item, their
    * outbox commands, and any initial financial entries are committed as one
    * local transaction. This prevents a failed item validation from leaving a
