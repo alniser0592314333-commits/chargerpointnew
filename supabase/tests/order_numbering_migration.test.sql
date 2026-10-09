@@ -1,4 +1,3 @@
-begin;
 select plan(7);
 
 select has_table(
@@ -48,4 +47,3 @@ select ok(
 );
 
 select * from finish();
-rollback;
