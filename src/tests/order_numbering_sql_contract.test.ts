@@ -59,16 +59,16 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(sql).not.toContain('ORDER BY oi.created_at ASC');
   });
 
-  it('serializes order creation with renumbering and never reuses an assigned number', () => {
+  it('serializes order creation with renumbering and rejects stale or reused reservations', () => {
     const sql = readMigration();
     const start = sql.lastIndexOf("WHEN 'CREATE_ORDER' THEN");
     const end = sql.indexOf("WHEN 'RENUMBER_DAY_ORDERS' THEN", start);
     const createOrder = sql.slice(start, end);
     expect(createOrder).toContain("pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1))");
     expect(createOrder).toContain('FROM public.business_days WHERE id = v_day_uuid FOR UPDATE');
-    expect(createOrder).toContain('v_requested_display_number <> v_existing_order_count + 1');
+    expect(createOrder).toContain('v_requested_display_number <= v_existing_order_max');
     expect(createOrder).toContain('day_id = v_day_uuid AND display_number = v_requested_display_number');
-    expect(createOrder).not.toContain('this day has missing or duplicate numbers');
+    expect(createOrder).not.toContain('v_existing_order_count + 1');
   });
 
   it('does not leave the recreated SECURITY DEFINER dispatcher executable by PUBLIC or anon', () => {
