@@ -212,6 +212,16 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(eval1.data.goal?.status).toBe('ACTIVE');
     expect(ledgerList.some(l => l.eventType === 'BONUS')).toBe(false);
 
+    // Simulate the 2nd delivered & recognized item reaching target (2/2).
+    ledgerList.push({
+      id: 'ledger-charge-2',
+      eventType: 'ORDER_ITEM_CHARGE',
+      amountMinor: -200,
+      customerId: custId,
+      orderItemId: 'item-2',
+      createdAt: new Date().toISOString(),
+    });
+
     // The client reports progress but does not authoritatively complete the goal or issue a bonus.
     const eval2 = await useCases.evaluateCustomerGoal(custId);
     expect(eval2.success).toBe(true);
