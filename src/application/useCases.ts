@@ -328,10 +328,10 @@ export class FinalUseCases {
       return { success: false, error: 'The order list contains duplicate IDs' };
     }
 
-    return this.deps.transactionManager.runInTransaction(async (repos) => {
+    return this.deps.transactionManager.runInTransaction((repos) => {
       const currentOrders: OrderEntity[] = [];
       for (const change of changes) {
-        const order = await repos.orderRepo.findById(change.id);
+        const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
         if (!order || order.dayId !== dayId) {
           return { success: false as const, error: 'The selected day changed or an order no longer belongs to it' };
         }
@@ -348,7 +348,7 @@ export class FinalUseCases {
           const change = changes[index];
           const order = currentOrders[index];
           const overlayCommandId = `${commandId}:order:${order.id}`;
-          const sequence = await repos.overlayRepo.getNextSequence();
+          const sequence = repos.overlayRepo.getNextSequence() as number;
           const overlay: OptimisticOverlayRecord = {
             commandId: overlayCommandId,
             mutationKey,
@@ -360,11 +360,11 @@ export class FinalUseCases {
             createdAt: now,
             status: 'PENDING',
           };
-          await repos.overlayRepo.save(overlay);
+          repos.overlayRepo.save(overlay);
         }
       }
 
-      await repos.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
+      repos.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
         id: dayId,
         aggregateId: dayId,
         dayId,
