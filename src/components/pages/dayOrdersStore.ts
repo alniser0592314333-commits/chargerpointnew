@@ -1582,10 +1582,10 @@ export interface OrderNumberingDiagnostic {
 }
 
 /** Read-only diagnostics; never rewrites numbers and can be called on every view load. */
-export const getOrderNumberingDiagnostics = (): OrderNumberingDiagnostic[] => {
+export const analyzeOrderNumbering = (orders: OrderEntity[]): OrderNumberingDiagnostic[] => {
   const seenByDay = new Map<string, Map<number, OrderEntity[]>>();
   const diagnostics: OrderNumberingDiagnostic[] = [];
-  for (const order of ordersMap.values()) {
+  for (const order of orders) {
     const dayKey = getCanonicalDayKey(order.dayId);
     if (!Number.isInteger(order.displayNumber) || order.displayNumber <= 0) {
       diagnostics.push({
@@ -1626,6 +1626,9 @@ export const getOrderNumberingDiagnostics = (): OrderNumberingDiagnostic[] => {
     a.orderId.localeCompare(b.orderId)
   );
 };
+
+export const getOrderNumberingDiagnostics = (): OrderNumberingDiagnostic[] =>
+  analyzeOrderNumbering(Array.from(ordersMap.values()));
 
 function getCurrentSyncGeneration(): number {
   const syncState = localDb.getSyncStateSync('global');
