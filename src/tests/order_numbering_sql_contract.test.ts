@@ -77,6 +77,7 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(sql).toContain(
       'GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) TO authenticated, service_role;'
     );
+    expect(sql).toContain('ALTER TABLE public.order_renumber_audit ENABLE ROW LEVEL SECURITY;');
     expect(sql).toContain('REVOKE ALL ON TABLE public.order_renumber_audit FROM PUBLIC, anon, authenticated;');
   });
 });
