@@ -47,6 +47,7 @@ export interface RepositoryContext {
     findById(id: ID): Promise<OrderEntity | null> | (OrderEntity | null);
     save(order: OrderEntity): Promise<void> | void;
     countForDay(dayId: ID): Promise<number> | number;
+    findByDay?(dayId: ID): OrderEntity[];
   };
   reservationRepo?: {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
@@ -96,6 +97,8 @@ export interface RepositoryContext {
   };
   overlayRepo?: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
+    /** Synchronously stages an overlay in the active local DB transaction. */
+    saveWithTx?(overlay: OptimisticOverlayRecord): void;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -309,6 +312,98 @@ export class FinalUseCases {
    * local transaction. This prevents a failed item validation from leaving a
    * ghost CREATE_ORDER command behind.
    */
+  /**
+   * Renumber one complete business day as a single server-authoritative command.
+   * Every row is version-checked on the server before any number is changed.
+   */
+  async renumberDayOrders(
+    auth: AuthorizationContext,
+    commandId: ID,
+    dayId: ID,
+    changes: Array<{ id: ID; expectedVersion: number; oldNumber: number; newNumber: number }>
+  ): Promise<Result<{ dayId: ID; count: number }>> {
+    auth.requireAuth();
+    auth.assertPermission('orders:renumber-day');
+    if (!dayId || !Array.isArray(changes) || changes.length === 0) {
+      return { success: false, error: 'A day and at least one order are required' };
+    }
+
+    const sortedNumbers = changes.map((change) => change.newNumber).sort((a, b) => a - b);
+    if (sortedNumbers.some((number, index) => !Number.isInteger(number) || number !== index + 1)) {
+      return { success: false, error: 'New order numbers must be contiguous from 1 without duplicates' };
+    }
+    const uniqueIds = new Set(changes.map((change) => change.id));
+    if (uniqueIds.size !== changes.length) {
+      return { success: false, error: 'The order list contains duplicate IDs' };
+    }
+
+    const overlayRepo = this.deps.overlayRepo;
+    if (!overlayRepo?.saveWithTx) {
+      return { success: false, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
+    }
+
+    // Allocate overlay ordering tokens before opening the IndexedDB transaction.
+    // Gaps in this internal sequence are harmless; order numbers are never allocated here.
+    const sequences: number[] = [];
+    for (let index = 0; index < changes.length; index++) {
+      sequences.push(await overlayRepo.getNextSequence());
+    }
+
+    // The complete-day recheck, every optimistic overlay, and the outbox command
+    // are committed by the same local transaction. A failure cannot leave a partial
+    // set of new numbers or overlays without its corresponding sync command.
+    return this.deps.transactionManager.runInTransaction((repos) => {
+      const currentOrders: OrderEntity[] = [];
+      for (const change of changes) {
+        const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
+        if (!order || order.dayId !== dayId) {
+          return { success: false as const, error: 'The selected day changed or an order no longer belongs to it' };
+        }
+        if (order.version !== change.expectedVersion || order.displayNumber !== change.oldNumber) {
+          return { success: false as const, error: 'The day changed while it was being edited. Reload and review before retrying.' };
+        }
+        currentOrders.push(order);
+      }
+
+      const dayOrders = repos.orderRepo.findByDay?.(dayId);
+      if (!dayOrders || dayOrders.length !== changes.length ||
+          new Set(dayOrders.map((order) => order.id)).size !== uniqueIds.size ||
+          dayOrders.some((order) => !uniqueIds.has(order.id))) {
+        return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
+      }
+
+      const now = new Date().toISOString();
+      for (let index = 0; index < changes.length; index++) {
+        const change = changes[index];
+        const order = currentOrders[index];
+        overlayRepo.saveWithTx!({
+          commandId: `${commandId}:order:${order.id}`,
+          mutationKey: `renumber-day:${dayId}`,
+          entityType: 'orders',
+          entityId: order.id,
+          operation: 'PATCH',
+          patch: { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 },
+          sequence: sequences[index],
+          createdAt: now,
+          status: 'PENDING',
+        });
+      }
+
+      repos.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
+        id: dayId,
+        aggregateId: dayId,
+        dayId,
+        changes: changes.map((change) => ({
+          id: change.id,
+          expectedVersion: change.expectedVersion,
+          oldNumber: change.oldNumber,
+          newNumber: change.newNumber,
+        })),
+      });
+      return { success: true as const, data: { dayId, count: changes.length } };
+    });
+  }
+
   async createOrderWithItems(
     auth: AuthorizationContext,
     commandId: ID,
