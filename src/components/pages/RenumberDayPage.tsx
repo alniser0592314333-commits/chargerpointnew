@@ -28,6 +28,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
   const isArabic = locale === 'ar';
   const storeVersion = useStoreSubscription(['businessDays', 'orders']);
   const [session, setSession] = useState<UserSession | null>(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
   const [days, setDays] = useState<UIDaySummary[]>([]);
   const [selectedDayId, setSelectedDayId] = useState('');
   const [orders, setOrders] = useState<NumberedOrder[]>([]);
@@ -38,7 +39,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
 
   useEffect(() => {
     let active = true;
-    authService.getCurrentSession().then((value) => { if (active) setSession(value); });
+    authService.getCurrentSession().then((value) => { if (active) setSession(value); }).catch(() => { if (active) setSession(null); }).finally(() => { if (active) setAuthLoaded(true); });
     return () => { active = false; };
   }, []);
 
@@ -46,6 +47,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
   const allowed = isSuperAdmin || Boolean(session?.permissions?.includes('orders:renumber-day'));
 
   useEffect(() => {
+    if (!authLoaded || !allowed) return;
     let active = true;
     getDaysList().then((rows) => {
       if (!active) return;
@@ -53,10 +55,10 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       if (!selectedDayId && rows.length) setSelectedDayId(rows[0].id);
     }).catch((e) => { if (active) setError(String(e?.message || e)); });
     return () => { active = false; };
-  }, [storeVersion]);
+  }, [authLoaded, allowed, storeVersion]);
 
   useEffect(() => {
-    if (!selectedDayId) { setOrders([]); return; }
+    if (!authLoaded || !allowed || !selectedDayId) { setOrders([]); return; }
     let active = true;
     setLoading(true);
     Promise.all([
@@ -83,7 +85,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     }).catch((e) => { if (active) setError(String(e?.message || e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [selectedDayId, locale, storeVersion]);
+  }, [authLoaded, allowed, selectedDayId, locale, storeVersion]);
 
   const changed = useMemo(() => orders.some((row, index) => row.oldNumber !== index + 1 || row.newNumber !== index + 1), [orders]);
   const move = (index: number, delta: number) => {
@@ -127,8 +129,12 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     }
   };
 
-  if (session && !allowed) {
-    return <div className="max-w-xl mx-auto p-6 space-y-3"><ShieldAlert className="w-8 h-8 text-amber-600" /><h1 className="text-xl font-bold">{isArabic ? 'غير مصرح' : 'Not authorized'}</h1><p>{isArabic ? 'تحتاج إلى صلاحية إعادة ترقيم يوم.' : 'The Renumber Day permission is required.'}</p><Button onClick={onBack}>{isArabic ? 'رجوع' : 'Back'}</Button></div>;
+  if (!authLoaded) {
+    return <main className="max-w-xl mx-auto p-6 text-center" role="status">{isArabic ? 'جارٍ التحقق من الصلاحية…' : 'Checking authorization…'}</main>;
+  }
+
+  if (!session || !allowed) {
+    return <div className="max-w-xl mx-auto p-6 space-y-3"><ShieldAlert className="w-8 h-8 text-amber-600" /><h1 className="text-xl font-bold">{isArabic ? 'غير مصرح' : 'Not authorized'}</h1><p>{isArabic ? 'تحتاج إلى تسجيل الدخول وصلاحية إعادة ترقيم يوم.' : 'Sign in with the Renumber Day permission to continue.'}</p><Button onClick={onBack}>{isArabic ? 'رجوع' : 'Back'}</Button></div>;
   }
 
   return (
