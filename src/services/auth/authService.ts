@@ -50,6 +50,7 @@ export type Permission =
   | "orders:deliver"
   | "orders:cancel"
   | "orders:correct"
+  | "orders:renumber-day"
   | "customers:view"
   | "customers:create"
   | "customers:edit"
@@ -112,6 +113,7 @@ export const SUPER_ADMIN_TEST_ACCOUNT = {
     "orders:deliver",
     "orders:cancel",
     "orders:correct",
+    "orders:renumber-day",
     "customers:view",
     "customers:create",
     "customers:edit",
