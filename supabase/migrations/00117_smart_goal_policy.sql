@@ -70,18 +70,21 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF OLD.status <> 'ACTIVE' AND (
-    NEW.target_quantity IS DISTINCT FROM OLD.target_quantity OR
-    NEW.current_progress IS DISTINCT FROM OLD.current_progress OR
-    NEW.bonus_amount_minor IS DISTINCT FROM OLD.bonus_amount_minor OR
-    NEW.duration_days IS DISTINCT FROM OLD.duration_days OR
-    NEW.status IS DISTINCT FROM OLD.status OR
-    NEW.started_at IS DISTINCT FROM OLD.started_at OR
-    NEW.expires_at IS DISTINCT FROM OLD.expires_at OR
-    NEW.completed_at IS DISTINCT FROM OLD.completed_at OR
-    NEW.bonus_ledger_id IS DISTINCT FROM OLD.bonus_ledger_id
-  ) THEN
-    RAISE EXCEPTION 'Completed and failed goals are immutable' USING ERRCODE='P0001';
+  IF OLD.status <> 'ACTIVE' THEN
+    IF (
+      NEW.target_quantity IS DISTINCT FROM OLD.target_quantity OR
+      NEW.current_progress IS DISTINCT FROM OLD.current_progress OR
+      NEW.bonus_amount_minor IS DISTINCT FROM OLD.bonus_amount_minor OR
+      NEW.duration_days IS DISTINCT FROM OLD.duration_days OR
+      NEW.status IS DISTINCT FROM OLD.status OR
+      NEW.started_at IS DISTINCT FROM OLD.started_at OR
+      NEW.expires_at IS DISTINCT FROM OLD.expires_at OR
+      NEW.completed_at IS DISTINCT FROM OLD.completed_at OR
+      NEW.bonus_ledger_id IS DISTINCT FROM OLD.bonus_ledger_id
+    ) THEN
+      RAISE EXCEPTION 'Completed and failed goals are immutable' USING ERRCODE='P0001';
+    END IF;
+    RETURN NEW;
   END IF;
 
   SELECT COUNT(DISTINCT oi.id)::INTEGER INTO v_actual_progress
