@@ -152,11 +152,25 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     }
     return '';
   }, [orders, isArabic]);
-  const move = (index: number, delta: number) => {
-    const target = index + delta;
-    if (target < 0 || target >= orders.length) return;
+  const hasValidNumberSet = useMemo(() => {
+    if (!orders.length) return false;
+    const numbers = orders.map((row) => row.newNumber).sort((a, b) => a - b);
+    return numbers.every((number, index) => Number.isInteger(number) && number === index + 1);
+  }, [orders]);
+
+  const displayOrders = useMemo(
+    () => hasValidNumberSet ? [...orders].sort((a, b) => a.newNumber - b.newNumber) : orders,
+    [orders, hasValidNumberSet]
+  );
+
+  const move = (orderId: string, delta: number) => {
     setOrders((current) => {
-      const next = [...current];
+      const numbers = current.map((row) => row.newNumber).sort((a, b) => a - b);
+      const hasValidSet = current.length > 0 && numbers.every((number, index) => Number.isInteger(number) && number === index + 1);
+      const next = hasValidSet ? [...current].sort((a, b) => a.newNumber - b.newNumber) : [...current];
+      const index = next.findIndex((row) => row.id === orderId);
+      const target = index + delta;
+      if (index < 0 || target < 0 || target >= next.length) return current;
       [next[index], next[target]] = [next[target], next[index]];
       return next.map((row, i) => ({ ...row, newNumber: i + 1 }));
     });
@@ -225,7 +239,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       {loading ? <div className="py-8 text-center"><RefreshCw className="inline w-5 h-5 animate-spin" /> {isArabic ? 'جارٍ التحميل…' : 'Loading…'}</div> : (
         <section className="space-y-2">
           <div className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'الرقم الحالي ← الرقم الجديد' : 'Current number → new number'}</div>
-          {orders.map((order, index) => (
+          {displayOrders.map((order, index) => (
             <div key={order.id} className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-[#245047] p-3">
               <div className="w-16 shrink-0 text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">#{order.oldNumber > 0 ? order.oldNumber : (isArabic ? 'ناقص' : 'missing')}</div>
               <div className="min-w-0 flex-1">
@@ -254,8 +268,8 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                 />
               </label>
               <div className="flex gap-1">
-                <button type="button" disabled={index === 0 || loading || commandPending} onClick={() => move(index, -1)} aria-label={isArabic ? 'تحريك لأعلى' : 'Move up'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowUp className="w-4 h-4" /></button>
-                <button type="button" disabled={index === orders.length - 1 || loading || commandPending} onClick={() => move(index, 1)} aria-label={isArabic ? 'تحريك لأسفل' : 'Move down'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowDown className="w-4 h-4" /></button>
+                <button type="button" disabled={index === 0 || loading || commandPending} onClick={() => move(order.id, -1)} aria-label={isArabic ? 'تحريك لأعلى' : 'Move up'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowUp className="w-4 h-4" /></button>
+                <button type="button" disabled={index === orders.length - 1 || loading || commandPending} onClick={() => move(order.id, 1)} aria-label={isArabic ? 'تحريك لأسفل' : 'Move down'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowDown className="w-4 h-4" /></button>
               </div>
             </div>
           ))}
