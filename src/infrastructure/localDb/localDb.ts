@@ -473,6 +473,7 @@ export class IndexedDBLocalDatabase {
               const val = cursor.value as OptimisticOverlayRecord;
               if (val && val.commandId) {
                 this.memoryOverlays.set(val.commandId, val);
+                this.overlaySequence = Math.max(this.overlaySequence, Number(val.sequence) || 0);
               }
               cursor.continue();
             } else {
@@ -1640,6 +1641,7 @@ export class IndexedDBLocalDatabase {
   async saveOverlay(record: OptimisticOverlayRecord): Promise<void> {
     await this.ensureHydrated();
     this.memoryOverlays.set(record.commandId, record);
+    this.overlaySequence = Math.max(this.overlaySequence, Number(record.sequence) || 0);
     if (this.db && this.db.objectStoreNames.contains('optimisticOverlays')) {
       try {
         const tx = this.db.transaction('optimisticOverlays', 'readwrite');
@@ -1653,6 +1655,7 @@ export class IndexedDBLocalDatabase {
 
   saveOverlayWithTx(tx: IDBTransaction, record: OptimisticOverlayRecord): void {
     this.memoryOverlays.set(record.commandId, record);
+    this.overlaySequence = Math.max(this.overlaySequence, Number(record.sequence) || 0);
     if (tx?.objectStore) {
       try {
         tx.objectStore('optimisticOverlays').put(record);
@@ -1676,6 +1679,7 @@ export class IndexedDBLocalDatabase {
           req.onsuccess = () => {
             if (req.result) {
               this.memoryOverlays.set(commandId, req.result);
+              this.overlaySequence = Math.max(this.overlaySequence, Number((req.result as OptimisticOverlayRecord).sequence) || 0);
               resolve(req.result as OptimisticOverlayRecord);
             } else {
               resolve(null);
