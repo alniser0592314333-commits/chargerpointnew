@@ -1382,9 +1382,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     persistedOrders.forEach((o) => {
       const explicitNum =
         o.displayNumber ??
-        (o as any).display_number ??
-        o.internalSequence ??
-        (o as any).internal_sequence;
+        (o as any).display_number;
 
       ordersMap.set(o.id, {
         ...o,
