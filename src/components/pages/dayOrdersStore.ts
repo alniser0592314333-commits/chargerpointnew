@@ -1564,6 +1564,17 @@ export const isSameDayId = (id1?: string, id2?: string): boolean => {
   return getCanonicalDayKey(id1) === getCanonicalDayKey(id2);
 };
 
+const hasPendingOrderChangesForDay = (dayId: string): boolean => {
+  for (const overlay of localDb.listOverlaysSync()) {
+    if (overlay.status !== 'PENDING' || overlay.entityType !== 'orders') continue;
+    const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+    const baseOrder = ordersMap.get(overlay.entityId);
+    const effectiveDayId = patch.dayId ?? baseOrder?.dayId;
+    if (effectiveDayId && isSameDayId(effectiveDayId, dayId)) return true;
+  }
+  return false;
+};
+
 /**
  * Compatibility name retained for older callers. This is deliberately read-only:
  * number conflicts must be repaired only through the authorized Settings workflow.
@@ -1652,19 +1663,6 @@ function createTransactionalRepoContext(
     overlayRepo: {
       saveWithTx: (overlay: OptimisticOverlayRecord) => {
         localDb.saveOverlayWithTx(tx, overlay);
-      },
-      hasPendingOrderChangesForDay: (dayId: string) => {
-        for (const overlay of localDb.listOverlaysSync()) {
-          if (
-            overlay.status !== 'PENDING' ||
-            overlay.entityType !== 'orders'
-          ) continue;
-          const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
-          const baseOrder = ordersMap.get(overlay.entityId);
-          const effectiveDayId = patch.dayId ?? baseOrder?.dayId;
-          if (effectiveDayId && isSameDayId(effectiveDayId, dayId)) return true;
-        }
-        return false;
       },
     },
     orderRepo: {
@@ -2353,6 +2351,10 @@ export const repoContext: RepositoryContext = {
     getNextSequence: async () => {
       await ensureStoreHydrated();
       return await localDb.getNextSequence();
+    },
+    hasPendingOrderChangesForDay: async (dayId) => {
+      await ensureStoreHydrated();
+      return hasPendingOrderChangesForDay(dayId);
     },
   },
   reservationRepo: {
