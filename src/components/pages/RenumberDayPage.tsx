@@ -14,6 +14,8 @@ import {
 import { phase5UseCases } from '../../application/useCases';
 import { getCurrentAdminAuthorizationContext } from './dayOrdersStore';
 import { authService, UserSession } from '../../services/auth/authService';
+import { localDb } from '../../infrastructure/localDb/localDb';
+import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 
 interface NumberedOrder {
   id: string;
@@ -36,12 +38,52 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [pendingCommandId, setPendingCommandId] = useState<string | null>(null);
+  const [commandPending, setCommandPending] = useState(false);
 
   useEffect(() => {
     let active = true;
     authService.getCurrentSession().then((value) => { if (active) setSession(value); }).catch(() => { if (active) setSession(null); }).finally(() => { if (active) setAuthLoaded(true); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!pendingCommandId) return;
+    let active = true;
+    const refreshStatus = async () => {
+      const history = await localDb.getHistoryByCommandId(pendingCommandId);
+      if (!active) return;
+      if (!history) {
+        setCommandPending(true);
+        setNotice(isArabic
+          ? 'تم تسجيل العملية محليًا؛ بانتظار ظهور حالتها في المزامنة.'
+          : 'The operation is queued locally and waiting for its sync status.');
+        return;
+      }
+      if (history.state === 'SUCCESS' || history.state === 'SUCCEEDED') {
+        setCommandPending(false);
+        setNotice(isArabic
+          ? 'أكد الخادم نجاح إعادة الترقيم. أعد فتح اليوم للتحقق من الأرقام المعتمدة.'
+          : 'The server confirmed renumbering. Reopen the day to verify the accepted numbers.');
+      } else if (['FAILED', 'FAILED_PERMANENT', 'CONFLICT', 'BLOCKED'].includes(history.state)) {
+        setCommandPending(false);
+        setError(history.errorMessage || (isArabic
+          ? 'رفضت المزامنة العملية أو تعارضت مع تغييرات أخرى. أعد تحميل اليوم وراجع الأرقام قبل المحاولة.'
+          : 'Sync rejected the operation or found a conflict. Reload the day and review the numbers before retrying.'));
+        setNotice('');
+      } else {
+        setCommandPending(true);
+        setNotice(isArabic
+          ? 'إعادة الترقيم معلّقة بانتظار تأكيد الخادم.'
+          : 'Renumbering is pending server confirmation.');
+      }
+    };
+    void refreshStatus();
+    const unsubscribe = syncEventEmitter.subscribe((event) => {
+      if ('commandId' in event && event.commandId === pendingCommandId) void refreshStatus();
+    });
+    return () => { active = false; unsubscribe(); };
+  }, [pendingCommandId, isArabic]);
 
   const isSuperAdmin = String(session?.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN';
   const allowed = isSuperAdmin || Boolean(session?.permissions?.includes('orders:renumber-day'));
@@ -106,9 +148,10 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     setNotice('');
     try {
       const auth = getCurrentAdminAuthorizationContext();
+      const commandId = crypto.randomUUID();
       const result = await phase5UseCases.renumberDayOrders(
         auth,
-        crypto.randomUUID(),
+        commandId,
         selectedDayId,
         orders.map((row) => ({
           id: row.id,
@@ -119,9 +162,11 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       );
       if (!result.success) throw new Error(result.error || 'Renumber request failed');
       setConfirmOpen(false);
+      setPendingCommandId(commandId);
+      setCommandPending(true);
       setNotice(isArabic
-        ? 'تم تسجيل التغيير محليًا وإرساله إلى طابور المزامنة. هذا ليس تأكيدًا نهائيًا من الخادم؛ تحقّق من مركز المزامنة قبل اعتبار العملية مكتملة.'
-        : 'The change was queued locally for sync. This is not server confirmation; check Sync Center before treating it as complete.');
+        ? 'تم تسجيل العملية محليًا؛ بانتظار تأكيد الخادم.'
+        : 'The operation is queued locally and awaiting server confirmation.');
     } catch (e: any) {
       setError(e?.message || (isArabic ? 'تعذّر تسجيل التغيير' : 'Could not queue the change'));
     } finally {
@@ -162,8 +207,8 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
               <div className="w-20 shrink-0 text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">#{order.oldNumber > 0 ? order.oldNumber : (isArabic ? 'ناقص' : 'missing')} → <strong className="text-emerald-700 dark:text-emerald-300">#{index + 1}</strong></div>
               <div className="min-w-0 flex-1 font-semibold truncate">{order.customerName}</div>
               <div className="flex gap-1">
-                <button type="button" disabled={index === 0 || loading} onClick={() => move(index, -1)} aria-label={isArabic ? 'تحريك لأعلى' : 'Move up'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowUp className="w-4 h-4" /></button>
-                <button type="button" disabled={index === orders.length - 1 || loading} onClick={() => move(index, 1)} aria-label={isArabic ? 'تحريك لأسفل' : 'Move down'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowDown className="w-4 h-4" /></button>
+                <button type="button" disabled={index === 0 || loading || commandPending} onClick={() => move(index, -1)} aria-label={isArabic ? 'تحريك لأعلى' : 'Move up'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowUp className="w-4 h-4" /></button>
+                <button type="button" disabled={index === orders.length - 1 || loading || commandPending} onClick={() => move(index, 1)} aria-label={isArabic ? 'تحريك لأسفل' : 'Move down'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowDown className="w-4 h-4" /></button>
               </div>
             </div>
           ))}
@@ -175,8 +220,8 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
         <Button variant="outline" onClick={() => {
           setOrders((current) => [...current].sort((a, b) => (a.oldNumber > 0 ? a.oldNumber : Number.MAX_SAFE_INTEGER) - (b.oldNumber > 0 ? b.oldNumber : Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)).map((row, i) => ({ ...row, newNumber: i + 1 })));
           setNotice('');
-        }} disabled={loading || !orders.length}>{isArabic ? 'إلغاء الترتيب' : 'Reset order'}</Button>
-        <Button onClick={() => setConfirmOpen(true)} disabled={loading || !orders.length || !changed}>{isArabic ? 'مراجعة واعتماد الترتيب' : 'Review and confirm order'}</Button>
+        }} disabled={loading || commandPending || !orders.length}>{isArabic ? 'إلغاء الترتيب' : 'Reset order'}</Button>
+        <Button onClick={() => setConfirmOpen(true)} disabled={loading || commandPending || !orders.length || !changed}>{isArabic ? 'مراجعة واعتماد الترتيب' : 'Review and confirm order'}</Button>
       </div>
 
       <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title={isArabic ? 'تأكيد إعادة الترقيم' : 'Confirm renumbering'}>
@@ -185,7 +230,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
           <div className="max-h-64 overflow-y-auto space-y-1 text-sm">
             {orders.map((row, i) => <div key={row.id} className="flex justify-between gap-3 border-b border-gray-100 dark:border-[#245047] py-1"><span className="truncate">{row.customerName}</span><span className="shrink-0 tabular-nums">#{row.oldNumber > 0 ? row.oldNumber : '—'} → #{i + 1}</span></div>)}
           </div>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirmOpen(false)}>{isArabic ? 'إلغاء' : 'Cancel'}</Button><Button onClick={submit} disabled={loading}>{isArabic ? 'تأكيد وإرسال' : 'Confirm and queue'}</Button></div>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirmOpen(false)}>{isArabic ? 'إلغاء' : 'Cancel'}</Button><Button onClick={submit} disabled={loading || commandPending}>{isArabic ? 'تأكيد وإرسال' : 'Confirm and queue'}</Button></div>
         </div>
       </Modal>
     </main>
