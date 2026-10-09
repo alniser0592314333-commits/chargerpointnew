@@ -98,6 +98,8 @@ export interface RepositoryContext {
   };
   overlayRepo?: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
+    /** Synchronously stages an overlay in the active local DB transaction. */
+    saveWithTx?(overlay: OptimisticOverlayRecord): void;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -320,8 +322,9 @@ export class FinalUseCases {
     if (!dayId || !Array.isArray(changes) || changes.length === 0) {
       return { success: false, error: 'A day and at least one order are required' };
     }
+
     const sortedNumbers = changes.map((change) => change.newNumber).sort((a, b) => a - b);
-    if (sortedNumbers.some((number, index) => number !== index + 1)) {
+    if (sortedNumbers.some((number, index) => !Number.isInteger(number) || number !== index + 1)) {
       return { success: false, error: 'New order numbers must be contiguous from 1 without duplicates' };
     }
     const uniqueIds = new Set(changes.map((change) => change.id));
@@ -329,8 +332,22 @@ export class FinalUseCases {
       return { success: false, error: 'The order list contains duplicate IDs' };
     }
 
-    // Validate against the hydrated local view before creating any optimistic overlays.
-    const preflight = await this.deps.transactionManager.runInTransaction((repos) => {
+    const overlayRepo = this.deps.overlayRepo;
+    if (!overlayRepo?.saveWithTx) {
+      return { success: false, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
+    }
+
+    // Allocate overlay ordering tokens before opening the IndexedDB transaction.
+    // Gaps in this internal sequence are harmless; order numbers are never allocated here.
+    const sequences: number[] = [];
+    for (let index = 0; index < changes.length; index++) {
+      sequences.push(await overlayRepo.getNextSequence());
+    }
+
+    // The complete-day recheck, every optimistic overlay, and the outbox command
+    // are committed by the same local transaction. A failure cannot leave a partial
+    // set of new numbers or overlays without its corresponding sync command.
+    return this.deps.transactionManager.runInTransaction((repos) => {
       const currentOrders: OrderEntity[] = [];
       for (const change of changes) {
         const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
@@ -340,58 +357,34 @@ export class FinalUseCases {
         if (order.version !== change.expectedVersion || order.displayNumber !== change.oldNumber) {
           return { success: false as const, error: 'The day changed while it was being edited. Reload and review before retrying.' };
         }
-        currentOrders.push({ ...order });
+        currentOrders.push(order);
       }
+
       const dayOrders = repos.orderRepo.findByDay?.(dayId);
-      if (!dayOrders || dayOrders.length !== changes.length) {
+      if (!dayOrders || dayOrders.length !== changes.length ||
+          new Set(dayOrders.map((order) => order.id)).size !== uniqueIds.size ||
+          dayOrders.some((order) => !uniqueIds.has(order.id))) {
         return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
       }
-      return { success: true as const, data: currentOrders };
-    });
-    if (!preflight.success) return preflight;
 
-    const now = new Date().toISOString();
-    const mutationKey = `renumber-day:${dayId}`;
-    const overlayIds: ID[] = [];
-    try {
-      // The concrete overlay repository is asynchronous (IndexedDB). Await every write;
-      // never pass a Promise as the overlay sequence or claim a mutation was saved early.
-      if (!this.deps.overlayRepo) {
-        return { success: false, error: 'Local overlay storage is unavailable; no renumber command was queued.' };
-      }
+      const now = new Date().toISOString();
       for (let index = 0; index < changes.length; index++) {
         const change = changes[index];
-        const order = preflight.data[index];
-        const overlayCommandId = `${commandId}:order:${order.id}`;
-        const sequence = await this.deps.overlayRepo.getNextSequence();
-        await this.deps.overlayRepo.save({
-          commandId: overlayCommandId,
-          mutationKey,
+        const order = currentOrders[index];
+        overlayRepo.saveWithTx!({
+          commandId: `${commandId}:order:${order.id}`,
+          mutationKey: `renumber-day:${dayId}`,
           entityType: 'orders',
           entityId: order.id,
           operation: 'PATCH',
           patch: { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 },
-          sequence,
+          sequence: sequences[index],
           createdAt: now,
           status: 'PENDING',
         });
-        overlayIds.push(overlayCommandId);
       }
 
-      // Recheck immediately before recording the command. Server-side validation remains
-      // authoritative and rejects concurrent changes or a stale complete-day snapshot.
-      const stillCurrent = await this.deps.transactionManager.runInTransaction((repos) =>
-        changes.every((change) => {
-          const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
-          return Boolean(order && order.dayId === dayId &&
-            order.version === change.expectedVersion && order.displayNumber === change.oldNumber);
-        }) && Boolean(repos.orderRepo.findByDay && repos.orderRepo.findByDay(dayId).length === changes.length)
-      );
-      if (!stillCurrent) {
-        throw new ConflictError('The day changed while the renumber preview was being saved. Reload and review again.');
-      }
-
-      await this.deps.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
+      repos.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
         id: dayId,
         aggregateId: dayId,
         dayId,
@@ -403,12 +396,7 @@ export class FinalUseCases {
         })),
       });
       return { success: true as const, data: { dayId, count: changes.length } };
-    } catch (error) {
-      for (const id of overlayIds) {
-        try { await this.deps.overlayRepo!.remove(id); } catch { /* best-effort rollback of optimistic overlays */ }
-      }
-      throw error;
-    }
+    });
   }
 
   async createOrderWithItems(
