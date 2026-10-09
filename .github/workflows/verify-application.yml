@@ -34,3 +34,21 @@ jobs:
       - name: Run full existing test suite (diagnostic)
         run: npm test
         continue-on-error: true
+
+  verify-supabase-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start isolated local Supabase and apply all migrations
+        run: supabase start -x studio,edge-runtime,logflare,vector,imgproxy,mailpit,storage-api,supavisor,postgres-meta
+      - name: Verify renumbering migration privileges against PostgreSQL
+        run: supabase test db --local supabase/tests/order_numbering_migration.test.sql
+      - name: Stop isolated local Supabase
+        if: always()
+        run: supabase stop --no-backup
