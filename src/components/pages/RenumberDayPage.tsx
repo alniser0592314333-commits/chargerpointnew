@@ -37,6 +37,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [syncError, setSyncError] = useState('');
   const [notice, setNotice] = useState('');
   const [pendingCommandId, setPendingCommandId] = useState<string | null>(null);
   const [commandPending, setCommandPending] = useState(false);
@@ -69,7 +70,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       } else if (['FAILED', 'FAILED_PERMANENT', 'CONFLICT', 'BLOCKED'].includes(history.state)) {
         setCommandPending(false);
         setRefreshTick((value) => value + 1);
-        setError(history.errorMessage || (isArabic
+        setSyncError(history.errorMessage || (isArabic
           ? 'رفضت المزامنة العملية أو تعارضت مع تغييرات أخرى. أعد تحميل اليوم وراجع الأرقام قبل المحاولة.'
           : 'Sync rejected the operation or found a conflict. Reload the day and review the numbers before retrying.'));
         setNotice('');
@@ -193,12 +194,12 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
 
       <label className="block space-y-2">
         <span className="text-sm font-semibold">{isArabic ? 'اليوم' : 'Business day'}</span>
-        <select className="w-full rounded-xl border border-gray-300 dark:border-[#245047] bg-white dark:bg-[#061f1c] p-3" value={selectedDayId} onChange={(e) => { setSelectedDayId(e.target.value); setNotice(''); setError(''); }} disabled={loading}>
+        <select className="w-full rounded-xl border border-gray-300 dark:border-[#245047] bg-white dark:bg-[#061f1c] p-3" value={selectedDayId} onChange={(e) => { setSelectedDayId(e.target.value); setNotice(''); setError(''); setSyncError(''); }} disabled={loading}>
           {days.map((day) => <option key={day.id} value={day.id}>{day.date}{day.isClosed ? (isArabic ? ' — مغلق' : ' — Closed') : (isArabic ? ' — مفتوح' : ' — Open')}</option>)}
         </select>
       </label>
 
-      {error && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-200">{error}</div>}
+      {(error || syncError) && <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/30 dark:text-red-200" >{syncError || error}</div>}
       {notice && <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{notice}</div>}
 
       {loading ? <div className="py-8 text-center"><RefreshCw className="inline w-5 h-5 animate-spin" /> {isArabic ? 'جارٍ التحميل…' : 'Loading…'}</div> : (
