@@ -18,6 +18,110 @@ ALTER TABLE public.goals VALIDATE CONSTRAINT goals_smart_expiry_matches_duration
 ALTER FUNCTION public.evaluate_customer_active_goal(uuid) RENAME TO evaluate_customer_active_goal_internal;
 REVOKE ALL ON FUNCTION public.evaluate_customer_active_goal_internal(uuid) FROM PUBLIC, anon, authenticated;
 
+-- The table's trg_change_capture trigger records complete rows; avoid duplicate manual change_log entries.
+CREATE OR REPLACE FUNCTION public.evaluate_customer_active_goal_internal(p_customer_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+    v_goal RECORD;
+    v_progress INT;
+    v_ledger_id UUID;
+    v_result JSONB;
+BEGIN
+    SELECT * INTO v_goal
+    FROM public.goals
+    WHERE customer_id = p_customer_id AND status = 'ACTIVE'
+    FOR UPDATE;
+
+    IF v_goal.id IS NULL THEN
+        RETURN jsonb_build_object('hasActiveGoal', FALSE);
+    END IF;
+
+    -- Count distinct delivered & recognized order items for this customer within [started_at, expires_at]
+    SELECT COUNT(DISTINCT oi.id) INTO v_progress
+    FROM public.order_items oi
+    JOIN public.orders o ON o.id = oi.order_id
+    WHERE o.customer_id = p_customer_id
+      AND oi.status = 'delivered'
+      AND oi.operational_status = 'DELIVERED'
+      AND oi.financial_status = 'RECOGNIZED'
+      AND oi.delivered_at >= v_goal.started_at
+      AND oi.delivered_at <= v_goal.expires_at
+      AND (oi.deleted_at IS NULL);
+
+    -- Check if target reached
+    IF v_progress >= v_goal.target_quantity THEN
+        -- Insert immutable bonus entry in financial ledger
+        INSERT INTO public.financial_ledger (
+            event_type, amount_minor, customer_id, reference_id, metadata, created_at
+        ) VALUES (
+            'BONUS',
+            v_goal.bonus_amount_minor,
+            p_customer_id,
+            v_goal.id,
+            jsonb_build_object('goalId', v_goal.id, 'targetQuantity', v_goal.target_quantity, 'bonusAmountMinor', v_goal.bonus_amount_minor, 'reason', 'GOAL_COMPLETED'),
+            NOW()
+        ) RETURNING id INTO v_ledger_id;
+
+        UPDATE public.goals
+        SET current_progress = v_progress,
+            status = 'COMPLETED',
+            completed_at = NOW(),
+            bonus_ledger_id = v_ledger_id,
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = v_goal.id;
+
+
+
+        RETURN jsonb_build_object(
+            'hasActiveGoal', TRUE,
+            'goalId', v_goal.id,
+            'status', 'COMPLETED',
+            'progress', v_progress,
+            'bonusLedgerId', v_ledger_id
+        );
+    ELSIF NOW() > v_goal.expires_at THEN
+        -- Expired without reaching target -> FAILED
+        UPDATE public.goals
+        SET current_progress = v_progress,
+            status = 'FAILED',
+            updated_at = NOW(),
+            version = version + 1
+        WHERE id = v_goal.id;
+
+
+        RETURN jsonb_build_object(
+            'hasActiveGoal', TRUE,
+            'goalId', v_goal.id,
+            'status', 'FAILED',
+            'progress', v_progress
+        );
+    ELSE
+        -- Still ACTIVE, update progress if changed
+        IF v_progress <> v_goal.current_progress THEN
+            UPDATE public.goals
+            SET current_progress = v_progress,
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_goal.id;
+
+        END IF;
+
+        RETURN jsonb_build_object(
+            'hasActiveGoal', TRUE,
+            'goalId', v_goal.id,
+            'status', 'ACTIVE',
+            'progress', v_progress
+        );
+    END IF;
+END;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.evaluate_customer_active_goal(p_customer_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1242,7 +1346,6 @@ WHEN 'UPDATE_ORDER' THEN
             )
             ON CONFLICT (id) DO NOTHING;
 
-            PERFORM public.record_canonical_change('goal_requests', v_entity_uuid, 'INSERT', p_payload, 1);
             v_result := jsonb_build_object('requestId', v_entity_uuid, 'status', 'PENDING');
 
         WHEN 'APPROVE_GOAL_REQUEST' THEN
@@ -1300,8 +1403,6 @@ WHEN 'UPDATE_ORDER' THEN
                 version = version + 1
             WHERE id = v_rec_goal_request.id;
 
-            PERFORM public.record_canonical_change('goals', v_entity_uuid, 'INSERT', jsonb_build_object('id', v_entity_uuid, 'customer_id', v_rec_goal_request.customer_id), 1);
-            PERFORM public.record_canonical_change('goal_requests', v_rec_goal_request.id, 'UPDATE', jsonb_build_object('id', v_rec_goal_request.id, 'status', 'APPROVED', 'resulting_goal_id', v_entity_uuid), v_rec_goal_request.version + 1);
             v_result := jsonb_build_object('requestId', v_rec_goal_request.id, 'goalId', v_entity_uuid, 'status', 'APPROVED');
 
         WHEN 'REJECT_GOAL_REQUEST' THEN
@@ -1331,9 +1432,6 @@ WHEN 'UPDATE_ORDER' THEN
                 version = version + 1
             WHERE id = v_entity_uuid;
 
-            PERFORM public.record_canonical_change('goal_requests', v_entity_uuid, 'UPDATE',
-                jsonb_build_object('id', v_entity_uuid, 'status', 'REJECTED', 'rejection_reason', p_payload->>'rejectionReason'),
-                v_current_version + 1);
             v_result := jsonb_build_object('requestId', v_entity_uuid, 'status', 'REJECTED');
 
         WHEN 'CREATE_GOAL' THEN
@@ -1375,11 +1473,6 @@ WHEN 'UPDATE_ORDER' THEN
                 v_goal_duration, 'ACTIVE', v_goal_started, v_goal_expires, 1, NOW(), NOW()
             );
 
-            PERFORM public.record_canonical_change('goals', v_entity_uuid, 'INSERT', jsonb_build_object(
-                'id', v_entity_uuid, 'customer_id', v_customer_uuid, 'target_quantity', v_goal_target,
-                'current_progress', 0, 'bonus_amount_minor', v_goal_bonus, 'duration_days', v_goal_duration,
-                'status', 'ACTIVE', 'started_at', v_goal_started, 'expires_at', v_goal_expires
-            ), 1);
             v_result := jsonb_build_object(
                 'goalId', v_entity_uuid, 'customerId', v_customer_uuid, 'targetQuantity', v_goal_target,
                 'durationDays', v_goal_duration, 'bonusAmountMinor', v_goal_bonus,
@@ -1430,11 +1523,6 @@ WHEN 'UPDATE_ORDER' THEN
                 version = version + 1
             WHERE id = v_entity_uuid;
 
-            PERFORM public.record_canonical_change('goals', v_entity_uuid, 'UPDATE', jsonb_build_object(
-                'id', v_entity_uuid, 'target_quantity', v_goal_target,
-                'duration_days', v_goal_duration, 'bonus_amount_minor', v_goal_bonus,
-                'expires_at', v_goal_expires
-            ), v_rec_goal.version + 1);
 
             -- Re-evaluate on the server; ignore client-supplied status/progress/bonus fields.
             PERFORM public.evaluate_customer_active_goal_internal(v_rec_goal.customer_id);
