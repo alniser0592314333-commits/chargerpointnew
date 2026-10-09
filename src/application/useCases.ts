@@ -328,7 +328,8 @@ export class FinalUseCases {
       return { success: false, error: 'The order list contains duplicate IDs' };
     }
 
-    return this.deps.transactionManager.runInTransaction((repos) => {
+    // Validate against the hydrated local view before creating any optimistic overlays.
+    const preflight = await this.deps.transactionManager.runInTransaction((repos) => {
       const currentOrders: OrderEntity[] = [];
       for (const change of changes) {
         const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
@@ -338,33 +339,57 @@ export class FinalUseCases {
         if (order.version !== change.expectedVersion || order.displayNumber !== change.oldNumber) {
           return { success: false as const, error: 'The day changed while it was being edited. Reload and review before retrying.' };
         }
-        currentOrders.push(order);
+        currentOrders.push({ ...order });
+      }
+      if (repos.orderRepo.countForDay(dayId) !== changes.length) {
+        return { success: false as const, error: 'The selected day changed. Reload the full day before renumbering.' };
+      }
+      return { success: true as const, data: currentOrders };
+    });
+    if (!preflight.success) return preflight;
+
+    const now = new Date().toISOString();
+    const mutationKey = `renumber-day:${dayId}`;
+    const overlayIds: ID[] = [];
+    try {
+      // The concrete overlay repository is asynchronous (IndexedDB). Await every write;
+      // never pass a Promise as the overlay sequence or claim a mutation was saved early.
+      if (!this.deps.overlayRepo) {
+        return { success: false, error: 'Local overlay storage is unavailable; no renumber command was queued.' };
+      }
+      for (let index = 0; index < changes.length; index++) {
+        const change = changes[index];
+        const order = preflight.data[index];
+        const overlayCommandId = `${commandId}:order:${order.id}`;
+        const sequence = await this.deps.overlayRepo.getNextSequence();
+        await this.deps.overlayRepo.save({
+          commandId: overlayCommandId,
+          mutationKey,
+          entityType: 'orders',
+          entityId: order.id,
+          operation: 'PATCH',
+          patch: { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 },
+          sequence,
+          createdAt: now,
+          status: 'PENDING',
+        });
+        overlayIds.push(overlayCommandId);
       }
 
-      const now = new Date().toISOString();
-      const mutationKey = `renumber-day:${dayId}`;
-      if (repos.overlayRepo) {
-        for (let index = 0; index < changes.length; index++) {
-          const change = changes[index];
-          const order = currentOrders[index];
-          const overlayCommandId = `${commandId}:order:${order.id}`;
-          const sequence = repos.overlayRepo.getNextSequence() as number;
-          const overlay: OptimisticOverlayRecord = {
-            commandId: overlayCommandId,
-            mutationKey,
-            entityType: 'orders',
-            entityId: order.id,
-            operation: 'PATCH',
-            patch: { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 },
-            sequence,
-            createdAt: now,
-            status: 'PENDING',
-          };
-          repos.overlayRepo.save(overlay);
-        }
+      // Recheck immediately before recording the command. Server-side validation remains
+      // authoritative and rejects concurrent changes or a stale complete-day snapshot.
+      const stillCurrent = await this.deps.transactionManager.runInTransaction((repos) =>
+        changes.every((change) => {
+          const order = repos.orderRepo.findById(change.id) as OrderEntity | null;
+          return Boolean(order && order.dayId === dayId &&
+            order.version === change.expectedVersion && order.displayNumber === change.oldNumber);
+        }) && repos.orderRepo.countForDay(dayId) === changes.length
+      );
+      if (!stillCurrent) {
+        throw new ConflictError('The day changed while the renumber preview was being saved. Reload and review again.');
       }
 
-      repos.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
+      await this.deps.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
         id: dayId,
         aggregateId: dayId,
         dayId,
@@ -376,15 +401,12 @@ export class FinalUseCases {
         })),
       });
       return { success: true as const, data: { dayId, count: changes.length } };
-    });
+    } catch (error) {
+      await Promise.all(overlayIds.map((id) => this.deps.overlayRepo!.remove(id).catch(() => undefined)));
+      throw error;
+    }
   }
 
-  /**
-   * Atomic order aggregate creation. The order row, every order item, their
-   * outbox commands, and any initial financial entries are committed as one
-   * local transaction. This prevents a failed item validation from leaving a
-   * ghost CREATE_ORDER command behind.
-   */
   async createOrderWithItems(
     auth: AuthorizationContext,
     commandId: ID,
