@@ -351,7 +351,7 @@ export class FinalUseCases {
         'orders',
         order.id,
         'PATCH',
-        { displayNumber: change.newNumber, internalSequence: change.newNumber, updatedAt: now, version: order.version + 1 }
+        { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 }
       );
     }
     await this.deps.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
