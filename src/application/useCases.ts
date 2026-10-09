@@ -48,7 +48,7 @@ export interface RepositoryContext {
     findById(id: ID): Promise<OrderEntity | null> | (OrderEntity | null);
     save(order: OrderEntity): Promise<void> | void;
     countForDay(dayId: ID): Promise<number> | number;
-    findByDay?(dayId: ID): Promise<OrderEntity[]> | OrderEntity[];
+    findByDay?(dayId: ID): OrderEntity[];
   };
   reservationRepo?: {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
