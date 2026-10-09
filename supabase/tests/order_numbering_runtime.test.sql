@@ -28,7 +28,7 @@ CREATE TABLE public.orders (
   display_number integer NOT NULL CHECK (display_number > 0),
   version integer NOT NULL DEFAULT 1,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  internal_sequence bigint NOT NULL,
+  internal_sequence bigint NOT NULL
 );
 CREATE TABLE public.test_change_events (
   entity_table text NOT NULL,
