@@ -579,6 +579,7 @@ export class IndexedDBLocalDatabase {
     syncHistory: SyncHistoryRecord[];
     syncState: SyncStateRecord | null;
     mutationSnapshots: MutationSnapshotRecord[];
+    optimisticOverlays: OptimisticOverlayRecord[];
   }> {
     await this.ensureHydrated();
     const clone = <T>(value: T): T => cloneForRollback(value);
