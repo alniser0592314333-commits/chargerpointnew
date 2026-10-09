@@ -328,44 +328,55 @@ export class FinalUseCases {
       return { success: false, error: 'The order list contains duplicate IDs' };
     }
 
-    const currentOrders: OrderEntity[] = [];
-    for (const change of changes) {
-      const order = await this.deps.orderRepo.findById(change.id);
-      if (!order || order.dayId !== dayId) {
-        return { success: false, error: 'The selected day changed or an order no longer belongs to it' };
+    return this.deps.transactionManager.runInTransaction(async (repos) => {
+      const currentOrders: OrderEntity[] = [];
+      for (const change of changes) {
+        const order = await repos.orderRepo.findById(change.id);
+        if (!order || order.dayId !== dayId) {
+          return { success: false as const, error: 'The selected day changed or an order no longer belongs to it' };
+        }
+        if (order.version !== change.expectedVersion || order.displayNumber !== change.oldNumber) {
+          return { success: false as const, error: 'The day changed while it was being edited. Reload and review before retrying.' };
+        }
+        currentOrders.push(order);
       }
-      if (order.version !== change.expectedVersion || order.displayNumber !== change.oldNumber) {
-        return { success: false, error: 'The day changed while it was being edited. Reload and review before retrying.' };
-      }
-      currentOrders.push(order);
-    }
 
-    const now = new Date().toISOString();
-    const mutationKey = `renumber-day:${dayId}`;
-    for (let index = 0; index < changes.length; index++) {
-      const change = changes[index];
-      const order = currentOrders[index];
-      await this.createOverlay(
-        `${commandId}:order:${order.id}`,
-        mutationKey,
-        'orders',
-        order.id,
-        'PATCH',
-        { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 }
-      );
-    }
-    await this.deps.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
-      id: dayId,
-      aggregateId: dayId,
-      dayId,
-      changes: changes.map((change) => ({
-        id: change.id,
-        expectedVersion: change.expectedVersion,
-        oldNumber: change.oldNumber,
-        newNumber: change.newNumber,
-      })),
+      const now = new Date().toISOString();
+      const mutationKey = `renumber-day:${dayId}`;
+      if (repos.overlayRepo) {
+        for (let index = 0; index < changes.length; index++) {
+          const change = changes[index];
+          const order = currentOrders[index];
+          const overlayCommandId = `${commandId}:order:${order.id}`;
+          const sequence = await repos.overlayRepo.getNextSequence();
+          const overlay: OptimisticOverlayRecord = {
+            commandId: overlayCommandId,
+            mutationKey,
+            entityType: 'orders',
+            entityId: order.id,
+            operation: 'PATCH',
+            patch: { displayNumber: change.newNumber, updatedAt: now, version: order.version + 1 },
+            sequence,
+            createdAt: now,
+            status: 'PENDING',
+          };
+          await repos.overlayRepo.save(overlay);
+        }
+      }
+
+      await repos.commandRepo.record(commandId, 'RENUMBER_DAY_ORDERS', {
+        id: dayId,
+        aggregateId: dayId,
+        dayId,
+        changes: changes.map((change) => ({
+          id: change.id,
+          expectedVersion: change.expectedVersion,
+          oldNumber: change.oldNumber,
+          newNumber: change.newNumber,
+        })),
+      });
+      return { success: true as const, data: { dayId, count: changes.length } };
     });
-    return { success: true, data: { dayId, count: changes.length } };
   }
 
   /**
