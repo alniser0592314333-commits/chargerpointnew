@@ -360,7 +360,7 @@ export default function App() {
       case '/app/settings':
         return <SettingsPage onNavigate={(path) => navigate(path)} />;
       case '/app/settings/renumber-day': {
-        const canRenumber = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\\s+/g, '_') === 'SUPER_ADMIN') || Boolean(userSession?.permissions?.includes('orders:renumber-day'));
+        const canRenumber = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN') || Boolean(userSession?.permissions?.includes('orders:renumber-day'));
         if (!userSession || !canRenumber) return <UnauthorizedPage />;
         return <RenumberDayPage onBack={() => goBack('/app/settings')} />;
       }
