@@ -344,7 +344,7 @@ export class FinalUseCases {
       reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
       if (!reservation || reservation.nextNumber > reservation.endNumber) {
         try {
-          reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, commandId, 20);
+          reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, commandId, 1);
         } catch {
           throw new OrderNumberReservationExhaustedError();
         }
