@@ -86,6 +86,18 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
 
   // Summary Metrics
   const orderCount = orders.length;
+  const validNumberGroups = new Map<number, UIDayOrderDetail[]>();
+  const numberingIssues = orders.filter((order) => !Number.isInteger(order.orderNumber) || order.orderNumber <= 0);
+  for (const order of orders) {
+    if (!Number.isInteger(order.orderNumber) || order.orderNumber <= 0) continue;
+    const group = validNumberGroups.get(order.orderNumber) ?? [];
+    group.push(order);
+    validNumberGroups.set(order.orderNumber, group);
+  }
+  for (const group of validNumberGroups.values()) {
+    if (group.length > 1) numberingIssues.push(...group);
+  }
+
   const totalValueMinor = orders.reduce(
     (sum, ord) => sum + ord.items.reduce((iSum, item) => iSum + item.priceMinor, 0),
     0
@@ -227,6 +239,30 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
         </div>
       </div>
 
+      {numberingIssues.length > 0 && (
+        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100 space-y-2">
+          <div className="font-bold">
+            {locale === 'ar' ? 'تنبيه: يوجد خلل في أرقام طلبات هذا اليوم' : 'Warning: order-number conflicts detected for this day'}
+          </div>
+          <p>
+            {locale === 'ar'
+              ? 'لم يتم تغيير أي رقم تلقائياً. استخدم «إعادة ترقيم يوم» من الإعدادات بعد التحقق.'
+              : 'No numbers were changed automatically. Use “Renumber Day” in Settings after review.'}
+          </p>
+          <ul className="list-disc ps-5 space-y-1">
+            {Array.from(new Map(numberingIssues.map((order) => [order.id, order])).values()).map((order) => (
+              <li key={order.id}>
+                {locale === 'ar' ? 'الطلب' : 'Order'} #{Number.isInteger(order.orderNumber) && order.orderNumber > 0 ? order.orderNumber : (locale === 'ar' ? 'غير محدد' : 'missing')}
+                {' — '}{order.customerName}
+                {order.orderNumber > 0 && validNumberGroups.get(order.orderNumber)?.length ? (
+                  <span> ({locale === 'ar' ? 'رقم مكرر' : 'duplicate number'})</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ORDER LIST (Vertical List, Newest First, Divider-First Layout) */}
       {sortedOrders.length === 0 ? (
         <div className="py-16 text-center space-y-4 py-12">
@@ -255,7 +291,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
                   {/* 1. ORDER NUMBER + TIME */}
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-base font-bold font-mono text-gray-900 dark:text-[#daf1de]">
-                      {t('orderNumberShort', { number: order.orderNumber })}
+                      {Number.isInteger(order.orderNumber) && order.orderNumber > 0 ? t('orderNumberShort', { number: order.orderNumber }) : (locale === 'ar' ? 'رقم غير محدد' : 'Number missing')}
                     </span>
                     <span className="text-xs text-gray-400 dark:text-[#8eb698]">
                       {formatTime(order.createdAt)}
