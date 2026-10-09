@@ -66,12 +66,12 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       },
       reservationRepo: {
         findActiveByDayAndDevice: (dayId: string, deviceId: string) => {
-          let found: OrderNumberReservationEntity | null = null;
-          reservationMap.forEach(r => {
-            if (r.businessDayId === dayId && r.deviceId === deviceId && r.status === 'ACTIVE' && r.nextNumber <= r.endNumber) {
-              found = r;
-            }
-          });
+          const found = Array.from(reservationMap.values()).find((r) =>
+            r.businessDayId === dayId &&
+            r.deviceId === deviceId &&
+            r.status === 'ACTIVE' &&
+            r.nextNumber <= r.endNumber
+          );
           return found ? { ...found } : null;
         },
         save: async (r: OrderNumberReservationEntity) => {
