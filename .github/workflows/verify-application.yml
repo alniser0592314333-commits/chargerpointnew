@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
       - name: Run unit tests
         run: npm test
       - name: Type-check
