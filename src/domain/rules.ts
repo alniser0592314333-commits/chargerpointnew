@@ -268,12 +268,12 @@ export function calculateAuthoritativeGoalProgress(
 
   for (const item of customerItems) {
     if (item.deletedAt) continue;
-    const isDelivered = item.status && item.status.toLowerCase() === 'delivered';
-    const isRecognized =
-      (item.financialStatus && item.financialStatus.toUpperCase() === 'RECOGNIZED') ||
-      item.status === 'delivered';
+    const isDelivered = item.status?.toLowerCase() === 'delivered';
+    const operationallyDelivered =
+      !item.operationalStatus || item.operationalStatus.toUpperCase() === 'DELIVERED';
+    const isRecognized = item.financialStatus?.toUpperCase() === 'RECOGNIZED';
 
-    if (isDelivered && isRecognized && item.deliveredAt) {
+    if (isDelivered && operationallyDelivered && isRecognized && item.deliveredAt) {
       const deliveredTime = new Date(item.deliveredAt).getTime();
       if (deliveredTime >= startTime && deliveredTime <= expiresTime) {
         qualifyingItemIds.add(item.id);
