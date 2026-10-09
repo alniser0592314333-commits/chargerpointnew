@@ -99,6 +99,7 @@ export interface RepositoryContext {
   overlayRepo?: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
     saveWithTx?(overlay: OptimisticOverlayRecord): Promise<void> | void;
+    hasPendingOrderChangesForDay?(dayId: ID): boolean;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -338,8 +339,11 @@ export class FinalUseCases {
     }
 
     const overlayRepo = this.deps.overlayRepo;
-    if (!overlayRepo?.saveWithTx) {
+    if (!overlayRepo?.saveWithTx || !overlayRepo.hasPendingOrderChangesForDay) {
       return { success: false, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
+    }
+    if (overlayRepo.hasPendingOrderChangesForDay(dayId)) {
+      return { success: false, error: 'Pending local order changes must sync before this day can be renumbered.' };
     }
 
     // Allocate overlay ordering tokens before opening the IndexedDB transaction.
