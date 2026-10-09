@@ -59,7 +59,7 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(sql).not.toContain('ORDER BY oi.created_at ASC');
   });
 
-  it('serializes order creation with renumbering and rejects only actual number collisions', () => {
+  it('serializes order creation and reconciles a stale offline number without dropping the order', () => {
     const sql = readMigration();
     const start = sql.lastIndexOf("WHEN 'CREATE_ORDER' THEN");
     const end = sql.indexOf("WHEN 'RENUMBER_DAY_ORDERS' THEN", start);
@@ -68,7 +68,11 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(createOrder).toContain('FROM public.business_days WHERE id = v_day_uuid FOR UPDATE');
     expect(createOrder).toContain('day_id = v_day_uuid AND display_number = v_requested_display_number');
     expect(createOrder).toContain('Offline devices may submit reserved numbers out of order');
-    expect(createOrder).not.toContain('MAX(display_number)');
+    expect(createOrder).toContain('MAX(display_number)');
+    expect(createOrder).toContain('v_order_change_payload');
+    expect(createOrder).toContain("'{displayNumber}'");
+    expect(createOrder).toContain("'{display_number}'");
+    expect(createOrder).not.toContain("RAISE EXCEPTION 'Order number conflict: requested number is already assigned");
     expect(createOrder).not.toContain('v_existing_order_count + 1');
   });
 
