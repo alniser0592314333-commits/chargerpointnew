@@ -1656,7 +1656,7 @@ function createTransactionalRepoContext(
       hasPendingOrderChangesForDay: (dayId: string) => {
         for (const overlay of localDb.listOverlaysSync()) {
           if (
-            (overlay.status !== 'PENDING' && overlay.status !== 'PENDING_RECONCILIATION') ||
+            overlay.status !== 'PENDING' ||
             overlay.entityType !== 'orders'
           ) continue;
           const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
