@@ -448,7 +448,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     ).rejects.toThrow(/Forbidden: missing permission/);
 
     // Admin with goals:approve permission CAN approve request
-    const approveRes = await useCases.approveGoalRequest(authAdmin, reqId, 500, 7);
+    const approveRes = await useCases.approveGoalRequest(authAdmin, reqId, 120, 7);
     expect(approveRes.success).toBe(true);
     if (!approveRes.success) throw new Error('Expected approve success');
     expect(approveRes.data.request.status).toBe('APPROVED');
