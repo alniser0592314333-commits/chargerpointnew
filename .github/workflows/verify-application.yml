@@ -37,18 +37,56 @@ jobs:
 
   verify-supabase-migration:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-      - name: Start isolated local Supabase and apply all migrations
-        run: supabase start -x studio,edge-runtime,logflare,vector,imgproxy,mailpit,storage-api,supavisor,postgres-meta
-      - name: Verify renumbering migration privileges against PostgreSQL
-        run: supabase test db --local supabase/tests/order_numbering_migration.test.sql
-      - name: Stop isolated local Supabase
-        if: always()
-        run: supabase stop --no-backup
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare isolated database roles
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \\$\\$ SELECT NULL::uuid \\$\\$;"
+      - name: Apply the renumbering migration to isolated PostgreSQL
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009090000_add_atomic_day_order_renumbering.sql
+      - name: Verify dispatcher and audit-table privileges
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          DECLARE
+            dispatcher regprocedure := 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)'::regprocedure;
+          BEGIN
+            IF has_function_privilege('anon', dispatcher, 'EXECUTE') THEN
+              RAISE EXCEPTION 'anon must not execute the SECURITY DEFINER dispatcher';
+            END IF;
+            IF NOT has_function_privilege('authenticated', dispatcher, 'EXECUTE') THEN
+              RAISE EXCEPTION 'authenticated must retain the canonical dispatcher contract';
+            END IF;
+            IF NOT has_function_privilege('service_role', dispatcher, 'EXECUTE') THEN
+              RAISE EXCEPTION 'service_role must retain the canonical dispatcher contract';
+            END IF;
+            IF has_table_privilege('authenticated', 'public.order_renumber_audit', 'SELECT')
+               OR has_table_privilege('authenticated', 'public.order_renumber_audit', 'INSERT')
+               OR has_table_privilege('anon', 'public.order_renumber_audit', 'SELECT') THEN
+              RAISE EXCEPTION 'the internal renumber audit table must not be directly exposed';
+            END IF;
+          END $$;
+          SQL
