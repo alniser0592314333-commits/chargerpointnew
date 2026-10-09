@@ -122,22 +122,22 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
 
   it('1. Goal Generation Proposal: Deterministically calculates target, variable duration, and reconciled bonus formula', () => {
     // 0 past items -> baseline minimum 10 target, default 10 minor/device rate = 100 minor bonus (1.00 ILS / 10 devices)
-    const proposalZero = generateGoalProposal(0);
+    const proposalZero = generateGoalProposal(0, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposalZero.targetQuantity).toBe(10);
     expect(proposalZero.durationDays).toBe(7);
     expect(proposalZero.bonusAmountMinor).toBe(100);
     expect(Number.isInteger(proposalZero.bonusAmountMinor)).toBe(true);
 
     // Baseline 8 items -> target = max(10, 8+10, ceil(8*1.25)) = 18 target
-    const proposal8 = generateGoalProposal(8, { customRatePerDeviceMinor: 8 });
+    const proposal8 = generateGoalProposal(8, { customRatePerDeviceMinor: 8, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposal8.targetQuantity).toBe(18);
     // Rate 8 minor/device (0.80 ILS per 10 devices) -> 18 * 8 = 144 minor units (1.44 ILS)
     expect(proposal8.bonusAmountMinor).toBe(144);
 
     // Baseline 20 items -> target = max(10, 20+10, ceil(20*1.25)) = 30 target
-    const proposal20 = generateGoalProposal(20, { customRatePerDeviceMinor: 13, customDurationDays: 6 });
+    const proposal20 = generateGoalProposal(20, { customRatePerDeviceMinor: 13, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposal20.targetQuantity).toBe(30);
-    expect(proposal20.durationDays).toBe(6);
+    expect(proposal20.durationDays).toBe(7);
     // Rate 13 minor/device (1.30 ILS per 10 devices) -> 30 * 13 = 390 minor units (3.90 ILS)
     expect(proposal20.bonusAmountMinor).toBe(390);
 
@@ -159,14 +159,14 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
       version: 1,
     });
 
-    const res1 = await useCases.createGoal(authAdmin, 'goal-1', custId, 15, 7, 750);
+    const res1 = await useCases.createGoal(authAdmin, 'goal-1', custId, 15, 7, 120);
     expect(res1.success).toBe(true);
     if (!res1.success) throw new Error('Expected success');
     expect(res1.data.status).toBe('ACTIVE');
 
     // Attempting to create second active goal must throw
     await expect(
-      useCases.createGoal(authAdmin, 'goal-2', custId, 20, 7, 1000)
+      useCases.createGoal(authAdmin, 'goal-2', custId, 20, 7, 160)
     ).rejects.toThrow(/already has an active goal/);
   });
 
@@ -185,7 +185,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal with target 2
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-prog-1', custId, 2, 7, 800);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-prog-1', custId, 2, 7, 16);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected success');
     const goal = resGoal.data;
@@ -230,10 +230,10 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(eval2.data.goal?.completedAt).toBeDefined();
     expect(eval2.data.goal?.bonusLedgerId).toBeDefined();
 
-    // Verify exactly 1 BONUS ledger entry created with 800 minor units
+    // Verify exactly 1 BONUS ledger entry created with the policy-compliant 16 minor units
     const bonusEntries = ledgerList.filter(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonusEntries.length).toBe(1);
-    expect(bonusEntries[0].amountMinor).toBe(800);
+    expect(bonusEntries[0].amountMinor).toBe(16);
     expect(bonusEntries[0].referenceId).toBe(goal.id);
 
     // Idempotent re-evaluation must NEVER grant duplicate bonus
@@ -257,7 +257,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal with target 10
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-edit-1', custId, 10, 7, 1000);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-edit-1', custId, 10, 7, 80);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected success');
     const goal = resGoal.data;
@@ -276,10 +276,10 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
 
     const bonus = ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonus).toBeDefined();
-    expect(bonus?.amountMinor).toBe(1000);
+    expect(bonus?.amountMinor).toBe(80);
   });
 
-  it('5. Goal Expiration: If expiry passes before target is reached, goal becomes FAILED with zero bonus', async () => {
+  it('5. Goal Expiration: Client defers expiry status to the authoritative server and grants no local bonus', async () => {
     const custId = 'cust-400';
     customerMap.set(custId, {
       id: custId,
@@ -301,7 +301,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
       customerId: custId,
       targetQuantity: 10,
       currentProgress: 3, // only reached 3 out of 10
-      bonusAmountMinor: 1000,
+      bonusAmountMinor: 80,
       durationDays: 7,
       status: 'ACTIVE',
       startedAt: pastStarted,
@@ -315,7 +315,9 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const evalRes = await useCases.evaluateCustomerGoal(custId);
     expect(evalRes.success).toBe(true);
     if (!evalRes.success) throw new Error('Expected success');
-    expect(evalRes.data.goal?.status).toBe('FAILED');
+    expect(evalRes.data.goal?.status).toBe('ACTIVE');
+    const expiryCommand = commandRecords.find((record) => record.type === 'UPDATE_GOAL_PROGRESS');
+    expect((expiryCommand?.payload as { expiresAt?: string } | undefined)?.expiresAt).toBe(pastExpires);
 
     // No bonus entry in ledger
     const bonus = ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId);
@@ -358,13 +360,13 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(reqRes2.success).toBe(true);
 
     // 4. Admin approves second request -> creates active Goal
-    const approveRes = await useCases.approveGoalRequest(authAdmin, 'req-2', 750, 7);
+    const approveRes = await useCases.approveGoalRequest(authAdmin, 'req-2', 120, 7);
     expect(approveRes.success).toBe(true);
     if (!approveRes.success) throw new Error('Expected success');
     expect(approveRes.data.request.status).toBe('APPROVED');
     expect(approveRes.data.goal.status).toBe('ACTIVE');
     expect(approveRes.data.goal.targetQuantity).toBe(15);
-    expect(approveRes.data.goal.bonusAmountMinor).toBe(750);
+    expect(approveRes.data.goal.bonusAmountMinor).toBe(120);
   });
 
   it('7. Comprehensive Goal Editing Boundary Cases: target > progress remains ACTIVE; target <= progress COMPLETED; editing completed goal throws', async () => {
@@ -382,7 +384,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal target 10, current progress 4
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-bound-1', custId, 10, 7, 500);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-bound-1', custId, 10, 7, 80);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected success');
     const goal = resGoal.data;
@@ -429,7 +431,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     });
 
     // Create goal target 1
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-rev-1', custId, 1, 7, 300);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-rev-1', custId, 1, 7, 13);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected goal success');
 
