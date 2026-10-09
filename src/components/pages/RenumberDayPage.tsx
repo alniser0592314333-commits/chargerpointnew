@@ -40,6 +40,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
   const [notice, setNotice] = useState('');
   const [pendingCommandId, setPendingCommandId] = useState<string | null>(null);
   const [commandPending, setCommandPending] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -67,6 +68,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
           : 'The server confirmed renumbering. Reopen the day to verify the accepted numbers.');
       } else if (['FAILED', 'FAILED_PERMANENT', 'CONFLICT', 'BLOCKED'].includes(history.state)) {
         setCommandPending(false);
+        setRefreshTick((value) => value + 1);
         setError(history.errorMessage || (isArabic
           ? 'رفضت المزامنة العملية أو تعارضت مع تغييرات أخرى. أعد تحميل اليوم وراجع الأرقام قبل المحاولة.'
           : 'Sync rejected the operation or found a conflict. Reload the day and review the numbers before retrying.'));
@@ -127,7 +129,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     }).catch((e) => { if (active) setError(String(e?.message || e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authLoaded, allowed, selectedDayId, locale, storeVersion]);
+  }, [authLoaded, allowed, selectedDayId, locale, storeVersion, refreshTick]);
 
   const changed = useMemo(() => orders.some((row, index) => row.oldNumber !== index + 1 || row.newNumber !== index + 1), [orders]);
   const move = (index: number, delta: number) => {
