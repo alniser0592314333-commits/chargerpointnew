@@ -283,7 +283,7 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
-DO $
+DO $offline_collision$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.orders
