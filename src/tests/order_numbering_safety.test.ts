@@ -159,7 +159,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(reservationMap.size).toBe(1);
     const reservationArray = Array.from(reservationMap.values());
     expect(reservationArray[0].startNumber).toBe(1);
-    expect(reservationArray[0].endNumber).toBe(20); // Default size 20
+    expect(reservationArray[0].endNumber).toBe(1); // One number per order avoids unused reserved ranges
 
     // Create additional orders
     const res2 = await useCases.createOrder(auth, 'cmd-lazy-2', 'day-1', 'cust-1', 'Second Order');
@@ -193,7 +193,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       version: 1,
     });
 
-    // Create 3 orders to consume #1, #2, #3 from range [1, 20], nextNumber = 4
+    // Create 3 orders to consume #1, #2, #3 from one-number reservations, nextNumber follows each consumed number
     await useCases.createOrder(auth, 'cmd-bk-1', 'day-1', 'cust-1', 'Order 1');
     await useCases.createOrder(auth, 'cmd-bk-2', 'day-1', 'cust-1', 'Order 2');
     await useCases.createOrder(auth, 'cmd-bk-3', 'day-1', 'cust-1', 'Order 3');
@@ -223,7 +223,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const restoredReservations = await localDb.list<OrderNumberReservationEntity>('orderNumberReservations');
     expect(restoredReservations).toHaveLength(1);
     expect(restoredReservations[0].startNumber).toBe(1);
-    expect(restoredReservations[0].endNumber).toBe(20);
+    expect(restoredReservations[0].endNumber).toBe(1);
     expect(restoredReservations[0].nextNumber).toBe(4);
 
     reservationMap.set(restoredReservations[0].id, restoredReservations[0]);
