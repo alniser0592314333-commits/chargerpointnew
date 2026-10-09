@@ -189,7 +189,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             {/* Order Header */}
             <div className="p-6 space-y-2">
               <span className="inline-block px-3 py-1 bg-emerald-50 dark:bg-[#0c312b] text-emerald-800 dark:text-[#7ae09e] rounded-full text-xs font-black uppercase tracking-wider border border-emerald-200/50 dark:border-[#14423b]">
-                {locale === 'en' ? `Order #${data.orderNumber}` : `طلب #${data.orderNumber}`}
+                {Number.isInteger(data.orderNumber) && data.orderNumber > 0 ? (locale === 'en' ? `Order #${data.orderNumber}` : `طلب #${data.orderNumber}`) : (locale === 'en' ? 'Order number unavailable' : 'رقم الطلب غير متاح')}
               </span>
               <h1 className="text-xl font-black text-gray-900 dark:text-[#daf1de]">
                 {data.customerName}

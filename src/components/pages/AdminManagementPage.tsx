@@ -90,6 +90,7 @@ export const AdminManagementPage: React.FC = () => {
     { key: "orders:deliver", labelEn: "Deliver Orders", labelAr: "تسليم الطلبات" },
     { key: "orders:cancel", labelEn: "Cancel Orders", labelAr: "إلغاء الطلبات" },
     { key: "orders:correct", labelEn: "Correct Orders", labelAr: "تصحيح الطلبات" },
+    { key: "orders:renumber-day", labelEn: "Renumber Day Orders", labelAr: "إعادة ترقيم طلبات يوم" },
     { key: "customers:view", labelEn: "View Customers", labelAr: "عرض العملاء" },
     { key: "customers:create", labelEn: "Create Customers", labelAr: "إضافة عملاء" },
     { key: "customers:edit", labelEn: "Edit Customers", labelAr: "تعديل العملاء" },
