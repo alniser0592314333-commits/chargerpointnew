@@ -482,6 +482,20 @@ BEGIN
                 RAISE EXCEPTION 'Business Day Not Found: ID %', v_day_uuid USING ERRCODE = '23503';
             END IF;
 
+            -- Offline devices can propose the same next number. Reject collisions at
+            -- the authoritative boundary instead of accepting duplicate daily numbers.
+            IF COALESCE((p_payload->>'displayNumber')::INTEGER, (p_payload->>'display_number')::INTEGER, 1) < 1 THEN
+                RAISE EXCEPTION 'Invalid order number: display number must be positive' USING ERRCODE = 'P2201';
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM public.orders existing
+                WHERE existing.day_id = v_day_uuid
+                  AND existing.display_number = COALESCE((p_payload->>'displayNumber')::INTEGER, (p_payload->>'display_number')::INTEGER, 1)
+                  AND existing.id <> v_entity_uuid
+            ) THEN
+                RAISE EXCEPTION 'Order number conflict [409]: this daily order number is already in use; reload and resolve the day numbering' USING ERRCODE = 'P0409';
+            END IF;
+
             INSERT INTO public.orders (
                 id, day_id, customer_id, display_number, status, notes, version, created_at, updated_at
             )
