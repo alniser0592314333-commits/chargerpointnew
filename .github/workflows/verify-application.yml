@@ -148,6 +148,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009200000_revoke_goal_trigger_function_execute.sql
+      - name: Revoke direct service-role access to the internal goal evaluator
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009201000_revoke_goal_evaluator_service_role_execute.sql
       - name: Verify final combined dispatcher contract and privileges
         env:
           PGPASSWORD: postgres
