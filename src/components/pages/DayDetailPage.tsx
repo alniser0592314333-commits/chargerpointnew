@@ -281,7 +281,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
         </div>
       )}
 
-      {/* ORDER LIST (Vertical List, Newest First, Divider-First Layout) */}
+      {/* ORDER LIST (Canonical displayed-number order; invalid numbers remain visible for review) */}
       {sortedOrders.length === 0 ? (
         <div className="py-16 text-center space-y-4 py-12">
           <p className="text-sm font-medium text-gray-500 dark:text-[#8eb698]">
