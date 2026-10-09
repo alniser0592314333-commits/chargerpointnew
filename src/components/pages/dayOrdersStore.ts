@@ -1653,6 +1653,19 @@ function createTransactionalRepoContext(
       saveWithTx: (overlay: OptimisticOverlayRecord) => {
         localDb.saveOverlayWithTx(tx, overlay);
       },
+      hasPendingOrderChangesForDay: (dayId: string) => {
+        for (const overlay of localDb.listOverlaysSync()) {
+          if (
+            (overlay.status !== 'PENDING' && overlay.status !== 'PENDING_RECONCILIATION') ||
+            overlay.entityType !== 'orders'
+          ) continue;
+          const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+          const baseOrder = ordersMap.get(overlay.entityId);
+          const effectiveDayId = patch.dayId ?? baseOrder?.dayId;
+          if (effectiveDayId && isSameDayId(effectiveDayId, dayId)) return true;
+        }
+        return false;
+      },
     },
     orderRepo: {
       findById: (id: string) => ordersMap.get(id) || null,
