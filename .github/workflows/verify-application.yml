@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/isolated-safe-day-renumbering-20261009
+      - fix/integrated-goals-and-safe-renumbering-20261009
   pull_request:
     branches:
       - main
@@ -23,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
       - name: Run order-numbering safety tests
-        run: npx vitest run src/tests/order_numbering_safety.test.ts -t 'renumbers a complete day|rejects stale day versions|rejects duplicate target numbers|atomic rollback|overlay sequence resumes' && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts
+        run: npx vitest run src/tests/order_numbering_safety.test.ts -t 'renumbers a complete day|rejects stale day versions|rejects duplicate target numbers|atomic rollback|overlay sequence resumes' && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts
       - name: Type-check (diagnostic; repository-wide baseline)
         run: npm run lint
         continue-on-error: true
