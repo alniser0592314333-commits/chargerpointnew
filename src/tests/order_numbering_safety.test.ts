@@ -187,10 +187,15 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       transactionManager: {
         runInTransaction: async (fn) => {
           insideLocalTransaction = true;
+          const outerOverlayRepo = mockCtx.overlayRepo!;
           const transactionContext: RepositoryContext = {
             ...mockCtx,
             overlayRepo: {
-              ...(mockCtx.overlayRepo || {}),
+              save: outerOverlayRepo.save,
+              remove: outerOverlayRepo.remove,
+              get: outerOverlayRepo.get,
+              getNextSequence: outerOverlayRepo.getNextSequence,
+              hasPendingOrderChangesForDay: outerOverlayRepo.hasPendingOrderChangesForDay,
               saveWithTx: (overlay: OptimisticOverlayRecord) => {
                 if (!insideLocalTransaction) throw new Error('Overlay must be staged inside the active local transaction');
                 overlays.set(overlay.commandId, overlay);
