@@ -1653,34 +1653,9 @@ export class FinalUseCases {
     goal.updatedAt = new Date().toISOString();
     goal.version += 1;
 
-    // Check if target was edited to be <= current progress -> Complete immediately & grant bonus
-    let bonusGranted = false;
-    let bonusLedgerId: string | undefined;
-
-    if (goal.targetQuantity <= goal.currentProgress && goal.status === 'ACTIVE') {
-      goal.status = 'COMPLETED';
-      goal.completedAt = new Date().toISOString();
-      bonusGranted = true;
-      bonusLedgerId = crypto.randomUUID();
-      goal.bonusLedgerId = bonusLedgerId;
-    }
-
+    // The local store persists the requested configuration, but the server alone
+    // decides whether the edited target completes the goal and issues its bonus.
     return this.deps.transactionManager.runInTransaction((ctx) => {
-      if (bonusGranted && bonusLedgerId) {
-        ctx.ledgerRepo.append({
-          id: bonusLedgerId,
-          eventType: 'BONUS',
-          amountMinor: goal.bonusAmountMinor,
-          customerId: goal.customerId,
-          referenceId: goal.id,
-          metadata: {
-            reason: 'GOAL_COMPLETED_VIA_CONFIG_UPDATE',
-            goalId: goal.id,
-            targetQuantity: goal.targetQuantity,
-            bonusAmountMinor: goal.bonusAmountMinor,
-          },
-        });
-      }
       ctx.goalRepo!.save(goal);
       ctx.commandRepo.record(crypto.randomUUID(), 'UPDATE_GOAL_CONFIG', {
         id: goal.id,
@@ -1688,9 +1663,6 @@ export class FinalUseCases {
         durationDays: goal.durationDays,
         bonusAmountMinor: goal.bonusAmountMinor,
         expiresAt: goal.expiresAt,
-        status: goal.status,
-        completedAt: goal.completedAt,
-        bonusLedgerId: goal.bonusLedgerId,
       });
       return { success: true, data: goal };
     });
@@ -1872,42 +1844,13 @@ export class FinalUseCases {
     goal.currentProgress = newProgress;
     goal.updatedAt = new Date().toISOString();
 
-    const now = new Date();
-    const isExpired = now.getTime() > new Date(goal.expiresAt).getTime();
-
-    let bonusToGrant = false;
-    let bonusLedgerId: string | undefined;
-
-    if (newProgress >= goal.targetQuantity) {
-      goal.status = 'COMPLETED';
-      goal.completedAt = now.toISOString();
-      if (!goal.bonusLedgerId) {
-        bonusToGrant = true;
-        bonusLedgerId = crypto.randomUUID();
-        goal.bonusLedgerId = bonusLedgerId;
-      }
-    } else if (isExpired) {
-      goal.status = 'FAILED';
-    }
-
+    // Local progress is optimistic only. The server independently recalculates
+    // eligibility, status transitions, and any bonus when this command is accepted.
+    goal.currentProgress = newProgress;
+    goal.updatedAt = new Date().toISOString();
     goal.version += 1;
 
     const performSave = (c: RepositoryContext) => {
-      if (bonusToGrant && bonusLedgerId) {
-        c.ledgerRepo.append({
-          id: bonusLedgerId,
-          eventType: 'BONUS',
-          amountMinor: goal.bonusAmountMinor,
-          customerId: goal.customerId,
-          referenceId: goal.id,
-          metadata: {
-            reason: 'GOAL_COMPLETED',
-            goalId: goal.id,
-            targetQuantity: goal.targetQuantity,
-            bonusAmountMinor: goal.bonusAmountMinor,
-          },
-        });
-      }
       c.goalRepo!.save(goal);
       const commandId = crypto.randomUUID();
       c.commandRepo.record(commandId, 'UPDATE_GOAL_PROGRESS', {
@@ -1915,11 +1858,6 @@ export class FinalUseCases {
         goalId: goal.id,
         customerId: goal.customerId,
         currentProgress: goal.currentProgress,
-        status: goal.status,
-        completedAt: goal.completedAt,
-        bonusLedgerId: goal.bonusLedgerId,
-        bonusGranted: bonusToGrant,
-        bonusAmountMinor: goal.bonusAmountMinor,
         startedAt: goal.startedAt,
         expiresAt: goal.expiresAt,
       }, goal.version - 1);
