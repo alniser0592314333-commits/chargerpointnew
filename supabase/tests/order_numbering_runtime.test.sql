@@ -283,6 +283,21 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
+-- A unique reserved number may still arrive out of order; it must not be forced to MAX+1.
+SET ROLE authenticated;
+SELECT public.execute_canonical_sync_command(
+  'bbbbbbbb-1111-4111-8111-111111111111'::uuid,
+  'CREATE_ORDER',
+  jsonb_build_object(
+    'id', 'bbbbbbbb-2222-4222-8222-222222222222',
+    'dayId', '33333333-3333-4333-8333-333333333333',
+    'customerId', '99999999-9999-4999-8999-999999999999',
+    'displayNumber', 21,
+    'notes', 'unique offline reservation arriving out of order'
+  )
+);
+RESET ROLE;
+
 DO $offline_collision$
 BEGIN
   IF NOT EXISTS (
@@ -310,6 +325,21 @@ BEGIN
       AND result_payload->>'displayNumber' = '4'
   ) THEN
     RAISE EXCEPTION 'The successful CREATE_ORDER result did not report the authoritative number';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222'
+      AND display_number = 21
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.test_change_events
+    WHERE entity_table = 'orders'
+      AND entity_id = 'bbbbbbbb-2222-4222-8222-222222222222'
+      AND operation = 'INSERT'
+      AND (payload->>'displayNumber')::INTEGER = 21
+      AND (payload->>'display_number')::INTEGER = 21
+  ) THEN
+    RAISE EXCEPTION 'A unique out-of-order offline reservation was incorrectly forced to MAX+1 or not published';
   END IF;
 END;
 $offline_collision$;
