@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateGoalBonusCapMinor,
+  calculateAuthoritativeGoalProgress,
   generateGoalProposal,
   randomGoalDurationDays,
 } from './rules';
@@ -26,6 +27,20 @@ describe('smart goal policy', () => {
     expect(short.targetQuantity).toBeGreaterThanOrEqual(10);
     expect(long.targetQuantity).toBeGreaterThan(short.targetQuantity);
     expect(higherActivity.targetQuantity).toBeGreaterThan(long.targetQuantity);
+  });
+
+  it('counts only distinct delivered and recognized items and excludes deleted or reversed-status items', () => {
+    const progress = calculateAuthoritativeGoalProgress(
+      { startedAt: '2026-01-01T00:00:00.000Z', expiresAt: '2026-01-10T00:00:00.000Z' },
+      [
+        { id: 'item-1', status: 'delivered', operationalStatus: 'DELIVERED', financialStatus: 'RECOGNIZED', deliveredAt: '2026-01-02T00:00:00.000Z' },
+        { id: 'item-2', status: 'delivered', operationalStatus: 'DELIVERED', financialStatus: 'REVERSED', deliveredAt: '2026-01-03T00:00:00.000Z' },
+        { id: 'item-3', status: 'delivered', operationalStatus: 'DELIVERED', financialStatus: 'RECOGNIZED', deliveredAt: '2026-01-04T00:00:00.000Z', deletedAt: '2026-01-05T00:00:00.000Z' },
+        { id: 'item-4', status: 'charging', operationalStatus: 'CHARGING', financialStatus: 'RECOGNIZED', deliveredAt: '2026-01-06T00:00:00.000Z' },
+        { id: 'item-5', status: 'delivered', operationalStatus: 'CANCELLED', financialStatus: 'RECOGNIZED', deliveredAt: '2026-01-07T00:00:00.000Z' },
+      ]
+    );
+    expect(progress).toBe(1);
   });
 
   it('calculates the hard cap as 20 minor units per target device', () => {
