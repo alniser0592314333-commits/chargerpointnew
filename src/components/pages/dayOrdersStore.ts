@@ -1664,6 +1664,7 @@ function createTransactionalRepoContext(
       saveWithTx: (overlay: OptimisticOverlayRecord) => {
         localDb.saveOverlayWithTx(tx, overlay);
       },
+      hasPendingOrderChangesForDaySync: (dayId: string) => hasPendingOrderChangesForDay(dayId),
     },
     orderRepo: {
       findById: (id: string) => ordersMap.get(id) || null,
