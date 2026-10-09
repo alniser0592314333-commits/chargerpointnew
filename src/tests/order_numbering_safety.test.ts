@@ -24,6 +24,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
   let customerMap: Map<string, CustomerEntity>;
   let reservationMap: Map<string, OrderNumberReservationEntity>;
   let useCases: FinalUseCases;
+  let recordedCommands: Array<{ commandId: string; type: string; payload: unknown }>;
+  let overlays: Map<string, any>;
+  let overlaySequence: number;
 
   beforeEach(async () => {
     await localDb.clear();
@@ -31,6 +34,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     dayMap = new Map();
     customerMap = new Map();
     reservationMap = new Map();
+    recordedCommands = [];
+    overlays = new Map();
+    overlaySequence = 0;
 
     const mockCtx: RepositoryContext = {
       orderRepo: {
@@ -104,7 +110,13 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       },
       commandRepo: {
         get: () => null,
-        record: () => {},
+        record: (commandId: string, type: string, payload: unknown) => { recordedCommands.push({ commandId, type, payload }); },
+      },
+      overlayRepo: {
+        save: async (overlay: any) => { overlays.set(overlay.commandId, overlay); },
+        remove: async (id: string) => { overlays.delete(id); },
+        get: async (id: string) => overlays.get(id) || null,
+        getNextSequence: async () => ++overlaySequence,
       },
       deviceRepo: {
         findById: () => null,
@@ -125,6 +137,48 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     };
 
     useCases = new FinalUseCases(mockCtx);
+  });
+
+  it('renumbers a complete day through awaited overlays and one sync command', async () => {
+    const dayId = 'day-1';
+    const now = '2026-10-09T10:00:00.000Z';
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    for (const [id, customerId, displayNumber] of [['order-a', 'cust-a', 2], ['order-b', 'cust-b', 1]] as const) {
+      orderMap.set(id, {
+        id, dayId, customerId, displayNumber, internalSequence: displayNumber,
+        status: 'pending', createdAt: now, updatedAt: now, version: 3,
+      });
+    }
+
+    const result = await useCases.renumberDayOrders(auth, 'renumber-command', dayId, [
+      { id: 'order-a', expectedVersion: 3, oldNumber: 2, newNumber: 1 },
+      { id: 'order-b', expectedVersion: 3, oldNumber: 1, newNumber: 2 },
+    ]);
+
+    expect(result.success).toBe(true);
+    expect(overlays.get('renumber-command:order:order-a')?.patch).toMatchObject({ displayNumber: 1, version: 4 });
+    expect(overlays.get('renumber-command:order:order-b')?.patch).toMatchObject({ displayNumber: 2, version: 4 });
+    expect(recordedCommands).toHaveLength(1);
+    expect(recordedCommands[0]).toMatchObject({ commandId: 'renumber-command', type: 'RENUMBER_DAY_ORDERS' });
+    expect((recordedCommands[0].payload as any).changes).toHaveLength(2);
+  });
+
+  it('rejects stale day versions before writing overlays or a sync command', async () => {
+    const dayId = 'day-1';
+    const now = '2026-10-09T10:00:00.000Z';
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    orderMap.set('order-a', {
+      id: 'order-a', dayId, customerId: 'cust-a', displayNumber: 1, internalSequence: 1,
+      status: 'pending', createdAt: now, updatedAt: now, version: 5,
+    });
+
+    const result = await useCases.renumberDayOrders(auth, 'stale-command', dayId, [
+      { id: 'order-a', expectedVersion: 4, oldNumber: 1, newNumber: 1 },
+    ]);
+
+    expect(result.success).toBe(false);
+    expect(overlays.size).toBe(0);
+    expect(recordedCommands).toHaveLength(0);
   });
 
   it('Test LAZY RESERVATION — Zero reservations at startup/login/sync, exact reservation on first order, no new reservation until exhaustion', async () => {
