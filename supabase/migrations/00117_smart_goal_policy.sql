@@ -326,8 +326,12 @@ BEGIN
                 v_required_perm := 'finance:credit-adjustment';
             WHEN 'REFUND_PAYMENT', 'CREATE_REFUND' THEN
                 v_required_perm := 'finance:refund';
-            WHEN 'CREATE_GOAL', 'UPDATE_GOAL_CONFIG', 'UPDATE_GOAL_PROGRESS' THEN
+            WHEN 'CREATE_GOAL', 'UPDATE_GOAL_CONFIG' THEN
                 v_required_perm := 'goals:manage';
+            -- UPDATE_GOAL_PROGRESS only requests a server-side recalculation;
+            -- its client-supplied progress/status/reward fields are ignored.
+            WHEN 'UPDATE_GOAL_PROGRESS' THEN
+                v_required_perm := NULL;
             WHEN 'RECORD_GOAL_REQUEST' THEN
                 v_required_perm := 'goals:manage';
             WHEN 'APPROVE_GOAL_REQUEST', 'REJECT_GOAL_REQUEST' THEN
@@ -1395,10 +1399,7 @@ WHEN 'UPDATE_ORDER' THEN
                 RAISE EXCEPTION 'Completed or failed goals are immutable' USING ERRCODE='P0001';
             END IF;
 
-            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
-            IF v_expected_version IS NOT NULL AND v_rec_goal.version <> v_expected_version THEN
-                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Goal version mismatch. Expected %, current %', v_expected_version, v_rec_goal.version USING ERRCODE='P0409';
-            END IF;
+            -- Progress refreshes are idempotent server calculations, so stale local versions do not block them.
 
             v_goal_target := COALESCE((p_payload->>'targetQuantity')::INTEGER, v_rec_goal.target_quantity);
             v_goal_duration := COALESCE((p_payload->>'durationDays')::INTEGER, v_rec_goal.duration_days);
