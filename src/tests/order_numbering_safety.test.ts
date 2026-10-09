@@ -347,6 +347,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
   it('Test BACKUP/RESTORE RESERVATION INTEGRITY — Preserves partially consumed reservation range across backup and restore', async () => {
     const dayId = '33333333-3333-4333-8333-333333333333';
     const customerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const authBackup = new AuthorizationContext({ ...adminActor, deviceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }, (bin) => bin === validBin);
     dayMap.set(dayId, {
       id: dayId,
       businessDate: '2026-10-03',
@@ -367,9 +368,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     });
 
     // Create 3 orders to consume #1, #2, #3 from the reserved range [1, 20], nextNumber = 4
-    await createReservedOrder(auth, '44444444-4444-4444-8444-444444444441', dayId, customerId, 'Order 1');
-    await createReservedOrder(auth, '44444444-4444-4444-8444-444444444442', dayId, customerId, 'Order 2');
-    await createReservedOrder(auth, '44444444-4444-4444-8444-444444444443', dayId, customerId, 'Order 3');
+    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444441', dayId, customerId, 'Order 1');
+    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444442', dayId, customerId, 'Order 2');
+    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444443', dayId, customerId, 'Order 3');
 
     for (const [id, ord] of orderMap.entries()) {
       await localDb.set('orders', id, ord);
@@ -380,7 +381,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     await localDb.set('businessDays', dayId, dayMap.get(dayId));
     await localDb.set('customers', customerId, customerMap.get(customerId));
 
-    const snapshot = await backupService.createSnapshot('OFFLINE', auth, {
+    const snapshot = await backupService.createSnapshot('OFFLINE', authBackup, {
       name: 'Reservation Restore Test Backup',
       bin: validBin,
     });
@@ -391,7 +392,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     reservationMap.clear();
     await localDb.clearOperationalTables();
 
-    await backupService.restoreSnapshot(snapshot.snapshotId, auth, { bin: validBin });
+    await backupService.restoreSnapshot(snapshot.snapshotId, authBackup, { bin: validBin });
 
     const restoredReservations = await localDb.list<OrderNumberReservationEntity>('orderNumberReservations');
     expect(restoredReservations).toHaveLength(1);
@@ -401,7 +402,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     reservationMap.set(restoredReservations[0].id, restoredReservations[0]);
 
-    const resNext = await createReservedOrder(auth, '44444444-4444-4444-8444-444444444444', dayId, customerId, 'Order 4');
+    const resNext = await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444444', dayId, customerId, 'Order 4');
     expect(resNext.success).toBe(true);
     expect((resNext as any).data.order.displayNumber).toBe(4);
   });
