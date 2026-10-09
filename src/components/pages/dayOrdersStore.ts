@@ -22,7 +22,7 @@ import {
   GoalRequestEntity,
 } from '../../domain/models';
 import { ClosedDayError, InactiveCustomerError, NotFoundError, ConflictError, OrderNumberReservationExhaustedError, presentError } from '../../domain/errors';
-import { localDb, OutboxRecord } from '../../infrastructure/localDb/localDb';
+import { localDb, OutboxRecord, OptimisticOverlayRecord } from '../../infrastructure/localDb/localDb';
 import { generateSecurePublicToken, computeTokenHash } from '../../services/supabase/qrSecurity';
 import {
   rpcResolveCustomerQr,
@@ -264,6 +264,7 @@ const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
   switch (commandType) {
     case 'CREATE_ORDER':
     case 'UPDATE_ORDER':
+    case 'RENUMBER_DAY_ORDERS':
       return ['orders'];
     case 'CANCEL_ORDER':
       return ['orders', 'orderItems'];
@@ -427,7 +428,7 @@ export const applyRemoteChange = (change: {
       id: p.id || change.entityId,
       dayId: p.dayId || p.day_id || previousOrder?.dayId,
       customerId: p.customerId || p.customer_id || previousOrder?.customerId,
-      displayNumber: p.displayNumber ?? p.display_number ?? previousOrder?.displayNumber ?? 1,
+      displayNumber: p.displayNumber ?? p.display_number ?? previousOrder?.displayNumber ?? 0,
       internalSequence: p.internalSequence ?? p.internal_sequence ?? previousOrder?.internalSequence ?? 0,
       status: resolvedStatus,
       notes: p.notes ?? previousOrder?.notes ?? undefined,
@@ -1382,15 +1383,14 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     persistedOrders.forEach((o) => {
       const explicitNum =
         o.displayNumber ??
-        (o as any).display_number ??
-        o.internalSequence ??
-        (o as any).internal_sequence;
+        (o as any).display_number;
 
       ordersMap.set(o.id, {
         ...o,
         dayId: o.dayId || (o as any).day_id,
         customerId: o.customerId || (o as any).customer_id,
-        displayNumber: typeof explicitNum === 'number' && explicitNum > 0 ? explicitNum : 1,
+        // Missing/invalid numbers remain explicitly invalid (0); hydration must never invent or resequence them.
+        displayNumber: typeof explicitNum === 'number' && Number.isInteger(explicitNum) && explicitNum > 0 ? explicitNum : 0,
         status: o.status ?? (o as any).status ?? (o as any).order_status ?? 'pending',
         customerBalanceSnapshotMinor:
           o.customerBalanceSnapshotMinor ??
@@ -1399,8 +1399,8 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       });
     });
 
-    // Sanitize and resequence order numbers per day to ensure sequential 1, 2, 3... order numbers
-    await sanitizeAndResequenceOrderNumbers();
+    // Never mutate order numbers during hydration. Existing conflicts are diagnostic state,
+    // not permission to rewrite identifiers shown on printed cards or QR views.
 
     // 5. Items Hydration (always read persisted data)
     itemsMap.clear();
@@ -1564,81 +1564,71 @@ export const isSameDayId = (id1?: string, id2?: string): boolean => {
   return getCanonicalDayKey(id1) === getCanonicalDayKey(id2);
 };
 
+/**
+ * Compatibility name retained for older callers. This is deliberately read-only:
+ * number conflicts must be repaired only through the authorized Settings workflow.
+ */
 export const sanitizeAndResequenceOrderNumbers = async (): Promise<void> => {
-  if (ordersMap.size === 0) return;
-
-  const ordersByDay = new Map<string, OrderEntity[]>();
-
-  for (const order of ordersMap.values()) {
-    const dayKey = getCanonicalDayKey(order.dayId);
-    let list = ordersByDay.get(dayKey);
-    if (!list) {
-      list = [];
-      ordersByDay.set(dayKey, list);
-    }
-    list.push(order);
-  }
-
-  for (const [, orders] of ordersByDay) {
-    if (orders.length <= 1) continue;
-
-    const usedNumbers = new Map<number, OrderEntity[]>();
-    const missingOrUnnumbered: OrderEntity[] = [];
-
-    for (const ord of orders) {
-      const num = ord.displayNumber;
-      if (typeof num === 'number' && num > 0) {
-        if (!usedNumbers.has(num)) {
-          usedNumbers.set(num, []);
-        }
-        usedNumbers.get(num)!.push(ord);
-      } else {
-        missingOrUnnumbered.push(ord);
-      }
-    }
-
-    const duplicateOrders: OrderEntity[] = [];
-    const occupiedNumbers = new Set<number>();
-
-    for (const [num, list] of usedNumbers.entries()) {
-      occupiedNumbers.add(num);
-      if (list.length > 1) {
-        list.sort((a, b) => {
-          const timeA = new Date(a.createdAt || 0).getTime();
-          const timeB = new Date(b.createdAt || 0).getTime();
-          if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeA - timeB;
-          return a.id.localeCompare(b.id);
-        });
-        for (let i = 1; i < list.length; i++) {
-          duplicateOrders.push(list[i]);
-        }
-      }
-    }
-
-    const needsNumber = [...missingOrUnnumbered, ...duplicateOrders];
-    if (needsNumber.length > 0) {
-      needsNumber.sort((a, b) => {
-        const timeA = new Date(a.createdAt || 0).getTime();
-        const timeB = new Date(b.createdAt || 0).getTime();
-        if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeA - timeB;
-        return a.id.localeCompare(b.id);
-      });
-
-      let nextAvailable = 1;
-      for (const ord of needsNumber) {
-        while (occupiedNumbers.has(nextAvailable)) {
-          nextAvailable++;
-        }
-        const updatedOrd = { ...ord, displayNumber: nextAvailable };
-        occupiedNumbers.add(nextAvailable);
-        ordersMap.set(ord.id, updatedOrd);
-        // READ PATH WRITE PROHIBITED: await localDb.set('orders', ord.id, ord).catch(() => {});
-      }
-    }
-  }
+  // No mutation by design. Use getOrderNumberingDiagnostics() to inspect conflicts.
 };
 
-// Helper to get current reset generation for outbox commands
+export interface OrderNumberingDiagnostic {
+  dayKey: string;
+  dayId: string;
+  orderId: string;
+  displayNumber: number;
+  issue: 'MISSING_OR_INVALID' | 'DUPLICATE';
+}
+
+/** Read-only diagnostics; never rewrites numbers and can be called on every view load. */
+export const analyzeOrderNumbering = (orders: OrderEntity[]): OrderNumberingDiagnostic[] => {
+  const seenByDay = new Map<string, Map<number, OrderEntity[]>>();
+  const diagnostics: OrderNumberingDiagnostic[] = [];
+  for (const order of orders) {
+    const dayKey = getCanonicalDayKey(order.dayId);
+    if (!Number.isInteger(order.displayNumber) || order.displayNumber <= 0) {
+      diagnostics.push({
+        dayKey,
+        dayId: order.dayId,
+        orderId: order.id,
+        displayNumber: order.displayNumber,
+        issue: 'MISSING_OR_INVALID',
+      });
+      continue;
+    }
+    let numbers = seenByDay.get(dayKey);
+    if (!numbers) {
+      numbers = new Map<number, OrderEntity[]>();
+      seenByDay.set(dayKey, numbers);
+    }
+    const sameNumber = numbers.get(order.displayNumber) ?? [];
+    sameNumber.push(order);
+    numbers.set(order.displayNumber, sameNumber);
+  }
+  for (const [dayKey, numbers] of seenByDay) {
+    for (const [displayNumber, sameNumber] of numbers) {
+      if (sameNumber.length < 2) continue;
+      for (const order of sameNumber) {
+        diagnostics.push({
+          dayKey,
+          dayId: order.dayId,
+          orderId: order.id,
+          displayNumber,
+          issue: 'DUPLICATE',
+        });
+      }
+    }
+  }
+  return diagnostics.sort((a, b) =>
+    a.dayKey.localeCompare(b.dayKey) ||
+    a.displayNumber - b.displayNumber ||
+    a.orderId.localeCompare(b.orderId)
+  );
+};
+
+export const getOrderNumberingDiagnostics = (): OrderNumberingDiagnostic[] =>
+  analyzeOrderNumbering(Array.from(ordersMap.values()));
+
 function getCurrentSyncGeneration(): number {
   const syncState = localDb.getSyncStateSync('global');
   if (
@@ -1659,6 +1649,11 @@ function createTransactionalRepoContext(
   postCommitActions: (() => void)[]
 ): any {
   return {
+    overlayRepo: {
+      saveWithTx: (overlay: OptimisticOverlayRecord) => {
+        localDb.saveOverlayWithTx(tx, overlay);
+      },
+    },
     orderRepo: {
       findById: (id: string) => ordersMap.get(id) || null,
       save: (o: OrderEntity) => {
@@ -1677,6 +1672,9 @@ function createTransactionalRepoContext(
         });
         return maxNum;
       },
+      // A true row list is required for day-wide repairs. countForDay intentionally
+      // returns the current maximum number for sequential allocation, not row count.
+      findByDay: (dayId: string) => Array.from(ordersMap.values()).filter((o) => isSameDayId(o.dayId, dayId)),
     },
     itemRepo: {
       findByOrderId: (orderId: string) => {
@@ -1865,7 +1863,7 @@ function createTransactionalRepoContext(
           commandId: cmdId,
           commandType: type,
           aggregateType:
-            type === 'CREATE_ORDER' || type === 'UPDATE_ORDER' || type === 'CANCEL_ORDER'
+            type === 'CREATE_ORDER' || type === 'UPDATE_ORDER' || type === 'CANCEL_ORDER' || type === 'RENUMBER_DAY_ORDERS'
               ? 'orders'
               : type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM'
               ? 'order_items'
@@ -1884,11 +1882,13 @@ function createTransactionalRepoContext(
               : 'COMMAND',
           aggregateId,
           mutationKey:
-            type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
-              ? `order:${payloadRecord.orderId || aggregateId}`
-              : type === 'CREATE_PAYMENT' || type === 'POST_PAYMENT' || type === 'PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
-                ? `customer:${payloadRecord.customerId || aggregateId}`
-                : type.includes('DEVICE_TYPE') ? `deviceType:${payloadRecord.deviceTypeId || aggregateId}` : undefined,
+            type === 'RENUMBER_DAY_ORDERS'
+              ? `renumber-day:${payloadRecord.dayId || aggregateId}`
+              : type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
+                ? `order:${payloadRecord.orderId || aggregateId}`
+                : type === 'CREATE_PAYMENT' || type === 'POST_PAYMENT' || type === 'PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
+                  ? `customer:${payloadRecord.customerId || aggregateId}`
+                  : type.includes('DEVICE_TYPE') ? `deviceType:${payloadRecord.deviceTypeId || aggregateId}` : undefined,
           payload: { ...(payload || {}), resetGeneration: currentGen },
           expectedVersion,
           createdAt: new Date().toISOString(),
@@ -1963,19 +1963,14 @@ function createTransactionalRepoContext(
             if (r.commandId === commandId) return r;
           }
         }
+        // Preserve all outstanding local reservation ranges. A manual renumber must not
+        // reuse numbers already reserved by another local device/context.
         let maxEnd = 0;
-        reservationsMap.forEach(r => {
-          if (r.businessDayId === dayId && r.endNumber > maxEnd) {
-            maxEnd = r.endNumber;
-          }
+        reservationsMap.forEach((r) => {
+          if (r.businessDayId === dayId && r.endNumber > maxEnd) maxEnd = r.endNumber;
         });
-        // Reservations are local execution metadata and are intentionally not
-        // required in an online backup. After restore, derive the next safe
-        // range from authoritative local orders so numbering never restarts at 1.
-        ordersMap.forEach(order => {
-          if (order.dayId === dayId && (order.displayNumber || 0) > maxEnd) {
-            maxEnd = order.displayNumber;
-          }
+        ordersMap.forEach((order) => {
+          if (order.dayId === dayId && (order.displayNumber || 0) > maxEnd) maxEnd = order.displayNumber;
         });
         const startNumber = maxEnd + 1;
         const endNumber = startNumber + rangeSize - 1;
@@ -2411,7 +2406,7 @@ export const repoContext: RepositoryContext = {
         const postCommitActions: (() => void)[] = [];
 
         const result = await localDb.runTransaction(
-          ['kvStore', 'outbox', 'mutationSnapshots'],
+          ['kvStore', 'outbox', 'mutationSnapshots', 'optimisticOverlays'],
           'readwrite',
           (tx) => {
             const txCtx = createTransactionalRepoContext(tx, postCommitActions);
@@ -2827,9 +2822,7 @@ export const getOrdersForDay = async (
 ): Promise<UIDayOrderDetail[]> => {
   await ensureStoreHydrated();
 
-  // Order numbers are sanitized once during store hydration. Re-running the
-  // full historical scan on every page open added unnecessary latency without
-  // changing the authoritative data.
+  // Number integrity is read-only here. Hydration and page rendering must never repair numbering.
   const effectiveOrdersMap = new Map(ordersMap);
   const effectiveItemsMap = new Map(itemsMap);
 
@@ -3928,6 +3921,10 @@ export const getOrderQrCardData = async (
 
   const order = ordersMap.get(orderId) || (await localDb.get<OrderEntity>('orders', orderId));
   if (!order) return null;
+  // Never mint a QR card/token with a fabricated or invalid display number.
+  if (!Number.isInteger(order.displayNumber) || order.displayNumber <= 0) {
+    throw new Error('ORDER_NUMBER_UNAVAILABLE');
+  }
 
   const customer = customersMap.get(order.customerId) || (await localDb.get<CustomerEntity>('customers', order.customerId));
   const customerName = customer ? customer.name : order.customerId;
