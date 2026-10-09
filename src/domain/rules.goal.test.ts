@@ -43,6 +43,22 @@ describe('smart goal policy', () => {
     expect(progress).toBe(1);
   });
 
+  it('raises the per-device reward rate for a more difficult pace without crossing the cap', () => {
+    const shortLowActivity = generateGoalProposal(7, {
+      customDurationDays: 3,
+      startedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const longHighActivity = generateGoalProposal(700, {
+      customDurationDays: 15,
+      startedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const shortRate = shortLowActivity.bonusAmountMinor / shortLowActivity.targetQuantity;
+    const longRate = longHighActivity.bonusAmountMinor / longHighActivity.targetQuantity;
+    expect(shortRate).toBeGreaterThan(longRate);
+    expect(shortRate).toBeLessThanOrEqual(20);
+    expect(longRate).toBeLessThanOrEqual(20);
+  });
+
   it('calculates the hard cap as 20 minor units per target device', () => {
     expect(calculateGoalBonusCapMinor(10)).toBe(200);
     expect(calculateGoalBonusCapMinor(50)).toBe(1000);
