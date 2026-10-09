@@ -146,7 +146,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         hasPendingOrderChangesForDay: (dayId: string) => Array.from(overlays.values()).some((overlay) => {
-          if ((overlay.status !== 'PENDING' && overlay.status !== 'PENDING_RECONCILIATION') || overlay.entityType !== 'orders') return false;
+          if (overlay.status !== 'PENDING' || overlay.entityType !== 'orders') return false;
           const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
           const baseOrder = orderMap.get(overlay.entityId);
           const effectiveDayId = patch.dayId ?? baseOrder?.dayId;
