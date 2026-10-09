@@ -1873,11 +1873,13 @@ function createTransactionalRepoContext(
               : 'COMMAND',
           aggregateId,
           mutationKey:
-            type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
-              ? `order:${payloadRecord.orderId || aggregateId}`
-              : type === 'CREATE_PAYMENT' || type === 'POST_PAYMENT' || type === 'PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
-                ? `customer:${payloadRecord.customerId || aggregateId}`
-                : type.includes('DEVICE_TYPE') ? `deviceType:${payloadRecord.deviceTypeId || aggregateId}` : undefined,
+            type === 'RENUMBER_DAY_ORDERS'
+              ? `renumber-day:${payloadRecord.dayId || aggregateId}`
+              : type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
+                ? `order:${payloadRecord.orderId || aggregateId}`
+                : type === 'CREATE_PAYMENT' || type === 'POST_PAYMENT' || type === 'PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
+                  ? `customer:${payloadRecord.customerId || aggregateId}`
+                  : type.includes('DEVICE_TYPE') ? `deviceType:${payloadRecord.deviceTypeId || aggregateId}` : undefined,
           payload: { ...(payload || {}), resetGeneration: currentGen },
           expectedVersion,
           createdAt: new Date().toISOString(),
