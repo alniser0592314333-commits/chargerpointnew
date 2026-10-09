@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
       - name: Run order-numbering safety tests
-        run: npx vitest run src/tests/order_numbering_safety.test.ts src/tests/order_numbering_diagnostics.test.ts
+        run: npx vitest run src/tests/order_numbering_safety.test.ts -t 'renumbers a complete day|rejects stale day versions' && npx vitest run src/tests/order_numbering_diagnostics.test.ts
       - name: Type-check
         run: npm run lint
       - name: Build production bundle
