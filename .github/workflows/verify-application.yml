@@ -139,3 +139,39 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/smart_goal_policy_runtime.test.sql
+
+      - name: Apply renumbering migration after smart-goal migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009090000_add_atomic_day_order_renumbering.sql
+      - name: Verify final combined dispatcher contract and privileges
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          DECLARE
+            dispatcher regprocedure := 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)'::regprocedure;
+            definition text := pg_get_functiondef(dispatcher);
+          BEGIN
+            IF position('WHEN ''CREATE_GOAL'' THEN' in definition) = 0 THEN
+              RAISE EXCEPTION 'Combined dispatcher lost CREATE_GOAL';
+            END IF;
+            IF position('WHEN ''RENUMBER_DAY_ORDERS'' THEN' in definition) = 0 THEN
+              RAISE EXCEPTION 'Combined dispatcher lost RENUMBER_DAY_ORDERS';
+            END IF;
+            IF position('p_payload->>''adminBin''' in definition) > 0 THEN
+              RAISE EXCEPTION 'Combined dispatcher reintroduced legacy adminBin alias';
+            END IF;
+            IF has_function_privilege('anon', dispatcher, 'EXECUTE')
+               OR NOT has_function_privilege('authenticated', dispatcher, 'EXECUTE')
+               OR NOT has_function_privilege('service_role', dispatcher, 'EXECUTE') THEN
+              RAISE EXCEPTION 'Combined dispatcher grants are incorrect';
+            END IF;
+            IF has_table_privilege('authenticated', 'public.order_renumber_audit', 'SELECT')
+               OR has_table_privilege('authenticated', 'public.order_renumber_audit', 'INSERT')
+               OR has_table_privilege('anon', 'public.order_renumber_audit', 'SELECT') THEN
+              RAISE EXCEPTION 'Renumber audit table must not be directly exposed';
+            END IF;
+          END $;
+          SQL
