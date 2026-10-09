@@ -42,7 +42,8 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     return () => { active = false; };
   }, []);
 
-  const allowed = session?.role === 'SUPER_ADMIN' || Boolean(session?.permissions?.includes('orders:renumber-day'));
+  const isSuperAdmin = String(session?.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN';
+  const allowed = isSuperAdmin || Boolean(session?.permissions?.includes('orders:renumber-day'));
 
   useEffect(() => {
     let active = true;
