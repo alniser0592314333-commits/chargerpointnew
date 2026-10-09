@@ -1952,19 +1952,31 @@ function createTransactionalRepoContext(
             if (r.commandId === commandId) return r;
           }
         }
-        let maxEnd = 0;
-        reservationsMap.forEach(r => {
-          if (r.businessDayId === dayId && r.endNumber > maxEnd) {
-            maxEnd = r.endNumber;
-          }
+        // Derive the next slot from effective local orders, including pending
+        // renumber overlays. Historical reservation endpoints must not survive a
+        // controlled renumber and create artificial gaps.
+        const effectiveDayNumbers = new Map<string, number>();
+        ordersMap.forEach((order) => {
+          if (isSameDayId(order.dayId, dayId)) effectiveDayNumbers.set(order.id, order.displayNumber || 0);
         });
-        // Reservations are local execution metadata and are intentionally not
-        // required in an online backup. After restore, derive the next safe
-        // range from authoritative local orders so numbering never restarts at 1.
-        ordersMap.forEach(order => {
-          if (order.dayId === dayId && (order.displayNumber || 0) > maxEnd) {
-            maxEnd = order.displayNumber;
+        for (const overlay of localDb.listOverlaysSync()) {
+          if (overlay.status !== 'PENDING' || overlay.entityType !== 'orders') continue;
+          const payload = (overlay.patch || overlay.entityPayload || {}) as Record<string, unknown>;
+          const baseOrder = ordersMap.get(overlay.entityId);
+          const effectiveDayId = (payload.dayId || payload.day_id || baseOrder?.dayId) as string | undefined;
+          if (!effectiveDayId || !isSameDayId(effectiveDayId, dayId)) continue;
+          if (overlay.operation === 'DELETE') {
+            effectiveDayNumbers.delete(overlay.entityId);
+            continue;
           }
+          const number = payload.displayNumber ?? payload.display_number ?? baseOrder?.displayNumber;
+          if (typeof number === 'number' && Number.isInteger(number) && number > 0) {
+            effectiveDayNumbers.set(overlay.entityId, number);
+          }
+        }
+        let maxEnd = 0;
+        effectiveDayNumbers.forEach((number) => {
+          if (number > maxEnd) maxEnd = number;
         });
         const startNumber = maxEnd + 1;
         const endNumber = startNumber + rangeSize - 1;
