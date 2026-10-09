@@ -145,6 +145,13 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         },
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
+        hasPendingOrderChangesForDay: (dayId: string) => Array.from(overlays.values()).some((overlay) => {
+          if ((overlay.status !== 'PENDING' && overlay.status !== 'PENDING_RECONCILIATION') || overlay.entityType !== 'orders') return false;
+          const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+          const baseOrder = orderMap.get(overlay.entityId);
+          const effectiveDayId = patch.dayId ?? baseOrder?.dayId;
+          return Boolean(effectiveDayId && effectiveDayId === dayId);
+        }),
         getNextSequence: async () => ++overlaySequence,
       },
       deviceRepo: {
@@ -205,6 +212,35 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(recordedCommands).toHaveLength(1);
     expect(recordedCommands[0]).toMatchObject({ commandId: 'renumber-command', type: 'RENUMBER_DAY_ORDERS' });
     expect((recordedCommands[0].payload as any).changes).toHaveLength(2);
+  });
+
+  it('rejects renumbering while a pending local order exists, even if the caller omits it', async () => {
+    const dayId = 'day-1';
+    const now = '2026-10-09T10:00:00.000Z';
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    orderMap.set('order-a', { id: 'order-a', dayId, customerId: 'cust-a', displayNumber: 1, internalSequence: 1, status: 'pending', createdAt: now, updatedAt: now, version: 1 });
+    orderMap.set('order-b', { id: 'order-b', dayId, customerId: 'cust-b', displayNumber: 2, internalSequence: 2, status: 'pending', createdAt: now, updatedAt: now, version: 1 });
+    overlays.set('pending-local-order', {
+      commandId: 'pending-local-order',
+      mutationKey: 'create-order:day-1',
+      entityType: 'orders',
+      entityId: 'order-pending',
+      operation: 'CREATE',
+      patch: { dayId, displayNumber: 3 },
+      sequence: 10,
+      createdAt: now,
+      status: 'PENDING',
+    });
+
+    const result = await useCases.renumberDayOrders(auth, 'renumber-with-pending-order', dayId, [
+      { id: 'order-a', expectedVersion: 1, oldNumber: 1, newNumber: 1 },
+      { id: 'order-b', expectedVersion: 1, oldNumber: 2, newNumber: 2 },
+    ]);
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toMatch(/pending local order changes must sync/i);
+    expect(Array.from(overlays.values()).filter((overlay) => overlay.mutationKey === 'renumber-day:day-1')).toHaveLength(0);
+    expect(recordedCommands).toHaveLength(0);
   });
 
   it('rejects stale day versions before writing overlays or a sync command', async () => {
