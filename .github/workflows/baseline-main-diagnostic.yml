@@ -1,0 +1,28 @@
+name: Baseline main diagnostic
+on:
+  push:
+    branches:
+      - diagnostic/baseline-main-20261009
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Type-check baseline
+        run: npm run lint
+        continue-on-error: true
+      - name: Build baseline
+        run: npm run build
+      - name: Run baseline full test suite
+        run: npm test
+        continue-on-error: true
