@@ -82,8 +82,6 @@ DECLARE
     v_max_new_number INTEGER;
     v_requested_display_number INTEGER;
     v_existing_order_count BIGINT;
-    v_existing_order_max BIGINT;
-    v_existing_distinct_count BIGINT;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
@@ -497,18 +495,19 @@ BEGIN
                     USING ERRCODE = 'P0409';
             END IF;
 
-            SELECT COUNT(*), COALESCE(MAX(display_number), 0), COUNT(DISTINCT display_number)
-            INTO v_existing_order_count, v_existing_order_max, v_existing_distinct_count
+            SELECT COUNT(*) INTO v_existing_order_count
             FROM public.orders
             WHERE day_id = v_day_uuid;
-            IF v_existing_order_count <> v_existing_distinct_count
-               OR v_existing_order_max <> v_existing_order_count THEN
-                RAISE EXCEPTION 'Order number conflict: this day has missing or duplicate numbers; an authorized Renumber Day review is required'
-                    USING ERRCODE = 'P0409';
-            END IF;
             IF v_requested_display_number <> v_existing_order_count + 1 THEN
                 RAISE EXCEPTION 'Order number conflict: expected next number %, received %. Reload the day; do not renumber automatically.',
                     v_existing_order_count + 1, v_requested_display_number
+                    USING ERRCODE = 'P0409';
+            END IF;
+            IF EXISTS (
+                SELECT 1 FROM public.orders
+                WHERE day_id = v_day_uuid AND display_number = v_requested_display_number
+            ) THEN
+                RAISE EXCEPTION 'Order number conflict: the next number is already assigned; an authorized Renumber Day review is required'
                     USING ERRCODE = 'P0409';
             END IF;
 
