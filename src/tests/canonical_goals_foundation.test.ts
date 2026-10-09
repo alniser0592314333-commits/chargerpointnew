@@ -212,34 +212,41 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(eval1.data.goal?.status).toBe('ACTIVE');
     expect(ledgerList.some(l => l.eventType === 'BONUS')).toBe(false);
 
-    // Simulate 2nd delivered & recognized item reaching target (2/2)
-    ledgerList.push({
-      id: 'ledger-charge-2',
-      eventType: 'ORDER_ITEM_CHARGE',
-      amountMinor: -200,
-      customerId: custId,
-      orderItemId: 'item-2',
-      createdAt: new Date().toISOString(),
-    });
-
+    // The client reports progress but does not authoritatively complete the goal or issue a bonus.
     const eval2 = await useCases.evaluateCustomerGoal(custId);
     expect(eval2.success).toBe(true);
     if (!eval2.success) throw new Error('Expected success');
     expect(eval2.data.goal?.currentProgress).toBe(2);
-    expect(eval2.data.goal?.status).toBe('COMPLETED');
-    expect(eval2.data.goal?.completedAt).toBeDefined();
-    expect(eval2.data.goal?.bonusLedgerId).toBeDefined();
+    expect(eval2.data.goal?.status).toBe('ACTIVE');
+    expect(eval2.data.goal?.completedAt).toBeUndefined();
+    expect(eval2.data.goal?.bonusLedgerId).toBeUndefined();
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
 
-    // Verify exactly 1 BONUS ledger entry created with the policy-compliant 16 minor units
-    const bonusEntries = ledgerList.filter(l => l.eventType === 'BONUS' && l.customerId === custId);
-    expect(bonusEntries.length).toBe(1);
-    expect(bonusEntries[0].amountMinor).toBe(16);
-    expect(bonusEntries[0].referenceId).toBe(goal.id);
+    // Simulate the server's accepted completion event and immutable ledger bonus.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(goal.id, {
+      ...goalMap.get(goal.id)!,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-bonus-server',
+    });
+    ledgerList.push({
+      id: 'ledger-bonus-server',
+      eventType: 'BONUS',
+      amountMinor: 16,
+      customerId: custId,
+      referenceId: goal.id,
+      createdAt: serverCompletedAt,
+    });
 
-    // Idempotent re-evaluation must NEVER grant duplicate bonus
+    // Re-evaluation after authoritative completion must not grant a duplicate bonus.
     const eval3 = await useCases.evaluateCustomerGoal(custId);
+    expect(eval3.success).toBe(true);
+    if (!eval3.success) throw new Error('Expected success');
+    expect(eval3.data.hasActiveGoal).toBe(false);
     const bonusEntriesAfterRetry = ledgerList.filter(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonusEntriesAfterRetry.length).toBe(1);
+    expect(bonusEntriesAfterRetry[0].amountMinor).toBe(16);
   });
 
   it('4. Goal Editing: Target modification where target <= currentProgress immediately triggers completion & bonus', async () => {
@@ -270,10 +277,27 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const updateRes = await useCases.updateGoalConfig(authAdmin, goal.id, { targetQuantity: 5 });
     expect(updateRes.success).toBe(true);
     if (!updateRes.success) throw new Error('Expected success');
-    expect(updateRes.data.status).toBe('COMPLETED');
-    expect(updateRes.data.completedAt).toBeDefined();
-    expect(updateRes.data.bonusLedgerId).toBeDefined();
+    expect(updateRes.data.status).toBe('ACTIVE');
+    expect(updateRes.data.completedAt).toBeUndefined();
+    expect(updateRes.data.bonusLedgerId).toBeUndefined();
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
 
+    // Completion and bonus are applied only after the authoritative server result.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(goal.id, {
+      ...updateRes.data,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-edit-server',
+    });
+    ledgerList.push({
+      id: 'ledger-edit-server',
+      eventType: 'BONUS',
+      amountMinor: 80,
+      customerId: custId,
+      referenceId: goal.id,
+      createdAt: serverCompletedAt,
+    });
     const bonus = ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonus).toBeDefined();
     expect(bonus?.amountMinor).toBe(80);
@@ -401,9 +425,26 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const editResB = await useCases.updateGoalConfig(authAdmin, goal.id, { targetQuantity: 4 });
     expect(editResB.success).toBe(true);
     if (!editResB.success) throw new Error('Expected success');
-    expect(editResB.data.status).toBe('COMPLETED');
-    expect(editResB.data.bonusLedgerId).toBeDefined();
+    expect(editResB.data.status).toBe('ACTIVE');
+    expect(editResB.data.bonusLedgerId).toBeUndefined();
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
 
+    // Simulate the server's accepted completion before testing immutability.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(goal.id, {
+      ...editResB.data,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-bound-server',
+    });
+    ledgerList.push({
+      id: 'ledger-bound-server',
+      eventType: 'BONUS',
+      amountMinor: 80,
+      customerId: custId,
+      referenceId: goal.id,
+      createdAt: serverCompletedAt,
+    });
     const bonusList = ledgerList.filter(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonusList.length).toBe(1);
 
@@ -448,7 +489,26 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     const evalRes = await useCases.evaluateCustomerGoal(custId);
     expect(evalRes.success).toBe(true);
     if (!evalRes.success) throw new Error('Expected eval success');
-    expect(evalRes.data.goal?.status).toBe('COMPLETED');
+    expect(evalRes.data.goal?.currentProgress).toBe(1);
+    expect(evalRes.data.goal?.status).toBe('ACTIVE');
+    expect(ledgerList.some(l => l.eventType === 'BONUS' && l.customerId === custId)).toBe(false);
+
+    // Simulate the server-confirmed completion before reversing the item.
+    const serverCompletedAt = new Date().toISOString();
+    goalMap.set(resGoal.data.id, {
+      ...goalMap.get(resGoal.data.id)!,
+      status: 'COMPLETED',
+      completedAt: serverCompletedAt,
+      bonusLedgerId: 'ledger-reversal-bonus-server',
+    });
+    ledgerList.push({
+      id: 'ledger-reversal-bonus-server',
+      eventType: 'BONUS',
+      amountMinor: 13,
+      customerId: custId,
+      referenceId: resGoal.data.id,
+      createdAt: serverCompletedAt,
+    });
 
     // Item-1 is reversed post-completion
     ledgerList.push({
