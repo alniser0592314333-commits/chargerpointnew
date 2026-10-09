@@ -74,8 +74,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           });
           return found ? { ...found } : null;
         },
-        save: (r: OrderNumberReservationEntity) => {
-          reservationMap.set(r.id, { ...r });
+        save: async (r: OrderNumberReservationEntity) => {
+          const persisted = { ...r };
+          reservationMap.set(r.id, persisted);
+          await localDb.set('orderNumberReservations', r.id, persisted);
         },
         reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
           if (commandId) {
@@ -325,6 +327,8 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const reservationArray = Array.from(reservationMap.values());
     expect(reservationArray[0].startNumber).toBe(1);
     expect(reservationArray[0].endNumber).toBe(20); // Preserve the established twenty-number offline reservation range
+    const persistedAfterFirstOrder = (await localDb.list<OrderNumberReservationEntity>('orderNumberReservations'))[0];
+    expect(persistedAfterFirstOrder.nextNumber).toBe(2);
 
     // Create additional orders
     const res2 = await createReservedOrder(auth, 'cmd-lazy-2', 'day-1', 'cust-1', 'Second Order');
@@ -336,6 +340,8 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     // Expected: No additional server reservation is created until current range is exhausted
     expect(reservationMap.size).toBe(1);
+    const persistedAfterThreeOrders = (await localDb.list<OrderNumberReservationEntity>('orderNumberReservations'))[0];
+    expect(persistedAfterThreeOrders.nextNumber).toBe(4);
   });
 
   it('Test BACKUP/RESTORE RESERVATION INTEGRITY — Preserves partially consumed reservation range across backup and restore', async () => {
