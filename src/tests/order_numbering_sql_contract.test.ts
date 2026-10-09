@@ -87,4 +87,14 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(sql).toContain('ALTER TABLE public.order_renumber_audit ENABLE ROW LEVEL SECURITY;');
     expect(sql).toContain('REVOKE ALL ON TABLE public.order_renumber_audit FROM PUBLIC, anon, authenticated;');
   });
+
+  it('preserves smart-goal dispatcher routes when renumbering is added', () => {
+    const sql = readMigration();
+    expect(sql).toContain("WHEN 'CREATE_GOAL' THEN");
+    expect(sql).toContain("WHEN 'UPDATE_GOAL_CONFIG' THEN");
+    expect(sql).toContain("WHEN 'UPDATE_GOAL_PROGRESS' THEN");
+    expect(sql).toContain("WHEN 'RENUMBER_DAY_ORDERS' THEN");
+    expect(sql).not.toContain('adminBin');
+  });
+
 });
