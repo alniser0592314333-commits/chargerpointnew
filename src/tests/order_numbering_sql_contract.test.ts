@@ -101,7 +101,7 @@ describe('Atomic day order renumbering SQL contract', () => {
   it('keeps goal expiry and reward eligibility server-authoritative in the goal migration', () => {
     const goalMigrationPath = path.resolve(
       process.cwd(),
-      'supabase/migrations/00117_smart_goal_policy.sql'
+      'supabase/migrations/20261009080000_smart_goal_policy.sql'
     );
     expect(fs.existsSync(goalMigrationPath)).toBe(true);
     const goalSql = fs.readFileSync(goalMigrationPath, 'utf8');
