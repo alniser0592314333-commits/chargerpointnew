@@ -446,6 +446,11 @@ export class FinalUseCases {
       reservation.nextNumber += 1;
       if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
       reservation.updatedAt = new Date().toISOString();
+      // Persist the advanced cursor. findActiveByDayAndDevice may return an in-memory
+      // entity, but mutating that object alone does not commit nextNumber to IndexedDB.
+      // A failed later order write may leave a harmless gap; reusing a consumed number
+      // after reload would be unsafe.
+      await this.deps.reservationRepo.save(reservation);
     } else {
       displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
     }
