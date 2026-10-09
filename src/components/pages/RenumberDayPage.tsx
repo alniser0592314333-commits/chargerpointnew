@@ -72,7 +72,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
         numbered.push({
           id: row.id,
           customerName: row.customerName,
-          oldNumber: entity.displayNumber,
+          oldNumber: row.orderNumber,
           expectedVersion: entity.version,
           newNumber: entity.displayNumber,
         });
