@@ -115,6 +115,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       },
       overlayRepo: {
         save: async (overlay: any) => { overlays.set(overlay.commandId, overlay); },
+        saveWithTx: (overlay: any) => { overlays.set(overlay.commandId, overlay); },
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         getNextSequence: async () => ++overlaySequence,
@@ -175,6 +176,23 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     const result = await useCases.renumberDayOrders(auth, 'stale-command', dayId, [
       { id: 'order-a', expectedVersion: 4, oldNumber: 1, newNumber: 1 },
+    ]);
+
+    expect(result.success).toBe(false);
+    expect(overlays.size).toBe(0);
+    expect(recordedCommands).toHaveLength(0);
+  });
+
+  it('rejects duplicate target numbers before staging overlays or a sync command', async () => {
+    const dayId = 'day-1';
+    const now = '2026-10-09T10:00:00.000Z';
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    orderMap.set('order-a', { id: 'order-a', dayId, customerId: 'cust-a', displayNumber: 1, internalSequence: 1, status: 'pending', createdAt: now, updatedAt: now, version: 1 });
+    orderMap.set('order-b', { id: 'order-b', dayId, customerId: 'cust-b', displayNumber: 2, internalSequence: 2, status: 'pending', createdAt: now, updatedAt: now, version: 1 });
+
+    const result = await useCases.renumberDayOrders(auth, 'duplicate-target-command', dayId, [
+      { id: 'order-a', expectedVersion: 1, oldNumber: 1, newNumber: 1 },
+      { id: 'order-b', expectedVersion: 1, oldNumber: 2, newNumber: 1 },
     ]);
 
     expect(result.success).toBe(false);
