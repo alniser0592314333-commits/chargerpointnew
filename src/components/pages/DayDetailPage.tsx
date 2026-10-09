@@ -97,6 +97,11 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   for (const group of validNumberGroups.values()) {
     if (group.length > 1) numberingIssues.push(...group);
   }
+  // A day is valid only when its numbers form exactly 1..N; missing values are reported without repair.
+  const missingNumbers: number[] = [];
+  for (let number = 1; number <= orders.length; number++) {
+    if (!validNumberGroups.has(number)) missingNumbers.push(number);
+  }
 
   const totalValueMinor = orders.reduce(
     (sum, ord) => sum + ord.items.reduce((iSum, item) => iSum + item.priceMinor, 0),
@@ -239,7 +244,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
         </div>
       </div>
 
-      {numberingIssues.length > 0 && (
+      {(numberingIssues.length > 0 || missingNumbers.length > 0) && (
         <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100 space-y-2">
           <div className="font-bold">
             {locale === 'ar' ? 'تنبيه: يوجد خلل في أرقام طلبات هذا اليوم' : 'Warning: order-number conflicts detected for this day'}
@@ -257,6 +262,11 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
                 {order.orderNumber > 0 && validNumberGroups.get(order.orderNumber)?.length ? (
                   <span> ({locale === 'ar' ? 'رقم مكرر' : 'duplicate number'})</span>
                 ) : null}
+              </li>
+            ))}
+            {missingNumbers.map((number) => (
+              <li key={`gap-${number}`}>
+                {locale === 'ar' ? 'رقم مفقود:' : 'Missing number:'} #{number}
               </li>
             ))}
           </ul>
