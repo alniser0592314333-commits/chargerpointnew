@@ -470,6 +470,9 @@ BEGIN
             v_customer_uuid := (COALESCE(p_payload->>'customerId', p_payload->>'customer_id'))::UUID;
             v_day_uuid := (COALESCE(p_payload->>'dayId', p_payload->>'day_id'))::UUID;
 
+            -- Serialize order-number allocation with renumbering for this business day.
+            PERFORM pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1));
+
             SELECT status INTO v_customer_status FROM public.customers WHERE id = v_customer_uuid;
             IF v_customer_status IS NULL THEN
                 RAISE EXCEPTION 'Customer Not Found: ID %', v_customer_uuid USING ERRCODE = '23503';
@@ -531,6 +534,8 @@ BEGIN
                 RAISE EXCEPTION 'Renumber validation failed: at least one order is required' USING ERRCODE = 'P2201';
             END IF;
 
+            -- Use the same per-day lock as CREATE_ORDER so allocation and renumbering cannot race.
+            PERFORM pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1));
             -- Serialize the whole day and every order in it. Never partially renumber.
             PERFORM id FROM public.business_days WHERE id = v_day_uuid FOR UPDATE;
             IF NOT FOUND THEN
