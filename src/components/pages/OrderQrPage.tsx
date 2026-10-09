@@ -29,9 +29,11 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
     getOrderQrCardData(dayId, orderId)
       .then((res) => {
         if (active) {
-          if (res) {
+          if (res && Number.isInteger(res.orderNumber) && res.orderNumber > 0) {
             setData(res);
           } else {
+            // Never render a fabricated or missing order number on a printed QR card.
+            setData(null);
             setIsError(true);
           }
           setIsLoading(false);
@@ -158,7 +160,9 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
         <div className="py-12 px-4 text-center space-y-3 bg-red-50 dark:bg-[#360d13] border border-red-200 dark:border-[#421419] rounded-2xl">
           <AlertTriangle className="w-8 h-8 text-red-600 dark:text-[#e07a7a] mx-auto" />
           <p className="text-sm font-bold text-red-700 dark:text-[#e07a7a]">
-            {t('orderNotFound') || 'الطلب غير موجود أو تعذر تحميل QR'}
+            {data && (!Number.isInteger(data.orderNumber) || data.orderNumber <= 0)
+              ? (locale === 'ar' ? 'رقم الطلب غير متاح. راجع ترقيم اليوم من الإعدادات قبل طباعة QR.' : 'Order number unavailable. Review the day numbering in Settings before printing a QR card.')
+              : (locale === 'ar' ? 'الطلب غير موجود أو تعذر تحميل QR' : (t('orderNotFound') || 'Order not found or QR could not be loaded'))}
           </p>
           <Button variant="outline" size="sm" onClick={onBack}>
             {t('back')}
