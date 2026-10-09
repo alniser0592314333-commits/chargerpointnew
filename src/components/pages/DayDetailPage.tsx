@@ -80,9 +80,15 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   }, [orders]);
 
   // Sort orders NEWEST FIRST
-  const sortedOrders = [...orders].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const sortedOrders = [...orders].sort((a, b) => {
+    const aNumber = Number.isInteger(a.orderNumber) && a.orderNumber > 0
+      ? a.orderNumber
+      : Number.MAX_SAFE_INTEGER;
+    const bNumber = Number.isInteger(b.orderNumber) && b.orderNumber > 0
+      ? b.orderNumber
+      : Number.MAX_SAFE_INTEGER;
+    return aNumber - bNumber || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
 
   // Summary Metrics
   const orderCount = orders.length;
