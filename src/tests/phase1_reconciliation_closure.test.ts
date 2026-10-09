@@ -156,7 +156,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
   // --------------------------------------------------------------------------
   it('1. Goal Generation Formulas: Verifies exact 7-day activity selection, integer minor units, and deterministic proposal', () => {
     // Past 7-day Delivered Items count = 8
-    const proposal8 = generateGoalProposal(8);
+    const proposal8 = generateGoalProposal(8, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
     // target = max(10, 8 + 10, ceil(8 * 1.25)) = 18
     expect(proposal8.targetQuantity).toBe(18);
     expect(proposal8.durationDays).toBe(7);
@@ -165,7 +165,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     expect(Number.isInteger(proposal8.bonusAmountMinor)).toBe(true);
 
     // Past 7-day Delivered Items count = 20
-    const proposal20 = generateGoalProposal(20);
+    const proposal20 = generateGoalProposal(20, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
     // target = max(10, 20 + 10, ceil(20 * 1.25)) = 30
     expect(proposal20.targetQuantity).toBe(30);
     // bonus = max(80, 30 * 10) = 300 minor units (3.00₪)
@@ -201,7 +201,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     deviceMap.set('dev-1', { id: 'dev-1', name: 'Smartphone', icon: 'phone', basePriceMinor: 1000, chargerFeeEnabled: false, chargerFeeApplicable: false, isActive: true, status: 'ACTIVE', sortOrder: 1, createdAt: '', updatedAt: '', version: 1 });
 
     // Create Goal first with target 2 so item 1 delivery doesn't complete it immediately
-    const createGoalRes = await useCases.createGoal(authAdmin, 'cmd-goal-1', custId, 2, 7, 800);
+    const createGoalRes = await useCases.createGoal(authAdmin, 'cmd-goal-1', custId, 2, 7, 16);
     expect(createGoalRes.success).toBe(true);
     if (!createGoalRes.success) throw new Error('Expected goal success');
 
@@ -231,7 +231,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     const balAfterPay = getAuthoritativeLedgerBalance(custId);
     expect(balAfterPay).toBe(0);
 
-    // SCENARIO E: Customer receives Goal bonus (800 minor units = 8.00₪)
+    // SCENARIO E: Customer receives the policy-compliant goal bonus (16 minor units = 0.16₪)
     // Goal config target updated to 1 -> since current progress is 1, Goal is atomically COMPLETED & Bonus granted
     const goalId = createGoalRes.data.id;
     const updateGoalRes = await useCases.updateGoalConfig(authAdmin, goalId, { targetQuantity: 1 });
@@ -239,14 +239,14 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     if (!updateGoalRes.success) throw new Error('Expected goal update success');
     expect(updateGoalRes.data.status).toBe('COMPLETED');
 
-    // Balance after bonus (0 + 800 = +800 minor units = +8.00₪ credit)
+    // Balance after bonus (0 + 16 = +16 minor units = +0.16₪ credit)
     const balAfterBonus = getAuthoritativeLedgerBalance(custId);
-    expect(balAfterBonus).toBe(800);
+    expect(balAfterBonus).toBe(16);
 
     // Verify Goal bonus ledger entry
     const bonusLedger = ledgerList.find(l => l.eventType === 'BONUS' && l.customerId === custId);
     expect(bonusLedger).toBeDefined();
-    expect(bonusLedger?.amountMinor).toBe(800);
+    expect(bonusLedger?.amountMinor).toBe(16);
 
     // SCENARIO F: Recognized charge is reversed
     // Simulate reversal of item-1
@@ -260,9 +260,9 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
       createdAt: new Date().toISOString(),
     });
 
-    // Final balance (+800 + 1000 = +1800 minor units)
+    // Final balance (+16 + 1000 = +1016 minor units)
     const finalBal = getAuthoritativeLedgerBalance(custId);
-    expect(finalBal).toBe(1800);
+    expect(finalBal).toBe(1016);
 
     // Verify exact correspondence between repo getBalance and derived ledger sum
     expect(useCases['deps'].customerRepo.getBalance(custId)).toBe(finalBal);
@@ -290,7 +290,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     deviceMap.set('dev-2', { id: 'dev-2', name: 'Device B', icon: 'phone', basePriceMinor: 700, chargerFeeEnabled: false, chargerFeeApplicable: false, isActive: true, status: 'ACTIVE', sortOrder: 2, createdAt: '', updatedAt: '', version: 1 });
 
     // 1. Create Goal with target 2
-    const resGoal = await useCases.createGoal(authAdmin, 'goal-reopen-1', custId, 2, 7, 500);
+    const resGoal = await useCases.createGoal(authAdmin, 'goal-reopen-1', custId, 2, 7, 16);
     expect(resGoal.success).toBe(true);
     if (!resGoal.success) throw new Error('Expected goal success');
 
@@ -352,8 +352,8 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     expect(goalAfterB.status).toBe('COMPLETED');
     expect(goalAfterB.bonusLedgerId).toBeDefined();
 
-    // Customer balance: Item A (-500) + Item B (-700) + Goal Bonus (+500) = -700 minor units
-    expect(getAuthoritativeLedgerBalance(custId)).toBe(-700);
+    // Customer balance: Item A (-500) + Item B (-700) + Goal Bonus (+16) = -1184 minor units
+    expect(getAuthoritativeLedgerBalance(custId)).toBe(-1184);
   });
 
   // --------------------------------------------------------------------------
@@ -439,7 +439,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
 
     // Customer CANNOT directly create a Goal
     await expect(
-      useCases.createGoal(authCustomer, 'cmd-goal-cust', custId, 15, 7, 500)
+      useCases.createGoal(authCustomer, 'cmd-goal-cust', custId, 15, 7, 120)
     ).rejects.toThrow(/Forbidden: missing permission/);
 
     // Customer CANNOT approve own request
