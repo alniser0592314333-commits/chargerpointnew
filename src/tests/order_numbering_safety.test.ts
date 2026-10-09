@@ -3,10 +3,11 @@ import { localDb } from '../infrastructure/localDb/localDb';
 import { backupService } from '../services/backup/backupService';
 import { AuthorizationContext, ActorAdmin } from '../application/authContext';
 import { FinalUseCases, RepositoryContext } from '../application/useCases';
-import { OrderEntity, BusinessDayEntity, CustomerEntity, OrderNumberReservationEntity } from '../domain/models';
+import { OrderEntity, BusinessDayEntity, CustomerEntity, DeviceTypeEntity, OrderNumberReservationEntity } from '../domain/models';
 import { OrderNumberReservationExhaustedError } from '../domain/errors';
 
 describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', () => {
+  const DEVICE_TYPE_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
   const adminActor: ActorAdmin = {
     id: 'admin_1',
     username: 'admin',
@@ -22,6 +23,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
   let orderMap: Map<string, OrderEntity>;
   let dayMap: Map<string, BusinessDayEntity>;
   let customerMap: Map<string, CustomerEntity>;
+  let deviceMap: Map<string, DeviceTypeEntity>;
   let reservationMap: Map<string, OrderNumberReservationEntity>;
   let useCases: FinalUseCases;
   let recordedCommands: Array<{ commandId: string; type: string; payload: unknown }>;
@@ -34,7 +36,22 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     orderMap = new Map();
     dayMap = new Map();
     customerMap = new Map();
+    deviceMap = new Map();
     reservationMap = new Map();
+    const deviceNow = new Date().toISOString();
+    deviceMap.set(DEVICE_TYPE_ID, {
+      id: DEVICE_TYPE_ID,
+      name: 'Test Device',
+      icon: 'device',
+      basePriceMinor: 100,
+      chargerFeeEnabled: true,
+      chargerFeeApplicable: true,
+      isActive: true,
+      sortOrder: 1,
+      createdAt: deviceNow,
+      updatedAt: deviceNow,
+      version: 1,
+    });
     recordedCommands = [];
     overlays = new Map();
     overlaySequence = 0;
@@ -55,7 +72,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
               found = r;
             }
           });
-          return found;
+          return found ? { ...found } : null;
         },
         save: (r: OrderNumberReservationEntity) => {
           reservationMap.set(r.id, { ...r });
@@ -87,7 +104,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
             updatedAt: new Date().toISOString(),
             version: 1,
           };
-          reservationMap.set(res.id, res);
+          reservationMap.set(res.id, { ...res });
           return res;
         },
       },
@@ -129,9 +146,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         getNextSequence: async () => ++overlaySequence,
       },
       deviceRepo: {
-        findById: () => null,
-        save: () => {},
-        findAll: () => [],
+        findById: (id: string) => deviceMap.get(id) || null,
+        save: (d: DeviceTypeEntity) => { deviceMap.set(d.id, { ...d }); },
+        findAll: () => Array.from(deviceMap.values()),
       },
       paymentRepo: {
         save: () => {},
@@ -153,6 +170,16 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     useCases = new FinalUseCases(mockCtx);
   });
+
+  const createReservedOrder = (
+    authContext: AuthorizationContext,
+    commandId: string,
+    dayId: string,
+    customerId: string,
+    notes: string
+  ) => useCases.createOrderWithItems(authContext, commandId, dayId, customerId, [
+    { deviceTypeId: DEVICE_TYPE_ID, hasCharger: true },
+  ], notes);
 
   it('renumbers a complete day through awaited overlays and one sync command', async () => {
     const dayId = 'day-1';
@@ -289,9 +316,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(reservationMap.size).toBe(0);
 
     // Step 7-8: Start creating the first real order
-    const res1 = await useCases.createOrder(auth, 'cmd-lazy-1', 'day-1', 'cust-1', 'First Order');
+    const res1 = await createReservedOrder(auth, 'cmd-lazy-1', 'day-1', 'cust-1', 'First Order');
     expect(res1.success).toBe(true);
-    expect((res1 as any).data.displayNumber).toBe(1);
+    expect((res1 as any).data.order.displayNumber).toBe(1);
 
     // Expected: Exactly one reservation is created
     expect(reservationMap.size).toBe(1);
@@ -300,28 +327,30 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(reservationArray[0].endNumber).toBe(20); // Preserve the established twenty-number offline reservation range
 
     // Create additional orders
-    const res2 = await useCases.createOrder(auth, 'cmd-lazy-2', 'day-1', 'cust-1', 'Second Order');
-    const res3 = await useCases.createOrder(auth, 'cmd-lazy-3', 'day-1', 'cust-1', 'Third Order');
+    const res2 = await createReservedOrder(auth, 'cmd-lazy-2', 'day-1', 'cust-1', 'Second Order');
+    const res3 = await createReservedOrder(auth, 'cmd-lazy-3', 'day-1', 'cust-1', 'Third Order');
 
     expect(res2.success && res3.success).toBe(true);
-    expect((res2 as any).data.displayNumber).toBe(2);
-    expect((res3 as any).data.displayNumber).toBe(3);
+    expect((res2 as any).data.order.displayNumber).toBe(2);
+    expect((res3 as any).data.order.displayNumber).toBe(3);
 
     // Expected: No additional server reservation is created until current range is exhausted
     expect(reservationMap.size).toBe(1);
   });
 
   it('Test BACKUP/RESTORE RESERVATION INTEGRITY — Preserves partially consumed reservation range across backup and restore', async () => {
-    dayMap.set('day-1', {
-      id: 'day-1',
+    const dayId = '33333333-3333-4333-8333-333333333333';
+    const customerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    dayMap.set(dayId, {
+      id: dayId,
       businessDate: '2026-10-03',
       isClosed: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: 1,
     });
-    customerMap.set('cust-1', {
-      id: 'cust-1',
+    customerMap.set(customerId, {
+      id: customerId,
       name: 'Customer 1',
       isActive: true,
       debtLimitMinor: -1000,
@@ -332,9 +361,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     });
 
     // Create 3 orders to consume #1, #2, #3 from the reserved range [1, 20], nextNumber = 4
-    await useCases.createOrder(auth, 'cmd-bk-1', 'day-1', 'cust-1', 'Order 1');
-    await useCases.createOrder(auth, 'cmd-bk-2', 'day-1', 'cust-1', 'Order 2');
-    await useCases.createOrder(auth, 'cmd-bk-3', 'day-1', 'cust-1', 'Order 3');
+    await createReservedOrder(auth, '44444444-4444-4444-8444-444444444441', dayId, customerId, 'Order 1');
+    await createReservedOrder(auth, '44444444-4444-4444-8444-444444444442', dayId, customerId, 'Order 2');
+    await createReservedOrder(auth, '44444444-4444-4444-8444-444444444443', dayId, customerId, 'Order 3');
 
     for (const [id, ord] of orderMap.entries()) {
       await localDb.set('orders', id, ord);
@@ -342,8 +371,8 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     for (const [id, res] of reservationMap.entries()) {
       await localDb.set('orderNumberReservations', id, res);
     }
-    await localDb.set('businessDays', 'day-1', dayMap.get('day-1'));
-    await localDb.set('customers', 'cust-1', customerMap.get('cust-1'));
+    await localDb.set('businessDays', dayId, dayMap.get(dayId));
+    await localDb.set('customers', customerId, customerMap.get(customerId));
 
     const snapshot = await backupService.createSnapshot('OFFLINE', auth, {
       name: 'Reservation Restore Test Backup',
@@ -366,9 +395,9 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     reservationMap.set(restoredReservations[0].id, restoredReservations[0]);
 
-    const resNext = await useCases.createOrder(auth, 'cmd-bk-4', 'day-1', 'cust-1', 'Order 4');
+    const resNext = await createReservedOrder(auth, '44444444-4444-4444-8444-444444444444', dayId, customerId, 'Order 4');
     expect(resNext.success).toBe(true);
-    expect((resNext as any).data.displayNumber).toBe(4);
+    expect((resNext as any).data.order.displayNumber).toBe(4);
   });
 
   it('Test A — Two offline devices get non-overlapping reserved ranges and never produce duplicate displayNumbers', async () => {
@@ -394,21 +423,21 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const authDeviceA = new AuthorizationContext({ ...adminActor, deviceId: 'device_A' }, () => true);
     const authDeviceB = new AuthorizationContext({ ...adminActor, deviceId: 'device_B' }, () => true);
 
-    const o1 = await useCases.createOrder(authDeviceA, 'cmd-a1', 'day-1', 'cust-1', 'Order A1');
-    const o2 = await useCases.createOrder(authDeviceA, 'cmd-a2', 'day-1', 'cust-1', 'Order A2');
-    const o3 = await useCases.createOrder(authDeviceA, 'cmd-a3', 'day-1', 'cust-1', 'Order A3');
+    const o1 = await createReservedOrder(authDeviceA, 'cmd-a1', 'day-1', 'cust-1', 'Order A1');
+    const o2 = await createReservedOrder(authDeviceA, 'cmd-a2', 'day-1', 'cust-1', 'Order A2');
+    const o3 = await createReservedOrder(authDeviceA, 'cmd-a3', 'day-1', 'cust-1', 'Order A3');
 
-    const o4 = await useCases.createOrder(authDeviceB, 'cmd-b1', 'day-1', 'cust-1', 'Order B1');
-    const o5 = await useCases.createOrder(authDeviceB, 'cmd-b2', 'day-1', 'cust-1', 'Order B2');
+    const o4 = await createReservedOrder(authDeviceB, 'cmd-b1', 'day-1', 'cust-1', 'Order B1');
+    const o5 = await createReservedOrder(authDeviceB, 'cmd-b2', 'day-1', 'cust-1', 'Order B2');
 
     expect(o1.success && o2.success && o3.success && o4.success && o5.success).toBe(true);
 
     const numbers = [
-      (o1 as any).data.displayNumber,
-      (o2 as any).data.displayNumber,
-      (o3 as any).data.displayNumber,
-      (o4 as any).data.displayNumber,
-      (o5 as any).data.displayNumber,
+      (o1 as any).data.order.displayNumber,
+      (o2 as any).data.order.displayNumber,
+      (o3 as any).data.order.displayNumber,
+      (o4 as any).data.order.displayNumber,
+      (o5 as any).data.order.displayNumber,
     ];
 
     const uniqueNumbers = new Set(numbers);
