@@ -7,6 +7,21 @@ VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
 SELECT set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', TRUE);
 SELECT set_config('request.jwt.claim.role', 'authenticated', TRUE);
 
+DO $
+BEGIN
+  IF has_function_privilege('anon', 'public.evaluate_customer_active_goal(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Anonymous callers must not execute the goal evaluator';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.evaluate_customer_active_goal(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.evaluate_customer_active_goal(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authorized goal-evaluator grants are missing';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.evaluate_customer_active_goal_internal(uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.evaluate_customer_active_goal_internal(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Internal goal evaluator must not be directly executable by client roles';
+  END IF;
+END $;
+
 INSERT INTO public.customers(id, status, is_active) VALUES
  ('22222222-2222-4222-8222-222222222222', 'ACTIVE', TRUE),
  ('33333333-3333-4333-8333-333333333333', 'ACTIVE', TRUE);
