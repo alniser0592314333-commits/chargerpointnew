@@ -1854,7 +1854,7 @@ function createTransactionalRepoContext(
           commandId: cmdId,
           commandType: type,
           aggregateType:
-            type === 'CREATE_ORDER' || type === 'UPDATE_ORDER' || type === 'CANCEL_ORDER'
+            type === 'CREATE_ORDER' || type === 'UPDATE_ORDER' || type === 'CANCEL_ORDER' || type === 'RENUMBER_DAY_ORDERS'
               ? 'orders'
               : type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM'
               ? 'order_items'
