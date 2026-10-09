@@ -124,7 +124,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       }
       numbered.sort((a, b) => (a.oldNumber > 0 ? a.oldNumber : Number.MAX_SAFE_INTEGER) - (b.oldNumber > 0 ? b.oldNumber : Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
       if (active) {
-        setOrders(numbered.map((row, index) => ({ ...row, newNumber: index + 1 })));
+        setOrders(numbered);
         setError('');
       }
     }).catch((e) => { if (active) setError(String(e?.message || e)); })
@@ -132,7 +132,24 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     return () => { active = false; };
   }, [authLoaded, allowed, selectedDayId, locale, storeVersion, refreshTick]);
 
-  const changed = useMemo(() => orders.some((row, index) => row.oldNumber !== index + 1 || row.newNumber !== index + 1), [orders]);
+  const changed = useMemo(() => orders.some((row) => row.oldNumber !== row.newNumber), [orders]);
+  const numberingValidation = useMemo(() => {
+    if (!orders.length) return '';
+    const numbers = orders.map((row) => row.newNumber);
+    if (numbers.some((number) => !Number.isInteger(number) || number < 1 || number > orders.length)) {
+      return isArabic
+        ? `أدخل أرقامًا صحيحة من 1 إلى ${orders.length} لكل الطلبات.`
+        : `Enter a whole number from 1 to ${orders.length} for every order.`;
+    }
+    if (new Set(numbers).size !== numbers.length) {
+      return isArabic ? 'يوجد رقم طلب مكرر. يجب أن يكون لكل طلب رقم مختلف.' : 'Duplicate order numbers are not allowed.';
+    }
+    const sorted = [...numbers].sort((a, b) => a - b);
+    if (sorted.some((number, index) => number !== index + 1)) {
+      return isArabic ? 'الأرقام يجب أن تكون متسلسلة من 1 دون فجوات.' : 'Order numbers must be consecutive from 1 without gaps.';
+    }
+    return '';
+  }, [orders, isArabic]);
   const move = (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= orders.length) return;
@@ -142,10 +159,11 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
       return next.map((row, i) => ({ ...row, newNumber: i + 1 }));
     });
     setNotice('');
+    setError('');
   };
 
   const submit = async () => {
-    if (!selectedDayId || !orders.length || !allowed) return;
+    if (!selectedDayId || !orders.length || !allowed || numberingValidation) return;
     setLoading(true);
     setError('');
     setNotice('');
@@ -189,7 +207,7 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
     <main className="max-w-2xl mx-auto p-4 sm:p-6 space-y-5 text-gray-900 dark:text-[#daf1de]">
       <header className="flex items-start gap-3">
         <Button variant="outline" size="sm" onClick={onBack} aria-label={isArabic ? 'رجوع' : 'Back'}><ArrowLeft className="w-4 h-4" /></Button>
-        <div><h1 className="text-xl font-bold">{isArabic ? 'إعادة ترقيم يوم' : 'Renumber Day'}</h1><p className="text-sm text-gray-500 dark:text-[#8eb698]">{isArabic ? 'اختر يومًا ثم رتّب الطلبات بالأسهم. لن تُعرض تفاصيل الطلب.' : 'Choose a day and reorder its orders with arrows. Order details are hidden.'}</p></div>
+        <div><h1 className="text-xl font-bold">{isArabic ? 'إعادة ترقيم يوم' : 'Renumber Day'}</h1><p className="text-sm text-gray-500 dark:text-[#8eb698]">{isArabic ? 'اختر اليوم ثم أدخل رقم كل طلب مباشرة أو استخدم الأسهم. راجع التغييرات قبل اعتمادها.' : 'Choose a day, enter each order number directly or use the arrows, then review before confirming.'}</p></div>
       </header>
 
       <label className="block space-y-2">
@@ -207,8 +225,29 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
           <div className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'الرقم الحالي ← الرقم الجديد' : 'Current number → new number'}</div>
           {orders.map((order, index) => (
             <div key={order.id} className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-[#245047] p-3">
-              <div className="w-20 shrink-0 text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">#{order.oldNumber > 0 ? order.oldNumber : (isArabic ? 'ناقص' : 'missing')} → <strong className="text-emerald-700 dark:text-emerald-300">#{index + 1}</strong></div>
+              <div className="w-16 shrink-0 text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">#{order.oldNumber > 0 ? order.oldNumber : (isArabic ? 'ناقص' : 'missing')}</div>
               <div className="min-w-0 flex-1 font-semibold truncate">{order.customerName}</div>
+              <label className="flex shrink-0 items-center gap-1 text-xs">
+                <span className="text-gray-500 dark:text-[#8eb698]">{isArabic ? 'الجديد' : 'New #'}</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={orders.length}
+                  step={1}
+                  value={order.newNumber > 0 ? String(order.newNumber) : ''}
+                  disabled={loading || commandPending}
+                  aria-label={isArabic ? `رقم الطلب الجديد للزبون ${order.customerName}` : `New order number for ${order.customerName}`}
+                  onChange={(event) => {
+                    const raw = event.currentTarget.value;
+                    const nextNumber = raw === '' ? 0 : Number(raw);
+                    setOrders((current) => current.map((row) => row.id === order.id ? { ...row, newNumber: nextNumber } : row));
+                    setNotice('');
+                    setError('');
+                  }}
+                  className="w-16 rounded-lg border border-gray-300 bg-white px-2 py-2 text-center text-sm tabular-nums text-gray-900 dark:border-[#245047] dark:bg-[#061f1c] dark:text-[#daf1de]"
+                />
+              </label>
               <div className="flex gap-1">
                 <button type="button" disabled={index === 0 || loading || commandPending} onClick={() => move(index, -1)} aria-label={isArabic ? 'تحريك لأعلى' : 'Move up'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowUp className="w-4 h-4" /></button>
                 <button type="button" disabled={index === orders.length - 1 || loading || commandPending} onClick={() => move(index, 1)} aria-label={isArabic ? 'تحريك لأسفل' : 'Move down'} className="p-2 rounded-lg border border-gray-300 dark:border-[#245047] disabled:opacity-30"><ArrowDown className="w-4 h-4" /></button>
@@ -216,24 +255,28 @@ export const RenumberDayPage: React.FC<{ onBack: () => void }> = ({ onBack }) =>
             </div>
           ))}
           {!orders.length && <p className="py-8 text-center text-sm text-gray-500">{isArabic ? 'لا توجد طلبات في هذا اليوم.' : 'No orders for this day.'}</p>}
+          {numberingValidation && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{numberingValidation}</p>}
         </section>
       )}
 
       <div className="flex gap-2">
         <Button variant="outline" onClick={() => {
-          setOrders((current) => [...current].sort((a, b) => (a.oldNumber > 0 ? a.oldNumber : Number.MAX_SAFE_INTEGER) - (b.oldNumber > 0 ? b.oldNumber : Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)).map((row, i) => ({ ...row, newNumber: i + 1 })));
+          setOrders((current) => [...current]
+            .sort((a, b) => (a.oldNumber > 0 ? a.oldNumber : Number.MAX_SAFE_INTEGER) - (b.oldNumber > 0 ? b.oldNumber : Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id))
+            .map((row) => ({ ...row, newNumber: row.oldNumber })));
           setNotice('');
-        }} disabled={loading || commandPending || !orders.length}>{isArabic ? 'إلغاء الترتيب' : 'Reset order'}</Button>
-        <Button onClick={() => setConfirmOpen(true)} disabled={loading || commandPending || !orders.length || !changed}>{isArabic ? 'مراجعة واعتماد الترتيب' : 'Review and confirm order'}</Button>
+          setError('');
+        }} disabled={loading || commandPending || !orders.length}>{isArabic ? 'استعادة الأرقام الحالية' : 'Restore current numbers'}</Button>
+        <Button onClick={() => setConfirmOpen(true)} disabled={loading || commandPending || !orders.length || !changed || Boolean(numberingValidation)}>{isArabic ? 'مراجعة واعتماد الترتيب' : 'Review and confirm order'}</Button>
       </div>
 
       <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title={isArabic ? 'تأكيد إعادة الترقيم' : 'Confirm renumbering'}>
         <div className="space-y-4">
           <p className="text-sm">{isArabic ? 'سيتم إرسال ترتيب هذه الطلبات إلى المزامنة. إذا تغيّرت بيانات اليوم على الخادم، يجب رفض العملية وإعادة تحميل القائمة. لن يتم تجاهل التعارض.' : 'This order will be queued for sync. If the day changed on the server, the operation must be rejected and reviewed again.'}</p>
           <div className="max-h-64 overflow-y-auto space-y-1 text-sm">
-            {orders.map((row, i) => <div key={row.id} className="flex justify-between gap-3 border-b border-gray-100 dark:border-[#245047] py-1"><span className="truncate">{row.customerName}</span><span className="shrink-0 tabular-nums">#{row.oldNumber > 0 ? row.oldNumber : '—'} → #{i + 1}</span></div>)}
+            {[...orders].sort((a, b) => a.newNumber - b.newNumber).map((row) => <div key={row.id} className="flex justify-between gap-3 border-b border-gray-100 dark:border-[#245047] py-1"><span className="truncate">{row.customerName}</span><span className="shrink-0 tabular-nums">#{row.oldNumber > 0 ? row.oldNumber : '—'} → #{row.newNumber}</span></div>)}
           </div>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirmOpen(false)}>{isArabic ? 'إلغاء' : 'Cancel'}</Button><Button onClick={submit} disabled={loading || commandPending}>{isArabic ? 'تأكيد وإرسال' : 'Confirm and queue'}</Button></div>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirmOpen(false)}>{isArabic ? 'إلغاء' : 'Cancel'}</Button><Button onClick={submit} disabled={loading || commandPending || Boolean(numberingValidation)}>{isArabic ? 'تأكيد وإرسال' : 'Confirm and queue'}</Button></div>
         </div>
       </Modal>
     </main>
