@@ -550,41 +550,6 @@ BEGIN
             PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', v_order_change_payload, 1);
             v_result := jsonb_build_object('orderId', v_entity_uuid, 'displayNumber', v_requested_display_number);
 
-        WHEN 'UPDATE_ORDER' THEN
-            v_order_uuid := COALESCE((p_payload->>'id')::UUID, (p_payload->>'orderId')::UUID);
-            IF v_order_uuid IS NULL THEN
-                RAISE EXCEPTION 'Validation Error: Order ID must be a valid UUID' USING ERRCODE = 'P2201';
-            END IF;
-
-            SELECT version INTO v_current_version
-            FROM public.orders WHERE id = v_order_uuid FOR UPDATE;
-
-            IF v_current_version IS NULL THEN
-                RAISE EXCEPTION 'Order Not Found: ID %', v_order_uuid USING ERRCODE = '23503';
-            END IF;
-
-            v_expected_version := COALESCE(
-                (p_payload->>'expectedVersion')::INTEGER,
-                (p_payload->>'expected_version')::INTEGER
-            );
-            IF v_expected_version IS NOT NULL AND v_current_version <> v_expected_version THEN
-                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order %. Expected version %, current server version is %',
-                    v_order_uuid, v_expected_version, v_current_version USING ERRCODE='P0409';
-            END IF;
-
-            UPDATE public.orders
-            SET notes = CASE WHEN p_payload ? 'notes' THEN p_payload->>'notes' ELSE notes END,
-                updated_at = NOW(),
-                version = version + 1
-            WHERE id = v_order_uuid;
-
-            PERFORM public.record_canonical_change(
-                'orders', v_order_uuid, 'UPDATE',
-                jsonb_build_object('id', v_order_uuid, 'notes', (SELECT notes FROM public.orders WHERE id=v_order_uuid)),
-                v_current_version + 1
-            );
-            v_result := jsonb_build_object('orderId', v_order_uuid, 'version', v_current_version + 1);
-
         WHEN 'RENUMBER_DAY_ORDERS' THEN
             v_day_uuid := COALESCE((p_payload->>'dayId')::UUID, (p_payload->>'id')::UUID);
             IF v_day_uuid IS NULL OR COALESCE(jsonb_typeof(p_payload->'changes'), '') <> 'array' THEN
@@ -676,7 +641,42 @@ BEGIN
                 );
             END LOOP;
             v_result := jsonb_build_object('dayId', v_day_uuid, 'count', v_change_count, 'renumbered', TRUE);
-WHEN 'ADD_ORDER_ITEM' THEN
+WHEN 'UPDATE_ORDER' THEN
+            v_order_uuid := COALESCE((p_payload->>'id')::UUID, (p_payload->>'orderId')::UUID);
+            IF v_order_uuid IS NULL THEN
+                RAISE EXCEPTION 'Validation Error: Order ID must be a valid UUID' USING ERRCODE = 'P2201';
+            END IF;
+
+            SELECT version INTO v_current_version
+            FROM public.orders WHERE id = v_order_uuid FOR UPDATE;
+
+            IF v_current_version IS NULL THEN
+                RAISE EXCEPTION 'Order Not Found: ID %', v_order_uuid USING ERRCODE = '23503';
+            END IF;
+
+            v_expected_version := COALESCE(
+                (p_payload->>'expectedVersion')::INTEGER,
+                (p_payload->>'expected_version')::INTEGER
+            );
+            IF v_expected_version IS NOT NULL AND v_current_version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Aggregate version mismatch on order %. Expected version %, current server version is %',
+                    v_order_uuid, v_expected_version, v_current_version USING ERRCODE='P0409';
+            END IF;
+
+            UPDATE public.orders
+            SET notes = CASE WHEN p_payload ? 'notes' THEN p_payload->>'notes' ELSE notes END,
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_order_uuid;
+
+            PERFORM public.record_canonical_change(
+                'orders', v_order_uuid, 'UPDATE',
+                jsonb_build_object('id', v_order_uuid, 'notes', (SELECT notes FROM public.orders WHERE id=v_order_uuid)),
+                v_current_version + 1
+            );
+            v_result := jsonb_build_object('orderId', v_order_uuid, 'version', v_current_version + 1);
+
+        WHEN 'ADD_ORDER_ITEM' THEN
             v_item_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
             v_order_uuid := (COALESCE(p_payload->>'orderId', p_payload->>'order_id'))::UUID;
             v_device_type_uuid := (COALESCE(p_payload->>'deviceTypeId', p_payload->>'device_type_id'))::UUID;
