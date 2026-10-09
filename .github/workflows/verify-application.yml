@@ -8,6 +8,7 @@ on:
       - main
       - master
       - fix/daily-order-numbering-and-renumber-workflow
+      - fix/smart-goal-policy-2026-10
 permissions:
   contents: read
 jobs:
