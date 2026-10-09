@@ -182,11 +182,17 @@ export class DomainInvariants {
     if (!Number.isInteger(targetQuantity) || targetQuantity <= 0) {
       throw new BusinessRuleViolation('Goal target quantity must be a positive integer.');
     }
-    if (!Number.isInteger(durationDays) || durationDays <= 0) {
-      throw new BusinessRuleViolation('Goal duration must be a positive number of days.');
+    if (!Number.isInteger(durationDays) || durationDays < 3 || durationDays > 15) {
+      throw new BusinessRuleViolation('Goal duration must be an integer from 3 through 15 days.');
     }
     if (!Number.isInteger(bonusAmountMinor) || bonusAmountMinor < 0) {
       throw new FinancialInvariantViolation('Goal bonus amount must be a non-negative integer minor units value.');
+    }
+    const maxBonusMinor = targetQuantity * 20; // ₪2 per 10 target devices.
+    if (bonusAmountMinor > maxBonusMinor) {
+      throw new FinancialInvariantViolation(
+        `Goal bonus exceeds the hard cap of 20 minor units per target device (maximum ${maxBonusMinor}).`
+      );
     }
   }
 }
