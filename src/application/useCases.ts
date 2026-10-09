@@ -339,8 +339,8 @@ export class FinalUseCases {
     }
 
     const overlayRepo = this.deps.overlayRepo;
-    if (!overlayRepo?.saveWithTx || !overlayRepo.hasPendingOrderChangesForDay) {
-      return { success: false, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
+    if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingOrderChangesForDay) {
+      return { success: false, error: 'Local order-overlay inspection is unavailable; no changes were queued.' };
     }
     if (overlayRepo.hasPendingOrderChangesForDay(dayId)) {
       return { success: false, error: 'Pending local order changes must sync before this day can be renumbered.' };
@@ -376,11 +376,16 @@ export class FinalUseCases {
         return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
       }
 
+      const transactionalOverlayRepo = repos.overlayRepo;
+      if (!transactionalOverlayRepo?.saveWithTx) {
+        return { success: false as const, error: 'Atomic local renumber storage is unavailable; no changes were queued.' };
+      }
+
       const now = new Date().toISOString();
       for (let index = 0; index < changes.length; index++) {
         const change = changes[index];
         const order = currentOrders[index];
-        overlayRepo.saveWithTx!({
+        transactionalOverlayRepo.saveWithTx({
           commandId: `${commandId}:order:${order.id}`,
           mutationKey: `renumber-day:${dayId}`,
           entityType: 'orders',
