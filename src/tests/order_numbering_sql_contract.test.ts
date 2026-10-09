@@ -97,4 +97,20 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(sql).not.toContain('adminBin');
   });
 
+
+  it('keeps goal expiry and reward eligibility server-authoritative in the goal migration', () => {
+    const goalMigrationPath = path.resolve(
+      process.cwd(),
+      'supabase/migrations/00117_smart_goal_policy.sql'
+    );
+    expect(fs.existsSync(goalMigrationPath)).toBe(true);
+    const goalSql = fs.readFileSync(goalMigrationPath, 'utf8');
+    expect(goalSql).toContain("ELSIF NOW() > v_goal.expires_at THEN");
+    expect(goalSql).toContain("status = 'FAILED'");
+    expect(goalSql).toContain("v_goal.target_quantity * 20");
+    expect(goalSql).toContain("UPDATE_GOAL_PROGRESS only requests a server-side recalculation");
+    expect(goalSql).toContain("p_payload->>'bin'");
+    expect(goalSql).not.toContain("p_payload->>'adminBin'");
+  });
+
 });
