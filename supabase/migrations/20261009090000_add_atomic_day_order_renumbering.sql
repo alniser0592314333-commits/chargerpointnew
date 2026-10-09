@@ -98,6 +98,7 @@ DECLARE
     v_min_new_number INTEGER;
     v_max_new_number INTEGER;
     v_old_state JSONB;
+    v_temp_base BIGINT;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
@@ -634,8 +635,17 @@ BEGIN
                 END IF;
             END LOOP;
 
-            -- Phase 1: move all rows to temporary negative numbers while the day is locked.
-            -- This avoids unique(day_id, display_number) collisions when swapping existing numbers.
+            -- Phase 1: move all rows above the day's current maximum while the day is locked.
+            -- Temporary values remain positive to satisfy the orders table CHECK constraint,
+            -- and are unique within the complete day to avoid collisions during swaps.
+            SELECT COALESCE(MAX(display_number), 0) INTO v_temp_base
+            FROM public.orders
+            WHERE day_id = v_day_uuid;
+            IF v_temp_base + v_change_count > 2147483647 THEN
+                RAISE EXCEPTION 'Renumber cannot safely allocate temporary display numbers for this day'
+                    USING ERRCODE = 'P2201';
+            END IF;
+
             FOR v_rec_order IN
                 SELECT o.id, c.value AS change_row
                 FROM public.orders o
@@ -645,7 +655,7 @@ BEGIN
                 ORDER BY o.id
             LOOP
                 UPDATE public.orders
-                SET display_number = -2147483647 + (v_rec_order.change_row->>'newNumber')::INTEGER
+                SET display_number = (v_temp_base + (v_rec_order.change_row->>'newNumber')::INTEGER)::INTEGER
                 WHERE id = v_rec_order.id;
             END LOOP;
 
