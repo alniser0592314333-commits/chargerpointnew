@@ -88,6 +88,34 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(sql).toContain('REVOKE ALL ON TABLE public.order_renumber_audit FROM PUBLIC, anon, authenticated;');
   });
 
+  it('retains every existing canonical route from the main dispatcher', () => {
+    const baselinePath = path.resolve(
+      process.cwd(),
+      'supabase/migrations/00116_restore_canonical_sync_command_contract.sql'
+    );
+    const baseline = fs.readFileSync(baselinePath, 'utf8');
+    const integrated = readMigration();
+    const routeNames = (sql: string) => {
+      const start = sql.indexOf('-- 5. ROUTE BY CANONICAL COMMAND TYPE');
+      const end = sql.indexOf('-- 6. RECORD IN PROCESSED COMMANDS', start);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      const routeSection = sql.slice(start, end);
+      const names = new Set<string>();
+      for (const match of routeSection.matchAll(/WHEN\\s+((?:'[A-Z_0-9]+'\\s*,?\\s*)+)THEN/gi)) {
+        for (const name of match[1].matchAll(/'([A-Z_0-9]+)'/g)) names.add(name[1]);
+      }
+      return names;
+    };
+    const baselineRoutes = routeNames(baseline);
+    const integratedRoutes = routeNames(integrated);
+    for (const route of baselineRoutes) {
+      expect(integratedRoutes.has(route), `combined dispatcher dropped existing route: ${route}`).toBe(true);
+    }
+    expect(integratedRoutes.has('CREATE_GOAL')).toBe(true);
+    expect(integratedRoutes.has('RENUMBER_DAY_ORDERS')).toBe(true);
+  });
+
   it('preserves smart-goal dispatcher routes when renumbering is added', () => {
     const sql = readMigration();
     expect(sql).toContain("WHEN 'CREATE_GOAL' THEN");
