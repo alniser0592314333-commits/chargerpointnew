@@ -12,6 +12,7 @@ export type Permission =
   | 'orders:view'
   | 'orders:create'
   | 'orders:edit'
+  | 'orders:renumber-day'
   | 'orders:deliver'
   | 'orders:cancel'
   | 'orders:correct'
