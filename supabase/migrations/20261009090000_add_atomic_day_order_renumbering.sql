@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.order_renumber_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_order_renumber_audit_day_created
     ON public.order_renumber_audit (day_id, created_at DESC);
+ALTER TABLE public.order_renumber_audit ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.order_renumber_audit FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(p_command_id uuid, p_command_type text, p_payload jsonb, p_payload_hash text DEFAULT 'no_hash'::text, p_device_id text DEFAULT 'default_device'::text, p_actor_id uuid DEFAULT NULL::uuid)
