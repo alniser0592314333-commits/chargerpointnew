@@ -149,7 +149,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $combined_check$
           DECLARE
             dispatcher regprocedure := 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)'::regprocedure;
             definition text := pg_get_functiondef(dispatcher);
@@ -173,5 +173,5 @@ jobs:
                OR has_table_privilege('anon', 'public.order_renumber_audit', 'SELECT') THEN
               RAISE EXCEPTION 'Renumber audit table must not be directly exposed';
             END IF;
-          END $;
+          END $combined_check$;
           SQL
