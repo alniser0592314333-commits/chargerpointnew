@@ -107,7 +107,7 @@ describe('Atomic day order renumbering SQL contract', () => {
     const goalSql = fs.readFileSync(goalMigrationPath, 'utf8');
     expect(goalSql).toContain("ELSIF NOW() > v_goal.expires_at THEN");
     expect(goalSql).toContain("status = 'FAILED'");
-    expect(goalSql).toContain("v_goal.target_quantity * 20");
+    expect(goalSql).toContain("bonus_amount_minor <= target_quantity::BIGINT * 20");
     expect(goalSql).toContain("UPDATE_GOAL_PROGRESS only requests a server-side recalculation");
     expect(goalSql).toContain("p_payload->>'bin'");
     expect(goalSql).not.toContain("p_payload->>'adminBin'");
