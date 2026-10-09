@@ -48,6 +48,7 @@ export interface RepositoryContext {
     findById(id: ID): Promise<OrderEntity | null> | (OrderEntity | null);
     save(order: OrderEntity): Promise<void> | void;
     countForDay(dayId: ID): Promise<number> | number;
+    findByDay?(dayId: ID): Promise<OrderEntity[]> | OrderEntity[];
   };
   reservationRepo?: {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
@@ -97,6 +98,7 @@ export interface RepositoryContext {
   };
   overlayRepo?: {
     save(overlay: OptimisticOverlayRecord): Promise<void> | void;
+    saveWithTx?(overlay: OptimisticOverlayRecord): Promise<void> | void;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
