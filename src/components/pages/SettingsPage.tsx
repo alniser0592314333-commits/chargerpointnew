@@ -1068,6 +1068,34 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
               </span>
             </div>
 
+            {/* Controlled daily order renumbering; available only to explicitly authorized admins. */}
+            {hasPermission("orders:renumber-day") && (
+              <div className="py-2">
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.("/app/settings/renumber-day")}
+                  className="w-full py-2 px-1 flex items-center justify-between gap-3 text-start hover:bg-gray-50/60 dark:hover:bg-[#0b2924]/50 rounded-xl transition-colors cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-[#0c312b] flex items-center justify-center text-gray-700 dark:text-[#8eb698] shrink-0">
+                      <ListOrdered className="w-4 h-4 text-emerald-600 dark:text-[#8eb698]" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-[#daf1de] block">
+                        {locale === "ar" ? "إعادة ترقيم يوم" : "Renumber Day"}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-[#8eb698]">
+                        {locale === "ar" ? "إعادة ترتيب أرقام طلبات يوم كامل مع مراجعة وتأكيد" : "Review and renumber all orders for one business day"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de] transition-colors">
+                    {isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </div>
+                </button>
+              </div>
+            )}
+
             {/* Admin Management Navigation Row */}
             {hasPermission("admin:manage") && (
               <div className="py-2">
