@@ -27,6 +27,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
   let recordedCommands: Array<{ commandId: string; type: string; payload: unknown }>;
   let overlays: Map<string, any>;
   let overlaySequence: number;
+  let insideLocalTransaction = false;
 
   beforeEach(async () => {
     await localDb.clear();
@@ -37,6 +38,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     recordedCommands = [];
     overlays = new Map();
     overlaySequence = 0;
+    insideLocalTransaction = false;
 
     const mockCtx: RepositoryContext = {
       orderRepo: {
@@ -111,11 +113,17 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       },
       commandRepo: {
         get: () => null,
-        record: (commandId: string, type: string, payload: unknown) => { recordedCommands.push({ commandId, type, payload }); },
+        record: (commandId: string, type: string, payload: unknown) => {
+          if (type === 'RENUMBER_DAY_ORDERS' && !insideLocalTransaction) throw new Error('Renumber command must be queued in the same local transaction as overlays');
+          recordedCommands.push({ commandId, type, payload });
+        },
       },
       overlayRepo: {
         save: async (overlay: any) => { overlays.set(overlay.commandId, overlay); },
-        saveWithTx: (overlay: any) => { overlays.set(overlay.commandId, overlay); },
+        saveWithTx: (overlay: any) => {
+          if (!insideLocalTransaction) throw new Error('Overlay must be staged inside the active local transaction');
+          overlays.set(overlay.commandId, overlay);
+        },
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         getNextSequence: async () => ++overlaySequence,
@@ -133,7 +141,12 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       },
       transactionManager: {
         runInTransaction: async (fn) => {
-          return fn(mockCtx);
+          insideLocalTransaction = true;
+          try {
+            return fn(mockCtx);
+          } finally {
+            insideLocalTransaction = false;
+          }
         },
       },
     };
