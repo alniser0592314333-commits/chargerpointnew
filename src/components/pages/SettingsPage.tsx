@@ -1055,8 +1055,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
                     </span>
                     <span className="text-xs text-gray-500 dark:text-[#8eb698] block mt-1">
                       {locale === "ar"
-                        ? "اختر اليوم، عدّل رقم كل طلب، ثم راجع التغييرات واعتمدها. لن يتم تغيير الأرقام تلقائيًا."
-                        : "Choose a day, edit each order number, and review before confirming. Numbers are never changed automatically."}
+                        ? "اختر اليوم، عدّل رقم كل طلب، ثم راجع التغييرات واعتمدها. لن يعاد ترقيم الطلبات الموجودة تلقائيًا."
+                        : "Choose a day, edit each order number, and review before confirming. Existing orders are never renumbered automatically."}
                     </span>
                   </div>
                 </div>
