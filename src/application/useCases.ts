@@ -25,7 +25,9 @@ import {
   validateItemTransition, 
   checkDebtLimit,
   generateGoalProposal,
-  calculateAuthoritativeGoalProgress
+  calculateAuthoritativeGoalProgress,
+  calculateGoalBonusCapMinor,
+  randomGoalDurationDays
 } from '../domain/rules';
 import { PaymentStatus } from '../domain/enums';
 import { DomainInvariants } from '../domain/invariants';
@@ -1511,7 +1513,9 @@ export class FinalUseCases {
     const recentCharges = ledger.filter(
       l => (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.createdAt >= sevenDaysAgo
     );
-    deliveredCount = recentCharges.length;
+    const reversedItemIds = new Set(ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId).map(l => l.orderItemId!));
+    const qualifyingItemIds = new Set(recentCharges.filter(l => l.orderItemId && !reversedItemIds.has(l.orderItemId)).map(l => l.orderItemId!));
+    deliveredCount = qualifyingItemIds.size;
 
     const proposal = generateGoalProposal(deliveredCount);
     return { success: true, data: proposal };
@@ -1525,8 +1529,8 @@ export class FinalUseCases {
     commandId: ID,
     customerId: ID,
     targetQuantity: number,
-    durationDays: number = 7,
-    bonusAmountMinor: number = 500,
+    durationDays?: number,
+    bonusAmountMinor?: number,
     groupId?: string
   ): Promise<Result<GoalEntity>> {
     const actor = auth.requireAuth();
@@ -1535,7 +1539,9 @@ export class FinalUseCases {
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer || !customer.isActive) throw new InactiveCustomerError();
 
-    DomainInvariants.assertGoalParamsValid(targetQuantity, durationDays, bonusAmountMinor);
+    const effectiveDurationDays = durationDays ?? randomGoalDurationDays();
+    const effectiveBonusAmountMinor = bonusAmountMinor ?? Math.min(targetQuantity * 10, calculateGoalBonusCapMinor(targetQuantity));
+    DomainInvariants.assertGoalParamsValid(targetQuantity, effectiveDurationDays, effectiveBonusAmountMinor);
 
     if (!this.deps.goalRepo) {
       throw new Error('Goal repository not configured in context');
@@ -1545,7 +1551,7 @@ export class FinalUseCases {
     DomainInvariants.assertSingleActiveGoal(existingActive, customerId);
 
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(now.getTime() + effectiveDurationDays * 24 * 60 * 60 * 1000).toISOString();
     const goalId = commandId || crypto.randomUUID();
 
     const goal: GoalEntity = {
@@ -1553,8 +1559,8 @@ export class FinalUseCases {
       customerId,
       targetQuantity,
       currentProgress: 0,
-      bonusAmountMinor,
-      durationDays,
+      bonusAmountMinor: effectiveBonusAmountMinor,
+      durationDays: effectiveDurationDays,
       status: 'ACTIVE',
       startedAt: now.toISOString(),
       expiresAt,
@@ -1569,8 +1575,8 @@ export class FinalUseCases {
         id: goalId,
         customerId,
         targetQuantity,
-        durationDays,
-        bonusAmountMinor,
+        durationDays: effectiveDurationDays,
+        bonusAmountMinor: effectiveBonusAmountMinor,
         startedAt: goal.startedAt,
         expiresAt: goal.expiresAt,
         ...(groupId ? { groupId } : {}),
@@ -1612,10 +1618,13 @@ export class FinalUseCases {
     }
 
     if (params.durationDays !== undefined) {
-      if (!Number.isInteger(params.durationDays) || params.durationDays <= 0) {
-        throw new BusinessRuleViolation('Duration days must be a positive integer');
+      if (!Number.isInteger(params.durationDays) || params.durationDays < 3 || params.durationDays > 15) {
+        throw new BusinessRuleViolation('Duration must be an integer from 3 through 15 days');
       }
       goal.durationDays = params.durationDays;
+      if (params.expiresAt === undefined) {
+        goal.expiresAt = new Date(new Date(goal.startedAt).getTime() + params.durationDays * 24 * 60 * 60 * 1000).toISOString();
+      }
     }
 
     if (params.bonusAmountMinor !== undefined) {
@@ -1626,8 +1635,20 @@ export class FinalUseCases {
     }
 
     if (params.expiresAt !== undefined) {
-      goal.expiresAt = params.expiresAt;
+      const parsedExpiry = new Date(params.expiresAt);
+      if (!Number.isFinite(parsedExpiry.getTime())) throw new BusinessRuleViolation('Goal expiry must be a valid timestamp');
+      const durationFromExpiry = (parsedExpiry.getTime() - new Date(goal.startedAt).getTime()) / (24 * 60 * 60 * 1000);
+      if (!Number.isInteger(durationFromExpiry) || durationFromExpiry < 3 || durationFromExpiry > 15) {
+        throw new BusinessRuleViolation('Goal expiry must match a whole duration from 3 through 15 days after start');
+      }
+      goal.expiresAt = parsedExpiry.toISOString();
+      goal.durationDays = durationFromExpiry;
     }
+
+    if (goal.bonusAmountMinor > calculateGoalBonusCapMinor(goal.targetQuantity)) {
+      throw new FinancialInvariantViolation('Goal bonus exceeds the hard cap of 20 minor units per target device.');
+    }
+    DomainInvariants.assertGoalParamsValid(goal.targetQuantity, goal.durationDays, goal.bonusAmountMinor);
 
     goal.updatedAt = new Date().toISOString();
     goal.version += 1;
@@ -1719,8 +1740,8 @@ export class FinalUseCases {
   async approveGoalRequest(
     auth: AuthorizationContext,
     requestId: ID,
-    bonusAmountMinor: number = 500,
-    durationDays: number = 7
+    bonusAmountMinor?: number,
+    durationDays?: number
   ): Promise<Result<{ request: GoalRequestEntity; goal: GoalEntity }>> {
     const actor = auth.requireAuth();
     auth.assertPermission('goals:approve');
@@ -1738,8 +1759,11 @@ export class FinalUseCases {
     DomainInvariants.assertSingleActiveGoal(existingActive, req.customerId);
 
     const targetQuantity = req.requestedTarget || 10;
+    const effectiveDurationDays = durationDays ?? randomGoalDurationDays();
+    const effectiveBonusAmountMinor = bonusAmountMinor ?? Math.min(targetQuantity * 10, calculateGoalBonusCapMinor(targetQuantity));
+    DomainInvariants.assertGoalParamsValid(targetQuantity, effectiveDurationDays, effectiveBonusAmountMinor);
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(now.getTime() + effectiveDurationDays * 24 * 60 * 60 * 1000).toISOString();
     const goalId = crypto.randomUUID();
 
     const goal: GoalEntity = {
@@ -1747,8 +1771,8 @@ export class FinalUseCases {
       customerId: req.customerId,
       targetQuantity,
       currentProgress: 0,
-      bonusAmountMinor,
-      durationDays,
+      bonusAmountMinor: effectiveBonusAmountMinor,
+      durationDays: effectiveDurationDays,
       status: 'ACTIVE',
       startedAt: now.toISOString(),
       expiresAt,
@@ -1829,14 +1853,22 @@ export class FinalUseCases {
 
     // Count qualifying delivered order items in window [goal.startedAt, goal.expiresAt]
     const ledger = await repos.ledgerRepo.findByCustomer(customerId);
-    const qualifyingCharges = ledger.filter(
-      l =>
-        (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') &&
-        l.createdAt >= goal.startedAt &&
-        l.createdAt <= goal.expiresAt
+    const reversedItemIds = new Set(
+      ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId).map(l => l.orderItemId!)
+    );
+    const qualifyingItemIds = new Set(
+      ledger
+        .filter(l =>
+          (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') &&
+          Boolean(l.orderItemId) &&
+          l.createdAt >= goal.startedAt &&
+          l.createdAt <= goal.expiresAt &&
+          !reversedItemIds.has(l.orderItemId!)
+        )
+        .map(l => l.orderItemId!)
     );
 
-    const newProgress = qualifyingCharges.length;
+    const newProgress = qualifyingItemIds.size;
     goal.currentProgress = newProgress;
     goal.updatedAt = new Date().toISOString();
 
