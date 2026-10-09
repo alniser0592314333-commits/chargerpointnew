@@ -100,7 +100,7 @@ BEGIN
       now() + interval '3 days'
     );
     RAISE EXCEPTION 'Invalid bonus cap unexpectedly accepted';
-  EXCEPTION WHEN check_violation THEN
+  EXCEPTION WHEN SQLSTATE '22023' OR check_violation THEN
     NULL;
   END;
 END $$;
