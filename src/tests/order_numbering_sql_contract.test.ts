@@ -41,14 +41,32 @@ describe('Atomic day order renumbering SQL contract', () => {
     expect(branch).toContain('new numbers must be unique and contiguous from 1');
   });
 
-  it('uses collision-safe temporary numbers, audits final values, and publishes canonical order changes', () => {
+  it('updates each order once, audits final values, and relies on existing change capture', () => {
     const branch = readRenumberBranch(readMigration());
-    expect(branch).toContain("v_temp_base + (v_rec_order.change_row->>'newNumber')::INTEGER");
-    expect(branch).toContain('SET display_number = (v_rec_order.change_row->>\'newNumber\')::INTEGER');
-    expect(branch).toContain('version = version + 1');
+    expect(branch).toContain("UPDATE public.orders o");
+    expect(branch).toContain("SET display_number = (c.value->>'newNumber')::INTEGER");
+    expect(branch).toContain('version = o.version + 1');
     expect(branch).toContain('INSERT INTO public.order_renumber_audit');
-    expect(branch).toContain("PERFORM public.record_canonical_change(\n                    'orders'");
+    expect(branch).not.toContain('v_temp_base');
+    expect(branch).not.toContain('PERFORM public.record_canonical_change');
     expect(branch).not.toMatch(/internal_sequence/i);
+  });
+
+  it('preserves the live payment BIN guard and FIFO allocation order', () => {
+    const sql = readMigration();
+    expect(sql).toContain("p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_PAYMENT','POST_PAYMENT','CREATE_REFUND')");
+    expect(sql).toContain('ORDER BY o.internal_sequence ASC, oi.item_sequence ASC, oi.id ASC');
+    expect(sql).not.toContain('ORDER BY oi.created_at ASC');
+  });
+
+  it('serializes order creation with renumbering and refuses to extend a malformed sequence', () => {
+    const sql = readMigration();
+    const start = sql.lastIndexOf("WHEN 'CREATE_ORDER' THEN");
+    const end = sql.indexOf("WHEN 'RENUMBER_DAY_ORDERS' THEN", start);
+    const createOrder = sql.slice(start, end);
+    expect(createOrder).toContain("pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1))");
+    expect(createOrder).toContain('FROM public.business_days WHERE id = v_day_uuid FOR UPDATE');
+    expect(createOrder).toContain('this day has missing or duplicate numbers');
   });
 
   it('does not leave the recreated SECURITY DEFINER dispatcher executable by PUBLIC or anon', () => {
