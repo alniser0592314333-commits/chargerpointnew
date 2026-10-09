@@ -42,7 +42,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       orderRepo: {
         findById: (id: string) => orderMap.get(id) || null,
         save: (o: OrderEntity) => { orderMap.set(o.id, { ...o }); },
-        countForDay: (dayId: string) => Math.max(0, ...Array.from(orderMap.values()).filter(o => o.dayId === dayId).map(o => o.displayNumber || 0)),
+        countForDay: (dayId: string) => Array.from(orderMap.values()).filter(o => o.dayId === dayId).length,
         findByDay: (dayId: string) => Array.from(orderMap.values()).filter(o => o.dayId === dayId),
       },
       reservationRepo: {
