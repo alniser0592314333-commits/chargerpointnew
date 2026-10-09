@@ -19,30 +19,12 @@ CREATE INDEX IF NOT EXISTS idx_order_renumber_audit_day_created
     ON public.order_renumber_audit (day_id, created_at DESC);
 REVOKE ALL ON TABLE public.order_renumber_audit FROM PUBLIC, anon, authenticated;
 
--- Migration 00116: restore complete canonical sync command contract and enforce server-side BIN.
--- Canonical sync command authority; runtime execute_sync_command delegates here.
-
--- Remove every legacy canonical overload introduced by earlier migrations.
--- PostgreSQL treats TEXT and VARCHAR as distinct function signatures, so both
--- must be dropped before installing the single authoritative contract.
-DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,VARCHAR(100),JSONB,TEXT,TEXT,TEXT);
-DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,VARCHAR(100),JSONB,TEXT,TEXT,UUID);
-DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,TEXT,JSONB,TEXT,TEXT,TEXT);
-DROP FUNCTION IF EXISTS public.execute_canonical_sync_command(UUID,TEXT,JSONB,TEXT,TEXT,UUID);
-
-CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(
-    p_command_id UUID,
-    p_command_type TEXT,
-    p_payload JSONB,
-    p_payload_hash TEXT DEFAULT 'no_hash',
-    p_device_id TEXT DEFAULT 'default_device',
-    p_actor_id UUID DEFAULT NULL
-)
-RETURNS JSONB
-SECURITY DEFINER
-SET search_path = public, pg_temp
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(p_command_id uuid, p_command_type text, p_payload jsonb, p_payload_hash text DEFAULT 'no_hash'::text, p_device_id text DEFAULT 'default_device'::text, p_actor_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
 DECLARE
     v_existing_cmd RECORD;
     v_actor_id UUID := NULL;
@@ -92,13 +74,11 @@ DECLARE
     v_dev_icon VARCHAR(100);
     v_bin TEXT;
     v_rec_order RECORD;
-    v_change_count INTEGER;
-    v_payload_order_count INTEGER;
-    v_distinct_number_count INTEGER;
+    v_change_count BIGINT;
+    v_payload_order_count BIGINT;
+    v_distinct_number_count BIGINT;
     v_min_new_number INTEGER;
     v_max_new_number INTEGER;
-    v_old_state JSONB;
-    v_temp_base BIGINT;
     v_requested_display_number INTEGER;
     v_existing_order_count BIGINT;
     v_existing_order_max BIGINT;
@@ -237,7 +217,7 @@ BEGIN
     v_bin := NULLIF(TRIM(p_payload->>'bin'), '');
 
     IF (
-        p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_REFUND')
+        p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER','CANCEL_ORDER_ITEM','CREATE_CUSTOMER_CREDIT','CREATE_PAYMENT','POST_PAYMENT','CREATE_REFUND')
         AND NOT (
             p_command_type = 'DELIVER_ORDER_ITEM'
             AND COALESCE((p_payload->>'autoDelivery')::BOOLEAN, FALSE)
@@ -491,8 +471,7 @@ BEGIN
             v_entity_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
             v_customer_uuid := (COALESCE(p_payload->>'customerId', p_payload->>'customer_id'))::UUID;
             v_day_uuid := (COALESCE(p_payload->>'dayId', p_payload->>'day_id'))::UUID;
-
-            -- Serialize order-number allocation with renumbering for this business day.
+            -- Serialize order creation with renumbering for this business day.
             PERFORM pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1));
 
             SELECT status INTO v_customer_status FROM public.customers WHERE id = v_customer_uuid;
@@ -503,7 +482,6 @@ BEGIN
                 RAISE EXCEPTION 'Customer Is Deleted/Frozen: Cannot create order for soft-deleted customer %', v_customer_uuid;
             END IF;
 
-            -- Lock the day row shared with the renumber command; creates and renumbering serialize.
             PERFORM id FROM public.business_days WHERE id = v_day_uuid FOR UPDATE;
             IF NOT FOUND THEN
                 RAISE EXCEPTION 'Business Day Not Found: ID %', v_day_uuid USING ERRCODE = '23503';
@@ -519,16 +497,14 @@ BEGIN
             END IF;
 
             SELECT COUNT(*), COALESCE(MAX(display_number), 0), COUNT(DISTINCT display_number)
-              INTO v_existing_order_count, v_existing_order_max, v_existing_distinct_count
-              FROM public.orders
-             WHERE day_id = v_day_uuid;
-
+            INTO v_existing_order_count, v_existing_order_max, v_existing_distinct_count
+            FROM public.orders
+            WHERE day_id = v_day_uuid;
             IF v_existing_order_count <> v_existing_distinct_count
                OR v_existing_order_max <> v_existing_order_count THEN
                 RAISE EXCEPTION 'Order number conflict: this day has missing or duplicate numbers; an authorized Renumber Day review is required'
                     USING ERRCODE = 'P0409';
             END IF;
-
             IF v_requested_display_number <> v_existing_order_count + 1 THEN
                 RAISE EXCEPTION 'Order number conflict: expected next number %, received %. Reload the day; do not renumber automatically.',
                     v_existing_order_count + 1, v_requested_display_number
@@ -557,94 +533,64 @@ BEGIN
             PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', p_payload, 1);
             v_result := jsonb_build_object('orderId', v_entity_uuid);
 
-
         WHEN 'RENUMBER_DAY_ORDERS' THEN
             v_day_uuid := COALESCE((p_payload->>'dayId')::UUID, (p_payload->>'id')::UUID);
-            IF v_day_uuid IS NULL OR jsonb_typeof(p_payload->'changes') <> 'array' THEN
+            IF v_day_uuid IS NULL OR COALESCE(jsonb_typeof(p_payload->'changes'), '') <> 'array' THEN
                 RAISE EXCEPTION 'Renumber validation failed: dayId and changes array are required' USING ERRCODE = 'P2201';
             END IF;
-
-            SELECT COUNT(*) INTO v_change_count
-            FROM jsonb_array_elements(p_payload->'changes');
+            SELECT COUNT(*) INTO v_change_count FROM jsonb_array_elements(p_payload->'changes');
             IF v_change_count < 1 THEN
                 RAISE EXCEPTION 'Renumber validation failed: at least one order is required' USING ERRCODE = 'P2201';
             END IF;
-
-            -- Use the same per-day lock as CREATE_ORDER so allocation and renumbering cannot race.
+            -- Share the exact same per-day lock with CREATE_ORDER.
             PERFORM pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1));
-            -- Serialize the whole day and every order in it. Never partially renumber.
             PERFORM id FROM public.business_days WHERE id = v_day_uuid FOR UPDATE;
             IF NOT FOUND THEN
                 RAISE EXCEPTION 'Business Day Not Found: ID %', v_day_uuid USING ERRCODE = '23503';
             END IF;
             PERFORM id FROM public.orders WHERE day_id = v_day_uuid ORDER BY id FOR UPDATE;
 
-            SELECT COUNT(*) INTO v_payload_order_count
-            FROM public.orders WHERE day_id = v_day_uuid;
+            SELECT COUNT(*) INTO v_payload_order_count FROM public.orders WHERE day_id = v_day_uuid;
             IF v_payload_order_count <> v_change_count THEN
                 RAISE EXCEPTION 'Renumber conflict: payload must include every order in the selected day' USING ERRCODE = 'P0409';
             END IF;
-
             IF EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements(p_payload->'changes') c
-                WHERE NULLIF(c->>'id','') IS NULL
-                   OR NULLIF(c->>'expectedVersion','') IS NULL
-                   OR NULLIF(c->>'oldNumber','') IS NULL
-                   OR NULLIF(c->>'newNumber','') IS NULL
+                SELECT 1 FROM jsonb_array_elements(p_payload->'changes') c
+                WHERE NULLIF(c->>'id','') IS NULL OR NULLIF(c->>'expectedVersion','') IS NULL
+                   OR NULLIF(c->>'oldNumber','') IS NULL OR NULLIF(c->>'newNumber','') IS NULL
             ) OR (
-                SELECT COUNT(DISTINCT (c->>'id')::UUID)
-                FROM jsonb_array_elements(p_payload->'changes') c
+                SELECT COUNT(DISTINCT (c->>'id')::UUID) FROM jsonb_array_elements(p_payload->'changes') c
             ) <> v_change_count THEN
                 RAISE EXCEPTION 'Renumber validation failed: duplicate IDs or incomplete change rows' USING ERRCODE = 'P2201';
             END IF;
-
             IF EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements(p_payload->'changes') c
-                WHERE (c->>'newNumber')::INTEGER < 1
-                   OR (c->>'newNumber')::INTEGER > v_change_count
+                SELECT 1 FROM jsonb_array_elements(p_payload->'changes') c
+                WHERE (c->>'newNumber')::INTEGER < 1 OR (c->>'newNumber')::INTEGER > v_change_count
             ) THEN
                 RAISE EXCEPTION 'Renumber validation failed: new numbers must be 1..N' USING ERRCODE = 'P2201';
             END IF;
-
             SELECT COUNT(DISTINCT (c->>'newNumber')::INTEGER),
-                   MIN((c->>'newNumber')::INTEGER),
-                   MAX((c->>'newNumber')::INTEGER)
+                   MIN((c->>'newNumber')::INTEGER), MAX((c->>'newNumber')::INTEGER)
             INTO v_distinct_number_count, v_min_new_number, v_max_new_number
             FROM jsonb_array_elements(p_payload->'changes') c;
-            IF v_distinct_number_count <> v_change_count
-               OR v_min_new_number <> 1
-               OR v_max_new_number <> v_change_count THEN
+            IF v_distinct_number_count <> v_change_count OR v_min_new_number <> 1 OR v_max_new_number <> v_change_count THEN
                 RAISE EXCEPTION 'Renumber validation failed: new numbers must be unique and contiguous from 1' USING ERRCODE = 'P2201';
             END IF;
-
             IF EXISTS (
-                SELECT 1
-                FROM public.orders o
+                SELECT 1 FROM public.orders o
                 WHERE o.day_id = v_day_uuid
-                  AND NOT EXISTS (
-                    SELECT 1 FROM jsonb_array_elements(p_payload->'changes') c
-                    WHERE (c->>'id')::UUID = o.id
-                  )
+                  AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(p_payload->'changes') c WHERE (c->>'id')::UUID = o.id)
             ) OR EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements(p_payload->'changes') c
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM public.orders o
-                    WHERE o.id = (c->>'id')::UUID AND o.day_id = v_day_uuid
-                )
+                SELECT 1 FROM jsonb_array_elements(p_payload->'changes') c
+                WHERE NOT EXISTS (SELECT 1 FROM public.orders o WHERE o.id = (c->>'id')::UUID AND o.day_id = v_day_uuid)
             ) THEN
                 RAISE EXCEPTION 'Renumber conflict: order set changed; reload the day and review again' USING ERRCODE = 'P0409';
             END IF;
-
             FOR v_rec_order IN
                 SELECT o.id, o.display_number, o.version, c.value AS change_row
                 FROM public.orders o
-                JOIN LATERAL jsonb_array_elements(p_payload->'changes') c(value)
-                  ON (c.value->>'id')::UUID = o.id
-                WHERE o.day_id = v_day_uuid
-                ORDER BY o.id
+                JOIN LATERAL jsonb_array_elements(p_payload->'changes') c(value) ON (c.value->>'id')::UUID = o.id
+                WHERE o.day_id = v_day_uuid ORDER BY o.id
             LOOP
                 IF v_rec_order.version <> (v_rec_order.change_row->>'expectedVersion')::INTEGER
                    OR v_rec_order.display_number <> (v_rec_order.change_row->>'oldNumber')::INTEGER THEN
@@ -653,82 +599,33 @@ BEGIN
                 END IF;
             END LOOP;
 
-            -- Phase 1: move all rows above the day's current maximum while the day is locked.
-            -- Temporary values remain positive to satisfy the orders table CHECK constraint,
-            -- and are unique within the complete day to avoid collisions during swaps.
-            SELECT COALESCE(MAX(display_number), 0) INTO v_temp_base
-            FROM public.orders
-            WHERE day_id = v_day_uuid;
-            IF v_temp_base + v_change_count > 2147483647 THEN
-                RAISE EXCEPTION 'Renumber cannot safely allocate temporary display numbers for this day'
-                    USING ERRCODE = 'P2201';
-            END IF;
+            -- The live canonical schema has no unique (day_id, display_number) constraint.
+            -- One UPDATE per order prevents temporary values from entering change_log.
+            UPDATE public.orders o
+            SET display_number = (c.value->>'newNumber')::INTEGER,
+                updated_at = NOW(),
+                version = o.version + 1
+            FROM jsonb_array_elements(p_payload->'changes') c(value)
+            WHERE o.id = (c.value->>'id')::UUID AND o.day_id = v_day_uuid;
 
             FOR v_rec_order IN
-                SELECT o.id, c.value AS change_row
-                FROM public.orders o
-                JOIN LATERAL jsonb_array_elements(p_payload->'changes') c(value)
-                  ON (c.value->>'id')::UUID = o.id
-                WHERE o.day_id = v_day_uuid
-                ORDER BY o.id
+                SELECT (c.value->>'id')::UUID AS id,
+                       (c.value->>'oldNumber')::INTEGER AS old_number,
+                       (c.value->>'newNumber')::INTEGER AS new_number,
+                       (c.value->>'expectedVersion')::INTEGER AS old_version
+                FROM jsonb_array_elements(p_payload->'changes') c(value)
+                ORDER BY (c.value->>'id')::UUID
             LOOP
-                UPDATE public.orders
-                SET display_number = (v_temp_base + (v_rec_order.change_row->>'newNumber')::INTEGER)::INTEGER
-                WHERE id = v_rec_order.id;
-            END LOOP;
-
-            -- Phase 2: apply final numbers and audit data. The surrounding RPC transaction
-            -- guarantees that any failure rolls back both phases and every audit/event row.
-            FOR v_rec_order IN
-                SELECT o.id, o.version, c.value AS change_row
-                FROM public.orders o
-                JOIN LATERAL jsonb_array_elements(p_payload->'changes') c(value)
-                  ON (c.value->>'id')::UUID = o.id
-                WHERE o.day_id = v_day_uuid
-                ORDER BY o.id
-            LOOP
-                v_old_state := jsonb_build_object(
-                    'id', v_rec_order.id,
-                    'dayId', v_day_uuid,
-                    'displayNumber', (v_rec_order.change_row->>'oldNumber')::INTEGER,
-                    'version', v_rec_order.version
-                );
-
-                UPDATE public.orders
-                SET display_number = (v_rec_order.change_row->>'newNumber')::INTEGER,
-                    updated_at = NOW(),
-                    version = version + 1
-                WHERE id = v_rec_order.id;
-
                 INSERT INTO public.order_renumber_audit (
-                    command_id, day_id, order_id, actor_admin_id,
-                    old_number, new_number, old_version, new_version, created_at
+                    command_id, day_id, order_id, actor_admin_id, old_number, new_number, old_version, new_version, created_at
                 ) VALUES (
                     p_command_id, v_day_uuid, v_rec_order.id, v_actor_id,
-                    (v_rec_order.change_row->>'oldNumber')::INTEGER,
-                    (v_rec_order.change_row->>'newNumber')::INTEGER,
-                    v_rec_order.version, v_rec_order.version + 1, NOW()
-                );
-
-                PERFORM public.record_canonical_change(
-                    'orders', v_rec_order.id, 'UPDATE',
-                    jsonb_build_object(
-                        'id', v_rec_order.id,
-                        'dayId', v_day_uuid,
-                        'displayNumber', (v_rec_order.change_row->>'newNumber')::INTEGER,
-                        'version', v_rec_order.version + 1
-                    ),
-                    v_rec_order.version + 1
+                    v_rec_order.old_number, v_rec_order.new_number, v_rec_order.old_version, v_rec_order.old_version + 1, NOW()
                 );
             END LOOP;
+            v_result := jsonb_build_object('dayId', v_day_uuid, 'count', v_change_count, 'renumbered', TRUE);
 
-            v_result := jsonb_build_object(
-                'dayId', v_day_uuid,
-                'count', v_change_count,
-                'renumbered', TRUE
-            );
-
-        WHEN 'UPDATE_ORDER' THEN
+WHEN 'UPDATE_ORDER' THEN
             v_order_uuid := COALESCE((p_payload->>'id')::UUID, (p_payload->>'orderId')::UUID);
             IF v_order_uuid IS NULL THEN
                 RAISE EXCEPTION 'Validation Error: Order ID must be a valid UUID' USING ERRCODE = 'P2201';
@@ -1191,6 +1088,31 @@ BEGIN
                 RAISE EXCEPTION 'Invalid Payment: Amount must be positive';
             END IF;
 
+            -- Serialize all financial mutations for this customer before reading
+            -- outstanding debt. This makes concurrent payments deterministic.
+            PERFORM 1
+            FROM public.customers
+            WHERE id = v_customer_uuid
+              AND is_active = TRUE
+            FOR UPDATE;
+
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'Customer Not Found/Inactive: Cannot record payment for customer %', v_customer_uuid
+                    USING ERRCODE = '23503';
+            END IF;
+
+            -- Lock the exact eligible items before calculating outstanding amounts.
+            PERFORM 1
+            FROM public.order_items oi
+            JOIN public.orders o ON o.id = oi.order_id
+            WHERE o.customer_id = v_customer_uuid
+              AND o.status <> 'cancelled'
+              AND oi.status <> 'cancelled'
+              AND oi.financial_status = 'RECOGNIZED'
+              AND oi.payment_status <> 'PAID'
+            ORDER BY o.internal_sequence ASC, oi.item_sequence ASC, oi.id ASC
+            FOR UPDATE OF oi;
+
             INSERT INTO public.payments (id, customer_id, amount_minor, payment_method, reference, actor_admin_id, command_id, created_at)
             VALUES (
                 v_payment_uuid,
@@ -1223,10 +1145,13 @@ BEGIN
                 JOIN public.orders o ON oi.order_id = o.id
                 LEFT JOIN public.payment_allocations pa ON oi.id = pa.order_item_id
                 WHERE o.customer_id = v_customer_uuid
+                  AND o.status <> 'cancelled'
+                  AND oi.status <> 'cancelled'
                   AND oi.financial_status = 'RECOGNIZED'
-                  AND oi.payment_status != 'PAID'
-                GROUP BY oi.id, oi.order_id, oi.final_charge_snapshot_minor, oi.created_at
-                ORDER BY oi.created_at ASC
+                  AND oi.payment_status <> 'PAID'
+                GROUP BY oi.id, oi.order_id, oi.final_charge_snapshot_minor,
+                         o.internal_sequence, oi.item_sequence
+                ORDER BY o.internal_sequence ASC, oi.item_sequence ASC, oi.id ASC
             LOOP
                 EXIT WHEN v_unallocated_amount <= 0;
 
@@ -1239,7 +1164,6 @@ BEGIN
                         UPDATE public.order_items SET payment_status = 'PAID', updated_at = NOW(), version = version + 1
                         WHERE id = v_rec_item.id;
 
-                        PERFORM public.record_canonical_change('order_items', v_rec_item.id, 'UPDATE', jsonb_build_object('id', v_rec_item.id, 'payment_status', 'PAID'), 1);
                     ELSE
                         v_alloc_amount := v_unallocated_amount;
                         v_unallocated_amount := 0;
@@ -1247,7 +1171,6 @@ BEGIN
                         UPDATE public.order_items SET payment_status = 'PARTIALLY_PAID', updated_at = NOW(), version = version + 1
                         WHERE id = v_rec_item.id;
 
-                        PERFORM public.record_canonical_change('order_items', v_rec_item.id, 'UPDATE', jsonb_build_object('id', v_rec_item.id, 'payment_status', 'PARTIALLY_PAID'), 1);
                     END IF;
 
                     INSERT INTO public.payment_allocations (
@@ -1263,21 +1186,9 @@ BEGIN
                     )
                     RETURNING id INTO v_alloc_uuid;
 
-                    PERFORM public.record_canonical_change('payment_allocations', v_alloc_uuid, 'INSERT', jsonb_build_object(
-                        'id', v_alloc_uuid,
-                        'payment_id', v_payment_uuid,
-                        'order_item_id', v_rec_item.id,
-                        'allocated_amount_minor', v_alloc_amount
-                    ), 1);
                 END IF;
             END LOOP;
 
-            PERFORM public.record_canonical_change('payments', v_payment_uuid, 'INSERT', p_payload, 1);
-            PERFORM public.record_canonical_change('financial_ledger', v_ledger_uuid, 'INSERT', jsonb_build_object(
-                'event_type', 'PAYMENT',
-                'amount_minor', (COALESCE(p_payload->>'amountMinor', p_payload->>'amount_minor'))::BIGINT,
-                'customer_id', v_customer_uuid
-            ), 1);
 
             v_result := jsonb_build_object(
                 'paymentId', v_payment_uuid,
@@ -1592,11 +1503,9 @@ BEGIN
         'serverProcessedAt', NOW()
     );
 END;
-$$;
+$function$;
 
 -- The canonical dispatcher is SECURITY DEFINER in the exposed public schema.
--- Do not leave PostgreSQL's default PUBLIC EXECUTE grant in place after recreating it.
--- The app's authenticated sync wrapper and authorized service integrations retain access;
--- anonymous callers do not gain direct access to this privileged dispatcher.
+-- Preserve authenticated sync access while ensuring anonymous callers cannot invoke it directly.
 REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) TO authenticated, service_role;
