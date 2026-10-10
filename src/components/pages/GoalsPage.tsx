@@ -223,7 +223,7 @@ export const GoalsPage: React.FC = () => {
     authService.getCurrentSession().then((currentSession) => {
       if (mounted) {
         setSession(currentSession);
-        const normalizedRole = String(currentSession?.role || '').toUpperCase().replace(/\\s+/g, '_');
+        const normalizedRole = String(currentSession?.role || '').toUpperCase().replace(/\s+/g, '_');
         const superAdmin = normalizedRole === 'SUPER_ADMIN';
         const permissions = currentSession?.permissions || [];
         if (!superAdmin && !permissions.includes('goals:view') && !permissions.includes('goals:manage')) {
