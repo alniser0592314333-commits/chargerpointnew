@@ -73,7 +73,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $verify$
           DECLARE
             dispatcher_definition TEXT := pg_get_functiondef('public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)'::regprocedure);
           BEGIN
@@ -84,7 +84,7 @@ jobs:
               RAISE EXCEPTION 'Zero-limit debt guard was unexpectedly removed for regular admins';
             END IF;
           END;
-          $;
+          $verify$;
           SQL
       - name: Execute success and stale-conflict renumber scenarios
         env:
