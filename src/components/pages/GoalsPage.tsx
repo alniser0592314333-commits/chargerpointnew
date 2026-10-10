@@ -456,8 +456,8 @@ export const GoalsPage: React.FC = () => {
       if (!result.success) throw new Error('approve failed');
       setSuccess(copy.approved);
       await refresh();
-    } catch {
-      setError(copy.operationFailed);
+    } catch (cause) {
+      reportOperationError('goal mutation', cause);
     } finally {
       setActionLoading(false);
     }
