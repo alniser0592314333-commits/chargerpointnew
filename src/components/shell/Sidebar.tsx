@@ -20,7 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
     { id: '/app/days', label: t('navDaysOrders') },
     { id: '/app/customers', label: t('navCustomers') },
     { id: '/app/financials', label: t('navFinancials') },
-    { id: '/app/goals', label: t('navGoals') },
+    ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
     { id: '/app/notifications', label: t('navNotificationsRequests') },
     { id: '/app/settings/qr', label: t('navQrDesign') },
     ...(hasAdminManage ? [{ id: '/app/settings/admins', label: t('navAdminMgmt') }] : []),

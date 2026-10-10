@@ -501,6 +501,65 @@ export const applyRemoteChange = (change: {
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
     itemsMap.set(entity.id, entity);
     notifyStoreAfterTransaction('orderItems', entity.id);
+  } else if (entityType === 'goals') {
+    if (isDelete) {
+      goalsMap.delete(change.entityId);
+      localDb.removeWithTx(tx as any, 'goals', change.entityId);
+      notifyStoreAfterTransaction('goals', change.entityId);
+      return;
+    }
+    const previousGoal = goalsMap.get(change.entityId);
+    const incomingGoalVersion = Number(change.version ?? p.version ?? 1);
+    if (previousGoal && change.action !== 'INSERT' && Number(previousGoal.version ?? 0) >= incomingGoalVersion) {
+      return;
+    }
+    const entity: GoalEntity = {
+      id: p.id || change.entityId,
+      customerId: p.customerId || p.customer_id,
+      targetQuantity: Number(p.targetQuantity ?? p.target_quantity ?? 0),
+      currentProgress: Number(p.currentProgress ?? p.current_progress ?? 0),
+      bonusAmountMinor: Number(p.bonusAmountMinor ?? p.bonus_amount_minor ?? 0),
+      durationDays: Number(p.durationDays ?? p.duration_days ?? 0),
+      status: String(p.status || previousGoal?.status || 'ACTIVE').toUpperCase() as GoalEntity['status'],
+      startedAt: p.startedAt || p.started_at || previousGoal?.startedAt || new Date().toISOString(),
+      expiresAt: p.expiresAt || p.expires_at || previousGoal?.expiresAt || new Date().toISOString(),
+      completedAt: p.completedAt || p.completed_at || undefined,
+      bonusLedgerId: p.bonusLedgerId || p.bonus_ledger_id || undefined,
+      createdAt: p.createdAt || p.created_at || previousGoal?.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
+      version: incomingGoalVersion,
+    };
+    localDb.setWithTx(tx, 'goals', entity.id, entity);
+    goalsMap.set(entity.id, entity);
+    notifyStoreAfterTransaction('goals', entity.id);
+  } else if (entityType === 'goal_requests' || entityType === 'goalRequests') {
+    if (isDelete) {
+      goalRequestsMap.delete(change.entityId);
+      localDb.removeWithTx(tx as any, 'goalRequests', change.entityId);
+      notifyStoreAfterTransaction('goalRequests', change.entityId);
+      return;
+    }
+    const previousRequest = goalRequestsMap.get(change.entityId);
+    const incomingRequestVersion = Number(change.version ?? p.version ?? 1);
+    if (previousRequest && change.action !== 'INSERT' && Number(previousRequest.version ?? 0) >= incomingRequestVersion) {
+      return;
+    }
+    const entity: GoalRequestEntity = {
+      id: p.id || change.entityId,
+      customerId: p.customerId || p.customer_id,
+      requestedTarget: p.requestedTarget ?? p.requested_target ?? undefined,
+      status: String(p.status || previousRequest?.status || 'PENDING').toUpperCase() as GoalRequestEntity['status'],
+      reviewedBy: p.reviewedBy || p.reviewed_by || undefined,
+      reviewedAt: p.reviewedAt || p.reviewed_at || undefined,
+      rejectionReason: p.rejectionReason || p.rejection_reason || undefined,
+      resultingGoalId: p.resultingGoalId || p.resulting_goal_id || undefined,
+      createdAt: p.createdAt || p.created_at || previousRequest?.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
+      version: incomingRequestVersion,
+    };
+    localDb.setWithTx(tx, 'goalRequests', entity.id, entity);
+    goalRequestsMap.set(entity.id, entity);
+    notifyStoreAfterTransaction('goalRequests', entity.id);
   } else if (entityType === 'financial_ledger' || entityType === 'financialLedger') {
     if (isDelete) {
       const idx = ledgerList.findIndex((item) => item.id === change.entityId);
@@ -981,6 +1040,8 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       ledgRes,
       payRes,
       allocRes,
+      goalsRes,
+      goalRequestsRes,
     ] = await Promise.all([
       invokeSupabaseRestGet<any>('business_days', 'select=*'),
       invokeSupabaseRestGet<any>('customers', 'select=*'),
@@ -990,9 +1051,11 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       invokeSupabaseRestGet<any>('financial_ledger', 'select=*'),
       invokeSupabaseRestGet<any>('payments', 'select=*'),
       invokeSupabaseRestGet<any>('payment_allocations', 'select=*'),
+      invokeSupabaseRestGet<any>('goals', 'select=*'),
+      invokeSupabaseRestGet<any>('goal_requests', 'select=*'),
     ]);
 
-    const remoteReads = [daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes];
+    const remoteReads = [daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes, goalsRes, goalRequestsRes];
     const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
     if (failedRemoteRead) {
       // Never clear a healthy local read model because one authoritative table
@@ -1023,6 +1086,8 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     ledgerList.length = 0;
     paymentsMap.clear();
     allocationsList.length = 0;
+    goalsMap.clear();
+    goalRequestsMap.clear();
 
     // Only replace the local read model after the complete remote snapshot has
     // been fetched successfully. Partial table hydration is unsafe because it
@@ -1214,6 +1279,48 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       }
       updatedAny = true;
     }
+
+    // 8. Goals and goal requests are part of the same initial authoritative snapshot.
+    // Keeping these tables out of bootstrap left fresh clients with an empty local goal model.
+    for (const row of goalsRes.data as any[]) {
+      const entity: GoalEntity = {
+        id: row.id,
+        customerId: row.customer_id,
+        targetQuantity: Number(row.target_quantity ?? 0),
+        currentProgress: Number(row.current_progress ?? 0),
+        bonusAmountMinor: Number(row.bonus_amount_minor ?? 0),
+        durationDays: Number(row.duration_days ?? 0),
+        status: String(row.status || 'ACTIVE').toUpperCase() as GoalEntity['status'],
+        startedAt: row.started_at,
+        expiresAt: row.expires_at,
+        completedAt: row.completed_at ?? undefined,
+        bonusLedgerId: row.bonus_ledger_id ?? undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        version: Number(row.version ?? 1),
+      };
+      goalsMap.set(entity.id, entity);
+      await localDb.set('goals', entity.id, entity);
+    }
+
+    for (const row of goalRequestsRes.data as any[]) {
+      const entity: GoalRequestEntity = {
+        id: row.id,
+        customerId: row.customer_id,
+        requestedTarget: row.requested_target ?? undefined,
+        status: String(row.status || 'PENDING').toUpperCase() as GoalRequestEntity['status'],
+        reviewedBy: row.reviewed_by ?? undefined,
+        reviewedAt: row.reviewed_at ?? undefined,
+        rejectionReason: row.rejection_reason ?? undefined,
+        resultingGoalId: row.resulting_goal_id ?? undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        version: Number(row.version ?? 1),
+      };
+      goalRequestsMap.set(entity.id, entity);
+      await localDb.set('goalRequests', entity.id, entity);
+    }
+    updatedAny = true;
 
     if (updatedAny) {
       await localDb.setInitialHydrationCompleted(true);
@@ -2478,6 +2585,77 @@ export const getAuthoritativeBinVerifier = (): BinVerifierFn | undefined => {
 
 export const getCurrentAdminAuthorizationContext = (): AuthorizationContext => {
   return getAuthorizedAdminContext();
+};
+
+/**
+ * Goal-page read model. All reads come from the hydrated local store; mutations
+ * below go through FinalUseCases and the existing transactional outbox.
+ */
+export const getGoalsPageData = async (access: {
+  canViewGoals: boolean;
+  canViewRequests: boolean;
+}) => {
+  await ensureStoreHydrated();
+  return {
+    goals: access.canViewGoals
+      ? Array.from(goalsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      : [],
+    requests: access.canViewRequests
+      ? Array.from(goalRequestsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      : [],
+    customers: (access.canViewGoals || access.canViewRequests)
+      ? Array.from(customersMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+      : [],
+  };
+};
+
+export const generateCustomerGoalProposalForAdmin = async (customerId: string) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.generateCustomerGoalProposal(getAuthorizedAdminContext(), customerId);
+};
+
+export const createGoalForAdmin = async (
+  customerId: string,
+  targetQuantity: number,
+  durationDays: number,
+  bonusAmountMinor: number
+) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.createGoal(
+    getAuthorizedAdminContext(),
+    crypto.randomUUID(),
+    customerId,
+    targetQuantity,
+    durationDays,
+    bonusAmountMinor
+  );
+};
+
+export const updateGoalConfigForAdmin = async (
+  goalId: string,
+  params: { targetQuantity?: number; durationDays?: number; bonusAmountMinor?: number }
+) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.updateGoalConfig(getAuthorizedAdminContext(), goalId, params);
+};
+
+export const approveGoalRequestForAdmin = async (
+  requestId: string,
+  durationDays?: number,
+  bonusAmountMinor?: number
+) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.approveGoalRequest(
+    getAuthorizedAdminContext(),
+    requestId,
+    bonusAmountMinor,
+    durationDays
+  );
+};
+
+export const rejectGoalRequestForAdmin = async (requestId: string, rejectionReason: string) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.rejectGoalRequest(getAuthorizedAdminContext(), requestId, rejectionReason);
 };
 
 // Test-only compatibility actor. It is deliberately unauthorised in production.
