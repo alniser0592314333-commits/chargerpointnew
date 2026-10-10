@@ -42,9 +42,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   // Keep the existing order/day refresh scope separate from balance-warning updates,
   // so ledger changes do not unnecessarily reload the business-day record.
   const storeVersion = useStoreSubscription(['orders', 'orderItems', 'businessDays']);
-  const debtWarningVersion = useStoreSubscription([
-    'customers', 'financialLedger', 'payments', 'paymentAllocations'
-  ]);
+  const debtWarningVersion = useStoreSubscription(['customers', 'financialLedger']);
   const [businessDay, setBusinessDay] = useState<BusinessDayEntity | null>(null);
 
   useEffect(() => {
