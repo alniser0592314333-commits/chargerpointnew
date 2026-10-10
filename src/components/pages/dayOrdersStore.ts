@@ -2491,6 +2491,45 @@ export const repoContext: RepositoryContext = {
       return res!;
     },
   },
+  goalRepo: {
+    findById: async (id) => {
+      await ensureStoreHydrated();
+      return goalsMap.get(id) || null;
+    },
+    findActiveByCustomerId: async (customerId) => {
+      await ensureStoreHydrated();
+      for (const goal of goalsMap.values()) {
+        if (goal.customerId === customerId && goal.status === 'ACTIVE') return goal;
+      }
+      return null;
+    },
+    findAllByCustomerId: async (customerId) => {
+      await ensureStoreHydrated();
+      return Array.from(goalsMap.values()).filter((goal) => goal.customerId === customerId);
+    },
+    save: async (goal) => {
+      await ensureStoreHydrated();
+      await repoContext.transactionManager.runInTransaction((ctx) => {
+        ctx.goalRepo!.save(goal);
+      });
+    },
+  },
+  goalRequestRepo: {
+    findById: async (id) => {
+      await ensureStoreHydrated();
+      return goalRequestsMap.get(id) || null;
+    },
+    findAllByCustomerId: async (customerId) => {
+      await ensureStoreHydrated();
+      return Array.from(goalRequestsMap.values()).filter((request) => request.customerId === customerId);
+    },
+    save: async (request) => {
+      await ensureStoreHydrated();
+      await repoContext.transactionManager.runInTransaction((ctx) => {
+        ctx.goalRequestRepo!.save(request);
+      });
+    },
+  },
   transactionManager: {
     runInTransaction: async <T>(work: (ctx: RepositoryContext) => T extends Promise<any> ? never : T): Promise<T> => {
       await ensureStoreHydrated();
