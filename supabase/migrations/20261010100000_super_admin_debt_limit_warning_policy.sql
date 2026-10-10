@@ -19,7 +19,7 @@ DECLARE
                 END IF;
 $old$;
     v_new_guard TEXT := $new$
-                IF v_admin_role NOT IN ('SUPER_ADMIN', 'Super Admin') AND (
+                IF COALESCE(v_admin_role, '') NOT IN ('SUPER_ADMIN', 'Super Admin') AND (
                     (v_rec_item.debt_limit_minor > 0 AND v_projected_balance < (-v_rec_item.debt_limit_minor))
                     OR
                     (v_rec_item.debt_limit_minor < 0 AND v_projected_balance < v_rec_item.debt_limit_minor)
