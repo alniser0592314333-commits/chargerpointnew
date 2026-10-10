@@ -71,8 +71,8 @@ export type Permission =
   | "sync:manage"
   | "sync:view"
   | "goals:view"
+  | "goals:requests:view"
   | "goals:manage"
-  | "goals:request"
   | "goals:approve";
 
 export interface UserSession {
