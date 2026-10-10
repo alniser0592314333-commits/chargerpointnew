@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -35,7 +35,7 @@ interface GoalsPageData {
 const EMPTY_DATA: GoalsPageData = { goals: [], requests: [], customers: [] };
 
 export const GoalsPage: React.FC = () => {
-  const { t, locale, isRTL } = useI18n();
+  const { locale, isRTL } = useI18n();
   const [session, setSession] = useState<UserSession | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [data, setData] = useState<GoalsPageData>(EMPTY_DATA);
@@ -245,8 +245,8 @@ export const GoalsPage: React.FC = () => {
     return () => { mounted = false; };
   }, [storeRevision, copy.loadError]);
 
-  const customerName = (customerId: string) =>
-    data.customers.find((customer) => customer.id === customerId)?.name || customerId;
+  const customerName = useCallback((customerId: string) =>
+    data.customers.find((customer) => customer.id === customerId)?.name || customerId, [data.customers]);
 
   const activeGoals = data.goals.filter((goal) => goal.status === 'ACTIVE');
   const completedGoals = data.goals.filter((goal) => goal.status === 'COMPLETED');
@@ -262,7 +262,7 @@ export const GoalsPage: React.FC = () => {
         goal.id.toLocaleLowerCase().includes(normalized);
       return matches;
     });
-  }, [data.goals, data.customers, search, statusFilter]);
+  }, [data.goals, data.customers, search, statusFilter, customerName]);
 
   const formatMoney = (minor: number) => new Intl.NumberFormat(
     locale === 'ar' ? 'ar-IL' : 'en-IL',
@@ -360,6 +360,12 @@ export const GoalsPage: React.FC = () => {
       setError(copy.required);
       return;
     }
+    if (target <= editingGoal.currentProgress) {
+      const confirmed = window.confirm(locale === 'ar'
+        ? 'الهدف الجديد يساوي أو يقل عن التقدم الحالي، وقد يؤدي ذلك إلى إكمال الهدف وصرف المكافأة فورًا. هل تريد المتابعة؟'
+        : 'The new target is at or below current progress and may complete the goal and issue its reward immediately. Continue?');
+      if (!confirmed) return;
+    }
     setActionLoading(true);
     setError('');
     setSuccess('');
@@ -453,7 +459,7 @@ export const GoalsPage: React.FC = () => {
               <span>Goals</span>
             </div>
             <h1 className="text-2xl font-bold text-gray-950 dark:text-[#daf1de] sm:text-3xl">{copy.title}</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600 dark:text-[#a8c9b0]">{copy.subtitle || t('goalsSubtitle')}</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600 dark:text-[#a8c9b0]">{copy.subtitle}</p>
           </div>
           <Button variant="outline" onClick={refresh} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
@@ -538,7 +544,7 @@ export const GoalsPage: React.FC = () => {
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-[#123b32]"><div className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-teal-400 transition-all" style={{ width: `${percent}%` }} /></div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#0b302a]"><div className="text-xs text-gray-500 dark:text-[#8eb698]">{copy.reward}</div><div className="mt-1 font-semibold text-gray-900 dark:text-[#daf1de]">{formatMoney(goal.bonusAmountMinor)}</div></div>
-                      <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#0b302a]"><div className="text-xs text-gray-500 dark:text-[#8eb698]">{copy.duration}</div><div className="mt-1 font-semibold text-gray-900 dark:text-[#daf1de]}">{goal.durationDays}</div></div>
+                      <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#0b302a]"><div className="text-xs text-gray-500 dark:text-[#8eb698]">{copy.duration}</div><div className="mt-1 font-semibold text-gray-900 dark:text-[#daf1de]">{goal.durationDays}</div></div>
                       <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#0b302a]"><div className="text-xs text-gray-500 dark:text-[#8eb698]">{copy.starts}</div><div className="mt-1 text-xs font-medium text-gray-900 dark:text-[#daf1de]">{formatDate(goal.startedAt)}</div></div>
                       <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#0b302a]"><div className="text-xs text-gray-500 dark:text-[#8eb698]">{copy.expires}</div><div className="mt-1 text-xs font-medium text-gray-900 dark:text-[#daf1de]">{formatDate(goal.expiresAt)}</div>{goal.status === 'ACTIVE' && <div className={`mt-1 text-xs ${daysLeft < 0 ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-[#8eb698]'}`}>{daysLeft < 0 ? copy.expired : `${daysLeft} ${copy.daysLeft}`}</div>}</div>
                     </div>
