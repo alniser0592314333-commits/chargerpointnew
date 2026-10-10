@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
-import { Plus, QrCode, Edit3, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, QrCode, Edit3, CheckCircle2, AlertCircle, Search, X } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { 
   getOrdersForDay, 
@@ -15,6 +15,22 @@ import {
 } from './dayOrdersStore';
 import { BusinessDayEntity } from '../../domain/models';
 import { checkDebtLimit } from '../../domain/rules';
+
+// Normalize Arabic text for practical, forgiving search (hamza variants, diacritics and Arabic digits).
+const normalizeDaySearchText = (value: string): string =>
+  value
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
+    .replace(/\s+/g, ' ')
+    .trim();
 
 export interface DayDetailPageProps {
   dayId: string;
@@ -56,6 +72,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
 
   // Load orders for this day from Phase 5 Store
   const [orders, setOrders] = useState<UIDayOrderDetail[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [overDebtCustomerCodes, setOverDebtCustomerCodes] = useState<Set<string>>(() => new Set());
   const [isDeliverAllModalOpen, setIsDeliverAllModalOpen] = useState(false);
   const [binInput, setBinInput] = useState('');
@@ -110,7 +127,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   }, [orders]);
 
   // Sort valid order numbers NEWEST FIRST; keep malformed/legacy numbers at the bottom.
-  const sortedOrders = [...orders].sort((a, b) => {
+  const allSortedOrders = [...orders].sort((a, b) => {
     const aHasValidNumber = Number.isInteger(a.orderNumber) && a.orderNumber > 0;
     const bHasValidNumber = Number.isInteger(b.orderNumber) && b.orderNumber > 0;
 
@@ -121,6 +138,21 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
 
     return b.orderNumber - a.orderNumber || createdAtDifference;
   });
+
+  const normalizedSearchQuery = normalizeDaySearchText(searchQuery);
+  const sortedOrders = normalizedSearchQuery
+    ? allSortedOrders.filter((order) => {
+        const searchableValues = [
+          order.customerName,
+          order.customerId,
+          Number.isInteger(order.orderNumber) && order.orderNumber > 0 ? String(order.orderNumber) : '',
+        ];
+        const normalizedValues = searchableValues.map(normalizeDaySearchText);
+        // Every typed word must match somewhere in the order's name, number, or customer ID.
+        const queryTerms = normalizedSearchQuery.split(' ').filter(Boolean);
+        return queryTerms.every((term) => normalizedValues.some((value) => value.includes(term)));
+      })
+    : allSortedOrders;
 
   // Summary Metrics
   const orderCount = orders.length;
@@ -282,6 +314,68 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
         </div>
       </div>
 
+      {/* Search and primary day action: display-only controls; delivery handler/authorization flow stays unchanged. */}
+      <div className="space-y-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-400" />
+          <input
+            type="search"
+            dir="auto"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={locale === 'ar' ? 'ابحث باسم الزبون أو رقم الطلب أو معرّف الزبون…' : 'Search customer name, order number, or customer ID…'}
+            aria-label={locale === 'ar' ? 'البحث في طلبات اليوم' : 'Search today’s orders'}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pe-10 ps-10 text-sm text-slate-700 placeholder:text-slate-400 shadow-sm outline-none transition focus:border-sky-300 focus:bg-white focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:placeholder:text-slate-400 dark:focus:border-sky-700 dark:focus:bg-slate-900 dark:focus:ring-sky-950"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label={locale === 'ar' ? 'مسح البحث' : 'Clear search'}
+              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p aria-live="polite" className="text-xs text-slate-500 dark:text-slate-400">
+            {normalizedSearchQuery
+              ? (locale === 'ar'
+                  ? `نتائج البحث: ${sortedOrders.length} من ${orders.length} طلب`
+                  : `${sortedOrders.length} of ${orders.length} orders`)
+              : (locale === 'ar' ? 'ترتيب الطلبات من الأحدث إلى الأقدم' : 'Orders are sorted newest first')}
+          </p>
+          {orders.length > 0 && (
+            <Button
+              variant="outline"
+              size="md"
+              onClick={async () => {
+                if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                  setIsSubmitting(true);
+                  try {
+                    const res = await deliverAllOrdersInDay(dayId, '');
+                    if (res.success) loadOrders();
+                    else setBinError(res.error || 'تعذر وضع العملية في طابور المزامنة');
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                  return;
+                }
+                setBinError('');
+                setBinInput('');
+                setIsDeliverAllModalOpen(true);
+              }}
+              className="w-full justify-center gap-2 border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 sm:w-auto"
+            >
+              <CheckCircle2 className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+              <span>{t('deliverAllOrders') || 'تسليم جميع الطلبات'}</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
       {(numberingIssues.length > 0 || missingNumbers.length > 0) && (
         <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100 space-y-2">
           <div className="font-bold">
@@ -317,7 +411,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
       {sortedOrders.length === 0 ? (
         <div className="py-16 text-center space-y-4 py-12">
           <p className="text-sm font-medium text-gray-500 dark:text-[#8eb698]">
-            {t('noOrdersForDay')}
+            {orders.length === 0 ? t('noOrdersForDay') : (locale === 'ar' ? 'لا توجد طلبات تطابق البحث' : 'No orders match your search')}
           </p>
           <Button
             variant="primary"
@@ -459,36 +553,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
             );
           })}
 
-          {/* DELIVER ALL ORDERS ACTION SECTION */}
-          <div className="pt-6 space-y-4">
-            <hr className="border-t border-gray-200 dark:border-[#14423b]" />
-            <div className="flex justify-center">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={async () => {
-                  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-                    setIsSubmitting(true);
-                    try {
-                      const res = await deliverAllOrdersInDay(dayId, '');
-                      if (res.success) loadOrders();
-                      else setBinError(res.error || 'تعذر وضع العملية في طابور المزامنة');
-                    } finally {
-                      setIsSubmitting(false);
-                    }
-                    return;
-                  }
-                  setBinError('');
-                  setBinInput('');
-                  setIsDeliverAllModalOpen(true);
-                }}
-                className="gap-2 text-emerald-700 dark:text-[#7ae09e] border-emerald-300 dark:border-[#1e5246] hover:bg-emerald-50 dark:hover:bg-[#0c332b]"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{t('deliverAllOrders') || 'تسليم جميع الطلبات'}</span>
-              </Button>
-            </div>
-          </div>
+
         </div>
       )}
 
