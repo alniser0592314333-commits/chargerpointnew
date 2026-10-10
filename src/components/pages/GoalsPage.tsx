@@ -296,12 +296,39 @@ export const GoalsPage: React.FC = () => {
     return copy.failedStatus;
   };
 
+  // Keep the UI message actionable without exposing raw server internals.
+  // The original exception is still logged for diagnosis of the canonical sync path.
+  const reportOperationError = (operation: string, cause: unknown) => {
+    console.error(`[GoalsPage] ${operation} failed`, cause);
+    const message = cause instanceof Error ? cause.message.toLowerCase() : String(cause ?? '').toLowerCase();
+    if (message.includes('already has an active goal')) {
+      setError(locale === 'ar' ? 'هذا العميل لديه هدف نشط بالفعل. أنهِ الهدف الحالي أو اختر عميلًا آخر.' : 'This customer already has an active goal. Finish it or choose another customer.');
+    } else if (message.includes('inactive') || message.includes('deleted') || message.includes('customer not found') || message.includes('goal customer is missing')) {
+      setError(locale === 'ar' ? 'العميل غير موجود أو غير نشط. حدّث البيانات واختر عميلًا نشطًا.' : 'The customer is missing or inactive. Refresh and choose an active customer.');
+    } else if (message.includes('lacks required permission') || message.includes('forbidden') || message.includes('permission')) {
+      setError(locale === 'ar' ? 'لا تملك صلاحية تنفيذ هذه العملية. تحقق من صلاحيات إدارة الأهداف.' : 'You do not have permission to perform this action. Check Goals management permissions.');
+    } else if (message.includes('authentication') || message.includes('session') || message.includes('unauthorized')) {
+      setError(locale === 'ar' ? 'انتهت جلسة الدخول أو تعذر التحقق منها. سجّل الدخول مجددًا.' : 'Your session could not be verified. Sign in again.');
+    } else if (message.includes('failed to fetch') || message.includes('network') || message.includes('offline') || message.includes('timeout')) {
+      setError(locale === 'ar' ? 'تعذر الاتصال بخدمة المزامنة. تحقق من الاتصال ثم أعد المحاولة.' : 'Could not reach the sync service. Check your connection and retry.');
+    } else if (message.includes('goal target') || message.includes('target quantity')) {
+      setError(locale === 'ar' ? 'عدد الأجهزة المستهدف غير صالح. أدخل عددًا صحيحًا أكبر من صفر.' : 'The goal target is invalid. Enter a positive whole number.');
+    } else if (message.includes('goal duration') || message.includes('duration must')) {
+      setError(locale === 'ar' ? 'مدة الهدف يجب أن تكون بين 3 و15 يومًا.' : 'Goal duration must be between 3 and 15 days.');
+    } else if (message.includes('goal bonus') || message.includes('bonus exceeds')) {
+      setError(copy.invalidReward);
+    } else {
+      setError(copy.operationFailed);
+    }
+  };
+
   const refresh = async () => {
     setLoading(true);
     setError('');
     try {
       setData(await getGoalsPageData({ canViewGoals, canViewRequests }));
-    } catch {
+    } catch (cause) {
+      console.error('[GoalsPage] refresh failed', cause);
       setError(copy.loadError);
     } finally {
       setLoading(false);
@@ -318,12 +345,12 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await generateCustomerGoalProposalForAdmin(selectedCustomerId);
-      if (!result.success) throw new Error('proposal failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setTargetQuantity(String(result.data.targetQuantity));
       setDurationDays(String(result.data.durationDays));
       setBonusIls((result.data.bonusAmountMinor / 100).toFixed(2));
-    } catch {
-      setError(copy.operationFailed);
+    } catch (cause) {
+      reportOperationError('generate customer proposal', cause);
     } finally {
       setProposalLoading(false);
     }
@@ -349,12 +376,12 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await createGoalForAdmin(selectedCustomerId, target, duration, bonusMinor);
-      if (!result.success) throw new Error('create goal failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.created);
       setSelectedCustomerId('');
       await refresh();
-    } catch {
-      setError(copy.operationFailed);
+    } catch (cause) {
+      reportOperationError('create goal', cause);
     } finally {
       setActionLoading(false);
     }
@@ -409,12 +436,12 @@ export const GoalsPage: React.FC = () => {
         durationDays: duration,
         bonusAmountMinor: bonusMinor,
       });
-      if (!result.success) throw new Error('update goal failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.saved);
       setEditingGoal(null);
       await refresh();
-    } catch {
-      setError(copy.operationFailed);
+    } catch (cause) {
+      reportOperationError('goal mutation', cause);
     } finally {
       setActionLoading(false);
     }
@@ -426,11 +453,11 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await approveGoalRequestForAdmin(request.id);
-      if (!result.success) throw new Error('approve failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.approved);
       await refresh();
-    } catch {
-      setError(copy.operationFailed);
+    } catch (cause) {
+      reportOperationError('goal mutation', cause);
     } finally {
       setActionLoading(false);
     }
@@ -447,12 +474,12 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await rejectGoalRequestForAdmin(request.id, reason);
-      if (!result.success) throw new Error('reject failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.rejected);
       setRejectionReasons((current) => ({ ...current, [request.id]: '' }));
       await refresh();
-    } catch {
-      setError(copy.operationFailed);
+    } catch (cause) {
+      reportOperationError('reject goal request', cause);
     } finally {
       setActionLoading(false);
     }
@@ -527,13 +554,13 @@ export const GoalsPage: React.FC = () => {
         })}
       </section>
 
-      <div className="flex gap-2 overflow-x-auto border-b border-gray-200 pb-2 dark:border-[#17443b]">
+      <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2 dark:border-[#17443b]">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${activeTab === tab.id ? 'bg-[#235347] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-[#a8c9b0] dark:hover:bg-[#0c312b]'}`}
+            className={`min-w-0 flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors sm:flex-none sm:px-4 ${activeTab === tab.id ? 'bg-[#235347] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-[#a8c9b0] dark:hover:bg-[#0c312b]'}`}
           >
             {tab.label}
             {tab.id === 'requests' && pendingRequests.length > 0 && <span className="ms-2 rounded-full bg-white/20 px-2 py-0.5 text-xs">{pendingRequests.length}</span>}
@@ -629,8 +656,8 @@ export const GoalsPage: React.FC = () => {
       )}
 
       {activeTab === 'manage' && canManage && (
-        <section className="grid gap-5 xl:grid-cols-2">
-          <form onSubmit={createGoal} className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-[#17443b] dark:bg-[#082622]">
+        <section className="grid items-start gap-6 xl:grid-cols-2">
+          <form onSubmit={createGoal} className="space-y-4 border-t border-gray-200 pt-5 dark:border-[#17443b]">
             <div><h2 className="text-lg font-bold text-gray-950 dark:text-[#daf1de]">{copy.createTitle}</h2><p className="mt-1 text-sm text-gray-500 dark:text-[#8eb698]">{copy.proposalHint}</p></div>
             <label className="block space-y-1.5 text-sm"><span className="font-medium text-gray-700 dark:text-[#a8c9b0]">{copy.chooseCustomer}</span><select value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)} required className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-[#1d5147] dark:bg-[#0b302a] dark:text-[#daf1de]"><option value="">{copy.chooseCustomer}</option>{data.customers.filter((customer) => customer.isActive).map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
             <Button type="button" variant="outline" onClick={generateProposal} disabled={!selectedCustomerId || proposalLoading}>{proposalLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}{proposalLoading ? copy.generating : copy.generateProposal}</Button>
