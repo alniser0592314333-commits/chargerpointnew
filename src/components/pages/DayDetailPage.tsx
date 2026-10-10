@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
@@ -9,9 +9,12 @@ import {
   deliverAllOrdersInDay, 
   getBusinessDay, 
   UIDayOrderDetail, 
-  useStoreSubscription 
+  useStoreSubscription,
+  getCustomerDetail,
+  getCurrentAdminAuthorizationContext
 } from './dayOrdersStore';
 import { BusinessDayEntity } from '../../domain/models';
+import { checkDebtLimit } from '../../domain/rules';
 
 export interface DayDetailPageProps {
   dayId: string;
@@ -29,7 +32,17 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   onEditOrder,
 }) => {
   const { locale, t, formatDate, formatWeekday, formatTime, formatCurrency } = useI18n();
+  const isSuperAdmin = (() => {
+    try {
+      return getCurrentAdminAuthorizationContext().requireAuth().isSuperAdmin;
+    } catch {
+      return false;
+    }
+  })();
+  // Keep the existing order/day refresh scope separate from balance-warning updates,
+  // so ledger changes do not unnecessarily reload the business-day record.
   const storeVersion = useStoreSubscription(['orders', 'orderItems', 'businessDays']);
+  const debtWarningVersion = useStoreSubscription(['customers', 'financialLedger']);
   const [businessDay, setBusinessDay] = useState<BusinessDayEntity | null>(null);
 
   useEffect(() => {
@@ -43,26 +56,43 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
 
   // Load orders for this day from Phase 5 Store
   const [orders, setOrders] = useState<UIDayOrderDetail[]>([]);
+  const [overDebtCustomerCodes, setOverDebtCustomerCodes] = useState<Set<string>>(() => new Set());
   const [isDeliverAllModalOpen, setIsDeliverAllModalOpen] = useState(false);
   const [binInput, setBinInput] = useState('');
   const [binError, setBinError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadOrders = () => {
-    getOrdersForDay(dayId, locale).then((data) => {
-      setOrders(data);
-    });
-  };
+  const loadOrders = useCallback(async (isActive: () => boolean = () => true) => {
+    const data = await getOrdersForDay(dayId, locale);
+    if (!isActive()) return;
+    setOrders(data);
+
+    if (!isSuperAdmin) {
+      setOverDebtCustomerCodes(new Set());
+      return;
+    }
+
+    // Resolve each distinct customer once per refresh, using the existing local-first
+    // detail/ledger path. This is UI-only and does not change delivery or sync commands.
+    const customerCodes = Array.from(new Set(data.map((order) => order.customerId)));
+    const details = await Promise.all(customerCodes.map((code) => getCustomerDetail(code)));
+    if (!isActive()) return;
+    const exceeded = new Set<string>();
+    for (const detail of details) {
+      if (detail && !checkDebtLimit(detail.currentBalanceMinor, detail.debtLimitMinor, false)) {
+        exceeded.add(detail.code);
+      }
+    }
+    setOverDebtCustomerCodes(exceeded);
+  }, [dayId, locale, isSuperAdmin]);
 
   useEffect(() => {
     let active = true;
-    getOrdersForDay(dayId, locale).then((data) => {
-      if (active) setOrders(data);
-    });
+    void loadOrders(() => active);
     return () => {
       active = false;
     };
-  }, [dayId, locale, storeVersion]);
+  }, [loadOrders, storeVersion, debtWarningVersion]);
 
   // Restore scroll position to target order if hash exists
   useEffect(() => {
@@ -319,9 +349,21 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
                   {/* 2. CUSTOMER NAME + EXEMPTION STATUS */}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div>
-                      <h3 className="text-base font-bold text-gray-900 dark:text-[#daf1de]">
-                        {order.customerName}
-                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-base font-bold text-gray-900 dark:text-[#daf1de]">
+                          {order.customerName}
+                        </h3>
+                        {isSuperAdmin && overDebtCustomerCodes.has(order.customerId) && (
+                          <span
+                            className="inline-flex items-center text-red-600 dark:text-red-400 cursor-help"
+                            role="img"
+                            aria-label={locale === 'ar' ? 'تنبيه: العميل تجاوز حد المديونية' : 'Warning: customer is over the debt limit'}
+                            title={locale === 'ar' ? 'تنبيه: رصيد العميل تجاوز حدّ المديونية المحدد له' : 'Warning: customer balance exceeds their configured debt limit'}
+                          >
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                          </span>
+                        )}
+                      </div>
 
                       {/* 3. CUSTOMER ID */}
                       <p className="text-xs font-mono text-gray-500 dark:text-[#8eb698] mt-0.5">

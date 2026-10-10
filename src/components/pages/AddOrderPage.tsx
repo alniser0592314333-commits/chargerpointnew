@@ -6,6 +6,7 @@ import { FormField } from '../ui/FormField';
 import { Plus, Trash2, Search, AlertTriangle, Check } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { BusinessDayEntity } from '../../domain/models';
+import { checkDebtLimit } from '../../domain/rules';
 import {
   UICustomerItem,
   UIDeviceTypeOption,
@@ -18,6 +19,9 @@ import {
   getNextOrderNumberForDay,
   calculateDeviceItemPreviewPrice,
   createOrderWithPhase5Engine,
+  getCustomersList,
+  getCustomerDetail,
+  getCurrentAdminAuthorizationContext,
 } from './dayOrdersStore';
 
 export interface AddOrderPageProps {
@@ -26,6 +30,16 @@ export interface AddOrderPageProps {
   onSuccess: (dayId: string) => void;
   onEditOrder?: (dayId: string, orderId: string) => void;
 }
+
+type UICustomerSearchResult = UICustomerItem & { isOverDebtLimit?: boolean };
+
+const isAuthenticatedSuperAdmin = (): boolean => {
+  try {
+    return getCurrentAdminAuthorizationContext().requireAuth().isSuperAdmin;
+  } catch {
+    return false;
+  }
+};
 
 export interface SelectedDeviceFormItem {
   tempId: string;
@@ -52,9 +66,10 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('existing');
 
   // Existing Customer Search State
+  const isSuperAdmin = isAuthenticatedSuperAdmin();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UICustomerItem[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<UICustomerItem | null>(null);
+  const [searchResults, setSearchResults] = useState<UICustomerSearchResult[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<UICustomerSearchResult | UICustomerItem | null>(null);
 
   // New Customer Form State
   const [newCustomerName, setNewCustomerName] = useState('');
@@ -108,12 +123,42 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
 
   // Perform targeted customer search via Phase 5 repository context
   useEffect(() => {
+    let active = true;
     if (customerMode === 'existing' && searchQuery.trim()) {
-      searchCustomers(searchQuery).then((results) => setSearchResults(results));
+      const loadResults = async () => {
+        const results = await searchCustomers(searchQuery);
+        if (!isSuperAdmin) {
+          if (active) setSearchResults(results);
+          return;
+        }
+
+        // The existing customer-list path computes each matching customer's
+        // effective balance in one batch, avoiding one detail lookup per result.
+        const customersWithBalances = await getCustomersList(searchQuery);
+        const balanceById = new Map(customersWithBalances.map((customer) => [customer.id, customer.currentBalanceMinor]));
+        const annotatedResults: UICustomerSearchResult[] = await Promise.all(results.map(async (customer) => {
+          let balance = balanceById.get(customer.id);
+          // searchCustomers also supports internal-ID searches; that identifier is
+          // intentionally not part of the general customer-list text search.
+          if (balance === undefined) {
+            const detail = await getCustomerDetail(customer.id);
+            balance = detail?.currentBalanceMinor;
+          }
+          return {
+            ...customer,
+            isOverDebtLimit: balance !== undefined
+              ? !checkDebtLimit(balance, customer.debtLimitMinor, false)
+              : false,
+          };
+        }));
+        if (active) setSearchResults(annotatedResults);
+      };
+      void loadResults();
     } else {
       setSearchResults([]);
     }
-  }, [searchQuery, customerMode]);
+    return () => { active = false; };
+  }, [searchQuery, customerMode, isSuperAdmin]);
 
   // Check for same-customer-same-day order when customer is selected
   const handleSelectCustomer = async (customer: UICustomerItem) => {
@@ -360,7 +405,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
           <div className="p-3.5 rounded-lg bg-emerald-50/60 dark:bg-[#061f1c] border border-emerald-200/80 dark:border-[#14423b] flex items-center justify-between gap-3">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-emerald-800 dark:text-[#daf1de]">
+                <span className={`text-xs font-bold ${isSuperAdmin && 'isOverDebtLimit' in selectedCustomer && selectedCustomer.isOverDebtLimit ? 'text-red-700 dark:text-red-400' : 'text-emerald-800 dark:text-[#daf1de]'}`}>
                   {selectedCustomer.name}
                 </span>
                 <span className="text-2xs font-mono font-bold bg-emerald-100 dark:bg-[#0c312b] text-emerald-800 dark:text-[#a9d4b4] px-1.5 py-0.2 rounded border border-transparent dark:border-[#14423b]">
@@ -370,6 +415,12 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
               <p className="text-2xs text-gray-500 dark:text-[#8eb698] font-mono dir-ltr text-start">
                 {selectedCustomer.phone || t('noPhone')}
               </p>
+              {isSuperAdmin && 'isOverDebtLimit' in selectedCustomer && selectedCustomer.isOverDebtLimit && (
+                <p className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700 dark:text-red-400" role="status">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  {locale === 'ar' ? 'تنبيه: هذا العميل تجاوز حدّ المديونية المسموح.' : 'Warning: this customer is over the debt limit.'}
+                </p>
+              )}
             </div>
 
             <Button
@@ -409,7 +460,13 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
                     className="w-full text-start p-3 hover:bg-gray-50 dark:hover:bg-[#0b312b] transition-colors flex items-center justify-between cursor-pointer"
                   >
                     <div className="space-y-0.5">
-                      <p className="text-xs font-bold text-gray-900 dark:text-[#daf1de]">{cust.name}</p>
+                      <p className={`text-xs font-bold ${isSuperAdmin && cust.isOverDebtLimit ? 'text-red-700 dark:text-red-400' : 'text-gray-900 dark:text-[#daf1de]'}`}>{cust.name}</p>
+                      {isSuperAdmin && cust.isOverDebtLimit && (
+                        <p className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-700 dark:text-red-400" role="status">
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                          {locale === 'ar' ? 'متجاوز حدّ المديونية' : 'Over debt limit'}
+                        </p>
+                      )}
                       <p className="text-2xs font-mono text-gray-500 dark:text-[#8eb698] dir-ltr text-start">{cust.phone || t('noPhone')}</p>
                     </div>
                     <span className="text-2xs font-mono bg-blue-50 dark:bg-[#0c312b] text-blue-700 dark:text-[#a9d4b4] border border-blue-200/80 dark:border-[#14423b] px-2 py-0.5 rounded font-bold">
