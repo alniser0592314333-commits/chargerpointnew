@@ -20,6 +20,7 @@ import {
   calculateDeviceItemPreviewPrice,
   createOrderWithPhase5Engine,
   getCustomersList,
+  getCustomerDetail,
   getCurrentAdminAuthorizationContext,
 } from './dayOrdersStore';
 
@@ -135,15 +136,21 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
         // effective balance in one batch, avoiding one detail lookup per result.
         const customersWithBalances = await getCustomersList(searchQuery);
         const balanceById = new Map(customersWithBalances.map((customer) => [customer.id, customer.currentBalanceMinor]));
-        const annotatedResults: UICustomerSearchResult[] = results.map((customer) => {
-          const balance = balanceById.get(customer.id);
+        const annotatedResults: UICustomerSearchResult[] = await Promise.all(results.map(async (customer) => {
+          let balance = balanceById.get(customer.id);
+          // searchCustomers also supports internal-ID searches; that identifier is
+          // intentionally not part of the general customer-list text search.
+          if (balance === undefined) {
+            const detail = await getCustomerDetail(customer.id);
+            balance = detail?.currentBalanceMinor;
+          }
           return {
             ...customer,
             isOverDebtLimit: balance !== undefined
               ? !checkDebtLimit(balance, customer.debtLimitMinor, false)
               : false,
           };
-        });
+        }));
         if (active) setSearchResults(annotatedResults);
       };
       void loadResults();
