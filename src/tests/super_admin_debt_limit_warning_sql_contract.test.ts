@@ -24,7 +24,7 @@ describe('Super Admin debt-limit warning policy migration', () => {
 
   it('keeps debt-limit enforcement for non-Super-Admin roles and bypasses it only for Super Admin', () => {
     const sql = readMigration();
-    expect(sql).toContain("IF v_admin_role NOT IN ('SUPER_ADMIN', 'Super Admin') AND (");
+    expect(sql).toContain("IF COALESCE(v_admin_role, '') NOT IN ('SUPER_ADMIN', 'Super Admin') AND (");
     expect(sql).toContain("(v_rec_item.debt_limit_minor = 0 AND v_projected_balance < 0)");
     expect(sql).toContain("RAISE EXCEPTION 'Debt Limit Exceeded: Customer debt limit % exceeded by projected balance %'");
   });
