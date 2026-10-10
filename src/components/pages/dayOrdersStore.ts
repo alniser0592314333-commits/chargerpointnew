@@ -3689,6 +3689,12 @@ export const getCustomerFinancialHistory = async (
           : orderDisplayNumber
           ? `Credit applied towards order #${orderDisplayNumber}`
           : 'Used credit balance';
+    } else if (ev.eventType === 'BONUS') {
+      shortTitle = locale === 'ar' ? 'مكافأة إتمام الهدف' : 'Goal completion bonus';
+      description =
+        locale === 'ar'
+          ? 'إضافة مكافأة مالية إلى رصيد العميل لإتمام الهدف'
+          : 'Reward credited to the customer balance for completing a goal';
     } else {
       shortTitle = ev.eventType;
       description = ev.eventType;
