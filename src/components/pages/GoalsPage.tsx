@@ -238,8 +238,15 @@ export const GoalsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!sessionLoaded) return;
+    if (!canAccessPage) {
+      setData(EMPTY_DATA);
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
-    getGoalsPageData()
+    getGoalsPageData({ canViewGoals, canViewRequests })
       .then((snapshot) => {
         if (mounted) {
           setData(snapshot);
@@ -253,7 +260,7 @@ export const GoalsPage: React.FC = () => {
         if (mounted) setLoading(false);
       });
     return () => { mounted = false; };
-  }, [storeRevision, copy.loadError]);
+  }, [sessionLoaded, canAccessPage, canViewGoals, canViewRequests, storeRevision, copy.loadError]);
 
   const customerName = useCallback((customerId: string) =>
     data.customers.find((customer) => customer.id === customerId)?.name || customerId, [data.customers]);
@@ -293,7 +300,7 @@ export const GoalsPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      setData(await getGoalsPageData());
+      setData(await getGoalsPageData({ canViewGoals, canViewRequests }));
     } catch {
       setError(copy.loadError);
     } finally {
