@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
       - name: Run order-numbering safety tests
-        run: npx vitest run src/tests/order_numbering_safety.test.ts && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts && npx vitest run src/tests/canonical_goals_foundation.test.ts && npx vitest run src/tests/phase1_reconciliation_closure.test.ts -t 'Goal Generation Formulas|Goal Request Security & Authorization'
+        run: npx vitest run src/tests/order_numbering_safety.test.ts && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts && npx vitest run src/tests/super_admin_debt_limit_warning_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts && npx vitest run src/tests/canonical_goals_foundation.test.ts && npx vitest run src/tests/phase1_reconciliation_closure.test.ts -t 'Goal Generation Formulas|Goal Request Security & Authorization'
       - name: Type-check (diagnostic; repository-wide baseline)
         run: npm run lint
         continue-on-error: true
@@ -64,6 +64,28 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009090000_add_atomic_day_order_renumbering.sql
+      - name: Apply Super Admin debt-limit override migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261010100000_super_admin_debt_limit_warning_policy.sql
+      - name: Verify server-side debt guard remains for non-Super-Admin only
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          DECLARE
+            dispatcher_definition TEXT := pg_get_functiondef('public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)'::regprocedure);
+          BEGIN
+            IF position('IF v_admin_role NOT IN (' IN dispatcher_definition) = 0 THEN
+              RAISE EXCEPTION 'Super Admin debt-limit bypass was not installed in canonical dispatcher';
+            END IF;
+            IF position('(v_rec_item.debt_limit_minor = 0 AND v_projected_balance < 0)' IN dispatcher_definition) = 0 THEN
+              RAISE EXCEPTION 'Zero-limit debt guard was unexpectedly removed for regular admins';
+            END IF;
+          END;
+          $;
+          SQL
       - name: Execute success and stale-conflict renumber scenarios
         env:
           PGPASSWORD: postgres
