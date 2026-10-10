@@ -71,7 +71,8 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   const formattedDate = formatDate(displayDate);
 
   // Load orders for this day from Phase 5 Store
-  const [orders, setOrders] = useState<UIDayOrderDetail[]>([]);\n  const [searchQuery, setSearchQuery] = useState('');
+  const [orders, setOrders] = useState<UIDayOrderDetail[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [overDebtCustomerCodes, setOverDebtCustomerCodes] = useState<Set<string>>(() => new Set());
   const [isDeliverAllModalOpen, setIsDeliverAllModalOpen] = useState(false);
   const [binInput, setBinInput] = useState('');
