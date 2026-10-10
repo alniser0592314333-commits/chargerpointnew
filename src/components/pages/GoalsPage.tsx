@@ -444,8 +444,8 @@ export const GoalsPage: React.FC = () => {
   }
 
   const tabs: Array<{ id: GoalsTab; label: string }> = [
-    { id: 'overview', label: copy.overview },
-    { id: 'requests', label: copy.requests },
+    ...(canViewGoals ? [{ id: 'overview' as const, label: copy.overview }] : []),
+    ...(canViewRequests ? [{ id: 'requests' as const, label: copy.requests }] : []),
     ...(canManage ? [{ id: 'manage' as const, label: copy.manage }] : []),
     ...(isSuperAdmin ? [{ id: 'policy' as const, label: copy.policy }] : []),
   ];
