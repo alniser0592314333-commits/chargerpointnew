@@ -515,7 +515,7 @@ export const GoalsPage: React.FC = () => {
         ))}
       </div>
 
-      {activeTab === 'overview' && (
+      {activeTab === 'overview' && canViewGoals && (
         <section className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative min-w-0 flex-1">
