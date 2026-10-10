@@ -478,8 +478,8 @@ export const GoalsPage: React.FC = () => {
       setSuccess(copy.rejected);
       setRejectionReasons((current) => ({ ...current, [request.id]: '' }));
       await refresh();
-    } catch {
-      setError(copy.operationFailed);
+    } catch (cause) {
+      reportOperationError('reject goal request', cause);
     } finally {
       setActionLoading(false);
     }
