@@ -19,7 +19,7 @@ import {
   getNextOrderNumberForDay,
   calculateDeviceItemPreviewPrice,
   createOrderWithPhase5Engine,
-  getCustomerDetail,
+  getCustomersList,
   getCurrentAdminAuthorizationContext,
 } from './dayOrdersStore';
 
@@ -124,22 +124,29 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
   useEffect(() => {
     let active = true;
     if (customerMode === 'existing' && searchQuery.trim()) {
-      searchCustomers(searchQuery).then(async (results) => {
-        // Only the Super Admin receives debt-limit warnings. Reuse the existing
-        // local-first customer detail/balance path; never block order creation.
-        const annotatedResults: UICustomerSearchResult[] = isSuperAdmin
-          ? await Promise.all(results.map(async (customer) => {
-              const detail = await getCustomerDetail(customer.id);
-              return {
-                ...customer,
-                isOverDebtLimit: detail
-                  ? !checkDebtLimit(detail.currentBalanceMinor, detail.debtLimitMinor, false)
-                  : false,
-              };
-            }))
-          : results;
+      const loadResults = async () => {
+        const results = await searchCustomers(searchQuery);
+        if (!isSuperAdmin) {
+          if (active) setSearchResults(results);
+          return;
+        }
+
+        // The existing customer-list path computes each matching customer's
+        // effective balance in one batch, avoiding one detail lookup per result.
+        const customersWithBalances = await getCustomersList(searchQuery);
+        const balanceById = new Map(customersWithBalances.map((customer) => [customer.id, customer.currentBalanceMinor]));
+        const annotatedResults: UICustomerSearchResult[] = results.map((customer) => {
+          const balance = balanceById.get(customer.id);
+          return {
+            ...customer,
+            isOverDebtLimit: balance !== undefined
+              ? !checkDebtLimit(balance, customer.debtLimitMinor, false)
+              : false,
+          };
+        });
         if (active) setSearchResults(annotatedResults);
-      });
+      };
+      void loadResults();
     } else {
       setSearchResults([]);
     }
