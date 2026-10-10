@@ -23,7 +23,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
     { id: '/app/days', label: t('navDaysOrders') },
     { id: '/app/customers', label: t('navCustomers') },
     { id: '/app/financials', label: t('navFinancials') },
-    { id: '/app/goals', label: t('navGoals') },
+    ...(isSuperAdmin || userSession?.permissions?.includes('goals:view') ? [{ id: '/app/goals', label: t('navGoals') }] : []),
     { id: '/app/notifications', label: t('navNotificationsRequests') },
     { id: '/app/settings/qr', label: t('navQrDesign') },
     ...(hasAdminManage ? [{ id: '/app/settings/admins', label: t('navAdminMgmt') }] : []),
