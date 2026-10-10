@@ -375,22 +375,31 @@ export const GoalsPage: React.FC = () => {
     const target = Number(editTarget);
     const duration = Number(editDuration);
     const bonusMinor = Math.round(Number(editBonusIls) * 100);
-    if (Number.isInteger(target) && target > 0 && Number.isFinite(bonusMinor) && bonusMinor > target * 20) {
-      setError(copy.invalidReward);
-      return;
-    }
     if (!Number.isInteger(target) || target <= 0 ||
         !Number.isInteger(duration) || duration < 3 || duration > 15 ||
         !Number.isFinite(bonusMinor) || bonusMinor < 0) {
       setError(copy.required);
       return;
     }
-    if (target <= editingGoal.currentProgress) {
-      const confirmed = window.confirm(locale === 'ar'
-        ? 'الهدف الجديد يساوي أو يقل عن التقدم الحالي، وقد يؤدي ذلك إلى إكمال الهدف وصرف المكافأة فورًا. هل تريد المتابعة؟'
-        : 'The new target is at or below current progress and may complete the goal and issue its reward immediately. Continue?');
-      if (!confirmed) return;
+    if (bonusMinor > target * 20) {
+      setError(copy.invalidReward);
+      return;
     }
+
+    const warnings: string[] = [];
+    if (target <= editingGoal.currentProgress) {
+      warnings.push(locale === 'ar'
+        ? 'الهدف الجديد يساوي أو يقل عن التقدم الحالي، وقد يؤدي ذلك إلى إكمال الهدف وصرف المكافأة فورًا.'
+        : 'The new target is at or below current progress and may complete the goal and issue its reward immediately.');
+    }
+    const proposedExpiry = new Date(new Date(editingGoal.startedAt).getTime() + duration * 24 * 60 * 60 * 1000);
+    if (proposedExpiry.getTime() <= Date.now() && target > editingGoal.currentProgress) {
+      warnings.push(locale === 'ar'
+        ? 'المدة الجديدة تجعل تاريخ الانتهاء في الماضي؛ قد ينتهي الهدف فورًا ويصبح غير قابل للتعديل.'
+        : 'The new duration places the expiry in the past; the goal may fail immediately and become immutable.');
+    }
+    const confirmationText = warnings.join('\n\n') + '\n\n' + (locale === 'ar' ? 'هل تريد المتابعة؟' : 'Continue?');
+    if (warnings.length > 0 && !window.confirm(confirmationText)) return;
     setActionLoading(true);
     setError('');
     setSuccess('');
