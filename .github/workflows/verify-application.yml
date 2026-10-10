@@ -77,7 +77,7 @@ jobs:
           DECLARE
             dispatcher_definition TEXT := pg_get_functiondef('public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)'::regprocedure);
           BEGIN
-            IF position('IF v_admin_role NOT IN (' IN dispatcher_definition) = 0 THEN
+            IF position('IF COALESCE(v_admin_role, '''') NOT IN (' IN dispatcher_definition) = 0 THEN
               RAISE EXCEPTION 'Super Admin debt-limit bypass was not installed in canonical dispatcher';
             END IF;
             IF position('(v_rec_item.debt_limit_minor = 0 AND v_projected_balance < 0)' IN dispatcher_definition) = 0 THEN
