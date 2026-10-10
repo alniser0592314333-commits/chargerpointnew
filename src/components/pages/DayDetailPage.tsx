@@ -26,6 +26,7 @@ const normalizeDaySearchText = (value: string): string =>
     .replace(/ؤ/g, 'و')
     .replace(/ئ/g, 'ي')
     .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
     .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
     .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
     .replace(/\s+/g, ' ')
@@ -349,7 +350,6 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
             <Button
               variant="outline"
               size="md"
-              disabled={isSubmitting}
               onClick={async () => {
                 if (typeof navigator !== 'undefined' && navigator.onLine === false) {
                   setIsSubmitting(true);
