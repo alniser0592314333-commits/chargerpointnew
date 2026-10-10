@@ -435,7 +435,7 @@ export const GoalsPage: React.FC = () => {
     );
   }
 
-  if (!canView) {
+  if (!canAccessPage) {
     return (
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
         <div className="flex items-center gap-2 font-semibold"><AlertCircle className="h-5 w-5" />{copy.noPermission}</div>
