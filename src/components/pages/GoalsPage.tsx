@@ -481,10 +481,12 @@ export const GoalsPage: React.FC = () => {
 
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {[
-          { label: copy.active, value: activeGoals.length, icon: Target, style: 'text-emerald-700 dark:text-emerald-300' },
-          { label: copy.completed, value: completedGoals.length, icon: CheckCircle2, style: 'text-blue-700 dark:text-blue-300' },
-          { label: copy.failed, value: failedGoals.length, icon: Clock3, style: 'text-amber-700 dark:text-amber-300' },
-          { label: copy.pending, value: pendingRequests.length, icon: AlertCircle, style: 'text-violet-700 dark:text-violet-300' },
+          ...(canViewGoals ? [
+            { label: copy.active, value: activeGoals.length, icon: Target, style: 'text-emerald-700 dark:text-emerald-300' },
+            { label: copy.completed, value: completedGoals.length, icon: CheckCircle2, style: 'text-blue-700 dark:text-blue-300' },
+            { label: copy.failed, value: failedGoals.length, icon: Clock3, style: 'text-amber-700 dark:text-amber-300' },
+          ] : []),
+          ...(canViewRequests ? [{ label: copy.pending, value: pendingRequests.length, icon: AlertCircle, style: 'text-violet-700 dark:text-violet-300' }] : []),
         ].map((item) => {
           const Icon = item.icon;
           return (
