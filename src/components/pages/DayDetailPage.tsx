@@ -109,15 +109,17 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
     }
   }, [orders]);
 
-  // Sort orders NEWEST FIRST
+  // Sort valid order numbers NEWEST FIRST; keep malformed/legacy numbers at the bottom.
   const sortedOrders = [...orders].sort((a, b) => {
-    const aNumber = Number.isInteger(a.orderNumber) && a.orderNumber > 0
-      ? a.orderNumber
-      : Number.MAX_SAFE_INTEGER;
-    const bNumber = Number.isInteger(b.orderNumber) && b.orderNumber > 0
-      ? b.orderNumber
-      : Number.MAX_SAFE_INTEGER;
-    return aNumber - bNumber || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    const aHasValidNumber = Number.isInteger(a.orderNumber) && a.orderNumber > 0;
+    const bHasValidNumber = Number.isInteger(b.orderNumber) && b.orderNumber > 0;
+
+    if (aHasValidNumber !== bHasValidNumber) return aHasValidNumber ? -1 : 1;
+
+    const createdAtDifference = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (!aHasValidNumber || !bHasValidNumber) return createdAtDifference;
+
+    return b.orderNumber - a.orderNumber || createdAtDifference;
   });
 
   // Summary Metrics
