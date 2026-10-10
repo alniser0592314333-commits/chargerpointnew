@@ -579,11 +579,21 @@ export const applyRemoteChange = (change: {
         ? -rawLedgerAmount
         : rawLedgerAmount;
 
+    // Goal bonus ledger rows are linked to their goal through reference_id/metadata.
+    // Some change-log payloads may omit customer_id even though the completed goal
+    // already exists locally; resolve the owner from that canonical relationship.
+    const ledgerReferenceId = p.referenceId || p.reference_id || undefined;
+    const goalReferenceId =
+      ledgerEventType === 'BONUS'
+        ? (p.metadata?.goalId || p.metadata?.goal_id || ledgerReferenceId)
+        : undefined;
+    const referencedGoal = goalReferenceId ? goalsMap.get(String(goalReferenceId)) : undefined;
     const derivedCustomerId =
       p.customerId ||
       p.customer_id ||
       derivedOrder?.customerId ||
-      (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined);
+      (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined) ||
+      referencedGoal?.customerId;
     if (!derivedCustomerId) {
       throw new Error(`Cannot apply financial ledger change ${change.entityId} without customer identity`);
     }
