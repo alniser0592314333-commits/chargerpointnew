@@ -39,9 +39,11 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
       return false;
     }
   })();
-  // Debt warnings depend on current ledger balances as well as order/customer data.
-  const storeVersion = useStoreSubscription([
-    'orders', 'orderItems', 'businessDays', 'customers', 'financialLedger', 'payments', 'paymentAllocations'
+  // Keep the existing order/day refresh scope separate from balance-warning updates,
+  // so ledger changes do not unnecessarily reload the business-day record.
+  const storeVersion = useStoreSubscription(['orders', 'orderItems', 'businessDays']);
+  const debtWarningVersion = useStoreSubscription([
+    'customers', 'financialLedger', 'payments', 'paymentAllocations'
   ]);
   const [businessDay, setBusinessDay] = useState<BusinessDayEntity | null>(null);
 
@@ -92,7 +94,7 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
     return () => {
       active = false;
     };
-  }, [loadOrders, storeVersion]);
+  }, [loadOrders, storeVersion, debtWarningVersion]);
 
   // Restore scroll position to target order if hash exists
   useEffect(() => {
