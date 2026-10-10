@@ -112,7 +112,7 @@ export const AdminManagementPage: React.FC = () => {
     { key: "admin:manage", labelEn: "Manage Subordinate Admins", labelAr: "إدارة المشرفين الفرعيين" },
     { key: "sync:manage", labelEn: "Access & Manage Sync Center", labelAr: "عرض وإدارة مركز المزامنة" },
     { key: "goals:view", labelEn: "View Goals & Progress", labelAr: "عرض الأهداف والتقدم" },
-    { key: "goals:request", labelEn: "Submit Goal Requests", labelAr: "تسجيل طلبات الأهداف" },
+    { key: "goals:requests:view", labelEn: "View Customer Goal Requests", labelAr: "عرض طلبات أهداف العملاء" },
     { key: "goals:approve", labelEn: "Approve or Reject Goal Requests", labelAr: "الموافقة على طلبات الأهداف أو رفضها" },
     { key: "goals:manage", labelEn: "Create & Configure Goals", labelAr: "إنشاء الأهداف وإعدادها" },
   ];
