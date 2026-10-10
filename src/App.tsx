@@ -355,7 +355,7 @@ export default function App() {
         return <FinancialsPage onNavigate={(path) => navigate(path)} />;
       case '/app/goals': {
         const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
-        const canViewGoals = isSuperAdmin || Boolean(userSession?.permissions?.includes('goals:view'));
+        const canViewGoals = isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission)));
         if (!userSession || !canViewGoals) return <UnauthorizedPage />;
         return <GoalsPage />;
       }
