@@ -69,7 +69,11 @@ export type Permission =
   | "devices:pricing"
   | "devices:charger-policy"
   | "sync:manage"
-  | "sync:view";
+  | "sync:view"
+  | "goals:view"
+  | "goals:manage"
+  | "goals:request"
+  | "goals:approve";
 
 export interface UserSession {
   userId: ID;
