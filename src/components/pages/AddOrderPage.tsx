@@ -6,6 +6,7 @@ import { FormField } from '../ui/FormField';
 import { Plus, Trash2, Search, AlertTriangle, Check } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { BusinessDayEntity } from '../../domain/models';
+import { checkDebtLimit } from '../../domain/rules';
 import {
   UICustomerItem,
   UIDeviceTypeOption,
@@ -18,6 +19,8 @@ import {
   getNextOrderNumberForDay,
   calculateDeviceItemPreviewPrice,
   createOrderWithPhase5Engine,
+  getCustomerDetail,
+  getCurrentAdminAuthorizationContext,
 } from './dayOrdersStore';
 
 export interface AddOrderPageProps {
@@ -26,6 +29,16 @@ export interface AddOrderPageProps {
   onSuccess: (dayId: string) => void;
   onEditOrder?: (dayId: string, orderId: string) => void;
 }
+
+type UICustomerSearchResult = UICustomerItem & { isOverDebtLimit?: boolean };
+
+const isAuthenticatedSuperAdmin = (): boolean => {
+  try {
+    return getCurrentAdminAuthorizationContext().requireAuth().isSuperAdmin;
+  } catch {
+    return false;
+  }
+};
 
 export interface SelectedDeviceFormItem {
   tempId: string;
@@ -52,8 +65,9 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
   const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('existing');
 
   // Existing Customer Search State
+  const isSuperAdmin = isAuthenticatedSuperAdmin();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UICustomerItem[]>([]);
+  const [searchResults, setSearchResults] = useState<UICustomerSearchResult[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<UICustomerItem | null>(null);
 
   // New Customer Form State
@@ -108,12 +122,29 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
 
   // Perform targeted customer search via Phase 5 repository context
   useEffect(() => {
+    let active = true;
     if (customerMode === 'existing' && searchQuery.trim()) {
-      searchCustomers(searchQuery).then((results) => setSearchResults(results));
+      searchCustomers(searchQuery).then(async (results) => {
+        // Only the Super Admin receives debt-limit warnings. Reuse the existing
+        // local-first customer detail/balance path; never block order creation.
+        const annotatedResults: UICustomerSearchResult[] = isSuperAdmin
+          ? await Promise.all(results.map(async (customer) => {
+              const detail = await getCustomerDetail(customer.id);
+              return {
+                ...customer,
+                isOverDebtLimit: detail
+                  ? !checkDebtLimit(detail.currentBalanceMinor, detail.debtLimitMinor, false)
+                  : false,
+              };
+            }))
+          : results;
+        if (active) setSearchResults(annotatedResults);
+      });
     } else {
       setSearchResults([]);
     }
-  }, [searchQuery, customerMode]);
+    return () => { active = false; };
+  }, [searchQuery, customerMode, isSuperAdmin]);
 
   // Check for same-customer-same-day order when customer is selected
   const handleSelectCustomer = async (customer: UICustomerItem) => {
