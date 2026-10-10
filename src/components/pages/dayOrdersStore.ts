@@ -2591,12 +2591,21 @@ export const getCurrentAdminAuthorizationContext = (): AuthorizationContext => {
  * Goal-page read model. All reads come from the hydrated local store; mutations
  * below go through FinalUseCases and the existing transactional outbox.
  */
-export const getGoalsPageData = async () => {
+export const getGoalsPageData = async (access: {
+  canViewGoals: boolean;
+  canViewRequests: boolean;
+}) => {
   await ensureStoreHydrated();
   return {
-    goals: Array.from(goalsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    requests: Array.from(goalRequestsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    customers: Array.from(customersMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+    goals: access.canViewGoals
+      ? Array.from(goalsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      : [],
+    requests: access.canViewRequests
+      ? Array.from(goalRequestsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      : [],
+    customers: (access.canViewGoals || access.canViewRequests)
+      ? Array.from(customersMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+      : [],
   };
 };
 
