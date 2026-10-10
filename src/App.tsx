@@ -353,8 +353,12 @@ export default function App() {
         );
       case '/app/financials':
         return <FinancialsPage onNavigate={(path) => navigate(path)} />;
-      case '/app/goals':
+      case '/app/goals': {
+        const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
+        const canViewGoals = isSuperAdmin || Boolean(userSession?.permissions?.includes('goals:view'));
+        if (!userSession || !canViewGoals) return <UnauthorizedPage />;
         return <GoalsPage />;
+      }
       case '/app/notifications':
         return <NotificationsRequestsPage />;
       case '/app/settings':
