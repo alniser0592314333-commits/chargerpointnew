@@ -2587,6 +2587,68 @@ export const getCurrentAdminAuthorizationContext = (): AuthorizationContext => {
   return getAuthorizedAdminContext();
 };
 
+/**
+ * Goal-page read model. All reads come from the hydrated local store; mutations
+ * below go through FinalUseCases and the existing transactional outbox.
+ */
+export const getGoalsPageData = async () => {
+  await ensureStoreHydrated();
+  return {
+    goals: Array.from(goalsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    requests: Array.from(goalRequestsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    customers: Array.from(customersMap.values()).sort((a, b) => a.name.localeCompare(b.name)),
+  };
+};
+
+export const generateCustomerGoalProposalForAdmin = async (customerId: string) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.generateCustomerGoalProposal(getAuthorizedAdminContext(), customerId);
+};
+
+export const createGoalForAdmin = async (
+  customerId: string,
+  targetQuantity: number,
+  durationDays: number,
+  bonusAmountMinor: number
+) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.createGoal(
+    getAuthorizedAdminContext(),
+    crypto.randomUUID(),
+    customerId,
+    targetQuantity,
+    durationDays,
+    bonusAmountMinor
+  );
+};
+
+export const updateGoalConfigForAdmin = async (
+  goalId: string,
+  params: { targetQuantity?: number; durationDays?: number; bonusAmountMinor?: number }
+) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.updateGoalConfig(getAuthorizedAdminContext(), goalId, params);
+};
+
+export const approveGoalRequestForAdmin = async (
+  requestId: string,
+  durationDays?: number,
+  bonusAmountMinor?: number
+) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.approveGoalRequest(
+    getAuthorizedAdminContext(),
+    requestId,
+    bonusAmountMinor,
+    durationDays
+  );
+};
+
+export const rejectGoalRequestForAdmin = async (requestId: string, rejectionReason: string) => {
+  await ensureStoreHydrated();
+  return phase5UseCases.rejectGoalRequest(getAuthorizedAdminContext(), requestId, rejectionReason);
+};
+
 // Test-only compatibility actor. It is deliberately unauthorised in production.
 const isTestRuntime = () =>
   (typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || Boolean(process.env?.VITEST))) ||
