@@ -68,9 +68,11 @@ export const GoalsPage: React.FC = () => {
   const isSuperAdmin = Boolean(
     session && String(session.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN'
   );
-  const canView = isSuperAdmin || Boolean(session?.permissions?.includes('goals:view'));
+  const canViewGoals = isSuperAdmin || Boolean(session?.permissions?.some((permission) => permission === 'goals:view' || permission === 'goals:manage'));
+  const canViewRequests = isSuperAdmin || Boolean(session?.permissions?.some((permission) => permission === 'goals:requests:view' || permission === 'goals:approve'));
   const canManage = isSuperAdmin || Boolean(session?.permissions?.includes('goals:manage'));
   const canApprove = isSuperAdmin || Boolean(session?.permissions?.includes('goals:approve'));
+  const canAccessPage = canViewGoals || canViewRequests;
 
   const copy = locale === 'ar' ? {
     title: 'إدارة الأهداف',
