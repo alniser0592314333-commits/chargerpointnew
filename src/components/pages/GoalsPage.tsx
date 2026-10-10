@@ -345,7 +345,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await generateCustomerGoalProposalForAdmin(selectedCustomerId);
-      if (!result.success) throw new Error('proposal failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setTargetQuantity(String(result.data.targetQuantity));
       setDurationDays(String(result.data.durationDays));
       setBonusIls((result.data.bonusAmountMinor / 100).toFixed(2));
@@ -376,7 +376,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await createGoalForAdmin(selectedCustomerId, target, duration, bonusMinor);
-      if (!result.success) throw new Error('create goal failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.created);
       setSelectedCustomerId('');
       await refresh();
@@ -436,7 +436,7 @@ export const GoalsPage: React.FC = () => {
         durationDays: duration,
         bonusAmountMinor: bonusMinor,
       });
-      if (!result.success) throw new Error('update goal failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.saved);
       setEditingGoal(null);
       await refresh();
@@ -453,7 +453,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await approveGoalRequestForAdmin(request.id);
-      if (!result.success) throw new Error('approve failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.approved);
       await refresh();
     } catch (cause) {
@@ -474,7 +474,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await rejectGoalRequestForAdmin(request.id, reason);
-      if (!result.success) throw new Error('reject failed');
+      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.rejected);
       setRejectionReasons((current) => ({ ...current, [request.id]: '' }));
       await refresh();
