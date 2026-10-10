@@ -57,13 +57,13 @@ export const GoalsPage: React.FC = () => {
   const [editBonusIls, setEditBonusIls] = useState('');
   const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
 
-  const storeRevision = useStoreSubscription([
-    'goals',
-    'goalRequests',
-    'customers',
-    'financialLedger',
-    'orderItems',
-  ]);
+  const goalStoreScopes = useMemo(
+    () => ['goals', 'goalRequests', 'customers', 'financialLedger', 'orderItems'] as Array<
+      'goals' | 'goalRequests' | 'customers' | 'financialLedger' | 'orderItems'
+    >,
+    []
+  );
+  const storeRevision = useStoreSubscription(goalStoreScopes);
 
   const isSuperAdmin = Boolean(
     session && String(session.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN'
