@@ -129,9 +129,10 @@ export const GoalsPage: React.FC = () => {
     currentPolicy: 'القواعد الحالية التي يطبقها الخادم',
     durationRule: 'مدة الهدف عشوائية بين 3 و15 يومًا.',
     targetRule: 'يُحسب الهدف من وتيرة العميل خلال آخر 7 أيام مع تحدٍ إضافي، وبحد أدنى 10 أجهزة.',
-    rewardRule: 'معدل الاقتراح الحالي 8–13 أغورة لكل جهاز، مع حد أقصى صارم قدره 20 أغورة لكل جهاز.',
+    rewardRule: 'اقتراح المكافأة يستخدم 8–13 أغورة لكل جهاز وبحد أدنى 80 أغورة؛ السقف الأقصى 20 أغورة لكل جهاز مستهدف. عند التعديل اليدوي، يفرض الخادم السقف ويسمح بصفر وفق القواعد الحالية.',
     policyHint: 'يمكن للسوبر أدمن ضبط الهدف والمدة والمكافأة لكل هدف. لم يتم تغيير قواعد الخادم العامة في هذه المرحلة.',
     required: 'يرجى استكمال الحقول المطلوبة بقيم صحيحة.',
+    invalidReward: 'المكافأة تتجاوز السقف المسموح: 20 أغورة لكل جهاز مستهدف.',
     saved: 'تم حفظ التغيير وإرساله عبر مسار المزامنة المعتمد.',
     created: 'تم إنشاء الهدف وإرساله عبر مسار المزامنة المعتمد.',
     approved: 'تمت الموافقة على الطلب وإنشاء الهدف.',
@@ -199,9 +200,10 @@ export const GoalsPage: React.FC = () => {
     currentPolicy: 'Current server-enforced rules',
     durationRule: 'Goal duration is randomized between 3 and 15 days.',
     targetRule: 'The target uses the customer’s recent 7-day pace plus a stretch allowance, with a minimum of 10 devices.',
-    rewardRule: 'The current proposal rate is 8–13 agorot per device, with a strict cap of 20 agorot per device.',
+    rewardRule: 'Proposal rewards use 8–13 agorot per device with a proposal minimum of 80 minor units; the hard cap is 20 agorot per target device. Manual edits follow the current server contract, which enforces the cap and permits zero.',
     policyHint: 'Super Admin can tune the target, duration, and reward per goal. Global server rules are unchanged in this phase.',
     required: 'Please complete the required fields with valid values.',
+    invalidReward: 'The reward exceeds the allowed cap of 20 agorot per target device.',
     saved: 'Changes were saved through the existing sync path.',
     created: 'The goal was created through the existing sync path.',
     approved: 'The request was approved and a goal was created.',
@@ -325,6 +327,10 @@ export const GoalsPage: React.FC = () => {
     const target = Number(targetQuantity);
     const duration = Number(durationDays);
     const bonusMinor = Math.round(Number(bonusIls) * 100);
+    if (bonusMinor > target * 20) {
+      setError(copy.invalidReward);
+      return;
+    }
     if (!selectedCustomerId || !Number.isInteger(target) || target <= 0 ||
         !Number.isInteger(duration) || duration < 3 || duration > 15 ||
         !Number.isFinite(bonusMinor) || bonusMinor < 0) {
@@ -362,6 +368,10 @@ export const GoalsPage: React.FC = () => {
     const target = Number(editTarget);
     const duration = Number(editDuration);
     const bonusMinor = Math.round(Number(editBonusIls) * 100);
+    if (bonusMinor > target * 20) {
+      setError(copy.invalidReward);
+      return;
+    }
     if (!Number.isInteger(target) || target <= 0 ||
         !Number.isInteger(duration) || duration < 3 || duration > 15 ||
         !Number.isFinite(bonusMinor) || bonusMinor < 0) {
@@ -464,7 +474,7 @@ export const GoalsPage: React.FC = () => {
           <div>
             <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-800 dark:text-[#8eb698]">
               <Target className="h-4 w-4" />
-              <span>Goals</span>
+              <span>{copy.title}</span>
             </div>
             <h1 className="text-2xl font-bold text-gray-950 dark:text-[#daf1de] sm:text-3xl">{copy.title}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600 dark:text-[#a8c9b0]">{copy.subtitle}</p>
