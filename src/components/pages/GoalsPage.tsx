@@ -567,7 +567,7 @@ export const GoalsPage: React.FC = () => {
         </section>
       )}
 
-      {activeTab === 'requests' && (
+      {activeTab === 'requests' && canViewRequests && (
         <section className="space-y-4">
           {data.requests.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-[#1d5147] dark:text-[#8eb698]">{copy.noRequests}</div>
