@@ -327,7 +327,7 @@ export const GoalsPage: React.FC = () => {
     const target = Number(targetQuantity);
     const duration = Number(durationDays);
     const bonusMinor = Math.round(Number(bonusIls) * 100);
-    if (bonusMinor > target * 20) {
+    if (Number.isInteger(target) && target > 0 && Number.isFinite(bonusMinor) && bonusMinor > target * 20) {
       setError(copy.invalidReward);
       return;
     }
@@ -368,7 +368,7 @@ export const GoalsPage: React.FC = () => {
     const target = Number(editTarget);
     const duration = Number(editDuration);
     const bonusMinor = Math.round(Number(editBonusIls) * 100);
-    if (bonusMinor > target * 20) {
+    if (Number.isInteger(target) && target > 0 && Number.isFinite(bonusMinor) && bonusMinor > target * 20) {
       setError(copy.invalidReward);
       return;
     }
