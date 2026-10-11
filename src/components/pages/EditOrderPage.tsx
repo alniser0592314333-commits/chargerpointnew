@@ -370,11 +370,11 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setStatus('pending');
+                      setStatus('charging');
                       setIsStatusDropdownOpen(false);
                     }}
                     className={`w-full text-start px-3 py-2 text-xs font-medium transition-colors hover:bg-gray-50 dark:hover:bg-[#0c312b] cursor-pointer flex items-center justify-between ${
-                      status === 'pending' ? 'font-bold text-emerald-700 dark:text-[#7ae09e]' : 'text-gray-700 dark:text-[#daf1de]'
+                      status === 'charging' ? 'font-bold text-emerald-700 dark:text-[#7ae09e]' : 'text-gray-700 dark:text-[#daf1de]'
                     }`}
                   >
                     <span>{t('statusCharging')}</span>
