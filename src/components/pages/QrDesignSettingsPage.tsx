@@ -35,23 +35,12 @@ export const QrDesignSettingsPage: React.FC = () => {
   const { t, locale } = useI18n();
 
   // Pull only new change-log entries while this QR screen is visible.
+  // One pull-only refresh when this QR page mounts; no polling or background refresh.
   useEffect(() => {
-    let running = false;
-    const pullNewChanges = async () => {
-      if (running || document.visibilityState !== 'visible' || navigator.onLine === false) return;
-      running = true;
-      try { await globalSyncBridge.requestLatestDataReload(); }
-      catch (error) { console.warn('QR design cloud refresh failed:', error); }
-      finally { running = false; }
-    };
-    const onVisible = () => { if (document.visibilityState === 'visible') void pullNewChanges(); };
-    document.addEventListener('visibilitychange', onVisible);
-    const interval = window.setInterval(() => { void pullNewChanges(); }, 20000);
-    void pullNewChanges();
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    if (navigator.onLine === false) return;
+    void globalSyncBridge.requestLatestDataReload().catch((error) => {
+      console.warn('QR design cloud refresh failed:', error);
+    });
   }, []);
 
   // Selected Type: CUSTOMER vs ORDER (strictly independent)
