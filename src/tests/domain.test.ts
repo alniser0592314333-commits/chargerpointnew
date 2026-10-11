@@ -130,6 +130,15 @@ describe('Final Comprehensive Domain Verification Suite', () => {
   it('3. Order & Item state transitions validation', () => {
     expect(() => validateOrderTransition('pending', 'delivered')).toThrow(BusinessRuleViolation);
     expect(() => validateItemTransition('charging', 'delivered')).not.toThrow();
+
+    // Delivery is not directly reversible to charging/pending. Cancelling a
+    // delivered order is a separate protected correction whose server command
+    // creates reversals for recognized charges.
+    expect(() => validateOrderTransition('delivered', 'charging')).toThrow(BusinessRuleViolation);
+    expect(() => validateOrderTransition('delivered', 'pending')).toThrow(BusinessRuleViolation);
+    expect(() => validateOrderTransition('delivered', 'cancelled')).not.toThrow();
+    expect(() => validateOrderTransition('cancelled', 'charging')).toThrow(BusinessRuleViolation);
+    expect(() => validateOrderTransition('cancelled', 'delivered')).toThrow(BusinessRuleViolation);
   });
 
   it('4. Financial recognition exactly once', async () => {
