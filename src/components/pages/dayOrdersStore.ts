@@ -41,7 +41,7 @@ import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTra
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
-import { groupCustomerFinancialHistoryByOrder } from '../../domain/financialPresentation';
+import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrder } from '../../domain/financialPresentation';
 
 const isBrowserOffline = (): boolean =>
   typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -4619,6 +4619,8 @@ export interface UIRecentFinancialActivityItem {
   displayTitle: string;
   description: string;
   createdAt: string;
+  orderId?: string;
+  orderNumber?: number;
 }
 
 export interface UIHomeDashboardData {
@@ -4700,9 +4702,7 @@ export const getTodayHomeData = async (
   const sortedLedger = [...ledgerList].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
-  const targetLedger = sortedLedger.slice(0, 5);
-
-  const recentFinancialActivities: UIRecentFinancialActivityItem[] = targetLedger.map((ev) => {
+  const recentFinancialActivitiesRaw: UIRecentFinancialActivityItem[] = sortedLedger.map((ev) => {
     const cust = customersMap.get(ev.customerId);
     const rawCustName = cust ? cust.name : ev.customerId;
 
@@ -4747,6 +4747,7 @@ export const getTodayHomeData = async (
       description = rawCustName;
     }
 
+    const order = ev.orderId ? ordersMap.get(ev.orderId) : undefined;
     return {
       id: ev.id,
       eventType: ev.eventType,
@@ -4756,8 +4757,17 @@ export const getTodayHomeData = async (
       displayTitle,
       description,
       createdAt: ev.createdAt,
+      ...(ev.orderId ? { orderId: ev.orderId } : {}),
+      ...(order ? { orderNumber: order.displayNumber } : {}),
     };
   });
+
+  // Group all ledger item charges before limiting the dashboard to five visible rows,
+  // so a multi-device order is not truncated and its displayed total stays complete.
+  const recentFinancialActivities = groupHomeFinancialActivitiesByOrder(
+    recentFinancialActivitiesRaw,
+    locale === 'en' ? 'en' : 'ar'
+  ).slice(0, 5);
 
   return {
     currentDateStr: todayStr,
