@@ -225,6 +225,19 @@ describe('Order-item cancellation BIN and status contract', () => {
     expect(() => validateOrderTransition('cancelled', 'delivered')).toThrow();
   });
 
+  it('rejects adding an item to a cancelled order before queuing ADD_ORDER_ITEM', async () => {
+    const h = createHarness();
+    const auth = makeAuth(['orders:create', 'orders:edit']);
+    const orderResult = await h.useCases.createOrder(auth, 'cancelled_parent', 'day_1', 'cust_1');
+    if (!orderResult.success) throw new Error('Test setup could not create an order');
+    h.orders.set(orderResult.data.id, { ...orderResult.data, status: 'cancelled' });
+
+    await expect(
+      h.useCases.addOrderItem(auth, orderResult.data.id, 'dev_1', false)
+    ).rejects.toThrow('Cannot add item to cancelled order');
+    expect([...h.commands.values()].filter((entry) => entry.type === 'ADD_ORDER_ITEM')).toHaveLength(0);
+  });
+
   it('allows a delivered item correction to queue the reversal-backed server command without local financial fabrication', async () => {
     const h = createHarness();
     const auth = makeAuth(['orders:create', 'orders:edit', 'orders:cancel']);
