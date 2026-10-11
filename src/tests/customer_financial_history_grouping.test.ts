@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'vitest';
-import { groupCustomerFinancialHistoryByOrder } from '../domain/financialPresentation';
+import { groupCustomerFinancialHistoryByOrder, CustomerFinancialHistoryDisplayItem } from '../domain/financialPresentation';
 
-const charge = (overrides: Record<string, unknown> = {}) => ({
+type Charge = CustomerFinancialHistoryDisplayItem & {
+  orderId: string;
+  orderDisplayNumber: number;
+  orderItems: NonNullable<CustomerFinancialHistoryDisplayItem['orderItems']>;
+  orderTotalMinor: number;
+};
+
+const charge = (overrides: Partial<Charge> = {}): Charge => ({
   id: 'ledger-item-1',
   eventType: 'ORDER_ITEM_CHARGE',
   amountMinor: -100,
@@ -50,7 +57,7 @@ describe('customer financial history order grouping', () => {
   });
 
   test('keeps payments and charges from different orders separate', () => {
-    const history = [
+    const history: CustomerFinancialHistoryDisplayItem[] = [
       charge(),
       { ...charge({ id: 'ledger-item-2', orderId: 'order-2', orderDisplayNumber: 28 }) },
       {
@@ -75,7 +82,7 @@ describe('customer financial history order grouping', () => {
   });
 
   test('does not merge legacy order charges or unlinked item charges', () => {
-    const history = [
+    const history: CustomerFinancialHistoryDisplayItem[] = [
       charge(),
       charge({ id: 'legacy-order-charge', eventType: 'ORDER_CHARGE', amountMinor: -300 }),
       charge({ id: 'unlinked-charge', orderId: undefined, amountMinor: -100 }),
