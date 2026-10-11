@@ -135,13 +135,21 @@ export function groupCustomerFinancialHistoryByOrder(
       shortTitle: reversals.length > 0
         ? (locale === 'ar' ? 'صافي حساب الطلب' : 'Net order balance')
         : (locale === 'ar' ? 'خصم إجمالي الطلب' : 'Total order deduction'),
-      description: locale === 'ar'
-        ? (latestEvent.orderDisplayNumber
-            ? `صافي حساب الطلب رقم #${latestEvent.orderDisplayNumber}`
-            : 'صافي حساب الطلب من رصيد العميل')
-        : (latestEvent.orderDisplayNumber
-            ? `Net balance for order #${latestEvent.orderDisplayNumber}`
-            : 'Net order balance from customer account'),
+      description: reversals.length > 0
+        ? (locale === 'ar'
+            ? (latestEvent.orderDisplayNumber
+                ? `صافي حساب الطلب رقم #${latestEvent.orderDisplayNumber}`
+                : 'صافي حساب الطلب من رصيد العميل')
+            : (latestEvent.orderDisplayNumber
+                ? `Net balance for order #${latestEvent.orderDisplayNumber}`
+                : 'Net order balance from customer account'))
+        : (locale === 'ar'
+            ? (latestEvent.orderDisplayNumber
+                ? `خصم إجمالي الطلب رقم #${latestEvent.orderDisplayNumber}`
+                : 'خصم إجمالي الطلب من رصيد العميل')
+            : (latestEvent.orderDisplayNumber
+                ? `Total charge for order #${latestEvent.orderDisplayNumber}`
+                : 'Total order charge from customer balance')),
     });
   }
 
