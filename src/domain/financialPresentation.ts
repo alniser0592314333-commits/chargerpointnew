@@ -52,9 +52,7 @@ export function groupCustomerFinancialHistoryByOrder(
       groupedRows.push({
         ...single,
         id: `order-charge-${orderId}`,
-        shortTitle: locale === 'ar'
-          ? (single.orderDisplayNumber ? `طلب #${single.orderDisplayNumber}` : 'خصم طلب')
-          : (single.orderDisplayNumber ? `Order #${single.orderDisplayNumber}` : 'Order charge'),
+        shortTitle: locale === 'ar' ? 'خصم إجمالي الطلب' : 'Total order deduction',
         description: locale === 'ar'
           ? (single.orderDisplayNumber
               ? `خصم إجمالي الطلب رقم #${single.orderDisplayNumber}`
@@ -89,9 +87,7 @@ export function groupCustomerFinancialHistoryByOrder(
       amountMinor,
       orderItems: orderItems.length > 0 ? orderItems : finalCharge.orderItems,
       orderTotalMinor,
-      shortTitle: locale === 'ar'
-        ? (finalCharge.orderDisplayNumber ? `طلب #${finalCharge.orderDisplayNumber}` : 'خصم طلب')
-        : (finalCharge.orderDisplayNumber ? `Order #${finalCharge.orderDisplayNumber}` : 'Order charge'),
+      shortTitle: locale === 'ar' ? 'خصم إجمالي الطلب' : 'Total order deduction',
       description: locale === 'ar'
         ? (finalCharge.orderDisplayNumber
             ? `خصم إجمالي الطلب رقم #${finalCharge.orderDisplayNumber}`
