@@ -31,7 +31,7 @@ export function groupCustomerFinancialHistoryByOrder(
   locale: 'ar' | 'en' = 'ar'
 ): CustomerFinancialHistoryDisplayItem[] {
   const ordinaryRows: CustomerFinancialHistoryDisplayItem[] = [];
-  const chargesByOrder = new Map<string, T[]>();
+  const chargesByOrder = new Map<string, CustomerFinancialHistoryDisplayItem[]>();
 
   for (const row of history) {
     if (row.eventType !== 'ORDER_ITEM_CHARGE' || !row.orderId) {
