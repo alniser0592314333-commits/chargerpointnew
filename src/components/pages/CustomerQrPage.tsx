@@ -16,23 +16,12 @@ export interface CustomerQrPageProps {
 export const CustomerQrPage: React.FC<CustomerQrPageProps> = ({ customerId, onBack }) => {
   const { t, locale, isRTL } = useI18n();
 
+  // One pull-only refresh when this QR page mounts; no polling or background refresh.
   useEffect(() => {
-    let running = false;
-    const pullNewChanges = async () => {
-      if (running || document.visibilityState !== 'visible' || navigator.onLine === false) return;
-      running = true;
-      try { await globalSyncBridge.requestLatestDataReload(); }
-      catch (error) { console.warn('QR design cloud refresh failed:', error); }
-      finally { running = false; }
-    };
-    const onVisible = () => { if (document.visibilityState === 'visible') void pullNewChanges(); };
-    document.addEventListener('visibilitychange', onVisible);
-    const interval = window.setInterval(() => { void pullNewChanges(); }, 20000);
-    void pullNewChanges();
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    if (navigator.onLine === false) return;
+    void globalSyncBridge.requestLatestDataReload().catch((error) => {
+      console.warn('QR design cloud refresh failed:', error);
+    });
   }, []);
   const [data, setData] = useState<UICustomerQrCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
