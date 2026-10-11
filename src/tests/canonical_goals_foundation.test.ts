@@ -145,6 +145,36 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
     expect(proposal20.bonusAmountMinor % 1).toBe(0);
   });
 
+  it('1b. Adaptive smart proposals scale with 28-day delivered activity and respect policy bounds', () => {
+    const activeCustomerProfile = Array.from({ length: 28 }, () => 5);
+    const activeProposal = generateGoalProposal(activeCustomerProfile, {
+      customDurationDays: 3,
+      startedAt: '2026-10-01T00:00:00.000Z',
+      random: () => 0,
+    });
+    expect(activeProposal.targetQuantity).toBeGreaterThan(10);
+    expect(activeProposal.targetQuantity).toBe(19);
+    expect(activeProposal.durationDays).toBe(3);
+    expect(activeProposal.bonusAmountMinor).toBeLessThanOrEqual(activeProposal.targetQuantity * 20);
+
+    const lowActivityProfile = Array.from({ length: 28 }, () => 0);
+    const lowProposal = generateGoalProposal(lowActivityProfile, {
+      customDurationDays: 7,
+      startedAt: '2026-10-01T00:00:00.000Z',
+      random: () => 0,
+    });
+    expect(lowProposal.targetQuantity).toBe(10);
+    expect(lowProposal.bonusAmountMinor).toBeGreaterThanOrEqual(80);
+
+    const variedProposal = generateGoalProposal(activeCustomerProfile, {
+      customDurationDays: 3,
+      startedAt: '2026-10-01T00:00:00.000Z',
+      random: () => 0.99,
+    });
+    expect(variedProposal.targetQuantity).toBeGreaterThan(activeProposal.targetQuantity);
+    expect(variedProposal.bonusAmountMinor).toBeLessThanOrEqual(variedProposal.targetQuantity * 20);
+  });
+
   it('2. Single Active Goal Invariant: Rejects creating a second active goal for the same customer', async () => {
     const custId = 'cust-100';
     customerMap.set(custId, {
