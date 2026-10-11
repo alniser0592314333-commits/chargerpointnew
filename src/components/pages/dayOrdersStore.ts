@@ -3612,7 +3612,7 @@ export const getCustomerOrders = async (
   const allocMap = computeCustomerOrderPaymentStatuses(targetId, effectiveOrdersMap, effectiveItemsMap);
 
   for (const ord of custOrders) {
-    const items = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
+    const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
     const totalMinor = items.reduce((sum, i) => sum + i.totalPriceMinor, 0);
 
     const alloc = allocMap.get(ord.id);
