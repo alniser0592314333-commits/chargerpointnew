@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   QRDesignConfig,
   QRIdentity,
@@ -42,6 +42,47 @@ export const QrDesignRenderer: React.FC<QrDesignRendererProps> = ({
   className = '',
   cardId = 'qr-design-card',
 }) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const contentViewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contentScale, setContentScale] = useState(1);
+
+  // The print-target ratio must determine the frame size, not the intrinsic
+  // height of the fixed-pixel QR/text content. On narrow screens, scale the
+  // content down only when necessary so it stays inside that portrait frame.
+  useEffect(() => {
+    const card = cardRef.current;
+    const viewport = contentViewportRef.current;
+    const innerContent = contentRef.current;
+    if (!card || !viewport || !innerContent) return;
+
+    const updateScale = () => {
+      const availableHeight = viewport.clientHeight;
+      const naturalHeight = innerContent.scrollHeight;
+      const nextScale =
+        availableHeight > 0 && naturalHeight > 0
+          ? Math.min(1, availableHeight / naturalHeight)
+          : 1;
+      setContentScale((previous) =>
+        Math.abs(previous - nextScale) < 0.005 ? previous : nextScale
+      );
+    };
+
+    updateScale();
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateScale)
+      : null;
+    observer?.observe(card);
+    observer?.observe(viewport);
+    observer?.observe(innerContent);
+    window.addEventListener('resize', updateScale);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateScale);
+    };
+  }, [design]);
+
   const isOrderContent = 'orderNumber' in content || design.designType === 'ORDER';
   const orderContent = isOrderContent ? (content as QROrderContent) : null;
   const customerContent = !isOrderContent ? (content as QRCustomerContent) : null;
@@ -253,27 +294,52 @@ export const QrDesignRenderer: React.FC<QrDesignRendererProps> = ({
   return (
     <div
       id={cardId}
+      ref={cardRef}
       style={{
         borderRadius: `${design.borderRadius}px`,
-        padding: `${design.padding}px`,
+        padding: 0,
         width: '100%',
         maxWidth: '380px',
         boxSizing: 'border-box',
-        // Keep the live card's outer frame in the exact print-target ratio on
-        // the design screen and on customer/order QR detail pages alike.
+        position: 'relative',
+        overflow: 'hidden',
+        // Absolutely-positioned content below cannot force this frame back to
+        // its intrinsic content height; the saved print target owns the ratio.
         aspectRatio: `${design.printTarget.widthMm} / ${design.printTarget.heightMm}`,
       }}
-      className={`bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] mx-auto shadow-md text-center transition-colors print:border print:border-black print:shadow-none print:bg-white print:p-6 print:max-w-none print:w-full space-y-3 ${className}`}
+      className={`bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] mx-auto shadow-md text-center transition-colors print:border print:border-black print:shadow-none print:bg-white print:max-w-none print:w-full ${className}`}
     >
-      {/* Top Logo if placement is 'top' (Canonical White Logo) */}
-      {design.logo.show && design.logo.placement === 'top' && (
-        <div className="flex justify-center pb-1">
-          <AppLogo size={design.logo.size} isQr={true} variant="qr" />
-        </div>
-      )}
+      <div
+        ref={contentViewportRef}
+        style={{
+          position: 'absolute',
+          inset: `${design.padding}px`,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          ref={contentRef}
+          style={{
+            width: '100%',
+            transform: `scale(${contentScale})`,
+            transformOrigin: 'top center',
+          }}
+          className="space-y-3"
+        >
+          {/* Top Logo if placement is 'top' (Canonical White Logo) */}
+          {design.logo.show && design.logo.placement === 'top' && (
+            <div className="flex justify-center pb-1">
+              <AppLogo size={design.logo.size} isQr={true} variant="qr" />
+            </div>
+          )}
 
-      {/* Render sections in strict configuration order */}
-      {design.contentOrder.map((section, idx) => renderSection(section, idx))}
+          {/* Render sections in strict configuration order */}
+          {design.contentOrder.map((section, idx) => renderSection(section, idx))}
+        </div>
+      </div>
     </div>
   );
 };
