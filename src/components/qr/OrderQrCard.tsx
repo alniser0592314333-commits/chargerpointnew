@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { QRDesignConfig } from './types';
-import { getActiveQrDesign } from './defaultDesigns';
+import { useActiveQrDesign } from './defaultDesigns';
 import { QrDesignRenderer } from './QrDesignRenderer';
 
 export interface OrderQrCardProps {
@@ -22,7 +22,8 @@ export const OrderQrCard: React.FC<OrderQrCardProps> = ({
   cardId = 'order-qr-card',
 }) => {
   const { locale, t } = useI18n();
-  const activeDesign = design || getActiveQrDesign('ORDER');
+  const activeDesign = useActiveQrDesign('ORDER');
+  const resolvedDesign = design || activeDesign;
 
   return (
     <QrDesignRenderer
@@ -32,7 +33,7 @@ export const OrderQrCard: React.FC<OrderQrCardProps> = ({
         customerName,
         customerCode: `ORD-${orderNumber}`,
       }}
-      design={activeDesign}
+      design={resolvedDesign}
       locale={locale as 'ar' | 'en'}
       className={className}
       cardId={cardId}

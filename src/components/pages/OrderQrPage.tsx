@@ -1,3 +1,4 @@
+import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { getOrderQrCardData, UIOrderQrCardData } from './dayOrdersStore';
@@ -15,6 +16,14 @@ export interface OrderQrPageProps {
 
 export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack }) => {
   const { t, locale, isRTL } = useI18n();
+
+  // One pull-only refresh when this QR page mounts; no polling or background refresh.
+  useEffect(() => {
+    if (navigator.onLine === false) return;
+    void globalSyncBridge.requestLatestDataReload().catch((error) => {
+      console.warn('QR design cloud refresh failed:', error);
+    });
+  }, []);
   const [data, setData] = useState<UIOrderQrCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);

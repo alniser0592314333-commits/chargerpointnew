@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
+import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import {
@@ -6,8 +7,10 @@ import {
   setActiveQrDesign,
   DEFAULT_CUSTOMER_QR_DESIGN,
   DEFAULT_ORDER_QR_DESIGN,
+  subscribeQrDesignChanges,
 } from '../qr/defaultDesigns';
 import { QrDesignRenderer } from '../qr/QrDesignRenderer';
+import { queueQrDesignSetting } from './dayOrdersStore';
 import { Button } from '../ui/Button';
 import {
   Check,
@@ -31,6 +34,15 @@ import {
 export const QrDesignSettingsPage: React.FC = () => {
   const { t, locale } = useI18n();
 
+  // Pull only new change-log entries while this QR screen is visible.
+  // One pull-only refresh when this QR page mounts; no polling or background refresh.
+  useEffect(() => {
+    if (navigator.onLine === false) return;
+    void globalSyncBridge.requestLatestDataReload().catch((error) => {
+      console.warn('QR design cloud refresh failed:', error);
+    });
+  }, []);
+
   // Selected Type: CUSTOMER vs ORDER (strictly independent)
   const [selectedType, setSelectedType] = useState<QRDesignType>('CUSTOMER');
 
@@ -43,6 +55,20 @@ export const QrDesignSettingsPage: React.FC = () => {
   );
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const lastCommittedRef = useRef({ CUSTOMER: getActiveQrDesign('CUSTOMER'), ORDER: getActiveQrDesign('ORDER') });
+  useEffect(() => subscribeQrDesignChanges((type, design, source) => {
+    const previous = lastCommittedRef.current[type];
+    const draft = type === 'CUSTOMER' ? draftCustomer : draftOrder;
+    const wasClean = JSON.stringify(draft) === JSON.stringify(previous);
+    lastCommittedRef.current[type] = design;
+    if (source === 'remote' && wasClean) {
+      if (type === 'CUSTOMER') setDraftCustomer(design);
+      else setDraftOrder(design);
+      setSavedSuccess(false);
+    }
+  }), [draftCustomer, draftOrder]);
+
 
   // Accordion State: Only one section open at a time (default: 'spacing' / dimensions)
   const [activeSection, setActiveSection] = useState<string | null>('spacing');
@@ -102,10 +128,17 @@ export const QrDesignSettingsPage: React.FC = () => {
   }, [isDirty]);
 
   // Save handler: Commits Draft to Active Design
-  const handleSave = () => {
-    setActiveQrDesign(selectedType, currentDraft);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+  const handleSave = async () => {
+    setSavedSuccess(false);
+    try {
+      await queueQrDesignSetting(selectedType, currentDraft);
+      setActiveQrDesign(selectedType, currentDraft);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to queue QR design setting:', error);
+      window.alert(locale === 'ar' ? 'تعذر حفظ التصميم للمزامنة.' : 'Could not queue the design for sync.');
+    }
   };
 
   // Reset handler: Reverts Draft to Default without touching the other type

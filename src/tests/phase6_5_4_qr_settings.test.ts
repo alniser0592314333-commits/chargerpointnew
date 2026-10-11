@@ -5,12 +5,14 @@ import {
   resetActiveQrDesign,
   DEFAULT_CUSTOMER_QR_DESIGN,
   DEFAULT_ORDER_QR_DESIGN,
+  subscribeQrDesignChanges,
 } from '../components/qr/defaultDesigns';
 import {
   getCustomerQrCardData,
   getOrCreateCustomerQrToken,
   resetStoreMemory,
   seedDemoOperationalData,
+  applyRemoteChange,
 } from '../components/pages/dayOrdersStore';
 import { QRDesignConfig } from '../components/qr/types';
 import { downloadQrCard } from '../components/qr/downloadEngine';
@@ -223,5 +225,33 @@ describe('Phase 6.5.4B: QR Design Settings UX & Draft/Active Decoupling', () => 
 
     const activeDesignAfter = getActiveQrDesign('CUSTOMER');
     expect(activeDesignAfter).toEqual(activeDesignBefore);
+  });
+
+  it('applies cloud QR design settings to the active design and notifies subscribers', () => {
+    const orderBefore = getActiveQrDesign('ORDER');
+    const incoming = { ...DEFAULT_CUSTOMER_QR_DESIGN, backgroundColor: '#123abc', version: 7 };
+    const received: string[] = [];
+    const unsubscribe = subscribeQrDesignChanges((type, design, source) => {
+      received.push(`${type}:${source}:${design.backgroundColor}`);
+    });
+
+    applyRemoteChange({
+      sequenceId: 99,
+      entityType: 'system_settings',
+      entityId: 'server-command-id',
+      action: 'UPDATE',
+      payload: {
+        key: 'app_qr_design_config_CUSTOMER',
+        valueType: 'json',
+        valueJson: incoming,
+      },
+      changedAt: new Date().toISOString(),
+    });
+    unsubscribe();
+
+    expect(getActiveQrDesign('CUSTOMER').backgroundColor).toBe('#123abc');
+    expect(getActiveQrDesign('CUSTOMER').version).toBe(7);
+    expect(getActiveQrDesign('ORDER')).toEqual(orderBefore);
+    expect(received).toContain('CUSTOMER:remote:#123abc');
   });
 });

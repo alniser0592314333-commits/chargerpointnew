@@ -10,6 +10,7 @@
  * - Idempotent active design resolution (fallback to defaults without DB migration).
  */
 
+import { useEffect, useState } from 'react';
 import { QRDesignConfig, QRDesignType } from './types';
 
 export const DEFAULT_CUSTOMER_QR_DESIGN: QRDesignConfig = {
@@ -205,6 +206,22 @@ function saveStoredDesign(type: QRDesignType, design: QRDesignConfig): void {
   }
 }
 
+type QrDesignListener = (type: QRDesignType, design: QRDesignConfig, source: 'local' | 'remote') => void;
+const qrDesignListeners = new Set<QrDesignListener>();
+
+export const subscribeQrDesignChanges = (listener: QrDesignListener): (() => void) => {
+  qrDesignListeners.add(listener);
+  return () => qrDesignListeners.delete(listener);
+};
+
+function emitQrDesignChange(type: QRDesignType, design: QRDesignConfig, source: 'local' | 'remote'): void {
+  const snapshot = JSON.parse(JSON.stringify(design)) as QRDesignConfig;
+  qrDesignListeners.forEach((listener) => {
+    try { listener(type, snapshot, source); }
+    catch (error) { console.warn('QR design listener failed:', error); }
+  });
+}
+
 const activeDesigns: Record<QRDesignType, QRDesignConfig> = {
   CUSTOMER: loadStoredDesign('CUSTOMER', DEFAULT_CUSTOMER_QR_DESIGN),
   ORDER: loadStoredDesign('ORDER', DEFAULT_ORDER_QR_DESIGN),
@@ -215,6 +232,15 @@ const activeDesigns: Record<QRDesignType, QRDesignConfig> = {
  * Returns custom active design if set, otherwise returns the default design.
  * Pure presentation resolver: NEVER generates tokens or calls APIs.
  */
+export const useActiveQrDesign = (type: QRDesignType): QRDesignConfig => {
+  const [design, setDesign] = useState<QRDesignConfig>(() => getActiveQrDesign(type));
+  useEffect(() => subscribeQrDesignChanges((changedType, nextDesign) => {
+    if (changedType === type) setDesign(nextDesign);
+  }), [type]);
+  useEffect(() => setDesign(getActiveQrDesign(type)), [type]);
+  return design;
+};
+
 export const getActiveQrDesign = (type: QRDesignType): QRDesignConfig => {
   const current = activeDesigns[type] || (type === 'CUSTOMER' ? DEFAULT_CUSTOMER_QR_DESIGN : DEFAULT_ORDER_QR_DESIGN);
   return JSON.parse(JSON.stringify(current));
@@ -224,13 +250,14 @@ export const getActiveQrDesign = (type: QRDesignType): QRDesignConfig => {
  * Sets a custom active design for a specific type without affecting the other type.
  * Persists durably to localStorage.
  */
-export const setActiveQrDesign = (type: QRDesignType, design: QRDesignConfig): void => {
+export const setActiveQrDesign = (type: QRDesignType, design: QRDesignConfig, source: 'local' | 'remote' = 'local'): void => {
   if (design.designType !== type) {
     throw new Error(`Design type mismatch: expected ${type}, got ${design.designType}`);
   }
   const validated = { ...design, version: design.version || 1 };
   activeDesigns[type] = JSON.parse(JSON.stringify(validated));
   saveStoredDesign(type, activeDesigns[type]);
+  emitQrDesignChange(type, activeDesigns[type], source);
 };
 
 /**
@@ -240,8 +267,10 @@ export const resetActiveQrDesign = (type: QRDesignType): void => {
   if (type === 'CUSTOMER') {
     activeDesigns.CUSTOMER = { ...DEFAULT_CUSTOMER_QR_DESIGN };
     saveStoredDesign('CUSTOMER', activeDesigns.CUSTOMER);
+    emitQrDesignChange('CUSTOMER', activeDesigns.CUSTOMER, 'local');
   } else {
     activeDesigns.ORDER = { ...DEFAULT_ORDER_QR_DESIGN };
     saveStoredDesign('ORDER', activeDesigns.ORDER);
+    emitQrDesignChange('ORDER', activeDesigns.ORDER, 'local');
   }
 };

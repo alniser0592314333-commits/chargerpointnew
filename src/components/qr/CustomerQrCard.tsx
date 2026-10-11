@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { QRDesignConfig } from './types';
-import { getActiveQrDesign } from './defaultDesigns';
+import { useActiveQrDesign } from './defaultDesigns';
 import { QrDesignRenderer } from './QrDesignRenderer';
 
 export interface CustomerQrCardProps {
@@ -32,13 +32,14 @@ export const CustomerQrCard: React.FC<CustomerQrCardProps> = ({
   cardId = 'customer-qr-card',
 }) => {
   const { locale } = useI18n();
-  const activeDesign = design || getActiveQrDesign('CUSTOMER');
+  const activeDesign = useActiveQrDesign('CUSTOMER');
+  const resolvedDesign = design || activeDesign;
 
   return (
     <QrDesignRenderer
       identity={{ publicUrl: qrValue }}
       content={{ customerName, customerCode }}
-      design={activeDesign}
+      design={resolvedDesign}
       locale={locale as 'ar' | 'en'}
       className={className}
       cardId={cardId}
