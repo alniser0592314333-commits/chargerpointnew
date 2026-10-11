@@ -24,6 +24,15 @@ const charge = (overrides: Partial<Charge> = {}): Charge => ({
 });
 
 describe('customer financial history order grouping', () => {
+  test('preserves the linked business date when charge events are grouped', () => {
+    const result = groupCustomerFinancialHistoryByOrder([
+      charge({ businessDate: '2026-10-12' }),
+      charge({ id: 'ledger-item-2', orderItemId: 'item-2', businessDate: '2026-10-12', createdAt: '2026-10-12T01:00:00.000Z' }),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].businessDate).toBe('2026-10-12');
+  });
+
   test('shows all item charges for one order as one aggregate row without changing the total or final balance', () => {
     const history = [
       charge(),
