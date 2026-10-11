@@ -41,6 +41,7 @@ import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTra
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
+import { groupCustomerFinancialHistoryByOrder } from '../../domain/financialPresentation';
 
 const isBrowserOffline = (): boolean =>
   typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -3754,8 +3755,9 @@ export const getCustomerFinancialHistory = async (
     });
   }
 
-  // Return newest activity first
-  return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Presentation-only projection: combine item-level charge events into one order row.
+  // The underlying ledger events and balance calculations remain unchanged.
+  return groupCustomerFinancialHistoryByOrder(items, locale);
 };
 
 export const updateCustomer = async (
