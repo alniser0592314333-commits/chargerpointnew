@@ -82,6 +82,41 @@ describe('customer financial history order grouping', () => {
     expect(result.find(row => row.id === 'order-charge-order-1')?.description).toBe('Total charge for order #27');
   });
 
+  test('nets item reversals against grouped order charges and excludes cancelled devices', () => {
+    const history: CustomerFinancialHistoryDisplayItem[] = [
+      charge({ orderItemId: 'item-cancelled' }),
+      charge({
+        id: 'charge-active',
+        orderItemId: 'item-active',
+        amountMinor: -200,
+        postBalanceMinor: -300,
+        orderItems: [{ id: 'item-active', deviceName: 'Tablet', priceMinor: 200, hasCharger: false }],
+        orderTotalMinor: 200,
+      }),
+      {
+        id: 'reversal-cancelled',
+        eventType: 'REVERSAL',
+        amountMinor: 100,
+        postBalanceMinor: -200,
+        createdAt: '2026-10-11T12:00:00.000Z',
+        orderId: 'order-1',
+        orderItemId: 'item-cancelled',
+        orderDisplayNumber: 27,
+        description: 'Reversal',
+        shortTitle: 'Reversal',
+      },
+    ];
+
+    const result = groupCustomerFinancialHistoryByOrder(history, 'ar');
+    expect(result).toHaveLength(1);
+    expect(result[0].amountMinor).toBe(-200);
+    expect(result[0].postBalanceMinor).toBe(-200);
+    expect(result[0].createdAt).toBe('2026-10-11T12:00:00.000Z');
+    expect(result[0].orderItems?.map(item => item.id)).toEqual(['item-active']);
+    expect(result[0].orderTotalMinor).toBe(200);
+    expect(result[0].shortTitle).toBe('صافي حساب الطلب');
+  });
+
   test('does not merge legacy order charges or unlinked item charges', () => {
     const history: CustomerFinancialHistoryDisplayItem[] = [
       charge(),

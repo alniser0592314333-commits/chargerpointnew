@@ -13,6 +13,7 @@ export interface CustomerFinancialHistoryDisplayItem {
   postBalanceMinor: number;
   createdAt: string;
   orderId?: string;
+  orderItemId?: string;
   orderDisplayNumber?: number;
   description: string;
   shortTitle: string;
@@ -32,22 +33,41 @@ export function groupCustomerFinancialHistoryByOrder(
 ): CustomerFinancialHistoryDisplayItem[] {
   const ordinaryRows: CustomerFinancialHistoryDisplayItem[] = [];
   const chargesByOrder = new Map<string, CustomerFinancialHistoryDisplayItem[]>();
+  const reversalCandidates: CustomerFinancialHistoryDisplayItem[] = [];
 
   for (const row of history) {
+    if (row.eventType === 'REVERSAL' && row.orderId && row.orderItemId) {
+      reversalCandidates.push(row);
+      continue;
+    }
     if (row.eventType !== 'ORDER_ITEM_CHARGE' || !row.orderId) {
       ordinaryRows.push(row);
       continue;
     }
-
     const existing = chargesByOrder.get(row.orderId);
     if (existing) existing.push(row);
     else chargesByOrder.set(row.orderId, [row]);
   }
 
-  const groupedRows: CustomerFinancialHistoryDisplayItem[] = [...ordinaryRows];
+  // A reversal only joins an order summary when it references an item whose
+  // original charge is present in this customer's ledger history. Unlinked or
+  // unrelated reversals remain independent audit rows.
+  const reversalsByOrder = new Map<string, CustomerFinancialHistoryDisplayItem[]>();
+  for (const reversal of reversalCandidates) {
+    const charges = chargesByOrder.get(reversal.orderId!);
+    if (charges?.some((charge) => charge.orderItemId && charge.orderItemId === reversal.orderItemId)) {
+      const existing = reversalsByOrder.get(reversal.orderId!);
+      if (existing) existing.push(reversal);
+      else reversalsByOrder.set(reversal.orderId!, [reversal]);
+    } else {
+      ordinaryRows.push(reversal);
+    }
+  }
 
+  const groupedRows: CustomerFinancialHistoryDisplayItem[] = [...ordinaryRows];
   for (const [orderId, charges] of chargesByOrder) {
-    if (charges.length === 1) {
+    const reversals = reversalsByOrder.get(orderId) || [];
+    if (charges.length === 1 && reversals.length === 0) {
       const single = charges[0];
       groupedRows.push({
         ...single,
@@ -64,43 +84,77 @@ export function groupCustomerFinancialHistoryByOrder(
       continue;
     }
 
-    // The final charge row carries the post-balance after all recognized items
-    // in this order have been applied. Keep that timestamp/balance for the summary.
-    const finalCharge = charges.reduce((latest, row) =>
+    const allEvents = [...charges, ...reversals];
+    const latestEvent = allEvents.reduce((latest, row) =>
       new Date(row.createdAt).getTime() >= new Date(latest.createdAt).getTime() ? row : latest
     );
-    const seenItemIds = new Set<string>();
-    const orderItems = charges.flatMap(row => row.orderItems || []).filter(item => {
-      if (seenItemIds.has(item.id)) return false;
-      seenItemIds.add(item.id);
-      return true;
-    });
-    const amountMinor = charges.reduce((sum, row) => sum + row.amountMinor, 0);
-    const fallbackOrderTotal = charges.reduce((sum, row) => sum + (row.orderTotalMinor ?? 0), 0);
+    const amountMinor = allEvents.reduce((sum, row) => sum + row.amountMinor, 0);
+    const latestBalanceEvent = allEvents.reduce((latest, row) =>
+      new Date(row.createdAt).getTime() >= new Date(latest.createdAt).getTime() ? row : latest
+    );
+
+    const chargeByItem = new Map<string, number>();
+    const reversalByItem = new Map<string, number>();
+    for (const charge of charges) {
+      if (charge.orderItemId) chargeByItem.set(charge.orderItemId, (chargeByItem.get(charge.orderItemId) || 0) + charge.amountMinor);
+    }
+    for (const reversal of reversals) {
+      if (reversal.orderItemId) reversalByItem.set(reversal.orderItemId, (reversalByItem.get(reversal.orderItemId) || 0) + reversal.amountMinor);
+    }
+
+    const itemDetails = new Map<string, NonNullable<CustomerFinancialHistoryDisplayItem['orderItems']>[number]>();
+    for (const charge of charges) {
+      for (const item of charge.orderItems || []) {
+        if (!charge.orderItemId) {
+          if (!itemDetails.has(item.id)) itemDetails.set(item.id, item);
+          continue;
+        }
+        const netCharge = (chargeByItem.get(charge.orderItemId) || 0) + (reversalByItem.get(charge.orderItemId) || 0);
+        if (netCharge < 0) {
+          itemDetails.set(item.id, { ...item, priceMinor: Math.abs(netCharge) });
+        } else {
+          itemDetails.delete(item.id);
+        }
+      }
+    }
+
+    const orderItems = Array.from(itemDetails.values());
+    const fallbackOrderTotal = Math.abs(amountMinor);
     const orderTotalMinor = orderItems.length > 0
       ? orderItems.reduce((sum, item) => sum + item.priceMinor, 0)
       : fallbackOrderTotal;
 
     groupedRows.push({
-      ...finalCharge,
+      ...latestEvent,
       id: `order-charge-${orderId}`,
+      eventType: amountMinor < 0 ? 'ORDER_ITEM_CHARGE' : 'REVERSAL',
       amountMinor,
-      orderItems: orderItems.length > 0 ? orderItems : finalCharge.orderItems,
+      postBalanceMinor: latestBalanceEvent.postBalanceMinor,
+      orderItems,
       orderTotalMinor,
-      shortTitle: locale === 'ar' ? 'خصم إجمالي الطلب' : 'Total order deduction',
-      description: locale === 'ar'
-        ? (finalCharge.orderDisplayNumber
-            ? `خصم إجمالي الطلب رقم #${finalCharge.orderDisplayNumber}`
-            : 'خصم إجمالي الطلب من رصيد العميل')
-        : (finalCharge.orderDisplayNumber
-            ? `Total charge for order #${finalCharge.orderDisplayNumber}`
-            : 'Total order charge from customer balance'),
+      shortTitle: reversals.length > 0
+        ? (locale === 'ar' ? 'صافي حساب الطلب' : 'Net order balance')
+        : (locale === 'ar' ? 'خصم إجمالي الطلب' : 'Total order deduction'),
+      description: reversals.length > 0
+        ? (locale === 'ar'
+            ? (latestEvent.orderDisplayNumber
+                ? `صافي حساب الطلب رقم #${latestEvent.orderDisplayNumber}`
+                : 'صافي حساب الطلب من رصيد العميل')
+            : (latestEvent.orderDisplayNumber
+                ? `Net balance for order #${latestEvent.orderDisplayNumber}`
+                : 'Net order balance from customer account'))
+        : (locale === 'ar'
+            ? (latestEvent.orderDisplayNumber
+                ? `خصم إجمالي الطلب رقم #${latestEvent.orderDisplayNumber}`
+                : 'خصم إجمالي الطلب من رصيد العميل')
+            : (latestEvent.orderDisplayNumber
+                ? `Total charge for order #${latestEvent.orderDisplayNumber}`
+                : 'Total order charge from customer balance')),
     });
   }
 
   return groupedRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
-
 
 /** Home dashboard projection: aggregate item-level charges per order for display only. */
 export interface HomeFinancialActivityDisplayItem {
@@ -113,6 +167,7 @@ export interface HomeFinancialActivityDisplayItem {
   description: string;
   createdAt: string;
   orderId?: string;
+  orderItemId?: string;
   orderNumber?: number;
 }
 
@@ -122,8 +177,13 @@ export function groupHomeFinancialActivitiesByOrder(
 ): HomeFinancialActivityDisplayItem[] {
   const ordinaryRows: HomeFinancialActivityDisplayItem[] = [];
   const chargesByOrder = new Map<string, HomeFinancialActivityDisplayItem[]>();
+  const reversalCandidates: HomeFinancialActivityDisplayItem[] = [];
 
   for (const activity of activities) {
+    if (activity.eventType === 'REVERSAL' && activity.orderId && activity.orderItemId) {
+      reversalCandidates.push(activity);
+      continue;
+    }
     if (activity.eventType !== 'ORDER_ITEM_CHARGE' || !activity.orderId) {
       ordinaryRows.push(activity);
       continue;
@@ -134,26 +194,44 @@ export function groupHomeFinancialActivitiesByOrder(
     else chargesByOrder.set(key, [activity]);
   }
 
+  const reversalsByOrder = new Map<string, HomeFinancialActivityDisplayItem[]>();
+  for (const reversal of reversalCandidates) {
+    const key = `${reversal.customerId}::${reversal.orderId}`;
+    const charges = chargesByOrder.get(key);
+    if (charges?.some((charge) => charge.orderItemId && charge.orderItemId === reversal.orderItemId)) {
+      const existing = reversalsByOrder.get(key);
+      if (existing) existing.push(reversal);
+      else reversalsByOrder.set(key, [reversal]);
+    } else {
+      ordinaryRows.push(reversal);
+    }
+  }
+
   const groupedRows = [...ordinaryRows];
   for (const [key, charges] of chargesByOrder) {
-    if (charges.length === 1) {
+    const reversals = reversalsByOrder.get(key) || [];
+    if (charges.length === 1 && reversals.length === 0) {
       groupedRows.push(charges[0]);
       continue;
     }
-    const latest = charges.reduce((current, row) =>
+    const allEvents = [...charges, ...reversals];
+    const latest = allEvents.reduce((current, row) =>
       new Date(row.createdAt).getTime() >= new Date(current.createdAt).getTime() ? row : current
     );
-    const amountMinor = charges.reduce((sum, row) => sum + row.amountMinor, 0);
+    const amountMinor = allEvents.reduce((sum, row) => sum + row.amountMinor, 0);
     const orderNumber = latest.orderNumber ?? charges.find(row => row.orderNumber !== undefined)?.orderNumber;
     const orderLabel = orderNumber === undefined ? '' : ` #${orderNumber}`;
     groupedRows.push({
       ...latest,
       id: `home-order-charge-${key}`,
+      eventType: amountMinor < 0 ? 'ORDER_ITEM_CHARGE' : 'REVERSAL',
       amountMinor,
-      displayTitle: locale === 'ar' ? `خصم إجمالي الطلب${orderLabel}` : `Total order deduction${orderLabel}`,
+      displayTitle: reversals.length > 0
+        ? (locale === 'ar' ? `صافي حساب الطلب${orderLabel}` : `Net order balance${orderLabel}`)
+        : (locale === 'ar' ? `خصم إجمالي الطلب${orderLabel}` : `Total order deduction${orderLabel}`),
       description: locale === 'ar'
-        ? `خصم إجمالي من رصيد ${latest.customerName}`
-        : `Total charge to ${latest.customerName}`,
+        ? `صافي حساب الطلب لـ ${latest.customerName}`
+        : `Net order balance for ${latest.customerName}`,
     });
   }
 
