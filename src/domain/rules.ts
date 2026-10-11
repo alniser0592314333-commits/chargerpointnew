@@ -160,9 +160,9 @@ export function calculateGoalBonusCapMinor(targetQuantity: number): number {
 }
 
 /**
- * Generates a duration-scaled target from the customer's recent seven-day delivered
- * pace. The target includes at least 10 extra devices or 25% stretch, whichever is
- * larger, and never drops below 10 devices.
+ * Legacy proposal policy note: proposals should be based on delivered activity,
+ * with an adaptive stretch and a minimum target of 10 devices. The production
+ * implementation is being revised to use a 28-day activity profile.
  */
 export interface GeneratedGoalProposal {
   targetQuantity: number;
@@ -182,51 +182,48 @@ export interface GenerateGoalProposalOptions {
 }
 
 export function generateGoalProposal(
-  past7DaysDeliveredCount: number,
+  recentDeliveredActivity: number | number[],
   options: GenerateGoalProposalOptions | string = {}
 ): GeneratedGoalProposal {
   const startedAt = typeof options === 'string' ? options : options.startedAt || new Date().toISOString();
   const customRate = typeof options === 'object' ? options.customRatePerDeviceMinor : undefined;
   const customDuration = typeof options === 'object' ? options.customDurationDays : undefined;
   const random = typeof options === 'object' ? options.random || Math.random : Math.random;
+  const sample = () => Math.min(0.999999999, Math.max(0, random()));
 
-  const safePastCount = Math.max(0, Math.floor(Number.isFinite(past7DaysDeliveredCount) ? past7DaysDeliveredCount : 0));
-  const durationDays = Number.isInteger(customDuration)
-    && customDuration! >= MIN_GOAL_DURATION_DAYS
-    && customDuration! <= MAX_GOAL_DURATION_DAYS
+  const isProfile = Array.isArray(recentDeliveredActivity);
+  const profile = isProfile
+    ? recentDeliveredActivity.slice(-28).map((n) => Math.max(0, Math.floor(Number.isFinite(n) ? n : 0)))
+    : [Math.max(0, Math.floor(Number.isFinite(recentDeliveredActivity) ? recentDeliveredActivity : 0))];
+  const recentDays = isProfile ? profile.slice(-7) : profile;
+  const recentRate = recentDays.reduce((sum, n) => sum + n, 0) / Math.max(1, recentDays.length);
+  const baselineRate = profile.reduce((sum, n) => sum + n, 0) / Math.max(1, profile.length);
+  const dailyRate = isProfile ? recentRate * 0.65 + baselineRate * 0.35 : profile[0] / 7;
+
+  const minDuration = isProfile ? (dailyRate >= 4 ? 3 : dailyRate >= 1.5 ? 4 : 6) : MIN_GOAL_DURATION_DAYS;
+  const maxDuration = isProfile ? (dailyRate >= 4 ? 9 : dailyRate >= 1.5 ? 11 : MAX_GOAL_DURATION_DAYS) : MAX_GOAL_DURATION_DAYS;
+  const durationDays = Number.isInteger(customDuration) && customDuration! >= MIN_GOAL_DURATION_DAYS && customDuration! <= MAX_GOAL_DURATION_DAYS
     ? customDuration!
-    : randomGoalDurationDays(random);
-
-  const expectedDevicesDuringGoal = (safePastCount / 7) * durationDays;
-  const stretchAllowance = Math.max(10, expectedDevicesDuringGoal * 0.25);
-  const targetQuantity = Math.max(10, Math.ceil(expectedDevicesDuringGoal + stretchAllowance));
-
-  // Difficulty is the required pace relative to the customer's recent pace.
-  // The established reward band remains 8–13 agorot/device (₪0.8–₪1.3 per 10 devices);
-  // the new hard cap is 20 agorot/device and is enforced independently.
-  const difficultyRatio = expectedDevicesDuringGoal > 0
-    ? targetQuantity / expectedDevicesDuringGoal
-    : 1.5;
+    : minDuration + Math.floor(sample() * (maxDuration - minDuration + 1));
+  const expectedDevicesDuringGoal = dailyRate * durationDays;
+  const targetQuantity = isProfile
+    ? Math.max(10, Math.ceil(expectedDevicesDuringGoal * (1.25 + sample() * 0.30)))
+    : Math.max(10, Math.ceil(expectedDevicesDuringGoal + Math.max(10, expectedDevicesDuringGoal * 0.25)));
+  const difficultyRatio = expectedDevicesDuringGoal > 0 ? targetQuantity / expectedDevicesDuringGoal : 1.5;
   const derivedRate = 8 + Math.min(5, Math.max(0, Math.round((difficultyRatio - 1) * 10)));
   const ratePerDeviceMinor = Number.isInteger(customRate) && customRate! >= 8 && customRate! <= 13
     ? customRate!
-    : derivedRate;
-  const rawBonusMinor = targetQuantity * ratePerDeviceMinor;
+    : isProfile
+      ? Math.min(13, Math.max(8, derivedRate + Math.floor(sample() * 3) - 1))
+      : derivedRate;
   const bonusAmountMinor = Math.min(
     calculateGoalBonusCapMinor(targetQuantity),
-    Math.max(MIN_GOAL_BONUS_MINOR, Math.round(rawBonusMinor))
+    Math.max(MIN_GOAL_BONUS_MINOR, Math.round(targetQuantity * ratePerDeviceMinor))
   );
-
   const startDate = new Date(startedAt);
   const expiresDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
-  return {
-    targetQuantity,
-    durationDays,
-    bonusAmountMinor,
-    expiresAt: expiresDate.toISOString(),
-  };
+  return { targetQuantity, durationDays, bonusAmountMinor, expiresAt: expiresDate.toISOString() };
 }
-
 
 /**
  * Server-compatible Order projection from canonical OrderItem.status.

@@ -51,6 +51,8 @@ export const GoalsPage: React.FC = () => {
   const [durationDays, setDurationDays] = useState('7');
   const [bonusIls, setBonusIls] = useState('1.00');
   const [proposalLoading, setProposalLoading] = useState(false);
+  const [proposalGenerated, setProposalGenerated] = useState(false);
+  const [proposalFailed, setProposalFailed] = useState(false);
   const [editingGoal, setEditingGoal] = useState<GoalEntity | null>(null);
   const [editTarget, setEditTarget] = useState('');
   const [editDuration, setEditDuration] = useState('');
@@ -125,10 +127,12 @@ export const GoalsPage: React.FC = () => {
     loadError: 'تعذر تحميل بيانات الأهداف.',
     noPermission: 'ليس لديك صلاحية عرض صفحة الأهداف.',
     activeOnlyEdit: 'يمكن تعديل الأهداف النشطة فقط؛ تبقى النتائج المكتملة أو المنتهية محفوظة كما هي.',
-    proposalHint: 'الاقتراح مبني على نشاط العميل خلال آخر 7 أيام. يمكنك مراجعة قيم هذا الهدف قبل إنشائه.',
+    proposalHint: 'الاقتراح مبني على الأجهزة المسلّمة والمعترف بها ماليًا خلال آخر 28 يومًا مع وزن أكبر للأسبوع الأخير. يمكنك مراجعة القيم قبل الإنشاء.',
+    proposalGenerated: 'تم إنشاء اقتراح ذكي بنجاح بناءً على نشاط التسليم الفعلي.',
+    proposalFailed: 'فشل إنشاء الاقتراح الذكي؛ القيم الظاهرة ليست اقتراحًا ذكيًا جديدًا. راجع الخطأ قبل المتابعة.',
     currentPolicy: 'القواعد الحالية للأهداف واقتراح المكافأة',
-    durationRule: 'مدة اقتراح الهدف عشوائية بين 3 و15 يومًا؛ ويمكن ضبط مدة كل هدف ضمن هذا النطاق.',
-    targetRule: 'يُحسب الهدف من وتيرة العميل خلال آخر 7 أيام مع تحدٍ إضافي، وبحد أدنى 10 أجهزة.',
+    durationRule: 'مدة الاقتراح تتكيف مع وتيرة العميل ضمن حدود السياسة 3–15 يومًا، مع خيارات أقصر للعملاء النشطين.',
+    targetRule: 'يُحسب الهدف من نشاط التسليم خلال 28 يومًا مع وزن أكبر للأسبوع الأخير وتحدٍ إضافي مضبوط، وبحد أدنى 10 أجهزة.',
     rewardRule: 'اقتراح المكافأة يستخدم 8–13 أغورة لكل جهاز وبحد أدنى 80 أغورة؛ السقف الأقصى 20 أغورة لكل جهاز مستهدف. عند التعديل اليدوي، يفرض الخادم السقف ويسمح بصفر وفق القواعد الحالية.',
     policyHint: 'يمكن للسوبر أدمن ضبط الهدف والمدة والمكافأة لكل هدف. لم يتم تغيير قواعد الخادم العامة في هذه المرحلة.',
     required: 'يرجى استكمال الحقول المطلوبة بقيم صحيحة.',
@@ -196,10 +200,12 @@ export const GoalsPage: React.FC = () => {
     loadError: 'Unable to load goal data.',
     noPermission: 'You do not have permission to view Goals.',
     activeOnlyEdit: 'Only active goals can be edited. Completed and failed outcomes remain immutable.',
-    proposalHint: 'The proposal uses the customer’s activity over the last 7 days. Review the values before creating the goal.',
+    proposalHint: 'The proposal uses delivered, financially recognized devices from the last 28 days, weighted toward the latest week. Review values before creating the goal.',
+    proposalGenerated: 'A smart proposal was generated successfully from actual delivery activity.',
+    proposalFailed: 'Smart proposal generation failed. The displayed values are not a new smart proposal; review the error before continuing.',
     currentPolicy: 'Current goal and reward-proposal rules',
-    durationRule: 'The suggested duration is randomized between 3 and 15 days; each goal can be configured within that range.',
-    targetRule: 'The target uses the customer’s recent 7-day pace plus a stretch allowance, with a minimum of 10 devices.',
+    durationRule: 'Suggested duration adapts to the customer’s pace within the 3–15 day policy limits, with shorter options for highly active customers.',
+    targetRule: 'The target uses delivered activity from 28 days, weighted toward the latest week, with a controlled stretch and a minimum of 10 devices.',
     rewardRule: 'Proposal rewards use 8–13 agorot per device with a proposal minimum of 80 minor units; the hard cap is 20 agorot per target device. Manual edits follow the current server contract, which enforces the cap and permits zero.',
     policyHint: 'Super Admin can tune the target, duration, and reward per goal. Global server rules are unchanged in this phase.',
     required: 'Please complete the required fields with valid values.',
@@ -341,6 +347,8 @@ export const GoalsPage: React.FC = () => {
       return;
     }
     setProposalLoading(true);
+    setProposalGenerated(false);
+    setProposalFailed(false);
     setError('');
     setSuccess('');
     try {
@@ -349,7 +357,10 @@ export const GoalsPage: React.FC = () => {
       setTargetQuantity(String(result.data.targetQuantity));
       setDurationDays(String(result.data.durationDays));
       setBonusIls((result.data.bonusAmountMinor / 100).toFixed(2));
+      setProposalGenerated(true);
     } catch (cause) {
+      setProposalGenerated(false);
+      setProposalFailed(true);
       reportOperationError('generate customer proposal', cause);
     } finally {
       setProposalLoading(false);
@@ -659,8 +670,10 @@ export const GoalsPage: React.FC = () => {
         <section className="grid items-start gap-6 xl:grid-cols-2">
           <form onSubmit={createGoal} className="space-y-4 border-t border-gray-200 pt-5 dark:border-[#17443b]">
             <div><h2 className="text-lg font-bold text-gray-950 dark:text-[#daf1de]">{copy.createTitle}</h2><p className="mt-1 text-sm text-gray-500 dark:text-[#8eb698]">{copy.proposalHint}</p></div>
-            <label className="block space-y-1.5 text-sm"><span className="font-medium text-gray-700 dark:text-[#a8c9b0]">{copy.chooseCustomer}</span><select value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)} required className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-[#1d5147] dark:bg-[#0b302a] dark:text-[#daf1de]"><option value="">{copy.chooseCustomer}</option>{data.customers.filter((customer) => customer.isActive).map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
+            <label className="block space-y-1.5 text-sm"><span className="font-medium text-gray-700 dark:text-[#a8c9b0]">{copy.chooseCustomer}</span><select value={selectedCustomerId} onChange={(event) => { setSelectedCustomerId(event.target.value); setProposalGenerated(false); setProposalFailed(false); }} required className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-[#1d5147] dark:bg-[#0b302a] dark:text-[#daf1de]"><option value="">{copy.chooseCustomer}</option>{data.customers.filter((customer) => customer.isActive).map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
             <Button type="button" variant="outline" onClick={generateProposal} disabled={!selectedCustomerId || proposalLoading}>{proposalLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}{proposalLoading ? copy.generating : copy.generateProposal}</Button>
+            {proposalGenerated && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{copy.proposalGenerated}</p>}
+            {proposalFailed && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{copy.proposalFailed}</p>}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <label className="space-y-1.5 text-sm"><span className="font-medium text-gray-700 dark:text-[#a8c9b0]">{copy.target}</span><input type="number" min="1" step="1" required value={targetQuantity} onChange={(event) => setTargetQuantity(event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-[#1d5147] dark:bg-[#0b302a] dark:text-[#daf1de]" /></label>
               <label className="space-y-1.5 text-sm"><span className="font-medium text-gray-700 dark:text-[#a8c9b0]">{copy.duration}</span><input type="number" min="3" max="15" step="1" required value={durationDays} onChange={(event) => setDurationDays(event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-[#1d5147] dark:bg-[#0b302a] dark:text-[#daf1de]" /></label>
