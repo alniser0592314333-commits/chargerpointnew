@@ -8,6 +8,7 @@ import {
   DEFAULT_ORDER_QR_DESIGN,
 } from '../qr/defaultDesigns';
 import { QrDesignRenderer } from '../qr/QrDesignRenderer';
+import { queueQrDesignSetting } from './dayOrdersStore';
 import { Button } from '../ui/Button';
 import {
   Check,
@@ -101,11 +102,18 @@ export const QrDesignSettingsPage: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
 
-  // Save handler: Commits Draft to Active Design
-  const handleSave = () => {
-    setActiveQrDesign(selectedType, currentDraft);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+  // Save through the canonical outbox before reporting success.
+  const handleSave = async () => {
+    setSavedSuccess(false);
+    try {
+      await queueQrDesignSetting(selectedType, currentDraft);
+      setActiveQrDesign(selectedType, currentDraft);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to queue QR design setting:', error);
+      window.alert(locale === 'ar' ? 'تعذر حفظ التصميم للمزامنة.' : 'Could not queue the design for sync.');
+    }
   };
 
   // Reset handler: Reverts Draft to Default without touching the other type
