@@ -256,7 +256,12 @@ export const QrDesignRenderer: React.FC<QrDesignRendererProps> = ({
       style={{
         borderRadius: `${design.borderRadius}px`,
         padding: `${design.padding}px`,
+        width: '100%',
         maxWidth: '380px',
+        boxSizing: 'border-box',
+        // Keep the live card's outer frame in the exact print-target ratio on
+        // the design screen and on customer/order QR detail pages alike.
+        aspectRatio: `${design.printTarget.widthMm} / ${design.printTarget.heightMm}`,
       }}
       className={`bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] mx-auto shadow-md text-center transition-colors print:border print:border-black print:shadow-none print:bg-white print:p-6 print:max-w-none print:w-full space-y-3 ${className}`}
     >
