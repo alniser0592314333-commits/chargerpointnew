@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
+import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import {
@@ -34,22 +34,7 @@ import {
 export const QrDesignSettingsPage: React.FC = () => {
   const { t, locale } = useI18n();
 
-  // Selected Type: CUSTOMER vs ORDER (strictly independent)
-  const [selectedType, setSelectedType] = useState<QRDesignType>('CUSTOMER');
-
-  // Draft States (Presentation-only, isolated per type, not committed until Save)
-  const [draftCustomer, setDraftCustomer] = useState<QRDesignConfig>(() =>
-    getActiveQrDesign('CUSTOMER')
-  );
-  const [draftOrder, setDraftOrder] = useState<QRDesignConfig>(() =>
-    getActiveQrDesign('ORDER')
-  );
-
-  const [savedSuccess, setSavedSuccess] = useState(false);
-  const lastCommittedRef = useRef({ CUSTOMER: getActiveQrDesign('CUSTOMER'), ORDER: getActiveQrDesign('ORDER') });
-
-  useEffect(() => subscribeQrDesignChanges((type, design, source) => {
-  // Pull only new change-log entries while a QR screen is visible; the bridge coalesces concurrent pulls.
+  // Pull only new change-log entries while this QR screen is visible.
   useEffect(() => {
     let running = false;
     const pullNewChanges = async () => {
@@ -69,6 +54,21 @@ export const QrDesignSettingsPage: React.FC = () => {
     };
   }, []);
 
+  // Selected Type: CUSTOMER vs ORDER (strictly independent)
+  const [selectedType, setSelectedType] = useState<QRDesignType>('CUSTOMER');
+
+  // Draft States (Presentation-only, isolated per type, not committed until Save)
+  const [draftCustomer, setDraftCustomer] = useState<QRDesignConfig>(() =>
+    getActiveQrDesign('CUSTOMER')
+  );
+  const [draftOrder, setDraftOrder] = useState<QRDesignConfig>(() =>
+    getActiveQrDesign('ORDER')
+  );
+
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  const lastCommittedRef = useRef({ CUSTOMER: getActiveQrDesign('CUSTOMER'), ORDER: getActiveQrDesign('ORDER') });
+  useEffect(() => subscribeQrDesignChanges((type, design, source) => {
     const previous = lastCommittedRef.current[type];
     const draft = type === 'CUSTOMER' ? draftCustomer : draftOrder;
     const wasClean = JSON.stringify(draft) === JSON.stringify(previous);
@@ -79,6 +79,7 @@ export const QrDesignSettingsPage: React.FC = () => {
       setSavedSuccess(false);
     }
   }), [draftCustomer, draftOrder]);
+
 
   // Accordion State: Only one section open at a time (default: 'spacing' / dimensions)
   const [activeSection, setActiveSection] = useState<string | null>('spacing');
@@ -137,7 +138,7 @@ export const QrDesignSettingsPage: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
 
-  // Save through the canonical outbox before reporting success.
+  // Save handler: Commits Draft to Active Design
   const handleSave = async () => {
     setSavedSuccess(false);
     try {
