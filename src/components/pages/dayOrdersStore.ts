@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FinalUseCases, RepositoryContext } from '../../application/useCases';
 import { AuthorizationContext, BinVerifierFn } from '../../application/authContext';
-import { calculateItemPrice, calculateOrderProjection } from '../../domain/rules';
+import { calculateItemPrice, calculateOrderProjection, validateOrderTransition } from '../../domain/rules';
 import {
   CustomerEntity,
   DeviceTypeEntity,
@@ -4014,13 +4014,14 @@ export const deliverSingleOrderItem = async (
 
 export const deliverEntireOrder = async (
   orderId: string,
-  bin: string = ''
+  bin: string = '',
+  options?: { binAlreadyVerified?: boolean }
 ): Promise<{ success: boolean; deliveredCount?: number; error?: string }> => {
   await ensureStoreHydrated();
   try {
     const offline = isBrowserOffline();
     const auth = getAuthorizedAdminContext(bin);
-    if (!offline) await auth.verifyBin(bin);
+    if (!offline && !options?.binAlreadyVerified) await auth.verifyBin(bin);
     const orderEntity = await repoContext.orderRepo.findById(orderId);
     if (!orderEntity) return { success: false, error: 'الطلب غير موجود' };
     if (orderEntity.status === 'cancelled') return { success: false, error: 'الطلب ملغى' };
@@ -4032,7 +4033,7 @@ export const deliverEntireOrder = async (
     let count = 0;
     for (const item of items) {
       if (item.status !== 'delivered' && item.status !== 'cancelled') {
-        await phase5UseCases.deliverOrderItem(auth, item.id, bin, { deferBinVerification: offline });
+        await phase5UseCases.deliverOrderItem(auth, item.id, bin, { deferBinVerification: offline, binAlreadyVerified: !offline });
         count++;
       }
     }
@@ -4056,20 +4057,84 @@ export const updateOrderWithPhase5Engine = async (
     const order = await repoContext.orderRepo.findById(orderId);
     if (!order) return { success: false, error: 'الطلب غير موجود' };
 
-    // 1. Update Order Notes if changed
+    const offline = isBrowserOffline();
+    const auth = getAuthorizedAdminContext(bin);
+    const initialItems = await repoContext.itemRepo.findByOrderId(orderId);
+    const removeIds = new Set(existingItemIdsToRemove);
+    const itemsById = new Map(initialItems.map((item) => [item.id, item]));
+
+    // Validate the complete requested edit before queueing any local command.
+    // This prevents a missing/invalid BIN or an impossible status transition from
+    // leaving notes/additions queued while the requested removal is rejected.
+    if (removeIds.size !== existingItemIdsToRemove.length ||
+        existingItemIdsToRemove.some((id) => !itemsById.has(id))) {
+      return { success: false, error: 'تغيّرت عناصر الطلب. أعد فتح الطلب وراجع الأجهزة قبل الحفظ.' };
+    }
+
+    const hasAnyEdit =
+      newNotes !== (order.notes || '') ||
+      newItemsToAdd.length > 0 ||
+      existingItemIdsToRemove.length > 0 ||
+      newStatus !== order.status;
+
+    if (order.status === 'cancelled' && hasAnyEdit) {
+      return { success: false, error: 'لا يمكن تعديل طلب ملغي.' };
+    }
+
+    const predictedItems = [
+      ...initialItems
+        .filter((item) => !removeIds.has(item.id))
+        .map((item) => ({ status: item.status })),
+      ...newItemsToAdd.map(() => ({ status: 'charging' })),
+    ];
+    const predictedStatus = calculateOrderProjection(predictedItems, order.status);
+
+    if (newStatus === 'pending' && predictedStatus !== 'pending') {
+      throw new ConflictError(`Invalid order status transition from '${predictedStatus}' to 'pending'`);
+    }
+    if (newStatus === 'charging' && predictedStatus !== 'charging') {
+      throw new ConflictError(`Invalid order status transition from '${predictedStatus}' to 'charging'`);
+    }
+    if (newStatus === 'cancelled' && order.status !== 'cancelled') {
+      validateOrderTransition(order.status, 'cancelled');
+    }
+    if (newStatus === 'delivered' && order.status === 'cancelled') {
+      throw new ConflictError("A cancelled order cannot be delivered");
+    }
+
+    const hasUndeliveredActiveItemAfterEdits = predictedItems.some(
+      (item) => item.status !== 'delivered' && item.status !== 'cancelled'
+    );
+    const requiresBin =
+      existingItemIdsToRemove.length > 0 ||
+      (newStatus === 'delivered' &&
+        (newStatus !== order.status || hasUndeliveredActiveItemAfterEdits)) ||
+      (newStatus === 'cancelled' && newStatus !== order.status);
+
+    if (!offline && requiresBin) {
+      await auth.verifyBin(bin || '');
+    }
+    const binAlreadyVerified = !offline && requiresBin;
+
+    // 1. Update Order Notes if changed (after all local preflight checks).
     if (newNotes !== (order.notes || '')) {
-      await phase5UseCases.editOrderNotes(getAuthorizedAdminContext(), orderId, newNotes);
+      await phase5UseCases.editOrderNotes(auth, orderId, newNotes);
     }
 
-    // 2. Remove specified existing items during edit
+    // 2. Removing an existing device is a cancellation, not a physical delete.
+    // The canonical command preserves the item and lets the server reverse any
+    // recognized charge exactly once.
     for (const itemId of existingItemIdsToRemove) {
-      await phase5UseCases.removeOrderItemDuringEdit(getAuthorizedAdminContext(bin), itemId);
+      await phase5UseCases.removeOrderItemDuringEdit(auth, itemId, bin || '', {
+        deferBinVerification: offline,
+        binAlreadyVerified,
+      });
     }
 
-    // 3. Add new items using addOrderItem Use Case
+    // 3. Add new items using the existing application boundary.
     for (const item of newItemsToAdd) {
       const itemRes = await phase5UseCases.addOrderItem(
-        getAuthorizedAdminContext(bin),
+        auth,
         orderId,
         item.deviceTypeId,
         item.hasCharger
@@ -4081,10 +4146,6 @@ export const updateOrderWithPhase5Engine = async (
     }
 
     // 4. Resolve status against the effective item state AFTER edits.
-    // A previously delivered parent order can become visually "charging" when a
-    // new device is added. In that case order.status remains 'delivered' on the
-    // parent row, so comparing newStatus with order.status would incorrectly
-    // skip delivery of the newly added item.
     const effectiveItemsAfterEdits = await repoContext.itemRepo.findByOrderId(orderId);
     const hasUndeliveredActiveItem = effectiveItemsAfterEdits.some(
       (item) => item.status !== 'delivered' && item.status !== 'cancelled'
@@ -4095,26 +4156,25 @@ export const updateOrderWithPhase5Engine = async (
       if (currentProjectedStatus !== 'pending') {
         throw new ConflictError(`Invalid order status transition from '${currentProjectedStatus}' to 'pending'`);
       }
+    } else if (newStatus === 'charging') {
+      const currentProjectedStatus = calculateOrderProjection(effectiveItemsAfterEdits, order.status);
+      if (currentProjectedStatus !== 'charging') {
+        throw new ConflictError(`Invalid order status transition from '${currentProjectedStatus}' to 'charging'`);
+      }
     } else if (newStatus === 'delivered') {
-      // Delivery is item-scoped and financial recognition is also item-scoped.
-      // Deliver only active items that are not already delivered; this guarantees
-      // that an already-delivered historical device is never charged again while
-      // a newly added charging device is recognized exactly once.
+      // Only undelivered active items are delivered/recognized. Already-delivered
+      // items remain immutable and are never charged a second time.
       if (hasUndeliveredActiveItem) {
-        const deliverRes = await deliverEntireOrder(orderId, bin || '');
+        const deliverRes = await deliverEntireOrder(orderId, bin || '', { binAlreadyVerified });
         if (!deliverRes.success) {
           return { success: false, error: deliverRes.error || 'فشل تسليم الطلب' };
         }
       }
     } else if (newStatus === 'cancelled' && order.status !== 'cancelled') {
-      const auth = getAuthorizedAdminContext(bin);
-      if (isBrowserOffline()) {
-        // Cancellation remains local-first offline; the server will enforce BIN when the queued command is authorized online.
-        await phase5UseCases.cancelOrder(auth, orderId, '', { deferBinVerification: true });
-      } else {
-        await auth.verifyBin(bin || '');
-        await phase5UseCases.cancelOrder(auth, orderId, bin || '');
-      }
+      await phase5UseCases.cancelOrder(auth, orderId, bin || '', {
+        deferBinVerification: offline,
+        binAlreadyVerified,
+      });
     }
 
     return { success: true };
@@ -4157,7 +4217,7 @@ export const deliverAllOrdersInDay = async (
       let deliveredInThisOrder = false;
       for (const item of items) {
         if (item.status !== 'delivered' && item.status !== 'cancelled') {
-          await phase5UseCases.deliverOrderItem(auth, item.id, bin, { deferBinVerification: offline });
+          await phase5UseCases.deliverOrderItem(auth, item.id, bin, { deferBinVerification: offline, binAlreadyVerified: !offline });
           deliveredInThisOrder = true;
         }
       }
