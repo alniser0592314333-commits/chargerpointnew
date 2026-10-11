@@ -75,7 +75,7 @@ export const CustomerDetailPage: React.FC<CustomerDetailPageProps> = ({
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [isHistoryError, setIsHistoryError] = useState(false);
 const [isLoading, setIsLoading] = useState(true);
-  const paymentStoreVersion = useStoreSubscription(['orderItems', 'paymentAllocations', 'payments', 'financialLedger']);
+  const paymentStoreVersion = useStoreSubscription(['orders', 'orderItems', 'paymentAllocations', 'payments', 'financialLedger']);
   const [isError, setIsError] = useState(false);
 
   // Active record view tab ('orders' or 'financial')
