@@ -160,9 +160,9 @@ export function calculateGoalBonusCapMinor(targetQuantity: number): number {
 }
 
 /**
- * Generates a duration-scaled target from the customer's recent seven-day delivered
- * pace. The target includes at least 10 extra devices or 25% stretch, whichever is
- * larger, and never drops below 10 devices.
+ * Legacy proposal policy note: proposals should be based on delivered activity,
+ * with an adaptive stretch and a minimum target of 10 devices. The production
+ * implementation is being revised to use a 28-day activity profile.
  */
 export interface GeneratedGoalProposal {
   targetQuantity: number;
