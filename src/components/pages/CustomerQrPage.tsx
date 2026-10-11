@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
 import { useI18n } from '../../i18n/i18nContext';
 import { getCustomerQrCardData, UICustomerQrCardData } from './dayOrdersStore';
 import { CustomerQrCard } from '../qr/CustomerQrCard';
@@ -21,6 +22,26 @@ export const CustomerQrPage: React.FC<CustomerQrPageProps> = ({ customerId, onBa
   const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
+  // Pull only new change-log entries while a QR screen is visible; the bridge coalesces concurrent pulls.
+  useEffect(() => {
+    let running = false;
+    const pullNewChanges = async () => {
+      if (running || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      running = true;
+      try { await globalSyncBridge.requestLatestDataReload(); }
+      catch (error) { console.warn('QR design cloud refresh failed:', error); }
+      finally { running = false; }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') void pullNewChanges(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(() => { void pullNewChanges(); }, 20000);
+    void pullNewChanges();
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
     let active = true;
     setIsLoading(true);
     setIsError(false);
