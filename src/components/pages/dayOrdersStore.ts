@@ -2664,10 +2664,12 @@ export const generateCustomerGoalProposalForAdmin = async (customerId: string) =
   const profile = Array.from({ length: 28 }, () => 0);
   for (const item of itemsMap.values()) {
     if (item.deletedAt || item.status !== 'delivered' || item.financialStatus !== 'RECOGNIZED' ||
-        item.replacementOfItemId || !item.deliveredAt) continue;
+        item.replacementOfItemId) continue;
     const order = ordersMap.get(item.orderId);
     if (!order || order.customerId !== customerId || order.deletedAt || order.cancelledAt || order.status === 'cancelled') continue;
-    const deliveredAt = new Date(item.deliveredAt).getTime();
+    const deliveryTimestamp = item.deliveredAt || order.deliveredAt;
+    if (!deliveryTimestamp) continue;
+    const deliveredAt = new Date(deliveryTimestamp).getTime();
     if (!Number.isFinite(deliveredAt)) continue;
     const ageDays = Math.floor((now - deliveredAt) / (24 * 60 * 60 * 1000));
     if (ageDays < 0 || ageDays >= 28) continue;
