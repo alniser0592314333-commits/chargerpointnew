@@ -44,7 +44,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
   const [financialHistory, setFinancialHistory] = useState<UICustomerFinancialItem[]>([]);
   const [orders, setOrders] = useState<UICustomerOrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const paymentStoreVersion = useStoreSubscription(['orderItems', 'paymentAllocations', 'payments', 'financialLedger']);
+  const paymentStoreVersion = useStoreSubscription(['orders', 'orderItems', 'paymentAllocations', 'payments', 'financialLedger']);
 
   // Selector between Financial Ledger and Order History
   const [activeView, setActiveView] = useState<'financial' | 'orders'>('financial');
