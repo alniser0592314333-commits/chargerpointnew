@@ -198,7 +198,9 @@ export const downloadQrCard = async ({
               // ONLY draw center logo if design explicitly enables it with placement 'center'
               // Default design has placement: 'none' -> ZERO logo in center!
               if (design.logo.show && design.logo.placement === 'center') {
-                const logoSize = design.logo.size * 1.5;
+                // Match the preview exactly: the configured logo size is the rendered logo size.
+                // The independently configured circleSize controls only the QR knockout/safe zone.
+                const logoSize = design.logo.size;
                 const pos = calculateLogoPosition(
                   qrX,
                   qrY,
