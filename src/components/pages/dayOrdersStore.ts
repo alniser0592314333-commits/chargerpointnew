@@ -42,6 +42,8 @@ import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTra
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
 import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrder } from '../../domain/financialPresentation';
+import { QRDesignConfig, QRDesignType } from '../qr/types';
+import { setActiveQrDesign } from '../qr/defaultDesigns';
 
 const isBrowserOffline = (): boolean =>
   typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -331,6 +333,37 @@ export const applyRemoteChange = (change: {
   const p = change.payload || {};
   const entityType = change.entityType;
   const isDelete = change.action === 'DELETE' || change.action === 'TOMBSTONE';
+
+  if (entityType === 'system_settings') {
+    const key = String(p.key || '');
+    const designType: QRDesignType | null =
+      key === 'app_qr_design_config_CUSTOMER' ? 'CUSTOMER' :
+      key === 'app_qr_design_config_ORDER' ? 'ORDER' : null;
+    if (!designType) {
+      localDb.setWithTx(tx, 'system_settings', key || change.entityId, p);
+      notifyStoreAfterTransaction('all', key || change.entityId, tx);
+      return;
+    }
+    if (isDelete) {
+      // QR design settings are not deleted by normal sync commands; ignore tombstones
+      // rather than silently resetting a design that may have been changed locally.
+      return;
+    }
+    const incoming = p.valueJson ?? p.value_json;
+    if (!incoming || typeof incoming !== 'object' || incoming.designType !== designType) {
+      console.warn('Ignoring malformed remote QR design setting:', key);
+      return;
+    }
+    localDb.setWithTx(tx, 'system_settings', key, p);
+    const applyDesign = () => setActiveQrDesign(designType, incoming as QRDesignConfig, 'remote');
+    if (tx && typeof tx.addEventListener === 'function') {
+      tx.addEventListener('complete', applyDesign, { once: true });
+    } else {
+      applyDesign();
+    }
+    notifyStoreAfterTransaction('all', key, tx);
+    return;
+  }
 
   if (entityType === 'business_days' || entityType === 'businessDays') {
     if (isDelete) {
@@ -2612,6 +2645,29 @@ export const repoContext: RepositoryContext = {
 
 // Instantiate Authoritative Phase 5 UseCases
 export const phase5UseCases = new FinalUseCases(repoContext);
+
+/**
+ * Queues a QR design as a canonical system-setting command. The active design is
+ * committed by the caller only after the local command/outbox transaction succeeds.
+ */
+export const queueQrDesignSetting = async (type: QRDesignType, design: QRDesignConfig): Promise<void> => {
+  if (design.designType !== type) {
+    throw new Error(`Design type mismatch: expected ${type}, got ${design.designType}`);
+  }
+  await ensureStoreHydrated();
+  const key = `app_qr_design_config_${type}`;
+  const commandId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `qr-design-${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  await repoContext.transactionManager.runInTransaction((ctx) => {
+    ctx.commandRepo.record(commandId, 'SET_SYSTEM_SETTING', {
+      key,
+      valueType: 'json',
+      valueJson: JSON.parse(JSON.stringify(design)),
+      entityId: key,
+    });
+  });
+};
 
 // Runtime credential verifier hook for custom environment / test harness
 let runtimeBinVerifier: ((bin: string, actor: any) => boolean | Promise<boolean>) | null = null;
