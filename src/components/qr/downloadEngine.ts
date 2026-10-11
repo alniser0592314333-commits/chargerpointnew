@@ -74,7 +74,7 @@ export const downloadQrCard = async ({
 
   return new Promise((resolve, reject) => {
     const qrImg = new Image();
-    qrImg.onload = () => {
+    qrImg.onload = async () => {
       try {
         ctx.textAlign = 'center';
 
@@ -217,11 +217,19 @@ export const downloadQrCard = async ({
                   try {
                     const centerImg = new Image();
                     centerImg.crossOrigin = 'anonymous';
-                    centerImg.src = qrLogoUrl;
-                    if (centerImg.complete) {
-                      ctx.drawImage(centerImg, logoX, logoY, logoSize, logoSize);
-                    }
+                    await new Promise<void>((resolve, reject) => {
+                      centerImg.onload = () => resolve();
+                      centerImg.onerror = () => reject(new Error('Center QR logo failed to load'));
+                      centerImg.src = qrLogoUrl;
+
+                      // Handle cached data URLs and already-completed image requests.
+                      if (centerImg.complete && centerImg.naturalWidth > 0) {
+                        resolve();
+                      }
+                    });
+                    ctx.drawImage(centerImg, logoX, logoY, logoSize, logoSize);
                   } catch (e) {
+                    // Keep the QR downloadable if the optional logo cannot be loaded.
                     console.warn('[QR_DOWNLOAD] Failed to draw center logo', e);
                   }
                 }
