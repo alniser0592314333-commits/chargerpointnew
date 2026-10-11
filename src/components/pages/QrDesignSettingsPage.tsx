@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
 import { useI18n } from '../../i18n/i18nContext';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import {
@@ -48,6 +49,26 @@ export const QrDesignSettingsPage: React.FC = () => {
   const lastCommittedRef = useRef({ CUSTOMER: getActiveQrDesign('CUSTOMER'), ORDER: getActiveQrDesign('ORDER') });
 
   useEffect(() => subscribeQrDesignChanges((type, design, source) => {
+  // Pull only new change-log entries while a QR screen is visible; the bridge coalesces concurrent pulls.
+  useEffect(() => {
+    let running = false;
+    const pullNewChanges = async () => {
+      if (running || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      running = true;
+      try { await globalSyncBridge.requestLatestDataReload(); }
+      catch (error) { console.warn('QR design cloud refresh failed:', error); }
+      finally { running = false; }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') void pullNewChanges(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(() => { void pullNewChanges(); }, 20000);
+    void pullNewChanges();
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
     const previous = lastCommittedRef.current[type];
     const draft = type === 'CUSTOMER' ? draftCustomer : draftOrder;
     const wasClean = JSON.stringify(draft) === JSON.stringify(previous);
