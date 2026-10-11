@@ -81,6 +81,28 @@ export const downloadQrCard = async ({
 
         let currentY = design.padding * exportScale;
 
+        // The preview renders a top-positioned logo before all configured content sections.
+        if (design.logo.show && design.logo.placement === 'top') {
+          const topLogoUrl = getCanonicalQrLogo();
+          if (topLogoUrl) {
+            try {
+              const topLogo = new Image();
+              topLogo.crossOrigin = 'anonymous';
+              await new Promise<void>((resolve, reject) => {
+                topLogo.onload = () => resolve();
+                topLogo.onerror = () => reject(new Error('Top QR logo failed to load'));
+                topLogo.src = topLogoUrl;
+                if (topLogo.complete && topLogo.naturalWidth > 0) resolve();
+              });
+              const topLogoSize = design.logo.size * exportScale;
+              ctx.drawImage(topLogo, (width - topLogoSize) / 2, currentY, topLogoSize, topLogoSize);
+              currentY += (design.logo.size + design.spacing) * exportScale;
+            } catch (e) {
+              console.warn('[QR_DOWNLOAD] Failed to draw top logo', e);
+            }
+          }
+        }
+
         for (const section of design.contentOrder) {
           switch (section) {
             case 'chargingPointTop': {
@@ -273,10 +295,10 @@ export const downloadQrCard = async ({
                 locale === 'en'
                   ? design.thankYouMessage.textEn
                   : design.thankYouMessage.textAr;
-              ctx.font = 'medium 15px sans-serif';
-              ctx.fillStyle = '#6b7280';
+              ctx.font = `${design.typography.bodySize * exportScale}px sans-serif`;
+              ctx.fillStyle = design.foregroundColor || '#6b7280';
               ctx.fillText(text, width / 2, currentY);
-              currentY += 24;
+              currentY += (design.typography.bodySize + design.spacing * 0.35) * exportScale;
               break;
             }
 
