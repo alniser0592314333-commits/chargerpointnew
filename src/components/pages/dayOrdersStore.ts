@@ -179,6 +179,59 @@ const reservationsMap = new Map<string, OrderNumberReservationEntity>();
 const goalsMap = new Map<string, GoalEntity>();
 const goalRequestsMap = new Map<string, GoalRequestEntity>();
 
+/**
+ * Builds the effective local-first order read model from persisted entities plus
+ * pending optimistic overlays. Overlay sequence is authoritative: hydration order
+ * is not guaranteed, and applying a stale CREATE after a later PATCH can resurrect
+ * removed devices or hide the current order state.
+ */
+export const buildEffectiveOrderItemReadModel = (
+  baseOrders: Iterable<OrderEntity>,
+  baseItems: Iterable<OrderItemEntity>,
+  overlays: readonly OptimisticOverlayRecord[]
+): { orders: Map<string, OrderEntity>; items: Map<string, OrderItemEntity> } => {
+  const orders = new Map(Array.from(baseOrders, (order) => [order.id, order]));
+  const items = new Map(Array.from(baseItems, (item) => [item.id, item]));
+
+  const orderedOverlays = overlays
+    .filter((overlay) => overlay.status === 'PENDING')
+    .slice()
+    .sort((a, b) => {
+      const seqA = Number(a.sequence ?? 0);
+      const seqB = Number(b.sequence ?? 0);
+      if (seqA !== seqB) return seqA - seqB;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+
+  for (const overlay of orderedOverlays) {
+    const isOrder = overlay.entityType === 'orders' || overlay.entityType === 'order';
+    const isItem = overlay.entityType === 'order_items' || overlay.entityType === 'orderItems';
+    if (!isOrder && !isItem) continue;
+
+    const target = isOrder ? orders : items;
+    const base = target.get(overlay.entityId);
+    if (overlay.operation === 'DELETE') {
+      target.delete(overlay.entityId);
+      continue;
+    }
+
+    const payload = (overlay.patch || overlay.entityPayload || {}) as Record<string, unknown>;
+    // A PATCH without a base is only valid when a preceding pending CREATE
+    // supplied that entity; otherwise do not fabricate an incomplete record.
+    if (!base && overlay.operation === 'PATCH') continue;
+    target.set(overlay.entityId, {
+      ...(base || {}),
+      ...payload,
+      id: overlay.entityId,
+    } as OrderEntity & OrderItemEntity);
+  }
+
+  return { orders, items };
+};
+
+const getEffectiveOrderItemReadModel = () =>
+  buildEffectiveOrderItemReadModel(ordersMap.values(), itemsMap.values(), localDb.listOverlaysSync());
+
 // Runtime Identity Resolver (No fake fallback in production)
 export function getAuthenticatedIdentity(): { actorAdminId: string; deviceId: string } {
   const storage = typeof localStorage !== 'undefined' ? localStorage : null;
@@ -3355,7 +3408,7 @@ export const searchCustomersAndOrders = async (
       if (ord.displayNumber === targetOrderNum) {
         const cust = customersMap.get(ord.customerId);
         const day = daysMap.get(ord.dayId);
-        const items = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
+        const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
         const totalMinor = items.reduce((sum, it) => sum + it.totalPriceMinor, 0);
 
         matchingOrders.push({
@@ -3585,10 +3638,13 @@ export const getCustomerOrders = async (
   if (!cust) return [];
 
   const targetId = cust.id;
-  const custOrders = Array.from(ordersMap.values()).filter((o) => o.customerId === targetId);
+  const effective = getEffectiveOrderItemReadModel();
+  const effectiveOrdersMap = effective.orders;
+  const effectiveItemsMap = effective.items;
+  const custOrders = Array.from(effectiveOrdersMap.values()).filter((o) => o.customerId === targetId);
 
   const summaries: UICustomerOrderSummary[] = [];
-  const allocMap = computeCustomerOrderPaymentStatuses(targetId);
+  const allocMap = computeCustomerOrderPaymentStatuses(targetId, effectiveOrdersMap, effectiveItemsMap);
 
   for (const ord of custOrders) {
     const items = Array.from(itemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
@@ -3656,6 +3712,9 @@ export const getCustomerFinancialHistory = async (
   if (!cust) return [];
 
   const targetId = cust.id;
+  const effective = getEffectiveOrderItemReadModel();
+  const effectiveOrdersMap = effective.orders;
+  const effectiveItemsMap = effective.items;
   const rawEvents = await repoContext.ledgerRepo.findByCustomer(targetId);
 
   // Sort ascending by time (oldest first) to compute running post-transaction balances
@@ -3674,12 +3733,12 @@ export const getCustomerFinancialHistory = async (
     let orderTotalMinor: number | undefined;
 
     if (ev.orderId) {
-      const ord = ordersMap.get(ev.orderId);
+      const ord = effectiveOrdersMap.get(ev.orderId);
       if (ord) {
         orderDisplayNumber = ord.displayNumber;
       }
       if (ev.eventType === 'ORDER_ITEM_CHARGE' && ev.orderItemId) {
-        const targetItem = itemsMap.get(ev.orderItemId);
+        const targetItem = effectiveItemsMap.get(ev.orderItemId);
         if (targetItem) {
           const devName = getItemLocalizedDeviceName(targetItem.deviceTypeId || targetItem.deviceNameSnapshot, locale);
           orderItems = [
@@ -3694,7 +3753,7 @@ export const getCustomerFinancialHistory = async (
         }
       }
       if (!orderItems) {
-        const rawItems = Array.from(itemsMap.values()).filter((i) => i.orderId === ev.orderId && i.status !== 'cancelled');
+        const rawItems = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ev.orderId && i.status !== 'cancelled');
         if (rawItems.length > 0) {
           orderItems = rawItems.map((i, rawIdx) => {
             const devName = getItemLocalizedDeviceName(i.deviceTypeId || i.deviceNameSnapshot, locale);
