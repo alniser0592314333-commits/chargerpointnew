@@ -26,11 +26,11 @@ export interface CustomerFinancialHistoryDisplayItem {
   orderTotalMinor?: number;
 }
 
-export function groupCustomerFinancialHistoryByOrder<T extends CustomerFinancialHistoryDisplayItem>(
-  history: T[],
+export function groupCustomerFinancialHistoryByOrder(
+  history: CustomerFinancialHistoryDisplayItem[],
   locale: 'ar' | 'en' = 'ar'
-): T[] {
-  const ordinaryRows: T[] = [];
+): CustomerFinancialHistoryDisplayItem[] {
+  const ordinaryRows: CustomerFinancialHistoryDisplayItem[] = [];
   const chargesByOrder = new Map<string, T[]>();
 
   for (const row of history) {
@@ -44,7 +44,7 @@ export function groupCustomerFinancialHistoryByOrder<T extends CustomerFinancial
     else chargesByOrder.set(row.orderId, [row]);
   }
 
-  const groupedRows: T[] = [...ordinaryRows];
+  const groupedRows: CustomerFinancialHistoryDisplayItem[] = [...ordinaryRows];
 
   for (const [orderId, charges] of chargesByOrder) {
     if (charges.length === 1) {
