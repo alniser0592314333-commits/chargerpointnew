@@ -13,6 +13,7 @@ export interface CustomerFinancialHistoryDisplayItem {
   postBalanceMinor: number;
   createdAt: string;
   orderId?: string;
+  orderItemId?: string;
   orderDisplayNumber?: number;
   description: string;
   shortTitle: string;
@@ -158,6 +159,7 @@ export interface HomeFinancialActivityDisplayItem {
   description: string;
   createdAt: string;
   orderId?: string;
+  orderItemId?: string;
   orderNumber?: number;
 }
 
