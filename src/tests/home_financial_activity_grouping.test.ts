@@ -16,6 +16,15 @@ const charge = (overrides: Partial<HomeFinancialActivityDisplayItem> = {}): Home
 });
 
 describe('home recent financial activity grouping', () => {
+  test('preserves the order business date when recent activity rows are grouped', () => {
+    const grouped = groupHomeFinancialActivitiesByOrder([
+      charge({ businessDate: '2026-10-12' }),
+      charge({ id: 'charge-2', businessDate: '2026-10-12', createdAt: '2026-10-12T01:00:00.000Z' }),
+    ], 'ar');
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].businessDate).toBe('2026-10-12');
+  });
+
   test('aggregates all item charges for an order into one display row', () => {
     const rows = [
       charge(),

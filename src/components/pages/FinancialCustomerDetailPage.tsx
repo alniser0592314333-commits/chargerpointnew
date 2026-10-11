@@ -39,7 +39,7 @@ export interface FinancialCustomerDetailPageProps {
 export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPageProps> = ({
   customerId,
 }) => {
-  const { t, locale, isRTL, formatDateTime, formatCurrency } = useI18n();
+  const { t, locale, isRTL, formatDate, formatDateTime, formatCurrency } = useI18n();
   const [customer, setCustomer] = useState<UICustomerDetail | null>(null);
   const [financialHistory, setFinancialHistory] = useState<UICustomerFinancialItem[]>([]);
   const [orders, setOrders] = useState<UICustomerOrderSummary[]>([]);
@@ -426,7 +426,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                               {item.shortTitle}
                             </p>
                             <p className="text-[11px] text-gray-400 dark:text-[#5e8674] mt-0.5">
-                              {formatDateTime(item.createdAt)}
+                              {item.businessDate ? formatDate(item.businessDate) : formatDateTime(item.createdAt)}
                             </p>
                           </div>
                         </div>
@@ -577,7 +577,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                               {getPaymentStatusBadge(ord.paymentStatus)}
                             </div>
                             <p className="text-[11px] text-gray-400 dark:text-[#5e8674] mt-0.5">
-                              {formatDateTime(ord.createdAt)}
+                              {formatDate(ord.businessDate || ord.createdAt)}
                             </p>
                           </div>
                         </div>

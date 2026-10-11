@@ -3555,6 +3555,8 @@ export interface UICustomerOrderSummary {
   id: string;
   orderNumber: number;
   dayId: string;
+  /** Business-day date (YYYY-MM-DD), distinct from the creation timestamp. */
+  businessDate: string;
   createdAt: string;
   status: string;
   paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
@@ -3636,6 +3638,7 @@ export const getCustomerOrders = async (
       id: ord.id || (ord as any).order_id || `order-${ord.displayNumber}-${summaries.length}`,
       orderNumber: ord.displayNumber,
       dayId: ord.dayId,
+      businessDate: getCanonicalDayKey(ord.dayId),
       createdAt: ord.createdAt,
       status: ord.status,
       paymentStatus,
@@ -3654,6 +3657,8 @@ export interface UICustomerFinancialItem {
   amountMinor: number;
   postBalanceMinor: number;
   createdAt: string;
+  /** Business date inherited from the linked order, not ledger event time. */
+  businessDate?: string;
   orderId?: string;
   orderItemId?: string;
   orderDisplayNumber?: number;
@@ -3827,6 +3832,9 @@ export const getCustomerFinancialHistory = async (
       amountMinor: ev.amountMinor,
       postBalanceMinor: runningBalance,
       createdAt: ev.createdAt,
+      ...(ev.orderId && effectiveOrdersMap.get(ev.orderId)
+        ? { businessDate: getCanonicalDayKey(effectiveOrdersMap.get(ev.orderId)!.dayId) }
+        : {}),
       orderId: ev.orderId,
       orderItemId: ev.orderItemId,
       orderDisplayNumber,
@@ -4776,6 +4784,8 @@ export interface UIRecentFinancialActivityItem {
   displayTitle: string;
   description: string;
   createdAt: string;
+  /** Business date for order-linked events; payments keep their actual event date. */
+  businessDate?: string;
   orderId?: string;
   orderItemId?: string;
   orderNumber?: number;
@@ -4917,6 +4927,7 @@ export const getTodayHomeData = async (
       displayTitle,
       description,
       createdAt: ev.createdAt,
+      ...(order ? { businessDate: getCanonicalDayKey(order.dayId) } : {}),
       ...(ev.orderId ? { orderId: ev.orderId } : {}),
       ...(ev.orderItemId ? { orderItemId: ev.orderItemId } : {}),
       ...(order ? { orderNumber: order.displayNumber } : {}),
