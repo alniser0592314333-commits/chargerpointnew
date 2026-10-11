@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import {
@@ -6,6 +6,7 @@ import {
   setActiveQrDesign,
   DEFAULT_CUSTOMER_QR_DESIGN,
   DEFAULT_ORDER_QR_DESIGN,
+  subscribeQrDesignChanges,
 } from '../qr/defaultDesigns';
 import { QrDesignRenderer } from '../qr/QrDesignRenderer';
 import { queueQrDesignSetting } from './dayOrdersStore';
@@ -44,6 +45,19 @@ export const QrDesignSettingsPage: React.FC = () => {
   );
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const lastCommittedRef = useRef({ CUSTOMER: getActiveQrDesign('CUSTOMER'), ORDER: getActiveQrDesign('ORDER') });
+
+  useEffect(() => subscribeQrDesignChanges((type, design, source) => {
+    const previous = lastCommittedRef.current[type];
+    const draft = type === 'CUSTOMER' ? draftCustomer : draftOrder;
+    const wasClean = JSON.stringify(draft) === JSON.stringify(previous);
+    lastCommittedRef.current[type] = design;
+    if (source === 'remote' && wasClean) {
+      if (type === 'CUSTOMER') setDraftCustomer(design);
+      else setDraftOrder(design);
+      setSavedSuccess(false);
+    }
+  }), [draftCustomer, draftOrder]);
 
   // Accordion State: Only one section open at a time (default: 'spacing' / dimensions)
   const [activeSection, setActiveSection] = useState<string | null>('spacing');
