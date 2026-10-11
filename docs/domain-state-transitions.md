@@ -3,7 +3,7 @@
 ## 1. Order Status Transitions
 - `pending` ➔ `charging`, `cancelled`
 - `charging` ➔ `delivered`, `cancelled`
-- `delivered` ➔ (Terminal state for order completion, though new items can be added)
+- `delivered` ➔ `cancelled` only through the audited cancellation path that reverses recognized financial charges; direct reopening to `pending` or `charging` is forbidden. New items may be added, which starts those new items in `charging` without reverting already-delivered items.
 - `cancelled` ➔ (Terminal state)
 
 ## 2. Order Item Status Transitions
