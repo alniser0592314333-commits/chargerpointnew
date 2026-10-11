@@ -3346,6 +3346,7 @@ export const searchCustomersAndOrders = async (
   limit?: number
 ): Promise<SearchCustomersAndOrdersResult> => {
   await ensureStoreHydrated();
+  const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
   const q = query ? query.trim() : '';
   const totalStoreCustomersCount = Array.from(customersMap.values()).filter((c) => c.isActive).length;
 
@@ -3369,7 +3370,7 @@ export const searchCustomersAndOrders = async (
     const targetOrderNum = parseInt(cleanOrderNum, 10);
     const matchingOrders: UIOrderSearchResult[] = [];
 
-    for (const ord of ordersMap.values()) {
+    for (const ord of effectiveOrdersMap.values()) {
       if (ord.displayNumber === targetOrderNum) {
         const cust = customersMap.get(ord.customerId);
         const day = daysMap.get(ord.dayId);
