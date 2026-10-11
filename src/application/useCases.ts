@@ -1609,26 +1609,30 @@ export class FinalUseCases {
    */
   async generateCustomerGoalProposal(
     auth: AuthorizationContext,
-    customerId: ID
+    customerId: ID,
+    deliveredActivityProfile?: number[]
   ): Promise<Result<{ targetQuantity: number; durationDays: number; bonusAmountMinor: number; expiresAt: string }>> {
     auth.requireAuth();
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
 
-    // Count customer items delivered in last 7 days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    let deliveredCount = 0;
+    // The hydrated canonical order-item profile is preferred so activity means
+    // delivered, financially recognized devices rather than recent ledger charges.
+    // Keep the ledger-based fallback for existing non-UI callers.
+    let activity: number | number[];
+    if (deliveredActivityProfile && deliveredActivityProfile.length > 0) {
+      activity = deliveredActivityProfile.slice(-28);
+    } else {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const ledger = await this.deps.ledgerRepo.findByCustomer(customerId);
+      const recentCharges = ledger.filter(
+        l => (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.createdAt >= sevenDaysAgo
+      );
+      const reversedItemIds = new Set(ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId).map(l => l.orderItemId!));
+      activity = new Set(recentCharges.filter(l => l.orderItemId && !reversedItemIds.has(l.orderItemId)).map(l => l.orderItemId!)).size;
+    }
 
-    // Fetch orders for customer
-    const ledger = await this.deps.ledgerRepo.findByCustomer(customerId);
-    const recentCharges = ledger.filter(
-      l => (l.eventType === 'CHARGE' || l.eventType === 'ORDER_ITEM_CHARGE') && l.createdAt >= sevenDaysAgo
-    );
-    const reversedItemIds = new Set(ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId).map(l => l.orderItemId!));
-    const qualifyingItemIds = new Set(recentCharges.filter(l => l.orderItemId && !reversedItemIds.has(l.orderItemId)).map(l => l.orderItemId!));
-    deliveredCount = qualifyingItemIds.size;
-
-    const proposal = generateGoalProposal(deliveredCount);
+    const proposal = generateGoalProposal(activity);
     return { success: true, data: proposal };
   }
 
