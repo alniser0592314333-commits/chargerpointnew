@@ -85,7 +85,9 @@ export function validateOrderTransition(current: OrderStatus, target: OrderStatu
     charging: ['delivered', 'cancelled'],
     OPEN: ['COMPLETED', 'cancelled'],
     COMPLETED: [],
-    delivered: [],
+    // Delivered orders may only move to cancelled through the reversal-backed cancellation command.
+    // Reopening directly to pending/charging remains forbidden.
+    delivered: ['cancelled'],
     cancelled: [],
   };
 
