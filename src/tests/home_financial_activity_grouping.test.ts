@@ -46,6 +46,29 @@ describe('home recent financial activity grouping', () => {
     expect(grouped.find(row => row.orderId === 'order-27' && row.customerId === 'customer-1')?.amountMinor).toBe(-100);
   });
 
+  test('nets item reversals into the order summary instead of showing a misleading gross charge', () => {
+    const rows: HomeFinancialActivityDisplayItem[] = [
+      charge({ id: 'charge-cancelled', orderItemId: 'item-cancelled', amountMinor: -100 }),
+      charge({ id: 'charge-active', orderItemId: 'item-active', amountMinor: -200, createdAt: '2026-10-11T11:00:00.000Z' }),
+      charge({
+        id: 'reversal-cancelled',
+        eventType: 'REVERSAL',
+        orderItemId: 'item-cancelled',
+        amountMinor: 100,
+        displayTitle: 'Reversal',
+        description: 'Reversal',
+        createdAt: '2026-10-11T12:00:00.000Z',
+      }),
+    ];
+
+    const grouped = groupHomeFinancialActivitiesByOrder(rows, 'en');
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0].amountMinor).toBe(-200);
+    expect(grouped[0].eventType).toBe('ORDER_ITEM_CHARGE');
+    expect(grouped[0].displayTitle).toBe('Net order balance #27');
+    expect(grouped[0].createdAt).toBe('2026-10-11T12:00:00.000Z');
+  });
+
   test('does not group legacy or unlinked charges', () => {
     const rows = [
       charge(),
