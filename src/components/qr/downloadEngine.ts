@@ -46,7 +46,8 @@ export const downloadQrCard = async ({
 
   // High-resolution canvas matching 5 x 6 cm ratio (e.g. 600 x 720 px)
   const width = 600;
-  const height = 720;
+  const exportScale = width / 380; // Scale the 380px preview card into the export canvas.
+  const height = Math.round(width * (design.printTarget.heightMm / design.printTarget.widthMm));
   canvas.width = width;
   canvas.height = height;
 
@@ -57,7 +58,7 @@ export const downloadQrCard = async ({
 
   // Subtle clean border matching card boundary
   ctx.strokeStyle = design.borderColor || '#e5e7eb';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = Math.max(1, exportScale);
   ctx.strokeRect(2, 2, width - 4, height - 4);
   ctx.restore();
 
@@ -78,7 +79,29 @@ export const downloadQrCard = async ({
       try {
         ctx.textAlign = 'center';
 
-        let currentY = 55;
+        let currentY = design.padding * exportScale;
+
+        // The preview renders a top-positioned logo before all configured content sections.
+        if (design.logo.show && design.logo.placement === 'top') {
+          const topLogoUrl = getCanonicalQrLogo();
+          if (topLogoUrl) {
+            try {
+              const topLogo = new Image();
+              topLogo.crossOrigin = 'anonymous';
+              await new Promise<void>((resolve, reject) => {
+                topLogo.onload = () => resolve();
+                topLogo.onerror = () => reject(new Error('Top QR logo failed to load'));
+                topLogo.src = topLogoUrl;
+                if (topLogo.complete && topLogo.naturalWidth > 0) resolve();
+              });
+              const topLogoSize = design.logo.size * exportScale;
+              ctx.drawImage(topLogo, (width - topLogoSize) / 2, currentY, topLogoSize, topLogoSize);
+              currentY += (design.logo.size + design.spacing) * exportScale;
+            } catch (e) {
+              console.warn('[QR_DOWNLOAD] Failed to draw top logo', e);
+            }
+          }
+        }
 
         for (const section of design.contentOrder) {
           switch (section) {
@@ -88,19 +111,19 @@ export const downloadQrCard = async ({
                 locale === 'en'
                   ? design.chargingPointLabel.textEn
                   : design.chargingPointLabel.textAr;
-              ctx.font = 'bold 18px sans-serif';
-              ctx.fillStyle = '#374151';
+              ctx.font = `bold ${design.typography.titleSize * exportScale}px sans-serif`;
+              ctx.fillStyle = design.foregroundColor || '#374151';
               ctx.fillText(text, width / 2, currentY);
-              currentY += 40;
+              currentY += (design.typography.titleSize + design.spacing) * exportScale;
               break;
             }
 
             case 'customerName': {
               if (!design.customerName.show || !customerContent?.customerName) break;
-              ctx.font = 'bold 30px sans-serif';
+              ctx.font = `bold ${design.typography.nameSize * exportScale}px sans-serif`;
               ctx.fillStyle = design.foregroundColor || '#111827';
               ctx.fillText(customerContent.customerName, width / 2, currentY);
-              currentY += 36;
+              currentY += (design.typography.nameSize + design.spacing * 0.5) * exportScale;
               break;
             }
 
@@ -110,10 +133,10 @@ export const downloadQrCard = async ({
                 locale === 'en'
                   ? design.customerCode.labelEn
                   : design.customerCode.labelAr;
-              ctx.font = 'bold 18px monospace';
-              ctx.fillStyle = '#4b5563';
+              ctx.font = `bold ${design.typography.codeSize * exportScale}px monospace`;
+              ctx.fillStyle = design.foregroundColor || '#4b5563';
               ctx.fillText(`${label}: ${customerContent.customerCode}`, width / 2, currentY);
-              currentY += 28;
+              currentY += (design.typography.codeSize + design.spacing * 0.35) * exportScale;
               break;
             }
 
@@ -122,45 +145,45 @@ export const downloadQrCard = async ({
                 locale === 'en'
                   ? design.chargingPointLabel.textEn
                   : design.chargingPointLabel.textAr;
-              ctx.font = 'bold 18px sans-serif';
-              ctx.fillStyle = '#374151';
+              ctx.font = `bold ${design.typography.titleSize * exportScale}px sans-serif`;
+              ctx.fillStyle = design.foregroundColor || '#374151';
               ctx.fillText(text, width / 2, currentY);
-              currentY += 40;
+              currentY += (design.typography.titleSize + design.spacing) * exportScale;
               break;
             }
 
             case 'orderNumber': {
               if (!orderContent?.orderNumber) break;
-              ctx.font = 'bold 30px sans-serif';
+              ctx.font = `bold ${design.typography.nameSize * exportScale}px sans-serif`;
               ctx.fillStyle = design.foregroundColor || '#111827';
               const text =
                 locale === 'en'
                   ? `Order #${orderContent.orderNumber}`
                   : `طلب #${orderContent.orderNumber}`;
               ctx.fillText(text, width / 2, currentY);
-              currentY += 34;
+              currentY += (design.typography.nameSize + design.spacing * 0.5) * exportScale;
               if (orderContent.customerName) {
-                ctx.font = 'bold 18px sans-serif';
-                ctx.fillStyle = '#4b5563';
+                ctx.font = `${design.typography.bodySize * exportScale}px sans-serif`;
+                ctx.fillStyle = design.foregroundColor || '#4b5563';
                 ctx.fillText(orderContent.customerName, width / 2, currentY);
-                currentY += 28;
+                currentY += (design.typography.bodySize + design.spacing * 0.35) * exportScale;
               }
               break;
             }
 
             case 'customerSnippet': {
               if (!orderContent?.customerCode) break;
-              ctx.font = '16px monospace';
-              ctx.fillStyle = '#6b7280';
+              ctx.font = `${design.typography.codeSize * exportScale}px monospace`;
+              ctx.fillStyle = design.foregroundColor || '#6b7280';
               ctx.fillText(orderContent.customerCode, width / 2, currentY);
-              currentY += 24;
+              currentY += (design.typography.codeSize + design.spacing * 0.35) * exportScale;
               break;
             }
 
             case 'qrCode': {
-              const qrDisplaySize = 340;
+              const qrDisplaySize = design.qr.size * exportScale;
               const qrX = (width - qrDisplaySize) / 2;
-              const qrY = currentY + 5;
+              const qrY = currentY + design.spacing * exportScale;
 
               // Draw white background for QR container
               ctx.fillStyle = '#ffffff';
@@ -168,7 +191,7 @@ export const downloadQrCard = async ({
 
               // Get True Render Matrix (True Module Knockout conditional on logoVisible)
               const logoVisible = design.logo.show && design.logo.placement === 'center';
-              const circleSize = design.logo.circleSize || 56;
+              const circleSize = (design.logo.circleSize || 56) * exportScale;
               const renderResult = createQrRenderMatrix(
                 identity.publicUrl,
                 design.qr.errorCorrectionLevel,
@@ -181,7 +204,8 @@ export const downloadQrCard = async ({
               const totalUnits = renderResult.size;
               const moduleSize = qrDisplaySize / totalUnits;
 
-              ctx.fillStyle = design.foregroundColor || '#000000';
+              // The preview QR matrix is intentionally black regardless of text foreground color.
+              ctx.fillStyle = '#000000';
               for (let r = 0; r < totalUnits; r++) {
                 for (let c = 0; c < totalUnits; c++) {
                   if (renderResult.matrix[r][c]) {
@@ -200,7 +224,7 @@ export const downloadQrCard = async ({
               if (design.logo.show && design.logo.placement === 'center') {
                 // Match the preview exactly: the configured logo size is the rendered logo size.
                 // The independently configured circleSize controls only the QR knockout/safe zone.
-                const logoSize = design.logo.size;
+                const logoSize = design.logo.size * exportScale;
                 const pos = calculateLogoPosition(
                   qrX,
                   qrY,
@@ -237,7 +261,7 @@ export const downloadQrCard = async ({
                 }
               }
 
-              currentY = qrY + qrDisplaySize + 28;
+              currentY = qrY + qrDisplaySize + design.spacing * exportScale;
               break;
             }
 
@@ -247,10 +271,10 @@ export const downloadQrCard = async ({
                 locale === 'en'
                   ? design.chargingPointLabel.textEn
                   : design.chargingPointLabel.textAr;
-              ctx.font = 'bold 18px sans-serif';
-              ctx.fillStyle = '#4b5563';
+              ctx.font = `bold ${design.typography.subtitleSize * exportScale}px sans-serif`;
+              ctx.fillStyle = design.foregroundColor || '#4b5563';
               ctx.fillText(text, width / 2, currentY);
-              currentY += 28;
+              currentY += (design.typography.subtitleSize + design.spacing * 0.35) * exportScale;
               break;
             }
 
@@ -260,10 +284,10 @@ export const downloadQrCard = async ({
                 locale === 'en'
                   ? design.thankYouMessage.textEn
                   : design.thankYouMessage.textAr;
-              ctx.font = 'medium 15px sans-serif';
-              ctx.fillStyle = '#6b7280';
+              ctx.font = `${design.typography.bodySize * exportScale}px sans-serif`;
+              ctx.fillStyle = design.foregroundColor || '#6b7280';
               ctx.fillText(text, width / 2, currentY);
-              currentY += 24;
+              currentY += (design.typography.bodySize + design.spacing * 0.35) * exportScale;
               break;
             }
 
@@ -272,10 +296,10 @@ export const downloadQrCard = async ({
                 locale === 'en'
                   ? design.thankYouMessage.textEn
                   : design.thankYouMessage.textAr;
-              ctx.font = 'medium 15px sans-serif';
-              ctx.fillStyle = '#6b7280';
+              ctx.font = `${design.typography.bodySize * exportScale}px sans-serif`;
+              ctx.fillStyle = design.foregroundColor || '#6b7280';
               ctx.fillText(text, width / 2, currentY);
-              currentY += 24;
+              currentY += (design.typography.bodySize + design.spacing * 0.35) * exportScale;
               break;
             }
 
@@ -287,10 +311,10 @@ export const downloadQrCard = async ({
                 (design.date.format === 'YYYY/MM/DD'
                   ? `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`
                   : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
-              ctx.font = '13px monospace';
-              ctx.fillStyle = '#9ca3af';
+              ctx.font = `${Math.max(8, design.typography.bodySize - 1) * exportScale}px monospace`;
+              ctx.fillStyle = design.foregroundColor || '#9ca3af';
               ctx.fillText(dateStr, width / 2, currentY);
-              currentY += 20;
+              currentY += (design.typography.bodySize + design.spacing * 0.25) * exportScale;
               break;
             }
 
