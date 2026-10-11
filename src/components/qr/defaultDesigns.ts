@@ -10,6 +10,7 @@
  * - Idempotent active design resolution (fallback to defaults without DB migration).
  */
 
+import { useEffect, useState } from 'react';
 import { QRDesignConfig, QRDesignType } from './types';
 
 export const DEFAULT_CUSTOMER_QR_DESIGN: QRDesignConfig = {
@@ -231,6 +232,15 @@ const activeDesigns: Record<QRDesignType, QRDesignConfig> = {
  * Returns custom active design if set, otherwise returns the default design.
  * Pure presentation resolver: NEVER generates tokens or calls APIs.
  */
+export const useActiveQrDesign = (type: QRDesignType): QRDesignConfig => {
+  const [design, setDesign] = useState<QRDesignConfig>(() => getActiveQrDesign(type));
+  useEffect(() => subscribeQrDesignChanges((changedType, nextDesign) => {
+    if (changedType === type) setDesign(nextDesign);
+  }), [type]);
+  useEffect(() => setDesign(getActiveQrDesign(type)), [type]);
+  return design;
+};
+
 export const getActiveQrDesign = (type: QRDesignType): QRDesignConfig => {
   const current = activeDesigns[type] || (type === 'CUSTOMER' ? DEFAULT_CUSTOMER_QR_DESIGN : DEFAULT_ORDER_QR_DESIGN);
   return JSON.parse(JSON.stringify(current));
