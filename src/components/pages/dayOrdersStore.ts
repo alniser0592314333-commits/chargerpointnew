@@ -2660,7 +2660,20 @@ export const getGoalsPageData = async (access: {
 
 export const generateCustomerGoalProposalForAdmin = async (customerId: string) => {
   await ensureStoreHydrated();
-  return phase5UseCases.generateCustomerGoalProposal(getAuthorizedAdminContext(), customerId);
+  const now = Date.now();
+  const profile = Array.from({ length: 28 }, () => 0);
+  for (const item of itemsMap.values()) {
+    if (item.deletedAt || item.status !== 'delivered' || item.financialStatus !== 'RECOGNIZED' ||
+        item.replacementOfItemId || !item.deliveredAt) continue;
+    const order = ordersMap.get(item.orderId);
+    if (!order || order.customerId !== customerId || order.deletedAt || order.cancelledAt || order.status === 'cancelled') continue;
+    const deliveredAt = new Date(item.deliveredAt).getTime();
+    if (!Number.isFinite(deliveredAt)) continue;
+    const ageDays = Math.floor((now - deliveredAt) / (24 * 60 * 60 * 1000));
+    if (ageDays < 0 || ageDays >= 28) continue;
+    profile[27 - ageDays] += 1;
+  }
+  return phase5UseCases.generateCustomerGoalProposal(getAuthorizedAdminContext(), customerId, profile);
 };
 
 export const createGoalForAdmin = async (
