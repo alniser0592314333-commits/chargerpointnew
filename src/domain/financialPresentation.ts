@@ -51,6 +51,7 @@ export function groupCustomerFinancialHistoryByOrder(
       const single = charges[0];
       groupedRows.push({
         ...single,
+        id: `order-charge-${orderId}`,
         shortTitle: locale === 'ar'
           ? (single.orderDisplayNumber ? `طلب #${single.orderDisplayNumber}` : 'خصم طلب')
           : (single.orderDisplayNumber ? `Order #${single.orderDisplayNumber}` : 'Order charge'),
