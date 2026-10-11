@@ -831,7 +831,7 @@ const [isLoading, setIsLoading] = useState(true);
                             {getPaymentStatusBadge(ord.paymentStatus, `payment-${ord.id || ordIdx}`)}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-[#8eb698]">
-                            <span>{formatDate(ord.createdAt)}</span>
+                            <span>{formatDate(ord.businessDate || ord.createdAt)}</span>
                             <span>•</span>
                             <span>
                               {t('devicesCountSummary', { count: ord.itemCount })}
@@ -934,7 +934,7 @@ const [isLoading, setIsLoading] = useState(true);
                             )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-[#8eb698]">
-                            <span>{formatDate(item.createdAt)}</span>
+                            <span>{formatDate(item.businessDate || item.createdAt)}</span>
                             <span>•</span>
                             <span>
                               {t('resultingBalance')}: {formatCurrency(item.postBalanceMinor)}
