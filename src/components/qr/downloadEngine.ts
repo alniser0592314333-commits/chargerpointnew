@@ -47,7 +47,11 @@ export const downloadQrCard = async ({
   // High-resolution canvas matching 5 x 6 cm ratio (e.g. 600 x 720 px)
   const width = 600;
   const exportScale = width / 380; // Scale the 380px preview card into the export canvas.
-  const height = Math.round(width * (design.printTarget.heightMm / design.printTarget.widthMm));
+  // QR cards are portrait labels. A stale or malformed saved printTarget must not
+  // silently turn the exported PNG into a square and create excessive side whitespace.
+  const configuredAspectRatio = design.printTarget.heightMm / design.printTarget.widthMm;
+  const portraitAspectRatio = Math.max(configuredAspectRatio, 6 / 5);
+  const height = Math.round(width * portraitAspectRatio);
   canvas.width = width;
   canvas.height = height;
 
