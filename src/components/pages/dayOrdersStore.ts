@@ -4105,6 +4105,20 @@ export const updateOrderWithPhase5Engine = async (
     const hasUndeliveredActiveItemAfterEdits = predictedItems.some(
       (item) => item.status !== 'delivered' && item.status !== 'cancelled'
     );
+
+    // Preflight every permission boundary before queueing any part of this edit.
+    if (newNotes !== (order.notes || '') || newItemsToAdd.length > 0) {
+      auth.assertPermission('orders:edit');
+    }
+    if (existingItemIdsToRemove.length > 0 ||
+        (newStatus === 'cancelled' && newStatus !== order.status)) {
+      auth.assertPermission('orders:cancel');
+    }
+    if (newStatus === 'delivered' &&
+        (newStatus !== order.status || hasUndeliveredActiveItemAfterEdits)) {
+      auth.assertPermission('orders:deliver');
+    }
+
     const requiresBin =
       existingItemIdsToRemove.length > 0 ||
       (newStatus === 'delivered' &&
