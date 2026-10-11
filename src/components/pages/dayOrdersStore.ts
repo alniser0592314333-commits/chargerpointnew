@@ -3191,42 +3191,7 @@ export const getOrdersForDay = async (
   await ensureStoreHydrated();
 
   // Number integrity is read-only here. Hydration and page rendering must never repair numbering.
-  const effectiveOrdersMap = new Map(ordersMap);
-  const effectiveItemsMap = new Map(itemsMap);
-
-  for (const overlay of localDb.listOverlaysSync()) {
-    if (overlay.status !== 'PENDING') continue;
-
-    const payload = (overlay.patch || overlay.entityPayload || {}) as Record<string, unknown>;
-
-    if (overlay.entityType === 'orders') {
-      const base = effectiveOrdersMap.get(overlay.entityId);
-      const effective = {
-        ...(base || {}),
-        ...payload,
-        id: overlay.entityId,
-      } as OrderEntity;
-
-      if (overlay.operation === 'DELETE') {
-        effectiveOrdersMap.delete(overlay.entityId);
-      } else {
-        effectiveOrdersMap.set(overlay.entityId, effective);
-      }
-    } else if (overlay.entityType === 'order_items') {
-      const base = effectiveItemsMap.get(overlay.entityId);
-      const effective = {
-        ...(base || {}),
-        ...payload,
-        id: overlay.entityId,
-      } as OrderItemEntity;
-
-      if (overlay.operation === 'DELETE') {
-        effectiveItemsMap.delete(overlay.entityId);
-      } else {
-        effectiveItemsMap.set(overlay.entityId, effective);
-      }
-    }
-  }
+  const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
 
   const allOrders = Array.from(effectiveOrdersMap.values()).filter((o) => isSameDayId(o.dayId, dayId));
   const indexes = buildPaymentProjectionIndexes(effectiveOrdersMap, effectiveItemsMap);
@@ -4888,6 +4853,8 @@ export const getTodayHomeData = async (
   }
 
   // 6. Recent 5 Financial Activities from Authoritative Ledger
+  // Resolve order labels from the same effective local-first order read model as customer history.
+  const effectiveOrdersMap = getEffectiveOrderItemReadModel().orders;
   const sortedLedger = [...ledgerList].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -4906,7 +4873,7 @@ export const getTodayHomeData = async (
     } else if (ev.eventType === 'ORDER_ITEM_CHARGE') {
       let ordNumStr = '';
       if (ev.orderId) {
-        const ord = ordersMap.get(ev.orderId);
+        const ord = effectiveOrdersMap.get(ev.orderId);
         if (ord) ordNumStr = `#${ord.displayNumber}`;
       }
       displayTitle =
@@ -4936,7 +4903,7 @@ export const getTodayHomeData = async (
       description = rawCustName;
     }
 
-    const order = ev.orderId ? ordersMap.get(ev.orderId) : undefined;
+    const order = ev.orderId ? effectiveOrdersMap.get(ev.orderId) : undefined;
     return {
       id: ev.id,
       eventType: ev.eventType,
@@ -5008,42 +4975,7 @@ export const getDaysList = async (): Promise<UIDaySummary[]> => {
     }
   }
 
-  const effectiveOrdersMap = new Map(ordersMap);
-  const effectiveItemsMap = new Map(itemsMap);
-
-  for (const overlay of localDb.listOverlaysSync()) {
-    if (overlay.status !== 'PENDING') continue;
-
-    const payload = (overlay.patch || overlay.entityPayload || {}) as Record<string, unknown>;
-
-    if (overlay.entityType === 'orders') {
-      const base = effectiveOrdersMap.get(overlay.entityId);
-      const effective = {
-        ...(base || {}),
-        ...payload,
-        id: overlay.entityId,
-      } as OrderEntity;
-
-      if (overlay.operation === 'DELETE') {
-        effectiveOrdersMap.delete(overlay.entityId);
-      } else {
-        effectiveOrdersMap.set(overlay.entityId, effective);
-      }
-    } else if (overlay.entityType === 'order_items') {
-      const base = effectiveItemsMap.get(overlay.entityId);
-      const effective = {
-        ...(base || {}),
-        ...payload,
-        id: overlay.entityId,
-      } as OrderItemEntity;
-
-      if (overlay.operation === 'DELETE') {
-        effectiveItemsMap.delete(overlay.entityId);
-      } else {
-        effectiveItemsMap.set(overlay.entityId, effective);
-      }
-    }
-  }
+  const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
 
   const orderCountByDay = new Map<string, number>();
   for (const order of effectiveOrdersMap.values()) {
