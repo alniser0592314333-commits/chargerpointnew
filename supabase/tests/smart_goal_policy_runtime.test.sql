@@ -1,6 +1,35 @@
 -- Runtime regression tests for the actual smart-goal policy migration.
 BEGIN;
 
+-- The migration must repair a safe historical bonus but must not pay an item
+-- that became recognized only after the bonus timestamp.
+DO $historical_bonus_backfill$
+BEGIN
+  IF (SELECT payment_status FROM public.order_items
+      WHERE id='c3c3c3c3-c3c3-43c3-83c3-c3c3c3c3c3c3') <> 'PAID' THEN
+    RAISE EXCEPTION 'Historical bonus backfill must pay the oldest eligible item';
+  END IF;
+  IF (SELECT payment_status FROM public.order_items
+      WHERE id='d4d4d4d4-d4d4-44d4-84d4-d4d4d4d4d4d4') <> 'UNPAID' THEN
+    RAISE EXCEPTION 'Historical bonus backfill must not pay items recognized after the bonus';
+  END IF;
+  IF (SELECT count(*) FROM public.payment_allocations
+      WHERE payment_id='efefefef-efef-4fef-8fef-efefefefefef') <> 1
+     OR (SELECT COALESCE(SUM(allocated_amount_minor),0) FROM public.payment_allocations
+         WHERE payment_id='efefefef-efef-4fef-8fef-efefefefefef') <> 15 THEN
+    RAISE EXCEPTION 'Historical bonus backfill must allocate only the 15-unit pre-existing debt';
+  END IF;
+  IF (SELECT count(*) FROM public.payments
+      WHERE id='efefefef-efef-4fef-8fef-efefefefefef' AND payment_method='GOAL_BONUS') <> 1 THEN
+    RAISE EXCEPTION 'Historical bonus backfill must create exactly one allocation funding record';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.financial_ledger
+             WHERE event_type='PAYMENT' AND reference_id='efefefef-efef-4fef-8fef-efefefefefef') THEN
+    RAISE EXCEPTION 'Historical bonus backfill must not duplicate the bonus in the ledger';
+  END IF;
+END;
+$historical_bonus_backfill$;
+
 INSERT INTO public.admins(id, auth_user_id, role, is_active)
 VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         '11111111-1111-4111-8111-111111111111', 'SUPER_ADMIN', TRUE);
