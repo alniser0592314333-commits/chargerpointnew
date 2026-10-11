@@ -23,7 +23,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
   onAddCustomer,
 }) => {
   const { locale, isRTL, t, formatDate, formatCurrency } = useI18n();
-  const storeVersion = useStoreSubscription(['customers', 'financialLedger', 'payments']);
+  const storeVersion = useStoreSubscription(['customers', 'orders', 'orderItems', 'financialLedger', 'payments']);
 
   const [session, setSession] = useState<UserSession | null>(null);
   useEffect(() => {
