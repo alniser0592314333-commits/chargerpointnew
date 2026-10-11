@@ -446,6 +446,71 @@ export function normalizeOrderItemEntity(i: any): any {
   };
 }
 
+/**
+ * Canonicalize goal rows from either PostgreSQL snake_case snapshots or local
+ * camelCase entities before persisting them into IndexedDB. Cloud restore must
+ * not leave raw SQL column names in the runtime read model.
+ */
+export function normalizeGoalEntity(g: any): any {
+  if (!g) return g;
+  const customerId = g.customerId ?? g.customer_id;
+  const targetQuantity = Number(g.targetQuantity ?? g.target_quantity ?? 0);
+  const currentProgress = Number(g.currentProgress ?? g.current_progress ?? 0);
+  const bonusAmountMinor = Number(g.bonusAmountMinor ?? g.bonus_amount_minor ?? 0);
+  const durationDays = Number(g.durationDays ?? g.duration_days ?? 0);
+  const startedAt = g.startedAt ?? g.started_at;
+  const expiresAt = g.expiresAt ?? g.expires_at;
+  const completedAt = g.completedAt ?? g.completed_at ?? undefined;
+  const bonusLedgerId = g.bonusLedgerId ?? g.bonus_ledger_id ?? undefined;
+  const createdAt = g.createdAt ?? g.created_at;
+  const updatedAt = g.updatedAt ?? g.updated_at ?? createdAt;
+  const version = Number(g.version ?? 1);
+  const status = String(g.status ?? 'ACTIVE').toUpperCase();
+  return {
+    ...g,
+    customerId, customer_id: customerId,
+    targetQuantity, target_quantity: targetQuantity,
+    currentProgress, current_progress: currentProgress,
+    bonusAmountMinor, bonus_amount_minor: bonusAmountMinor,
+    durationDays, duration_days: durationDays,
+    status, startedAt, started_at: startedAt,
+    expiresAt, expires_at: expiresAt,
+    completedAt, completed_at: completedAt,
+    bonusLedgerId, bonus_ledger_id: bonusLedgerId,
+    createdAt, created_at: createdAt,
+    updatedAt, updated_at: updatedAt,
+    version,
+  };
+}
+
+/** Canonicalize goal-request rows from server snapshots and portable backups. */
+export function normalizeGoalRequestEntity(r: any): any {
+  if (!r) return r;
+  const customerId = r.customerId ?? r.customer_id;
+  const requestedTarget = r.requestedTarget ?? r.requested_target ?? undefined;
+  const reviewedBy = r.reviewedBy ?? r.reviewed_by ?? undefined;
+  const reviewedAt = r.reviewedAt ?? r.reviewed_at ?? undefined;
+  const rejectionReason = r.rejectionReason ?? r.rejection_reason ?? undefined;
+  const resultingGoalId = r.resultingGoalId ?? r.resulting_goal_id ?? undefined;
+  const createdAt = r.createdAt ?? r.created_at;
+  const updatedAt = r.updatedAt ?? r.updated_at ?? createdAt;
+  const version = Number(r.version ?? 1);
+  const status = String(r.status ?? 'PENDING').toUpperCase();
+  return {
+    ...r,
+    customerId, customer_id: customerId,
+    requestedTarget, requested_target: requestedTarget,
+    status,
+    reviewedBy, reviewed_by: reviewedBy,
+    reviewedAt, reviewed_at: reviewedAt,
+    rejectionReason, rejection_reason: rejectionReason,
+    resultingGoalId, resulting_goal_id: resultingGoalId,
+    createdAt, created_at: createdAt,
+    updatedAt, updated_at: updatedAt,
+    version,
+  };
+}
+
 export function normalizeFinancialLedgerEntity(l: any): any {
   if (!l) return l;
   return {
@@ -685,8 +750,8 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
     deviceTypes: (data.deviceTypes || []).map(normalizeDeviceTypeEntity),
     qrTokens: (data.qrTokens || []).map(normalizeQrTokenEntity),
     orderNumberReservations: (data.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity),
-    goals: (data.goals || []).map(sanitizeEntity),
-    goalRequests: (data.goalRequests || []).map(sanitizeEntity),
+    goals: (data.goals || []).map(normalizeGoalEntity),
+    goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
     outbox: (data.outbox || []).map(sanitizeEntity),
     syncHistory: (data.syncHistory || []).map(sanitizeEntity),
     mutationSnapshots: (data.mutationSnapshots || []).map(sanitizeEntity),
@@ -954,8 +1019,8 @@ export class BackupService {
       payments: payments.map(sanitizeEntity).map(normalizePaymentEntity),
       paymentAllocations: paymentAllocations.map(sanitizeEntity).map(normalizePaymentAllocationEntity),
       deviceTypes: deviceTypes.map(sanitizeEntity).map(normalizeDeviceTypeEntity),
-      goals: goals.map(sanitizeEntity),
-      goalRequests: goalRequests.map(sanitizeEntity),
+      goals: goals.map(normalizeGoalEntity),
+      goalRequests: goalRequests.map(normalizeGoalRequestEntity),
       qrTokens: qrTokens.map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: orderNumberReservations.map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
       outbox: outbox.map(sanitizeEntity),
@@ -984,8 +1049,8 @@ export class BackupService {
       payments: (data.payments || []).map(sanitizeEntity).map(normalizePaymentEntity),
       paymentAllocations: (data.paymentAllocations || []).map(sanitizeEntity).map(normalizePaymentAllocationEntity),
       deviceTypes: (data.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
-      goals: (data.goals || []).map(sanitizeEntity),
-      goalRequests: (data.goalRequests || []).map(sanitizeEntity),
+      goals: (data.goals || []).map(normalizeGoalEntity),
+      goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
       qrTokens: (data.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
       outbox: (data.outbox || []).map(sanitizeEntity),
@@ -1029,8 +1094,8 @@ export class BackupService {
         deviceTypes: (customOnlineData.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
         qrTokens: (customOnlineData.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
         orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
-        goals: (customOnlineData.goals || []).map(sanitizeEntity),
-        goalRequests: (customOnlineData.goalRequests || []).map(sanitizeEntity),
+        goals: (customOnlineData.goals || []).map(normalizeGoalEntity),
+        goalRequests: (customOnlineData.goalRequests || []).map(normalizeGoalRequestEntity),
         outbox: (customOnlineData.outbox || []).map(sanitizeEntity),
         syncHistory: (customOnlineData.syncHistory || []).map(sanitizeEntity),
         mutationSnapshots: (customOnlineData.mutationSnapshots || []).map(sanitizeEntity),
@@ -1067,8 +1132,8 @@ export class BackupService {
     const deviceTypes = (authoritative.device_types || authoritative.deviceTypes || []).map(normalizeDeviceTypeEntity);
     const qrTokens = (authoritative.qr_tokens || authoritative.qrTokens || []).map(normalizeQrTokenEntity);
     const orderNumberReservations = (authoritative.order_number_reservations || authoritative.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity);
-    const goals = (authoritative.goals || []).map(sanitizeEntity);
-    const goalRequests = (authoritative.goal_requests || authoritative.goalRequests || []).map(sanitizeEntity);
+    const goals = (authoritative.goals || []).map(normalizeGoalEntity);
+    const goalRequests = (authoritative.goal_requests || authoritative.goalRequests || []).map(normalizeGoalRequestEntity);
     const systemSettings = (authoritative.system_settings || authoritative.systemSettings || []).map(sanitizeEntity);
     const changeLog = (authoritative.change_log || authoritative.changeLog || []).map(sanitizeEntity);
 
@@ -1400,8 +1465,8 @@ export class BackupService {
       deviceTypes: rawData.deviceTypes.map(sanitizeEntity),
       qrTokens: (rawData.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (rawData.orderNumberReservations || []).map(sanitizeEntity),
-      goals: (rawData.goals || []).map(sanitizeEntity),
-      goalRequests: (rawData.goalRequests || []).map(sanitizeEntity),
+      goals: (rawData.goals || []).map(normalizeGoalEntity),
+      goalRequests: (rawData.goalRequests || []).map(normalizeGoalRequestEntity),
       outbox: (rawData.outbox || []).map(sanitizeEntity),
       syncHistory: (rawData.syncHistory || []).map(sanitizeEntity),
       mutationSnapshots: (rawData.mutationSnapshots || []).map(sanitizeEntity),
@@ -2436,8 +2501,8 @@ export class BackupService {
       deviceTypes: (snapshot.data.deviceTypes || []).map(sanitizeEntity),
       qrTokens: (snapshot.data.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (snapshot.data.orderNumberReservations || []).map(sanitizeEntity),
-      goals: (snapshot.data.goals || []).map(sanitizeEntity),
-      goalRequests: (snapshot.data.goalRequests || []).map(sanitizeEntity),
+      goals: (snapshot.data.goals || []).map(normalizeGoalEntity),
+      goalRequests: (snapshot.data.goalRequests || []).map(normalizeGoalRequestEntity),
       outbox: (snapshot.data.outbox || []).map(sanitizeEntity),
       syncHistory: (snapshot.data.syncHistory || []).map(sanitizeEntity),
       mutationSnapshots: (snapshot.data.mutationSnapshots || []).map(sanitizeEntity),
@@ -2611,8 +2676,8 @@ export class BackupService {
       deviceTypes: (d.deviceTypes || []).map(sanitizeEntity),
       qrTokens: (d.qrTokens || []).map(sanitizeEntity),
       orderNumberReservations: (d.orderNumberReservations || []).map(sanitizeEntity),
-      goals: (d.goals || []).map(sanitizeEntity),
-      goalRequests: (d.goalRequests || []).map(sanitizeEntity),
+      goals: (d.goals || []).map(normalizeGoalEntity),
+      goalRequests: (d.goalRequests || []).map(normalizeGoalRequestEntity),
       outbox: (d.outbox || []).map(sanitizeEntity),
       syncHistory: (d.syncHistory || []).map(sanitizeEntity),
       mutationSnapshots: (d.mutationSnapshots || []).map(sanitizeEntity),
