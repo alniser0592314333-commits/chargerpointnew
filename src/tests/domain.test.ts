@@ -305,41 +305,45 @@ describe('Final Comprehensive Domain Verification Suite', () => {
   });
 
   describe('Item Removal vs Full Order Cancellation Permission Boundaries', () => {
-    it('TEST 1: Admin with orders:edit can remove an existing item during order edit', async () => {
+    it('TEST 1: Admin with orders:cancel and valid BIN can remove an existing item during order edit', async () => {
       const editAuth = new AuthorizationContext({
         id: 'admin_edit', username: 'editor', fullName: 'Editor', role: 'ADMIN',
-        permissions: ['orders:create', 'orders:edit', 'orders:deliver'], isSuperAdmin: false
-      });
+        permissions: ['orders:create', 'orders:edit', 'orders:cancel'], isSuperAdmin: false
+      }, (bin) => bin === '1234');
 
       const orderRes = await useCases.createOrder(editAuth, 'cmd_edit_perm', 'day_1', 'cust_1');
       const order = (orderRes as { success: true; data: OrderEntity }).data;
+      orders.set(order.id, order);
       const itemRes = await useCases.addOrderItem(editAuth, order.id, 'dev_1', false);
       const item = (itemRes as { success: true; data: OrderItemEntity }).data;
+      items.set(item.id, item);
 
-      const removeRes = await useCases.removeOrderItemDuringEdit(editAuth, item.id);
+      const removeRes = await useCases.removeOrderItemDuringEdit(editAuth, item.id, '1234');
       expect(removeRes.success).toBe(true);
-      if (removeRes.success) {
-        expect(removeRes.data.status).toBe('cancelled');
-      }
+      if (removeRes.success) expect(removeRes.data.status).toBe('cancelled');
+      expect(ledger).toHaveLength(0); // Reversal is server-authoritative, not fabricated locally.
+      const command = [...commands.values()].find((entry) => entry.type === 'CANCEL_ORDER_ITEM');
+      expect(command).toBeDefined();
+      expect((command!.payload as any).bin).toBe('1234');
     });
 
-    it('TEST 2: Admin WITHOUT orders:edit fails when removing an item', async () => {
-      const viewAuth = new AuthorizationContext({
-        id: 'admin_view', username: 'viewer', fullName: 'Viewer', role: 'ADMIN',
-        permissions: ['orders:view'], isSuperAdmin: false
-      });
-
+    it('TEST 2: Admin with orders:edit but without orders:cancel cannot remove an item', async () => {
       const editAuth = new AuthorizationContext({
         id: 'admin_edit', username: 'editor', fullName: 'Editor', role: 'ADMIN',
         permissions: ['orders:create', 'orders:edit'], isSuperAdmin: false
-      });
+      }, (bin) => bin === '1234');
 
-      const orderRes = await useCases.createOrder(editAuth, 'cmd_no_edit_perm', 'day_1', 'cust_1');
+      const orderRes = await useCases.createOrder(editAuth, 'cmd_no_cancel_perm', 'day_1', 'cust_1');
       const order = (orderRes as { success: true; data: OrderEntity }).data;
+      orders.set(order.id, order);
       const itemRes = await useCases.addOrderItem(editAuth, order.id, 'dev_1', false);
       const item = (itemRes as { success: true; data: OrderItemEntity }).data;
+      items.set(item.id, item);
 
-      await expect(useCases.removeOrderItemDuringEdit(viewAuth, item.id)).rejects.toThrow('Missing required permission: orders:edit');
+      await expect(
+        useCases.removeOrderItemDuringEdit(editAuth, item.id, '1234')
+      ).rejects.toThrow('Missing required permission: orders:cancel');
+      expect([...commands.values()].filter((entry) => entry.type === 'CANCEL_ORDER_ITEM')).toHaveLength(0);
     });
 
     it('TEST 3: Admin WITH orders:edit BUT WITHOUT orders:cancel FAILS to cancel whole order', async () => {
@@ -365,6 +369,7 @@ describe('Final Comprehensive Domain Verification Suite', () => {
 
       const orderRes = await useCases.createOrder(cancelAuth, 'cmd_cancel_succ', 'day_1', 'cust_1');
       const order = (orderRes as { success: true; data: OrderEntity }).data;
+      orders.set(order.id, order);
 
       const cancelRes = await useCases.cancelOrder(cancelAuth, order.id, '1234');
       expect(cancelRes.success).toBe(true);
@@ -373,23 +378,30 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       }
     });
 
-    it('TEST 5: Item removal during edit cancels item and generates REVERSAL if charge event exists', async () => {
+    it('TEST 5: Removing a financially recognized item queues a BIN-protected reversal-backed command', async () => {
       const auth = new AuthorizationContext({
         id: 'admin_full', username: 'admin', fullName: 'Admin', role: 'ADMIN',
-        permissions: ['orders:create', 'orders:edit', 'orders:deliver'], isSuperAdmin: false
-      });
+        permissions: ['orders:create', 'orders:edit', 'orders:cancel'], isSuperAdmin: false
+      }, (bin) => bin === '1234');
 
       const orderRes = await useCases.createOrder(auth, 'cmd_rev_test', 'day_1', 'cust_1');
       const order = (orderRes as { success: true; data: OrderEntity }).data;
+      orders.set(order.id, order);
       const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
       const item = (itemRes as { success: true; data: OrderItemEntity }).data;
+      items.set(item.id, {
+        ...item,
+        status: 'delivered',
+        financialStatus: 'RECOGNIZED',
+        version: item.version + 1,
+      });
 
-      // Manually push a charge event to simulate prior recognition
+      // This charge is already in the local financial history; cancellation must not fabricate another local ledger event.
       ledger.push({
         id: 'charge_1',
         createdAt: new Date().toISOString(),
         eventType: 'ORDER_ITEM_CHARGE',
-        amountMinor: 150,
+        amountMinor: -150,
         orderId: order.id,
         orderItemId: item.id,
         customerId: order.customerId,
@@ -397,16 +409,13 @@ describe('Final Comprehensive Domain Verification Suite', () => {
       });
       const initialLedgerCount = ledger.length;
 
-      // Remove item during edit -> cancels item and generates REVERSAL
-      const removeRes = await useCases.removeOrderItemDuringEdit(auth, item.id);
+      const removeRes = await useCases.removeOrderItemDuringEdit(auth, item.id, '1234');
       expect(removeRes.success).toBe(true);
-      if (removeRes.success) {
-        expect(removeRes.data.status).toBe('cancelled');
-      }
-      expect(ledger.length).toBe(initialLedgerCount + 1);
-      const lastEvent = ledger[ledger.length - 1];
-      expect(lastEvent.eventType).toBe('REVERSAL');
-      expect(lastEvent.amountMinor).toBe(-150);
+      if (removeRes.success) expect(removeRes.data.status).toBe('cancelled');
+      expect(ledger.length).toBe(initialLedgerCount);
+      const command = [...commands.values()].find((entry) => entry.type === 'CANCEL_ORDER_ITEM');
+      expect(command).toBeDefined();
+      expect((command!.payload as any).bin).toBe('1234');
     });
   });
 

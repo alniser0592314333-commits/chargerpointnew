@@ -599,11 +599,11 @@ export class FinalUseCases {
     auth: AuthorizationContext,
     itemId: ID,
     bin: string,
-    options?: { deferBinVerification?: boolean }
+    options?: { deferBinVerification?: boolean; binAlreadyVerified?: boolean }
   ): Promise<Result<OrderItemEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:deliver');
-    if (!options?.deferBinVerification) await auth.verifyBin(bin);
+    if (!options?.deferBinVerification && !options?.binAlreadyVerified) await auth.verifyBin(bin);
 
     const item = await this.deps.itemRepo.findById(itemId);
     if (!item) throw new NotFoundError('Item not found');
@@ -720,16 +720,26 @@ export class FinalUseCases {
 
   async removeOrderItemDuringEdit(
     auth: AuthorizationContext,
-    itemId: ID
+    itemId: ID,
+    bin: string,
+    options?: { deferBinVerification?: boolean; binAlreadyVerified?: boolean }
   ): Promise<Result<OrderItemEntity>> {
     const actor = auth.requireAuth();
-    auth.assertPermission('orders:edit');
+    // The canonical server command is CANCEL_ORDER_ITEM and is authorized as
+    // orders:cancel. Keep the local boundary aligned with that server contract.
+    auth.assertPermission('orders:cancel');
+    if (!options?.deferBinVerification && !options?.binAlreadyVerified) {
+      await auth.verifyBin(bin);
+    }
 
     const item = await this.deps.itemRepo.findById(itemId);
     if (!item) throw new NotFoundError('Item not found');
 
     const order = await this.deps.orderRepo.findById(item.orderId);
     if (!order) throw new NotFoundError('Order not found');
+    if (order.status === 'cancelled') {
+      throw new BusinessRuleViolation('Cannot edit items in a cancelled order');
+    }
 
     const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
     if (dayIsClosed && !actor.isSuperAdmin) {
@@ -738,9 +748,11 @@ export class FinalUseCases {
 
     validateItemTransition(item.status, 'cancelled');
 
+    const now = new Date().toISOString();
     const patch: Partial<OrderItemEntity> = {
       status: 'cancelled',
-      updatedAt: new Date().toISOString(),
+      cancelledAt: now,
+      updatedAt: now,
       version: item.version + 1,
     };
 
@@ -760,6 +772,8 @@ export class FinalUseCases {
       itemId: item.id,
       orderItemId: item.id,
       orderId: order.id,
+      bin: bin || '',
+      ...(options?.deferBinVerification ? { deferBinVerification: true } : {}),
     }, item.version);
 
     return { success: true, data: { ...item, ...patch } as OrderItemEntity };
@@ -769,11 +783,11 @@ export class FinalUseCases {
     auth: AuthorizationContext,
     orderId: ID,
     bin: string,
-    options?: { deferBinVerification?: boolean }
+    options?: { deferBinVerification?: boolean; binAlreadyVerified?: boolean }
   ): Promise<Result<OrderEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:cancel');
-    if (!options?.deferBinVerification) await auth.verifyBin(bin);
+    if (!options?.deferBinVerification && !options?.binAlreadyVerified) await auth.verifyBin(bin);
 
     const order = await this.deps.orderRepo.findById(orderId);
     if (!order) throw new NotFoundError('Order not found');

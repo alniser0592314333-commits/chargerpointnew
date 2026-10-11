@@ -133,8 +133,11 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     const orderRes = await useCases.createOrder(auth, 'cmd_1', 'day_1', 'cust_1');
     const order = (orderRes as any).data;
+    // CREATE_ORDER is overlay/outbox-first; hydrate the fake local repository as the real overlay-aware repo would.
+    orders.set(order.id, order);
     const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
     const item = (itemRes as any).data;
+    items.set(item.id, item);
 
     const initialLedgerCount = ledger.length;
     const initialCustomerBalance = await repoContext.customerRepo.getBalance('cust_1');
@@ -177,8 +180,11 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     const orderRes = await useCases.createOrder(auth, 'cmd_2', 'day_1', 'cust_1');
     const order = (orderRes as any).data;
+    // CREATE_ORDER is overlay/outbox-first; hydrate the fake local repository as the real overlay-aware repo would.
+    orders.set(order.id, order);
     const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
     const item = (itemRes as any).data;
+    items.set(item.id, item);
 
     // Empty string
     await expect(useCases.deliverOrderItem(auth, item.id, '')).rejects.toThrow(BinRequiredError);
@@ -221,8 +227,10 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     const orderRes = await useCases.createOrder(authForSetup, 'cmd_3', 'day_1', 'cust_1');
     const order = (orderRes as any).data;
+    orders.set(order.id, order);
     const itemRes = await useCases.addOrderItem(authForSetup, order.id, 'dev_1', false);
     const item = (itemRes as any).data;
+    items.set(item.id, item);
 
     await expect(
       useCases.deliverOrderItem(authNoVerifier, item.id, TEST_BIN)
@@ -248,30 +256,29 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     const orderRes = await useCases.createOrder(auth, 'cmd_4', 'day_1', 'cust_1');
     const order = (orderRes as any).data;
+    // CREATE_ORDER is overlay/outbox-first; hydrate the fake local repository as the real overlay-aware repo would.
+    orders.set(order.id, order);
     const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
     const item = (itemRes as any).data;
+    items.set(item.id, item);
 
     const deliverRes = await useCases.deliverOrderItem(auth, item.id, TEST_BIN);
     expect(deliverRes.success).toBe(true);
+    const deliveredItem = (deliverRes as any).data as OrderItemEntity;
+    items.set(item.id, deliveredItem);
 
-    // Item becomes delivered
-    const itemAfter = items.get(item.id);
-    expect(itemAfter?.status).toBe('delivered');
-    expect(itemAfter?.deliveredAt).toBeDefined();
+    // The client records the optimistic item overlay and canonical command only.
+    // The server remains authoritative for the financial ledger charge.
+    expect(deliveredItem.status).toBe('delivered');
+    expect(deliveredItem.deliveredAt).toBeDefined();
+    expect(ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === item.id)).toHaveLength(0);
+    expect([...commands.values()].filter(c => c.type === 'DELIVER_ORDER_ITEM')).toHaveLength(1);
 
-    // Exactly one ORDER_ITEM_CHARGE
-    const charges = ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === item.id);
-    expect(charges.length).toBe(1);
-    expect(charges[0].amountMinor).toBe(-3000); // Negative
-    expect(charges[0].customerId).toBe('cust_1');
-
-    // Retry must throw FinancialInvariantViolation and create NO duplicate charge
+    // Retry must be rejected locally and must not queue a second delivery command.
     await expect(
       useCases.deliverOrderItem(auth, item.id, TEST_BIN)
     ).rejects.toThrow(FinancialInvariantViolation);
-
-    const chargesAfterRetry = ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE' && l.orderItemId === item.id);
-    expect(chargesAfterRetry.length).toBe(1);
+    expect([...commands.values()].filter(c => c.type === 'DELIVER_ORDER_ITEM')).toHaveLength(1);
   });
 
   // E. Existing cancelOrder behavior remains unchanged
@@ -290,29 +297,32 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     const orderRes = await useCases.createOrder(auth, 'cmd_5', 'day_1', 'cust_1');
     const order = (orderRes as any).data;
+    // CREATE_ORDER is overlay/outbox-first; hydrate the fake local repository as the real overlay-aware repo would.
+    orders.set(order.id, order);
     const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
     const item = (itemRes as any).data;
+    items.set(item.id, item);
 
-    // First deliver the item
-    await useCases.deliverOrderItem(auth, item.id, TEST_BIN);
-    expect(ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE').length).toBe(1);
+    // Delivery is queued locally; financial recognition is performed by the canonical server command.
+    const deliverRes = await useCases.deliverOrderItem(auth, item.id, TEST_BIN);
+    expect(deliverRes.success).toBe(true);
+    items.set(item.id, (deliverRes as any).data);
+    orders.set(order.id, { ...order, status: 'delivered' });
+    expect([...commands.values()].filter(c => c.type === 'DELIVER_ORDER_ITEM')).toHaveLength(1);
+    expect(ledger.filter(l => l.eventType === 'ORDER_ITEM_CHARGE')).toHaveLength(0);
 
-    // Wrong BIN fails cancelOrder
+    // Wrong BIN fails cancelOrder without queuing cancellation.
     await expect(
       useCases.cancelOrder(auth, order.id, WRONG_BIN)
     ).rejects.toThrow(AuthorizationError);
+    expect([...commands.values()].filter(c => c.type === 'CANCEL_ORDER')).toHaveLength(0);
 
-    // Correct BIN succeeds
+    // Correct BIN succeeds, even for a delivered order, by queueing the protected reversal-backed command.
     const cancelRes = await useCases.cancelOrder(auth, order.id, TEST_BIN);
     expect(cancelRes.success).toBe(true);
-
-    const orderAfter = orders.get(order.id);
-    expect(orderAfter?.status).toBe('cancelled');
-
-    // Reversal logged
-    const reversals = ledger.filter(l => l.eventType === 'REVERSAL' && l.orderItemId === item.id);
-    expect(reversals.length).toBe(1);
-    expect(reversals[0].amountMinor).toBe(3000); // Reversal of -3000
+    expect((cancelRes as any).data.status).toBe('cancelled');
+    expect([...commands.values()].filter(c => c.type === 'CANCEL_ORDER')).toHaveLength(1);
+    expect(ledger.filter(l => l.eventType === 'REVERSAL')).toHaveLength(0);
   });
 
   // F. Existing cancelOrderItem behavior remains unchanged
@@ -331,8 +341,11 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     const orderRes = await useCases.createOrder(auth, 'cmd_6', 'day_1', 'cust_1');
     const order = (orderRes as any).data;
+    // CREATE_ORDER is overlay/outbox-first; hydrate the fake local repository as the real overlay-aware repo would.
+    orders.set(order.id, order);
     const itemRes = await useCases.addOrderItem(auth, order.id, 'dev_1', false);
     const item = (itemRes as any).data;
+    items.set(item.id, item);
 
     // Wrong BIN fails cancelOrderItem
     await expect(
@@ -341,11 +354,13 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     expect(items.get(item.id)?.status).toBe('charging');
 
-    // Correct BIN succeeds
+    // Correct BIN succeeds and returns the optimistic cancellation overlay.
     const cancelItemRes = await useCases.cancelOrderItem(auth, item.id, TEST_BIN);
     expect(cancelItemRes.success).toBe(true);
-
-    const itemAfter = items.get(item.id);
-    expect(itemAfter?.status).toBe('cancelled');
+    expect((cancelItemRes as any).data.status).toBe('cancelled');
+    expect(items.get(item.id)?.status).toBe('charging'); // Base repository is not mutated directly.
+    const cancelCommand = [...commands.values()].find(c => c.type === 'CANCEL_ORDER_ITEM');
+    expect(cancelCommand).toBeDefined();
+    expect((cancelCommand!.payload as any).bin).toBe(TEST_BIN);
   });
 });
