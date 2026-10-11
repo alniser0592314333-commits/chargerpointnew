@@ -51,6 +51,7 @@ describe('customer financial history order grouping', () => {
     expect(result[0].postBalanceMinor).toBe(-300);
     expect(result[0].orderItems?.map(item => item.id)).toEqual(['item-1', 'item-2', 'item-3']);
     expect(result[0].orderTotalMinor).toBe(300);
+    expect(result[0].shortTitle).toBe('خصم إجمالي الطلب');
     expect(result[0].description).toBe('خصم إجمالي الطلب رقم #27');
     expect(history).toHaveLength(3);
     expect(history[0].amountMinor).toBe(-100);
