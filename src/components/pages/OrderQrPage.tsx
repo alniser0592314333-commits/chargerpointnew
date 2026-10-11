@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
+import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { getOrderQrCardData, UIOrderQrCardData } from './dayOrdersStore';
 import { OrderQrCard } from '../qr/OrderQrCard';
@@ -16,15 +16,7 @@ export interface OrderQrPageProps {
 
 export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack }) => {
   const { t, locale, isRTL } = useI18n();
-  const [data, setData] = useState<UIOrderQrCardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isError, setIsError] = useState(false);
-  const [isNumberingError, setIsNumberingError] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
-  useEffect(() => {
-  // Pull only new change-log entries while a QR screen is visible; the bridge coalesces concurrent pulls.
   useEffect(() => {
     let running = false;
     const pullNewChanges = async () => {
@@ -43,7 +35,14 @@ export const OrderQrPage: React.FC<OrderQrPageProps> = ({ dayId, orderId, onBack
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
+  const [data, setData] = useState<UIOrderQrCardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
+  const [isNumberingError, setIsNumberingError] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
+  useEffect(() => {
     let active = true;
     setIsLoading(true);
     setIsError(false);
