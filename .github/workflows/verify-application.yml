@@ -155,6 +155,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/smart_goal_policy_fixture.sql
+      - name: Seed a historical completed-goal bonus before migrations
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/smart_goal_bonus_backfill_seed.sql
       - name: Apply the actual smart-goal policy migration
         env:
           PGPASSWORD: postgres
