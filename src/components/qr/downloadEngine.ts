@@ -204,7 +204,8 @@ export const downloadQrCard = async ({
               const totalUnits = renderResult.size;
               const moduleSize = qrDisplaySize / totalUnits;
 
-              ctx.fillStyle = design.foregroundColor || '#000000';
+              // The preview QR matrix is intentionally black regardless of text foreground color.
+              ctx.fillStyle = '#000000';
               for (let r = 0; r < totalUnits; r++) {
                 for (let c = 0; c < totalUnits; c++) {
                   if (renderResult.matrix[r][c]) {
