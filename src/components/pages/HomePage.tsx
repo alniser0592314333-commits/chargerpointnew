@@ -290,7 +290,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                             {act.displayTitle}
                           </p>
                           <p className="text-[11px] text-gray-400 dark:text-[#5e8674] truncate">
-                            {act.description} • {formatActivityTime(act.createdAt)}
+                            {act.description} • {formatDate(act.businessDate || act.createdAt)} {formatActivityTime(act.createdAt)}
                           </p>
                         </div>
                       </div>
