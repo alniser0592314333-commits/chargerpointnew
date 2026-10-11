@@ -100,3 +100,62 @@ export function groupCustomerFinancialHistoryByOrder(
 
   return groupedRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
+
+
+/** Home dashboard projection: aggregate item-level charges per order for display only. */
+export interface HomeFinancialActivityDisplayItem {
+  id: string;
+  eventType: string;
+  customerName: string;
+  customerId: string;
+  amountMinor: number;
+  displayTitle: string;
+  description: string;
+  createdAt: string;
+  orderId?: string;
+  orderNumber?: number;
+}
+
+export function groupHomeFinancialActivitiesByOrder(
+  activities: HomeFinancialActivityDisplayItem[],
+  locale: 'ar' | 'en' = 'ar'
+): HomeFinancialActivityDisplayItem[] {
+  const ordinaryRows: HomeFinancialActivityDisplayItem[] = [];
+  const chargesByOrder = new Map<string, HomeFinancialActivityDisplayItem[]>();
+
+  for (const activity of activities) {
+    if (activity.eventType !== 'ORDER_ITEM_CHARGE' || !activity.orderId) {
+      ordinaryRows.push(activity);
+      continue;
+    }
+    const key = `${activity.customerId}::${activity.orderId}`;
+    const group = chargesByOrder.get(key);
+    if (group) group.push(activity);
+    else chargesByOrder.set(key, [activity]);
+  }
+
+  const groupedRows = [...ordinaryRows];
+  for (const [key, charges] of chargesByOrder) {
+    if (charges.length === 1) {
+      groupedRows.push(charges[0]);
+      continue;
+    }
+    const latest = charges.reduce((current, row) =>
+      new Date(row.createdAt).getTime() >= new Date(current.createdAt).getTime() ? row : current
+    );
+    const amountMinor = charges.reduce((sum, row) => sum + row.amountMinor, 0);
+    const orderNumber = latest.orderNumber ?? charges.find(row => row.orderNumber !== undefined)?.orderNumber;
+    const orderLabel = orderNumber === undefined ? '' : ` #${orderNumber}`;
+    groupedRows.push({
+      ...latest,
+      id: `home-order-charge-${key}`,
+      amountMinor,
+      displayTitle: locale === 'ar' ? `خصم إجمالي الطلب${orderLabel}` : `Total order deduction${orderLabel}`,
+      description: locale === 'ar'
+        ? `خصم إجمالي من رصيد ${latest.customerName}`
+        : `Total charge to ${latest.customerName}`,
+    });
+  }
+
+  return groupedRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
