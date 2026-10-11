@@ -349,6 +349,8 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
     expect(itemAfter?.status).toBe('cancelled');
 
   
+  });
+
   // G. Editing an order to remove an item uses the canonical cancellation
   // permission and BIN contract rather than silently queuing an unauthenticated cancellation.
   it('G. removeOrderItemDuringEdit requires a valid BIN before creating a cancellation command', async () => {
@@ -457,6 +459,5 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
     expect((cancelCommand!.payload as any).bin).toBe(TEST_BIN);
     expect((cancelCommand!.payload as any).orderItemId).toBe(item.id);
     expect(ledger.filter((entry) => entry.eventType === 'REVERSAL' && entry.orderItemId === item.id)).toHaveLength(0);
-  });
   });
 });
