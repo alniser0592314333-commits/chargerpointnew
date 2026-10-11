@@ -190,8 +190,8 @@ export const buildEffectiveOrderItemReadModel = (
   baseItems: Iterable<OrderItemEntity>,
   overlays: readonly OptimisticOverlayRecord[]
 ): { orders: Map<string, OrderEntity>; items: Map<string, OrderItemEntity> } => {
-  const orders = new Map(Array.from(baseOrders, (order) => [order.id, order]));
-  const items = new Map(Array.from(baseItems, (item) => [item.id, item]));
+  const orders = new Map<string, OrderEntity>(Array.from(baseOrders, (order) => [order.id, order] as const));
+  const items = new Map<string, OrderItemEntity>(Array.from(baseItems, (item) => [item.id, item] as const));
 
   const orderedOverlays = overlays
     .filter((overlay) => overlay.status === 'PENDING')
