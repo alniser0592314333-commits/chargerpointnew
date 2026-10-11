@@ -122,7 +122,7 @@ export function groupCustomerFinancialHistoryByOrder(
     const fallbackOrderTotal = Math.abs(amountMinor);
     const orderTotalMinor = orderItems.length > 0
       ? orderItems.reduce((sum, item) => sum + item.priceMinor, 0)
-      : (reversals.length > 0 ? 0 : fallbackOrderTotal);
+      : fallbackOrderTotal;
 
     groupedRows.push({
       ...latestEvent,
