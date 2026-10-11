@@ -46,6 +46,7 @@ CREATE TABLE public.order_items (
   operational_status text NOT NULL DEFAULT 'CHARGING',
   financial_status text NOT NULL DEFAULT 'UNRECOGNIZED',
   delivered_at timestamptz,
+  financially_recognized_at timestamptz,
   deleted_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now(),
   version integer NOT NULL DEFAULT 1
