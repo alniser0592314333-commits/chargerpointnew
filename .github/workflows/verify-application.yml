@@ -28,7 +28,7 @@ jobs:
       - name: Run order-numbering safety tests
         run: npx vitest run src/tests/order_numbering_safety.test.ts && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts && npx vitest run src/tests/super_admin_debt_limit_warning_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts && npx vitest run src/tests/canonical_goals_foundation.test.ts && npx vitest run src/tests/phase1_reconciliation_closure.test.ts -t 'Goal Generation Formulas|Goal Request Security & Authorization' && npx vitest run src/tests/goal_restore_normalization.test.ts
       - name: Run order-item cancellation and status regressions
-        run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts
+        run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts src/tests/phase6_11_4_delivery_bin_security.test.ts
       - name: Type-check (diagnostic; repository-wide baseline)
         run: npm run lint
         continue-on-error: true
