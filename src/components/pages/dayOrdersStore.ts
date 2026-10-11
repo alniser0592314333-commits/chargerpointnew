@@ -3655,6 +3655,7 @@ export interface UICustomerFinancialItem {
   postBalanceMinor: number;
   createdAt: string;
   orderId?: string;
+  orderItemId?: string;
   orderDisplayNumber?: number;
   description: string;
   shortTitle: string;
@@ -3827,6 +3828,7 @@ export const getCustomerFinancialHistory = async (
       postBalanceMinor: runningBalance,
       createdAt: ev.createdAt,
       orderId: ev.orderId,
+      orderItemId: ev.orderItemId,
       orderDisplayNumber,
       description,
       shortTitle,
@@ -4775,6 +4777,7 @@ export interface UIRecentFinancialActivityItem {
   description: string;
   createdAt: string;
   orderId?: string;
+  orderItemId?: string;
   orderNumber?: number;
 }
 
@@ -4915,6 +4918,7 @@ export const getTodayHomeData = async (
       description,
       createdAt: ev.createdAt,
       ...(ev.orderId ? { orderId: ev.orderId } : {}),
+      ...(ev.orderItemId ? { orderItemId: ev.orderItemId } : {}),
       ...(order ? { orderNumber: order.displayNumber } : {}),
     };
   });
