@@ -671,7 +671,7 @@ WHEN 'UPDATE_ORDER' THEN
                 SELECT 1 FROM public.orders
                 WHERE id = v_order_uuid AND status = 'cancelled'
             ) THEN
-                RAISE EXCEPTION 'Cannot add an item to a cancelled order'
+                RAISE EXCEPTION 'Validation Error: Cannot add an item to a cancelled order'
                     USING ERRCODE = 'P4005';
             END IF;
 
