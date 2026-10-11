@@ -167,7 +167,7 @@ export const SyncCenter: React.FC = () => {
   // This also recognizes older queued commands that reached the server without the
   // deferred-BIN marker, so they can be recovered safely from the Sync Center.
   const isBinRequiredCommand = (item: OutboxRecord): boolean => {
-    const binCommands = new Set(['DELIVER_ORDER_ITEM', 'CANCEL_ORDER', 'CREATE_CUSTOMER_CREDIT']);
+    const binCommands = new Set(['DELIVER_ORDER_ITEM', 'CANCEL_ORDER', 'CANCEL_ORDER_ITEM', 'CREATE_CUSTOMER_CREDIT']);
     if (!binCommands.has(item.commandType)) return false;
 
     const payload = (item.payload || {}) as any;
