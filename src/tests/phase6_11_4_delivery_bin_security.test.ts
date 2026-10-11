@@ -383,7 +383,7 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
 
     const result = await useCases.removeOrderItemDuringEdit(auth, item.id, TEST_BIN);
     expect(result.success).toBe(true);
-    expect(result.data?.status).toBe('cancelled');
+    expect((result as any).data?.status).toBe('cancelled');
 
     const cancelCommand = [...commands.values()].find((command) => command.type === 'CANCEL_ORDER_ITEM');
     expect(cancelCommand).toBeDefined();
