@@ -200,19 +200,22 @@ export function generateGoalProposal(
   const baselineRate = profile.reduce((sum, n) => sum + n, 0) / Math.max(1, profile.length);
   const dailyRate = isProfile ? recentRate * 0.65 + baselineRate * 0.35 : profile[0] / 7;
 
-  const minDuration = dailyRate >= 4 ? 3 : dailyRate >= 1.5 ? 4 : 6;
-  const maxDuration = dailyRate >= 4 ? 9 : dailyRate >= 1.5 ? 11 : MAX_GOAL_DURATION_DAYS;
+  const minDuration = isProfile ? (dailyRate >= 4 ? 3 : dailyRate >= 1.5 ? 4 : 6) : MIN_GOAL_DURATION_DAYS;
+  const maxDuration = isProfile ? (dailyRate >= 4 ? 9 : dailyRate >= 1.5 ? 11 : MAX_GOAL_DURATION_DAYS) : MAX_GOAL_DURATION_DAYS;
   const durationDays = Number.isInteger(customDuration) && customDuration! >= MIN_GOAL_DURATION_DAYS && customDuration! <= MAX_GOAL_DURATION_DAYS
     ? customDuration!
     : minDuration + Math.floor(sample() * (maxDuration - minDuration + 1));
-  const stretch = 1.25 + sample() * 0.30;
   const expectedDevicesDuringGoal = dailyRate * durationDays;
-  const targetQuantity = Math.max(10, Math.ceil(expectedDevicesDuringGoal * stretch));
+  const targetQuantity = isProfile
+    ? Math.max(10, Math.ceil(expectedDevicesDuringGoal * (1.25 + sample() * 0.30)))
+    : Math.max(10, Math.ceil(expectedDevicesDuringGoal + Math.max(10, expectedDevicesDuringGoal * 0.25)));
   const difficultyRatio = expectedDevicesDuringGoal > 0 ? targetQuantity / expectedDevicesDuringGoal : 1.5;
   const derivedRate = 8 + Math.min(5, Math.max(0, Math.round((difficultyRatio - 1) * 10)));
   const ratePerDeviceMinor = Number.isInteger(customRate) && customRate! >= 8 && customRate! <= 13
     ? customRate!
-    : Math.min(13, Math.max(8, derivedRate + Math.floor(sample() * 3) - 1));
+    : isProfile
+      ? Math.min(13, Math.max(8, derivedRate + Math.floor(sample() * 3) - 1))
+      : derivedRate;
   const bonusAmountMinor = Math.min(
     calculateGoalBonusCapMinor(targetQuantity),
     Math.max(MIN_GOAL_BONUS_MINOR, Math.round(targetQuantity * ratePerDeviceMinor))
