@@ -387,7 +387,6 @@ export class MockServerSyncTransport implements ServerSyncTransport {
 function safeParallelResourceKeys(item: OutboxRecord): string[] | null {
   const payload = (item.payload || {}) as Record<string, any>;
   const identity = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
-
   switch (item.commandType) {
     case 'CREATE_CUSTOMER': {
       const id = identity(payload.id) || identity(item.aggregateId) || item.commandId;
@@ -398,7 +397,7 @@ function safeParallelResourceKeys(item: OutboxRecord): string[] | null {
     }
     case 'CREATE_DEVICE_TYPE': {
       const id = identity(payload.id) || identity(item.aggregateId) || item.commandId;
-      const name = identity(payload.name).toLowerCase();
+      const name = identity(payload.name);
       if (!name) return null;
       return [`device-type-id:${id}`, `device-type-name:${name}`];
     }
@@ -408,30 +407,24 @@ function safeParallelResourceKeys(item: OutboxRecord): string[] | null {
       if (!orderId) return null;
       return [`order:${orderId}`, `order-item:${itemId}`];
     }
-    default:
-      return null;
+    default: return null;
   }
 }
 
 function selectSafeSyncBatch(ready: OutboxRecord[], maxConcurrency = 3): OutboxRecord[] {
   const first = ready[0];
   if (!first) return [];
-
   if (!safeParallelResourceKeys(first)) return [first];
-
   const selected: OutboxRecord[] = [];
   const claimedKeys = new Set<string>();
   for (const item of ready) {
     if (selected.length >= maxConcurrency) break;
-    // Do not jump over a different/unsafe command: dispatch order remains
-    // consistent with the scheduler's priority and FIFO decisions.
     if (item.commandType !== first.commandType) break;
     const keys = safeParallelResourceKeys(item);
     if (!keys || keys.some(key => claimedKeys.has(key))) break;
     selected.push(item);
     keys.forEach(key => claimedKeys.add(key));
   }
-
   return selected.length > 0 ? selected : [first];
 }
 
