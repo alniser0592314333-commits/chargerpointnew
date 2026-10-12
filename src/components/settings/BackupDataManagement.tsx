@@ -80,6 +80,7 @@ export const BackupDataManagement: React.FC = () => {
   const [diffData, setDiffData] = useState<any | null>(null);
   const [replaceOnlineSourceData, setReplaceOnlineSourceData] = useState<BackupSnapshotData | null>(null);
   const [replaceOnlineSourceChecksum, setReplaceOnlineSourceChecksum] = useState<string | null>(null);
+  const [replaceOnlineError, setReplaceOnlineError] = useState<string | null>(null);
 
   // Clear Sync History State
   const [isClearSyncHistoryOpen, setIsClearSyncHistoryOpen] = useState<boolean>(false);
@@ -505,6 +506,7 @@ export const BackupDataManagement: React.FC = () => {
 
   // 8. Handle Local -> Online Replacement Preview and Execution
   const handleOpenReplacePreview = async () => {
+    setReplaceOnlineError(null);
     setIsReplaceOnlineOpen(true);
     setReplaceOnlineBin('');
     setDiffData(null);
@@ -580,6 +582,7 @@ export const BackupDataManagement: React.FC = () => {
         safetySnapshotId: res.safetySnapshotId,
       });
 
+      setReplaceOnlineError(null);
       showToast(
         locale === 'ar'
           ? 'تم استبدال بيانات السحابة بنجاح! تم إنشاء نسخة أمان احتياطية تلقائياً.'
@@ -614,6 +617,7 @@ export const BackupDataManagement: React.FC = () => {
             ? 'فشل استبدال بيانات السحابة'
             : 'Failed to replace online business data';
       }
+      setReplaceOnlineError(msg);
       showToast(msg, 'error');
     } finally {
       setIsActionLoading(false);
@@ -1658,6 +1662,12 @@ export const BackupDataManagement: React.FC = () => {
         }
       >
         <form onSubmit={handleExecuteReplaceOnline} className="space-y-4 text-xs">
+          {replaceOnlineError && (
+            <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-100">
+              <p className="font-bold">{locale === 'ar' ? 'فشل استبدال بيانات السحابة' : 'Cloud replacement failed'}</p>
+              <p className="mt-1 break-words">{replaceOnlineError}</p>
+            </div>
+          )}
           <div className="p-3 rounded-xl bg-amber-50 dark:bg-[#352510] border border-amber-200 dark:border-[#5a3e1a] text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
             <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-1 leading-relaxed">

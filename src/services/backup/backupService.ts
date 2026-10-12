@@ -764,6 +764,48 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
   };
 }
 
+/**
+ * The live database requires orders.internal_sequence to be globally unique.
+ * Older/offline backups can contain zeroes or per-day sequence values, which
+ * collide across days and are rejected by the atomic replacement RPC.
+ *
+ * Preserve already-valid global sequences. If the collection contains any
+ * non-positive, non-integer, or duplicate sequence, rebuild the technical
+ * sequence deterministically by creation time then UUID. Customer-visible
+ * displayNumber/display_number is intentionally untouched.
+ */
+export function normalizeReplacementOrderInternalSequences(data: Partial<BackupSnapshotData>): boolean {
+  const orders = data.orders || [];
+  const seen = new Set<number>();
+  const alreadyUnique = orders.every((order: any) => {
+    const raw = order?.internalSequence ?? order?.internal_sequence;
+    const sequence = Number(raw);
+    if (!Number.isSafeInteger(sequence) || sequence <= 0 || seen.has(sequence)) return false;
+    seen.add(sequence);
+    return true;
+  });
+
+  if (alreadyUnique) return false;
+
+  const chronologicalOrders = [...orders].sort((a: any, b: any) => {
+    const aTime = Date.parse(String(a?.createdAt ?? a?.created_at ?? ''));
+    const bTime = Date.parse(String(b?.createdAt ?? b?.created_at ?? ''));
+    const aValid = Number.isFinite(aTime);
+    const bValid = Number.isFinite(bTime);
+    if (aValid && bValid && aTime !== bTime) return aTime - bTime;
+    if (aValid !== bValid) return aValid ? -1 : 1;
+    return String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+  });
+
+  chronologicalOrders.forEach((order: any, index: number) => {
+    const sequence = index + 1;
+    order.internalSequence = sequence;
+    order.internal_sequence = sequence;
+  });
+
+  return true;
+}
+
 function replacementField(row: any, ...keys: string[]): any {
   for (const key of keys) {
     if (row?.[key] !== undefined && row?.[key] !== null) return row[key];
@@ -936,6 +978,31 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
 
   // Active QR uniqueness is a server invariant. Reject duplicate active target/type
   // combinations before a destructive call instead of discovering them after DELETE.
+  // Never promote a financially incomplete backup. A recognized item is a
+  // posted charge in this application and must have its matching ledger event.
+  // Reconstructing missing charges here would invent financial history and can
+  // silently overwrite customer balances, so fail before taking the cloud RPC path.
+  const recognizedItems = collections.order_items.filter((row) =>
+    String(replacementField(row, 'financialStatus', 'financial_status') || '').toUpperCase() === 'RECOGNIZED'
+  );
+  if (recognizedItems.length > 0) {
+    const chargedItemIds = new Set(
+      collections.financial_ledger
+        .filter((row) =>
+          String(replacementField(row, 'eventType', 'event_type') || '').toUpperCase() === 'ORDER_ITEM_CHARGE'
+        )
+        .map((row) => replacementField(row, 'orderItemId', 'order_item_id'))
+        .filter(Boolean)
+        .map(String)
+    );
+    const missingChargeCount = recognizedItems.filter((row) => !chargedItemIds.has(String(row.id))).length;
+    if (missingChargeCount > 0) {
+      throw new SnapshotFormatError(
+        `SAFE_REPLACE_BLOCKED: ${missingChargeCount} financially recognized order item(s) have no matching ORDER_ITEM_CHARGE in financial_ledger. The cloud was not modified. Recover a complete backup with financial history before replacement.`
+      );
+    }
+  }
+
   const activeQrKeys = new Set<string>();
   for (const row of collections.qr_tokens) {
     const active = replacementField(row, 'isActive', 'is_active') ?? true;
@@ -2081,6 +2148,7 @@ export class BackupService {
       ? options.customLocalData
       : await this.captureLocalData();
     const localData = normalizeReplacementLocalData(localRaw);
+    const repairedOrderInternalSequences = normalizeReplacementOrderInternalSequences(localData);
 
     const localBusinessEntityCount =
       (localData.customers || []).length +
@@ -2359,6 +2427,21 @@ export class BackupService {
 
       if (error || !data || !data.success) {
         throw new Error(error || 'Local -> Online Replacement failed on server');
+      }
+    }
+
+    // Keep IndexedDB aligned with the globally unique technical order sequence
+    // sent to the cloud. This is metadata only; visible per-day order numbers are
+    // unchanged. Preserve every other local order field when updating the row.
+    if (repairedOrderInternalSequences) {
+      for (const order of localData.orders || []) {
+        const existingOrder = await localDb.get<any>('orders', order.id);
+        const sequence = Number(order.internalSequence ?? order.internal_sequence);
+        await localDb.set('orders', order.id, {
+          ...(existingOrder || order),
+          internalSequence: sequence,
+          internal_sequence: sequence,
+        });
       }
     }
 
