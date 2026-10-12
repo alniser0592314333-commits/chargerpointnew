@@ -478,6 +478,13 @@ export const BackupDataManagement: React.FC = () => {
       console.warn('Delete online data error:', err);
       let msg = err.message;
       if (
+        msg?.includes('Duplicate order internal_sequence') ||
+        msg?.includes('Duplicate orders internalSequence')
+      ) {
+        msg = locale === 'ar'
+          ? 'تعذر الاستبدال لأن بعض الطلبات تحمل رقمًا تسلسليًا داخليًا مكررًا. لم تُستبدل بيانات السحابة؛ أعد فتح المعاينة وراجع النسخة المحلية.'
+          : 'Replacement blocked because multiple orders share the same internal sequence. Cloud data was not replaced; reopen the preview and review local data.';
+      } else if (
         msg?.includes('Valid numeric BIN') ||
         msg?.includes('BIN is required') ||
         err.name === 'BinRequiredError'
