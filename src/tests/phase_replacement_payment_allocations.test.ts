@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { backupService, normalizeReplacementOrderInternalSequences } from '../services/backup/backupService';
+import { backupService, normalizeReplacementOrderInternalSequences, validateReplacementData } from '../services/backup/backupService';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { AuthorizationContext } from '../application/authContext';
 import { PaymentAllocationEntity } from '../domain/models';
@@ -64,6 +64,31 @@ describe('PAYMENT ALLOCATIONS — REPLACEMENT INTEGRATION & REPLACEMENT ARCHITEC
     };
     expect(normalizeReplacementOrderInternalSequences(data)).toBe(false);
     expect(data.orders.map((row: any) => row.internal_sequence)).toEqual([12, 13]);
+  });
+
+  it('blocks cloud replacement when recognized delivered items have no financial ledger charges', () => {
+    const customerId = '00000000-0000-4000-8000-000000000011';
+    const dayId = '00000000-0000-4000-8000-000000000012';
+    const deviceTypeId = '00000000-0000-4000-8000-000000000013';
+    const orderId = '00000000-0000-4000-8000-000000000014';
+    const itemId = '00000000-0000-4000-8000-000000000015';
+    expect(() => validateReplacementData({
+      customers: [{ id: customerId }],
+      businessDays: [{ id: dayId }],
+      deviceTypes: [{ id: deviceTypeId }],
+      orders: [{ id: orderId, dayId, customerId, status: 'delivered', internalSequence: 1 }],
+      orderItems: [{
+        id: itemId, orderId, deviceTypeId, status: 'delivered',
+        financialStatus: 'RECOGNIZED', paymentStatus: 'UNPAID',
+      }],
+      financialLedger: [],
+      payments: [],
+      paymentAllocations: [],
+      qrTokens: [],
+      orderNumberReservations: [],
+      goals: [],
+      goalRequests: [],
+    })).toThrow('SAFE_REPLACE_BLOCKED: 1 financially recognized order item');
   });
 
   // A. Local allocation UUID accepted
