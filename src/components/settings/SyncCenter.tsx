@@ -383,8 +383,8 @@ export const SyncCenter: React.FC = () => {
     }
   };
 
-  // Retry failed commands one at a time, oldest first. Stop at the first failure
-  // so newer failed operations cannot overtake an unresolved older operation.
+  // Requeue failed commands in FIFO order. The sync engine's scheduler then
+  // enforces dependencies and processes ready commands oldest-first.
   const handleRetryFailedOldestFirst = async () => {
     if (!isOnline) {
       showToast(locale === 'ar' ? 'لا يوجد اتصال بالإنترنت' : 'You are offline', 'error');
@@ -392,59 +392,54 @@ export const SyncCenter: React.FC = () => {
     }
 
     try {
-      const initialOutbox = await localDb.listOutbox();
-      const failedCommands = initialOutbox
+      const outbox = await localDb.listOutbox();
+      const failedCommands = outbox
         .filter((item) => item.status === 'rejected' || item.status === 'conflict')
-        .sort((a, b) => {
-          const timeA = new Date(a.createdAt || 0).getTime();
-          const timeB = new Date(b.createdAt || 0).getTime();
-          return timeA - timeB;
-        });
+        .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
 
       if (failedCommands.length === 0) {
         showToast(locale === 'ar' ? 'لا توجد عمليات فاشلة لإعادة المحاولة' : 'No failed operations to retry', 'info');
         return;
       }
 
+      // Do not skip an older command that needs credentials or belongs to a
+      // previous reset generation; newer failed commands must not overtake it.
+      const first = failedCommands[0];
+      if (isBinRequiredCommand(first)) {
+        showToast(
+          locale === 'ar'
+            ? `أقدم عملية فاشلة (${first.commandId}) تحتاج BIN. أدخل BIN من قسم العمليات التي تحتاج BIN أولاً.`
+            : `The oldest failed command (${first.commandId}) requires a BIN. Authorize it in the BIN section first.`,
+          'error'
+        );
+        return;
+      }
+      if (String(first.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
+        showToast(
+          locale === 'ar'
+            ? 'أقدم عملية فاشلة من جيل مزامنة قديم ولا يجوز إعادة إرسالها تلقائياً.'
+            : 'The oldest failed command belongs to an older reset generation and cannot be retried automatically.',
+          'error'
+        );
+        return;
+      }
+
       setIsSyncing(true);
-      let succeeded = 0;
-      let stoppedAt: string | null = null;
-      let stopReason: 'BIN' | 'RESET' | 'FAILED' | 'BLOCKED' | null = null;
-
-      for (const candidate of failedCommands) {
-        const currentOutbox = await localDb.listOutbox();
-        const target = currentOutbox.find((item) => item.commandId === candidate.commandId);
-
-        if (!target || target.status === 'accepted') {
-          succeeded++;
-          continue;
-        }
-
-        if (target.status !== 'rejected' && target.status !== 'conflict') {
-          stoppedAt = target.commandId;
-          stopReason = 'BLOCKED';
+      let requeued = 0;
+      for (const item of failedCommands) {
+        // Keep the retry batch FIFO. If a later item needs explicit authorization
+        // or is stale, leave it and all newer items untouched for a separate action.
+        if (isBinRequiredCommand(item) || String(item.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
           break;
         }
 
-        if (isBinRequiredCommand(target)) {
-          stoppedAt = target.commandId;
-          stopReason = 'BIN';
-          break;
-        }
+        item.status = 'pending';
+        item.retryCount = 0;
+        item.lastError = undefined;
+        item.nextRetryAt = undefined;
+        await localDb.saveOutbox(item);
 
-        if (String(target.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
-          stoppedAt = target.commandId;
-          stopReason = 'RESET';
-          break;
-        }
-
-        target.status = 'pending';
-        target.retryCount = 0;
-        target.lastError = undefined;
-        target.nextRetryAt = undefined;
-        await localDb.saveOutbox(target);
-
-        const history = await localDb.getHistoryByCommandId(target.commandId);
+        const history = await localDb.getHistoryByCommandId(item.commandId);
         if (history) {
           history.state = 'PENDING';
           history.errorClass = undefined;
@@ -456,62 +451,22 @@ export const SyncCenter: React.FC = () => {
           history.updatedAt = new Date().toISOString();
           await localDb.saveHistory(history);
         }
-
-        await globalSyncBridge.requestManualSync();
-
-        const afterOutbox = await localDb.listOutbox();
-        const afterTarget = afterOutbox.find((item) => item.commandId === target.commandId);
-        const afterHistory = await localDb.getHistoryByCommandId(target.commandId);
-        if (afterTarget?.status === 'accepted' || afterHistory?.state === 'SUCCESS' || !afterTarget) {
-          succeeded++;
-          continue;
-        }
-
-        // Preserve FIFO: do not continue to newer failed commands if this one
-        // still failed, is waiting, or became dependency-blocked.
-        stoppedAt = target.commandId;
-        stopReason = 'FAILED';
-        break;
+        requeued++;
       }
 
       await refreshSyncData();
-
-      if (stopReason === 'BIN') {
-        showToast(
-          locale === 'ar'
-            ? `توقفت عند أقدم عملية فاشلة (${stoppedAt}) لأنها تحتاج BIN. أدخل BIN أولاً ثم أعد المحاولة.`
-            : `Stopped at oldest failed command (${stoppedAt}) because it requires BIN. Enter the BIN, then retry again.`,
-          'error'
-        );
-      } else if (stopReason === 'RESET') {
-        showToast(
-          locale === 'ar'
-            ? `توقفت عند العملية ${stoppedAt} لأنها من جيل مزامنة قديم ولا يجوز إعادة إرسالها تلقائياً.`
-            : `Stopped at command ${stoppedAt}: it belongs to an older reset generation and cannot be retried automatically.`,
-          'error'
-        );
-      } else if (stopReason === 'BLOCKED') {
-        showToast(
-          locale === 'ar'
-            ? `توقفت عند العملية ${stoppedAt} لأنها لم تعد جاهزة للإرسال. افحص الاعتماديات أولاً.`
-            : `Stopped at command ${stoppedAt} because it is not ready to send. Resolve its dependencies first.`,
-          'error'
-        );
-      } else if (stopReason === 'FAILED') {
-        showToast(
-          locale === 'ar'
-            ? `تمت معالجة ${succeeded} عملية قبل التوقف عند أول فشل: ${stoppedAt}. لن يتم تجاوزها إلى العمليات الأحدث.`
-            : `Processed ${succeeded} operation(s) before stopping at the first failure: ${stoppedAt}. Newer failures were not skipped.`,
-          'error'
-        );
-      } else {
-        showToast(
-          locale === 'ar'
-            ? `اكتملت إعادة المحاولة بالترتيب من الأقدم. العمليات الناجحة: ${succeeded}.`
-            : `Oldest-first retry finished. Successful operations: ${succeeded}.`,
-          'success'
-        );
+      if (requeued === 0) {
+        setIsSyncing(false);
+        return;
       }
+
+      showToast(
+        locale === 'ar'
+          ? `تم تجهيز ${requeued} عملية فاشلة لإعادة المحاولة من الأقدم إلى الأحدث.`
+          : `Queued ${requeued} failed operation(s) for retry, oldest first.`,
+        'info'
+      );
+      await globalSyncBridge.requestManualSync();
     } catch (err: any) {
       console.error('Failed to retry failed commands oldest-first:', err);
       showToast(
