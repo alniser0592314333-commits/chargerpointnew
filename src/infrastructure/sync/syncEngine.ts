@@ -386,7 +386,7 @@ export class MockServerSyncTransport implements ServerSyncTransport {
  */
 function safeParallelResourceKeys(item: OutboxRecord): string[] | null {
   const payload = (item.payload || {}) as Record<string, any>;
-  const identity = (value: unknown) => typeof value === 'string' ? value.trim() : '';
+  const identity = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
 
   switch (item.commandType) {
     case 'CREATE_CUSTOMER': {
