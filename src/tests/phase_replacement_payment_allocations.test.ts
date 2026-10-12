@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { backupService } from '../services/backup/backupService';
+import { backupService, normalizeReplacementOrderInternalSequences } from '../services/backup/backupService';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { AuthorizationContext } from '../application/authContext';
 import { PaymentAllocationEntity } from '../domain/models';
@@ -38,6 +38,32 @@ describe('PAYMENT ALLOCATIONS — REPLACEMENT INTEGRATION & REPLACEMENT ARCHITEC
     resetStoreMemory();
     setRuntimeBinVerifier((bin) => bin === '1234');
     vi.restoreAllMocks();
+  });
+
+  it('repairs legacy duplicate/non-positive global order sequences without changing visible order numbers', () => {
+    const rows: any[] = [
+      { id: '00000000-0000-4000-8000-000000000003', createdAt: '2026-01-03T00:00:00.000Z', internalSequence: 0, internal_sequence: 0, displayNumber: 1, display_number: 1 },
+      { id: '00000000-0000-4000-8000-000000000001', createdAt: '2026-01-01T00:00:00.000Z', internalSequence: 1, internal_sequence: 1, displayNumber: 7, display_number: 7 },
+      { id: '00000000-0000-4000-8000-000000000002', createdAt: '2026-01-02T00:00:00.000Z', internalSequence: 1, internal_sequence: 1, displayNumber: 2, display_number: 2 },
+    ];
+    const data: any = { orders: rows };
+
+    expect(normalizeReplacementOrderInternalSequences(data)).toBe(true);
+    expect(rows.map((row) => row.internal_sequence)).toEqual([3, 1, 2]);
+    expect(new Set(rows.map((row) => row.internal_sequence)).size).toBe(3);
+    expect(rows.map((row) => row.display_number)).toEqual([1, 7, 2]);
+    expect(rows.every((row) => row.internalSequence === row.internal_sequence)).toBe(true);
+  });
+
+  it('does not rewrite an already-valid unique positive global sequence', () => {
+    const data: any = {
+      orders: [
+        { id: '00000000-0000-4000-8000-000000000001', internalSequence: 12, internal_sequence: 12 },
+        { id: '00000000-0000-4000-8000-000000000002', internalSequence: 13, internal_sequence: 13 },
+      ],
+    };
+    expect(normalizeReplacementOrderInternalSequences(data)).toBe(false);
+    expect(data.orders.map((row: any) => row.internal_sequence)).toEqual([12, 13]);
   });
 
   // A. Local allocation UUID accepted
