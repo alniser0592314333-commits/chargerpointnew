@@ -75,4 +75,44 @@ describe('Backup / replacement integrity contract', () => {
       })
     ).toThrow(SnapshotFormatError);
   });
+
+  it('allows missing legacy internal sequences to be assigned by the atomic replacement RPC', () => {
+    const customerId = '11111111-1111-4111-8111-111111111111';
+    const dayId = '22222222-2222-4222-8222-222222222222';
+    const orders = [
+      { id: '33333333-3333-4333-8333-333333333333', customerId, dayId, internalSequence: 0 },
+      { id: '44444444-4444-4444-8444-444444444444', customerId, dayId, internalSequence: 0 },
+    ];
+    expect(() => validateReplacementData({
+      customers: [{ id: customerId, name: 'Legacy customer' }],
+      businessDays: [{ id: dayId, businessDate: '2026-10-12' }],
+      orders,
+      orderItems: [],
+      financialLedger: [],
+      payments: [],
+      paymentAllocations: [],
+      deviceTypes: [],
+      qrTokens: [],
+    })).not.toThrow();
+  });
+
+  it('rejects duplicate positive internal sequences before the destructive RPC', () => {
+    const customerId = '11111111-1111-4111-8111-111111111111';
+    const dayId = '22222222-2222-4222-8222-222222222222';
+    const orders = [
+      { id: '33333333-3333-4333-8333-333333333333', customerId, dayId, internalSequence: 7 },
+      { id: '44444444-4444-4444-8444-444444444444', customerId, dayId, internalSequence: 7 },
+    ];
+    expect(() => validateReplacementData({
+      customers: [{ id: customerId, name: 'Customer' }],
+      businessDays: [{ id: dayId, businessDate: '2026-10-12' }],
+      orders,
+      orderItems: [],
+      financialLedger: [],
+      payments: [],
+      paymentAllocations: [],
+      deviceTypes: [],
+      qrTokens: [],
+    })).toThrow(/Duplicate order internal_sequence/);
+  });
 });
