@@ -63,7 +63,7 @@ describe('safe bounded sync concurrency', () => {
     for (let i = 1; i <= 4; i++) {
       await engine.queueCommand(
         `same-order-item-${i}`, 'ADD_ORDER_ITEM', 'order_items', `same-item-${i}`,
-        { id: `same-item-${i}`, orderId: 'one-order', deviceTypeId: 'type-shared' },
+        { id: `same-item-${i}`, orderId: i % 2 === 0 ? 'ONE-ORDER' : 'one-order', deviceTypeId: 'type-shared' },
         'device-1', 'admin-1'
       );
     }
