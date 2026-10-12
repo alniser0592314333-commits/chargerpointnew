@@ -383,6 +383,102 @@ export const SyncCenter: React.FC = () => {
     }
   };
 
+  // Requeue failed commands in FIFO order. The sync engine's scheduler then
+  // enforces dependencies and processes ready commands oldest-first.
+  const handleRetryFailedOldestFirst = async () => {
+    if (!isOnline) {
+      showToast(locale === 'ar' ? 'لا يوجد اتصال بالإنترنت' : 'You are offline', 'error');
+      return;
+    }
+
+    try {
+      const outbox = await localDb.listOutbox();
+      const failedCommands = outbox
+        .filter((item) => item.status === 'rejected' || item.status === 'conflict')
+        .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+
+      if (failedCommands.length === 0) {
+        showToast(locale === 'ar' ? 'لا توجد عمليات فاشلة لإعادة المحاولة' : 'No failed operations to retry', 'info');
+        return;
+      }
+
+      // Do not skip an older command that needs credentials or belongs to a
+      // previous reset generation; newer failed commands must not overtake it.
+      const first = failedCommands[0];
+      if (isBinRequiredCommand(first)) {
+        showToast(
+          locale === 'ar'
+            ? `أقدم عملية فاشلة (${first.commandId}) تحتاج BIN. أدخل BIN من قسم العمليات التي تحتاج BIN أولاً.`
+            : `The oldest failed command (${first.commandId}) requires a BIN. Authorize it in the BIN section first.`,
+          'error'
+        );
+        return;
+      }
+      if (String(first.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
+        showToast(
+          locale === 'ar'
+            ? 'أقدم عملية فاشلة من جيل مزامنة قديم ولا يجوز إعادة إرسالها تلقائياً.'
+            : 'The oldest failed command belongs to an older reset generation and cannot be retried automatically.',
+          'error'
+        );
+        return;
+      }
+
+      setIsSyncing(true);
+      let requeued = 0;
+      for (const item of failedCommands) {
+        // Keep the retry batch FIFO. If a later item needs explicit authorization
+        // or is stale, leave it and all newer items untouched for a separate action.
+        if (isBinRequiredCommand(item) || String(item.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
+          break;
+        }
+
+        item.status = 'pending';
+        item.retryCount = 0;
+        item.lastError = undefined;
+        item.nextRetryAt = undefined;
+        await localDb.saveOutbox(item);
+
+        const history = await localDb.getHistoryByCommandId(item.commandId);
+        if (history) {
+          history.state = 'PENDING';
+          history.errorClass = undefined;
+          history.errorMessage = undefined;
+          history.errorDetails = undefined;
+          history.errorHint = undefined;
+          history.failureStage = undefined;
+          history.retryEligible = undefined;
+          history.updatedAt = new Date().toISOString();
+          await localDb.saveHistory(history);
+        }
+        requeued++;
+      }
+
+      await refreshSyncData();
+      if (requeued === 0) {
+        setIsSyncing(false);
+        return;
+      }
+
+      showToast(
+        locale === 'ar'
+          ? `تم تجهيز ${requeued} عملية فاشلة لإعادة المحاولة من الأقدم إلى الأحدث.`
+          : `Queued ${requeued} failed operation(s) for retry, oldest first.`,
+        'info'
+      );
+      await globalSyncBridge.requestManualSync();
+    } catch (err: any) {
+      console.error('Failed to retry failed commands oldest-first:', err);
+      showToast(
+        err?.message || (locale === 'ar' ? 'تعذرت إعادة محاولة العمليات الفاشلة' : 'Failed to retry failed operations'),
+        'error'
+      );
+    } finally {
+      await refreshSyncData();
+      setIsSyncing(false);
+    }
+  };
+
   // Handle Manual Pull-only Reload
   const handleReloadLatestData = async () => {
     try {
@@ -768,6 +864,18 @@ export const SyncCenter: React.FC = () => {
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'} ${isSyncing ? 'animate-spin' : ''}`} />
                 <span>{locale === 'ar' ? 'تحديث السحابة' : 'Reload Latest'}</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRetryFailedOldestFirst}
+                disabled={isSyncing || !isOnline || activeFailedCount === 0}
+                className="text-xs h-8 px-3 cursor-pointer border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+              >
+                <Play className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'}`} />
+                <span>{locale === 'ar' ? `إعادة محاولة الفاشلة (${activeFailedCount})` : `Retry Failed (${activeFailedCount})`}</span>
               </Button>
 
               <Button
