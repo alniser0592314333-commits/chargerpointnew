@@ -2335,7 +2335,7 @@ export class BackupService {
       // A definitive server-side 4xx response means PostgreSQL rejected the payload
       // before commit. Do not perform a second full cloud snapshot read for these
       // deterministic failures; surface the actual validation error immediately.
-      if (typeof error === 'string' && /\\[(?:400|403|404|409|422)\\]/.test(error)) {
+      if (typeof error === 'string' && ['[400]', '[403]', '[404]', '[409]', '[422]'].some((status) => error.includes(status))) {
         throw new Error(error);
       }
 
