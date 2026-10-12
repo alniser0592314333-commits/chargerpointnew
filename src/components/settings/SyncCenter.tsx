@@ -383,6 +383,147 @@ export const SyncCenter: React.FC = () => {
     }
   };
 
+  // Retry failed commands one at a time, oldest first. Stop at the first failure
+  // so newer failed operations cannot overtake an unresolved older operation.
+  const handleRetryFailedOldestFirst = async () => {
+    if (!isOnline) {
+      showToast(locale === 'ar' ? 'لا يوجد اتصال بالإنترنت' : 'You are offline', 'error');
+      return;
+    }
+
+    try {
+      const initialOutbox = await localDb.listOutbox();
+      const failedCommands = initialOutbox
+        .filter((item) => item.status === 'rejected' || item.status === 'conflict')
+        .sort((a, b) => {
+          const timeA = new Date(a.createdAt || 0).getTime();
+          const timeB = new Date(b.createdAt || 0).getTime();
+          return timeA - timeB;
+        });
+
+      if (failedCommands.length === 0) {
+        showToast(locale === 'ar' ? 'لا توجد عمليات فاشلة لإعادة المحاولة' : 'No failed operations to retry', 'info');
+        return;
+      }
+
+      setIsSyncing(true);
+      let succeeded = 0;
+      let stoppedAt: string | null = null;
+      let stopReason: 'BIN' | 'RESET' | 'FAILED' | 'BLOCKED' | null = null;
+
+      for (const candidate of failedCommands) {
+        const currentOutbox = await localDb.listOutbox();
+        const target = currentOutbox.find((item) => item.commandId === candidate.commandId);
+
+        if (!target || target.status === 'accepted') {
+          succeeded++;
+          continue;
+        }
+
+        if (target.status !== 'rejected' && target.status !== 'conflict') {
+          stoppedAt = target.commandId;
+          stopReason = 'BLOCKED';
+          break;
+        }
+
+        if (isBinRequiredCommand(target)) {
+          stoppedAt = target.commandId;
+          stopReason = 'BIN';
+          break;
+        }
+
+        if (String(target.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
+          stoppedAt = target.commandId;
+          stopReason = 'RESET';
+          break;
+        }
+
+        target.status = 'pending';
+        target.retryCount = 0;
+        target.lastError = undefined;
+        target.nextRetryAt = undefined;
+        await localDb.saveOutbox(target);
+
+        const history = await localDb.getHistoryByCommandId(target.commandId);
+        if (history) {
+          history.state = 'PENDING';
+          history.errorClass = undefined;
+          history.errorMessage = undefined;
+          history.errorDetails = undefined;
+          history.errorHint = undefined;
+          history.failureStage = undefined;
+          history.retryEligible = undefined;
+          history.updatedAt = new Date().toISOString();
+          await localDb.saveHistory(history);
+        }
+
+        await globalSyncBridge.requestManualSync();
+
+        const afterOutbox = await localDb.listOutbox();
+        const afterTarget = afterOutbox.find((item) => item.commandId === target.commandId);
+        const afterHistory = await localDb.getHistoryByCommandId(target.commandId);
+        if (afterTarget?.status === 'accepted' || afterHistory?.state === 'SUCCESS' || !afterTarget) {
+          succeeded++;
+          continue;
+        }
+
+        // Preserve FIFO: do not continue to newer failed commands if this one
+        // still failed, is waiting, or became dependency-blocked.
+        stoppedAt = target.commandId;
+        stopReason = 'FAILED';
+        break;
+      }
+
+      await refreshSyncData();
+
+      if (stopReason === 'BIN') {
+        showToast(
+          locale === 'ar'
+            ? `توقفت عند أقدم عملية فاشلة (${stoppedAt}) لأنها تحتاج BIN. أدخل BIN أولاً ثم أعد المحاولة.`
+            : `Stopped at oldest failed command (${stoppedAt}) because it requires BIN. Enter the BIN, then retry again.`,
+          'error'
+        );
+      } else if (stopReason === 'RESET') {
+        showToast(
+          locale === 'ar'
+            ? `توقفت عند العملية ${stoppedAt} لأنها من جيل مزامنة قديم ولا يجوز إعادة إرسالها تلقائياً.`
+            : `Stopped at command ${stoppedAt}: it belongs to an older reset generation and cannot be retried automatically.`,
+          'error'
+        );
+      } else if (stopReason === 'BLOCKED') {
+        showToast(
+          locale === 'ar'
+            ? `توقفت عند العملية ${stoppedAt} لأنها لم تعد جاهزة للإرسال. افحص الاعتماديات أولاً.`
+            : `Stopped at command ${stoppedAt} because it is not ready to send. Resolve its dependencies first.`,
+          'error'
+        );
+      } else if (stopReason === 'FAILED') {
+        showToast(
+          locale === 'ar'
+            ? `تمت معالجة ${succeeded} عملية قبل التوقف عند أول فشل: ${stoppedAt}. لن يتم تجاوزها إلى العمليات الأحدث.`
+            : `Processed ${succeeded} operation(s) before stopping at the first failure: ${stoppedAt}. Newer failures were not skipped.`,
+          'error'
+        );
+      } else {
+        showToast(
+          locale === 'ar'
+            ? `اكتملت إعادة المحاولة بالترتيب من الأقدم. العمليات الناجحة: ${succeeded}.`
+            : `Oldest-first retry finished. Successful operations: ${succeeded}.`,
+          'success'
+        );
+      }
+    } catch (err: any) {
+      console.error('Failed to retry failed commands oldest-first:', err);
+      showToast(
+        err?.message || (locale === 'ar' ? 'تعذرت إعادة محاولة العمليات الفاشلة' : 'Failed to retry failed operations'),
+        'error'
+      );
+    } finally {
+      await refreshSyncData();
+      setIsSyncing(false);
+    }
+  };
+
   // Handle Manual Pull-only Reload
   const handleReloadLatestData = async () => {
     try {
@@ -768,6 +909,18 @@ export const SyncCenter: React.FC = () => {
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'} ${isSyncing ? 'animate-spin' : ''}`} />
                 <span>{locale === 'ar' ? 'تحديث السحابة' : 'Reload Latest'}</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRetryFailedOldestFirst}
+                disabled={isSyncing || !isOnline || activeFailedCount === 0}
+                className="text-xs h-8 px-3 cursor-pointer border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+              >
+                <Play className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'}`} />
+                <span>{locale === 'ar' ? `إعادة محاولة الفاشلة (${activeFailedCount})` : `Retry Failed (${activeFailedCount})`}</span>
               </Button>
 
               <Button
