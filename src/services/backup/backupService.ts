@@ -978,6 +978,31 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
 
   // Active QR uniqueness is a server invariant. Reject duplicate active target/type
   // combinations before a destructive call instead of discovering them after DELETE.
+  // Never promote a financially incomplete backup. A recognized item is a
+  // posted charge in this application and must have its matching ledger event.
+  // Reconstructing missing charges here would invent financial history and can
+  // silently overwrite customer balances, so fail before taking the cloud RPC path.
+  const recognizedItems = collections.order_items.filter((row) =>
+    String(replacementField(row, 'financialStatus', 'financial_status') || '').toUpperCase() === 'RECOGNIZED'
+  );
+  if (recognizedItems.length > 0) {
+    const chargedItemIds = new Set(
+      collections.financial_ledger
+        .filter((row) =>
+          String(replacementField(row, 'eventType', 'event_type') || '').toUpperCase() === 'ORDER_ITEM_CHARGE'
+        )
+        .map((row) => replacementField(row, 'orderItemId', 'order_item_id'))
+        .filter(Boolean)
+        .map(String)
+    );
+    const missingChargeCount = recognizedItems.filter((row) => !chargedItemIds.has(String(row.id))).length;
+    if (missingChargeCount > 0) {
+      throw new SnapshotFormatError(
+        `SAFE_REPLACE_BLOCKED: ${missingChargeCount} financially recognized order item(s) have no matching ORDER_ITEM_CHARGE in financial_ledger. The cloud was not modified. Recover a complete backup with financial history before replacement.`
+      );
+    }
+  }
+
   const activeQrKeys = new Set<string>();
   for (const row of collections.qr_tokens) {
     const active = replacementField(row, 'isActive', 'is_active') ?? true;
