@@ -774,7 +774,7 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
  * sequence deterministically by creation time then UUID. Customer-visible
  * displayNumber/display_number is intentionally untouched.
  */
-function normalizeReplacementOrderInternalSequences(data: Partial<BackupSnapshotData>): boolean {
+export function normalizeReplacementOrderInternalSequences(data: Partial<BackupSnapshotData>): boolean {
   const orders = data.orders || [];
   const seen = new Set<number>();
   const alreadyUnique = orders.every((order: any) => {
