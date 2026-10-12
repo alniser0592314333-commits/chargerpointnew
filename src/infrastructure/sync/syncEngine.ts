@@ -378,6 +378,63 @@ export class MockServerSyncTransport implements ServerSyncTransport {
   }
 }
 
+/**
+ * Only commands whose canonical SQL effects are isolated by independent entity keys
+ * may overlap. Financial operations, order creation/renumbering, deliveries,
+ * cancellations, updates, and all unknown command types remain strictly serial.
+ * A batch is a contiguous prefix of the scheduler's priority/FIFO order.
+ */
+function safeParallelResourceKeys(item: OutboxRecord): string[] | null {
+  const payload = (item.payload || {}) as Record<string, any>;
+  const identity = (value: unknown) => typeof value === 'string' ? value.trim() : '';
+
+  switch (item.commandType) {
+    case 'CREATE_CUSTOMER': {
+      const id = identity(payload.id) || identity(item.aggregateId) || item.commandId;
+      const keys = [`customer-id:${id}`];
+      const phone = identity(payload.phone);
+      if (phone) keys.push(`customer-phone:${phone}`);
+      return keys;
+    }
+    case 'CREATE_DEVICE_TYPE': {
+      const id = identity(payload.id) || identity(item.aggregateId) || item.commandId;
+      const name = identity(payload.name).toLowerCase();
+      if (!name) return null;
+      return [`device-type-id:${id}`, `device-type-name:${name}`];
+    }
+    case 'ADD_ORDER_ITEM': {
+      const orderId = identity(payload.orderId) || identity(payload.order_id);
+      const itemId = identity(payload.id) || item.commandId;
+      if (!orderId) return null;
+      return [`order:${orderId}`, `order-item:${itemId}`];
+    }
+    default:
+      return null;
+  }
+}
+
+function selectSafeSyncBatch(ready: OutboxRecord[], maxConcurrency = 3): OutboxRecord[] {
+  const first = ready[0];
+  if (!first) return [];
+
+  if (!safeParallelResourceKeys(first)) return [first];
+
+  const selected: OutboxRecord[] = [];
+  const claimedKeys = new Set<string>();
+  for (const item of ready) {
+    if (selected.length >= maxConcurrency) break;
+    // Do not jump over a different/unsafe command: dispatch order remains
+    // consistent with the scheduler's priority and FIFO decisions.
+    if (item.commandType !== first.commandType) break;
+    const keys = safeParallelResourceKeys(item);
+    if (!keys || keys.some(key => claimedKeys.has(key))) break;
+    selected.push(item);
+    keys.forEach(key => claimedKeys.add(key));
+  }
+
+  return selected.length > 0 ? selected : [first];
+}
+
 export class SyncEngine {
   private isSyncing = false;
   public onDeltaApplied?: (change: ChangeLogEntry, tx?: IDBTransaction) => Promise<void> | void;
@@ -702,226 +759,7 @@ export class SyncEngine {
       const previouslyBlocked = new Set<ID>();
       const processedInCycle = new Set<ID>();
 
-      while (true) {
-        const currentSyncState = await localDb.getSyncState('global');
-        const activeServerGen = currentSyncState?.resetGeneration !== undefined ? currentSyncState.resetGeneration : -1;
-
-        const rawOutboxItems = await localDb.listOutbox();
-        for (const item of rawOutboxItems) {
-          if (
-            item.status === 'pending' ||
-            item.status === 'syncing' ||
-            item.status === 'blocked' ||
-            item.status === 'conflict'
-          ) {
-            // Check A: Stale Reset Generation Quarantine
-            if (
-              activeServerGen >= 0 &&
-              item.resetGeneration !== undefined &&
-              item.resetGeneration >= 0 &&
-              item.resetGeneration !== activeServerGen
-            ) {
-              item.status = 'rejected';
-              item.lastError = 'RESET_GENERATION_MISMATCH';
-              await localDb.saveOutbox(item);
-
-              let hist = await localDb.getHistoryByCommandId(item.commandId);
-              if (!hist) {
-                hist = {
-                  historyId: item.commandId,
-                  commandId: item.commandId,
-                  groupId: item.groupId,
-                  commandType: item.commandType,
-                  entityType: item.aggregateType || 'UNKNOWN',
-                  entityId: item.aggregateId || item.commandId,
-                  state: 'FAILED_PERMANENT',
-                  createdAt: item.createdAt || new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                  attemptCount: (item.retryCount || 0) + 1,
-                  lastAttemptAt: new Date().toISOString(),
-                  errorMessage: 'RESET_GENERATION_MISMATCH',
-                  retryEligible: false,
-                };
-              } else {
-                hist.state = 'FAILED_PERMANENT';
-                hist.errorMessage = 'RESET_GENERATION_MISMATCH';
-                hist.retryEligible = false;
-                hist.updatedAt = new Date().toISOString();
-              }
-              await localDb.saveHistory(hist);
-              continue;
-            }
-
-            // Check B: Non-UUID Identity Payload Quarantine
-            if (containsNonUuidIdentity(item.payload)) {
-              item.status = 'rejected';
-              item.lastError = 'INVALID_UUID_IDENTIFIER';
-              await localDb.saveOutbox(item);
-
-              let hist = await localDb.getHistoryByCommandId(item.commandId);
-              if (!hist) {
-                hist = {
-                  historyId: item.commandId,
-                  commandId: item.commandId,
-                  groupId: item.groupId,
-                  commandType: item.commandType,
-                  entityType: item.aggregateType || 'UNKNOWN',
-                  entityId: item.aggregateId || item.commandId,
-                  state: 'FAILED_PERMANENT',
-                  createdAt: item.createdAt || new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                  attemptCount: (item.retryCount || 0) + 1,
-                  lastAttemptAt: new Date().toISOString(),
-                  errorMessage: 'INVALID_UUID_IDENTIFIER',
-                  retryEligible: false,
-                };
-              } else {
-                hist.state = 'FAILED_PERMANENT';
-                hist.errorMessage = 'INVALID_UUID_IDENTIFIER';
-                hist.retryEligible = false;
-                hist.updatedAt = new Date().toISOString();
-              }
-              await localDb.saveHistory(hist);
-              continue;
-            }
-          }
-        }
-
-        const outboxItems = await localDb.listOutbox();
-
-        // Offline-sensitive commands may be created without a BIN because the
-        // server cannot be contacted while offline. Never send such a command
-        // with an empty credential. Keep it visibly blocked until the admin
-        // supplies the BIN once connectivity is restored.
-        for (const item of outboxItems) {
-          const payload = (item.payload || {}) as any;
-          if (
-            (item.status === 'pending' || item.status === 'blocked' || item.status === 'syncing') &&
-            payload?.deferBinVerification === true &&
-            (!payload?.bin || String(payload.bin).trim().length < 4)
-          ) {
-            item.status = 'blocked';
-            item.lastError = 'BIN_REQUIRED';
-            await localDb.saveOutbox(item);
-            const hist = await localDb.getHistoryByCommandId(item.commandId);
-            if (hist) {
-              hist.state = 'BLOCKED';
-              hist.errorClass = 'AUTHORIZATION';
-              hist.errorMessage = 'BIN_REQUIRED';
-              hist.retryEligible = false;
-              hist.updatedAt = new Date().toISOString();
-              await localDb.saveHistory(hist);
-            }
-            syncEventEmitter.emit({
-              type: 'command_status_changed',
-              commandId: item.commandId,
-              groupId: item.groupId,
-              newState: 'BLOCKED',
-              error: 'BIN_REQUIRED',
-              timestamp: new Date().toISOString(),
-            });
-          }
-        }
-
-        const candidates = outboxItems.filter(
-          i =>
-            !processedInCycle.has(i.commandId) &&
-            !((i.payload as any)?.deferBinVerification === true && (!((i.payload as any)?.bin) || String((i.payload as any)?.bin).trim().length < 4)) &&
-            (i.status === 'pending' ||
-              i.status === 'blocked' ||
-              i.status === 'conflict' ||
-              i.status === 'syncing' ||
-              (i.status === 'rejected' && isAuthOrNetworkError(i.lastError)))
-        );
-
-        if (candidates.length === 0) {
-          break;
-        }
-
-        const scheduleResult = await scheduler.schedule(
-          candidates,
-          outboxItems,
-          (id) => localDb.getHistoryByCommandId(id)
-        );
-
-        // A. Handle cyclic commands
-        if (scheduleResult.cyclic.size > 0) {
-          for (const cyclicId of scheduleResult.cyclic) {
-            const item = outboxItems.find(o => o.commandId === cyclicId);
-            if (item && item.status !== 'blocked') {
-              item.status = 'blocked';
-              item.lastError = 'Circular dependency detected';
-              await localDb.saveOutbox(item);
-
-              let hist = await localDb.getHistoryByCommandId(cyclicId);
-              if (hist) {
-                hist.state = 'BLOCKED';
-                hist.errorMessage = 'Circular dependency detected';
-                hist.updatedAt = new Date().toISOString();
-                await localDb.saveHistory(hist);
-              }
-              syncEventEmitter.emit({
-                type: 'command_blocked',
-                commandId: cyclicId,
-                dependencies: Array.from(scheduleResult.cyclic),
-                reason: 'Circular dependency detected',
-                timestamp: new Date().toISOString(),
-              });
-              syncEventEmitter.emit({
-                type: 'command_status_changed',
-                commandId: cyclicId,
-                newState: 'BLOCKED',
-                error: 'Circular dependency detected',
-                timestamp: new Date().toISOString(),
-              });
-            }
-          }
-        }
-
-        // B. Handle blocked commands
-        for (const [blockedId, info] of scheduleResult.blocked) {
-          if (scheduleResult.cyclic.has(blockedId)) continue;
-          const item = info.record;
-          if (item.status !== 'blocked') {
-            item.status = 'blocked';
-            item.lastError = info.reason;
-            await localDb.saveOutbox(item);
-          }
-          let hist = await localDb.getHistoryByCommandId(blockedId);
-          if (hist && hist.state !== 'BLOCKED' && hist.state !== 'WAITING_DEPENDENCY') {
-            hist.state = 'BLOCKED';
-            hist.errorMessage = info.reason;
-            hist.updatedAt = new Date().toISOString();
-            await localDb.saveHistory(hist);
-          }
-          if (!previouslyBlocked.has(blockedId)) {
-            previouslyBlocked.add(blockedId);
-            syncEventEmitter.emit({
-              type: 'command_blocked',
-              commandId: blockedId,
-              dependencies: info.unsatisfiedDependencies,
-              reason: info.reason,
-              timestamp: new Date().toISOString(),
-            });
-            syncEventEmitter.emit({
-              type: 'command_status_changed',
-              commandId: blockedId,
-              groupId: item.groupId,
-              newState: 'BLOCKED',
-              error: info.reason,
-              timestamp: new Date().toISOString(),
-            });
-          }
-        }
-
-        // C. If no ready commands remain, break
-        if (scheduleResult.ready.length === 0) {
-          break;
-        }
-
-        // D. Pick the highest priority ready command
-        const item = scheduleResult.ready[0];
-
+      const processReadyCommand = async (item: OutboxRecord): Promise<void> => {
         if (previouslyBlocked.has(item.commandId) || item.status === 'blocked') {
           item.status = 'pending';
           await localDb.saveOutbox(item);
@@ -1141,6 +979,231 @@ export class SyncEngine {
           });
           await localDb.saveOutbox(item);
         }
+      };
+
+      while (true) {
+        const currentSyncState = await localDb.getSyncState('global');
+        const activeServerGen = currentSyncState?.resetGeneration !== undefined ? currentSyncState.resetGeneration : -1;
+
+        const rawOutboxItems = await localDb.listOutbox();
+        for (const item of rawOutboxItems) {
+          if (
+            item.status === 'pending' ||
+            item.status === 'syncing' ||
+            item.status === 'blocked' ||
+            item.status === 'conflict'
+          ) {
+            // Check A: Stale Reset Generation Quarantine
+            if (
+              activeServerGen >= 0 &&
+              item.resetGeneration !== undefined &&
+              item.resetGeneration >= 0 &&
+              item.resetGeneration !== activeServerGen
+            ) {
+              item.status = 'rejected';
+              item.lastError = 'RESET_GENERATION_MISMATCH';
+              await localDb.saveOutbox(item);
+
+              let hist = await localDb.getHistoryByCommandId(item.commandId);
+              if (!hist) {
+                hist = {
+                  historyId: item.commandId,
+                  commandId: item.commandId,
+                  groupId: item.groupId,
+                  commandType: item.commandType,
+                  entityType: item.aggregateType || 'UNKNOWN',
+                  entityId: item.aggregateId || item.commandId,
+                  state: 'FAILED_PERMANENT',
+                  createdAt: item.createdAt || new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  attemptCount: (item.retryCount || 0) + 1,
+                  lastAttemptAt: new Date().toISOString(),
+                  errorMessage: 'RESET_GENERATION_MISMATCH',
+                  retryEligible: false,
+                };
+              } else {
+                hist.state = 'FAILED_PERMANENT';
+                hist.errorMessage = 'RESET_GENERATION_MISMATCH';
+                hist.retryEligible = false;
+                hist.updatedAt = new Date().toISOString();
+              }
+              await localDb.saveHistory(hist);
+              continue;
+            }
+
+            // Check B: Non-UUID Identity Payload Quarantine
+            if (containsNonUuidIdentity(item.payload)) {
+              item.status = 'rejected';
+              item.lastError = 'INVALID_UUID_IDENTIFIER';
+              await localDb.saveOutbox(item);
+
+              let hist = await localDb.getHistoryByCommandId(item.commandId);
+              if (!hist) {
+                hist = {
+                  historyId: item.commandId,
+                  commandId: item.commandId,
+                  groupId: item.groupId,
+                  commandType: item.commandType,
+                  entityType: item.aggregateType || 'UNKNOWN',
+                  entityId: item.aggregateId || item.commandId,
+                  state: 'FAILED_PERMANENT',
+                  createdAt: item.createdAt || new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  attemptCount: (item.retryCount || 0) + 1,
+                  lastAttemptAt: new Date().toISOString(),
+                  errorMessage: 'INVALID_UUID_IDENTIFIER',
+                  retryEligible: false,
+                };
+              } else {
+                hist.state = 'FAILED_PERMANENT';
+                hist.errorMessage = 'INVALID_UUID_IDENTIFIER';
+                hist.retryEligible = false;
+                hist.updatedAt = new Date().toISOString();
+              }
+              await localDb.saveHistory(hist);
+              continue;
+            }
+          }
+        }
+
+        const outboxItems = await localDb.listOutbox();
+
+        // Offline-sensitive commands may be created without a BIN because the
+        // server cannot be contacted while offline. Never send such a command
+        // with an empty credential. Keep it visibly blocked until the admin
+        // supplies the BIN once connectivity is restored.
+        for (const item of outboxItems) {
+          const payload = (item.payload || {}) as any;
+          if (
+            (item.status === 'pending' || item.status === 'blocked' || item.status === 'syncing') &&
+            payload?.deferBinVerification === true &&
+            (!payload?.bin || String(payload.bin).trim().length < 4)
+          ) {
+            item.status = 'blocked';
+            item.lastError = 'BIN_REQUIRED';
+            await localDb.saveOutbox(item);
+            const hist = await localDb.getHistoryByCommandId(item.commandId);
+            if (hist) {
+              hist.state = 'BLOCKED';
+              hist.errorClass = 'AUTHORIZATION';
+              hist.errorMessage = 'BIN_REQUIRED';
+              hist.retryEligible = false;
+              hist.updatedAt = new Date().toISOString();
+              await localDb.saveHistory(hist);
+            }
+            syncEventEmitter.emit({
+              type: 'command_status_changed',
+              commandId: item.commandId,
+              groupId: item.groupId,
+              newState: 'BLOCKED',
+              error: 'BIN_REQUIRED',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+
+        const candidates = outboxItems.filter(
+          i =>
+            !processedInCycle.has(i.commandId) &&
+            !((i.payload as any)?.deferBinVerification === true && (!((i.payload as any)?.bin) || String((i.payload as any)?.bin).trim().length < 4)) &&
+            (i.status === 'pending' ||
+              i.status === 'blocked' ||
+              i.status === 'conflict' ||
+              i.status === 'syncing' ||
+              (i.status === 'rejected' && isAuthOrNetworkError(i.lastError)))
+        );
+
+        if (candidates.length === 0) {
+          break;
+        }
+
+        const scheduleResult = await scheduler.schedule(
+          candidates,
+          outboxItems,
+          (id) => localDb.getHistoryByCommandId(id)
+        );
+
+        // A. Handle cyclic commands
+        if (scheduleResult.cyclic.size > 0) {
+          for (const cyclicId of scheduleResult.cyclic) {
+            const item = outboxItems.find(o => o.commandId === cyclicId);
+            if (item && item.status !== 'blocked') {
+              item.status = 'blocked';
+              item.lastError = 'Circular dependency detected';
+              await localDb.saveOutbox(item);
+
+              let hist = await localDb.getHistoryByCommandId(cyclicId);
+              if (hist) {
+                hist.state = 'BLOCKED';
+                hist.errorMessage = 'Circular dependency detected';
+                hist.updatedAt = new Date().toISOString();
+                await localDb.saveHistory(hist);
+              }
+              syncEventEmitter.emit({
+                type: 'command_blocked',
+                commandId: cyclicId,
+                dependencies: Array.from(scheduleResult.cyclic),
+                reason: 'Circular dependency detected',
+                timestamp: new Date().toISOString(),
+              });
+              syncEventEmitter.emit({
+                type: 'command_status_changed',
+                commandId: cyclicId,
+                newState: 'BLOCKED',
+                error: 'Circular dependency detected',
+                timestamp: new Date().toISOString(),
+              });
+            }
+          }
+        }
+
+        // B. Handle blocked commands
+        for (const [blockedId, info] of scheduleResult.blocked) {
+          if (scheduleResult.cyclic.has(blockedId)) continue;
+          const item = info.record;
+          if (item.status !== 'blocked') {
+            item.status = 'blocked';
+            item.lastError = info.reason;
+            await localDb.saveOutbox(item);
+          }
+          let hist = await localDb.getHistoryByCommandId(blockedId);
+          if (hist && hist.state !== 'BLOCKED' && hist.state !== 'WAITING_DEPENDENCY') {
+            hist.state = 'BLOCKED';
+            hist.errorMessage = info.reason;
+            hist.updatedAt = new Date().toISOString();
+            await localDb.saveHistory(hist);
+          }
+          if (!previouslyBlocked.has(blockedId)) {
+            previouslyBlocked.add(blockedId);
+            syncEventEmitter.emit({
+              type: 'command_blocked',
+              commandId: blockedId,
+              dependencies: info.unsatisfiedDependencies,
+              reason: info.reason,
+              timestamp: new Date().toISOString(),
+            });
+            syncEventEmitter.emit({
+              type: 'command_status_changed',
+              commandId: blockedId,
+              groupId: item.groupId,
+              newState: 'BLOCKED',
+              error: info.reason,
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+
+        // C. If no ready commands remain, break
+        if (scheduleResult.ready.length === 0) {
+          break;
+        }
+
+        const dispatchBatch = selectSafeSyncBatch(scheduleResult.ready, 3);
+        const outcomes = await Promise.allSettled(
+          dispatchBatch.map(item => processReadyCommand(item))
+        );
+        const failedOutcome = outcomes.find(outcome => outcome.status === 'rejected');
+        if (failedOutcome?.status === 'rejected') throw failedOutcome.reason;
       }
 
       // Final authoritative pull closes the push/reconcile window. A successful
