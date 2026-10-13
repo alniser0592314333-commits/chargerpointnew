@@ -99,6 +99,12 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
           (item.payload && (item.payload as any).dependencyCommandId === candidateId)
         ) {
           deps.add(candidateId as string);
+        } else if (isStructural) {
+          // Keep structural entity references in the dependency graph even when
+          // no CREATE/OPEN command is currently in the Outbox. The scheduler
+          // must verify that the referenced entity already exists locally;
+          // otherwise a CREATE_ORDER could be pushed without its day/customer.
+          deps.add(candidateId as string);
         }
       }
     };
