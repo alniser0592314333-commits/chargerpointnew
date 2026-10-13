@@ -16,8 +16,19 @@ SQL
 ) >/tmp/change-log-writer-a.log 2>&1 &
 pid_a=$!
 
-# Wait until A's transaction has started and holds the statement-level lock.
-sleep 0.5
+# Wait until A is inside its deliberate sleep, proving it already holds the lock.
+writer_a_active=0
+for _ in $(seq 1 30); do
+  writer_a_active=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state='active' AND query LIKE '%pg_sleep(3)%'")
+  if [[ "$writer_a_active" -ge 1 ]]; then break; fi
+  sleep 0.1
+done
+if [[ "$writer_a_active" -lt 1 ]]; then
+  cat /tmp/change-log-writer-a.log || true
+  echo "Writer A did not reach its lock-holding sleep" >&2
+  kill "$pid_a" 2>/dev/null || true
+  exit 1
+fi
 ("${psql_cmd[@]}" <<'SQL'
 BEGIN;
 INSERT INTO public.orders(id, name) VALUES ('00000000-0000-0000-0000-000000000002', 'B');
