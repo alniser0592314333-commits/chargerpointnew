@@ -33,6 +33,7 @@ import {
   rpcVerifyAdminBin,
   getSupabaseStatus,
   invokeSupabaseRestGet,
+  invokeSupabaseRpc,
   invokeSupabaseRestUpsert,
   getStoredSupabaseAuthSession,
 } from '../../services/supabase/client';
@@ -1220,31 +1221,70 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
   // must propagate so the boot gate never exposes a partially replaced store.
   let localMutationStarted = false;
   try {
-    const [
-      daysRes,
-      custRes,
-      devRes,
-      ordRes,
-      itemRes,
-      ledgRes,
-      payRes,
-      allocRes,
-      goalsRes,
-      goalRequestsRes,
-    ] = await Promise.all([
-      invokeSupabaseRestGet<any>('business_days', 'select=*'),
-      invokeSupabaseRestGet<any>('customers', 'select=*'),
-      invokeSupabaseRestGet<any>('device_types', 'select=*'),
-      invokeSupabaseRestGet<any>('orders', 'select=*'),
-      invokeSupabaseRestGet<any>('order_items', 'select=*'),
-      invokeSupabaseRestGet<any>('financial_ledger', 'select=*'),
-      invokeSupabaseRestGet<any>('payments', 'select=*'),
-      invokeSupabaseRestGet<any>('payment_allocations', 'select=*'),
-      invokeSupabaseRestGet<any>('goals', 'select=*'),
-      invokeSupabaseRestGet<any>('goal_requests', 'select=*'),
-    ]);
+    // One server-side statement captures every bootstrap collection and its
+    // change-log high-water mark under the same PostgreSQL snapshot. Independent
+    // REST reads cannot safely be paired with a cursor because rows can change
+    // between requests.
+    const { data: rawSnapshot, error: snapshotError } = await invokeSupabaseRpc<any>(
+      'capture_sync_bootstrap_snapshot',
+      {}
+    );
+    if (snapshotError) {
+      console.warn('Authoritative bootstrap snapshot RPC failed:', snapshotError);
+      return false;
+    }
+    const snapshot = (Array.isArray(rawSnapshot) ? rawSnapshot[0] : rawSnapshot) as any;
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+      console.warn('Authoritative bootstrap snapshot RPC returned an invalid response.');
+      return false;
+    }
 
-    const remoteReads = [daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes, goalsRes, goalRequestsRes];
+    const requiredCollections: Record<string, unknown> = {
+      business_days: snapshot.business_days,
+      customers: snapshot.customers,
+      device_types: snapshot.device_types,
+      orders: snapshot.orders,
+      order_items: snapshot.order_items,
+      financial_ledger: snapshot.financial_ledger,
+      payments: snapshot.payments,
+      payment_allocations: snapshot.payment_allocations,
+      order_number_reservations: snapshot.order_number_reservations,
+      qr_tokens: snapshot.qr_tokens,
+      goals: snapshot.goals,
+      goal_requests: snapshot.goal_requests,
+    };
+    const invalidCollection = Object.entries(requiredCollections).find(([, rows]) => !Array.isArray(rows));
+    const snapshotGeneration = Number(snapshot.server_reset_generation);
+    const snapshotSequence = Number(snapshot.max_change_sequence);
+    if (
+      invalidCollection ||
+      !Number.isSafeInteger(snapshotGeneration) || snapshotGeneration < 0 ||
+      !Number.isSafeInteger(snapshotSequence) || snapshotSequence < 0
+    ) {
+      console.warn('Authoritative bootstrap snapshot is incomplete or has an invalid checkpoint.', {
+        invalidCollection: invalidCollection?.[0],
+        snapshotGeneration,
+        snapshotSequence,
+      });
+      return false;
+    }
+
+    const daysRes = { data: snapshot.business_days as any[], error: null };
+    const custRes = { data: snapshot.customers as any[], error: null };
+    const devRes = { data: snapshot.device_types as any[], error: null };
+    const ordRes = { data: snapshot.orders as any[], error: null };
+    const itemRes = { data: snapshot.order_items as any[], error: null };
+    const ledgRes = { data: snapshot.financial_ledger as any[], error: null };
+    const payRes = { data: snapshot.payments as any[], error: null };
+    const allocRes = { data: snapshot.payment_allocations as any[], error: null };
+    const reservationsRes = { data: snapshot.order_number_reservations as any[], error: null };
+    const qrTokensRes = { data: snapshot.qr_tokens as any[], error: null };
+    const goalsRes = { data: snapshot.goals as any[], error: null };
+    const goalRequestsRes = { data: snapshot.goal_requests as any[], error: null };
+    const remoteReads = [
+      daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes,
+      reservationsRes, qrTokensRes, goalsRes, goalRequestsRes,
+    ];
     const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
     if (failedRemoteRead) {
       // Never clear a healthy local read model because one authoritative table
@@ -1278,6 +1318,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     allocationsList.length = 0;
     goalsMap.clear();
     goalRequestsMap.clear();
+    reservationsMap.clear();
 
     // Only replace the local read model after the complete remote snapshot has
     // been fetched successfully. Partial table hydration is unsafe because it
@@ -1470,6 +1511,39 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       updatedAny = true;
     }
 
+    // 8. Reservations and QR identities are required bootstrap collections too.
+    for (const row of reservationsRes.data as any[]) {
+      const entity: OrderNumberReservationEntity = {
+        id: row.id,
+        businessDayId: row.business_day_id ?? row.businessDayId,
+        deviceId: row.device_id ?? row.deviceId,
+        startNumber: Number(row.start_number ?? row.startNumber ?? 1),
+        endNumber: Number(row.end_number ?? row.endNumber ?? 0),
+        nextNumber: Number(row.next_number ?? row.nextNumber ?? 1),
+        status: String(row.status || 'ACTIVE').toUpperCase() as OrderNumberReservationEntity['status'],
+        commandId: row.command_id ?? row.commandId ?? undefined,
+        createdAt: row.created_at ?? row.createdAt ?? new Date().toISOString(),
+        updatedAt: row.updated_at ?? row.updatedAt ?? new Date().toISOString(),
+        version: Number(row.version ?? 1),
+      };
+      reservationsMap.set(entity.id, entity);
+      await localDb.set('orderNumberReservations', entity.id, entity);
+    }
+
+    for (const row of qrTokensRes.data as any[]) {
+      const entity: QrTokenEntity = {
+        id: row.id,
+        tokenHash: row.token_hash ?? row.tokenHash,
+        publicToken: row.public_token ?? row.publicToken,
+        tokenType: String(row.token_type ?? row.tokenType).toUpperCase() as QrTokenEntity['tokenType'],
+        targetId: row.target_id ?? row.targetId,
+        isActive: Boolean(row.is_active ?? row.isActive),
+        expiresAt: row.expires_at ?? row.expiresAt ?? undefined,
+        createdAt: row.created_at ?? row.createdAt ?? new Date().toISOString(),
+      };
+      await localDb.set('qr_tokens', entity.id, entity);
+    }
+
     // 8. Goals and goal requests are part of the same initial authoritative snapshot.
     // Keeping these tables out of bootstrap left fresh clients with an empty local goal model.
     for (const row of goalsRes.data as any[]) {
@@ -1511,6 +1585,25 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       await localDb.set('goalRequests', entity.id, entity);
     }
     updatedAny = true;
+
+    // Install the snapshot fence only after every required collection has
+    // been persisted. The next incremental pull starts strictly after this
+    // exact snapshot; it must not treat the new device as generation -1 and
+    // clear the just-hydrated data for a redundant full change-log replay.
+    const existingSyncState = await localDb.getSyncState('global');
+    await localDb.setSyncState({
+      ...(existingSyncState || {
+        table: 'global',
+        lastAppliedChangeSequence: 0,
+        lastPulledAt: '',
+      }),
+      table: 'global',
+      lastAppliedChangeSequence: snapshotSequence,
+      lastPulledAt: snapshot.captured_at || new Date().toISOString(),
+      resetGeneration: snapshotGeneration,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
 
     if (updatedAny) {
       await localDb.setInitialHydrationCompleted(true);
