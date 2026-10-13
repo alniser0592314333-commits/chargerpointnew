@@ -1363,6 +1363,19 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // A remote bootstrap is a read-model reconciliation. Preserve any local
     // aggregate that still has an outbox command so an online refresh cannot
     // erase work that has not yet reached the server.
+    // Persist an installation barrier before replacing any local rows. If the
+    // browser/tab is terminated mid-install, the next boot must not trust an old
+    // READY checkpoint against a partially replaced dataset.
+    const preBootstrapSyncState = await localDb.getSyncState('global');
+    await localDb.setSyncState({
+      ...(preBootstrapSyncState || {
+        table: 'global',
+        lastAppliedChangeSequence: 0,
+        lastPulledAt: '',
+      }),
+      status: 'INITIALIZING',
+      reconciliationRequired: true,
+    });
     localMutationStarted = true;
     await localDb.clearOperationalData({
       clearOutbox: false,
