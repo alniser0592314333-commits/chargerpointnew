@@ -82,6 +82,22 @@ if [[ "$bootstrap_contract" != "1|2|2" ]]; then
   exit 1
 fi
 
+# Mirror an authenticated table write after EXECUTE on record_canonical_change is revoked.
+# The SECURITY DEFINER trigger must still write the change-log row for the caller.
+"${psql_cmd[@]}" -c "GRANT INSERT ON public.orders TO authenticated"
+("${psql_cmd[@]}" <<'SQL'
+SET ROLE authenticated;
+INSERT INTO public.orders(id, name)
+VALUES ('00000000-0000-0000-0000-000000000010', 'authenticated-trigger-write');
+RESET ROLE;
+SQL
+)
+trigger_write_count=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM public.change_log WHERE payload->>'name'='authenticated-trigger-write'")
+if [[ "$trigger_write_count" != "1" ]]; then
+  echo "Authenticated write failed to pass through the protected SECURITY DEFINER capture trigger" >&2
+  exit 1
+fi
+
 psql_check=$("${psql_cmd[@]}" -Atc "SELECT
   has_function_privilege('authenticated', 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)', 'EXECUTE')
   AND NOT has_function_privilege('authenticated', 'public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)', 'EXECUTE')
