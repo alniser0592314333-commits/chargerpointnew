@@ -74,7 +74,7 @@ jobs:
           RETURNS jsonb
           LANGUAGE sql
           STABLE
-          AS $ SELECT '{}'::jsonb $;
+          AS 'SELECT ''{}''::jsonb';
           SQL
       - name: Apply authoritative snapshot timeout migration in isolation
         env:
