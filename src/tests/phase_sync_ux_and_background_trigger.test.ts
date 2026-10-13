@@ -12,6 +12,7 @@ import { initializeCanonicalSyncState } from './utils/testSetup';
 
 describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
     if (typeof localStorage !== 'undefined') {
       localStorage.clear();
     }
@@ -31,7 +32,6 @@ describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
     }
     await initializeCanonicalSyncState();
     resetStoreMemory();
-    vi.restoreAllMocks();
   });
 
   describe('Part A & I & J — CREATE_CUSTOMER Background Sync Trigger', () => {
