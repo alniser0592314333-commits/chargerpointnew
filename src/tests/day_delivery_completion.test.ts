@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { getFullyDeliveredDayIds } from '../components/pages/dayOrdersStore';
 
-const order = (id: string, dayId = 'day-1', status = 'pending', deletedAt?: string) => ({ id, dayId, status, deletedAt });
-const item = (orderId: string, status = 'delivered', deletedAt?: string) => ({ orderId, status, deletedAt });
+const order = (id: string, dayId = 'day-1', status: 'pending' | 'charging' | 'delivered' | 'cancelled' = 'pending', deletedAt?: string) => ({ id, dayId, status, deletedAt });
+const item = (orderId: string, status: 'charging' | 'delivered' | 'cancelled' = 'delivered', deletedAt?: string) => ({ orderId, status, deletedAt });
 
 describe('day delivery completion indicator', () => {
   it('marks a day complete only when every active order has active delivered items', () => {
     const result = getFullyDeliveredDayIds(
       [order('o1'), order('o2')],
-      [item('o1', 'delivered'), item('o1', 'delivered'), item('o2', 'DELIVERED')]
+      [item('o1', 'delivered'), item('o1', 'delivered'), item('o2', 'delivered')]
     );
     expect(result.has('day-1')).toBe(true);
   });
