@@ -24,6 +24,8 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     setTestAppAuthSession();
     await initializeCanonicalSyncState();
     await localDb.clearLocalResetMarker();
+    // These tests exercise mutations after app startup, not first-run cloud bootstrap.
+    await localDb.setInitialHydrationCompleted(true);
     resetStoreMemory();
   });
 
