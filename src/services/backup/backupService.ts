@@ -1210,6 +1210,7 @@ export class BackupService {
     );
     const expectedChangeLogCount = Number(authoritative.change_log_count);
     const maxChangeSequence = Number(authoritative.max_change_sequence);
+    const expectedChangeLogFingerprint = String(authoritative.change_log_fingerprint || '');
 
     if (
       !Number.isSafeInteger(serverResetGeneration) || serverResetGeneration < 0 ||
@@ -1278,6 +1279,8 @@ export class BackupService {
       !finalCheckpoint ||
       Number(finalCheckpoint.current_count_through_sequence) !== expectedChangeLogCount ||
       Number(finalCheckpoint.server_reset_generation) !== serverResetGeneration ||
+      !expectedChangeLogFingerprint ||
+      String(finalCheckpoint.change_log_fingerprint || '') !== expectedChangeLogFingerprint ||
       changeLog.length !== expectedChangeLogCount
     ) {
       throw new Error('AUTHORITATIVE_SNAPSHOT_CHANGED: full history checkpoint did not reconcile; retry restore');
