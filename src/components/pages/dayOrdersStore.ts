@@ -1209,12 +1209,42 @@ export const setTransactionCommittedHook = (hook: () => void) => {
 let isStoreHydrated = false;
 let hydrationPromise: Promise<void> | null = null;
 
+export interface StoreBootstrapProgress {
+  phase: 'IDLE' | 'FETCHING' | 'INSTALLING' | 'READY' | 'FAILED';
+  percent: number;
+  completedRows: number;
+  totalRows: number;
+  message: string;
+}
+
+let currentStoreBootstrapProgress: StoreBootstrapProgress = {
+  phase: 'IDLE', percent: 0, completedRows: 0, totalRows: 0, message: '',
+};
+const storeBootstrapProgressListeners = new Set<(progress: StoreBootstrapProgress) => void>();
+
+const publishStoreBootstrapProgress = (progress: StoreBootstrapProgress): void => {
+  currentStoreBootstrapProgress = progress;
+  storeBootstrapProgressListeners.forEach((listener) => {
+    try { listener(progress); } catch (error) { console.warn('Bootstrap progress listener failed:', error); }
+  });
+};
+
+export const subscribeStoreBootstrapProgress = (
+  listener: (progress: StoreBootstrapProgress) => void
+): (() => void) => {
+  storeBootstrapProgressListeners.add(listener);
+  listener(currentStoreBootstrapProgress);
+  return () => storeBootstrapProgressListeners.delete(listener);
+};
+
 /**
  * Authoritatively pulls all entities from Remote Supabase PostgREST tables,
  * mapping database columns to domain entities and synchronizing local IndexedDB.
  */
 export const hydrateFromRemoteTables = async (): Promise<boolean> => {
   if (!getSupabaseStatus().isConfigured) return false;
+
+  publishStoreBootstrapProgress({ phase: 'FETCHING', percent: 5, completedRows: 0, totalRows: 0, message: 'جارٍ جلب لقطة موحّدة من السحابة…' });
 
   // Before the first local mutation, read failures can safely fall back to a
   // previously persisted offline dataset. Once replacement starts, failures
@@ -1231,11 +1261,13 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     );
     if (snapshotError) {
       console.warn('Authoritative bootstrap snapshot RPC failed:', snapshotError);
+      publishStoreBootstrapProgress({ phase: 'FAILED', percent: 0, completedRows: 0, totalRows: 0, message: 'فشل الاتصال بقاعدة البيانات السحابية.' });
       return false;
     }
     const snapshot = (Array.isArray(rawSnapshot) ? rawSnapshot[0] : rawSnapshot) as any;
     if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
       console.warn('Authoritative bootstrap snapshot RPC returned an invalid response.');
+      publishStoreBootstrapProgress({ phase: 'FAILED', percent: 0, completedRows: 0, totalRows: 0, message: 'استجابة قاعدة البيانات غير صالحة.' });
       return false;
     }
 
@@ -1266,8 +1298,37 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         snapshotGeneration,
         snapshotSequence,
       });
+      publishStoreBootstrapProgress({ phase: 'FAILED', percent: 0, completedRows: 0, totalRows: 0, message: 'لقطة السحابة ناقصة أو غير صالحة.' });
       return false;
     }
+
+    const totalRows = Object.values(requiredCollections).reduce(
+      (total, rows) => total + (rows as unknown[]).length,
+      0
+    );
+    let installedRows = 0;
+    let lastPublishedPercent = 10;
+    publishStoreBootstrapProgress({
+      phase: 'INSTALLING',
+      percent: 10,
+      completedRows: 0,
+      totalRows,
+      message: totalRows === 0 ? 'التحقق من قاعدة البيانات…' : 'جارٍ تثبيت البيانات محليًا…',
+    });
+    const reportInstalledRow = (): void => {
+      installedRows += 1;
+      const percent = totalRows === 0 ? 90 : Math.min(90, 10 + Math.floor((installedRows / totalRows) * 80));
+      if (percent !== lastPublishedPercent || installedRows === totalRows) {
+        lastPublishedPercent = percent;
+        publishStoreBootstrapProgress({
+          phase: 'INSTALLING',
+          percent,
+          completedRows: installedRows,
+          totalRows,
+          message: 'جارٍ تثبيت البيانات محليًا…',
+        });
+      }
+    };
 
     const daysRes = { data: snapshot.business_days as any[], error: null };
     const custRes = { data: snapshot.customers as any[], error: null };
@@ -1345,6 +1406,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         daysMap.set(entity.id, entity);
         await localDb.set('businessDays', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1366,6 +1428,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         customersMap.set(entity.id, entity);
         await localDb.set('customers', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1391,6 +1454,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         devicesMap.set(entity.id, entity);
         await localDb.set('deviceTypes', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1418,6 +1482,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         ordersMap.set(entity.id, entity);
         await localDb.set('orders', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1449,6 +1514,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         itemsMap.set(entity.id, entity);
         await localDb.set('orderItems', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1471,6 +1537,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         ledgerList.push(entity);
         await localDb.set('financialLedger', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1490,6 +1557,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         paymentsMap.set(entity.id, entity);
         await localDb.set('payments', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1507,6 +1575,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         };
         allocationsList.push(entity);
         await localDb.set('paymentAllocations', entity.id, entity);
+        reportInstalledRow();
       }
       updatedAny = true;
     }
@@ -1528,6 +1597,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       };
       reservationsMap.set(entity.id, entity);
       await localDb.set('orderNumberReservations', entity.id, entity);
+      reportInstalledRow();
     }
 
     for (const row of qrTokensRes.data as any[]) {
@@ -1542,6 +1612,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         createdAt: row.created_at ?? row.createdAt ?? new Date().toISOString(),
       };
       await localDb.set('qr_tokens', entity.id, entity);
+      reportInstalledRow();
     }
 
     // 8. Goals and goal requests are part of the same initial authoritative snapshot.
@@ -1565,6 +1636,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       };
       goalsMap.set(entity.id, entity);
       await localDb.set('goals', entity.id, entity);
+      reportInstalledRow();
     }
 
     for (const row of goalRequestsRes.data as any[]) {
@@ -1583,6 +1655,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       };
       goalRequestsMap.set(entity.id, entity);
       await localDb.set('goalRequests', entity.id, entity);
+      reportInstalledRow();
     }
     updatedAny = true;
 
@@ -1608,9 +1681,23 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     if (updatedAny) {
       await localDb.setInitialHydrationCompleted(true);
     }
+    publishStoreBootstrapProgress({
+      phase: 'READY',
+      percent: 100,
+      completedRows: totalRows,
+      totalRows,
+      message: 'اكتمل تحميل البيانات والتحقق منها.',
+    });
     return updatedAny;
   } catch (err) {
     console.warn('Remote table hydration failed:', err);
+    publishStoreBootstrapProgress({
+      phase: 'FAILED',
+      percent: currentStoreBootstrapProgress.percent,
+      completedRows: currentStoreBootstrapProgress.completedRows,
+      totalRows: currentStoreBootstrapProgress.totalRows,
+      message: 'فشل تثبيت البيانات. أعد المحاولة؛ لم تُعلَن التهيئة مكتملة.',
+    });
     // A failure before replacement begins is safe for an existing offline cache.
     // After replacement starts, fail closed: callers must not expose partial data.
     if (localMutationStarted) throw err;
