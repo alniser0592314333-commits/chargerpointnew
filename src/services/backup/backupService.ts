@@ -1202,17 +1202,86 @@ export class BackupService {
     const goals = (authoritative.goals || []).map(normalizeGoalEntity);
     const goalRequests = (authoritative.goal_requests || authoritative.goalRequests || []).map(normalizeGoalRequestEntity);
     const systemSettings = (authoritative.system_settings || authoritative.systemSettings || []).map(sanitizeEntity);
-    const changeLog = (authoritative.change_log || authoritative.changeLog || []).map(sanitizeEntity);
 
     const serverResetGeneration = Number(
       authoritative.server_reset_generation ??
       authoritative.serverResetGeneration ??
       systemSettings.find((row: any) => row.key === 'server_reset_generation')?.value_number
     );
-    const maxChangeSequence = changeLog.reduce(
-      (max: number, row: any) => Math.max(max, Number(row?.sequence_id ?? row?.sequenceId ?? 0)),
-      0
+    const expectedChangeLogCount = Number(authoritative.change_log_count);
+    const maxChangeSequence = Number(authoritative.max_change_sequence);
+
+    if (
+      !Number.isSafeInteger(serverResetGeneration) || serverResetGeneration < 0 ||
+      !Number.isSafeInteger(expectedChangeLogCount) || expectedChangeLogCount < 0 ||
+      !Number.isSafeInteger(maxChangeSequence) || maxChangeSequence < 0
+    ) {
+      throw new Error('Failed to capture authoritative online snapshot: invalid change-log checkpoint metadata');
+    }
+
+    const changeLog: any[] = [];
+    const pageSize = 500;
+    let afterSequenceId = 0;
+    let finished = false;
+
+    while (!finished) {
+      const { data: page, error: pageError } = await invokeSupabaseRpc<any>(
+        'capture_authoritative_change_log_page',
+        {
+          p_after_sequence_id: afterSequenceId,
+          p_through_sequence_id: maxChangeSequence,
+          p_limit: pageSize,
+        }
+      );
+
+      if (pageError) {
+        throw new Error(`Failed to capture authoritative change-log page: ${pageError}`);
+      }
+      if (!page || !Array.isArray(page.rows)) {
+        throw new Error('Failed to capture authoritative change-log page: invalid server response');
+      }
+
+      const currentCount = Number(page.current_count_through_sequence);
+      const currentResetGeneration = Number(page.server_reset_generation);
+      if (currentCount !== expectedChangeLogCount || currentResetGeneration !== serverResetGeneration) {
+        throw new Error('AUTHORITATIVE_SNAPSHOT_CHANGED: cloud history or reset generation changed during capture; retry restore');
+      }
+
+      const rows = page.rows.map(sanitizeEntity);
+      changeLog.push(...rows);
+
+      if (rows.length === 0 || rows.length < pageSize) {
+        finished = true;
+      } else {
+        const nextSequenceId = Number(page.next_after_sequence_id);
+        if (!Number.isSafeInteger(nextSequenceId) || nextSequenceId <= afterSequenceId) {
+          throw new Error('Failed to capture authoritative change-log page: pagination did not advance');
+        }
+        afterSequenceId = nextSequenceId;
+      }
+    }
+
+    // Final checkpoint after all pages catches late commits whose sequence was
+    // allocated before the first snapshot but became visible during pagination.
+    const { data: finalCheckpoint, error: checkpointError } = await invokeSupabaseRpc<any>(
+      'capture_authoritative_change_log_page',
+      {
+        p_after_sequence_id: maxChangeSequence,
+        p_through_sequence_id: maxChangeSequence,
+        p_limit: 1,
+      }
     );
+    if (checkpointError) {
+      throw new Error(`Failed to validate authoritative snapshot checkpoint: ${checkpointError}`);
+    }
+    if (
+      !finalCheckpoint ||
+      Number(finalCheckpoint.current_count_through_sequence) !== expectedChangeLogCount ||
+      Number(finalCheckpoint.server_reset_generation) !== serverResetGeneration ||
+      changeLog.length !== expectedChangeLogCount
+    ) {
+      throw new Error('AUTHORITATIVE_SNAPSHOT_CHANGED: full history checkpoint did not reconcile; retry restore');
+    }
 
     return {
       customers,
@@ -1229,16 +1298,14 @@ export class BackupService {
       goalRequests,
       systemSettings,
       changeLog,
-      syncState: Number.isSafeInteger(serverResetGeneration) && serverResetGeneration >= 0
-        ? {
-            table: 'global',
-            lastAppliedChangeSequence: maxChangeSequence,
-            lastPulledAt: new Date().toISOString(),
-            resetGeneration: serverResetGeneration,
-            reconciliationRequired: false,
-            status: 'READY',
-          }
-        : null,
+      syncState: {
+        table: 'global',
+        lastAppliedChangeSequence: maxChangeSequence,
+        lastPulledAt: new Date().toISOString(),
+        resetGeneration: serverResetGeneration,
+        reconciliationRequired: false,
+        status: 'READY',
+      },
     };
   }
 
