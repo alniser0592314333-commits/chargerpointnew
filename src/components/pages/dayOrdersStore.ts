@@ -1289,6 +1289,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const snapshotGeneration = Number(snapshot.server_reset_generation);
     const snapshotSequence = Number(snapshot.max_change_sequence);
     if (
+      Number(snapshot.schema_version) !== 1 ||
       invalidCollection ||
       !Number.isSafeInteger(snapshotGeneration) || snapshotGeneration < 0 ||
       !Number.isSafeInteger(snapshotSequence) || snapshotSequence < 0
