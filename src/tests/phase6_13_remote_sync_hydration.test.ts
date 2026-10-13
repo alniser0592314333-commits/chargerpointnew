@@ -38,13 +38,51 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
       url: 'https://example.supabase.co',
       status: 'connected',
     });
-    vi.spyOn(supabaseClient, 'invokeSupabaseRestGet').mockImplementation(async (table: any) => {
-      if (table === 'customers') return { data: null, error: 'simulated offline read failure' } as any;
-      return { data: [], error: null } as any;
-    });
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: null,
+      error: 'simulated offline snapshot failure',
+    } as any);
 
     await expect(ensureStoreHydrated()).rejects.toThrow(/INITIAL_BOOTSTRAP_FAILED/);
     expect(await localDb.isInitialHydrationCompleted()).toBe(false);
+  });
+
+  it('installs the authoritative snapshot cursor before marking initial hydration complete', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: {
+        schema_version: 1,
+        captured_at: '2026-10-13T12:00:00.000Z',
+        server_reset_generation: 7,
+        max_change_sequence: 42,
+        business_days: [],
+        customers: [],
+        device_types: [],
+        orders: [],
+        order_items: [],
+        financial_ledger: [],
+        payments: [],
+        payment_allocations: [],
+        order_number_reservations: [],
+        qr_tokens: [],
+        goals: [],
+        goal_requests: [],
+      },
+      error: null,
+    } as any);
+
+    expect(await hydrateFromRemoteTables()).toBe(true);
+    expect(await localDb.getSyncState('global')).toMatchObject({
+      lastAppliedChangeSequence: 42,
+      resetGeneration: 7,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+    expect(await localDb.isInitialHydrationCompleted()).toBe(true);
   });
 
   it('2. Offline Creation creates outbox command with pending status', async () => {
