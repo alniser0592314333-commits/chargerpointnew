@@ -664,7 +664,7 @@ export class IndexedDBLocalDatabase {
         // drop a pending order merely because its aggregateType was "order".
         const normalizedAggregateType = outbox.aggregateType
           .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-          .replace(/[\\s-]+/g, '_')
+          .replace(/[\s-]+/g, '_')
           .toLowerCase();
         const tableAliases: Record<string, string> = {
           customer: 'customers', customers: 'customers',
