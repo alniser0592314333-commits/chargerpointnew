@@ -54,6 +54,9 @@ BEGIN
   IF p_payload ? 'lockId' THEN
     PERFORM 1 FROM public.orders WHERE id = (p_payload->>'lockId')::uuid FOR UPDATE;
   END IF;
+  IF p_payload ? 'sleepSeconds' THEN
+    PERFORM pg_sleep(LEAST(5, GREATEST(0, (p_payload->>'sleepSeconds')::double precision)));
+  END IF;
   INSERT INTO public.orders(id, name)
   VALUES (COALESCE((p_payload->>'id')::uuid, p_command_id), COALESCE(p_payload->>'name', p_command_type))
   ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
