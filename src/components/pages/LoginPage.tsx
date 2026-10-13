@@ -304,7 +304,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
             setPassword("");
             setBin("");
             setIsBinLocked(false);
-            onLoginSuccess();
+            await onLoginSuccess();
           }
         } catch (binErr: any) {
           const msg = binErr?.message || String(binErr);
