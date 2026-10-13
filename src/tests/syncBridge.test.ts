@@ -136,6 +136,9 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
 
   // 13. requestLatestDataReload does not touch Outbox
   it('13. should never modify, delete, or re-route Outbox records during pull-only reload', async () => {
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [], latestSequence: 0, serverResetGeneration: 1,
+    });
     const initialOutbox = await localDb.listOutbox();
     await globalSyncBridge.requestLatestDataReload();
     const finalOutbox = await localDb.listOutbox();
@@ -147,9 +150,9 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     const syncState = { table: 'global', lastAppliedChangeSequence: 42, lastPulledAt: new Date().toISOString() };
     await localDb.setSyncState(syncState);
 
-    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 42 });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 42, serverResetGeneration: 1 });
     await globalSyncBridge.requestLatestDataReload();
-    expect(pullSpy).toHaveBeenCalledWith(42);
+    expect(pullSpy).toHaveBeenCalledWith(42, 500);
   });
 
   // 15. Cursor does not advance if local apply fails
@@ -175,7 +178,7 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
 
   // 16. Reload Latest Data fetches only delta changes
   it('16. should retrieve only newer changes based on current sequence sequenceId', async () => {
-    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 10 });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 10, serverResetGeneration: 1 });
     await globalSyncBridge.requestLatestDataReload();
     expect(pullSpy).toHaveBeenCalled();
   });
@@ -266,7 +269,7 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
   // 18. Reload Latest Data is allowed when Local Reset Completed exists
   it('18. should allow manual Reload Latest Data even when local reset completed marker exists', async () => {
     await localDb.setLocalResetMarker(true);
-    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 100 });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 100, serverResetGeneration: 1 });
     const result = await globalSyncBridge.requestLatestDataReload();
     expect(pullSpy).toHaveBeenCalled();
     expect(result.pulled).toBe(0);
@@ -386,7 +389,7 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
 
       // Validations:
       expect(result.pulled).toBe(1);
-      expect(pullSpy).toHaveBeenCalledWith(0);
+      expect(pullSpy).toHaveBeenCalledWith(0, 500);
       expect(resumeSpy).not.toHaveBeenCalled();
       expect(hydrateSpy).not.toHaveBeenCalled();
 
