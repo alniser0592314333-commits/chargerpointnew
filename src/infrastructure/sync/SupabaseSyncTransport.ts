@@ -151,10 +151,6 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
   }
 
   /**
-   * Monotonic delta change pull with strict pagination limit
-   * Minimizes egress and bandwidth consumption
-   */
-  /**
    * Pull one bounded page of canonical deltas.
    * Generation is checked on the first page of a drain; subsequent pages avoid
    * repeating the settings query. Failed reads throw instead of masquerading
@@ -203,4 +199,4 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
     const latestSequence = changes.length > 0 ? Math.max(...changes.map(change => change.sequenceId)) : cursor;
     return { changes, latestSequence, serverResetGeneration };
   }
-}}
+}
