@@ -361,6 +361,65 @@ export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number 
 }
 
 // Delta Dispatcher: Normalizes remote payload, updates localDb & in-memory maps, notifies subscribers
+const remoteTransactionRollbackSnapshots = new WeakMap<object, Map<string, () => void>>();
+const initializedRemoteRollbackTransactions = new WeakSet<object>();
+
+const registerRemoteRollbackSnapshot = (
+  tx: IDBTransaction | undefined,
+  key: string,
+  restore: () => void
+): void => {
+  const transaction = tx as any;
+  if (!transaction || typeof transaction.addEventListener !== 'function') return;
+
+  let snapshots = remoteTransactionRollbackSnapshots.get(transaction);
+  if (!snapshots) {
+    snapshots = new Map<string, () => void>();
+    remoteTransactionRollbackSnapshots.set(transaction, snapshots);
+  }
+  if (!snapshots.has(key)) snapshots.set(key, restore);
+
+  if (initializedRemoteRollbackTransactions.has(transaction)) return;
+  initializedRemoteRollbackTransactions.add(transaction);
+  transaction.addEventListener('abort', () => {
+    const pending = remoteTransactionRollbackSnapshots.get(transaction);
+    if (pending) {
+      [...pending.values()].reverse().forEach((undo) => undo());
+    }
+    remoteTransactionRollbackSnapshots.delete(transaction);
+    initializedRemoteRollbackTransactions.delete(transaction);
+  }, { once: true });
+  transaction.addEventListener('complete', () => {
+    remoteTransactionRollbackSnapshots.delete(transaction);
+    initializedRemoteRollbackTransactions.delete(transaction);
+  }, { once: true });
+};
+
+const snapshotRemoteMapEntry = <K, V>(
+  tx: IDBTransaction | undefined,
+  scope: string,
+  map: Map<K, V>,
+  id: K
+): void => {
+  const existed = map.has(id);
+  const previous = map.get(id);
+  registerRemoteRollbackSnapshot(tx, `map:${scope}:${String(id)}`, () => {
+    if (existed) map.set(id, previous as V);
+    else map.delete(id);
+  });
+};
+
+const snapshotRemoteArray = <T>(
+  tx: IDBTransaction | undefined,
+  scope: string,
+  list: T[]
+): void => {
+  const previous = [...list];
+  registerRemoteRollbackSnapshot(tx, `array:${scope}`, () => {
+    list.splice(0, list.length, ...previous);
+  });
+};
+
 const notifyStoreAfterTransaction = (
   scope: StoreScope,
   id?: string,
@@ -420,6 +479,7 @@ export const applyRemoteChange = (change: {
 
   if (entityType === 'business_days' || entityType === 'businessDays') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'businessDays', daysMap, change.entityId);
       daysMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'businessDays', change.entityId);
       notifyStoreAfterTransaction('businessDays', change.entityId, tx);
@@ -443,10 +503,12 @@ export const applyRemoteChange = (change: {
       version: p.version || 1,
     };
     localDb.setWithTx(tx, 'businessDays', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'businessDays', daysMap, entity.id);
     daysMap.set(entity.id, entity);
     notifyStoreAfterTransaction('businessDays', entity.id, tx);
   } else if (entityType === 'customers') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'customers', customersMap, change.entityId);
       customersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'customers', change.entityId);
       notifyStoreAfterTransaction('customers', change.entityId, tx);
@@ -465,10 +527,12 @@ export const applyRemoteChange = (change: {
       version: p.version || 1,
     };
     localDb.setWithTx(tx, 'customers', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'customers', customersMap, entity.id);
     customersMap.set(entity.id, entity);
     notifyStoreAfterTransaction('customers', entity.id, tx);
   } else if (entityType === 'device_types' || entityType === 'deviceTypes') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'deviceTypes', devicesMap, change.entityId);
       devicesMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'deviceTypes', change.entityId);
       notifyStoreAfterTransaction('deviceTypes', change.entityId, tx);
@@ -491,10 +555,12 @@ export const applyRemoteChange = (change: {
       version: p.version || 1,
     };
     localDb.setWithTx(tx, 'deviceTypes', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'deviceTypes', devicesMap, entity.id);
     devicesMap.set(entity.id, entity);
     notifyStoreAfterTransaction('deviceTypes', entity.id, tx);
   } else if (entityType === 'orders') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'orders', ordersMap, change.entityId);
       ordersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orders', change.entityId);
       notifyStoreAfterTransaction('orders', change.entityId, tx);
@@ -530,10 +596,12 @@ export const applyRemoteChange = (change: {
       version: p.version || previousOrder?.version || 1,
     };
     localDb.setWithTx(tx, 'orders', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'orders', ordersMap, entity.id);
     ordersMap.set(entity.id, entity);
     notifyStoreAfterTransaction('orders', entity.id, tx);
   } else if (entityType === 'order_items' || entityType === 'orderItems') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'orderItems', itemsMap, change.entityId);
       itemsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orderItems', change.entityId);
       notifyStoreAfterTransaction('orderItems', change.entityId, tx);
@@ -586,10 +654,12 @@ export const applyRemoteChange = (change: {
       version: incomingItemVersion,
     };
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'orderItems', itemsMap, entity.id);
     itemsMap.set(entity.id, entity);
     notifyStoreAfterTransaction('orderItems', entity.id, tx);
   } else if (entityType === 'goals') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'goals', goalsMap, change.entityId);
       goalsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'goals', change.entityId);
       notifyStoreAfterTransaction('goals', change.entityId, tx);
@@ -617,10 +687,12 @@ export const applyRemoteChange = (change: {
       version: incomingGoalVersion,
     };
     localDb.setWithTx(tx, 'goals', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'goals', goalsMap, entity.id);
     goalsMap.set(entity.id, entity);
     notifyStoreAfterTransaction('goals', entity.id, tx);
   } else if (entityType === 'goal_requests' || entityType === 'goalRequests') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'goalRequests', goalRequestsMap, change.entityId);
       goalRequestsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'goalRequests', change.entityId);
       notifyStoreAfterTransaction('goalRequests', change.entityId, tx);
@@ -645,12 +717,16 @@ export const applyRemoteChange = (change: {
       version: incomingRequestVersion,
     };
     localDb.setWithTx(tx, 'goalRequests', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'goalRequests', goalRequestsMap, entity.id);
     goalRequestsMap.set(entity.id, entity);
     notifyStoreAfterTransaction('goalRequests', entity.id, tx);
   } else if (entityType === 'financial_ledger' || entityType === 'financialLedger') {
     if (isDelete) {
       const idx = ledgerList.findIndex((item) => item.id === change.entityId);
-      if (idx >= 0) ledgerList.splice(idx, 1);
+      if (idx >= 0) {
+        snapshotRemoteArray(tx, 'financialLedger', ledgerList);
+        ledgerList.splice(idx, 1);
+      }
       localDb.removeWithTx(tx as any, 'financialLedger', change.entityId);
       notifyStoreAfterTransaction('financialLedger', change.entityId, tx);
       return;
@@ -702,11 +778,13 @@ export const applyRemoteChange = (change: {
     if (existingIdx >= 0) {
       ledgerList[existingIdx] = entity;
     } else {
-      ledgerList.push(entity);
+      snapshotRemoteArray(tx, 'financialLedger', ledgerList);
+    ledgerList.push(entity);
     }
     notifyStoreAfterTransaction('financialLedger', entity.id, tx);
   } else if (entityType === 'payments') {
     if (isDelete) {
+      snapshotRemoteMapEntry(tx, 'payments', paymentsMap, change.entityId);
       paymentsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'payments', change.entityId);
       notifyStoreAfterTransaction('payments', change.entityId, tx);
@@ -723,12 +801,16 @@ export const applyRemoteChange = (change: {
       createdAt: p.createdAt || p.created_at || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'payments', entity.id, entity);
+    snapshotRemoteMapEntry(tx, 'payments', paymentsMap, entity.id);
     paymentsMap.set(entity.id, entity);
     notifyStoreAfterTransaction('payments', entity.id, tx);
   } else if (entityType === 'payment_allocations' || entityType === 'paymentAllocations') {
     if (isDelete) {
       const idx = allocationsList.findIndex((item) => item.id === change.entityId);
-      if (idx >= 0) allocationsList.splice(idx, 1);
+      if (idx >= 0) {
+        snapshotRemoteArray(tx, 'paymentAllocations', allocationsList);
+        allocationsList.splice(idx, 1);
+      }
       localDb.removeWithTx(tx as any, 'paymentAllocations', change.entityId);
       notifyStoreAfterTransaction('paymentAllocations', change.entityId, tx);
       return;
@@ -746,7 +828,8 @@ export const applyRemoteChange = (change: {
     if (existingIdx >= 0) {
       allocationsList[existingIdx] = entity;
     } else {
-      allocationsList.push(entity);
+      snapshotRemoteArray(tx, 'paymentAllocations', allocationsList);
+    allocationsList.push(entity);
     }
     notifyStoreAfterTransaction('paymentAllocations', entity.id, tx);
   } else {

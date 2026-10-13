@@ -216,6 +216,23 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(12);
   });
 
+  it('rolls back in-memory remote entities when the IndexedDB delta transaction aborts', async () => {
+    const customerId = 'customer-abort-rollback-test';
+    await expect(localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+      applyRemoteChange({
+        sequenceId: 8,
+        entityType: 'customers',
+        entityId: customerId,
+        action: 'INSERT',
+        payload: { id: customerId, name: 'Abort rollback test customer', phone: '' },
+        changedAt: new Date().toISOString(),
+      }, tx as any);
+      throw new Error('force delta transaction abort');
+    })).rejects.toThrow('force delta transaction abort');
+
+    expect((await getCustomersList('Abort rollback test customer', 10)).length).toBe(0);
+  });
+
   it('notifies subscribed pages only after the IndexedDB delta transaction commits', async () => {
     const customerId = 'customer-commit-notify-test';
     let notified = false;
