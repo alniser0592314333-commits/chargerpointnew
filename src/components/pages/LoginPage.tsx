@@ -195,6 +195,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
             setPassword("");
             setError("");
             setUiState("SUPER_ADMIN_BIN_REQUIRED");
+          } else if (msg.startsWith("INITIAL_BOOTSTRAP_FAILED")) {
+            setError(
+              locale === "en"
+                ? "The full cloud dataset could not be loaded. Check the connection and retry; the app was not opened with partial data."
+                : "تعذر تحميل بيانات السحابة كاملة. تأكد من الاتصال وأعد المحاولة؛ لم نفتح النظام ببيانات ناقصة."
+            );
+          } else if (msg.startsWith("LOCAL_RECONCILIATION_REQUIRED")) {
+            setError(
+              locale === "en"
+                ? "Existing local data has no trusted sync checkpoint. Automatic replacement was blocked to protect it; do not clear app data."
+                : "البيانات المحلية ليس لها نقطة مزامنة موثوقة. أوقفنا الاستبدال التلقائي لحمايتها؛ لا تمسح بيانات التطبيق."
+            );
           } else if (msg === "USERNAME_LOOKUP_FAILED") {
             setError(
               locale === "en"
