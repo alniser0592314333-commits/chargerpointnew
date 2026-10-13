@@ -14,6 +14,9 @@ describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
   beforeEach(async () => {
     if (typeof localStorage !== 'undefined') {
       localStorage.clear();
+    }
+    await clearAllOperationalData();
+    if (typeof localStorage !== 'undefined') {
       // Mutation tests require a cached authenticated app session.
       localStorage.setItem('app_auth_session', JSON.stringify({
         userId: 'admin_test_session',
@@ -26,7 +29,6 @@ describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
         ],
       }));
     }
-    await clearAllOperationalData();
     await initializeCanonicalSyncState();
     resetStoreMemory();
     vi.restoreAllMocks();
