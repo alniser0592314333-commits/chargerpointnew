@@ -64,28 +64,25 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';"
-      - name: Prepare isolated authoritative snapshot timeout fixture
+      - name: Prepare isolated authoritative snapshot paging fixture
         env:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-          ALTER ROLE authenticated SET statement_timeout = '8s';
-          CREATE FUNCTION public.capture_authoritative_business_snapshot()
-          RETURNS jsonb
-          LANGUAGE plpgsql
-          STABLE
-          AS $function$
-          BEGIN
-            PERFORM pg_sleep(9);
-            RETURN '{}'::jsonb;
-          END;
-          $function$;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';
+          CREATE TABLE public.admins (id uuid PRIMARY KEY, auth_user_id uuid NOT NULL, role text NOT NULL, is_active boolean NOT NULL);
+          CREATE FUNCTION public.get_effective_permissions(uuid) RETURNS TABLE(permission text) LANGUAGE sql STABLE AS 'SELECT NULL::text WHERE false';
+          CREATE TABLE public.change_log (sequence_id bigint PRIMARY KEY, payload text NOT NULL);
+          CREATE TABLE public.system_settings (key text PRIMARY KEY, value_number bigint);
+          INSERT INTO public.admins VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'SUPER_ADMIN', true);
+          INSERT INTO public.system_settings VALUES ('server_reset_generation', 0);
+          INSERT INTO public.change_log(sequence_id, payload) VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e');
           SQL
-      - name: Apply authoritative snapshot timeout migration in isolation
+      - name: Apply authoritative snapshot paging migration in isolation
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261013100000_raise_authoritative_snapshot_timeout.sql
-      - name: Verify snapshot timeout is scoped to the RPC function
+      - name: Verify full change-log paging and checkpoint metadata
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/authoritative_snapshot_timeout_runtime.test.sql
