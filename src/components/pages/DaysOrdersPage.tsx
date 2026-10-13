@@ -12,7 +12,7 @@ export interface DaysOrdersPageProps {
 
 export const DaysOrdersPage: React.FC<DaysOrdersPageProps> = ({ onSelectDay }) => {
   const { isRTL, t, formatDate, formatWeekday, formatCurrency } = useI18n();
-  const storeVersion = useStoreSubscription(['businessDays', 'orders']);
+  const storeVersion = useStoreSubscription(['businessDays', 'orders', 'orderItems']);
   const [days, setDays] = useState<UIDaySummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -133,9 +133,21 @@ export const DaysOrdersPage: React.FC<DaysOrdersPageProps> = ({ onSelectDay }) =
                 {/* Right Side: Order Count, Total Amount & Arrow */}
                 <div className="flex items-center gap-6 text-end pointer-events-none">
                   <div className="text-end">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-[#daf1de]">
-                      {formatCurrency(day.totalOrderValueMinor)}
-                    </p>
+                    <div className="flex items-center justify-end gap-2">
+                      <span
+                        aria-label={day.allOrdersDelivered
+                          ? (isRTL ? 'تم تسليم جميع الطلبات' : 'All orders delivered')
+                          : (isRTL ? 'يوجد طلبات لم يكتمل تسليمها' : 'Some orders are not fully delivered')}
+                        title={day.allOrdersDelivered
+                          ? (isRTL ? 'تم تسليم جميع الطلبات' : 'All orders delivered')
+                          : (isRTL ? 'يوجد طلبات لم يكتمل تسليمها' : 'Some orders are not fully delivered')}
+                        role="img"
+                        className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${day.allOrdersDelivered ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                      />
+                      <p className="text-sm font-semibold text-gray-900 dark:text-[#daf1de]">
+                        {formatCurrency(day.totalOrderValueMinor)}
+                      </p>
+                    </div>
                     <p className="text-xs text-gray-500 dark:text-[#8eb698]">
                       {day.orderCount === 1 ? t('orderSingleCount') : t('ordersCount', { count: day.orderCount })}
                     </p>
