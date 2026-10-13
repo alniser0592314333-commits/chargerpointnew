@@ -100,6 +100,7 @@ CREATE OR REPLACE FUNCTION public.record_canonical_change(
 )
 RETURNS bigint
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public
 AS $function$
 DECLARE
