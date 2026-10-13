@@ -32,97 +32,72 @@ describe('Canonical Delta Pull Batch Size (500)', () => {
     expect(SYNC_PULL_BATCH_SIZE).toBe(500);
   });
 
-  it('2. pullChanges() defaults to limit=500 with correct query string', async () => {
+  it('2. pullChanges() defaults to limit=500 in the canonical RPC request', async () => {
     const transport = new SupabaseSyncTransport();
-    let capturedTable = '';
-    let capturedQuery = '';
+    let capturedFunction = '';
+    let capturedArgs: Record<string, unknown> = {};
 
-    vi.spyOn(supabaseClientModule, 'invokeSupabaseRestGet').mockImplementation(
-      async (table: string, query?: string) => {
-        if (table === 'change_log') {
-          capturedTable = table;
-          capturedQuery = query || '';
-          return { data: [], error: null };
-        }
-        if (table === 'system_settings') {
-          return { data: [{ value_number: 1 }], error: null };
-        }
-        return { data: null, error: 'unknown table' };
+    vi.spyOn(supabaseClientModule, 'invokeSupabaseRpc').mockImplementation(
+      async (functionName: string, args?: any) => {
+        capturedFunction = functionName;
+        capturedArgs = args || {};
+        return { data: { changes: [], serverResetGeneration: 1 }, error: null } as any;
       }
     );
 
     const cursor = 125;
     const res = await transport.pullChanges(cursor);
 
-    expect(capturedTable).toBe('change_log');
-    expect(capturedQuery).toContain('sequence_id=gt.125');
-    expect(capturedQuery).toContain('order=sequence_id.asc');
-    expect(capturedQuery).toContain('limit=500');
+    expect(capturedFunction).toBe('pull_canonical_changes');
+    expect(capturedArgs.p_since_sequence).toBe(125);
+    expect(capturedArgs.p_limit).toBe(500);
     expect(res.latestSequence).toBe(125);
     expect(res.serverResetGeneration).toBe(1);
   });
 
   it('3. Explicit limit > 500 is clamped to 500', async () => {
     const transport = new SupabaseSyncTransport();
-    let capturedQuery = '';
+    let capturedArgs: Record<string, unknown> = {};
 
-    vi.spyOn(supabaseClientModule, 'invokeSupabaseRestGet').mockImplementation(
-      async (table: string, query?: string) => {
-        if (table === 'change_log') {
-          capturedQuery = query || '';
-          return { data: [], error: null };
-        }
-        if (table === 'system_settings') {
-          return { data: [{ value_number: 1 }], error: null };
-        }
-        return { data: null, error: 'unknown table' };
+    vi.spyOn(supabaseClientModule, 'invokeSupabaseRpc').mockImplementation(
+      async (_functionName: string, args?: any) => {
+        capturedArgs = args || {};
+        return { data: { changes: [], serverResetGeneration: 1 }, error: null } as any;
       }
     );
 
     await transport.pullChanges(0, 1000);
-    expect(capturedQuery).toContain('limit=500');
+    expect(capturedArgs.p_limit).toBe(500);
   });
 
   it('4. Explicit limit between 1 and 500 is respected', async () => {
     const transport = new SupabaseSyncTransport();
-    let capturedQuery = '';
+    let capturedArgs: Record<string, unknown> = {};
 
-    vi.spyOn(supabaseClientModule, 'invokeSupabaseRestGet').mockImplementation(
-      async (table: string, query?: string) => {
-        if (table === 'change_log') {
-          capturedQuery = query || '';
-          return { data: [], error: null };
-        }
-        if (table === 'system_settings') {
-          return { data: [{ value_number: 1 }], error: null };
-        }
-        return { data: null, error: 'unknown table' };
+    vi.spyOn(supabaseClientModule, 'invokeSupabaseRpc').mockImplementation(
+      async (_functionName: string, args?: any) => {
+        capturedArgs = args || {};
+        return { data: { changes: [], serverResetGeneration: 1 }, error: null } as any;
       }
     );
 
     await transport.pullChanges(0, 250);
-    expect(capturedQuery).toContain('limit=250');
+    expect(capturedArgs.p_limit).toBe(250);
   });
 
   it('5. Explicit limit < 1 is clamped to minimum 1', async () => {
     const transport = new SupabaseSyncTransport();
-    let capturedQuery = '';
+    let capturedArgs: Record<string, unknown> = {};
 
-    vi.spyOn(supabaseClientModule, 'invokeSupabaseRestGet').mockImplementation(
-      async (table: string, query?: string) => {
-        if (table === 'change_log') {
-          capturedQuery = query || '';
-          return { data: [], error: null };
-        }
-        if (table === 'system_settings') {
-          return { data: [{ value_number: 1 }], error: null };
-        }
-        return { data: null, error: 'unknown table' };
+    vi.spyOn(supabaseClientModule, 'invokeSupabaseRpc').mockImplementation(
+      async (_functionName: string, args?: any) => {
+        capturedArgs = args || {};
+        return { data: { changes: [], serverResetGeneration: 1 }, error: null } as any;
       }
     );
 
     await transport.pullChanges(0, 0);
-    expect(capturedQuery).toContain('limit=1');
+    expect(capturedArgs.p_limit).toBe(1);
   });
 
   it('6. MockServerSyncTransport enforces maximum 500 batch limit', async () => {
@@ -178,24 +153,17 @@ describe('Canonical Delta Pull Batch Size (500)', () => {
     };
 
     let currentCursor = 0;
-    vi.spyOn(supabaseClientModule, 'invokeSupabaseRestGet').mockImplementation(
-      async (table: string, query?: string) => {
-        if (table === 'change_log') {
-          const match = query?.match(/sequence_id=gt\.(\d+)/);
-          const cursorVal = match ? parseInt(match[1], 10) : 0;
-          if (cursorVal === 0) {
-            return { data: makeBatch(1, 500), error: null };
-          } else if (cursorVal === 500) {
-            return { data: makeBatch(501, 500), error: null };
-          } else if (cursorVal === 1000) {
-            return { data: makeBatch(1001, 200), error: null };
-          }
-          return { data: [], error: null };
-        }
-        if (table === 'system_settings') {
-          return { data: [{ value_number: 1 }], error: null };
-        }
-        return { data: null, error: 'unknown table' };
+    vi.spyOn(supabaseClientModule, 'invokeSupabaseRpc').mockImplementation(
+      async (_functionName: string, args?: any) => {
+        const cursorVal = Number(args?.p_since_sequence ?? 0);
+        const changes = cursorVal === 0
+          ? makeBatch(1, 500)
+          : cursorVal === 500
+            ? makeBatch(501, 500)
+            : cursorVal === 1000
+              ? makeBatch(1001, 200)
+              : [];
+        return { data: { changes, serverResetGeneration: 1 }, error: null } as any;
       }
     );
 
