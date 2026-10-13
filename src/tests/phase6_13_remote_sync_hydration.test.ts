@@ -14,10 +14,12 @@ import {
   subscribeStoreBootstrapProgress,
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
+import { setTestAppAuthSession } from './utils/testSetup';
 
 describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
+    setTestAppAuthSession();
     resetStoreMemory();
     await localDb.init();
     await localDb.clearOperationalTables();
@@ -33,16 +35,7 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     });
     if (typeof localStorage !== 'undefined') {
       localStorage.clear();
-      localStorage.setItem('app_auth_session', JSON.stringify({
-        userId: 'admin_test_session',
-        role: 'ADMIN',
-        permissions: [
-          'customers:create', 'customers:edit', 'customers:view',
-          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
-          'devices:manage', 'devices:view', 'settings:manage',
-          'finance:view', 'finance:create-payment', 'goals:manage',
-        ],
-      }));
+      setTestAppAuthSession();
     }
   });
 
