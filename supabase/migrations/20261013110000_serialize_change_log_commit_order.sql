@@ -225,7 +225,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = 'public', 'pg_temp'
+SET search_path = ''
 AS $function$
 DECLARE
   v_admin_id uuid;
