@@ -91,6 +91,25 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d authoritative_snapshot_test -v ON_ERROR_STOP=1 -f supabase/tests/authoritative_snapshot_timeout_runtime.test.sql
+      - name: Create isolated database for change-log commit-order regression
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres change_log_order_test
+      - name: Prepare change-log commit-order fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d change_log_order_test -v ON_ERROR_STOP=1 -f supabase/tests/change_log_commit_order_fixture.sql
+      - name: Apply change-log commit-order migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d change_log_order_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261013110000_serialize_change_log_commit_order.sql
+      - name: Verify concurrent change-log commits cannot pass the cursor
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+          PGDATABASE: change_log_order_test
+        run: bash supabase/tests/change_log_commit_order_runtime.test.sh
       - name: Apply the renumbering migration to isolated PostgreSQL
         env:
           PGPASSWORD: postgres
