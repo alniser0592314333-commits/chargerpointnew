@@ -1303,7 +1303,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       return false;
     }
 
-    const totalRows = Object.values(requiredCollections).reduce(
+    const totalRows = Object.values(requiredCollections).reduce<number>(
       (total, rows) => total + (rows as unknown[]).length,
       0
     );
