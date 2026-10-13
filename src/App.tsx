@@ -143,7 +143,7 @@ export default function App() {
   // Low-cost pull-only refresh while the authenticated app is visible.
   // Push remains event-driven by the existing Outbox coordinator.
   useEffect(() => {
-    if (!isAuthenticated || isSuspended || isAuthChecking) return;
+    if (!isAuthenticated || isSuspended || isAuthChecking || bootError) return;
     let active = false;
     const pullLatest = async () => {
       if (active || document.visibilityState !== 'visible' || navigator.onLine === false) return;
@@ -167,7 +167,7 @@ export default function App() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [isAuthenticated, isSuspended, isAuthChecking]);
+  }, [isAuthenticated, isSuspended, isAuthChecking, bootError]);
 
   // Register central suspension handler
   useEffect(() => {
