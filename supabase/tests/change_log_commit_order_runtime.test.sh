@@ -74,4 +74,12 @@ if [[ "$feed_generation" != "1" || "$feed_count" != "2" ]]; then
   exit 1
 fi
 
-echo "PASS: commit ordering is serialized and the combined delta RPC returns changes plus generation."
+# The first-device bootstrap snapshot must include both canonical rows and a
+# matching generation/high-water fence in the same returned JSON object.
+bootstrap_contract=$("${psql_cmd[@]}" -Atc "SELECT (s.snapshot->>'server_reset_generation') || '|' || (s.snapshot->>'max_change_sequence') || '|' || jsonb_array_length(s.snapshot->'orders') FROM (SELECT public.capture_sync_bootstrap_snapshot() AS snapshot) s")
+if [[ "$bootstrap_contract" != "1|2|2" ]]; then
+  echo "Atomic bootstrap snapshot contract failed: $bootstrap_contract" >&2
+  exit 1
+fi
+
+echo "PASS: commit ordering, delta RPC, and atomic bootstrap snapshot checkpoint are valid."
