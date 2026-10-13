@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as supabaseClient from '../services/supabase/client';
 import {
   ensureStoreHydrated,
   hydrateFromRemoteTables,
@@ -15,9 +16,11 @@ import { localDb } from '../infrastructure/localDb/localDb';
 
 describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
     resetStoreMemory();
     await localDb.init();
     await localDb.clearOperationalTables();
+    await localDb.setInitialHydrationCompleted(false);
   });
 
   it('1. Fresh Client Hydration: localDb starts empty, ensureStoreHydrated initializes without crash', async () => {
@@ -27,6 +30,21 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     await ensureStoreHydrated();
     const days = await getDaysList();
     expect(Array.isArray(days)).toBe(true);
+  });
+
+  it('blocks a fresh configured client when the first authoritative cloud read fails', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    vi.spyOn(supabaseClient, 'invokeSupabaseRestGet').mockImplementation(async (table: any) => {
+      if (table === 'customers') return { data: null, error: 'simulated offline read failure' } as any;
+      return { data: [], error: null } as any;
+    });
+
+    await expect(ensureStoreHydrated()).rejects.toThrow(/INITIAL_BOOTSTRAP_FAILED/);
+    expect(await localDb.isInitialHydrationCompleted()).toBe(false);
   });
 
   it('2. Offline Creation creates outbox command with pending status', async () => {
