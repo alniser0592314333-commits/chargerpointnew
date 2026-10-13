@@ -16,7 +16,21 @@ import { initializeCanonicalSyncState } from './utils/testSetup';
 
 describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
   beforeEach(async () => {
-    if (typeof localStorage !== 'undefined') localStorage.clear();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+      // These are mutation/bridge tests, not unauthenticated-access tests.
+      // Supply the same shape as a successfully cached app login session.
+      localStorage.setItem('app_auth_session', JSON.stringify({
+        userId: 'admin_test_session',
+        role: 'ADMIN',
+        permissions: [
+          'customers:create', 'customers:edit', 'customers:view',
+          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
+          'devices:manage', 'devices:view', 'settings:manage',
+          'finance:view', 'finance:create-payment', 'goals:manage',
+        ],
+      }));
+    }
     await clearAllOperationalData();
     await initializeCanonicalSyncState();
     await localDb.clearLocalResetMarker();
