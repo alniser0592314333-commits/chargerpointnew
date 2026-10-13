@@ -12,7 +12,20 @@ import { initializeCanonicalSyncState } from './utils/testSetup';
 
 describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
   beforeEach(async () => {
-    if (typeof localStorage !== 'undefined') localStorage.clear();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+      // Mutation tests require a cached authenticated app session.
+      localStorage.setItem('app_auth_session', JSON.stringify({
+        userId: 'admin_test_session',
+        role: 'ADMIN',
+        permissions: [
+          'customers:create', 'customers:edit', 'customers:view',
+          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
+          'devices:manage', 'devices:view', 'settings:manage',
+          'finance:view', 'finance:create-payment', 'goals:manage',
+        ],
+      }));
+    }
     await clearAllOperationalData();
     await initializeCanonicalSyncState();
     resetStoreMemory();
