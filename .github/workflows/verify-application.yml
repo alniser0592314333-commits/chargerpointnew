@@ -4,6 +4,7 @@ on:
     branches:
       - fix/isolated-safe-day-renumbering-20261009
       - fix/integrated-goals-and-safe-renumbering-20261009
+      - fix/reliable-incremental-sync
   pull_request:
     branches:
       - main
