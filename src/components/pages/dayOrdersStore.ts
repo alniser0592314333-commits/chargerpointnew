@@ -1295,10 +1295,10 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
 
     let updatedAny = false;
 
-    // At this point every required authoritative table has returned successfully.
-    // Replace the local operational snapshot atomically at the bootstrap level;
-    // otherwise records deleted remotely could survive in IndexedDB and reappear
-    // after a browser restart.
+    // At this point every required authoritative collection and its checkpoint
+    // have been validated from one server snapshot. The local install is guarded
+    // by the initial-hydration marker: if installation fails or the tab closes,
+    // the next boot retries instead of treating partial rows as a completed load.
     // A remote bootstrap is a read-model reconciliation. Preserve any local
     // aggregate that still has an outbox command so an online refresh cannot
     // erase work that has not yet reached the server.
@@ -1913,11 +1913,19 @@ export const ensureStoreHydrated = async (): Promise<void> => {
           persistedReservations, persistedQrTokens, persistedGoals, persistedGoalRequests,
         ].some((records) => records.length > 0);
         const bootstrapped = await hydrateFromRemoteTables();
-        if (!bootstrapped && !hasLocalOperationalData) {
-          throw new Error('INITIAL_BOOTSTRAP_FAILED: cloud data could not be loaded; retry when connected.');
+        const priorSyncState = await localDb.getSyncState('global');
+        const hasTrustedLocalCheckpoint = Boolean(
+          priorSyncState &&
+          Number.isSafeInteger(priorSyncState.resetGeneration) &&
+          (priorSyncState.resetGeneration as number) >= 0 &&
+          priorSyncState.status === 'READY' &&
+          priorSyncState.reconciliationRequired !== true
+        );
+        if (!bootstrapped && (!hasLocalOperationalData || !hasTrustedLocalCheckpoint)) {
+          throw new Error('INITIAL_BOOTSTRAP_FAILED: cloud snapshot unavailable and no trusted local sync checkpoint exists; retry when connected.');
         }
         if (!bootstrapped && hasLocalOperationalData) {
-          console.warn('Initial cloud bootstrap unavailable; retaining the existing local dataset for offline use.');
+          console.warn('Initial cloud bootstrap unavailable; retaining only the existing local dataset with its trusted sync checkpoint.');
         }
       }
       if (!isResetCompleted) {
