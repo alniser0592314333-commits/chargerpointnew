@@ -13,6 +13,7 @@ import { localDb } from '../infrastructure/localDb/localDb';
 import '../infrastructure/sync/syncBridge';
 import * as fs from 'fs';
 import * as path from 'path';
+import { setTestAppAuthSession } from './utils/testSetup';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,19 +24,7 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
       localStorage.clear();
     }
     await clearAllOperationalData();
-    if (typeof localStorage !== 'undefined') {
-      // Mutation tests require a cached authenticated app session.
-      localStorage.setItem('app_auth_session', JSON.stringify({
-        userId: 'admin_test_session',
-        role: 'ADMIN',
-        permissions: [
-          'customers:create', 'customers:edit', 'customers:view',
-          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
-          'devices:manage', 'devices:view', 'settings:manage',
-          'finance:view', 'finance:create-payment', 'goals:manage',
-        ],
-      }));
-    }
+    setTestAppAuthSession();
     await localDb.clearLocalResetMarker();
     resetStoreMemory();
   });
