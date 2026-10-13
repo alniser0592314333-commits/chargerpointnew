@@ -462,7 +462,14 @@ export const BackupDataManagement: React.FC = () => {
         // metadata is unusable; removing it could allow the next sync to erase
         // the preserved local dataset.
         if (!cloudResetReturned) {
-          await localDb.setSyncState(previousSyncState);
+          await localDb.setSyncState(previousSyncState || {
+            table: 'global',
+            lastAppliedChangeSequence: 0,
+            lastPulledAt: '',
+            resetGeneration: -1,
+            reconciliationRequired: false,
+            status: 'READY',
+          });
         }
         throw resetError;
       }
