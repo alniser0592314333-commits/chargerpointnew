@@ -53,6 +53,59 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     expect(await localDb.isInitialHydrationCompleted()).toBe(false);
   });
 
+  it('rolls back the entire bootstrap install if a local row write fails', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: {
+        schema_version: 1,
+        captured_at: '2026-10-13T12:00:00.000Z',
+        server_reset_generation: 7,
+        max_change_sequence: 42,
+        business_days: [],
+        customers: [{ id: 'customer-atomic', name: 'Must roll back' }],
+        device_types: [],
+        orders: [],
+        order_items: [],
+        financial_ledger: [],
+        payments: [],
+        payment_allocations: [],
+        order_number_reservations: [],
+        qr_tokens: [{
+          id: 'qr-atomic',
+          token_hash: 'hash',
+          public_token: 'token',
+          token_type: 'ORDER',
+          target_id: 'order-atomic',
+          is_active: true,
+        }],
+        goals: [],
+        goal_requests: [],
+      },
+      error: null,
+    } as any);
+    localDb.__setWriteHookForTesting((table) => {
+      if (table === 'qr_tokens') throw new Error('injected local write failure');
+    });
+
+    try {
+      await expect(hydrateFromRemoteTables()).rejects.toThrow('injected local write failure');
+    } finally {
+      localDb.__setWriteHookForTesting(null);
+    }
+
+    expect(await localDb.list('customers')).toHaveLength(0);
+    expect(await localDb.get('qr_tokens', 'qr-atomic')).toBeFalsy();
+    expect(await localDb.getSyncState('global')).toMatchObject({
+      status: 'INITIALIZING',
+      reconciliationRequired: true,
+    });
+    expect(await localDb.isInitialHydrationCompleted()).toBe(false);
+  });
+
   it('keeps an existing checkpointed local replica and catches it up incrementally', async () => {
     await localDb.set('customers', 'existing-customer', {
       id: 'existing-customer',
