@@ -1215,6 +1215,10 @@ let hydrationPromise: Promise<void> | null = null;
 export const hydrateFromRemoteTables = async (): Promise<boolean> => {
   if (!getSupabaseStatus().isConfigured) return false;
 
+  // Before the first local mutation, read failures can safely fall back to a
+  // previously persisted offline dataset. Once replacement starts, failures
+  // must propagate so the boot gate never exposes a partially replaced store.
+  let localMutationStarted = false;
   try {
     const [
       daysRes,
@@ -1258,6 +1262,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // A remote bootstrap is a read-model reconciliation. Preserve any local
     // aggregate that still has an outbox command so an online refresh cannot
     // erase work that has not yet reached the server.
+    localMutationStarted = true;
     await localDb.clearOperationalData({
       clearOutbox: false,
       clearSyncState: false,
@@ -1512,8 +1517,10 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     }
     return updatedAny;
   } catch (err) {
-    console.warn('Remote table hydration fallback to local persistence:', err);
-    // A failed remote bootstrap is not a successful hydration checkpoint.
+    console.warn('Remote table hydration failed:', err);
+    // A failure before replacement begins is safe for an existing offline cache.
+    // After replacement starts, fail closed: callers must not expose partial data.
+    if (localMutationStarted) throw err;
     return false;
   }
 };
@@ -1802,11 +1809,23 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       const isInitialHydrationDone = await localDb.isInitialHydrationCompleted();
 
       if (!isResetCompleted && !isInitialHydrationDone) {
-        // True fresh client / empty local storage: await full initial hydration once
-        await hydrateFromRemoteTables().catch((err) => {
-          console.warn('Initial bootstrap hydration warning:', err);
-        });
-      } else if (!isResetCompleted) {
+        // Initial bootstrap is required for a truly empty client. If the remote
+        // read fails before local replacement, an existing persisted cache may
+        // still be used offline; a fresh client must not enter with an empty model.
+        const hasLocalOperationalData = [
+          persistedCustomers, persistedDevices, persistedDays, persistedOrders,
+          persistedItems, persistedLedger, persistedPayments, persistedAllocations,
+          persistedReservations, persistedGoals, persistedGoalRequests,
+        ].some((records) => records.length > 0);
+        const bootstrapped = await hydrateFromRemoteTables();
+        if (!bootstrapped && !hasLocalOperationalData) {
+          throw new Error('INITIAL_BOOTSTRAP_FAILED: cloud data could not be loaded; retry when connected.');
+        }
+        if (!bootstrapped && hasLocalOperationalData) {
+          console.warn('Initial cloud bootstrap unavailable; retaining the existing local dataset for offline use.');
+        }
+      }
+      if (!isResetCompleted) {
         // Populated client: background delta sync only (never full-table refresh) via SyncBridge
         if (onTransactionCommitted) {
           onTransactionCommitted();
@@ -1815,7 +1834,13 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     }
 
     isStoreHydrated = true;
-  })();
+  })().catch((error) => {
+    // A failed boot must be retryable; never cache a rejected hydration promise
+    // or mark the in-memory store ready after a partial bootstrap.
+    isStoreHydrated = false;
+    hydrationPromise = null;
+    throw error;
+  });
 
   return hydrationPromise;
 };
