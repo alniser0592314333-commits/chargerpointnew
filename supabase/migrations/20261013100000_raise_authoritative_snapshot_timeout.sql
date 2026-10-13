@@ -35,6 +35,7 @@ BEGIN
         COALESCE((SELECT s.value_number FROM public.system_settings s WHERE s.key = 'server_reset_generation' LIMIT 1), 0),
       'change_log_count', (SELECT count(*) FROM public.change_log),
       'max_change_sequence', COALESCE((SELECT max(t.sequence_id) FROM public.change_log t), 0),
+      'change_log_fingerprint', (SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text), '' ORDER BY t.sequence_id), '')) FROM public.change_log t),
       'customers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.customers t), '[]'::jsonb),
       'business_days', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.business_days t), '[]'::jsonb),
       'orders', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.orders t), '[]'::jsonb),
@@ -105,7 +106,11 @@ BEGIN
         ) page_row
       ), p_after_sequence_id),
       'current_count_through_sequence', (SELECT count(*) FROM public.change_log WHERE sequence_id <= p_through_sequence_id),
-      'server_reset_generation', COALESCE((SELECT s.value_number FROM public.system_settings s WHERE s.key = 'server_reset_generation' LIMIT 1), 0)
+      'server_reset_generation', COALESCE((SELECT s.value_number FROM public.system_settings s WHERE s.key = 'server_reset_generation' LIMIT 1), 0),
+      'change_log_fingerprint', CASE WHEN p_after_sequence_id = p_through_sequence_id THEN (
+        SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text), '' ORDER BY t.sequence_id), ''))
+        FROM public.change_log t WHERE t.sequence_id <= p_through_sequence_id
+      ) ELSE NULL END
     )
   );
 END;
