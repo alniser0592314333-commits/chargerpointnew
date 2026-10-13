@@ -158,44 +158,34 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
    */
   async pullChanges(
     cursor: number,
-    limit: number = SYNC_PULL_BATCH_SIZE,
-    checkGeneration = true
+    limit: number = SYNC_PULL_BATCH_SIZE
   ): Promise<SyncPullResponse> {
     const batchLimit = Math.min(Math.max(1, limit), SYNC_PULL_BATCH_SIZE);
-    const changesResult = await invokeSupabaseRestGet<any>(
-      'change_log',
-      `select=sequence_id,entity_type,entity_id,action,payload,version,changed_at&sequence_id=gt.${cursor}&order=sequence_id.asc&limit=${batchLimit}`
-    );
-
-    if (changesResult.error) throw new Error(`CHANGE_LOG_PULL_FAILED: ${changesResult.error}`);
-    if (!Array.isArray(changesResult.data)) throw new Error('CHANGE_LOG_PULL_INVALID_RESPONSE: expected an array');
-
-    let serverResetGeneration: number | undefined;
-    if (checkGeneration) {
-      const settingResult = await invokeSupabaseRestGet<any>(
-        'system_settings',
-        'select=value_number&key=eq.server_reset_generation'
-      );
-      if (settingResult.error || !Array.isArray(settingResult.data) || settingResult.data.length === 0) {
-        throw new Error(`RESET_GENERATION_READ_FAILED: ${settingResult.error || 'setting not found'}`);
-      }
-      serverResetGeneration = Number(settingResult.data[0].value_number);
-      if (!Number.isFinite(serverResetGeneration)) throw new Error('RESET_GENERATION_READ_FAILED: invalid generation value');
+    const { data: rpcData, error: rpcError } = await invokeSupabaseRpc<any>('pull_canonical_changes', {
+      p_since_sequence: cursor,
+      p_limit: batchLimit,
+    });
+    if (rpcError) throw new Error(`CHANGE_LOG_PULL_FAILED: ${rpcError}`);
+    const response = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as any;
+    if (!response || !Array.isArray(response.changes)) throw new Error('CHANGE_LOG_PULL_INVALID_RESPONSE: expected changes array');
+    if (response.serverResetGeneration === null || response.serverResetGeneration === undefined) {
+      throw new Error('RESET_GENERATION_READ_FAILED: missing generation');
     }
+    const serverResetGeneration = Number(response.serverResetGeneration);
+    if (!Number.isFinite(serverResetGeneration)) throw new Error('RESET_GENERATION_READ_FAILED: invalid generation');
 
-    const changes: ChangeLogEntry[] = changesResult.data.map((row: any) => ({
-      sequenceId: Number(row.sequence_id),
-      entityType: row.entity_type,
-      entityId: row.entity_id,
+    const changes: ChangeLogEntry[] = response.changes.map((row: any) => ({
+      sequenceId: Number(row.sequence_id ?? row.sequenceId),
+      entityType: row.entity_type ?? row.entityType,
+      entityId: row.entity_id ?? row.entityId,
       action: row.action,
       payload: row.payload,
       version: row.version !== null && row.version !== undefined ? Number(row.version) : undefined,
-      changedAt: row.changed_at,
+      changedAt: row.changed_at ?? row.changedAt,
     }));
     if (changes.some(change => !Number.isSafeInteger(change.sequenceId) || change.sequenceId <= cursor)) {
       throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: returned sequence is not greater than cursor');
     }
-
     const latestSequence = changes.length > 0 ? Math.max(...changes.map(change => change.sequenceId)) : cursor;
     return { changes, latestSequence, serverResetGeneration };
   }
