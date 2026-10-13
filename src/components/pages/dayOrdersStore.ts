@@ -414,8 +414,13 @@ const snapshotRemoteArray = <T>(
   scope: string,
   list: T[]
 ): void => {
+  const transaction = tx as any;
+  const key = `array:${scope}`;
+  if (!transaction || typeof transaction.addEventListener !== 'function') return;
+  if (remoteTransactionRollbackSnapshots.get(transaction)?.has(key)) return;
+
   const previous = [...list];
-  registerRemoteRollbackSnapshot(tx, `array:${scope}`, () => {
+  registerRemoteRollbackSnapshot(tx, key, () => {
     list.splice(0, list.length, ...previous);
   });
 };
