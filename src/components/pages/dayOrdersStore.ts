@@ -2022,7 +2022,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
           priorSyncState.reconciliationRequired !== true
         );
         const pendingLocalCommands = (await localDb.listOutbox()).filter((item) =>
-          ['pending', 'PENDING_RECONCILIATION', 'READY', 'syncing', 'blocked', 'conflict'].includes(item.status)
+          ['pending', 'PENDING_RECONCILIATION', 'READY', 'syncing', 'accepted', 'blocked', 'conflict'].includes(item.status)
         );
 
         if (hasLocalOperationalData && hasTrustedLocalCheckpoint) {
