@@ -93,4 +93,58 @@ if [[ "$psql_check" != "t" ]]; then
   exit 1
 fi
 
-echo "PASS: commit ordering, RPC lock entry points, delta RPC, and atomic bootstrap snapshot checkpoint are valid."
+# Exercise the real deadlock shape: each dispatcher locks one row before its
+# first DML, then updates the other row. The RPC wrapper must take the advisory
+# lock before either row lock, so the second command waits without holding a row.
+("${psql_cmd[@]}" -Atc "SELECT public.execute_canonical_sync_command(
+  '00000000-0000-0000-0000-000000000003',
+  'TEST_LOCK_ORDER',
+  jsonb_build_object('lockId','00000000-0000-0000-0000-000000000001','id','00000000-0000-0000-0000-000000000002','name','A-updates-B','sleepSeconds',2),
+  'hash-a','device-a',NULL::uuid
+)") >/tmp/change-log-rpc-a.log 2>&1 &
+rpc_a=$!
+
+rpc_a_active=0
+for _ in $(seq 1 30); do
+  rpc_a_active=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state='active' AND query LIKE '%execute_canonical_sync_command%'")
+  if [[ "$rpc_a_active" -ge 1 ]]; then break; fi
+  sleep 0.1
+done
+if [[ "$rpc_a_active" -lt 1 ]]; then
+  cat /tmp/change-log-rpc-a.log || true
+  echo "Canonical dispatcher A did not start" >&2
+  kill "$rpc_a" 2>/dev/null || true
+  exit 1
+fi
+
+("${psql_cmd[@]}" -Atc "SELECT public.execute_canonical_sync_command(
+  '00000000-0000-0000-0000-000000000004',
+  'TEST_LOCK_ORDER',
+  jsonb_build_object('lockId','00000000-0000-0000-0000-000000000002','id','00000000-0000-0000-0000-000000000001','name','B-updates-A'),
+  'hash-b','device-b',NULL::uuid
+)") >/tmp/change-log-rpc-b.log 2>&1 &
+rpc_b=$!
+
+rpc_b_waiting=0
+for _ in $(seq 1 30); do
+  rpc_b_waiting=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%execute_canonical_sync_command%'")
+  if [[ "$rpc_b_waiting" -ge 1 ]]; then break; fi
+  sleep 0.1
+done
+if [[ "$rpc_b_waiting" -lt 1 ]]; then
+  cat /tmp/change-log-rpc-a.log /tmp/change-log-rpc-b.log || true
+  echo "Canonical dispatcher B did not wait on the entry lock before acquiring its row lock" >&2
+  kill "$rpc_a" "$rpc_b" 2>/dev/null || true
+  exit 1
+fi
+
+wait "$rpc_a"
+wait "$rpc_b"
+rpc_rows=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM public.orders WHERE (id='00000000-0000-0000-0000-000000000001' AND name='B-updates-A') OR (id='00000000-0000-0000-0000-000000000002' AND name='A-updates-B')")
+if [[ "$rpc_rows" != "2" ]]; then
+  cat /tmp/change-log-rpc-a.log /tmp/change-log-rpc-b.log || true
+  echo "Serialized RPC row-lock scenario did not complete both commands" >&2
+  exit 1
+fi
+
+echo "PASS: commit ordering, pre-row-lock RPC serialization, delta RPC, and atomic bootstrap snapshot checkpoint are valid."
