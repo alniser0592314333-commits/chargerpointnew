@@ -6,9 +6,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { SyncEngine, MockServerSyncTransport } from '../infrastructure/sync/syncEngine';
+import { extractCommandDependencies } from '../infrastructure/sync/outboxScheduler';
 import { initializeCanonicalSyncState } from './utils/testSetup';
 
 describe('Phase 4 Offline & Sync Engine Test Suite', () => {
+  it('handles legacy outbox rows with a missing payload without crashing dependency scheduling', () => {
+    const legacyRecord = {
+      commandId: 'legacy-command-without-payload',
+      commandType: 'UPDATE_ORDER',
+      aggregateType: 'orders',
+      aggregateId: 'order-legacy',
+      payload: undefined,
+      createdAt: new Date().toISOString(),
+      deviceId: 'test-device',
+      actorAdminId: 'test-admin',
+      status: 'pending',
+      retryCount: 0,
+    } as any;
+
+    expect(extractCommandDependencies(legacyRecord, [legacyRecord])).toEqual([]);
+  });
+
   let transport: MockServerSyncTransport;
   let engine: SyncEngine;
 
