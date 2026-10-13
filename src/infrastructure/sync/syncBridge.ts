@@ -82,6 +82,14 @@ export class SyncBridge {
       } finally {
         this.isSyncing = false;
         this.activeSyncPromise = null;
+
+        // Preserve notifications received while manual sync owned the bridge.
+        if (this.pendingWorkNotify) {
+          this.pendingWorkNotify = false;
+          this.notifyOutboxWorkAvailable().catch((err) => {
+            console.warn('Background sync error after manual sync:', err);
+          });
+        }
       }
     })();
 
