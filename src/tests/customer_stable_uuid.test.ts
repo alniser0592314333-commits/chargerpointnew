@@ -18,7 +18,20 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
   beforeEach(async () => {
-    if (typeof localStorage !== 'undefined') localStorage.clear();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+      // Mutation tests require a cached authenticated app session.
+      localStorage.setItem('app_auth_session', JSON.stringify({
+        userId: 'admin_test_session',
+        role: 'ADMIN',
+        permissions: [
+          'customers:create', 'customers:edit', 'customers:view',
+          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
+          'devices:manage', 'devices:view', 'settings:manage',
+          'finance:view', 'finance:create-payment', 'goals:manage',
+        ],
+      }));
+    }
     await clearAllOperationalData();
     await localDb.clearLocalResetMarker();
     resetStoreMemory();
