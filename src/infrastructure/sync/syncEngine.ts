@@ -1224,19 +1224,29 @@ export class SyncEngine {
             throw new Error('FINAL_PULL_RESET_GENERATION_CHANGED: authoritative reconciliation required');
           }
         }
+
+        // Even an empty final page is a successful server check. Persist READY
+        // only after the pull succeeds; a failed pull must never look fully synced.
+        const verifiedState = await localDb.getSyncState('global');
+        await localDb.setSyncState({
+          ...(verifiedState || { table: 'global', lastAppliedChangeSequence: finalCursor, lastPulledAt: '' }),
+          lastAppliedChangeSequence: finalCursor,
+          lastPulledAt: new Date().toISOString(),
+          status: 'READY',
+          reconciliationRequired: false,
+        });
       } catch (finalPullError: any) {
         console.warn('Final authoritative sync pull failed; accepted commands remain queued for reconciliation:', finalPullError);
-        if (String(finalPullError?.message || '').includes('FINAL_PULL_RESET_GENERATION_CHANGED')) {
-          try {
-            const currentState = await localDb.getSyncState('global');
-            await localDb.setSyncState({
-              ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
-              status: 'RECONCILIATION_REQUIRED',
-              reconciliationRequired: true,
-            });
-          } catch (checkpointError) {
-            console.warn('Failed to persist final-pull reconciliation marker:', checkpointError);
-          }
+        const generationChanged = String(finalPullError?.message || '').includes('FINAL_PULL_RESET_GENERATION_CHANGED');
+        try {
+          const currentState = await localDb.getSyncState('global');
+          await localDb.setSyncState({
+            ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+            status: generationChanged ? 'RECONCILIATION_REQUIRED' : 'STALE',
+            reconciliationRequired: generationChanged,
+          });
+        } catch (checkpointError) {
+          console.warn('Failed to persist final-pull status:', checkpointError);
         }
       }
 
