@@ -57,6 +57,73 @@ BEGIN
 END;
 $migration$;
 
+-- Acquire the same transaction lock at RPC entry, before the canonical
+-- dispatcher takes any SELECT ... FOR UPDATE row locks. Statement triggers still
+-- protect direct DML, but trigger-only locking can invert lock order when a
+-- dispatcher locks rows before its first UPDATE/INSERT/DELETE.
+ALTER FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
+  RENAME TO execute_canonical_sync_command_unlocked;
+
+CREATE FUNCTION public.execute_canonical_sync_command(
+  p_command_id uuid,
+  p_command_type text,
+  p_payload jsonb,
+  p_payload_hash text DEFAULT 'no_hash'::text,
+  p_device_id text DEFAULT 'default_device'::text,
+  p_actor_id uuid DEFAULT NULL::uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
+  RETURN public.execute_canonical_sync_command_unlocked(
+    p_command_id, p_command_type, p_payload, p_payload_hash, p_device_id, p_actor_id
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command_unlocked(uuid, text, jsonb, text, text, uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
+  TO authenticated, service_role;
+
+-- The legacy service-role-only dispatcher has the same pre-row-lock requirement.
+ALTER FUNCTION public.execute_sync_command_impl(uuid, text, text, uuid, jsonb, integer)
+  RENAME TO execute_sync_command_impl_unlocked;
+
+CREATE FUNCTION public.execute_sync_command_impl(
+  p_command_id uuid,
+  p_command_type text,
+  p_aggregate_type text DEFAULT NULL::text,
+  p_aggregate_id uuid DEFAULT NULL::uuid,
+  p_payload jsonb DEFAULT '{}'::jsonb,
+  p_expected_version integer DEFAULT NULL::integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
+  RETURN public.execute_sync_command_impl_unlocked(
+    p_command_id, p_command_type, p_aggregate_type, p_aggregate_id, p_payload, p_expected_version
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.execute_sync_command_impl_unlocked(uuid, text, text, uuid, jsonb, integer)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.execute_sync_command_impl(uuid, text, text, uuid, jsonb, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.execute_sync_command_impl(uuid, text, text, uuid, jsonb, integer)
+  TO service_role;
+
 -- Return a delta page and reset generation in one authenticated RPC and one
 -- PostgreSQL statement snapshot, avoiding a second REST request on every poll.
 CREATE OR REPLACE FUNCTION public.pull_canonical_changes(
