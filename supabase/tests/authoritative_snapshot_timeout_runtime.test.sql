@@ -51,50 +51,21 @@ BEGIN
   IF (v_final->>'server_reset_generation')::bigint <> 0 THEN
     RAISE EXCEPTION 'Reset generation should match fixture checkpoint: %', v_final;
   END IF;
-  IF COALESCE(v_final->>'change_log_fingerprint', '') !~ '^[0-9a-f]{32}
+  IF length(COALESCE(v_final->>'change_log_fingerprint', '')) <> 32
+     OR COALESCE(v_final->>'change_log_fingerprint', '') ~ '[^0-9a-f]' THEN
+    RAISE EXCEPTION 'Final checkpoint must include a deterministic MD5 fingerprint: %', v_final;
+  END IF;
 
-  -- An empty final checkpoint page still returns the authoritative count and
-  -- generation so the client can detect history changes after paging.
+  -- An empty final checkpoint page still returns count, generation and fingerprint.
   v_final := public.capture_authoritative_change_log_page(5, 5, 1);
   IF jsonb_array_length(v_final->'rows') <> 0
      OR (v_final->>'current_count_through_sequence')::bigint <> 5
-     OR COALESCE(v_final->>'change_log_fingerprint', '') !~ '^[0-9a-f]{32}
+     OR length(COALESCE(v_final->>'change_log_fingerprint', '')) <> 32
+     OR COALESCE(v_final->>'change_log_fingerprint', '') ~ '[^0-9a-f]' THEN
     RAISE EXCEPTION 'Final checkpoint validation failed: %', v_final;
   END IF;
 END
 $verify$;
- THEN
-    RAISE EXCEPTION 'Final checkpoint must include a deterministic MD5 fingerprint: %', v_final;
-  END IF;
-
-  -- An empty final checkpoint page still returns the authoritative count and
-  -- generation so the client can detect history changes after paging.
-  v_final := public.capture_authoritative_change_log_page(5, 5, 1);
-  IF jsonb_array_length(v_final->'rows') <> 0
-     OR (v_final->>'current_count_through_sequence')::bigint <> 5 THEN
-    RAISE EXCEPTION 'Final checkpoint validation failed: %', v_final;
-  END IF;
-END
-$verify$;
- THEN
-    RAISE EXCEPTION 'Final checkpoint validation failed: %', v_final;
-  END IF;
-END
-$verify$;
- THEN
-    RAISE EXCEPTION 'Final checkpoint must include a deterministic MD5 fingerprint: %', v_final;
-  END IF;
-
-  -- An empty final checkpoint page still returns the authoritative count and
-  -- generation so the client can detect history changes after paging.
-  v_final := public.capture_authoritative_change_log_page(5, 5, 1);
-  IF jsonb_array_length(v_final->'rows') <> 0
-     OR (v_final->>'current_count_through_sequence')::bigint <> 5 THEN
-    RAISE EXCEPTION 'Final checkpoint validation failed: %', v_final;
-  END IF;
-END
-$verify$;
-
 
 -- Verify the fingerprint catches a same-count mutation, not just count changes.
 CREATE TEMP TABLE expected_change_log_fingerprint (fingerprint text NOT NULL);
