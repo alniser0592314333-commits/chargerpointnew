@@ -24,3 +24,8 @@ BEGIN
   END IF;
 END
 $verify$;
+
+
+-- Prove the function-scoped setting can outlive the caller's short timeout.
+SET statement_timeout = '8s';
+SELECT public.capture_authoritative_business_snapshot();
