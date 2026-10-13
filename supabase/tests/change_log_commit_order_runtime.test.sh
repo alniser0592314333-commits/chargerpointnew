@@ -82,4 +82,15 @@ if [[ "$bootstrap_contract" != "1|2|2" ]]; then
   exit 1
 fi
 
-echo "PASS: commit ordering, delta RPC, and atomic bootstrap snapshot checkpoint are valid."
+psql_check=$("${psql_cmd[@]}" -Atc "SELECT
+  has_function_privilege('authenticated', 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)', 'EXECUTE')
+  AND NOT has_function_privilege('service_role', 'public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)', 'EXECUTE')
+  AND has_function_privilege('service_role', 'public.execute_sync_command_impl(uuid,text,text,uuid,jsonb,integer)', 'EXECUTE')
+  AND NOT has_function_privilege('service_role', 'public.execute_sync_command_impl_unlocked(uuid,text,text,uuid,jsonb,integer)', 'EXECUTE')")
+if [[ "$psql_check" != "t" ]]; then
+  echo "RPC entry-point lock wrappers or internal implementation privileges are incorrect" >&2
+  exit 1
+fi
+
+echo "PASS: commit ordering, RPC lock entry points, delta RPC, and atomic bootstrap snapshot checkpoint are valid."
