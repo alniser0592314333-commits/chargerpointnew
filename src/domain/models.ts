@@ -136,6 +136,7 @@ export interface OrderItemEntity extends BaseEntity {
   totalPriceMinor: number;
   replacementOfItemId?: ID;
   deliveredAt?: Timestamp;
+  cancelledAt?: Timestamp;
   financiallyRecognizedAt?: Timestamp;
   deletedAt?: Timestamp;
 }
