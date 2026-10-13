@@ -18,6 +18,9 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
   beforeEach(async () => {
     if (typeof localStorage !== 'undefined') {
       localStorage.clear();
+    }
+    await clearAllOperationalData();
+    if (typeof localStorage !== 'undefined') {
       // These are mutation/bridge tests, not unauthenticated-access tests.
       // Supply the same shape as a successfully cached app login session.
       localStorage.setItem('app_auth_session', JSON.stringify({
@@ -31,7 +34,6 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
         ],
       }));
     }
-    await clearAllOperationalData();
     await initializeCanonicalSyncState();
     await localDb.clearLocalResetMarker();
     resetStoreMemory();
