@@ -667,8 +667,17 @@ export class SyncEngine {
         pullRes = rebuiltPull;
       }
 
-      if (pullRes.changes.length > 0) {
+      // Drain every available page before pushing outbox commands. A single-page
+      // preflight can leave the local canonical view incomplete (especially after
+      // reset reconciliation) while the same cycle starts sending dependent writes.
+      let pullCursor = syncState.lastAppliedChangeSequence || 0;
+      while (pullRes.changes.length > 0) {
         const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+        const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
+        if (!Number.isSafeInteger(maxSeq) || maxSeq <= pullCursor) {
+          throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: cursor did not advance');
+        }
+
         await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
           for (const change of sortedChanges) {
             try {
@@ -687,7 +696,6 @@ export class SyncEngine {
               throw deltaErr;
             }
           }
-          const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
           const updatedState = {
             ...syncState,
             lastAppliedChangeSequence: maxSeq,
@@ -695,6 +703,16 @@ export class SyncEngine {
           };
           localDb.setSyncStateWithTx(tx, updatedState);
         });
+
+        pullCursor = maxSeq;
+        syncState.lastAppliedChangeSequence = maxSeq;
+        syncState.lastPulledAt = new Date().toISOString();
+
+        if (sortedChanges.length < 500) break;
+        pullRes = await this.transport.pullChanges(pullCursor, 500);
+        if (pullRes.serverResetGeneration === undefined || pullRes.serverResetGeneration !== serverGen) {
+          throw new Error('Authoritative reset generation changed during incremental pull; retry sync');
+        }
       }
 
       // 1. Dependency-aware execution of Outbox commands
