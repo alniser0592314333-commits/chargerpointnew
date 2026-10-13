@@ -22,6 +22,27 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     await localDb.init();
     await localDb.clearOperationalTables();
     await localDb.setInitialHydrationCompleted(false);
+
+    // Most tests in this file cover local/offline behavior. Cloud-bootstrap tests
+    // explicitly opt into a configured client and mock their authoritative RPC.
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: false,
+      url: 'Not configured',
+      status: 'disconnected',
+    });
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+      localStorage.setItem('app_auth_session', JSON.stringify({
+        userId: 'admin_test_session',
+        role: 'ADMIN',
+        permissions: [
+          'customers:create', 'customers:edit', 'customers:view',
+          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
+          'devices:manage', 'devices:view', 'settings:manage',
+          'finance:view', 'finance:create-payment', 'goals:manage',
+        ],
+      }));
+    }
   });
 
   it('1. Fresh local-only client: localDb starts empty and initializes without cloud bootstrap', async () => {
