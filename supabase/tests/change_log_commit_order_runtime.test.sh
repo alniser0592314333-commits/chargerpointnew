@@ -56,4 +56,11 @@ if [[ "$ordered" != "t" ]]; then
   exit 1
 fi
 
-echo "PASS: a later change cannot become visible before an earlier allocated change."
+feed_generation=$("${psql_cmd[@]}" -Atc "SELECT public.pull_canonical_changes(0, 500)->>'serverResetGeneration'")
+feed_count=$("${psql_cmd[@]}" -Atc "SELECT jsonb_array_length(public.pull_canonical_changes(0, 500)->'changes')")
+if [[ "$feed_generation" != "1" || "$feed_count" != "2" ]]; then
+  echo "Combined delta RPC did not return generation and committed changes" >&2
+  exit 1
+fi
+
+echo "PASS: commit ordering is serialized and the combined delta RPC returns changes plus generation."

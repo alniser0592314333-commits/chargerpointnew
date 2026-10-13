@@ -198,8 +198,8 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     const result = await globalSyncBridge.requestLatestDataReload();
     expect(result.pulled).toBe(501);
     expect(pullSpy).toHaveBeenCalledTimes(3);
-    expect(pullSpy).toHaveBeenNthCalledWith(1, 0, 500, true);
-    expect(pullSpy).toHaveBeenNthCalledWith(2, 500, 500, false);
+    expect(pullSpy).toHaveBeenNthCalledWith(1, 0, 500);
+    expect(pullSpy).toHaveBeenNthCalledWith(2, 500, 500);
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
   });
 

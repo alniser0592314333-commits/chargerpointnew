@@ -57,6 +57,37 @@ BEGIN
 END;
 $migration$;
 
+-- Return a delta page and reset generation in one authenticated RPC and one
+-- PostgreSQL statement snapshot, avoiding a second REST request on every poll.
+CREATE OR REPLACE FUNCTION public.pull_canonical_changes(
+  p_since_sequence bigint,
+  p_limit integer DEFAULT 500
+)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $function$
+  WITH page AS MATERIALIZED (
+    SELECT sequence_id, entity_type, entity_id, action, payload, version, changed_at
+    FROM public.change_log
+    WHERE sequence_id > p_since_sequence
+    ORDER BY sequence_id ASC
+    LIMIT LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500)
+  )
+  SELECT jsonb_build_object(
+    'changes', COALESCE((SELECT jsonb_agg(to_jsonb(page) ORDER BY page.sequence_id) FROM page), '[]'::jsonb),
+    'latestSequence', COALESCE((SELECT MAX(sequence_id) FROM page), p_since_sequence),
+    'serverResetGeneration', (
+      SELECT value_number FROM public.system_settings WHERE key = 'server_reset_generation' LIMIT 1
+    )
+  );
+$function$;
+
+REVOKE ALL ON FUNCTION public.pull_canonical_changes(bigint, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated, service_role;
+
 -- Keep the same lock for direct canonical change-recording calls too. In normal
 -- table-trigger paths the statement trigger has already acquired it, so this is
 -- re-entrant within the same transaction.

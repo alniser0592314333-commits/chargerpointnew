@@ -130,16 +130,14 @@ export class SyncBridge {
         }
 
         let cursor = syncState.lastAppliedChangeSequence || 0;
-        let checkGeneration = true;
 
         // A reset must use the authoritative reconciliation flow before any deltas apply.
         while (true) {
-          const pullRes = await (globalSyncEngine as any).transport.pullChanges(cursor, 500, checkGeneration);
-          checkGeneration = false;
+          const pullRes = await (globalSyncEngine as any).transport.pullChanges(cursor, 500);
 
           if (pullRes.serverResetGeneration !== undefined &&
             (syncState.resetGeneration === undefined || pullRes.serverResetGeneration !== syncState.resetGeneration)) {
-            return { pulled: 0, needsReconciliation: true };
+            return { pulled: pulledCount, needsReconciliation: true };
           }
           if (pullRes.changes.length === 0) break;
 
