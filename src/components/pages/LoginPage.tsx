@@ -3,6 +3,7 @@ import { useI18n } from "../../i18n/i18nContext";
 import { useTheme } from "../../theme/themeContext";
 import { authService } from "../../services/auth/authService";
 import { SupabaseAuthSession } from "../../services/supabase/client";
+import type { StoreBootstrapProgress } from "./dayOrdersStore";
 import { Button } from "../ui/Button";
 import {
   Sun,
@@ -22,6 +23,7 @@ import {
 
 export interface LoginPageProps {
   onLoginSuccess: () => void | Promise<void>;
+  bootstrapProgress?: StoreBootstrapProgress;
 }
 
 export type AuthUiState =
@@ -34,7 +36,7 @@ export type AuthUiState =
   | "ACCESS_DENIED_NO_ADMIN"
   | "ACCESS_DENIED_INACTIVE";
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapProgress }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const isSupabase = authService.isSupabaseConfigured();
@@ -578,6 +580,23 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 rounded-xl flex items-start gap-2.5 text-emerald-700 dark:text-emerald-300 text-xs">
               <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
               <div className="flex-1 font-medium leading-relaxed">{successMessage}</div>
+            </div>
+          )}
+
+          {isSubmitting && bootstrapProgress && (bootstrapProgress.phase === "FETCHING" || bootstrapProgress.phase === "INSTALLING") && (
+            <div className="p-3 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/80 dark:bg-emerald-950/30 space-y-2">
+              <div className="flex items-center justify-between gap-3 text-xs text-emerald-800 dark:text-emerald-200">
+                <span className="font-medium">{bootstrapProgress.message}</span>
+                <span className="font-bold tabular-nums">{bootstrapProgress.percent}%</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-emerald-100 dark:bg-emerald-950 overflow-hidden">
+                <div className="h-full rounded-full bg-emerald-500 transition-all duration-200" style={{ width: `${bootstrapProgress.percent}%` }} />
+              </div>
+              {bootstrapProgress.totalRows > 0 && (
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-300 text-center">
+                  {bootstrapProgress.completedRows.toLocaleString()} / {bootstrapProgress.totalRows.toLocaleString()} سجل
+                </div>
+              )}
             </div>
           )}
 
