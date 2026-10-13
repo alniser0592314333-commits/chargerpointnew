@@ -42,7 +42,9 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
   }
 
   // 3. Payload explicit dependencies
-  const payload = item.payload as any;
+  // Outbox payloads are untrusted persisted data and may be null/undefined in legacy rows.
+  // Normalize non-object payloads before domain dependency checks below.
+  const payload = item.payload && typeof item.payload === 'object' ? item.payload as any : {};
   if (payload && typeof payload === 'object') {
     if (payload.dependencyCommandId && typeof payload.dependencyCommandId === 'string') {
       deps.add(payload.dependencyCommandId);
