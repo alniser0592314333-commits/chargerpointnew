@@ -2030,7 +2030,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
           // optimistic state/outbox semantics.
           await localDb.setInitialHydrationCompleted(true);
         } else {
-          if (hasLocalOperationalData && pendingLocalCommands.length > 0 && priorSyncState?.status !== 'INITIALIZING') {
+          if (hasLocalOperationalData && pendingLocalCommands.length > 0) {
             throw new Error('LOCAL_RECONCILIATION_REQUIRED: local pending work has no trusted sync checkpoint; refusing to overwrite it automatically.');
           }
           const bootstrapped = await hydrateFromRemoteTables();
