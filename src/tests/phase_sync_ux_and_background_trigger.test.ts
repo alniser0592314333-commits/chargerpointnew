@@ -8,7 +8,7 @@ import {
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
-import { initializeCanonicalSyncState } from './utils/testSetup';
+import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 
 describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
   beforeEach(async () => {
@@ -17,19 +17,7 @@ describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
       localStorage.clear();
     }
     await clearAllOperationalData();
-    if (typeof localStorage !== 'undefined') {
-      // Mutation tests require a cached authenticated app session.
-      localStorage.setItem('app_auth_session', JSON.stringify({
-        userId: 'admin_test_session',
-        role: 'ADMIN',
-        permissions: [
-          'customers:create', 'customers:edit', 'customers:view',
-          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
-          'devices:manage', 'devices:view', 'settings:manage',
-          'finance:view', 'finance:create-payment', 'goals:manage',
-        ],
-      }));
-    }
+    setTestAppAuthSession();
     await initializeCanonicalSyncState();
     resetStoreMemory();
   });
