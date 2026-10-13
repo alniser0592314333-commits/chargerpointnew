@@ -21,6 +21,7 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     resetStoreMemory();
     await localDb.init();
     await localDb.clearOperationalTables();
+    await localDb.clearLocalResetMarker();
     await localDb.setInitialHydrationCompleted(false);
 
     // Most tests in this file cover local/offline behavior. Cloud-bootstrap tests
