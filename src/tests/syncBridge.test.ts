@@ -193,11 +193,10 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     }));
     const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
       .mockResolvedValueOnce({ changes: page(0, 500), latestSequence: 500, serverResetGeneration: 1 })
-      .mockResolvedValueOnce({ changes: page(500, 1), latestSequence: 501, serverResetGeneration: 1 })
-      .mockResolvedValueOnce({ changes: [], latestSequence: 501, serverResetGeneration: 1 });
+      .mockResolvedValueOnce({ changes: page(500, 1), latestSequence: 501, serverResetGeneration: 1 });
     const result = await globalSyncBridge.requestLatestDataReload();
     expect(result.pulled).toBe(501);
-    expect(pullSpy).toHaveBeenCalledTimes(3);
+    expect(pullSpy).toHaveBeenCalledTimes(2);
     expect(pullSpy).toHaveBeenNthCalledWith(1, 0, 500);
     expect(pullSpy).toHaveBeenNthCalledWith(2, 500, 500);
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);

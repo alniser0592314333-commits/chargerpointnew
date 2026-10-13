@@ -804,53 +804,65 @@ export class IndexedDBLocalDatabase {
       this.memoryOverlays = cloneForRollback(new Map(snapshotOverlays));
     };
 
-    if (!this.db) {
-      // Memory fallback atomic transaction
-      const mockTx = {
-        db: { objectStoreNames: { contains: () => false } },
-        objectStore: (name: string) => ({
-          put: () => {},
-          get: () => {},
-          delete: () => {},
-          clear: () => {},
-        }),
-        abort: () => {
-          rollbackMemory();
-          throw new Error('IndexedDB transaction aborted');
-        },
-      } as unknown as IDBTransaction;
+    // Memory fallback transaction emulates the IndexedDB completion/abort events
+    // used by remote delta application to notify pages and roll back in-memory maps.
+    const memoryListeners = new Map<string, Array<{ listener: (event: any) => void; once: boolean }>>();
+    const dispatchMemoryEvent = (type: string) => {
+      const listeners = memoryListeners.get(type) || [];
+      for (const entry of [...listeners]) {
+        try { entry.listener({ type, target: mockTx }); } catch (error) { console.warn('Memory transaction listener failed:', error); }
+        if (entry.once) {
+          const remaining = (memoryListeners.get(type) || []).filter(item => item !== entry);
+          memoryListeners.set(type, remaining);
+        }
+      }
+    };
+    const mockTx = {
+      db: { objectStoreNames: { contains: () => false } },
+      objectStore: (_name: string) => ({
+        put: () => {},
+        get: () => {},
+        delete: () => {},
+        clear: () => {},
+      }),
+      addEventListener: (type: string, listener: (event: any) => void, options?: boolean | AddEventListenerOptions) => {
+        const entries = memoryListeners.get(type) || [];
+        entries.push({ listener, once: typeof options === 'object' && options !== null && options.once === true });
+        memoryListeners.set(type, entries);
+      },
+      abort: () => {
+        rollbackMemory();
+        dispatchMemoryEvent('abort');
+        throw new Error('IndexedDB transaction aborted');
+      },
+    } as unknown as IDBTransaction;
 
+    const runMemoryTransaction = (): Promise<T> => {
       try {
         const result = work(mockTx);
         if (result && typeof (result as any).then === 'function') {
-          return (result as Promise<T>).catch((err) => {
+          return (result as Promise<T>).then((value) => {
+            dispatchMemoryEvent('complete');
+            return value;
+          }).catch((err) => {
             rollbackMemory();
+            dispatchMemoryEvent('abort');
             throw err;
           });
         }
+        dispatchMemoryEvent('complete');
         return Promise.resolve(result as T);
       } catch (err) {
         rollbackMemory();
+        dispatchMemoryEvent('abort');
         throw err;
       }
-    }
+    };
+
+    if (!this.db) return runMemoryTransaction();
 
     const availableStores = stores.filter((s) => this.db!.objectStoreNames.contains(s));
-    if (availableStores.length === 0) {
-      try {
-        const result = work({} as any);
-        if (result && typeof (result as any).then === 'function') {
-          return (result as Promise<T>).catch((err) => {
-            rollbackMemory();
-            throw err;
-          });
-        }
-        return Promise.resolve(result as T);
-      } catch (err) {
-        rollbackMemory();
-        throw err;
-      }
-    }
+    if (availableStores.length === 0) return runMemoryTransaction();
 
     return new Promise<T>((resolve, reject) => {
       let tx: IDBTransaction | undefined;
