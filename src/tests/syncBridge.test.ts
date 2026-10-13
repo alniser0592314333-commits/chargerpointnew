@@ -16,6 +16,7 @@ import { initializeCanonicalSyncState } from './utils/testSetup';
 
 describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
     if (typeof localStorage !== 'undefined') {
       localStorage.clear();
     }
@@ -37,7 +38,6 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     await initializeCanonicalSyncState();
     await localDb.clearLocalResetMarker();
     resetStoreMemory();
-    vi.restoreAllMocks();
   });
 
   // 1. Customers mutation works local transaction first
