@@ -216,6 +216,30 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(12);
   });
 
+  it('notifies subscribed pages only after the IndexedDB delta transaction commits', async () => {
+    const customerId = 'customer-commit-notify-test';
+    let notified = false;
+    const unsub = dayOrdersStore.subscribeStore((scope, id) => {
+      if (scope === 'customers' && id === customerId) notified = true;
+    });
+    try {
+      await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+        applyRemoteChange({
+          sequenceId: 7,
+          entityType: 'customers',
+          entityId: customerId,
+          action: 'INSERT',
+          payload: { id: customerId, name: 'Commit notification test', phone: '' },
+          changedAt: new Date().toISOString(),
+        }, tx as any);
+        expect(notified).toBe(false);
+      });
+      expect(notified).toBe(true);
+    } finally {
+      unsub();
+    }
+  });
+
   // 17. No full hydration after Customer mutation
   it('17. should ensure no full hydration is initiated after Customer mutation', async () => {
     await addNewCustomer('عميل فحص الهايدريت', '0599000111');

@@ -422,7 +422,7 @@ export const applyRemoteChange = (change: {
     if (isDelete) {
       daysMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'businessDays', change.entityId);
-      notifyStoreAfterTransaction('businessDays', change.entityId);
+      notifyStoreAfterTransaction('businessDays', change.entityId, tx);
       return;
     }
     const resolvedDate =
@@ -444,12 +444,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'businessDays', entity.id, entity);
     daysMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('businessDays', entity.id);
+    notifyStoreAfterTransaction('businessDays', entity.id, tx);
   } else if (entityType === 'customers') {
     if (isDelete) {
       customersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'customers', change.entityId);
-      notifyStoreAfterTransaction('customers', change.entityId);
+      notifyStoreAfterTransaction('customers', change.entityId, tx);
       return;
     }
     const entity: CustomerEntity = {
@@ -466,12 +466,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'customers', entity.id, entity);
     customersMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('customers', entity.id);
+    notifyStoreAfterTransaction('customers', entity.id, tx);
   } else if (entityType === 'device_types' || entityType === 'deviceTypes') {
     if (isDelete) {
       devicesMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'deviceTypes', change.entityId);
-      notifyStoreAfterTransaction('deviceTypes', change.entityId);
+      notifyStoreAfterTransaction('deviceTypes', change.entityId, tx);
       return;
     }
     const entity: DeviceTypeEntity = {
@@ -492,12 +492,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'deviceTypes', entity.id, entity);
     devicesMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('deviceTypes', entity.id);
+    notifyStoreAfterTransaction('deviceTypes', entity.id, tx);
   } else if (entityType === 'orders') {
     if (isDelete) {
       ordersMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orders', change.entityId);
-      notifyStoreAfterTransaction('orders', change.entityId);
+      notifyStoreAfterTransaction('orders', change.entityId, tx);
       return;
     }
     const previousOrder = ordersMap.get(change.entityId);
@@ -531,12 +531,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'orders', entity.id, entity);
     ordersMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('orders', entity.id);
+    notifyStoreAfterTransaction('orders', entity.id, tx);
   } else if (entityType === 'order_items' || entityType === 'orderItems') {
     if (isDelete) {
       itemsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'orderItems', change.entityId);
-      notifyStoreAfterTransaction('orderItems', change.entityId);
+      notifyStoreAfterTransaction('orderItems', change.entityId, tx);
       return;
     }
     const previousItem = itemsMap.get(change.entityId);
@@ -587,12 +587,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
     itemsMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('orderItems', entity.id);
+    notifyStoreAfterTransaction('orderItems', entity.id, tx);
   } else if (entityType === 'goals') {
     if (isDelete) {
       goalsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'goals', change.entityId);
-      notifyStoreAfterTransaction('goals', change.entityId);
+      notifyStoreAfterTransaction('goals', change.entityId, tx);
       return;
     }
     const previousGoal = goalsMap.get(change.entityId);
@@ -618,12 +618,12 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'goals', entity.id, entity);
     goalsMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('goals', entity.id);
+    notifyStoreAfterTransaction('goals', entity.id, tx);
   } else if (entityType === 'goal_requests' || entityType === 'goalRequests') {
     if (isDelete) {
       goalRequestsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'goalRequests', change.entityId);
-      notifyStoreAfterTransaction('goalRequests', change.entityId);
+      notifyStoreAfterTransaction('goalRequests', change.entityId, tx);
       return;
     }
     const previousRequest = goalRequestsMap.get(change.entityId);
@@ -646,13 +646,13 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'goalRequests', entity.id, entity);
     goalRequestsMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('goalRequests', entity.id);
+    notifyStoreAfterTransaction('goalRequests', entity.id, tx);
   } else if (entityType === 'financial_ledger' || entityType === 'financialLedger') {
     if (isDelete) {
       const idx = ledgerList.findIndex((item) => item.id === change.entityId);
       if (idx >= 0) ledgerList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'financialLedger', change.entityId);
-      notifyStoreAfterTransaction('financialLedger', change.entityId);
+      notifyStoreAfterTransaction('financialLedger', change.entityId, tx);
       return;
     }
     const ledgerEventType = p.eventType || p.event_type;
@@ -704,12 +704,12 @@ export const applyRemoteChange = (change: {
     } else {
       ledgerList.push(entity);
     }
-    notifyStoreAfterTransaction('financialLedger', entity.id);
+    notifyStoreAfterTransaction('financialLedger', entity.id, tx);
   } else if (entityType === 'payments') {
     if (isDelete) {
       paymentsMap.delete(change.entityId);
       localDb.removeWithTx(tx as any, 'payments', change.entityId);
-      notifyStoreAfterTransaction('payments', change.entityId);
+      notifyStoreAfterTransaction('payments', change.entityId, tx);
       return;
     }
     const entity: PaymentEntity = {
@@ -724,13 +724,13 @@ export const applyRemoteChange = (change: {
     };
     localDb.setWithTx(tx, 'payments', entity.id, entity);
     paymentsMap.set(entity.id, entity);
-    notifyStoreAfterTransaction('payments', entity.id);
+    notifyStoreAfterTransaction('payments', entity.id, tx);
   } else if (entityType === 'payment_allocations' || entityType === 'paymentAllocations') {
     if (isDelete) {
       const idx = allocationsList.findIndex((item) => item.id === change.entityId);
       if (idx >= 0) allocationsList.splice(idx, 1);
       localDb.removeWithTx(tx as any, 'paymentAllocations', change.entityId);
-      notifyStoreAfterTransaction('paymentAllocations', change.entityId);
+      notifyStoreAfterTransaction('paymentAllocations', change.entityId, tx);
       return;
     }
     const entity: PaymentAllocationEntity = {
@@ -748,15 +748,15 @@ export const applyRemoteChange = (change: {
     } else {
       allocationsList.push(entity);
     }
-    notifyStoreAfterTransaction('paymentAllocations', entity.id);
+    notifyStoreAfterTransaction('paymentAllocations', entity.id, tx);
   } else {
     if (isDelete) {
       localDb.removeWithTx(tx as any, entityType, change.entityId);
-      notifyStoreAfterTransaction('all', change.entityId);
+      notifyStoreAfterTransaction('all', change.entityId, tx);
       return;
     }
     localDb.setWithTx(tx, entityType, change.entityId, p);
-    notifyStoreAfterTransaction('all', change.entityId);
+    notifyStoreAfterTransaction('all', change.entityId, tx);
   }
 };
 
