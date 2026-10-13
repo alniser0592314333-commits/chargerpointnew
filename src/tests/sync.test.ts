@@ -227,6 +227,32 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     });
   });
 
+  it('bootstrap installation barrier prevents concurrent sync against partial local rows', async () => {
+    let transportCalls = 0;
+    const guardedTransport = {
+      pushCommand: async () => {
+        transportCalls++;
+        return { success: true };
+      },
+      pullChanges: async () => {
+        transportCalls++;
+        return { changes: [], latestSequence: 0, serverResetGeneration: 1 };
+      },
+    };
+    const guardedEngine = new SyncEngine(guardedTransport);
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 12,
+      lastPulledAt: '',
+      resetGeneration: 1,
+      status: 'INITIALIZING',
+      reconciliationRequired: true,
+    });
+
+    await expect(guardedEngine.synchronize()).resolves.toEqual({ pushed: 0, pulled: 0 });
+    expect(transportCalls).toBe(0);
+  });
+
   it('23. Cloud reset pending blocks automatic push and pull while preserving local state', async () => {
     await localDb.set('customers', 'cust_reset_guard', {
       id: 'cust_reset_guard',
