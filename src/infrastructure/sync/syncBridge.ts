@@ -177,6 +177,21 @@ export class SyncBridge {
           if (sortedChanges.length < 500) break;
         }
         return { pulled: pulledCount };
+      } catch (error) {
+        // A failed pull is not an empty successful feed. Preserve the cursor and
+        // expose stale state so the next visible/reconnect cycle can retry safely.
+        try {
+          const currentState = await localDb.getSyncState('global');
+          if (currentState?.status !== 'RECONCILIATION_REQUIRED' && currentState?.reconciliationRequired !== true) {
+            await localDb.setSyncState({
+              ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+              status: 'STALE',
+            });
+          }
+        } catch (checkpointError) {
+          console.warn('Failed to persist stale state after pull-only reload failure:', checkpointError);
+        }
+        throw error;
       } finally {
         this.isSyncing = false;
         this.activeSyncPromise = null;
