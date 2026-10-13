@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 export interface LoginPageProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: () => void | Promise<void>;
 }
 
 export type AuthUiState =
@@ -177,7 +177,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           const session = await authService.login(cleanUser, cleanPass);
           if (session) {
             setPassword("");
-            onLoginSuccess();
+            await onLoginSuccess();
           } else {
             setError(
               locale === "en"
