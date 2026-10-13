@@ -97,7 +97,7 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE FUNCTION public.trg_change_capture()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE v_row jsonb; v_id uuid; v_action text;
 BEGIN
   IF TG_OP = 'DELETE' THEN v_row := to_jsonb(OLD); v_id := OLD.id; v_action := 'DELETE';
