@@ -12,7 +12,7 @@ import {
 import { localDb } from '../infrastructure/localDb/localDb';
 import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import * as dayOrdersStore from '../components/pages/dayOrdersStore';
-import { initializeCanonicalSyncState } from './utils/testSetup';
+import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 
 describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
   beforeEach(async () => {
@@ -21,20 +21,7 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
       localStorage.clear();
     }
     await clearAllOperationalData();
-    if (typeof localStorage !== 'undefined') {
-      // These are mutation/bridge tests, not unauthenticated-access tests.
-      // Supply the same shape as a successfully cached app login session.
-      localStorage.setItem('app_auth_session', JSON.stringify({
-        userId: 'admin_test_session',
-        role: 'ADMIN',
-        permissions: [
-          'customers:create', 'customers:edit', 'customers:view',
-          'orders:create', 'orders:edit', 'orders:deliver', 'orders:cancel', 'orders:view',
-          'devices:manage', 'devices:view', 'settings:manage',
-          'finance:view', 'finance:create-payment', 'goals:manage',
-        ],
-      }));
-    }
+    setTestAppAuthSession();
     await initializeCanonicalSyncState();
     await localDb.clearLocalResetMarker();
     resetStoreMemory();
