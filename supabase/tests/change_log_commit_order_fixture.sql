@@ -16,7 +16,7 @@ CREATE TABLE public.orders (id uuid PRIMARY KEY, name text NOT NULL);
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS uuid LANGUAGE sql STABLE
-AS $ SELECT '00000000-0000-0000-0000-000000000009'::uuid $;
+AS $auth_uid$ SELECT '00000000-0000-0000-0000-000000000009'::uuid $auth_uid$;
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY,
   auth_user_id uuid NOT NULL,
