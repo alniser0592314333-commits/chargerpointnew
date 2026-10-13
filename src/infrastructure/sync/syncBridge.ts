@@ -143,8 +143,13 @@ export class SyncBridge {
         while (true) {
           const pullRes = await (globalSyncEngine as any).transport.pullChanges(cursor, 500);
 
-          if (pullRes.serverResetGeneration !== undefined &&
-            (syncState.resetGeneration === undefined || pullRes.serverResetGeneration !== syncState.resetGeneration)) {
+          if (
+            syncState.status === 'RECONCILIATION_REQUIRED' ||
+            syncState.reconciliationRequired === true ||
+            pullRes.serverResetGeneration === undefined ||
+            syncState.resetGeneration === undefined ||
+            pullRes.serverResetGeneration !== syncState.resetGeneration
+          ) {
             return { pulled: pulledCount, needsReconciliation: true };
           }
           if (pullRes.changes.length === 0) break;
