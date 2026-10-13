@@ -11,6 +11,7 @@ import {
   createNewBusinessDay,
   resetStoreMemory,
   globalSyncEngine,
+  subscribeStoreBootstrapProgress,
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 
@@ -75,7 +76,14 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
       error: null,
     } as any);
 
+    const progressEvents: Array<{ phase: string; percent: number; completedRows: number; totalRows: number }> = [];
+    const unsubscribe = subscribeStoreBootstrapProgress((progress) => progressEvents.push(progress));
     expect(await hydrateFromRemoteTables()).toBe(true);
+    unsubscribe();
+
+    expect(progressEvents.some((progress) => progress.phase === 'FETCHING')).toBe(true);
+    expect(progressEvents.some((progress) => progress.phase === 'INSTALLING')).toBe(true);
+    expect(progressEvents.some((progress) => progress.phase === 'READY' && progress.percent === 100)).toBe(true);
     expect(await localDb.getSyncState('global')).toMatchObject({
       lastAppliedChangeSequence: 42,
       resetGeneration: 7,
