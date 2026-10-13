@@ -48,6 +48,73 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     expect(await localDb.isInitialHydrationCompleted()).toBe(false);
   });
 
+  it('keeps an existing checkpointed local replica and catches it up incrementally', async () => {
+    await localDb.set('customers', 'existing-customer', {
+      id: 'existing-customer',
+      name: 'Local cached customer',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z',
+      version: 1,
+    });
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 42,
+      lastPulledAt: '2026-10-13T12:00:00.000Z',
+      resetGeneration: 7,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+    await localDb.setInitialHydrationCompleted(false);
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    const rpc = vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: null,
+      error: 'the full snapshot RPC must not be used for a trusted local replica',
+    } as any);
+
+    await ensureStoreHydrated();
+
+    expect(await localDb.isInitialHydrationCompleted()).toBe(true);
+    expect(await localDb.get('customers', 'existing-customer')).toMatchObject({ name: 'Local cached customer' });
+    expect(rpc.mock.calls.some(([name]) => name === 'capture_sync_bootstrap_snapshot')).toBe(false);
+  });
+
+  it('refuses to overwrite uncheckpointed local data that still has pending commands', async () => {
+    await localDb.clear();
+    await localDb.init();
+    resetStoreMemory();
+    await localDb.set('customers', 'pending-customer', {
+      id: 'pending-customer',
+      name: 'Must be preserved',
+    });
+    await localDb.saveOutbox({
+      commandId: 'pending-customer-command',
+      commandType: 'UPDATE_CUSTOMER',
+      aggregateType: 'customers',
+      aggregateId: 'pending-customer',
+      payload: { id: 'pending-customer', name: 'Pending local edit' },
+      createdAt: new Date().toISOString(),
+      deviceId: 'test-device',
+      actorAdminId: 'test-admin',
+      status: 'pending',
+      retryCount: 0,
+    });
+    await localDb.setInitialHydrationCompleted(false);
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    const rpc = vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({ data: null, error: 'should not be called' } as any);
+
+    await expect(ensureStoreHydrated()).rejects.toThrow(/LOCAL_RECONCILIATION_REQUIRED/);
+    expect(await localDb.get('customers', 'pending-customer')).toMatchObject({ name: 'Must be preserved' });
+    expect(rpc.mock.calls.some(([name]) => name === 'capture_sync_bootstrap_snapshot')).toBe(false);
+  });
+
   it('installs the authoritative snapshot cursor before marking initial hydration complete', async () => {
     vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
       isConfigured: true,
