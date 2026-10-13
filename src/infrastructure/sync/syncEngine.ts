@@ -333,7 +333,7 @@ export const syncEventEmitter = new SyncEventEmitter();
 
 export interface ServerSyncTransport {
   pushCommand(req: SyncCommandRequest): Promise<SyncCommandResponse>;
-  pullChanges(cursor: number, limit?: number): Promise<SyncPullResponse>;
+  pullChanges(cursor: number, limit?: number, checkGeneration?: boolean): Promise<SyncPullResponse>;
 }
 
 export class MockServerSyncTransport implements ServerSyncTransport {

@@ -12,6 +12,7 @@ import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
 import { authService } from './services/auth/authService';
 import { refreshStoreFromRemote, ensureStoreHydrated } from './components/pages/dayOrdersStore';
+import { globalSyncBridge } from './infrastructure/sync/syncBridge';
 import { HomePage } from './components/pages/HomePage';
 import { DaysOrdersPage } from './components/pages/DaysOrdersPage';
 import { DayDetailPage } from './components/pages/DayDetailPage';
@@ -118,6 +119,35 @@ export default function App() {
       isMounted = false;
     };
   }, []);
+
+  // Low-cost pull-only refresh while the authenticated app is visible.
+  // Push remains event-driven by the existing Outbox coordinator.
+  useEffect(() => {
+    if (!isAuthenticated || isSuspended) return;
+    let active = false;
+    const pullLatest = async () => {
+      if (active || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      active = true;
+      try {
+        const result = await globalSyncBridge.requestLatestDataReload();
+        if (result.needsReconciliation) await globalSyncBridge.notifyOutboxWorkAvailable();
+      } catch (error) {
+        console.warn('Background incremental pull failed; will retry on the next cycle:', error);
+      } finally {
+        active = false;
+      }
+    };
+    const timer = window.setInterval(() => { void pullLatest(); }, 30_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void pullLatest();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    void pullLatest();
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [isAuthenticated, isSuspended]);
 
   // Register central suspension handler
   useEffect(() => {

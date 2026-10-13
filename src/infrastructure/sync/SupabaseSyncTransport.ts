@@ -154,55 +154,53 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
    * Monotonic delta change pull with strict pagination limit
    * Minimizes egress and bandwidth consumption
    */
-  async pullChanges(cursor: number, limit: number = SYNC_PULL_BATCH_SIZE): Promise<SyncPullResponse> {
-    try {
-      const batchLimit = Math.min(Math.max(1, limit), SYNC_PULL_BATCH_SIZE);
-      const [changesResult, settingResult] = await Promise.all([
-        invokeSupabaseRestGet<any>(
-          'change_log',
-          `select=sequence_id,entity_type,entity_id,action,payload,version,changed_at&sequence_id=gt.${cursor}&order=sequence_id.asc&limit=${batchLimit}`
-        ),
-        invokeSupabaseRestGet<any>(
-          'system_settings',
-          'select=value_number&key=eq.server_reset_generation'
-        )
-      ]);
+  /**
+   * Pull one bounded page of canonical deltas.
+   * Generation is checked on the first page of a drain; subsequent pages avoid
+   * repeating the settings query. Failed reads throw instead of masquerading
+   * as an empty successful page, so callers never mistake outages for "no changes".
+   */
+  async pullChanges(
+    cursor: number,
+    limit: number = SYNC_PULL_BATCH_SIZE,
+    checkGeneration = true
+  ): Promise<SyncPullResponse> {
+    const batchLimit = Math.min(Math.max(1, limit), SYNC_PULL_BATCH_SIZE);
+    const changesResult = await invokeSupabaseRestGet<any>(
+      'change_log',
+      `select=sequence_id,entity_type,entity_id,action,payload,version,changed_at&sequence_id=gt.${cursor}&order=sequence_id.asc&limit=${batchLimit}`
+    );
 
-      const data = changesResult.data;
-      const error = changesResult.error;
+    if (changesResult.error) throw new Error(`CHANGE_LOG_PULL_FAILED: ${changesResult.error}`);
+    if (!Array.isArray(changesResult.data)) throw new Error('CHANGE_LOG_PULL_INVALID_RESPONSE: expected an array');
 
-      if (error || !data || !Array.isArray(data)) {
-        return { changes: [], latestSequence: cursor };
+    let serverResetGeneration: number | undefined;
+    if (checkGeneration) {
+      const settingResult = await invokeSupabaseRestGet<any>(
+        'system_settings',
+        'select=value_number&key=eq.server_reset_generation'
+      );
+      if (settingResult.error || !Array.isArray(settingResult.data) || settingResult.data.length === 0) {
+        throw new Error(`RESET_GENERATION_READ_FAILED: ${settingResult.error || 'setting not found'}`);
       }
-
-      if (settingResult.error || !settingResult.data || settingResult.data.length === 0) {
-        console.warn('Authoritative server reset generation fetch failed or empty:', settingResult.error);
-        return { changes: [], latestSequence: cursor };
-      }
-
-      const serverResetGeneration = Number(settingResult.data[0].value_number);
-
-      const changes: ChangeLogEntry[] = data.map((row: any) => ({
-        sequenceId: Number(row.sequence_id),
-        entityType: row.entity_type,
-        entityId: row.entity_id,
-        action: row.action,
-        payload: row.payload,
-        version: row.version !== null && row.version !== undefined ? Number(row.version) : undefined,
-        changedAt: row.changed_at,
-      }));
-
-      const latestSequence = changes.length > 0
-        ? Math.max(...changes.map((c) => c.sequenceId))
-        : cursor;
-
-      return {
-        changes,
-        latestSequence,
-        serverResetGeneration,
-      };
-    } catch {
-      return { changes: [], latestSequence: cursor };
+      serverResetGeneration = Number(settingResult.data[0].value_number);
+      if (!Number.isFinite(serverResetGeneration)) throw new Error('RESET_GENERATION_READ_FAILED: invalid generation value');
     }
+
+    const changes: ChangeLogEntry[] = changesResult.data.map((row: any) => ({
+      sequenceId: Number(row.sequence_id),
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      action: row.action,
+      payload: row.payload,
+      version: row.version !== null && row.version !== undefined ? Number(row.version) : undefined,
+      changedAt: row.changed_at,
+    }));
+    if (changes.some(change => !Number.isSafeInteger(change.sequenceId) || change.sequenceId <= cursor)) {
+      throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: returned sequence is not greater than cursor');
+    }
+
+    const latestSequence = changes.length > 0 ? Math.max(...changes.map(change => change.sequenceId)) : cursor;
+    return { changes, latestSequence, serverResetGeneration };
   }
-}
+}}

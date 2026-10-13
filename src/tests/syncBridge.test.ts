@@ -180,6 +180,42 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect(pullSpy).toHaveBeenCalled();
   });
 
+  it('pull-only reload drains more than one change-log page', async () => {
+    await localDb.setSyncState({
+      table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '',
+      resetGeneration: 1, status: 'READY', reconciliationRequired: false,
+    } as any);
+    const page = (start: number, count: number) => Array.from({ length: count }, (_, index) => ({
+      sequenceId: start + index + 1, entityType: 'customers',
+      entityId: `customer-${start + index + 1}`, action: 'INSERT' as const,
+      payload: { id: `customer-${start + index + 1}`, name: `Customer ${start + index + 1}`, phone: '' },
+      changedAt: new Date().toISOString(),
+    }));
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
+      .mockResolvedValueOnce({ changes: page(0, 500), latestSequence: 500, serverResetGeneration: 1 })
+      .mockResolvedValueOnce({ changes: page(500, 1), latestSequence: 501 })
+      .mockResolvedValueOnce({ changes: [], latestSequence: 501 });
+    const result = await globalSyncBridge.requestLatestDataReload();
+    expect(result.pulled).toBe(501);
+    expect(pullSpy).toHaveBeenCalledTimes(3);
+    expect(pullSpy).toHaveBeenNthCalledWith(1, 0, 500, true);
+    expect(pullSpy).toHaveBeenNthCalledWith(2, 500, 500, false);
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
+  });
+
+  it('pull-only reload requests authoritative reconciliation when reset generation changes', async () => {
+    await localDb.setSyncState({
+      table: 'global', lastAppliedChangeSequence: 12, lastPulledAt: '',
+      resetGeneration: 1, status: 'READY', reconciliationRequired: false,
+    } as any);
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [], latestSequence: 12, serverResetGeneration: 2,
+    });
+    const result = await globalSyncBridge.requestLatestDataReload();
+    expect(result).toEqual({ pulled: 0, needsReconciliation: true });
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(12);
+  });
+
   // 17. No full hydration after Customer mutation
   it('17. should ensure no full hydration is initiated after Customer mutation', async () => {
     await addNewCustomer('عميل فحص الهايدريت', '0599000111');

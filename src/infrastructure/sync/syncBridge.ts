@@ -104,7 +104,7 @@ export class SyncBridge {
    * - No full hydration or full table refetching.
    * - Blocked if local_reset_completed marker is set.
    */
-  async requestLatestDataReload(): Promise<{ pulled: number }> {
+  async requestLatestDataReload(): Promise<{ pulled: number; needsReconciliation?: boolean }> {
     // If another sync cycle is active, gracefully await its completion instead of throwing
     while (this.isSyncing && this.activeSyncPromise) {
       try {
@@ -129,29 +129,42 @@ export class SyncBridge {
           return { pulled: 0 };
         }
 
-        const pullRes = await (globalSyncEngine as any).transport.pullChanges(syncState.lastAppliedChangeSequence);
+        let cursor = syncState.lastAppliedChangeSequence || 0;
+        let checkGeneration = true;
 
-        if (pullRes.changes.length > 0) {
+        // A reset must use the authoritative reconciliation flow before any deltas apply.
+        while (true) {
+          const pullRes = await (globalSyncEngine as any).transport.pullChanges(cursor, 500, checkGeneration);
+          checkGeneration = false;
+
+          if (pullRes.serverResetGeneration !== undefined &&
+            (syncState.resetGeneration === undefined || pullRes.serverResetGeneration !== syncState.resetGeneration)) {
+            return { pulled: 0, needsReconciliation: true };
+          }
+          if (pullRes.changes.length === 0) break;
+
           const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+          const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
+          if (!Number.isSafeInteger(maxSeq) || maxSeq <= cursor) {
+            throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: cursor did not advance');
+          }
+
           await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
             for (const change of sortedChanges) {
-              if (globalSyncEngine.onDeltaApplied) {
-                await globalSyncEngine.onDeltaApplied(change, tx);
-              } else {
-                applyRemoteChange(change, tx);
-              }
-              pulledCount++;
+              if (globalSyncEngine.onDeltaApplied) await globalSyncEngine.onDeltaApplied(change, tx);
+              else await applyRemoteChange(change, tx);
             }
-            const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
-            const updatedState = {
+            localDb.setSyncStateWithTx(tx, {
               ...syncState,
               lastAppliedChangeSequence: maxSeq,
               lastPulledAt: new Date().toISOString(),
-            };
-            localDb.setSyncStateWithTx(tx, updatedState);
+            });
           });
-        }
 
+          pulledCount += sortedChanges.length;
+          cursor = maxSeq;
+          if (sortedChanges.length < 500) break;
+        }
         return { pulled: pulledCount };
       } finally {
         this.isSyncing = false;
