@@ -72,10 +72,12 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
 
   it('10. Change feed cursor advances only after successful apply', async () => {
     await engine.queueCommand('cmd_5', 'CUSTOMER', 'customer', 'cust_1', { name: 'Ali' }, 'dev_1', 'admin_1');
+    engine.onDeltaApplied = () => { throw new Error('simulated local delta apply failure'); };
     await engine.synchronize();
 
     const syncState = await localDb.getSyncState('global');
     expect(syncState?.lastAppliedChangeSequence).toBe(0);
+    expect(syncState?.status).toBe('STALE');
   });
 
   it('22. Sync lock prevents concurrent sync loops', async () => {
@@ -123,7 +125,8 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     const result = await pagedEngine.synchronize();
 
     expect(result.pulled).toBe(501);
-    expect(requestedCursors).toEqual([0, 500]);
+    // The final authoritative verification performs one additional empty read at the committed cursor.
+    expect(requestedCursors).toEqual([0, 500, 501]);
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
     expect(await localDb.get('customers', 'customer-501')).toEqual({
       id: 'customer-501',
