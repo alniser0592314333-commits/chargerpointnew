@@ -505,7 +505,9 @@ export class SyncEngine {
       // user explicitly performs Local -> Online replacement. Keep this read inside
       // the try/finally so an IndexedDB failure cannot leave the engine permanently locked.
       const cloudResetState = await localDb.getSyncState('global');
-      if (cloudResetState?.cloudResetPending) {
+      if (cloudResetState?.cloudResetPending || cloudResetState?.status === 'INITIALIZING') {
+        // An interrupted or active bootstrap is a hard local barrier. Never run
+        // reconciliation against a partially installed snapshot.
         syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
         return { pushed: 0, pulled: 0 };
       }
