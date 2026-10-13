@@ -11,7 +11,8 @@ import { AuthenticatedLayout } from './components/shell/AuthenticatedLayout';
 import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
 import { authService } from './services/auth/authService';
-import { refreshStoreFromRemote, ensureStoreHydrated } from './components/pages/dayOrdersStore';
+import { refreshStoreFromRemote, ensureStoreHydrated, subscribeStoreBootstrapProgress } from './components/pages/dayOrdersStore';
+import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import { globalSyncBridge } from './infrastructure/sync/syncBridge';
 import { HomePage } from './components/pages/HomePage';
 import { DaysOrdersPage } from './components/pages/DaysOrdersPage';
@@ -70,6 +71,9 @@ export default function App() {
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [isBootRetrying, setIsBootRetrying] = useState(false);
+  const [bootstrapProgress, setBootstrapProgress] = useState<StoreBootstrapProgress>({
+    phase: 'IDLE', percent: 0, completedRows: 0, totalRows: 0, message: '',
+  });
   const [currentPath, setCurrentPathState] = useState(() => {
     return window.location.pathname && window.location.pathname !== '/'
       ? window.location.pathname
@@ -85,6 +89,8 @@ export default function App() {
     }
     setCurrentPathState(newPath);
   };
+
+  useEffect(() => subscribeStoreBootstrapProgress(setBootstrapProgress), []);
 
   // Authoritatively check auth, then gate application access on local store readiness.
   useEffect(() => {
@@ -278,9 +284,29 @@ export default function App() {
     }
 
     if (isAuthChecking) {
+      const showBootstrapProgress = bootstrapProgress.phase === 'FETCHING' || bootstrapProgress.phase === 'INSTALLING';
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#061f1c]">
-          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#061f1c] p-6">
+          <div className="w-full max-w-md flex flex-col items-center gap-4 rounded-2xl border border-gray-200 dark:border-emerald-900/40 bg-white/90 dark:bg-[#082a25] p-6 shadow-xl">
+            <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            <div className="text-sm font-semibold text-gray-800 dark:text-emerald-100">جارٍ تجهيز النظام بأمان</div>
+            {showBootstrapProgress && (
+              <div className="w-full space-y-2">
+                <div className="flex items-center justify-between gap-3 text-xs text-gray-600 dark:text-emerald-200">
+                  <span>{bootstrapProgress.message}</span>
+                  <span className="tabular-nums font-semibold">{bootstrapProgress.percent}%</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-gray-200 dark:bg-emerald-950 overflow-hidden">
+                  <div className="h-full rounded-full bg-emerald-500 transition-all duration-200" style={{ width: `${bootstrapProgress.percent}%` }} />
+                </div>
+                {bootstrapProgress.totalRows > 0 && (
+                  <div className="text-[11px] text-gray-500 dark:text-emerald-300 text-center">
+                    {bootstrapProgress.completedRows.toLocaleString()} / {bootstrapProgress.totalRows.toLocaleString()} سجل تم تثبيته
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       );
     }
@@ -288,6 +314,7 @@ export default function App() {
     if (!isAuthenticated) {
       return (
         <LoginPage
+          bootstrapProgress={bootstrapProgress}
           onLoginSuccess={async () => {
             // Login success is not application readiness. Complete local bootstrap
             // first; a rejected bootstrap is shown by LoginPage and can be retried.
