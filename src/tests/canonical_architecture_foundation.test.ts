@@ -486,7 +486,7 @@ describe('Canonical Architecture Foundation (Phase 1)', () => {
         },
       });
 
-      const validation = backupService.validateAndParsePortableBackup(invalidBackupJson);
+      const validation = await backupService.validateAndParsePortableBackup(invalidBackupJson);
 
       expect(validation.valid).toBe(false);
       expect(validation.errorCode).toBe('REFERENTIAL_INTEGRITY_VIOLATION');
@@ -528,7 +528,7 @@ describe('Canonical Architecture Foundation (Phase 1)', () => {
         },
       });
 
-      const validation = backupService.validateAndParsePortableBackup(validBackupJson);
+      const validation = await backupService.validateAndParsePortableBackup(validBackupJson);
       expect(validation.valid).toBe(true);
       expect(validation.portableFile?.checkpointSequence).toBe(42);
     });
