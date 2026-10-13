@@ -4,7 +4,7 @@
  */
 
 import { ServerSyncTransport, SyncCommandRequest, SyncCommandResponse, SyncPullResponse, ChangeLogEntry } from './syncEngine';
-import { invokeSupabaseRestGet, invokeSupabaseRpc, resolveAuthBearerToken } from '../../services/supabase/client';
+import { invokeSupabaseRpc, resolveAuthBearerToken } from '../../services/supabase/client';
 
 /**
  * Computes a deterministic string hash of a payload for idempotency verification
