@@ -301,7 +301,7 @@ export default function App() {
                 </div>
                 {bootstrapProgress.totalRows > 0 && (
                   <div className="text-[11px] text-gray-500 dark:text-emerald-300 text-center">
-                    {bootstrapProgress.completedRows.toLocaleString()} / {bootstrapProgress.totalRows.toLocaleString()} سجل تم تثبيته
+                    {bootstrapProgress.completedRows.toLocaleString()} / {bootstrapProgress.totalRows.toLocaleString()} سجل تم تجهيزه
                   </div>
                 )}
               </div>
