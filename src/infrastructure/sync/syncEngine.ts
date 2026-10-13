@@ -543,6 +543,7 @@ export class SyncEngine {
       const serverGen = pullRes.serverResetGeneration;
       const localGen = syncState.resetGeneration !== undefined ? syncState.resetGeneration : -1;
       const wasReconciling = syncState.status === 'RECONCILIATION_REQUIRED' || syncState.reconciliationRequired;
+      let pullCursor = syncState.lastAppliedChangeSequence || 0;
 
       if (serverGen > localGen || wasReconciling) {
         syncState.resetGeneration = serverGen;
@@ -660,6 +661,8 @@ export class SyncEngine {
       // Re-pull from sequence 0 after local reconciliation so the rebuilt
       // operational read model receives the complete authoritative snapshot.
       if (serverGen > localGen || wasReconciling) {
+        // Reconciliation deliberately replays the canonical log from its start.
+        pullCursor = 0;
         const rebuiltPull = await this.transport.pullChanges(0);
         if (rebuiltPull.serverResetGeneration === undefined || rebuiltPull.serverResetGeneration !== serverGen) {
           throw new Error('Authoritative reset generation changed during reconciliation; retry sync');
@@ -670,7 +673,6 @@ export class SyncEngine {
       // Drain every available page before pushing outbox commands. A single-page
       // preflight can leave the local canonical view incomplete (especially after
       // reset reconciliation) while the same cycle starts sending dependent writes.
-      let pullCursor = syncState.lastAppliedChangeSequence || 0;
       while (pullRes.changes.length > 0) {
         const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
         const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
