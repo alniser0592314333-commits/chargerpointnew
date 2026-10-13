@@ -94,3 +94,22 @@ $verify$;
   END IF;
 END
 $verify$;
+
+
+-- Verify the fingerprint catches a same-count mutation, not just count changes.
+CREATE TEMP TABLE expected_change_log_fingerprint (fingerprint text NOT NULL);
+INSERT INTO expected_change_log_fingerprint(fingerprint)
+SELECT public.capture_authoritative_change_log_page(5, 5, 1)->>'change_log_fingerprint';
+UPDATE public.change_log SET payload = 'changed' WHERE sequence_id = 3;
+DO $fingerprint_verify$
+DECLARE
+  v_before text;
+  v_after text;
+BEGIN
+  SELECT fingerprint INTO v_before FROM expected_change_log_fingerprint;
+  v_after := public.capture_authoritative_change_log_page(5, 5, 1)->>'change_log_fingerprint';
+  IF v_before = v_after THEN
+    RAISE EXCEPTION 'Change-log fingerprint did not detect a same-count row mutation';
+  END IF;
+END
+$fingerprint_verify$;
