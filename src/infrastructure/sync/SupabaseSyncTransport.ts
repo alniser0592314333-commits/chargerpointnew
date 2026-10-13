@@ -4,7 +4,7 @@
  */
 
 import { ServerSyncTransport, SyncCommandRequest, SyncCommandResponse, SyncPullResponse, ChangeLogEntry } from './syncEngine';
-import { invokeSupabaseRpc, resolveAuthBearerToken } from '../../services/supabase/client';
+import { invokeSupabaseRpc } from '../../services/supabase/client';
 
 /**
  * Computes a deterministic string hash of a payload for idempotency verification
@@ -31,7 +31,6 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
 
   async pushCommand(req: SyncCommandRequest): Promise<SyncCommandResponse> {
     try {
-      const token = resolveAuthBearerToken();
       const p = (req.payload || {}) as Record<string, any>;
       const payloadHash = computePayloadHash(p);
 
@@ -152,9 +151,9 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
 
   /**
    * Pull one bounded page of canonical deltas.
-   * Generation is checked on the first page of a drain; subsequent pages avoid
-   * repeating the settings query. Failed reads throw instead of masquerading
-   * as an empty successful page, so callers never mistake outages for "no changes".
+   * One RPC reads both the change page and reset generation from the same
+   * PostgreSQL snapshot. Failed reads throw instead of masquerading as an empty
+   * successful page, so callers never mistake outages for "no changes".
    */
   async pullChanges(
     cursor: number,
