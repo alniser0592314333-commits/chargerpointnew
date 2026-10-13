@@ -276,3 +276,6 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.capture_sync_bootstrap_snapshot() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.capture_sync_bootstrap_snapshot() TO authenticated;
+
+-- Refresh PostgREST's function cache after renaming internal RPC implementations.
+NOTIFY pgrst, 'reload schema';
