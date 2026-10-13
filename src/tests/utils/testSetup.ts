@@ -22,6 +22,7 @@ function ensureTestLocalStorage(): Storage {
 export function setTestAppAuthSession() {
   const storage = ensureTestLocalStorage();
   const testAccessToken = 'test-only-access-token';
+  storage.setItem('sys_db_version', CURRENT_MIGRATION_VERSION);
   storage.setItem('app_auth_session', JSON.stringify({
     userId: 'admin_test_session',
     role: 'ADMIN',
