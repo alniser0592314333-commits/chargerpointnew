@@ -253,6 +253,39 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     expect(transportCalls).toBe(0);
   });
 
+  it('preserves pending local rows when an outbox uses a legacy singular aggregate alias', async () => {
+    await localDb.set('orders', 'order-alias-preserve', {
+      id: 'order-alias-preserve',
+      customerId: 'customer-alias-preserve',
+      status: 'charging',
+      name: 'Optimistic local order',
+    });
+    await localDb.saveOutbox({
+      commandId: 'command-order-alias-preserve',
+      commandType: 'UPDATE_ORDER',
+      aggregateType: 'order',
+      aggregateId: 'order-alias-preserve',
+      payload: { id: 'order-alias-preserve', status: 'charging' },
+      createdAt: new Date().toISOString(),
+      deviceId: 'test-device',
+      actorAdminId: 'test-admin',
+      status: 'pending',
+      retryCount: 0,
+    });
+
+    await localDb.clearOperationalData({
+      clearOutbox: false,
+      clearSyncState: false,
+      preservePendingMutations: true,
+    });
+
+    expect(await localDb.get('orders', 'order-alias-preserve')).toMatchObject({
+      id: 'order-alias-preserve',
+      name: 'Optimistic local order',
+    });
+    expect((await localDb.listOutbox()).some((item) => item.commandId === 'command-order-alias-preserve')).toBe(true);
+  });
+
   it('23. Cloud reset pending blocks automatic push and pull while preserving local state', async () => {
     await localDb.set('customers', 'cust_reset_guard', {
       id: 'cust_reset_guard',
