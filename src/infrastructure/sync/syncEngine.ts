@@ -496,22 +496,20 @@ export class SyncEngine {
 
     this.isSyncing = true;
     syncEventEmitter.emit({ type: 'sync_started', timestamp: new Date().toISOString() });
-
-    // An intentional cloud reset creates a deliberate one-way safety barrier:
-    // keep the local dataset authoritative and block both push and pull until the
-    // user explicitly performs Local -> Online replacement. This check is before
-    // any network call, so neither a background scheduler nor manual sync can
-    // erase local data or repopulate the freshly reset cloud.
-    const cloudResetState = await localDb.getSyncState('global');
-    if (cloudResetState?.cloudResetPending) {
-      syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
-      this.isSyncing = false;
-      return { pushed: 0, pulled: 0 };
-    }
     let pushedCount = 0;
     let pulledCount = 0;
 
     try {
+      // An intentional cloud reset creates a deliberate one-way safety barrier:
+      // keep the local dataset authoritative and block both push and pull until the
+      // user explicitly performs Local -> Online replacement. Keep this read inside
+      // the try/finally so an IndexedDB failure cannot leave the engine permanently locked.
+      const cloudResetState = await localDb.getSyncState('global');
+      if (cloudResetState?.cloudResetPending) {
+        syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
+        return { pushed: 0, pulled: 0 };
+      }
+
       // 0. Preflight Pull & Reset Generation Reconciliation (Must run before pushing outbox commands)
       const syncState = (await localDb.getSyncState('global')) || {
         table: 'global',
@@ -1168,11 +1166,27 @@ export class SyncEngine {
       // before the cycle is considered fully synchronized. If this pull fails,
       // successful commands remain accepted and the next cycle retries the pull.
       try {
-        const finalState = await localDb.getSyncState('global');
-        const finalCursor = finalState?.lastAppliedChangeSequence ?? 0;
-        const finalPull = await this.transport.pullChanges(finalCursor);
-        if (finalPull.changes.length > 0) {
+        let finalState = await localDb.getSyncState('global');
+        let finalCursor = finalState?.lastAppliedChangeSequence ?? 0;
+        let finalPull = await this.transport.pullChanges(finalCursor);
+        const expectedGeneration = finalState?.resetGeneration;
+        if (
+          finalPull.serverResetGeneration === undefined ||
+          expectedGeneration === undefined ||
+          finalPull.serverResetGeneration !== expectedGeneration
+        ) {
+          throw new Error('FINAL_PULL_RESET_GENERATION_CHANGED: authoritative reconciliation required');
+        }
+
+        // Drain all final pages, not only the first 500 rows. The cursor is
+        // checkpointed with each successfully applied page, so a later failure
+        // safely resumes at the last committed page.
+        while (finalPull.changes.length > 0) {
           const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+          const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
+          if (!Number.isSafeInteger(maxSeq) || maxSeq <= finalCursor) {
+            throw new Error('FINAL_PULL_INVALID_SEQUENCE: cursor did not advance');
+          }
           await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
             for (const change of sortedFinalChanges) {
               if (this.onDeltaApplied) {
@@ -1183,19 +1197,47 @@ export class SyncEngine {
                 localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
               }
             }
-            const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
             localDb.setSyncStateWithTx(tx, {
               ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
-              lastAppliedChangeSequence: Math.max(finalCursor, maxSeq),
+              lastAppliedChangeSequence: maxSeq,
               lastPulledAt: new Date().toISOString(),
               status: 'READY',
               reconciliationRequired: false,
             });
           });
           pulledCount += sortedFinalChanges.length;
+          finalCursor = maxSeq;
+          finalState = {
+            ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+            lastAppliedChangeSequence: maxSeq,
+            lastPulledAt: new Date().toISOString(),
+            status: 'READY',
+            reconciliationRequired: false,
+          };
+
+          if (sortedFinalChanges.length < 500) break;
+          finalPull = await this.transport.pullChanges(finalCursor);
+          if (
+            finalPull.serverResetGeneration === undefined ||
+            finalPull.serverResetGeneration !== expectedGeneration
+          ) {
+            throw new Error('FINAL_PULL_RESET_GENERATION_CHANGED: authoritative reconciliation required');
+          }
         }
-      } catch (finalPullError) {
+      } catch (finalPullError: any) {
         console.warn('Final authoritative sync pull failed; accepted commands remain queued for reconciliation:', finalPullError);
+        if (String(finalPullError?.message || '').includes('FINAL_PULL_RESET_GENERATION_CHANGED')) {
+          try {
+            const currentState = await localDb.getSyncState('global');
+            await localDb.setSyncState({
+              ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+              status: 'RECONCILIATION_REQUIRED',
+              reconciliationRequired: true,
+            });
+          } catch (checkpointError) {
+            console.warn('Failed to persist final-pull reconciliation marker:', checkpointError);
+          }
+        }
       }
 
       syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
