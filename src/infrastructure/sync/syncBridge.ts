@@ -167,6 +167,16 @@ export class SyncBridge {
       } finally {
         this.isSyncing = false;
         this.activeSyncPromise = null;
+
+        // A local transaction may commit while pull-only reload owns the bridge.
+        // notifyOutboxWorkAvailable coalesces that request into pendingWorkNotify;
+        // drain it after releasing the pull lock so the push is not silently lost.
+        if (this.pendingWorkNotify) {
+          this.pendingWorkNotify = false;
+          this.notifyOutboxWorkAvailable().catch((err) => {
+            console.warn('Background sync error after pull-only reload:', err);
+          });
+        }
       }
     })();
 
