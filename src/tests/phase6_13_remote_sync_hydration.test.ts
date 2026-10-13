@@ -135,8 +135,27 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
         financial_ledger: [],
         payments: [],
         payment_allocations: [],
-        order_number_reservations: [],
-        qr_tokens: [],
+        order_number_reservations: [{
+          id: 'reservation-1',
+          business_day_id: 'day-1',
+          device_id: 'device-1',
+          start_number: 1,
+          end_number: 5,
+          next_number: 2,
+          status: 'ACTIVE',
+          created_at: '2026-10-13T12:00:00.000Z',
+          updated_at: '2026-10-13T12:00:00.000Z',
+          version: 1,
+        }],
+        qr_tokens: [{
+          id: 'qr-1',
+          token_hash: 'hash-1',
+          public_token: 'token-1',
+          token_type: 'ORDER',
+          target_id: 'order-1',
+          is_active: true,
+          created_at: '2026-10-13T12:00:00.000Z',
+        }],
         goals: [],
         goal_requests: [],
       },
@@ -158,6 +177,15 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
       reconciliationRequired: false,
     });
     expect(await localDb.isInitialHydrationCompleted()).toBe(true);
+    expect(await localDb.get('orderNumberReservations', 'reservation-1')).toMatchObject({
+      id: 'reservation-1',
+      nextNumber: 2,
+    });
+    expect(await localDb.get('qr_tokens', 'qr-1')).toMatchObject({
+      id: 'qr-1',
+      publicToken: 'token-1',
+      targetId: 'order-1',
+    });
   });
 
   it('2. Offline Creation creates outbox command with pending status', async () => {
