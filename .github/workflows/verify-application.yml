@@ -72,9 +72,14 @@ jobs:
           ALTER ROLE authenticated SET statement_timeout = '8s';
           CREATE FUNCTION public.capture_authoritative_business_snapshot()
           RETURNS jsonb
-          LANGUAGE sql
+          LANGUAGE plpgsql
           STABLE
-          AS 'SELECT ''{}''::jsonb';
+          AS $function$
+          BEGIN
+            PERFORM pg_sleep(9);
+            RETURN '{}'::jsonb;
+          END;
+          $function$;
           SQL
       - name: Apply authoritative snapshot timeout migration in isolation
         env:
