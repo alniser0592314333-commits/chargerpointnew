@@ -1739,13 +1739,8 @@ if (typeof window !== 'undefined') {
       onTransactionCommitted();
     }
   });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      if (onTransactionCommitted) {
-        onTransactionCommitted();
-      }
-    }
-  });
+  // Visibility refresh is pull-only and coordinated by App.tsx. Do not start a full
+  // push+pull synchronization cycle merely because the user returns to this tab.
 }
 
 // Helper utilities for day ID canonicalization and order numbering
