@@ -1314,11 +1314,11 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       percent: 10,
       completedRows: 0,
       totalRows,
-      message: totalRows === 0 ? 'التحقق من قاعدة البيانات…' : 'جارٍ تثبيت البيانات محليًا…',
+      message: totalRows === 0 ? 'التحقق من قاعدة البيانات…' : 'جارٍ معالجة وتجهيز السجلات…',
     });
     const reportInstalledRow = (): void => {
       installedRows += 1;
-      const percent = totalRows === 0 ? 90 : Math.min(90, 10 + Math.floor((installedRows / totalRows) * 80));
+      const percent = totalRows === 0 ? 80 : Math.min(80, 10 + Math.floor((installedRows / totalRows) * 70));
       if (percent !== lastPublishedPercent || installedRows === totalRows) {
         lastPublishedPercent = percent;
         publishStoreBootstrapProgress({
@@ -1326,10 +1326,12 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           percent,
           completedRows: installedRows,
           totalRows,
-          message: 'جارٍ تثبيت البيانات محليًا…',
+          message: 'جارٍ معالجة وتجهيز السجلات…',
         });
       }
     };
+
+    const installWrites: Array<{ table: string; id: string; item: unknown }> = [];
 
     const daysRes = { data: snapshot.business_days as any[], error: null };
     const custRes = { data: snapshot.customers as any[], error: null };
@@ -1419,7 +1421,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: d.version || 1,
         };
         daysMap.set(entity.id, entity);
-        await localDb.set('businessDays', entity.id, entity);
+        installWrites.push({ table: 'businessDays', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1441,7 +1443,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: c.version || 1,
         };
         customersMap.set(entity.id, entity);
-        await localDb.set('customers', entity.id, entity);
+        installWrites.push({ table: 'customers', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1467,7 +1469,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: dev.version || 1,
         };
         devicesMap.set(entity.id, entity);
-        await localDb.set('deviceTypes', entity.id, entity);
+        installWrites.push({ table: 'deviceTypes', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1495,7 +1497,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: o.version || 1,
         };
         ordersMap.set(entity.id, entity);
-        await localDb.set('orders', entity.id, entity);
+        installWrites.push({ table: 'orders', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1527,7 +1529,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: it.version || 1,
         };
         itemsMap.set(entity.id, entity);
-        await localDb.set('orderItems', entity.id, entity);
+        installWrites.push({ table: 'orderItems', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1550,7 +1552,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           createdAt: l.created_at,
         };
         ledgerList.push(entity);
-        await localDb.set('financialLedger', entity.id, entity);
+        installWrites.push({ table: 'financialLedger', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1570,7 +1572,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           createdAt: p.created_at,
         };
         paymentsMap.set(entity.id, entity);
-        await localDb.set('payments', entity.id, entity);
+        installWrites.push({ table: 'payments', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1588,7 +1590,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           createdAt: a.created_at,
         };
         allocationsList.push(entity);
-        await localDb.set('paymentAllocations', entity.id, entity);
+        installWrites.push({ table: 'paymentAllocations', id: entity.id, item: entity });
         reportInstalledRow();
       }
       updatedAny = true;
@@ -1610,7 +1612,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         version: Number(row.version ?? 1),
       };
       reservationsMap.set(entity.id, entity);
-      await localDb.set('orderNumberReservations', entity.id, entity);
+      installWrites.push({ table: 'orderNumberReservations', id: entity.id, item: entity });
       reportInstalledRow();
     }
 
@@ -1625,7 +1627,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         expiresAt: row.expires_at ?? row.expiresAt ?? undefined,
         createdAt: row.created_at ?? row.createdAt ?? new Date().toISOString(),
       };
-      await localDb.set('qr_tokens', entity.id, entity);
+      installWrites.push({ table: 'qr_tokens', id: entity.id, item: entity });
       reportInstalledRow();
     }
 
@@ -1649,7 +1651,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         version: Number(row.version ?? 1),
       };
       goalsMap.set(entity.id, entity);
-      await localDb.set('goals', entity.id, entity);
+      installWrites.push({ table: 'goals', id: entity.id, item: entity });
       reportInstalledRow();
     }
 
@@ -1668,7 +1670,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         version: Number(row.version ?? 1),
       };
       goalRequestsMap.set(entity.id, entity);
-      await localDb.set('goalRequests', entity.id, entity);
+      installWrites.push({ table: 'goalRequests', id: entity.id, item: entity });
       reportInstalledRow();
     }
     updatedAny = true;
@@ -1678,7 +1680,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // exact snapshot; it must not treat the new device as generation -1 and
     // clear the just-hydrated data for a redundant full change-log replay.
     const existingSyncState = await localDb.getSyncState('global');
-    await localDb.setSyncState({
+    const snapshotSyncState = {
       ...(existingSyncState || {
         table: 'global',
         lastAppliedChangeSequence: 0,
@@ -1688,10 +1690,34 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       lastAppliedChangeSequence: snapshotSequence,
       lastPulledAt: snapshot.captured_at || new Date().toISOString(),
       resetGeneration: snapshotGeneration,
-      status: 'READY',
+      status: 'READY' as const,
       reconciliationRequired: false,
+    };
+
+    publishStoreBootstrapProgress({
+      phase: 'INSTALLING',
+      percent: 85,
+      completedRows: totalRows,
+      totalRows,
+      message: 'جارٍ حفظ اللقطة كاملة في القاعدة المحلية…',
+    });
+    // Commit every collection and its cursor in one IndexedDB transaction. If
+    // any put fails, the transaction rolls back and the durable INITIALIZING
+    // barrier remains in place for a safe retry on the next boot.
+    await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+      for (const write of installWrites) {
+        localDb.setWithTx(tx, write.table, write.id, write.item);
+      }
+      localDb.setSyncStateWithTx(tx, snapshotSyncState);
     });
 
+    publishStoreBootstrapProgress({
+      phase: 'INSTALLING',
+      percent: 95,
+      completedRows: totalRows,
+      totalRows,
+      message: 'تم حفظ البيانات؛ جارٍ اعتماد اكتمال التهيئة…',
+    });
     if (updatedAny) {
       await localDb.setInitialHydrationCompleted(true);
     }
