@@ -3,7 +3,7 @@
  * Tests all 25 offline and synchronization behavior criteria.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { SyncEngine, MockServerSyncTransport } from '../infrastructure/sync/syncEngine';
 import { initializeCanonicalSyncState } from './utils/testSetup';
@@ -128,6 +128,102 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     expect(await localDb.get('customers', 'customer-501')).toEqual({
       id: 'customer-501',
       name: 'Customer 501',
+    });
+  });
+
+  it('releases the engine lock when the initial sync-state read fails', async () => {
+    const stateRead = vi.spyOn(localDb, 'getSyncState').mockRejectedValueOnce(new Error('IndexedDB read failure'));
+    await expect(engine.synchronize()).rejects.toThrow('IndexedDB read failure');
+    stateRead.mockRestore();
+
+    await expect(engine.synchronize()).resolves.toEqual({ pushed: 0, pulled: 0 });
+  });
+
+  it('drains final-pull pages and checkpoints each page before declaring READY', async () => {
+    const requestedCursors: number[] = [];
+    let initialPreflight = true;
+    const makePage = (first: number, count: number) => Array.from({ length: count }, (_, index) => {
+      const sequenceId = first + index;
+      return {
+        sequenceId,
+        entityType: 'customers',
+        entityId: `final-customer-${sequenceId}`,
+        action: 'INSERT' as const,
+        payload: { id: `final-customer-${sequenceId}`, name: `Final Customer ${sequenceId}` },
+        changedAt: new Date().toISOString(),
+      };
+    });
+    const finalPagingTransport = {
+      pushCommand: async () => ({ success: true }),
+      pullChanges: async (cursor: number) => {
+        requestedCursors.push(cursor);
+        if (initialPreflight) {
+          initialPreflight = false;
+          return { changes: [], latestSequence: cursor, serverResetGeneration: 1 };
+        }
+        if (cursor === 0) return { changes: makePage(1, 500), latestSequence: 500, serverResetGeneration: 1 };
+        if (cursor === 500) return { changes: makePage(501, 1), latestSequence: 501, serverResetGeneration: 1 };
+        return { changes: [], latestSequence: cursor, serverResetGeneration: 1 };
+      },
+    };
+    const finalPagingEngine = new SyncEngine(finalPagingTransport);
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: '',
+      resetGeneration: 1,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+
+    const result = await finalPagingEngine.synchronize();
+    const state = await localDb.getSyncState('global');
+    expect(result.pulled).toBe(501);
+    expect(requestedCursors).toEqual([0, 0, 500, 501]);
+    expect(state?.lastAppliedChangeSequence).toBe(501);
+    expect(state?.status).toBe('READY');
+    expect(await localDb.get('customers', 'final-customer-501')).toBeDefined();
+  });
+
+  it('does not apply final-pull deltas from a different reset generation', async () => {
+    let initialPreflight = true;
+    const wrongGenerationTransport = {
+      pushCommand: async () => ({ success: true }),
+      pullChanges: async (cursor: number) => {
+        if (initialPreflight) {
+          initialPreflight = false;
+          return { changes: [], latestSequence: cursor, serverResetGeneration: 1 };
+        }
+        return {
+          changes: [{
+            sequenceId: 1,
+            entityType: 'customers',
+            entityId: 'generation-mismatch-customer',
+            action: 'INSERT' as const,
+            payload: { id: 'generation-mismatch-customer', name: 'Must not apply' },
+            changedAt: new Date().toISOString(),
+          }],
+          latestSequence: 1,
+          serverResetGeneration: 2,
+        };
+      },
+    };
+    const guardedEngine = new SyncEngine(wrongGenerationTransport);
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: '',
+      resetGeneration: 1,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+
+    await guardedEngine.synchronize();
+
+    expect(await localDb.get('customers', 'generation-mismatch-customer')).toBeNull();
+    expect(await localDb.getSyncState('global')).toMatchObject({
+      status: 'RECONCILIATION_REQUIRED',
+      reconciliationRequired: true,
     });
   });
 
