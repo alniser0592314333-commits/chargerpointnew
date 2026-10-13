@@ -12,6 +12,32 @@ CREATE TABLE public.system_settings (key text PRIMARY KEY, value_number bigint);
 INSERT INTO public.system_settings(key, value_number) VALUES ('server_reset_generation', 1);
 CREATE TABLE public.orders (id uuid PRIMARY KEY, name text NOT NULL);
 
+-- Minimal authenticated-admin identity used by the bootstrap RPC contract test.
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE OR REPLACE FUNCTION auth.uid()
+RETURNS uuid LANGUAGE sql STABLE
+AS $ SELECT '00000000-0000-0000-0000-000000000009'::uuid $;
+CREATE TABLE public.admins (
+  id uuid PRIMARY KEY,
+  auth_user_id uuid NOT NULL,
+  is_active boolean NOT NULL DEFAULT true
+);
+INSERT INTO public.admins(id, auth_user_id, is_active)
+VALUES ('00000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000009', true);
+
+-- Snapshot collections need only the identity column for the isolated RPC test.
+CREATE TABLE public.customers (id uuid PRIMARY KEY);
+CREATE TABLE public.business_days (id uuid PRIMARY KEY);
+CREATE TABLE public.device_types (id uuid PRIMARY KEY);
+CREATE TABLE public.order_items (id uuid PRIMARY KEY);
+CREATE TABLE public.financial_ledger (id uuid PRIMARY KEY);
+CREATE TABLE public.payments (id uuid PRIMARY KEY);
+CREATE TABLE public.payment_allocations (id uuid PRIMARY KEY);
+CREATE TABLE public.order_number_reservations (id uuid PRIMARY KEY);
+CREATE TABLE public.qr_tokens (id uuid PRIMARY KEY);
+CREATE TABLE public.goals (id uuid PRIMARY KEY);
+CREATE TABLE public.goal_requests (id uuid PRIMARY KEY);
+
 CREATE OR REPLACE FUNCTION public.record_canonical_change(
   p_entity_type varchar(50), p_entity_id uuid, p_action varchar(20), p_payload jsonb, p_version integer DEFAULT 1
 ) RETURNS bigint LANGUAGE plpgsql AS $$
