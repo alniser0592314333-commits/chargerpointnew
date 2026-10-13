@@ -658,17 +658,29 @@ export class IndexedDBLocalDatabase {
       for (const outbox of this.memoryOutbox.values()) {
         if (!protectedStatuses.has(outbox.status)) continue;
         if (!outbox.aggregateType || !outbox.aggregateId || outbox.aggregateType === 'COMMAND') continue;
+        // Outbox aggregate types have existed in singular, plural, snake_case,
+        // and camelCase forms across app versions. Canonicalize before protecting
+        // local optimistic rows; otherwise a reset/reconciliation can silently
+        // drop a pending order merely because its aggregateType was "order".
+        const normalizedAggregateType = outbox.aggregateType
+          .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+          .replace(/[\\s-]+/g, '_')
+          .toLowerCase();
         const tableAliases: Record<string, string> = {
-          business_days: 'businessDays',
-          device_types: 'deviceTypes',
-          order_items: 'orderItems',
-          financial_ledger: 'financialLedger',
-          payment_allocations: 'paymentAllocations',
-          order_number_reservations: 'orderNumberReservations',
-          goal_requests: 'goalRequests',
-          qr_tokens: 'qrTokens',
+          customer: 'customers', customers: 'customers',
+          business_day: 'businessDays', business_days: 'businessDays', businessday: 'businessDays', businessdays: 'businessDays',
+          device_type: 'deviceTypes', device_types: 'deviceTypes', devicetype: 'deviceTypes', devicetypes: 'deviceTypes',
+          order: 'orders', orders: 'orders',
+          order_item: 'orderItems', order_items: 'orderItems', orderitem: 'orderItems', orderitems: 'orderItems',
+          financial_ledger: 'financialLedger', financialledger: 'financialLedger',
+          payment: 'payments', payments: 'payments',
+          payment_allocation: 'paymentAllocations', payment_allocations: 'paymentAllocations', paymentallocation: 'paymentAllocations', paymentallocations: 'paymentAllocations',
+          order_number_reservation: 'orderNumberReservations', order_number_reservations: 'orderNumberReservations', ordernumberreservation: 'orderNumberReservations', ordernumberreservations: 'orderNumberReservations',
+          goal: 'goals', goals: 'goals',
+          goal_request: 'goalRequests', goal_requests: 'goalRequests', goalrequest: 'goalRequests', goalrequests: 'goalRequests',
+          qr_token: 'qr_tokens', qr_tokens: 'qr_tokens', qrtoken: 'qr_tokens', qrtokens: 'qr_tokens',
         };
-        const localTable = tableAliases[outbox.aggregateType] || outbox.aggregateType;
+        const localTable = tableAliases[normalizedAggregateType] || outbox.aggregateType;
         const tableMap = this.memoryFallback.get(localTable);
         const row = tableMap?.get(outbox.aggregateId);
         if (row !== undefined) {
