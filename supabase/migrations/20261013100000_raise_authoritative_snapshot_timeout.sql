@@ -1,8 +1,8 @@
 -- Fetch the authoritative business snapshot without embedding the entire change_log
 -- in one PostgREST response. The business tables and change-log fence are captured
 -- in one SQL statement; immutable change_log rows are then paged up to that fence.
--- The client validates the count/reset generation again after paging and aborts if
--- the checkpoint changed, so restore never proceeds with a partial history.
+-- A compact per-row content fingerprint is checked again after paging, in addition
+-- to count/reset generation. This detects same-count edits/deletes/inserts as well.
 CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot()
 RETURNS jsonb
 LANGUAGE plpgsql
