@@ -26,6 +26,8 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
     await clearAllOperationalData();
     setTestAppAuthSession();
     await localDb.clearLocalResetMarker();
+    // Customer UUID tests assume an already-open local app; bootstrap is covered separately.
+    await localDb.setInitialHydrationCompleted(true);
     resetStoreMemory();
   });
 
