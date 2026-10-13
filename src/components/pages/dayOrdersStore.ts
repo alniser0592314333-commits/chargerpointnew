@@ -1668,6 +1668,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       persistedPayments,
       persistedAllocations,
       persistedReservations,
+      persistedQrTokens,
       persistedGoals,
       persistedGoalRequests,
     ] = await Promise.all([
@@ -1680,6 +1681,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       localDb.list<PaymentEntity>('payments'),
       localDb.list<PaymentAllocationEntity>('paymentAllocations'),
       localDb.list<OrderNumberReservationEntity>('orderNumberReservations'),
+      localDb.list<any>('qr_tokens'),
       localDb.list<GoalEntity>('goals'),
       localDb.list<GoalRequestEntity>('goalRequests'),
     ]);
@@ -1908,7 +1910,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
         const hasLocalOperationalData = [
           persistedCustomers, persistedDevices, persistedDays, persistedOrders,
           persistedItems, persistedLedger, persistedPayments, persistedAllocations,
-          persistedReservations, persistedGoals, persistedGoalRequests,
+          persistedReservations, persistedQrTokens, persistedGoals, persistedGoalRequests,
         ].some((records) => records.length > 0);
         const bootstrapped = await hydrateFromRemoteTables();
         if (!bootstrapped && !hasLocalOperationalData) {
