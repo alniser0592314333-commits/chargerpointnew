@@ -87,6 +87,50 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     await p1;
   });
 
+  it('drains all change-log pages during regular sync before completing the pull', async () => {
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: '',
+      resetGeneration: 1,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+
+    const requestedCursors: number[] = [];
+    const makePage = (first: number, count: number) => Array.from({ length: count }, (_, index) => {
+      const sequenceId = first + index;
+      return {
+        sequenceId,
+        entityType: 'customers',
+        entityId: `customer-${sequenceId}`,
+        action: 'INSERT' as const,
+        payload: { id: `customer-${sequenceId}`, name: `Customer ${sequenceId}` },
+        changedAt: new Date().toISOString(),
+      };
+    });
+    const pagedTransport = {
+      pushCommand: async () => ({ success: true }),
+      pullChanges: async (cursor: number) => {
+        requestedCursors.push(cursor);
+        if (cursor === 0) return { changes: makePage(1, 500), latestSequence: 500, serverResetGeneration: 1 };
+        if (cursor === 500) return { changes: makePage(501, 1), latestSequence: 501, serverResetGeneration: 1 };
+        return { changes: [], latestSequence: cursor, serverResetGeneration: 1 };
+      },
+    };
+    const pagedEngine = new SyncEngine(pagedTransport);
+
+    const result = await pagedEngine.synchronize();
+
+    expect(result.pulled).toBe(501);
+    expect(requestedCursors).toEqual([0, 500]);
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
+    expect(await localDb.get('customers', 'customer-501')).toEqual({
+      id: 'customer-501',
+      name: 'Customer 501',
+    });
+  });
+
   it('23. Cloud reset pending blocks automatic push and pull while preserving local state', async () => {
     await localDb.set('customers', 'cust_reset_guard', {
       id: 'cust_reset_guard',
