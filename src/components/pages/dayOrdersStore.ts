@@ -2031,15 +2031,19 @@ export const ensureStoreHydrated = async (): Promise<void> => {
           // optimistic state/outbox semantics.
           await localDb.setInitialHydrationCompleted(true);
         } else {
+          // Only an interrupted bootstrap (durable INITIALIZING marker) may
+          // replace existing uncheckpointed rows automatically. Any other local
+          // dataset could contain legacy/offline-only data; fail closed instead
+          // of guessing that the cloud copy is safe to overwrite it with.
+          if (hasLocalOperationalData && priorSyncState?.status !== 'INITIALIZING') {
+            throw new Error('LOCAL_RECONCILIATION_REQUIRED: existing local records have no trusted checkpoint; refusing automatic replacement to protect data.');
+          }
           if (hasLocalOperationalData && pendingLocalCommands.length > 0) {
-            throw new Error('LOCAL_RECONCILIATION_REQUIRED: local pending work has no trusted sync checkpoint; refusing to overwrite it automatically.');
+            throw new Error('LOCAL_RECONCILIATION_REQUIRED: interrupted bootstrap has pending local commands; refusing automatic replacement to protect them.');
           }
           const bootstrapped = await hydrateFromRemoteTables();
-          if (!bootstrapped && (!hasLocalOperationalData || !hasTrustedLocalCheckpoint)) {
-            throw new Error('INITIAL_BOOTSTRAP_FAILED: cloud snapshot unavailable and no trusted local sync checkpoint exists; retry when connected.');
-          }
-          if (!bootstrapped && hasLocalOperationalData) {
-            console.warn('Initial cloud bootstrap unavailable; retaining only the existing local dataset with its trusted sync checkpoint.');
+          if (!bootstrapped) {
+            throw new Error('INITIAL_BOOTSTRAP_FAILED: cloud snapshot unavailable; local data was not declared ready. Retry when connected.');
           }
         }
       }
