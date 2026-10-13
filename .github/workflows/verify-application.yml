@@ -69,7 +69,6 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';
           CREATE TABLE public.admins (id uuid PRIMARY KEY, auth_user_id uuid NOT NULL, role text NOT NULL, is_active boolean NOT NULL);
           CREATE FUNCTION public.get_effective_permissions(uuid) RETURNS TABLE(permission text) LANGUAGE sql STABLE AS 'SELECT NULL::text WHERE false';
           CREATE TABLE public.change_log (sequence_id bigint PRIMARY KEY, payload text NOT NULL);
