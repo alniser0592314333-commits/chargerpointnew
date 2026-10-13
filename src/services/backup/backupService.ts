@@ -748,7 +748,7 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
     payments: (data.payments || []).map(normalizePaymentEntity),
     paymentAllocations: (data.paymentAllocations || []).map(normalizePaymentAllocationEntity),
     deviceTypes: (data.deviceTypes || []).map(normalizeDeviceTypeEntity),
-    qrTokens: (data.qrTokens || []).map(normalizeQrTokenEntity),
+    qrTokens: (data.qrTokens || []).map((token) => normalizeQrTokenEntity(token)),
     orderNumberReservations: (data.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity),
     goals: (data.goals || []).map(normalizeGoalEntity),
     goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
