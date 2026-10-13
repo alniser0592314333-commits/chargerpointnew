@@ -1215,7 +1215,8 @@ export class BackupService {
     if (
       !Number.isSafeInteger(serverResetGeneration) || serverResetGeneration < 0 ||
       !Number.isSafeInteger(expectedChangeLogCount) || expectedChangeLogCount < 0 ||
-      !Number.isSafeInteger(maxChangeSequence) || maxChangeSequence < 0
+      !Number.isSafeInteger(maxChangeSequence) || maxChangeSequence < 0 ||
+      !/^[0-9a-f]{32}$/i.test(expectedChangeLogFingerprint)
     ) {
       throw new Error('Failed to capture authoritative online snapshot: invalid change-log checkpoint metadata');
     }
