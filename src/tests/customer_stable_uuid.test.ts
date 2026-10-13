@@ -20,6 +20,9 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
   beforeEach(async () => {
     if (typeof localStorage !== 'undefined') {
       localStorage.clear();
+    }
+    await clearAllOperationalData();
+    if (typeof localStorage !== 'undefined') {
       // Mutation tests require a cached authenticated app session.
       localStorage.setItem('app_auth_session', JSON.stringify({
         userId: 'admin_test_session',
@@ -32,7 +35,6 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
         ],
       }));
     }
-    await clearAllOperationalData();
     await localDb.clearLocalResetMarker();
     resetStoreMemory();
     vi.restoreAllMocks();
