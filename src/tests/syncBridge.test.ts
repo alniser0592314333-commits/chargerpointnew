@@ -233,6 +233,19 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
   });
 
+  it('pull-only reload requests authoritative reconciliation when sync state is marked reconciliation-required even if generation matches', async () => {
+    await localDb.setSyncState({
+      table: 'global', lastAppliedChangeSequence: 12, lastPulledAt: '',
+      resetGeneration: 2, status: 'RECONCILIATION_REQUIRED', reconciliationRequired: true,
+    } as any);
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [], latestSequence: 12, serverResetGeneration: 2,
+    });
+    const result = await globalSyncBridge.requestLatestDataReload();
+    expect(result).toEqual({ pulled: 0, needsReconciliation: true });
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(12);
+  });
+
   it('pull-only reload requests authoritative reconciliation when reset generation changes', async () => {
     await localDb.setSyncState({
       table: 'global', lastAppliedChangeSequence: 12, lastPulledAt: '',
