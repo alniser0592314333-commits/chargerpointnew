@@ -134,6 +134,34 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect(syncSpy).not.toHaveBeenCalled();
   });
 
+  it('runs queued outbox work if a local commit notifies during pull-only reload', async () => {
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: new Date().toISOString(),
+      resetGeneration: 1,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+
+    let signalPullStarted!: () => void;
+    let finishPull!: (value: any) => void;
+    const pullStarted = new Promise<void>((resolve) => { signalPullStarted = resolve; });
+    const pullResult = new Promise<any>((resolve) => { finishPull = resolve; });
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockImplementationOnce(async () => {
+      signalPullStarted();
+      return pullResult;
+    });
+    const syncSpy = vi.spyOn(globalSyncEngine, 'synchronize').mockResolvedValue({ pushed: 1, pulled: 0 });
+
+    const reload = globalSyncBridge.requestLatestDataReload();
+    await pullStarted;
+    await globalSyncBridge.notifyOutboxWorkAvailable();
+    finishPull({ changes: [], latestSequence: 0, serverResetGeneration: 1 });
+    await reload;
+    await vi.waitFor(() => expect(syncSpy).toHaveBeenCalledTimes(1));
+  });
+
   // 13. requestLatestDataReload does not touch Outbox
   it('13. should never modify, delete, or re-route Outbox records during pull-only reload', async () => {
     vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
