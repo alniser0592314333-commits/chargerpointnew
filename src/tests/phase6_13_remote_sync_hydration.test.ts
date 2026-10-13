@@ -24,7 +24,12 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     await localDb.setInitialHydrationCompleted(false);
   });
 
-  it('1. Fresh Client Hydration: localDb starts empty, ensureStoreHydrated initializes without crash', async () => {
+  it('1. Fresh local-only client: localDb starts empty and initializes without cloud bootstrap', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: false,
+      url: 'Not configured',
+      status: 'disconnected',
+    });
     const daysBefore = await localDb.list('businessDays');
     expect(daysBefore.length).toBe(0);
 
