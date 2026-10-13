@@ -4972,7 +4972,51 @@ export interface UIDaySummary {
   isClosed: boolean;
   orderCount: number;
   totalOrderValueMinor: number;
+  allOrdersDelivered: boolean;
 }
+
+/**
+ * Derives delivery completion exclusively from the existing local-first order/item
+ * read model. Cancelled/deleted records do not count as outstanding work; an active
+ * order with no active items is conservatively not considered delivered.
+ */
+export const getFullyDeliveredDayIds = (
+  orders: Iterable<Pick<OrderEntity, 'id' | 'dayId' | 'status' | 'deletedAt'>>,
+  items: Iterable<Pick<OrderItemEntity, 'orderId' | 'status' | 'deletedAt'>>
+): Set<string> => {
+  const activeOrders = new Map<string, { dayId: string; activeItemCount: number; allItemsDelivered: boolean }>();
+  const orderIdsByDay = new Map<string, string[]>();
+
+  for (const order of orders) {
+    if (!order.dayId || order.deletedAt || String(order.status || '').toLowerCase() === 'cancelled') continue;
+    activeOrders.set(order.id, { dayId: order.dayId, activeItemCount: 0, allItemsDelivered: true });
+    const dayOrders = orderIdsByDay.get(order.dayId) || [];
+    dayOrders.push(order.id);
+    orderIdsByDay.set(order.dayId, dayOrders);
+  }
+
+  for (const item of items) {
+    if (item.deletedAt || String(item.status || '').toLowerCase() === 'cancelled') continue;
+    const order = activeOrders.get(item.orderId);
+    if (!order) continue;
+    order.activeItemCount += 1;
+    if (String(item.status || '').toLowerCase() !== 'delivered') {
+      order.allItemsDelivered = false;
+    }
+  }
+
+  const fullyDeliveredDays = new Set<string>();
+  for (const [dayId, orderIds] of orderIdsByDay) {
+    if (orderIds.length > 0 && orderIds.every((orderId) => {
+      const order = activeOrders.get(orderId)!;
+      return order.activeItemCount > 0 && order.allItemsDelivered;
+    })) {
+      fullyDeliveredDays.add(dayId);
+    }
+  }
+
+  return fullyDeliveredDays;
+};
 
 export const getDaysList = async (): Promise<UIDaySummary[]> => {
   await ensureStoreHydrated();
@@ -4992,6 +5036,7 @@ export const getDaysList = async (): Promise<UIDaySummary[]> => {
   }
 
   const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
+  const fullyDeliveredDayIds = getFullyDeliveredDayIds(effectiveOrdersMap.values(), effectiveItemsMap.values());
 
   const orderCountByDay = new Map<string, number>();
   for (const order of effectiveOrdersMap.values()) {
@@ -5028,6 +5073,7 @@ export const getDaysList = async (): Promise<UIDaySummary[]> => {
       isClosed: day.isClosed ?? (day as any).is_closed ?? false,
       orderCount: orderCountByDay.get(day.id) || 0,
       totalOrderValueMinor: totalValueByDay.get(day.id) || 0,
+      allOrdersDelivered: fullyDeliveredDayIds.has(day.id),
     });
   }
 
