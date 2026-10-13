@@ -19,7 +19,7 @@ pid_a=$!
 # Wait until A is inside its deliberate sleep, proving it already holds the lock.
 writer_a_active=0
 for _ in $(seq 1 30); do
-  writer_a_active=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state='active' AND query LIKE '%pg_sleep(3)%'")
+  writer_a_active=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid() AND state='active' AND query LIKE '%pg_sleep(3)%'")
   if [[ "$writer_a_active" -ge 1 ]]; then break; fi
   sleep 0.1
 done
@@ -40,7 +40,7 @@ pid_b=$!
 # Confirm B is actually waiting on a PostgreSQL lock, rather than merely not scheduled.
 waiting=0
 for _ in $(seq 1 30); do
-  waiting=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%INSERT INTO public.orders%'")
+  waiting=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%INSERT INTO public.orders%'")
   if [[ "$waiting" -ge 1 ]]; then break; fi
   sleep 0.1
 done
@@ -106,7 +106,7 @@ rpc_a=$!
 
 rpc_a_active=0
 for _ in $(seq 1 30); do
-  rpc_a_active=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND state='active' AND query LIKE '%execute_canonical_sync_command%'")
+  rpc_a_active=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid() AND state='active' AND query LIKE '%execute_canonical_sync_command%'")
   if [[ "$rpc_a_active" -ge 1 ]]; then break; fi
   sleep 0.1
 done
@@ -127,7 +127,7 @@ rpc_b=$!
 
 rpc_b_waiting=0
 for _ in $(seq 1 30); do
-  rpc_b_waiting=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%execute_canonical_sync_command%'")
+  rpc_b_waiting=$("${psql_cmd[@]}" -Atc "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND pid <> pg_backend_pid() AND wait_event_type='Lock' AND query LIKE '%execute_canonical_sync_command%'")
   if [[ "$rpc_b_waiting" -ge 1 ]]; then break; fi
   sleep 0.1
 done
