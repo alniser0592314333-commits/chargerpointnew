@@ -68,6 +68,8 @@ export default function App() {
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
   const [userSession, setUserSession] = useState<UserSession | null>(null);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [isBootRetrying, setIsBootRetrying] = useState(false);
   const [currentPath, setCurrentPathState] = useState(() => {
     return window.location.pathname && window.location.pathname !== '/'
       ? window.location.pathname
@@ -84,41 +86,59 @@ export default function App() {
     setCurrentPathState(newPath);
   };
 
-  // Authoritatively check auth session on mount
+  // Authoritatively check auth, then gate application access on local store readiness.
   useEffect(() => {
     let isMounted = true;
+    let authenticatedSession: UserSession | null = null;
     const initAuth = async () => {
       try {
         const result = await authService.captureAuthCallback().catch(() => ({ session: null, error: 'Error', type: null }));
-        if (result.type === 'recovery') {
-           navigate('/reset-password', true);
-        }
-        const session = await authService.getCurrentSession();
+        if (result.type === 'recovery') navigate('/reset-password', true);
+
+        authenticatedSession = await authService.getCurrentSession();
         if (isMounted) {
-          setIsAuthenticated(Boolean(session));
-          setUserSession(session);
-          if (session) {
-            // CRITICAL: Await local hydration before allowing background sync to start
-            await ensureStoreHydrated().catch(() => {});
-            // Perform authoritative sync handshake/reconciliation before allowing UI interaction
-            await refreshStoreFromRemote().catch(() => {});
+          setIsAuthenticated(Boolean(authenticatedSession));
+          setUserSession(authenticatedSession);
+        }
+
+        if (authenticatedSession) {
+          // Never suppress bootstrap errors: a fresh device must not open on an
+          // empty or partially hydrated model. Existing local data remains usable
+          // when a remote read fails before any local replacement begins.
+          await ensureStoreHydrated();
+          await refreshStoreFromRemote();
+        }
+      } catch (error: any) {
+        if (isMounted) {
+          if (authenticatedSession) {
+            setIsAuthenticated(true);
+            setUserSession(authenticatedSession);
+            setBootError(error?.message || 'STORE_BOOTSTRAP_FAILED');
+          } else {
+            setIsAuthenticated(false);
           }
         }
-      } catch {
-        if (isMounted) {
-          setIsAuthenticated(false);
-        }
       } finally {
-        if (isMounted) {
-          setIsAuthChecking(false);
-        }
+        if (isMounted) setIsAuthChecking(false);
       }
     };
-    initAuth();
-    return () => {
-      isMounted = false;
-    };
+    void initAuth();
+    return () => { isMounted = false; };
   }, []);
+
+  const retryStoreBootstrap = async () => {
+    if (isBootRetrying) return;
+    setIsBootRetrying(true);
+    try {
+      await ensureStoreHydrated();
+      await refreshStoreFromRemote();
+      setBootError(null);
+    } catch (error: any) {
+      setBootError(error?.message || 'STORE_BOOTSTRAP_FAILED');
+    } finally {
+      setIsBootRetrying(false);
+    }
+  };
 
   // Low-cost pull-only refresh while the authenticated app is visible.
   // Push remains event-driven by the existing Outbox coordinator.
@@ -228,6 +248,21 @@ export default function App() {
       return <ResetPasswordPage onNavigate={(path) => navigate(path)} />;
     }
 
+    if (bootError) {
+      return (
+        <div className="min-h-[70vh] flex items-center justify-center p-6">
+          <div className="max-w-lg w-full rounded-2xl border border-amber-200 dark:border-amber-900/50 bg-white dark:bg-gray-900 p-6 space-y-4 text-center">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">تعذّر تجهيز قاعدة البيانات المحلية</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300">لم نفتح النظام لأن التهيئة لم تكتمل بأمان. تأكد من الاتصال ثم أعد المحاولة. بياناتك المحلية لم تُعتبر جاهزة قبل التحقق.</p>
+            <p className="text-xs text-gray-500 break-words">{bootError}</p>
+            <Button variant="primary" disabled={isBootRetrying} onClick={() => void retryStoreBootstrap()} className="w-full">
+              {isBootRetrying ? 'جارٍ إعادة المحاولة…' : 'إعادة المحاولة'}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
     if (pathname === '/playground') {
       return (
         <div className="space-y-4">
@@ -253,10 +288,15 @@ export default function App() {
     if (!isAuthenticated) {
       return (
         <LoginPage
-          onLoginSuccess={() => {
+          onLoginSuccess={async () => {
+            // Login success is not application readiness. Complete local bootstrap
+            // first; a rejected bootstrap is shown by LoginPage and can be retried.
+            await ensureStoreHydrated();
+            await refreshStoreFromRemote();
+            const session = await authService.getCurrentSession();
+            setUserSession(session);
+            setBootError(null);
             setIsAuthenticated(true);
-            authService.getCurrentSession().then((s) => setUserSession(s));
-            refreshStoreFromRemote().catch(() => {});
             navigate('/app', true);
           }}
         />
@@ -463,7 +503,7 @@ export default function App() {
                 </Button>
               </div>
             </div>
-          ) : isAuthenticated && currentPath !== '/playground' ? (
+          ) : isAuthenticated && !bootError && currentPath !== '/playground' ? (
             <AuthenticatedLayout
               currentPath={currentPath}
               userSession={userSession}
@@ -479,7 +519,7 @@ export default function App() {
             </AuthenticatedLayout>
           ) : (
             <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col">
-              {isAuthenticated && (
+              {isAuthenticated && !bootError && (
                 <div className="bg-indigo-600 text-white text-xs py-1 px-4 text-center flex justify-between items-center">
                   <span>وضع المعاينة الهندسية للمنظومة</span>
                   <Button variant="outline" size="sm" className="bg-white/10 text-white border-white/20 text-xs h-7" onClick={() => navigate('/playground')}>
