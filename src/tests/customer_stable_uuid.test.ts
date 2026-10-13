@@ -18,6 +18,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
     if (typeof localStorage !== 'undefined') {
       localStorage.clear();
     }
@@ -37,7 +38,6 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
     }
     await localDb.clearLocalResetMarker();
     resetStoreMemory();
-    vi.restoreAllMocks();
   });
 
   // TEST A: Customer creation generates a standard UUID
