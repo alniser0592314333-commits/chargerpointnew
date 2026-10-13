@@ -14,7 +14,7 @@
 CREATE OR REPLACE FUNCTION public.lock_canonical_change_log_writes()
 RETURNS trigger
 LANGUAGE plpgsql
-SET search_path = public
+SET search_path = ''
 AS $function$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
@@ -75,7 +75,7 @@ CREATE FUNCTION public.execute_canonical_sync_command(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = ''
 AS $function$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
@@ -107,7 +107,7 @@ CREATE FUNCTION public.execute_sync_command_impl(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $function$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
@@ -134,7 +134,7 @@ RETURNS jsonb
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
-SET search_path = public
+SET search_path = ''
 AS $function$
   WITH page AS MATERIALIZED (
     SELECT sequence_id, entity_type, entity_id, action, payload, version, changed_at
@@ -168,7 +168,7 @@ CREATE OR REPLACE FUNCTION public.record_canonical_change(
 RETURNS bigint
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = ''
 AS $function$
 DECLARE
   v_seq bigint;
@@ -190,7 +190,7 @@ CREATE OR REPLACE FUNCTION public.record_canonical_change(
 )
 RETURNS bigint
 LANGUAGE plpgsql
-SET search_path = public
+SET search_path = ''
 AS $function$
 DECLARE
   v_seq bigint;
@@ -202,6 +202,17 @@ BEGIN
   RETURN v_seq;
 END;
 $function$;
+
+-- Change-log insertion is an internal trigger/dispatcher operation, not a
+-- public RPC. Trigger and dispatcher SECURITY DEFINER owners can still call it.
+REVOKE ALL ON FUNCTION public.record_canonical_change(text, uuid, text, jsonb, integer)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.record_canonical_change(character varying, uuid, character varying, jsonb, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_canonical_change(text, uuid, text, jsonb, integer)
+  TO service_role;
+GRANT EXECUTE ON FUNCTION public.record_canonical_change(character varying, uuid, character varying, jsonb, integer)
+  TO service_role;
 
 
 -- Capture the first-device business snapshot and its change-log fence in one
