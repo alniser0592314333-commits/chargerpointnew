@@ -2018,7 +2018,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
           priorSyncState &&
           Number.isSafeInteger(priorSyncState.resetGeneration) &&
           (priorSyncState.resetGeneration as number) >= 0 &&
-          priorSyncState.status === 'READY' &&
+          ['READY', 'STALE'].includes(priorSyncState.status) &&
           priorSyncState.reconciliationRequired !== true
         );
         const pendingLocalCommands = (await localDb.listOutbox()).filter((item) =>
