@@ -525,9 +525,20 @@ export class SyncEngine {
         pullRes = await this.transport.pullChanges(syncState.lastAppliedChangeSequence);
       } catch (pullTransportErr) {
         console.warn('Transport pull failed during sync preflight:', pullTransportErr);
-        // Halt synchronization if we cannot confirm authoritative generation
+        // A transport failure is not an empty feed and must not leave the UI
+        // claiming that a previously-ready device is still fully synchronized.
+        try {
+          const currentState = await localDb.getSyncState('global');
+          if (currentState?.status !== 'RECONCILIATION_REQUIRED' && currentState?.reconciliationRequired !== true) {
+            await localDb.setSyncState({
+              ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+              status: 'STALE',
+            });
+          }
+        } catch (checkpointError) {
+          console.warn('Failed to persist stale sync status after preflight failure:', checkpointError);
+        }
         syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
-        this.isSyncing = false;
         return { pushed: 0, pulled: 0 };
       }
 
