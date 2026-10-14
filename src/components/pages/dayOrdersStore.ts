@@ -4185,14 +4185,21 @@ export const getCustomerFinancialHistory = async (
   // recognition/amount fields as the balance projection.
   const authoritativeChargeItemIds = new Set(
     rawEvents
-      .filter((event) => event.eventType === 'ORDER_ITEM_CHARGE' && event.orderItemId)
-      .map((event) => event.orderItemId as string)
+      .filter((event) => event.eventType === 'ORDER_ITEM_CHARGE')
+      .flatMap((event) => [event.orderItemId, event.referenceId].filter((id): id is string => Boolean(id)))
+  );
+  // Legacy order-level charges do not identify an item. Do not synthesize a
+  // second charge for every delivered item in an order that already has one.
+  const legacyOrderChargeIds = new Set(
+    rawEvents
+      .filter((event) => event.eventType === 'ORDER_ITEM_CHARGE' && !event.orderItemId && event.orderId)
+      .map((event) => event.orderId as string)
   );
   for (const item of effectiveItemsMap.values()) {
     if (item.status === 'cancelled') continue;
     const financialStatus = String(item.financialStatus || '').toUpperCase();
     if (item.status !== 'delivered' && financialStatus !== 'RECOGNIZED') continue;
-    if (authoritativeChargeItemIds.has(item.id)) continue;
+    if (authoritativeChargeItemIds.has(item.id) || legacyOrderChargeIds.has(item.orderId)) continue;
     const order = effectiveOrdersMap.get(item.orderId);
     if (!order || order.customerId !== targetId) continue;
     const amountMinor = Number(item.finalChargeSnapshotMinor ?? item.totalPriceMinor ?? 0);
