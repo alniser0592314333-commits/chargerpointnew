@@ -131,3 +131,21 @@ BEGIN
   END;
 END $assert$;
 COMMIT;
+
+-- Legacy tables with disabled RLS and broad public grants are locked down
+-- without deleting or rewriting their data.
+DO $assert$
+BEGIN
+  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.permissions'::regclass) THEN
+    RAISE EXCEPTION 'Legacy permissions table must have RLS enabled';
+  END IF;
+  IF has_table_privilege('anon', 'public.permissions', 'SELECT')
+     OR has_table_privilege('anon', 'public.permissions', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.permissions', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.permissions', 'INSERT') THEN
+    RAISE EXCEPTION 'Legacy permissions table remains directly accessible to client roles';
+  END IF;
+  IF NOT has_table_privilege('service_role', 'public.permissions', 'SELECT') THEN
+    RAISE EXCEPTION 'Trusted service role access was not preserved';
+  END IF;
+END $assert$;
