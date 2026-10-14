@@ -164,6 +164,15 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     await initializeCanonicalSyncState();
     // The scheduler requires the referenced aggregate to exist on this device,
     // just as it would on a real device before delivery/cancellation is queued.
+    await localDb.set('orders', 'ord-100', {
+      id: 'ord-100',
+      customerId: 'cust-1',
+      businessDayId: 'day-1',
+      status: 'charging',
+      version: 5,
+      createdAt: '2026-09-25T09:00:00Z',
+      updatedAt: '2026-09-25T10:00:00Z',
+    });
     await localDb.set('orderItems', 'item-555', {
       id: 'item-555',
       orderId: 'ord-100',
@@ -190,7 +199,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       'DELIVER_ORDER_ITEM',
       'order_items',
       targetItemId,
-      { orderItemId: targetItemId, bin: '1234', resetGeneration: 1 },
+      { orderItemId: targetItemId, orderId: 'ord-100', bin: '1234', resetGeneration: 1 },
       'device_A_phone',
       'admin_1',
       initialExpectedVersion
@@ -202,7 +211,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       'CANCEL_ORDER_ITEM',
       'order_items',
       targetItemId,
-      { orderItemId: targetItemId, resetGeneration: 1 },
+      { orderItemId: targetItemId, orderId: 'ord-100', resetGeneration: 1 },
       'device_B_tablet',
       'admin_2',
       initialExpectedVersion
@@ -210,7 +219,6 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
 
     // Device A syncs first -> succeeds (5 -> 6)
     const syncResA = await engineA.synchronize();
-    console.log('CONCURRENT_SYNC_A', JSON.stringify({ result: syncResA, outbox: await localDb.listOutbox() }));
     expect(syncResA.pushed).toBe(1);
 
     const deliverRecordA = await localDb.getOutbox(cmdDeliverId);
@@ -253,7 +261,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       'CANCEL_ORDER_ITEM',
       'order_items',
       targetItemId,
-      { orderItemId: targetItemId, resetGeneration: 1 },
+      { orderItemId: targetItemId, orderId: 'ord-100', resetGeneration: 1 },
       'device_B_tablet',
       'admin_2',
       initialExpectedVersion
@@ -265,14 +273,13 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       'DELIVER_ORDER_ITEM',
       'order_items',
       targetItemId,
-      { orderItemId: targetItemId, bin: '9999', resetGeneration: 1 },
+      { orderItemId: targetItemId, orderId: 'ord-100', bin: '9999', resetGeneration: 1 },
       'device_A_phone',
       'admin_1',
       initialExpectedVersion
     );
 
     const syncResB = await engineB.synchronize();
-    console.log('CONCURRENT_SYNC_B', JSON.stringify({ result: syncResB, outbox: await localDb.listOutbox() }));
     expect(syncResB.pushed).toBe(1);
 
     const cancelRecordB = await localDb.getOutbox(cmdCancelId);
