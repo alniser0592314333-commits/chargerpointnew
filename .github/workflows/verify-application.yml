@@ -48,6 +48,12 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/sync.test.ts src/tests/delta_pull_batch_size.test.ts src/tests/canonical_architecture_foundation.test.ts src/tests/syncBridge.test.ts src/tests/central_sync_bridge_enforcement.test.ts src/tests/order_item_concurrent_conflict.test.ts src/tests/outbox_dependency_revalidation.test.ts src/tests/phase6_13_remote_sync_hydration.test.ts src/tests/phase_sync_ux_and_background_trigger.test.ts src/tests/command_identity_renovation.test.ts src/tests/fifo_payment_status_allocation.test.ts src/tests/update_device_type_repair.test.ts src/tests/cursor_atomicity.test.ts src/tests/clean_bootstrap_reconciliation.test.ts src/tests/execute_sync_command_wrapper_forensic.test.ts
+      - name: Run fresh-client bootstrap reset-marker regression
+        env:
+          # Test uses a mocked snapshot and must never target production Supabase.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
+        run: npx vitest run src/tests/phaseB5_local_reset_marker.test.ts -t 'Fresh browser with missing version|Browser / App Restart Simulation'
       - name: Run financial integrity and allocation regressions
         env:
           # These tests must use local mocks and never touch production Supabase.
