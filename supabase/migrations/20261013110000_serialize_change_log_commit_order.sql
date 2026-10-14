@@ -183,7 +183,7 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.pull_canonical_changes(bigint, integer) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated;
 
 -- Keep the same lock for direct canonical change-recording calls too. In normal
 -- table-trigger paths the statement trigger has already acquired it, so this is
