@@ -865,7 +865,7 @@ WHEN 'RENUMBER_DAY_ORDERS' THEN
                 v_current_balance := public.calculate_customer_authoritative_balance(v_rec_item.customer_id);
                 v_projected_balance := v_current_balance - v_authoritative_final_charge;
 
-                IF (
+                IF COALESCE(v_admin_role, '') NOT IN ('SUPER_ADMIN', 'Super Admin') AND (
                     (v_rec_item.debt_limit_minor > 0 AND v_projected_balance < (-v_rec_item.debt_limit_minor))
                     OR
                     (v_rec_item.debt_limit_minor < 0 AND v_projected_balance < v_rec_item.debt_limit_minor)
