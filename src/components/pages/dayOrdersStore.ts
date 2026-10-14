@@ -3482,11 +3482,18 @@ const buildPaymentProjectionIndexes = (
 
 export const computeCustomerOrderPaymentStatuses = (
   customerId: string,
-  effectiveOrdersMap: Map<string, OrderEntity> = ordersMap,
-  effectiveItemsMap: Map<string, OrderItemEntity> = itemsMap,
+  suppliedOrdersMap?: Map<string, OrderEntity>,
+  suppliedItemsMap?: Map<string, OrderItemEntity>,
   indexes?: PaymentProjectionIndexes
 ): Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }> => {
   const result = new Map<string, { paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'; allocatedAmountMinor: number; totalMinor: number }>();
+  // By default, compute from the effective read model, including pending overlays.
+  // UI reads must not omit an order/item merely because its server command is pending.
+  const effectiveReadModel = (!suppliedOrdersMap || !suppliedItemsMap)
+    ? getEffectiveOrderItemReadModel()
+    : null;
+  const effectiveOrdersMap = suppliedOrdersMap ?? effectiveReadModel!.orders;
+  const effectiveItemsMap = suppliedItemsMap ?? effectiveReadModel!.items;
   const projection = indexes || buildPaymentProjectionIndexes(effectiveOrdersMap, effectiveItemsMap);
 
   const recognizedItems = projection.recognizedItems;
