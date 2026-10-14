@@ -274,8 +274,8 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
         status,
         itemsToAdd,
         removedItemIds,
-        itemsToUpdate,
-        binCode
+        binCode,
+        itemsToUpdate
       );
 
       if (result.success) {
