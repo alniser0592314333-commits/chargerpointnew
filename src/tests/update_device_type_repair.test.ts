@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as supabaseClient from '../services/supabase/client';
 import { SyncEngine } from '../infrastructure/sync/syncEngine';
+import { setTestAppAuthSession } from './utils/testSetup';
 import { SupabaseSyncTransport } from '../infrastructure/sync/SupabaseSyncTransport';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
@@ -35,7 +36,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     storageMap.clear();
     localStorageMock.setItem('sys_db_version', '6.10.3D');
     localStorageMock.setItem('app_device_id', 'test_device');
-    localStorageMock.setItem('app_auth_session', JSON.stringify({ userId: 'test_admin_user' }));
+    setTestAppAuthSession();
 
     await localDb.init();
     await localDb.clear();
