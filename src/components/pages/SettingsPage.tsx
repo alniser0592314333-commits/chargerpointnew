@@ -84,6 +84,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
   type BinStep = "IDLE" | "VERIFY" | "NEW_BIN";
   const [binStep, setBinStep] = useState<BinStep>("IDLE");
 
+
+  const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [newBin, setNewBin] = useState("");
+  const [confirmBin, setConfirmBin] = useState("");
+  const [isBinLoading, setIsBinLoading] = useState(false);
+  const [binError, setBinError] = useState<string | null>(null);
+  const [binSuccess, setBinSuccess] = useState<string | null>(null);
+  const [verifiedToken, setVerifiedToken] = useState<string | undefined>(undefined);
+
   // Settings has an in-page hierarchy that isn't represented by URL routes.
   // Back must close the deepest open flow/section before leaving Settings.
   useEffect(() => {
@@ -109,14 +119,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
     window.addEventListener("app:logical-back", handleLogicalBack);
     return () => window.removeEventListener("app:logical-back", handleLogicalBack);
   }, [activeSettingsSection, binStep]);
-  const [usernameInput, setUsernameInput] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
-  const [newBin, setNewBin] = useState("");
-  const [confirmBin, setConfirmBin] = useState("");
-  const [isBinLoading, setIsBinLoading] = useState(false);
-  const [binError, setBinError] = useState<string | null>(null);
-  const [binSuccess, setBinSuccess] = useState<string | null>(null);
-  const [verifiedToken, setVerifiedToken] = useState<string | undefined>(undefined);
 
   const handleStartChangeBin = () => {
     setBinError(null);
