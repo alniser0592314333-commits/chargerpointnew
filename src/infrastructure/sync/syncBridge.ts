@@ -1,4 +1,4 @@
-import { globalSyncEngine, applyRemoteChange, setTransactionCommittedHook } from '../../components/pages/dayOrdersStore';
+import { globalSyncEngine, applyRemoteChange, resetCanonicalReadModelsForReplay, setTransactionCommittedHook } from '../../components/pages/dayOrdersStore';
 import { localDb } from '../localDb/localDb';
 
 export class SyncBridge {
@@ -9,6 +9,7 @@ export class SyncBridge {
   constructor() {
     // Wire up delta change applier to globalSyncEngine
     globalSyncEngine.onDeltaApplied = applyRemoteChange;
+    globalSyncEngine.onAuthoritativeReset = resetCanonicalReadModelsForReplay;
     // Wire up transaction commit hook to trigger background sync coordinator
     setTransactionCommittedHook(() => {
       this.notifyOutboxWorkAvailable().catch((err) => {
