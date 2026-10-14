@@ -12,6 +12,7 @@ import {
 import { localDb } from '../infrastructure/localDb/localDb';
 import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import * as dayOrdersStore from '../components/pages/dayOrdersStore';
+import * as supabaseClient from '../services/supabase/client';
 import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 
 describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
@@ -27,6 +28,22 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     // These tests exercise mutations after app startup, not first-run cloud bootstrap.
     await localDb.setInitialHydrationCompleted(true);
     resetStoreMemory();
+
+    // These bridge tests use a local-only replica. Keep RPC traffic mocked so
+    // the test suite never depends on a configured or production Supabase project.
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: false,
+      url: 'Not configured',
+      status: 'disconnected',
+    });
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [],
+      latestSequence: 0,
+      serverResetGeneration: 1,
+    });
+    // Simulate app startup before individual tests spy on mutation notifications.
+    await ensureStoreHydrated();
+    await vi.waitFor(() => expect((globalSyncBridge as any).isSyncing).toBe(false));
   });
 
   // 1. Customers mutation works local transaction first
@@ -425,7 +442,8 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
           payload: { id: 'cust-after-reset', name: 'عميل بعد التصفير', phone: '0599333444', isActive: true },
           changedAt: new Date().toISOString(),
         }],
-        latestSequence: 1
+        latestSequence: 1,
+        serverResetGeneration: 1,
       });
 
       const resumeSpy = vi.spyOn(globalSyncEngine, 'resumePendingOutbox');
