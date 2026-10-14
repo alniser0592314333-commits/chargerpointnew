@@ -365,7 +365,7 @@ DECLARE
 BEGIN
   FOR p IN
     SELECT p.oid, p.proname, p.proargnames, p.pronargs, p.proretset,
-           p.prorettype, pg_get_function_identity_arguments(p.oid) AS identity_args,
+           p.prorettype, oidvectortypes(p.proargtypes) AS identity_args,
            pg_get_function_arguments(p.oid) AS full_args,
            pg_get_function_result(p.oid) AS result_type
     FROM pg_proc p
@@ -383,6 +383,7 @@ BEGIN
         'revoke_my_account_session',
         'revoke_other_account_sessions',
         'revoke_all_account_sessions',
+        'execute_canonical_sync_command',
         'check_system_bootstrapped',
         'is_system_bootstrapped',
         'bootstrap_first_super_admin',
