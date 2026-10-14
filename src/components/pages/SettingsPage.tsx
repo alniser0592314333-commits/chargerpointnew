@@ -1079,14 +1079,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
             <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
               {locale === "ar" ? "إدارة أرقام الطلبات" : "Order Number Management"}
             </div>
-            <div className="rounded-xl border border-gray-200 dark:border-[#245047] p-3">
+            <div>
               <button
                 type="button"
                 onClick={() => onNavigate?.("/app/settings/renumber-day")}
-                className="w-full flex items-center justify-between gap-3 text-start hover:bg-gray-50/60 dark:hover:bg-[#0b2924]/50 rounded-xl transition-colors cursor-pointer group"
+                className="w-full py-3 px-1 flex items-center justify-between gap-3 text-start hover:bg-gray-50/60 dark:hover:bg-[#0b2924]/50 rounded-xl transition-colors cursor-pointer group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-gray-100 dark:bg-[#0c312b] flex items-center justify-center text-gray-700 dark:text-[#8eb698] shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-[#0c312b] flex items-center justify-center text-gray-700 dark:text-[#8eb698] shrink-0 border border-transparent dark:border-[#14423b]">
                     <ListOrdered className="w-4 h-4 text-emerald-600 dark:text-[#8eb698]" />
                   </div>
                   <div>
@@ -1094,9 +1094,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                       {locale === "ar" ? "تعديل أرقام الطلبات يدويًا" : "Manually edit order numbers"}
                     </span>
                     <span className="text-xs text-gray-500 dark:text-[#8eb698] block mt-1">
-                      {locale === "ar"
-                        ? "اختر اليوم، عدّل رقم كل طلب، ثم راجع التغييرات واعتمدها. لن يعاد ترقيم الطلبات الموجودة تلقائيًا."
-                        : "Choose a day, edit each order number, and review before confirming. Existing orders are never renumbered automatically."}
+                      {locale === "ar" ? "تعديل أرقام الطلبات حسب اليوم." : "Edit order numbers for a selected day."}
                     </span>
                   </div>
                 </div>
