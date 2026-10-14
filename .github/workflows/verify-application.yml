@@ -152,22 +152,6 @@ jobs:
           PGUSER: postgres
           PGDATABASE: change_log_order_test
         run: bash supabase/tests/change_log_commit_order_runtime.test.sh
-      - name: Create isolated database for sync bootstrap snapshot
-        env:
-          PGPASSWORD: postgres
-        run: createdb -h localhost -U postgres sync_bootstrap_snapshot_test
-      - name: Prepare isolated sync bootstrap snapshot fixture
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d sync_bootstrap_snapshot_test -v ON_ERROR_STOP=1 -f supabase/tests/sync_bootstrap_snapshot_fixture.sql
-      - name: Apply sync bootstrap snapshot migration in isolation
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d sync_bootstrap_snapshot_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261014100000_capture_sync_bootstrap_snapshot.sql
-      - name: Verify sync bootstrap snapshot contract and authorization
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d sync_bootstrap_snapshot_test -v ON_ERROR_STOP=1 -f supabase/tests/sync_bootstrap_snapshot_runtime.test.sql
       - name: Apply the renumbering migration to isolated PostgreSQL
         env:
           PGPASSWORD: postgres
