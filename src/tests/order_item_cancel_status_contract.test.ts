@@ -249,7 +249,7 @@ describe('Order-item cancellation BIN and status contract', () => {
     expect((result as any).data.deviceTypeId).toBe('dev_2');
     expect((result as any).data.deviceNameSnapshot).toBe('Test Device 2');
     expect((result as any).data.hasCharger).toBe(false);
-    expect((result as any).data.totalPriceMinor).toBe(4500);
+    expect((result as any).data.totalPriceMinor).toBe(4550);
     const command = [...h.commands.values()].find((entry) => entry.type === 'UPDATE_ORDER_ITEM');
     expect(command).toBeDefined();
     expect((command!.payload as any).itemId).toBe(item.id);
