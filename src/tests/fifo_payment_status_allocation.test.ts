@@ -185,10 +185,10 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     });
 
     expect(result.success).toBe(true);
-    const commands = await (phase5UseCases as any).deps.commandRepo.get(
+    const command = await (phase5UseCases as any).deps.commandRepo.get(
       result.transactionId
     );
-    expect(commands?.type).toBe('CREATE_PAYMENT');
+    expect(command?.commandType).toBe('CREATE_PAYMENT');
   });
 
   it('6. A pending payment cannot retroactively pay an order created after the payment', async () => {
