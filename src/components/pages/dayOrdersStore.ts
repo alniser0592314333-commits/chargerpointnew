@@ -574,7 +574,12 @@ export const applyRemoteChange = (change: {
     }
     const previousOrder = ordersMap.get(change.entityId);
     const incomingOrderVersion = Number(p.version ?? 1);
-    if (previousOrder && change.action !== 'INSERT' && Number(previousOrder.version ?? 0) >= incomingOrderVersion) {
+    if (
+      previousOrder &&
+      localDb.hasCachedRecord('orders', change.entityId) &&
+      change.action !== 'INSERT' &&
+      Number(previousOrder.version ?? 0) >= incomingOrderVersion
+    ) {
       return;
     }
     const rawStatus = (p.status || p.order_status || previousOrder?.status || 'pending').toLowerCase();
@@ -615,7 +620,12 @@ export const applyRemoteChange = (change: {
     }
     const previousItem = itemsMap.get(change.entityId);
     const incomingItemVersion = Number(change.version ?? p.version ?? (previousItem ? Number(previousItem.version ?? 0) + 1 : 1));
-    if (previousItem && change.action !== 'INSERT' && Number(previousItem.version ?? 0) >= incomingItemVersion) {
+    if (
+      previousItem &&
+      localDb.hasCachedRecord('orderItems', change.entityId) &&
+      change.action !== 'INSERT' &&
+      Number(previousItem.version ?? 0) >= incomingItemVersion
+    ) {
       return;
     }
     const rawStatus = String(
