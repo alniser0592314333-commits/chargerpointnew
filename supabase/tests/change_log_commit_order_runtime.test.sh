@@ -69,7 +69,7 @@ fi
 
 # The pull RPC must reject unauthenticated calls even though the underlying
 # change_log table has a broad authenticated SELECT policy.
-auth_guard=$("${psql_cmd[@]}" -Atc "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \\$auth_uid\\$ SELECT NULL::uuid \\$auth_uid\\$; DO \\$auth_test\\$ BEGIN BEGIN PERFORM public.pull_canonical_changes(0, 500); RAISE EXCEPTION 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED'; EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED' OR SQLERRM NOT LIKE 'Authentication required%' THEN RAISE; END IF; END; END \\$auth_test\\$; CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \\$auth_uid\\$ SELECT '00000000-0000-0000-0000-000000000009'::uuid \\$auth_uid\\$; SELECT 'ok'")
+auth_guard=$("${psql_cmd[@]}" -Atc "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT NULL::uuid \$auth_uid\$; DO \$auth_test\$ BEGIN BEGIN PERFORM public.pull_canonical_changes(0, 500); RAISE EXCEPTION 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED'; EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED' OR SQLERRM NOT LIKE 'Authentication required%' THEN RAISE; END IF; END; END \$auth_test\$; CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT '00000000-0000-0000-0000-000000000009'::uuid \$auth_uid\$; SELECT 'ok'")
 if [[ "$auth_guard" != "ok" ]]; then
   echo "Change-log pull RPC did not reject unauthenticated callers" >&2
   exit 1
