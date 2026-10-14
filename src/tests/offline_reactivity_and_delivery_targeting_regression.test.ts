@@ -9,6 +9,7 @@ import {
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { AuthorizationContext } from '../application/authContext';
+import { CURRENT_MIGRATION_VERSION } from '../components/pages/dayOrdersStore';
 import { initializeCanonicalSyncState } from './utils/testSetup';
 
 const superAdminAuth = new AuthorizationContext(
@@ -109,7 +110,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
           ],
         })
       );
-      localStorage.setItem('sys_db_version', '6.10.3D');
+      localStorage.setItem('sys_db_version', CURRENT_MIGRATION_VERSION);
     }
   });
 
