@@ -429,7 +429,7 @@ BEGIN
     END IF;
 
     v_create_sql := format(
-      'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $sessionrpc$ %s $sessionrpc,
+      'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS %L',
       p.proname, v_full_args, v_result_type, v_body
     );
     EXECUTE v_create_sql;
