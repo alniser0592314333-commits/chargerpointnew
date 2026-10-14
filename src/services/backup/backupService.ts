@@ -867,6 +867,25 @@ export function validateReplacementData(data: Partial<BackupSnapshotData>): void
     if (!has(table, id)) throw new SnapshotFormatError(`${owner} references missing ${table} ${id || '<missing>'}`);
   };
 
+  // internal_sequence is a positive, globally unique immutable ordering key when present.
+  // Older local snapshots may omit it (normalized to 0); the replacement RPC deliberately
+  // assigns a fresh sequence to non-positive values. Reject only malformed or duplicate
+  // positive values before taking a safety snapshot or invoking the destructive RPC.
+  const positiveInternalSequences = new Set<number>();
+  for (const row of collections.orders) {
+    const rawSequence = replacementField(row, 'internalSequence', 'internal_sequence');
+    if (rawSequence === undefined || rawSequence === null) continue;
+    const normalizedSequence = Number(rawSequence);
+    if (!Number.isSafeInteger(normalizedSequence)) {
+      throw new SnapshotFormatError(`Order ${row.id} has invalid internal_sequence`);
+    }
+    if (normalizedSequence <= 0) continue;
+    if (positiveInternalSequences.has(normalizedSequence)) {
+      throw new SnapshotFormatError(`Duplicate order internal_sequence in replacement payload: ${normalizedSequence}`);
+    }
+    positiveInternalSequences.add(normalizedSequence);
+  }
+
   for (const row of collections.orders) {
     const status = String(replacementField(row, 'status') || 'pending').toLowerCase();
     if (!['pending', 'charging', 'delivered', 'cancelled'].includes(status)) {
@@ -2452,6 +2471,13 @@ export class BackupService {
     }
 
     if (error || !data || !data.success) {
+      // A definitive server-side 4xx response means PostgreSQL rejected the payload
+      // before commit. Do not perform a second full cloud snapshot read for these
+      // deterministic failures; surface the actual validation error immediately.
+      if (typeof error === 'string' && ['[400]', '[403]', '[404]', '[409]', '[422]'].some((status) => error.includes(status))) {
+        throw new Error(error);
+      }
+
       // The request can be ambiguous: PostgreSQL may have committed the atomic
       // replacement while the HTTP response was lost. Never blindly retry a
       // destructive replacement. Instead, read the authoritative cloud state
