@@ -203,9 +203,11 @@ describe('Offline reactivity and delivery targeting regression', () => {
 
     expect(addCommands).toHaveLength(2);
     expect(deliverCommands).toHaveLength(1);
-    expect(deliverCommands[0].payload.itemId).not.toBe('item-already-delivered');
+    const deliverPayload = deliverCommands[0].payload as Record<string, unknown>;
+    const addPayload = addCommands[0].payload as Record<string, unknown>;
+    expect(deliverPayload.itemId).not.toBe('item-already-delivered');
 
-    const newItemId = addCommands[0].payload.id as string;
-    expect(deliverCommands[0].payload.itemId).toBe(newItemId);
+    const newItemId = addPayload.id as string;
+    expect(deliverPayload.itemId).toBe(newItemId);
   });
 });
