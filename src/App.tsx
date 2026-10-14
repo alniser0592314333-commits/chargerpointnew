@@ -45,6 +45,7 @@ import { registerSuspensionHandler } from './services/supabase/client';
 import { ShieldAlert } from 'lucide-react';
 import { DesignSystemPlayground } from './components/playground/DesignSystemPlayground';
 import { Button } from './components/ui/Button';
+import { resolveLogicalBackPath } from './navigation/backNavigation';
 
 export function parseRoute(pathAndHash: string): { pathname: string; hash: string; search: string } {
   try {
@@ -251,14 +252,51 @@ export default function App() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [isAuthenticated, isSuspended]);
 
-  // Safe goBack helper
+  // Back actions use the route's semantic parent, never the raw visit stack.
   const goBack = (fallbackPath: string) => {
-    if (window.history.state && window.history.state.path) {
-      window.history.back();
-    } else {
-      navigate(fallbackPath, true);
-    }
+    navigate(fallbackPath, true);
   };
+
+  // One app-wide edge-swipe handler keeps back behavior consistent across pages.
+  // Replace the current history entry so prior edited records cannot reappear.
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    let startedAtEdge = false;
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) {
+        startedAtEdge = false;
+        return;
+      }
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      const width = window.innerWidth;
+      startedAtEdge = startX <= 32 || startX >= width - 32;
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (!startedAtEdge || event.changedTouches.length !== 1) {
+        startedAtEdge = false;
+        return;
+      }
+      startedAtEdge = false;
+      const endX = event.changedTouches[0].clientX;
+      const endY = event.changedTouches[0].clientY;
+      const deltaX = endX - startX;
+      const deltaY = Math.abs(endY - startY);
+      if (Math.abs(deltaX) < 60 || deltaY > 80) return;
+      const parentPath = resolveLogicalBackPath(currentPath);
+      if (parentPath) navigate(parentPath, true);
+    };
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [currentPath]);
 
   // Listen to browser Back/Forward (popstate)
   useEffect(() => {
