@@ -770,13 +770,15 @@ export const SyncCenter: React.FC = () => {
 
   return (
     <div className="space-y-3">
-      {/* Section Header Label */}
-      <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
-        {locale === 'ar' ? 'المزامنة وحالة النظام' : 'Synchronization & System Status'}
+      {!isModalOpen && (
+      <>
+      <div className="pb-3 border-b border-gray-200/80 dark:border-[#123832]">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === 'ar' ? 'المزامنة وحالة النظام' : 'Synchronization & System Status'}</h3>
+        <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">{locale === 'ar' ? 'حالة الاتصال والعمليات المعلقة.' : 'Connection state and pending operations.'}</p>
       </div>
 
       {/* CONCISE COMPACT SYNC CARD (Short & Clean) */}
-      <div className="p-4 rounded-2xl border border-gray-200/80 dark:border-[#123832] bg-white dark:bg-[#06201c] shadow-sm hover:border-emerald-500/50 transition-all">
+      <div className="py-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           
           {/* Status Title & Icon */}
@@ -809,7 +811,7 @@ export const SyncCenter: React.FC = () => {
             </div>
           </div>
 
-          {/* Action to Open Details Modal */}
+          {/* Open the full diagnostics page */}
           <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
             <Button
               type="button"
@@ -824,6 +826,8 @@ export const SyncCenter: React.FC = () => {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {isModalOpen && (
       <div className="space-y-4">
