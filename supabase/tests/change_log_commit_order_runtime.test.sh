@@ -115,7 +115,10 @@ psql_check=$("${psql_cmd[@]}" -Atc "SELECT
   AND NOT has_function_privilege('anon', 'public.record_canonical_change(text,uuid,text,jsonb,integer)', 'EXECUTE')
   AND NOT has_function_privilege('authenticated', 'public.record_canonical_change(text,uuid,text,jsonb,integer)', 'EXECUTE')
   AND NOT has_function_privilege('anon', 'public.record_canonical_change(character varying,uuid,character varying,jsonb,integer)', 'EXECUTE')
-  AND NOT has_function_privilege('authenticated', 'public.record_canonical_change(character varying,uuid,character varying,jsonb,integer)', 'EXECUTE')")
+  AND NOT has_function_privilege('authenticated', 'public.record_canonical_change(character varying,uuid,character varying,jsonb,integer)', 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.pull_canonical_changes(bigint,integer)', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.pull_canonical_changes(bigint,integer)', 'EXECUTE')
+  AND NOT has_function_privilege('service_role', 'public.pull_canonical_changes(bigint,integer)', 'EXECUTE')")
 if [[ "$psql_check" != "t" ]]; then
   echo "RPC entry-point lock wrappers or internal implementation privileges are incorrect" >&2
   exit 1
