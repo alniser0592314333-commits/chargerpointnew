@@ -133,6 +133,34 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d authoritative_snapshot_test -v ON_ERROR_STOP=1 -f supabase/tests/authoritative_snapshot_timeout_runtime.test.sql
+      - name: Create isolated database for UUID delivery migration compatibility
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres uuid_delivery_migration_test
+      - name: Prepare UUID delivery migration fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d uuid_delivery_migration_test -v ON_ERROR_STOP=1 -f supabase/tests/uuid_delivery_migration_fixture.sql
+      - name: Apply UUID delivery fix against the original dispatcher
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d uuid_delivery_migration_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261012180000_fix_uuid_min_in_delivery_replay.sql
+      - name: Verify UUID delivery fix before dispatcher rename
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d uuid_delivery_migration_test -v ON_ERROR_STOP=1 -f supabase/tests/uuid_delivery_migration_assert.sql
+      - name: Simulate deployed dispatcher wrapper/implementation split
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d uuid_delivery_migration_test -v ON_ERROR_STOP=1 -f supabase/tests/uuid_delivery_migration_simulate_rename.sql
+      - name: Re-run pending UUID migration after dispatcher rename
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d uuid_delivery_migration_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261012180000_fix_uuid_min_in_delivery_replay.sql
+      - name: Verify UUID delivery fix remains intact after dispatcher rename
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d uuid_delivery_migration_test -v ON_ERROR_STOP=1 -f supabase/tests/uuid_delivery_migration_assert.sql
       - name: Create isolated database for change-log commit-order regression
         env:
           PGPASSWORD: postgres
