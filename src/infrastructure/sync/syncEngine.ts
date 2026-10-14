@@ -380,6 +380,7 @@ export class MockServerSyncTransport implements ServerSyncTransport {
 
 export class SyncEngine {
   private isSyncing = false;
+  public onAuthoritativeReset?: () => void;
   public onDeltaApplied?: (change: ChangeLogEntry, tx?: IDBTransaction) => Promise<void> | void;
 
   constructor(private transport: ServerSyncTransport) {}
@@ -564,6 +565,9 @@ export class SyncEngine {
           // Reset the remote read model, but never erase commands/entities that
           // were created locally and are still waiting for authoritative sync.
           await localDb.clearOperationalData({ preservePendingMutations: true });
+          // The domain read-model maps are separate from localDb's cache. Clear them
+          // before replay so equal-version canonical rows are not incorrectly skipped.
+          this.onAuthoritativeReset?.();
         }
         syncState.reconciliationRequired = false;
         syncState.status = 'READY';
