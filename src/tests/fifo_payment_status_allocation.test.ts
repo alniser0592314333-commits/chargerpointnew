@@ -190,6 +190,16 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
       idempotencyKey,
     });
     expect(retry.success).toBe(true);
+
+    const mismatchedRetry = await topUpCustomerBalance({
+      customerId: custId,
+      amountMinor: 2000,
+      bin: '1234',
+      idempotencyKey,
+    });
+    expect(mismatchedRetry.success).toBe(false);
+    expect(mismatchedRetry.error).toContain('IDEMPOTENCY_CONFLICT');
+
     const matchingCommands = (await localDb.listOutbox()).filter((entry) => entry.commandId === idempotencyKey);
     expect(matchingCommands).toHaveLength(1);
   });
