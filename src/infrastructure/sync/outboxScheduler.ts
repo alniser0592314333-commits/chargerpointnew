@@ -116,16 +116,16 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
       if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
       if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
 
-      // A CANCEL_ORDER mutation must wait for all local commands that still
-      // reference the same order, otherwise a late ADD_ORDER_ITEM could arrive
-      // after the server has already cancelled the order.
-      if (item.commandType === 'CANCEL_ORDER') {
-        for (const other of allOutbox) {
-          if (other.commandId === item.commandId) continue;
-          const op = other.payload as any;
-          if (op?.orderId === payload.id || op?.orderId === payload.orderId || other.aggregateId === payload.id) {
-            deps.add(other.commandId);
-          }
+    }
+    // A CANCEL_ORDER mutation must wait for all local commands that still
+    // reference the same order, otherwise a late ADD_ORDER_ITEM could arrive
+    // after the server has already cancelled the order.
+    if (item.commandType === 'CANCEL_ORDER') {
+      for (const other of allOutbox) {
+        if (other.commandId === item.commandId) continue;
+        const op = other.payload as any;
+        if (op?.orderId === payload.id || op?.orderId === payload.orderId || other.aggregateId === payload.id) {
+          deps.add(other.commandId);
         }
       }
     }
