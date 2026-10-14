@@ -210,6 +210,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
 
     // Device A syncs first -> succeeds (5 -> 6)
     const syncResA = await engineA.synchronize();
+    console.log('CONCURRENT_SYNC_A', JSON.stringify({ result: syncResA, outbox: await localDb.listOutbox() }));
     expect(syncResA.pushed).toBe(1);
 
     const deliverRecordA = await localDb.getOutbox(cmdDeliverId);
@@ -271,6 +272,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     );
 
     const syncResB = await engineB.synchronize();
+    console.log('CONCURRENT_SYNC_B', JSON.stringify({ result: syncResB, outbox: await localDb.listOutbox() }));
     expect(syncResB.pushed).toBe(1);
 
     const cancelRecordB = await localDb.getOutbox(cmdCancelId);
