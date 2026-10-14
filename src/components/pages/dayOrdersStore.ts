@@ -5880,10 +5880,27 @@ export const topUpCustomerBalance = async (
   if (idempotencyKey) {
     const existingCmd = await repoContext.commandRepo.get(commandId);
     if (existingCmd) {
+      const existingPayload = (existingCmd.payload || {}) as Record<string, unknown>;
+      const requestedNote = note?.trim() || undefined;
+      const existingNote = String(existingPayload.reference ?? '').trim() || undefined;
+      const isSamePayment =
+        existingCmd.type === 'CREATE_PAYMENT' &&
+        String(existingPayload.customerId ?? '') === cust.id &&
+        Number(existingPayload.amountMinor) === amountMinor &&
+        String(existingPayload.paymentMethod ?? 'CASH').toUpperCase() === 'CASH' &&
+        existingNote === requestedNote;
       const custBalance = await repoContext.customerRepo.getBalance(cust.id);
+      if (!isSamePayment) {
+        return {
+          success: false,
+          transactionId: commandId,
+          newBalanceMinor: custBalance,
+          error: 'IDEMPOTENCY_CONFLICT: this key was already used for a different payment request',
+        };
+      }
       return {
         success: true,
-        transactionId: (existingCmd.payload as any)?.transactionId || commandId,
+        transactionId: (existingPayload as any)?.transactionId || commandId,
         newBalanceMinor: custBalance,
       };
     }
