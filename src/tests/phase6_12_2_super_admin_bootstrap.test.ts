@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { authService, SUPER_ADMIN_TEST_ACCOUNT, UserSession } from '../services/auth/authService';
 import {
   setSupabaseAuthToken,
   getSupabaseAuthToken,
 } from '../services/supabase/client';
+import * as supabaseClientModule from '../services/supabase/client';
 
 /**
  * Phase 6.12.2: First Real Super Admin Bootstrap Architecture & Invariant Tests
@@ -425,18 +426,21 @@ describe('Phase 6.12.2: First Real Super Admin Bootstrap Architecture Tests', ()
     // Mock Supabase configured
     const originalIsConfigured = authService.isSupabaseConfigured;
     (authService as any).isSupabaseConfigured = () => true;
+    // This test verifies the configured-auth path, not a live Supabase endpoint.
+    // Stub the auth response so it can never contact production or depend on Vite env.
+    const signInSpy = vi.spyOn(supabaseClientModule, 'supabaseSignInWithPassword')
+      .mockResolvedValue({ data: null, error: 'Invalid login credentials' } as any);
 
     try {
-      // Trying to log in with test account when Supabase is configured will attempt real Supabase sign-in and fail
       const session = await authService.login(
         SUPER_ADMIN_TEST_ACCOUNT.email,
         SUPER_ADMIN_TEST_ACCOUNT.pin,
         SUPER_ADMIN_TEST_ACCOUNT.bin
       );
-
-      // Must be null because Supabase endpoint fails without real backend / credentials
       expect(session).toBeNull();
+      expect(signInSpy).toHaveBeenCalledTimes(1);
     } finally {
+      signInSpy.mockRestore();
       (authService as any).isSupabaseConfigured = originalIsConfigured;
     }
   });
