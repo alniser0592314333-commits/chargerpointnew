@@ -85,6 +85,9 @@ describe('Clean Bootstrap Reset Generation & Reconciliation Suite', () => {
       status: 'READY',
       reconciliationRequired: false,
     });
+    // Test B represents a previously bootstrapped client with a durable local
+    // hydration marker; it is not the first-device bootstrap scenario from Test A.
+    await localDb.setInitialHydrationCompleted(true);
 
     // 2. Perform mutation
     await repoContext.dayRepo.save({
