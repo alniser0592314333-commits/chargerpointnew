@@ -4480,11 +4480,17 @@ export const updateOrderWithPhase5Engine = async (
     ];
     const predictedStatus = calculateOrderProjection(predictedItems, order.status);
 
-    if (newStatus === 'pending' && predictedStatus !== 'pending') {
-      throw new ConflictError(`Invalid order status transition from '${predictedStatus}' to 'pending'`);
-    }
-    if (newStatus === 'charging' && predictedStatus !== 'charging') {
-      throw new ConflictError(`Invalid order status transition from '${predictedStatus}' to 'charging'`);
+    // Revalidate projection only when the caller is actually changing the order
+    // status. A note-only edit passes the current status back from the UI; rejecting
+    // that edit because item-level statuses project differently would block ordinary
+    // note edits on existing orders.
+    if (newStatus !== order.status) {
+      if (newStatus === 'pending' && predictedStatus !== 'pending') {
+        throw new ConflictError(`Invalid order status transition from '${predictedStatus}' to 'pending'`);
+      }
+      if (newStatus === 'charging' && predictedStatus !== 'charging') {
+        throw new ConflictError(`Invalid order status transition from '${predictedStatus}' to 'charging'`);
+      }
     }
     if (newStatus === 'cancelled' && order.status !== 'cancelled') {
       validateOrderTransition(order.status, 'cancelled');
