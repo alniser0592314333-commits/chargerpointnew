@@ -137,7 +137,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
         }
 
         if (p_command_type === 'UPDATE_DEVICE_TYPE') {
-          const id = p_payload.id;
+          const id = p_payload.id || payload.p_aggregate_id || payload.p_entity_id;
           if (!id) {
             return { data: null, error: 'Validation Error [P2201]: Device Type ID must be a valid UUID' };
           }
@@ -184,7 +184,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
         }
 
         if (p_command_type === 'RETIRE_DEVICE_TYPE' || p_command_type === 'DELETE_DEVICE_TYPE') {
-          const id = p_payload.id;
+          const id = p_payload.id || payload.p_aggregate_id || payload.p_entity_id;
           const current = serverDeviceTypes.get(id);
           if (!current) {
             return { data: null, error: 'Device Type Not Found [23503]' };
@@ -433,7 +433,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     expect(syncRes2.pushed).toBe(0);
 
     const outbox = await localDb.listOutbox();
-    const staleCmd = outbox.find(o => o.payload && (o.payload as any).nameAr === 'تعديل جيل قديم');
+    const staleCmd = outbox.find(o => o.payload && ((o.payload as any).nameAr === 'تعديل جيل قديم' || (o.payload as any).name_ar === 'تعديل جيل قديم'));
     expect(staleCmd?.status).toBe('rejected');
     expect(staleCmd?.lastError).toContain('RESET_GENERATION_MISMATCH');
   });
