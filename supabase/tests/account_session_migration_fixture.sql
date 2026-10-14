@@ -106,6 +106,10 @@ REVOKE ALL ON FUNCTION public.execute_sync_command(uuid,text,text,uuid,jsonb,int
 GRANT EXECUTE ON FUNCTION public.execute_sync_command(uuid,text,text,uuid,jsonb,integer) TO authenticated;
 
 CREATE TABLE public.session_guard_fixture_audit (marker text NOT NULL);
+ALTER TABLE public.session_guard_fixture_audit ENABLE ROW LEVEL SECURITY;
+CREATE POLICY session_guard_fixture_audit_read
+  ON public.session_guard_fixture_audit FOR SELECT TO authenticated USING (true);
+GRANT SELECT ON TABLE public.session_guard_fixture_audit TO authenticated;
 CREATE FUNCTION public.fixture_sensitive_void(p_marker text)
 RETURNS void
 LANGUAGE plpgsql
