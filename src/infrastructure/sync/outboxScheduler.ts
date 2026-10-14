@@ -129,6 +129,13 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
         }
       }
     }
+    // Day renumbering may depend on a real pending day-creation command,
+    // but it must not inherit generic CREATE_ORDER structural-history dependencies.
+    // If no CREATE_DAY/OPEN_DAY command is pending, the day is assumed to already
+    // exist remotely; a historical failed renumber must not block a newer attempt.
+    else if (item.commandType === 'RENUMBER_DAY_ORDERS') {
+      if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY'], false);
+    }
     // Item commands (DELIVER_ORDER_ITEM, CANCEL_ORDER_ITEM, etc.) depend on ADD_ORDER_ITEM (itemId / orderItemId)
     else if (item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM' || payload.itemId || payload.orderItemId) {
       const targetItemId = payload.itemId || payload.orderItemId;
