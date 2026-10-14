@@ -1005,6 +1005,9 @@ export const resetCanonicalReadModelsForReplay = (): void => {
   ledgerList.length = 0;
   paymentsMap.clear();
   allocationsList.length = 0;
+  reservationsMap.clear();
+  goalsMap.clear();
+  goalRequestsMap.clear();
 };
 
 export const resetStoreMemory = () => {
@@ -1019,6 +1022,9 @@ export const resetStoreMemory = () => {
   ledgerList.length = 0;
   paymentsMap.clear();
   allocationsList.length = 0;
+  reservationsMap.clear();
+  goalsMap.clear();
+  goalRequestsMap.clear();
   storeListeners.clear();
 };
 
