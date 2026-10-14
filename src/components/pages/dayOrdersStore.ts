@@ -981,6 +981,22 @@ export const seedDemoOperationalData = async (): Promise<void> => {
 };
 
 // Memory reset helper for tests to simulate app restart without wiping IndexedDB
+/**
+ * Clear only in-memory canonical projections before a full authoritative replay.
+ * Keep listeners and hydration wiring alive; the replay repopulates these maps.
+ */
+export const resetCanonicalReadModelsForReplay = (): void => {
+  ordersMap.clear();
+  itemsMap.clear();
+  customersMap.clear();
+  devicesMap.clear();
+  daysMap.clear();
+  commandsMap.clear();
+  ledgerList.length = 0;
+  paymentsMap.clear();
+  allocationsList.length = 0;
+};
+
 export const resetStoreMemory = () => {
   isStoreHydrated = false;
   hydrationPromise = null;
