@@ -452,9 +452,16 @@ $rpc_guards$;
 -- Direct calls to the canonical implementation are not needed by clients:
 -- execute_sync_command is the public entry point and its SECURITY DEFINER owner
 -- can invoke this function internally. This closes the dispatcher bypass.
-REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
-  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
-  TO service_role;
+DO $dispatch_privileges$
+BEGIN
+  -- The isolated migration fixture does not install the application's dispatcher.
+  -- In the real app schema, keep direct client access closed; the guarded
+  -- execute_sync_command wrapper invokes it as its SECURITY DEFINER owner.
+  IF to_regprocedure('public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid) FROM PUBLIC, anon, authenticated';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid) TO service_role';
+  END IF;
+END;
+$dispatch_privileges$;
 
 NOTIFY pgrst, 'reload schema';
