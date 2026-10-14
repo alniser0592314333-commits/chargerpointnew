@@ -115,7 +115,7 @@ describe('CENTRAL SYNC BRIDGE ENFORCEMENT & COALESCING AUDIT', () => {
 
     await backgroundPromise;
 
-    expect(reloadResult).toEqual({ pulled: 0 });
+    expect(reloadResult).toMatchObject({ pulled: 0, needsReconciliation: true });
   });
 
   // F. Guard against direct callers of SyncEngine.synchronize in production codebase
