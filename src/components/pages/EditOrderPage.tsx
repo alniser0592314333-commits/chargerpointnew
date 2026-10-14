@@ -50,6 +50,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
 
   const [notes, setNotes] = useState('');
   const [existingItems, setExistingItems] = useState<UIEditOrderItem[]>([]);
+  const [originalExistingItems, setOriginalExistingItems] = useState<UIEditOrderItem[]>([]);
   const [removedItemIds, setRemovedItemIds] = useState<string[]>([]);
   const [newItems, setNewItems] = useState<NewDeviceFormItem[]>([]);
 
@@ -83,7 +84,9 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
           setOrder(ordData);
           setStatus(ordData.status);
           setNotes(ordData.notes || '');
-          setExistingItems(ordData.items.filter((i) => i.status !== 'cancelled'));
+          const editableItems = ordData.items.filter((i) => i.status !== 'cancelled');
+          setExistingItems(editableItems);
+          setOriginalExistingItems(editableItems.map((item) => ({ ...item })));
         } else {
           setErrorMessage(t('orderNotFound'));
         }
@@ -257,6 +260,13 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
         deviceTypeId: n.deviceTypeId,
         hasCharger: n.hasCharger,
       }));
+      const originalById = new Map(originalExistingItems.map((item) => [item.id, item]));
+      const itemsToUpdate = activeExistingItems.flatMap((item) => {
+        const original = originalById.get(item.id);
+        return original && (original.deviceTypeId !== item.deviceTypeId || original.hasCharger !== item.hasCharger)
+          ? [{ itemId: item.id, deviceTypeId: item.deviceTypeId, hasCharger: item.hasCharger }]
+          : [];
+      });
 
       const result = await updateOrderWithPhase5Engine(
         orderId,
@@ -264,7 +274,8 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
         status,
         itemsToAdd,
         removedItemIds,
-        binCode
+        binCode,
+        itemsToUpdate
       );
 
       if (result.success) {
@@ -499,40 +510,74 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
 
         <div className="divide-y divide-gray-100 dark:divide-[#0f302b]">
           {/* Existing Order Items */}
-          {activeExistingItems.map((item, idx) => (
-            <div
-              key={item.id}
-              className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-            >
-              <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-gray-500 dark:text-[#8eb698]">
-                    #{idx + 1}
-                  </span>
-                  <span className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">
-                    {item.deviceName}
-                  </span>
-                  <span className="text-[11px] text-gray-500 dark:text-[#8eb698]">
-                    ({item.hasCharger ? t('withCharger') : t('withoutCharger')})
-                  </span>
+          {activeExistingItems.map((item, idx) => {
+            const selectedOption = deviceOptions.find((option) => option.id === item.deviceTypeId);
+            const canEditDetails = item.status === 'charging';
+            return (
+              <div key={item.id} className="py-3 flex flex-col gap-3 border-b border-gray-100/70 dark:border-[#0f302b]">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-bold text-gray-500 dark:text-[#8eb698]">#{idx + 1}</span>
+                  <span className="text-sm font-bold font-mono text-gray-900 dark:text-[#daf1de]">{formatCurrency(item.priceMinor)}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveExistingItem(item.id)}
+                    className="p-1 rounded-md text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                    title={t('remove')}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-[#8eb698] mb-1">{t('deviceType')}</label>
+                    <select
+                      value={item.deviceTypeId}
+                      disabled={!canEditDetails}
+                      onChange={(e) => {
+                        const option = deviceOptions.find((candidate) => candidate.id === e.target.value);
+                        if (!option) return;
+                        const hasCharger = option.supportsCharger ? item.hasCharger : false;
+                        const priceMinor = Math.max(0, calculateDeviceItemPreviewPrice(option.id, hasCharger, order.customerChargerFeeExempt) - (item.discountSnapshotMinor ?? 0));
+                        setExistingItems((prev) => prev.map((current) => current.id === item.id
+                          ? { ...current, deviceTypeId: option.id, deviceName: option.name, hasCharger, priceMinor }
+                          : current));
+                        setErrorMessage('');
+                      }}
+                      className="w-full rounded-lg border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#061f1c] text-gray-900 dark:text-[#daf1de] text-xs px-3 py-2 disabled:opacity-60"
+                    >
+                      {deviceOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.name} — ({formatCurrency(option.priceMinor)})</option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedOption?.supportsCharger && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-[#8eb698] mb-1">{t('hasChargerOption')}</label>
+                      <div className="flex items-center bg-gray-100 dark:bg-[#041714] p-1 rounded-lg border border-gray-200/60 dark:border-[#14423b] self-start">
+                        <button
+                          type="button"
+                          disabled={!canEditDetails}
+                          onClick={() => setExistingItems((prev) => prev.map((current) => current.id === item.id
+                            ? { ...current, hasCharger: false, priceMinor: Math.max(0, calculateDeviceItemPreviewPrice(current.deviceTypeId, false, order.customerChargerFeeExempt) - (current.discountSnapshotMinor ?? 0)) }
+                            : current))}
+                          className={`px-3 py-1 rounded-md text-xs font-medium disabled:opacity-60 ${!item.hasCharger ? 'bg-white dark:bg-[#0c312b] text-gray-900 dark:text-[#daf1de] shadow-xs font-bold' : 'text-gray-600 dark:text-[#8eb698]'}`}
+                        >{t('withoutCharger')}</button>
+                        <button
+                          type="button"
+                          disabled={!canEditDetails}
+                          onClick={() => setExistingItems((prev) => prev.map((current) => current.id === item.id
+                            ? { ...current, hasCharger: true, priceMinor: Math.max(0, calculateDeviceItemPreviewPrice(current.deviceTypeId, true, order.customerChargerFeeExempt) - (current.discountSnapshotMinor ?? 0)) }
+                            : current))}
+                          className={`px-3 py-1 rounded-md text-xs font-medium disabled:opacity-60 ${item.hasCharger ? 'bg-white dark:bg-[#0c312b] text-emerald-600 dark:text-[#7ae09e] shadow-xs font-bold' : 'text-gray-600 dark:text-[#8eb698]'}`}
+                        >{t('withCharger')}</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {!canEditDetails && <p className="text-[11px] text-amber-700 dark:text-amber-300">{locale === 'ar' ? 'لا يمكن تعديل نوع أو شاحن جهاز تم تسليمه؛ حفاظاً على السجل المالي.' : 'Delivered items cannot be edited to preserve financial history.'}</p>}
               </div>
-
-              <div className="flex items-center gap-4 self-end sm:self-auto shrink-0">
-                <span className="text-sm font-bold font-mono text-gray-900 dark:text-[#daf1de]">
-                  {formatCurrency(item.priceMinor)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveExistingItem(item.id)}
-                  className="p-1 rounded-md text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
-                  title={t('remove')}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Newly Added Items */}
           {newItems.map((dev, idx) => {

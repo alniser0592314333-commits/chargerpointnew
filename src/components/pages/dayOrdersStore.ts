@@ -326,6 +326,7 @@ const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
     case 'CANCEL_ORDER':
       return ['orders', 'orderItems'];
     case 'ADD_ORDER_ITEM':
+    case 'UPDATE_ORDER_ITEM':
     case 'CANCEL_ORDER_ITEM':
       return ['orderItems'];
     case 'DELIVER_ORDER_ITEM':
@@ -2481,7 +2482,7 @@ function createTransactionalRepoContext(
         const payloadRecord = (payload && typeof payload === 'object') ? (payload as any) : {};
         const aggregateId =
           payloadRecord.aggregateId ||
-          ((type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM')
+          ((type === 'ADD_ORDER_ITEM' || type === 'UPDATE_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM')
             ? payloadRecord.orderId
             : type === 'PAYMENT' || type === 'POST_PAYMENT' || type === 'CREATE_PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
               ? payloadRecord.customerId
@@ -2493,7 +2494,7 @@ function createTransactionalRepoContext(
           aggregateType:
             type === 'CREATE_ORDER' || type === 'UPDATE_ORDER' || type === 'CANCEL_ORDER' || type === 'RENUMBER_DAY_ORDERS'
               ? 'orders'
-              : type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM'
+              : type === 'ADD_ORDER_ITEM' || type === 'UPDATE_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM'
               ? 'order_items'
               : type === 'OPEN_DAY' || type === 'CLOSE_DAY'
               ? 'business_days'
@@ -2512,7 +2513,7 @@ function createTransactionalRepoContext(
           mutationKey:
             type === 'RENUMBER_DAY_ORDERS'
               ? `renumber-day:${payloadRecord.dayId || aggregateId}`
-              : type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
+              : type === 'ADD_ORDER_ITEM' || type === 'UPDATE_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
                 ? `order:${payloadRecord.orderId || aggregateId}`
                 : type === 'CREATE_PAYMENT' || type === 'POST_PAYMENT' || type === 'PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
                   ? `customer:${payloadRecord.customerId || aggregateId}`
@@ -4494,6 +4495,7 @@ export interface UIEditOrderItem {
   deviceName: string;
   priceMinor: number;
   hasCharger: boolean;
+  discountSnapshotMinor?: number;
   status: 'charging' | 'delivered' | 'cancelled';
   isExisting: boolean;
 }
@@ -4511,6 +4513,7 @@ export interface UIEditOrderDetail {
   createdAt: string;
   notes?: string;
   items: UIEditOrderItem[];
+  customerChargerFeeExempt: boolean;
 }
 
 export const getOrderForEdit = async (
@@ -4560,6 +4563,7 @@ export const getOrderForEdit = async (
         deviceName: devName,
         priceMinor: i.totalPriceMinor,
         hasCharger: i.hasCharger,
+        discountSnapshotMinor: i.discountSnapshotMinor ?? 0,
         status: i.status,
         isExisting: true,
       };
@@ -4575,6 +4579,7 @@ export const getOrderForEdit = async (
     customerPhone: cust ? cust.phone || '' : '',
     debtLimitMinor: cust ? cust.debtLimitMinor : -2000,
     customerBalanceSnapshotMinor: snapshotMinor,
+    customerChargerFeeExempt: cust?.chargerFeeExempt ?? false,
     status: calculateOrderProjection(orderItems, order.status),
     createdAt: order.createdAt,
     notes: order.notes,
@@ -4642,7 +4647,8 @@ export const updateOrderWithPhase5Engine = async (
   newStatus: 'pending' | 'charging' | 'delivered' | 'cancelled',
   newItemsToAdd: { deviceTypeId: string; hasCharger: boolean }[],
   existingItemIdsToRemove: string[],
-  bin?: string
+  bin?: string,
+  existingItemEdits: { itemId: string; deviceTypeId: string; hasCharger: boolean }[] = []
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     const order = await repoContext.orderRepo.findById(orderId);
@@ -4653,6 +4659,16 @@ export const updateOrderWithPhase5Engine = async (
     const initialItems = await repoContext.itemRepo.findByOrderId(orderId);
     const removeIds = new Set(existingItemIdsToRemove);
     const itemsById = new Map(initialItems.map((item) => [item.id, item]));
+    const editIds = new Set(existingItemEdits.map((edit) => edit.itemId));
+    if (editIds.size !== existingItemEdits.length || existingItemEdits.some((edit) =>
+      !itemsById.has(edit.itemId) || removeIds.has(edit.itemId) || itemsById.get(edit.itemId)?.status !== 'charging'
+    )) {
+      return { success: false, error: 'لا يمكن تعديل جهاز تم تسليمه أو إلغاؤه، أو تغيّرت بيانات الطلب. أعد فتح الطلب وحاول مرة أخرى.' };
+    }
+    for (const edit of existingItemEdits) {
+      const device = await repoContext.deviceRepo.findById(edit.deviceTypeId);
+      if (!device || !device.isActive) return { success: false, error: 'نوع الجهاز المحدد غير متاح. حدّث الصفحة واختر نوعاً فعالاً.' };
+    }
 
     // Validate the complete requested edit before queueing any local command.
     // This prevents a missing/invalid BIN or an impossible status transition from
@@ -4665,6 +4681,7 @@ export const updateOrderWithPhase5Engine = async (
     const hasAnyEdit =
       newNotes !== (order.notes || '') ||
       newItemsToAdd.length > 0 ||
+      existingItemEdits.length > 0 ||
       existingItemIdsToRemove.length > 0 ||
       newStatus !== order.status;
 
@@ -4704,7 +4721,7 @@ export const updateOrderWithPhase5Engine = async (
     );
 
     // Preflight every permission boundary before queueing any part of this edit.
-    if (newNotes !== (order.notes || '') || newItemsToAdd.length > 0) {
+    if (newNotes !== (order.notes || '') || newItemsToAdd.length > 0 || existingItemEdits.length > 0) {
       auth.assertPermission('orders:edit');
     }
     if (existingItemIdsToRemove.length > 0 ||
@@ -4742,7 +4759,13 @@ export const updateOrderWithPhase5Engine = async (
       });
     }
 
-    // 3. Add new items using the existing application boundary.
+    // 3. Update existing charging items through the canonical command boundary.
+    for (const edit of existingItemEdits) {
+      const result = await phase5UseCases.updateOrderItem(auth, edit.itemId, edit.deviceTypeId, edit.hasCharger);
+      if (!result.success) return { success: false, error: (result as any).error || 'فشل تعديل الجهاز. لم يتم تجاهل الخطأ.' };
+    }
+
+    // 4. Add new items using the existing application boundary.
     for (const item of newItemsToAdd) {
       const itemRes = await phase5UseCases.addOrderItem(
         auth,
