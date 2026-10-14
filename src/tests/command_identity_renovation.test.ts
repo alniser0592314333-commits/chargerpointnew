@@ -13,7 +13,6 @@ import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import * as supabaseClient from '../services/supabase/client';
 import { SupabaseSyncTransport } from '../infrastructure/sync/SupabaseSyncTransport';
 import { SyncEngine } from '../infrastructure/sync/syncEngine';
-import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 
 const storageMap = new Map<string, string>();
 const localStorageMock = {
@@ -29,11 +28,11 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     storageMap.clear();
     localStorageMock.setItem('sys_db_version', '6.10.3D');
     localStorageMock.setItem('app_device_id', 'test_device');
+    localStorageMock.setItem('app_auth_session', JSON.stringify({ userId: 'test_admin_user' }));
+    
     await clearAllOperationalData();
     resetStoreMemory();
-    await initializeCanonicalSyncState();
-    setTestAppAuthSession();
-
+    
     supabaseClient.clearStoredSupabaseAuthSession();
     supabaseClient.setSupabaseAuthToken('mock-jwt');
     vi.restoreAllMocks();
@@ -54,12 +53,6 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     let rpcCallCount = 0;
     const rpcCalls: any[] = [];
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (fnName, payload: any) => {
-      if (fnName === 'pull_canonical_changes') {
-        return {
-          data: { changes: [], latestSequence: 0, serverResetGeneration: 1 },
-          error: null,
-        };
-      }
       rpcCallCount++;
       rpcCalls.push({ fnName, payload });
       return {
@@ -73,37 +66,28 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     });
 
     // 2. Prep devices and customer inside localDb
-    await localDb.set('deviceTypes', '10000000-0000-4000-8000-000000000003', {
-      id: '10000000-0000-4000-8000-000000000003', name: 'شاشة آيفون 13 برو', nameAr: 'شاشة آيفون 13 برو', icon: 'smartphone', status: 'ACTIVE', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+    await localDb.set('deviceTypes', 'dev-1', {
+      id: 'dev-1', name: 'شاشة آيفون 13 برو', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
     await localDb.set('deviceTypes', 'dev-2', {
       id: 'dev-2', name: 'بطارية آيفون 13', basePriceMinor: 25000, chargerFeeEnabled: false, isActive: true, sortOrder: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
 
-    const dayId = '10000000-0000-4000-8000-000000000001';
-    const customerId = '10000000-0000-4000-8000-000000000002';
-    await localDb.set('businessDays', dayId, {
-      id: dayId,
-      businessDate: '2029-09-29',
-      status: 'OPEN',
-      isClosed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
-    });
+    const dayId = 'day-2029-09-29';
+    const customerId = 'cust-1234';
     await localDb.set('customers', customerId, {
-      id: customerId, name: 'Test Customer', phone: '123', status: 'ACTIVE', isActive: true, debtLimitMinor: -10000, chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+      id: customerId, name: 'Test Customer', phone: '123', isActive: true, debtLimitMinor: -10000, chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
 
     // Now hydrate memory caches
     await ensureStoreHydrated();
 
     // A. Create Order
-    const createRes = await createOrderWithPhase5Engine(dayId, customerId, [{ deviceTypeId: '10000000-0000-4000-8000-000000000003', hasCharger: true }], 'Initial notes');
+    const createRes = await createOrderWithPhase5Engine(dayId, customerId, [{ deviceTypeId: 'dev-1', hasCharger: true }], 'Initial notes');
     if (!createRes.success) {
       console.error('Create Order Error:', createRes.error);
     }
-    expect(createRes.success, createRes.error).toBe(true);
+    expect(createRes.success).toBe(true);
     const orderId = createRes.order!.id;
 
     // Check Outbox
@@ -123,7 +107,7 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     expect(refreshedCreateCmd?.status).toBe('accepted');
 
     // B. Edit notes (should get a NEW fresh command ID because original is accepted)
-    const editRes = await updateOrderWithPhase5Engine(orderId, 'Updated notes', createRes.order!.status, [], []);
+    const editRes = await updateOrderWithPhase5Engine(orderId, 'Updated notes', 'pending', [], []);
     expect(editRes.success).toBe(true);
 
     outbox = await localDb.listOutbox();
