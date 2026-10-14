@@ -41,7 +41,7 @@ jobs:
           # Test runs must never use the production Supabase project.
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts src/tests/phase6_11_4_delivery_bin_security.test.ts && npx vitest run src/tests/domain.test.ts -t 'Item Removal vs Full Order Cancellation Permission Boundaries'
+        run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts src/tests/phase6_11_4_delivery_bin_security.test.ts src/tests/offline_reactivity_and_delivery_targeting_regression.test.ts && npx vitest run src/tests/domain.test.ts -t 'Item Removal vs Full Order Cancellation Permission Boundaries'
       - name: Run canonical sync engine and delta paging regressions
         env:
           # Test runs must never use the production Supabase project.
