@@ -75,7 +75,10 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     expect(payment.success).toBe(true);
 
     const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
+    if (delivery.item) {
+      const persistedDeliveredItem = await localDb.get<any>('orderItems', delivery.item.id);
+      if (persistedDeliveredItem) effectiveItems.set(delivery.item.id, persistedDeliveredItem);
+    }
 
     const statuses = computeCustomerOrderPaymentStatuses(
       custId,
@@ -108,7 +111,10 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     expect(payment.success).toBe(true);
 
     const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
+    if (delivery.item) {
+      const persistedDeliveredItem = await localDb.get<any>('orderItems', delivery.item.id);
+      if (persistedDeliveredItem) effectiveItems.set(delivery.item.id, persistedDeliveredItem);
+    }
 
     const statuses = computeCustomerOrderPaymentStatuses(
       custId,
@@ -226,7 +232,10 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     expect(delivery.success).toBe(true);
 
     const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
+    if (delivery.item) {
+      const persistedDeliveredItem = await localDb.get<any>('orderItems', delivery.item.id);
+      if (persistedDeliveredItem) effectiveItems.set(delivery.item.id, persistedDeliveredItem);
+    }
 
     const statuses = computeCustomerOrderPaymentStatuses(
       custId,
