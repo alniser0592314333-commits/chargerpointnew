@@ -3474,7 +3474,11 @@ const buildPaymentProjectionIndexes = (
   }
 
   for (const list of pendingPaymentsByCustomer.values()) {
-    list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    list.sort((a, b) => {
+      const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (timeDifference !== 0) return timeDifference;
+      return Number(a.sequence ?? 0) - Number(b.sequence ?? 0);
+    });
   }
 
   for (const order of effectiveOrdersMap.values()) {
