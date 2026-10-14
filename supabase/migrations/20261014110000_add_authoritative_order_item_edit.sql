@@ -160,7 +160,7 @@ BEGIN
             WHEN 'UPDATE_ORDER_ITEM' THEN
             v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
             v_item_uuid := COALESCE((p_payload->>'itemId')::UUID, (p_payload->>'orderItemId')::UUID, (p_payload->>'id')::UUID);
-            SELECT oi.*, o.customer_id, c.charger_fee_exempt, c.status AS cust_status
+            SELECT oi.*, o.customer_id, o.status AS order_status, c.charger_fee_exempt, c.status AS cust_status
             INTO v_rec_item
             FROM public.order_items oi
             JOIN public.orders o ON o.id = oi.order_id
@@ -174,7 +174,10 @@ BEGIN
             IF v_expected_version IS NOT NULL AND v_rec_item.version <> v_expected_version THEN
                 RAISE EXCEPTION 'VERSION_CONFLICT [409]: Order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version USING ERRCODE='P0409';
             END IF;
-            IF v_rec_item.operational_status <> 'CHARGING' OR v_rec_item.financial_status <> 'UNRECOGNIZED' THEN
+            IF v_rec_item.order_status = 'cancelled' THEN
+                RAISE EXCEPTION 'Cannot edit an item in a cancelled order' USING ERRCODE='P2201';
+            END IF;
+            IF v_rec_item.operational_status IS DISTINCT FROM 'CHARGING' OR v_rec_item.financial_status IS DISTINCT FROM 'UNRECOGNIZED' THEN
                 RAISE EXCEPTION 'Only undelivered, financially unrecognized order items can be edited' USING ERRCODE='P2201';
             END IF;
             IF v_rec_item.cust_status = 'DELETED' THEN
@@ -192,7 +195,7 @@ BEGIN
             END IF;
 
             v_customer_exempt := COALESCE(v_rec_item.charger_fee_exempt, FALSE);
-            v_has_charger := COALESCE((p_payload->>'hasCharger')::BOOLEAN, (p_payload->>'has_charger')::BOOLEAN, FALSE);
+            v_has_charger := CASE WHEN v_charger_applicable THEN COALESCE((p_payload->>'hasCharger')::BOOLEAN, (p_payload->>'has_charger')::BOOLEAN, FALSE) ELSE FALSE END;
             IF v_charger_applicable AND NOT v_customer_exempt AND NOT v_has_charger THEN
                 v_authoritative_charger_fee := 50;
             ELSE
