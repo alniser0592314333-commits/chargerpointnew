@@ -83,8 +83,10 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
         ) {
           if (
             !validTypes ||
-            validTypes.includes(other.commandType) ||
-            validTypes.includes(other.aggregateType)
+            // Dependency types describe prerequisite commands, not every command
+            // that happens to mutate the same aggregate. Matching aggregateType here
+            // incorrectly makes unrelated updates/closures block structural operations.
+            validTypes.includes(other.commandType)
           ) {
             deps.add(other.commandId);
             matchedInActiveOutbox = true;
@@ -110,22 +112,29 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     };
 
     // CREATE_ORDER depends on CREATE_DAY / OPEN_DAY (dayId) and CREATE_CUSTOMER (customerId)
-    if (item.commandType === 'CREATE_ORDER' || item.aggregateType === 'orders') {
+    if (item.commandType === 'CREATE_ORDER') {
       if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
       if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
 
-      // A CANCEL_ORDER mutation must wait for all local commands that still
-      // reference the same order, otherwise a late ADD_ORDER_ITEM could arrive
-      // after the server has already cancelled the order.
-      if (item.commandType === 'CANCEL_ORDER') {
-        for (const other of allOutbox) {
-          if (other.commandId === item.commandId) continue;
-          const op = other.payload as any;
-          if (op?.orderId === payload.id || op?.orderId === payload.orderId || other.aggregateId === payload.id) {
-            deps.add(other.commandId);
-          }
+    }
+    // A CANCEL_ORDER mutation must wait for all local commands that still
+    // reference the same order, otherwise a late ADD_ORDER_ITEM could arrive
+    // after the server has already cancelled the order.
+    if (item.commandType === 'CANCEL_ORDER') {
+      for (const other of allOutbox) {
+        if (other.commandId === item.commandId) continue;
+        const op = other.payload as any;
+        if (op?.orderId === payload.id || op?.orderId === payload.orderId || other.aggregateId === payload.id) {
+          deps.add(other.commandId);
         }
       }
+    }
+    // Day renumbering may depend on a real pending day-creation command,
+    // but it must not inherit generic CREATE_ORDER structural-history dependencies.
+    // If no CREATE_DAY/OPEN_DAY command is pending, the day is assumed to already
+    // exist remotely; a historical failed renumber must not block a newer attempt.
+    else if (item.commandType === 'RENUMBER_DAY_ORDERS') {
+      if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY'], false);
     }
     // Item commands (DELIVER_ORDER_ITEM, CANCEL_ORDER_ITEM, etc.) depend on ADD_ORDER_ITEM (itemId / orderItemId)
     else if (item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM' || payload.itemId || payload.orderItemId) {
@@ -404,8 +413,12 @@ export class OutboxScheduler {
             );
 
             if (!entityExistsLocally) {
+              // Only CREATE_ORDER requires its day to be created/opened first.
+              // Day-wide operations such as RENUMBER_DAY_ORDERS target an existing day;
+              // a historical failed command on that day must not masquerade as a missing
+              // day-creation prerequisite.
               const isDayDep =
-                (candidate.commandType === 'CREATE_ORDER' || candidate.aggregateType === 'orders') &&
+                candidate.commandType === 'CREATE_ORDER' &&
                 (candidate.payload as any)?.dayId === depId;
               const isOrderDep =
                 (candidate.commandType === 'ADD_ORDER_ITEM' || candidate.aggregateType === 'order_items') &&
