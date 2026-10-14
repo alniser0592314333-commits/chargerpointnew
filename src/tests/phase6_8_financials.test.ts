@@ -239,8 +239,8 @@ describe('Phase 6.8 & 6.8.x: Financials Overview, Customer Ledgers & In-Context 
     expect(history[0].postBalanceMinor).toBe(10100);
   });
 
-  // 11. Command outbox registration for customer credit
-  it('11. Customer credit operation records authoritative outbox command for offline sync', async () => {
+  // 11. Command outbox registration for a real customer payment
+  it('11. Customer top-up records a CREATE_PAYMENT command for offline sync', async () => {
     await topUpCustomerBalance({
       customerId: 'cust-2',
       amountMinor: 3000,
@@ -249,9 +249,9 @@ describe('Phase 6.8 & 6.8.x: Financials Overview, Customer Ledgers & In-Context 
     });
 
     const outbox = await localDb.listOutbox();
-    const creditCommands = outbox.filter((c) => c.commandType === 'CREATE_CUSTOMER_CREDIT');
-    expect(creditCommands.length).toBeGreaterThan(0);
-    expect((creditCommands[0].payload as any).customerId).toBe('cust-2');
+    const paymentCommands = outbox.filter((c) => c.commandType === 'CREATE_PAYMENT');
+    expect(paymentCommands.length).toBeGreaterThan(0);
+    expect((paymentCommands[0].payload as any).customerId).toBe('cust-2');
   });
 
   // 12. Unit Test: Authoritative BIN Verifier with Correct / Incorrect values
