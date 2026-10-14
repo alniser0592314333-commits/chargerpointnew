@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { setTestAppAuthSession } from './utils/testSetup';
 import { localDb } from '../infrastructure/localDb/localDb';
 import {
   computeCustomerOrderPaymentStatuses,
@@ -19,6 +20,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
   beforeEach(async () => {
     await localDb.clear();
     if (typeof localStorage !== 'undefined') localStorage.clear();
+    setTestAppAuthSession();
     resetStoreMemory();
     await seedDemoOperationalData();
     await ensureStoreHydrated();
