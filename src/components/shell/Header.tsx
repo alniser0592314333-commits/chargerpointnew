@@ -161,18 +161,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   const badge = getBadgeStyle();
 
-  // Page title mapping based on currentPath
-  const getPageTitle = () => {
-    if (currentPath === '/app' || currentPath === '/app/') return t('navHome');
-    if (currentPath.startsWith('/app/days')) return t('navDaysOrders');
-    if (currentPath.startsWith('/app/customers')) return t('navCustomers');
-    if (currentPath.startsWith('/app/financials')) return t('navFinancials');
-    if (currentPath.startsWith('/app/goals')) return t('navGoals');
-    if (currentPath.startsWith('/app/notifications')) return t('navNotificationsRequests');
-    if (currentPath.startsWith('/app/settings/qr')) return t('navQrDesign');
-    if (currentPath.startsWith('/app/settings')) return t('navSettings');
-    return t('systemManagementTitle');
-  };
+  // Keep the product brand fixed in the shared header, independent of the active page.
+  const brandTitle = locale === 'ar' ? 'نقطة الشحن' : 'Charging Point';
 
   return (
     <header className="bg-white dark:bg-[#072420] border-b border-gray-200 dark:border-[#123d37] px-4 py-2.5 sm:py-3 transition-colors sticky top-0 z-30 shadow-2xs">
@@ -182,14 +172,14 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenMobileNav}
-            aria-label={activeLogo.name ? `${activeLogo.name} - ${getPageTitle()}` : getPageTitle()}
+            aria-label={activeLogo.name ? `${activeLogo.name} - ${brandTitle}` : brandTitle}
             title={activeLogo.name || t('systemManagementTitle')}
             className="flex items-center gap-2.5 shrink-0 cursor-pointer p-1.5 -ms-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-[#0c312b] transition-all select-none"
             data-testid="header-brand-identity"
           >
             <AppLogo size={32} variant="auto" className="shrink-0" />
             <span className="font-bold text-sm sm:text-base text-gray-900 dark:text-[#daf1de] tracking-tight truncate max-w-[200px] sm:max-w-[300px]">
-              {getPageTitle()}
+              {brandTitle}
             </span>
           </button>
         </div>
