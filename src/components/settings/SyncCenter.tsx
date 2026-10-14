@@ -843,7 +843,7 @@ export const SyncCenter: React.FC = () => {
         <div className="space-y-4">
           
           {/* Top Control Action Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-gray-50 dark:bg-[#041714] border border-gray-200/80 dark:border-[#123832]">
+          <div className="flex flex-wrap items-center justify-between gap-3 py-3 border-b border-gray-200/80 dark:border-[#123832]">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-gray-700 dark:text-[#daf1de]">
                 {locale === 'ar' ? 'إجراءات المزامنة السريعة:' : 'Quick Sync Actions:'}
@@ -901,77 +901,29 @@ export const SyncCenter: React.FC = () => {
             </div>
           </div>
 
-          {/* Interactive Metric Cards (Clicking opens/filters to that metric) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            
-            {/* Pending Card */}
-            <div
-              onClick={() => handleOpenMetricFilter('PENDING')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] ${
-                sessionFilter === 'PENDING'
-                  ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-500 shadow-sm'
-                  : 'bg-white dark:bg-[#06201c] border-gray-200/80 dark:border-[#123832]'
-              }`}
-            >
-              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block">
-                {locale === 'ar' ? 'بانتظار المزامنة' : 'Pending Queue'}
-              </span>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{pendingCount}</span>
-                <Clock className="w-4 h-4 text-blue-500" />
-              </div>
-            </div>
-
-            {/* Blocked Card (Clicking switches to BLOCKED filter) */}
-            <div
-              onClick={() => handleOpenMetricFilter('BLOCKED')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] ${
-                sessionFilter === 'BLOCKED'
-                  ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-500 shadow-sm'
-                  : 'bg-white dark:bg-[#06201c] border-gray-200/80 dark:border-[#123832]'
-              }`}
-            >
-              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block font-semibold text-amber-700 dark:text-amber-400">
-                {locale === 'ar' ? 'محجوزة (تعتمد على أمر)' : 'Blocked Deps'}
-              </span>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-base font-extrabold text-amber-700 dark:text-amber-300">{blockedCount}</span>
-                <Lock className="w-4 h-4 text-amber-500 animate-bounce" />
-              </div>
-            </div>
-
-            {/* Failed Card */}
-            <div
-              onClick={() => handleOpenMetricFilter('FAILED')}
-              className={`p-3 rounded-xl border cursor-pointer transition-all hover:scale-[1.02] ${
-                sessionFilter === 'FAILED'
-                  ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-500 shadow-sm'
-                  : 'bg-white dark:bg-[#06201c] border-gray-200/80 dark:border-[#123832]'
-              }`}
-            >
-              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block">
-                {locale === 'ar' ? 'أخطاء موثقة' : 'Failed Count'}
-              </span>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{failedCount}</span>
-                <AlertTriangle className="w-4 h-4 text-rose-500" />
-              </div>
-            </div>
-
-            {/* Last Sync */}
-            <div className="p-3 rounded-xl bg-white dark:bg-[#06201c] border border-gray-200/80 dark:border-[#123832]">
-              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block">
-                {locale === 'ar' ? 'آخر مزامنة' : 'Last Sync'}
-              </span>
-              <span className="text-[11px] font-semibold text-gray-800 dark:text-[#daf1de] block mt-1 truncate">
-                {lastPulledAt ? formatDate(lastPulledAt) : (locale === 'ar' ? 'غير متوفر' : 'Not available')}
-              </span>
+          {/* Compact, flat status metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 border-y border-gray-200/80 dark:border-[#123832] divide-x divide-gray-200/80 dark:divide-[#123832]">
+            <button type="button" onClick={() => handleOpenMetricFilter('PENDING')} className="p-3 text-start hover:bg-gray-50/70 dark:hover:bg-[#0b2924]/50 transition-colors">
+              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block">{locale === 'ar' ? 'بانتظار المزامنة' : 'Pending Queue'}</span>
+              <span className="mt-1 flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-[#daf1de]"><Clock className="w-4 h-4 text-blue-500" />{pendingCount}</span>
+            </button>
+            <button type="button" onClick={() => handleOpenMetricFilter('BLOCKED')} className="p-3 text-start hover:bg-gray-50/70 dark:hover:bg-[#0b2924]/50 transition-colors">
+              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block">{locale === 'ar' ? 'محجوزة لاعتماديات' : 'Blocked Dependencies'}</span>
+              <span className="mt-1 flex items-center gap-2 text-sm font-bold text-amber-700 dark:text-amber-300"><Lock className="w-4 h-4 text-amber-500" />{blockedCount}</span>
+            </button>
+            <button type="button" onClick={() => handleOpenMetricFilter('FAILED')} className="p-3 text-start hover:bg-gray-50/70 dark:hover:bg-[#0b2924]/50 transition-colors">
+              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block">{locale === 'ar' ? 'أخطاء موثقة' : 'Failed Count'}</span>
+              <span className="mt-1 flex items-center gap-2 text-sm font-bold text-rose-700 dark:text-rose-300"><AlertTriangle className="w-4 h-4 text-rose-500" />{failedCount}</span>
+            </button>
+            <div className="p-3">
+              <span className="text-[11px] text-gray-500 dark:text-[#8eb698] block">{locale === 'ar' ? 'آخر مزامنة' : 'Last Sync'}</span>
+              <span className="text-[11px] font-semibold text-gray-800 dark:text-[#daf1de] block mt-1 truncate">{lastPulledAt ? formatDate(lastPulledAt) : (locale === 'ar' ? 'غير متوفر' : 'Not available')}</span>
             </div>
           </div>
 
           {/* Dedicated BIN authorization queue. This is independent from dependency-blocked items. */}
           {binRequiredCount > 0 && (
-            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800/80 space-y-3">
+            <div className="py-3 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5 text-emerald-900 dark:text-emerald-200 text-xs">
                   <ShieldAlert className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -1111,7 +1063,7 @@ export const SyncCenter: React.FC = () => {
 
           {/* Prominent Action Banner when Blocked Items Exist */}
           {blockedCount > 0 && (
-            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="py-3 border-b border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200 text-xs">
                 <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                 <span>
