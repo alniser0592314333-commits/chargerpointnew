@@ -1,7 +1,7 @@
 -- Add server-authoritative editing for undelivered order-item details.
 -- Only CHARGING + UNRECOGNIZED items are mutable; delivered/financially recognized
 -- items remain immutable so no financial history is rewritten by an operational edit.
-CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(
+CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command_unlocked(
     p_command_id UUID,
     p_command_type TEXT,
     p_payload JSONB,
