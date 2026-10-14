@@ -123,7 +123,7 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     expect(refreshedCreateCmd?.status).toBe('accepted');
 
     // B. Edit notes (should get a NEW fresh command ID because original is accepted)
-    const editRes = await updateOrderWithPhase5Engine(orderId, 'Updated notes', createRes.order!.status, [], []);
+    const editRes = await updateOrderWithPhase5Engine(orderId, 'Updated notes', 'charging', [], []);
     expect(editRes.success).toBe(true);
 
     outbox = await localDb.listOutbox();
