@@ -236,7 +236,6 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     setTransactionCommittedHook(() => {
       globalSyncBridge.notifyOutboxWorkAvailable().catch(() => {});
     });
-    vi.restoreAllMocks();
   });
 
   // TEST A: UPDATE DEVICE TYPE SUCCESS
