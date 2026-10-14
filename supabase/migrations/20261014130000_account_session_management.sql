@@ -399,6 +399,7 @@ BEGIN
     SELECT proc.oid, proc.proname, proc.proargnames, proc.pronargs, proc.proretset,
            proc.prorettype,
            CASE WHEN proc.provolatile = 'v' THEN 'VOLATILE' ELSE 'STABLE' END AS wrapper_volatility,
+           has_function_privilege('service_role', proc.oid, 'EXECUTE') AS service_role_exec,
            oidvectortypes(proc.proargtypes) AS identity_args,
            pg_get_function_arguments(proc.oid) AS full_args,
            pg_get_function_result(proc.oid) AS result_type
@@ -476,9 +477,17 @@ BEGIN
       v_func.proname, v_identity_args
     );
     EXECUTE format(
-      'GRANT EXECUTE ON FUNCTION public.%I(%s) TO authenticated, service_role',
+      'GRANT EXECUTE ON FUNCTION public.%I(%s) TO authenticated',
       v_func.proname, v_identity_args
     );
+    -- Preserve the pre-migration service_role execute grant instead of
+    -- broadening server-role access to every RPC that authenticated can call.
+    IF v_func.service_role_exec THEN
+      EXECUTE format(
+        'GRANT EXECUTE ON FUNCTION public.%I(%s) TO service_role',
+        v_func.proname, v_identity_args
+      );
+    END IF;
   END LOOP;
 END;
 $rpc_guards$;
