@@ -1203,6 +1203,20 @@ export class IndexedDBLocalDatabase {
     return Array.from(this.memoryOutbox.values());
   }
 
+  /**
+   * Generate a monotonic per-device outbox timestamp. ISO timestamps have
+   * millisecond precision, so Date.now() alone can assign equal timestamps to
+   * consecutive commands and erase their causal order after a reload.
+   */
+  getNextOutboxTimestamp(): string {
+    let latestTimestamp = 0;
+    for (const record of this.memoryOutbox.values()) {
+      const parsed = Date.parse(record.createdAt || '');
+      if (Number.isFinite(parsed)) latestTimestamp = Math.max(latestTimestamp, parsed);
+    }
+    return new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString();
+  }
+
   getHistorySync(historyId: ID): SyncHistoryRecord | null {
     return this.memorySyncHistory.get(historyId) || null;
   }
