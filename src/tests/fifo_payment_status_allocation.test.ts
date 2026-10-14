@@ -76,20 +76,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(payment.success).toBe(true);
 
-    const persistedItems = await localDb.list<any>('orderItems');
-    const effectiveItems = new Map(
-      persistedItems
-        .filter((item) => item.orderId === order.id)
-        .map((item) => [item.id, item]),
-    );
-
-    const persistedOrder = await localDb.get<any>('orders', order.id);
-    expect(persistedOrder).toBeTruthy();
-    const statuses = computeCustomerOrderPaymentStatuses(
-      custId,
-      new Map([[order.id, persistedOrder]]),
-      effectiveItems
-    );
+    const statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(order.id)?.paymentStatus).toBe('PAID');
   });
 
@@ -115,20 +102,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(payment.success).toBe(true);
 
-    const persistedItems = await localDb.list<any>('orderItems');
-    const effectiveItems = new Map(
-      persistedItems
-        .filter((item) => item.orderId === order.id)
-        .map((item) => [item.id, item]),
-    );
-
-    const persistedOrder = await localDb.get<any>('orders', order.id);
-    expect(persistedOrder).toBeTruthy();
-    const statuses = computeCustomerOrderPaymentStatuses(
-      custId,
-      new Map([[order.id, persistedOrder]]),
-      effectiveItems
-    );
+    const statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(order.id)?.paymentStatus).toBe('PARTIAL');
     expect(statuses.get(order.id)?.allocatedAmountMinor).toBe(1000);
   });
@@ -239,20 +213,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
     expect(delivery.success).toBe(true);
 
-    const persistedItems = await localDb.list<any>('orderItems');
-    const effectiveItems = new Map(
-      persistedItems
-        .filter((item) => item.orderId === order.id)
-        .map((item) => [item.id, item]),
-    );
-
-    const persistedOrder = await localDb.get<any>('orders', order.id);
-    expect(persistedOrder).toBeTruthy();
-    const statuses = computeCustomerOrderPaymentStatuses(
-      custId,
-      new Map([[order.id, persistedOrder]]),
-      effectiveItems
-    );
+    const statuses = computeCustomerOrderPaymentStatuses(custId);
 
     expect(statuses.get(order.id)?.paymentStatus).toBe('UNPAID');
     expect(statuses.get(order.id)?.allocatedAmountMinor).toBe(0);
