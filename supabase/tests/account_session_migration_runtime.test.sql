@@ -73,6 +73,15 @@ BEGIN
   IF EXISTS (SELECT 1 FROM auth.refresh_tokens WHERE user_id='11111111-1111-4111-8111-111111111111' AND revoked=false) THEN RAISE EXCEPTION 'All-session revoke left a refresh token active'; END IF;
 END $assert$;
 
+-- Preserve service_role execute grants exactly: a guarded wrapper must not
+-- accidentally broaden server-role access to an RPC that did not grant it.
+DO $assert$
+BEGIN
+  IF has_function_privilege('service_role', 'public.fixture_sensitive_read()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Migration unexpectedly granted service_role access to an authenticated-only RPC';
+  END IF;
+END $assert$;
+
 -- Direct browser roles have no table access and anonymous callers cannot execute RPCs.
 DO $assert$
 BEGIN
