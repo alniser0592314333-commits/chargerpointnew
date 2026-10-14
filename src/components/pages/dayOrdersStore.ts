@@ -4415,7 +4415,8 @@ export const updateCustomer = async (
     phone?: string;
     debtLimitMinor?: number;
     isActive?: boolean;
-  }
+  },
+  bin?: string
 ): Promise<UICustomerDetail> => {
   await ensureStoreHydrated();
   let cust = customersMap.get(customerId);
@@ -4439,12 +4440,18 @@ export const updateCustomer = async (
   };
 
   const customerAuth = getAuthorizedAdminContext();
-  const updateResult = await phase5UseCases.updateCustomer(customerAuth, updated.id, {
-    name: updated.name,
-    phone: updated.phone,
-    debtLimitMinor: updated.debtLimitMinor,
-    isActive: updated.isActive,
-  });
+  const customerUpdates: Partial<CustomerEntity> = {
+    ...(data.name !== undefined ? { name: updated.name } : {}),
+    ...(data.phone !== undefined ? { phone: updated.phone } : {}),
+    ...(data.debtLimitMinor !== undefined ? { debtLimitMinor: updated.debtLimitMinor } : {}),
+    ...(data.isActive !== undefined ? { isActive: updated.isActive } : {}),
+  };
+  const updateResult = await phase5UseCases.updateCustomer(
+    customerAuth,
+    updated.id,
+    customerUpdates,
+    data.debtLimitMinor !== undefined ? bin : undefined
+  );
   if (!updateResult.success) {
     throw new Error(('error' in updateResult ? updateResult.error : undefined) || 'فشل تحديث بيانات العميل');
   }

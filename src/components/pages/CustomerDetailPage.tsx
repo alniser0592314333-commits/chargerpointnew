@@ -91,6 +91,7 @@ const [isLoading, setIsLoading] = useState(true);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editDebtLimit, setEditDebtLimit] = useState('');
+  const [editBin, setEditBin] = useState('');
   const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -307,6 +308,7 @@ const [isLoading, setIsLoading] = useState(true);
     setEditName(customer.name);
     setEditPhone(customer.phone || '');
     setEditDebtLimit(`${Math.abs(customer.debtLimitMinor / 100)}`);
+    setEditBin('');
     setEditIsActive(customer.isActive);
     setEditError('');
     setIsEditModalOpen(true);
@@ -321,19 +323,39 @@ const [isLoading, setIsLoading] = useState(true);
     }
 
     const debtNum = parseFloat(editDebtLimit);
-    const debtLimitMinor = isNaN(debtNum) ? customer.debtLimitMinor : -Math.abs(debtNum * 100);
+    const debtLimitMinor = isNaN(debtNum)
+      ? customer.debtLimitMinor
+      : -Math.abs(Math.round(debtNum * 100));
+    const debtLimitChanged = debtLimitMinor !== customer.debtLimitMinor;
+
+    if (debtLimitChanged && !hasPermission('customers:debt-limit')) {
+      setEditError(locale === 'ar' ? 'غير مصرح بتعديل سقف الدين' : 'Not authorized to change debt limit');
+      return;
+    }
+    if (debtLimitChanged) {
+      const validation = validateBinFormat(editBin, locale);
+      if (!validation.valid) {
+        setEditError(validation.error || t('invalidBinError'));
+        return;
+      }
+    }
 
     setIsSavingEdit(true);
     setEditError('');
     try {
-      const updated = await updateCustomer(customer.id, {
-        name: editName.trim(),
-        phone: editPhone.trim(),
-        debtLimitMinor,
-        isActive: editIsActive,
-      });
+      const updated = await updateCustomer(
+        customer.id,
+        {
+          name: editName.trim(),
+          phone: editPhone.trim(),
+          ...(debtLimitChanged ? { debtLimitMinor } : {}),
+          isActive: editIsActive,
+        },
+        debtLimitChanged ? editBin.trim() : undefined
+      );
       setCustomer(updated);
       setIsEditModalOpen(false);
+      setEditBin('');
       showToast(
         locale === 'ar' ? 'تم حفظ بيانات العميل بنجاح' : 'Customer updated successfully',
         'success'
@@ -1280,6 +1302,23 @@ const [isLoading, setIsLoading] = useState(true);
                 }`}
               />
             </div>
+
+            {hasPermission('customers:debt-limit') && (
+              <div className="space-y-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-[#8eb698]">
+                  {t('adminPinLabel')} (BIN) — {locale === 'ar' ? 'مطلوب عند تعديل سقف الدين' : 'required when changing debt limit'}
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={editBin}
+                  onChange={(e) => setEditBin(e.target.value)}
+                  placeholder={locale === 'ar' ? 'أدخل BIN للتفويض' : 'Enter BIN to authorize'}
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-[#061f1c] border border-gray-200 dark:border-[#14423b] rounded-xl text-gray-900 dark:text-[#daf1de] placeholder-gray-400 dark:placeholder-[#5e8674] focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                />
+              </div>
+            )}
 
             <div className="flex items-center gap-2 pt-1">
               <input
