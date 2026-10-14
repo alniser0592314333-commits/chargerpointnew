@@ -287,4 +287,175 @@ GRANT EXECUTE ON FUNCTION public.revoke_my_account_session(uuid) TO authenticate
 GRANT EXECUTE ON FUNCTION public.revoke_other_account_sessions() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.revoke_all_account_sessions() TO authenticated;
 
+
+
+-- Central server-side gate used by the exposed table policies and guarded RPC
+-- wrappers below. A valid but not-yet-registered Auth session is tolerated for
+-- rollout compatibility; missing/expired Auth sessions and explicitly revoked
+-- registry rows are rejected.
+CREATE OR REPLACE FUNCTION public.assert_my_account_session_active()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Authentication session is revoked, expired, or unavailable'
+      USING ERRCODE = '28000';
+  END IF;
+END;
+$;
+REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.assert_my_account_session_active() TO authenticated, service_role;
+
+-- Add the session gate to existing authenticated-only RLS policies without
+-- changing their business predicates. Public/anon policies are deliberately
+-- untouched (e.g. public QR resolution).
+DO $policies$
+DECLARE
+  p record;
+  v_using text;
+  v_check text;
+BEGIN
+  FOR p IN
+    SELECT schemaname, tablename, policyname, cmd, roles, qual, with_check
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND array_length(roles, 1) = 1
+      AND roles[1] = 'authenticated'::name
+      AND tablename <> 'account_sessions'
+  LOOP
+    IF p.cmd IN ('SELECT', 'UPDATE', 'DELETE', 'ALL') THEN
+      v_using := COALESCE(p.qual, 'true');
+      EXECUTE format(
+        'ALTER POLICY %I ON %I.%I USING ((%s) AND public.is_my_account_session_active())',
+        p.policyname, p.schemaname, p.tablename, v_using
+      );
+    END IF;
+
+    IF p.cmd IN ('INSERT', 'UPDATE', 'ALL') THEN
+      -- For UPDATE/ALL with no explicit WITH CHECK, PostgreSQL normally
+      -- inherits USING. Preserve that effective predicate before adding gate.
+      v_check := COALESCE(p.with_check, p.qual, 'true');
+      EXECUTE format(
+        'ALTER POLICY %I ON %I.%I WITH CHECK ((%s) AND public.is_my_account_session_active())',
+        p.policyname, p.schemaname, p.tablename, v_check
+      );
+    END IF;
+  END LOOP;
+END;
+$policies$;
+
+-- SECURITY DEFINER bypasses table RLS, so protect callable authenticated RPCs
+-- independently. Rename the existing implementation (preserving its body and
+-- internal dependencies), then install a same-signature gate wrapper. Public
+-- login/bootstrap/branding and public QR resolver RPCs are intentionally
+-- excluded because they must work before an authenticated app session exists.
+DO $rpc_guards$
+DECLARE
+  p record;
+  v_impl_name text;
+  v_identity_args text;
+  v_full_args text;
+  v_result_type text;
+  v_call_args text;
+  v_body text;
+  v_create_sql text;
+BEGIN
+  FOR p IN
+    SELECT p.oid, p.proname, p.proargnames, p.pronargs, p.proretset,
+           p.prorettype, pg_get_function_identity_arguments(p.oid) AS identity_args,
+           pg_get_function_arguments(p.oid) AS full_args,
+           pg_get_function_result(p.oid) AS result_type
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.prokind = 'f'
+      AND p.prosecdef
+      AND p.prorettype <> 'trigger'::regtype
+      AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+      AND p.proname NOT IN (
+        'is_my_account_session_active',
+        'assert_my_account_session_active',
+        'register_my_account_session',
+        'get_my_account_sessions',
+        'revoke_my_account_session',
+        'revoke_other_account_sessions',
+        'revoke_all_account_sessions',
+        'check_system_bootstrapped',
+        'is_system_bootstrapped',
+        'bootstrap_first_super_admin',
+        'get_email_by_username',
+        'get_global_app_identity',
+        'public_resolve_customer_qr',
+        'public_resolve_order_qr'
+      )
+      AND p.proname NOT LIKE '%\_session\_guarded\_impl' ESCAPE '\'
+  LOOP
+    v_impl_name := left(p.proname || '__session_guarded_impl', 63);
+    v_identity_args := p.identity_args;
+    v_full_args := p.full_args;
+    v_result_type := p.result_type;
+    v_call_args := '';
+    IF p.pronargs > 0 THEN
+      SELECT string_agg('
+ || g.i::text, ', ' ORDER BY g.i)
+      INTO v_call_args
+      FROM generate_series(1, p.pronargs) AS g(i);
+    END IF;
+
+    EXECUTE format(
+      'ALTER FUNCTION public.%I(%s) RENAME TO %I',
+      p.proname, v_identity_args, v_impl_name
+    );
+
+    IF p.proretset THEN
+      v_body := format(
+        'BEGIN PERFORM public.assert_my_account_session_active(); RETURN QUERY SELECT * FROM public.%I(%s); RETURN; END;',
+        v_impl_name, v_call_args
+      );
+    ELSIF v_result_type = 'void' THEN
+      v_body := format(
+        'BEGIN PERFORM public.assert_my_account_session_active(); PERFORM public.%I(%s); RETURN; END;',
+        v_impl_name, v_call_args
+      );
+    ELSE
+      v_body := format(
+        'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.%I(%s); END;',
+        v_impl_name, v_call_args
+      );
+    END IF;
+
+    v_create_sql := format(
+      'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $guarded$ %s $guarded
+,
+      p.proname, v_full_args, v_result_type, v_body
+    );
+    EXECUTE v_create_sql;
+
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, anon, authenticated, service_role',
+      v_impl_name, v_identity_args
+    );
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, anon',
+      p.proname, v_identity_args
+    );
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.%I(%s) TO authenticated, service_role',
+      p.proname, v_identity_args
+    );
+  END LOOP;
+END;
+$rpc_guards$;
+
+-- Direct calls to the canonical implementation are not needed by clients:
+-- execute_sync_command is the public entry point and its SECURITY DEFINER owner
+-- can invoke this function internally. This closes the dispatcher bypass.
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
+  TO service_role;
+
 NOTIFY pgrst, 'reload schema';
