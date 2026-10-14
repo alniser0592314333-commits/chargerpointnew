@@ -109,6 +109,19 @@ BEGIN
   IF v_count <> 1 THEN RAISE EXCEPTION 'Active Auth session should retain existing authenticated RLS read'; END IF;
   SELECT public.fixture_sensitive_read() INTO v_secret;
   IF v_secret <> 'fixture-secret' THEN RAISE EXCEPTION 'Active session SECURITY DEFINER RPC returned an unexpected result'; END IF;
+  IF (SELECT count(*) FROM public.fixture_sensitive_setof()) <> 1 THEN
+    RAISE EXCEPTION 'Active session SETOF SECURITY DEFINER RPC was not wrapped correctly';
+  END IF;
+  PERFORM public.fixture_sensitive_void('active-session');
+  IF (SELECT count(*) FROM public.session_guard_fixture_audit WHERE marker = 'active-session') <> 1 THEN
+    RAISE EXCEPTION 'Active session VOID SECURITY DEFINER RPC was not executed';
+  END IF;
+  IF (public.execute_sync_command(
+      '99999999-9999-4999-8999-999999999999',
+      'TEST_COMMAND', NULL, NULL, '{}'::jsonb, NULL
+    )->>'success') <> 'true' THEN
+    RAISE EXCEPTION 'Active session sync wrapper did not reach the canonical dispatcher';
+  END IF;
 END $assert$;
 COMMIT;
 
@@ -126,6 +139,27 @@ BEGIN
   BEGIN
     PERFORM public.fixture_sensitive_read();
     RAISE EXCEPTION 'Expired Auth session unexpectedly executed protected SECURITY DEFINER RPC';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM public.fixture_sensitive_setof();
+    RAISE EXCEPTION 'Expired Auth session unexpectedly executed protected SETOF RPC';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM public.fixture_sensitive_void('expired-session');
+    RAISE EXCEPTION 'Expired Auth session unexpectedly executed protected VOID RPC';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM public.execute_sync_command(
+      '99999999-9999-4999-8999-999999999999',
+      'TEST_COMMAND', NULL, NULL, '{}'::jsonb, NULL
+    );
+    RAISE EXCEPTION 'Expired Auth session unexpectedly reached the canonical dispatcher';
   EXCEPTION WHEN SQLSTATE '28000' THEN
     NULL;
   END;
@@ -147,5 +181,11 @@ BEGIN
   END IF;
   IF NOT has_table_privilege('service_role', 'public.permissions', 'SELECT') THEN
     RAISE EXCEPTION 'Trusted service role access was not preserved';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated clients must not bypass the guarded sync wrapper';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Trusted service-role dispatcher access was not preserved';
   END IF;
 END $assert$;
