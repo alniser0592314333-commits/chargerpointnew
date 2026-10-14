@@ -10,6 +10,8 @@ import {
   addNewCustomer,
   createNewBusinessDay,
   resetStoreMemory,
+  applyRemoteChange,
+  getCustomerFinancialHistory,
   globalSyncEngine,
   subscribeStoreBootstrapProgress,
 } from '../components/pages/dayOrdersStore';
@@ -37,6 +39,60 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
       localStorage.clear();
       setTestAppAuthSession();
     }
+  });
+
+  it('rolls back in-memory financial ledger replacements when a delta transaction aborts', async () => {
+    const customerId = '00000000-0000-4000-8000-000000000101';
+    const ledgerId = '00000000-0000-4000-8000-000000000102';
+    const createdAt = '2026-10-13T12:00:00.000Z';
+
+    await localDb.set('customers', customerId, {
+      id: customerId,
+      name: 'Rollback ledger customer',
+      isActive: true,
+      debtLimitMinor: 2000,
+      chargerFeeExempt: false,
+      createdAt,
+      updatedAt: createdAt,
+      version: 1,
+    });
+    await localDb.set('financialLedger', ledgerId, {
+      id: ledgerId,
+      eventType: 'CHARGE',
+      amountMinor: -1000,
+      customerId,
+      createdAt,
+    });
+    await localDb.setInitialHydrationCompleted(true);
+    resetStoreMemory();
+
+    const before = await getCustomerFinancialHistory(customerId);
+    expect(before).toHaveLength(1);
+    expect(before[0].amountMinor).toBe(-1000);
+
+    await expect(localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+      applyRemoteChange({
+        sequenceId: 1,
+        entityType: 'financial_ledger',
+        entityId: ledgerId,
+        action: 'UPDATE',
+        payload: {
+          id: ledgerId,
+          event_type: 'CHARGE',
+          amount_minor: 700,
+          customer_id: customerId,
+          created_at: createdAt,
+        },
+        version: 2,
+        changedAt: createdAt,
+      }, tx);
+      throw new Error('abort delta transaction');
+    })).rejects.toThrow('abort delta transaction');
+
+    const after = await getCustomerFinancialHistory(customerId);
+    expect(after).toHaveLength(1);
+    expect(after[0].amountMinor).toBe(-1000);
+    expect(await localDb.get('financialLedger', ledgerId)).toMatchObject({ amountMinor: -1000 });
   });
 
   it('1. Fresh local-only client: localDb starts empty and initializes without cloud bootstrap', async () => {
