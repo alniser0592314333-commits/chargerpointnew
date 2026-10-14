@@ -73,15 +73,15 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     });
 
     // 2. Prep devices and customer inside localDb
-    await localDb.set('deviceTypes', 'dev-1', {
-      id: 'dev-1', name: 'شاشة آيفون 13 برو', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+    await localDb.set('deviceTypes', '10000000-0000-4000-8000-000000000003', {
+      id: '10000000-0000-4000-8000-000000000003', name: 'شاشة آيفون 13 برو', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
     await localDb.set('deviceTypes', 'dev-2', {
       id: 'dev-2', name: 'بطارية آيفون 13', basePriceMinor: 25000, chargerFeeEnabled: false, isActive: true, sortOrder: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
 
-    const dayId = 'day-2029-09-29';
-    const customerId = 'cust-1234';
+    const dayId = '10000000-0000-4000-8000-000000000001';
+    const customerId = '10000000-0000-4000-8000-000000000002';
     await localDb.set('businessDays', dayId, {
       id: dayId,
       businessDate: '2029-09-29',
@@ -98,7 +98,7 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     await ensureStoreHydrated();
 
     // A. Create Order
-    const createRes = await createOrderWithPhase5Engine(dayId, customerId, [{ deviceTypeId: 'dev-1', hasCharger: true }], 'Initial notes');
+    const createRes = await createOrderWithPhase5Engine(dayId, customerId, [{ deviceTypeId: '10000000-0000-4000-8000-000000000003', hasCharger: true }], 'Initial notes');
     if (!createRes.success) {
       console.error('Create Order Error:', createRes.error);
     }
