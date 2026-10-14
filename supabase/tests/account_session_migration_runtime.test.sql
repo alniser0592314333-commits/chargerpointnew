@@ -91,3 +91,43 @@ BEGIN
     RAISE EXCEPTION 'A missing underlying Auth session must not be reported active';
   END IF;
 END $assert$;
+
+
+-- Server-side enforcement regression: a valid unregistered Auth session may
+-- read business data during rollout; after expiry the same stale JWT must be
+-- denied by both the table RLS policy and an exposed SECURITY DEFINER RPC.
+INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
+VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Gate test');
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}',true);
+DO $assert$
+DECLARE v_count integer; v_secret text;
+BEGIN
+  SELECT count(*) INTO v_count FROM public.session_guard_fixture;
+  IF v_count <> 1 THEN RAISE EXCEPTION 'Active Auth session should retain existing authenticated RLS read'; END IF;
+  SELECT public.fixture_sensitive_read() INTO v_secret;
+  IF v_secret <> 'fixture-secret' THEN RAISE EXCEPTION 'Active session SECURITY DEFINER RPC returned an unexpected result'; END IF;
+END $assert$;
+COMMIT;
+
+UPDATE auth.sessions SET not_after = now(), updated_at = now()
+WHERE id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}',true);
+DO $assert$
+DECLARE v_count integer;
+BEGIN
+  SELECT count(*) INTO v_count FROM public.session_guard_fixture;
+  IF v_count <> 0 THEN RAISE EXCEPTION 'Expired Auth session still reads a protected table through RLS'; END IF;
+  BEGIN
+    PERFORM public.fixture_sensitive_read();
+    RAISE EXCEPTION 'Expired Auth session unexpectedly executed protected SECURITY DEFINER RPC';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+END $assert$;
+COMMIT;
