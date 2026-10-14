@@ -4107,12 +4107,101 @@ export const getCustomerFinancialHistory = async (
   const effective = getEffectiveOrderItemReadModel();
   const effectiveOrdersMap = effective.orders;
   const effectiveItemsMap = effective.items;
-  const rawEvents = await repoContext.ledgerRepo.findByCustomer(targetId);
+  const authoritativeEvents = await repoContext.ledgerRepo.findByCustomer(targetId);
+  const rawEvents: FinancialLedgerEntity[] = [...authoritativeEvents];
+  const overlays = await localDb.listOverlays();
+  const pendingProjectionEvents: Array<FinancialLedgerEntity & { __projectionSequence?: number }> = [];
 
-  // Sort ascending by time (oldest first) to compute running post-transaction balances
-  const sortedAsc = [...rawEvents].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  // Include pending ledger overlays in the visible history until the server's
+  // canonical ledger row arrives. Deduplicate by event/reference identity to
+  // avoid showing the same payment twice during the pull/overlay transition.
+  for (const overlay of overlays) {
+    if (
+      overlay.status !== 'PENDING' ||
+      (overlay.entityType !== 'ledger' && overlay.entityType !== 'financial_ledger') ||
+      overlay.operation !== 'CREATE'
+    ) {
+      continue;
+    }
+    const payload = (overlay.entityPayload || overlay.patch || {}) as Record<string, unknown>;
+    const eventCustomerId = String(payload.customerId ?? payload.customer_id ?? '');
+    const eventType = String(payload.eventType ?? payload.event_type ?? '');
+    const amountMinor = Number(payload.amountMinor ?? payload.amount_minor ?? 0);
+    if (eventCustomerId !== targetId || !eventType || !Number.isFinite(amountMinor)) continue;
+
+    const referenceId = String(payload.referenceId ?? payload.reference_id ?? '');
+    const alreadyAuthoritative = rawEvents.some((event) =>
+      event.eventType === eventType &&
+      ((referenceId && event.referenceId === referenceId) || event.id === overlay.entityId)
+    );
+    if (alreadyAuthoritative) continue;
+
+    pendingProjectionEvents.push({
+      ...(payload as unknown as FinancialLedgerEntity),
+      id: String(payload.id ?? `pending-ledger:${overlay.commandId}`),
+      customerId: targetId,
+      eventType: eventType as FinancialLedgerEntity['eventType'],
+      amountMinor,
+      referenceId: referenceId || undefined,
+      createdAt: String(payload.createdAt ?? overlay.createdAt),
+      metadata: {
+        ...(payload.metadata || {}),
+        ...(payload.reference || payload.note
+          ? { note: String(payload.reference ?? payload.note) }
+          : {}),
+      },
+      __projectionSequence: Number(overlay.sequence ?? 0),
+    });
+  }
+
+  // A delivered item has a pending financial effect before the server writes
+  // its canonical ledger row. Project that charge into history using the same
+  // recognition/amount fields as the balance projection.
+  const authoritativeChargeItemIds = new Set(
+    rawEvents
+      .filter((event) => event.eventType === 'ORDER_ITEM_CHARGE' && event.orderItemId)
+      .map((event) => event.orderItemId as string)
   );
+  for (const item of effectiveItemsMap.values()) {
+    if (item.status === 'cancelled') continue;
+    const financialStatus = String(item.financialStatus || '').toUpperCase();
+    if (item.status !== 'delivered' && financialStatus !== 'RECOGNIZED') continue;
+    if (authoritativeChargeItemIds.has(item.id)) continue;
+    const order = effectiveOrdersMap.get(item.orderId);
+    if (!order || order.customerId !== targetId) continue;
+    const amountMinor = Number(item.finalChargeSnapshotMinor ?? item.totalPriceMinor ?? 0);
+    if (!Number.isFinite(amountMinor) || amountMinor <= 0) continue;
+    const alreadyProjected = pendingProjectionEvents.some(
+      (event) => event.eventType === 'ORDER_ITEM_CHARGE' && event.orderItemId === item.id
+    );
+    if (alreadyProjected) continue;
+    const recognizedAt = item.financiallyRecognizedAt || item.deliveredAt || item.updatedAt || item.createdAt;
+    pendingProjectionEvents.push({
+      id: `pending-delivery:${item.id}`,
+      eventType: 'ORDER_ITEM_CHARGE',
+      amountMinor: -amountMinor,
+      customerId: targetId,
+      orderId: order.id,
+      orderItemId: item.id,
+      referenceId: item.id,
+      actorAdminId: '',
+      createdAt: recognizedAt,
+      metadata: {},
+      __projectionSequence: overlays.find(
+        (overlay) => overlay.status === 'PENDING' && overlay.entityType === 'order_items' && overlay.entityId === item.id
+      )?.sequence ?? 0,
+    } as FinancialLedgerEntity & { __projectionSequence?: number });
+  }
+
+  rawEvents.push(...pendingProjectionEvents);
+
+  // Sort ascending by time (oldest first) to compute running post-transaction balances.
+  // Overlay sequence breaks same-millisecond ties deterministically.
+  const sortedAsc = [...rawEvents].sort((a, b) => {
+    const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (timeDifference !== 0) return timeDifference;
+    return Number((a as any).__projectionSequence ?? 0) - Number((b as any).__projectionSequence ?? 0);
+  });
 
   let runningBalance = 0;
   const items: UICustomerFinancialItem[] = [];
