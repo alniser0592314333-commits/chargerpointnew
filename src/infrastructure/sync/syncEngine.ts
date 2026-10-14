@@ -703,7 +703,6 @@ export class SyncEngine {
                   localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
                 }
               }
-              pulledCount++;
             } catch (deltaErr) {
               console.error(`Failed to apply delta change sequence ${change.sequenceId}:`, deltaErr);
               throw deltaErr;
@@ -717,6 +716,9 @@ export class SyncEngine {
           localDb.setSyncStateWithTx(tx, updatedState);
         });
 
+        // Count only committed delta pages; a rolled-back page must not inflate
+        // the reported number of successfully applied changes.
+        pulledCount += sortedChanges.length;
         pullCursor = maxSeq;
         syncState.lastAppliedChangeSequence = maxSeq;
         syncState.lastPulledAt = new Date().toISOString();
@@ -1265,6 +1267,22 @@ export class SyncEngine {
 
       syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
       return { pushed: pushedCount, pulled: pulledCount };
+    } catch (syncError) {
+      // A thrown sync error must not leave the UI waiting forever for sync_finished
+      // or make the last committed replica look current after a failed delta page.
+      try {
+        const currentState = await localDb.getSyncState('global');
+        if (currentState?.status !== 'RECONCILIATION_REQUIRED' && currentState?.reconciliationRequired !== true) {
+          await localDb.setSyncState({
+            ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+            status: 'STALE',
+          });
+        }
+      } catch (checkpointError) {
+        console.warn('Failed to persist stale state after sync error:', checkpointError);
+      }
+      syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
+      throw syncError;
     } finally {
       this.isSyncing = false;
     }
