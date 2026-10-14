@@ -157,11 +157,13 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
       const itemId = payload.itemId || payload.orderItemId || payload.id;
       if (itemId) checkCandidate(itemId, ['ADD_ORDER_ITEM', 'order_items'], true);
     } else {
-      // General referencing across commands
-      if (payload.orderId) checkCandidate(payload.orderId, undefined, true);
-      if (payload.customerId) checkCandidate(payload.customerId, undefined, false);
-      if (payload.dayId) checkCandidate(payload.dayId, undefined, true);
-      if (payload.deviceTypeId) checkCandidate(payload.deviceTypeId, undefined, false);
+      // Only entity-creation commands are prerequisites for structural references.
+      // Matching any command by aggregateId makes two payments on the same customer
+      // depend on each other and creates a permanent cycle.
+      if (payload.orderId) checkCandidate(payload.orderId, ['CREATE_ORDER', 'orders'], true);
+      if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
+      if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
+      if (payload.deviceTypeId) checkCandidate(payload.deviceTypeId, ['CREATE_DEVICE_TYPE', 'device_types'], false);
     }
   }
 
