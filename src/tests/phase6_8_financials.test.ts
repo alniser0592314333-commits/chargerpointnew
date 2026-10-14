@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { translations } from '../i18n/translations';
 import { localDb } from '../infrastructure/localDb/localDb';
+import { setTestAppAuthSession } from './utils/testSetup';
 import {
   getFinancialsOverviewData,
   getAllFinancialCustomers,
@@ -19,6 +20,7 @@ describe('Phase 6.8 & 6.8.x: Financials Overview, Customer Ledgers & In-Context 
   beforeEach(async () => {
     await localDb.clear();
     if (typeof localStorage !== 'undefined') localStorage.clear();
+    setTestAppAuthSession();
     resetStoreMemory();
     await seedDemoOperationalData();
     setRuntimeBinVerifier((bin) => bin === '1234');
