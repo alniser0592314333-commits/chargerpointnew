@@ -1031,7 +1031,7 @@ export const SyncCenter: React.FC = () => {
                 autoComplete="off"
                 maxLength={32}
                 placeholder={locale === 'ar' ? 'أدخل BIN هنا' : 'Enter BIN here'}
-                className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-[#14423b] bg-white dark:bg-[#041714] text-gray-900 dark:text-[#daf1de] outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full h-11 px-3 rounded-md border border-gray-300 dark:border-[#31554e] bg-white dark:bg-[#041714] text-gray-900 dark:text-[#daf1de] outline-none focus:border-gray-500"
               />
               <div className="flex justify-end gap-2">
                 <Button
@@ -1048,7 +1048,7 @@ export const SyncCenter: React.FC = () => {
                   type="button"
                   onClick={() => void handleConfirmBin()}
                   disabled={!/^\d{4,}$/.test(binInput.trim()) || isSyncing || !isOnline}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-gray-700 hover:bg-gray-800 dark:bg-[#24443c] dark:hover:bg-[#31554e] text-white rounded-md"
                 >
                   {locale === 'ar' ? 'اعتماد ومزامنة' : 'Authorize & Sync'}
                 </Button>
@@ -1058,9 +1058,9 @@ export const SyncCenter: React.FC = () => {
 
           {/* Prominent Action Banner when Blocked Items Exist */}
           {blockedCount > 0 && (
-            <div className="py-3 border-b border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200 text-xs">
-                <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div className="py-3 border-b border-gray-200 dark:border-[#123832] flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-gray-700 dark:text-[#c1d5c8] text-xs">
+                <Lock className="w-4 h-4 text-gray-500 dark:text-[#8eb698] shrink-0" />
                 <span>
                   {locale === 'ar'
                     ? `توجد ${blockedCount} عمليات محجوزة في طابور الانتظار. انقر للتحرير والمزامنة الآن.`
@@ -1088,13 +1088,13 @@ export const SyncCenter: React.FC = () => {
               onClick={() => setActiveTab('SESSION')}
               className={`pb-2.5 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
                 activeTab === 'SESSION'
-                  ? 'border-emerald-600 text-emerald-700 dark:text-[#daf1de]'
+                  ? 'border-gray-600 text-gray-800 dark:text-[#daf1de]'
                   : 'border-transparent text-gray-500 dark:text-[#8eb698] hover:text-gray-900'
               }`}
             >
               <Activity className="w-4 h-4" />
               <span>{locale === 'ar' ? 'طابور الانتظار وسجل الأحداث' : 'Outbox Queue & Event Log'}</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-[#8eb698]">
+              <span className="text-[10px] text-gray-500 dark:text-[#8eb698]">
                 {sessionEvents.length}
               </span>
             </button>
@@ -1105,7 +1105,7 @@ export const SyncCenter: React.FC = () => {
                 onClick={() => setActiveTab('DIAGNOSTICS')}
                 className={`pb-2.5 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
                   activeTab === 'DIAGNOSTICS'
-                    ? 'border-emerald-600 text-emerald-700 dark:text-[#daf1de]'
+                    ? 'border-gray-600 text-gray-800 dark:text-[#daf1de]'
                     : 'border-transparent text-gray-500 dark:text-[#8eb698] hover:text-gray-900'
                 }`}
               >
@@ -1130,9 +1130,9 @@ export const SyncCenter: React.FC = () => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={locale === 'ar' ? 'بحث بالعميل أو العملية...' : 'Filter by customer/operation...'}
-                    className={`w-full h-8 text-xs rounded-xl bg-gray-50 dark:bg-[#041714] border border-gray-200 dark:border-[#123832] ${
+                    className={`w-full h-8 text-xs rounded-md bg-white dark:bg-[#041714] border border-gray-300 dark:border-[#31554e] ${
                       isRTL ? 'pr-8 pl-3' : 'pl-8 pr-3'
-                    } text-gray-900 dark:text-[#daf1de] focus:outline-none focus:border-emerald-500`}
+                    } text-gray-900 dark:text-[#daf1de] focus:outline-none focus:border-gray-500`}
                   />
                 </div>
 
@@ -1143,7 +1143,7 @@ export const SyncCenter: React.FC = () => {
                       key={filterVal}
                       type="button"
                       onClick={() => setSessionFilter(filterVal)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors whitespace-nowrap ${
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
                         sessionFilter === filterVal
                           ? 'bg-gray-700 dark:bg-[#24443c] text-white'
                           : 'bg-transparent border border-gray-200 dark:border-[#24443c] text-gray-600 dark:text-[#a8c0b2] hover:bg-gray-100 dark:hover:bg-[#0c2823]'
@@ -1197,16 +1197,16 @@ export const SyncCenter: React.FC = () => {
                             <div
                               key={evt.commandId}
                               className={`py-3 px-1 transition-colors cursor-pointer hover:bg-gray-50/60 dark:hover:bg-[#082823] ${
-                                isSelected ? 'bg-emerald-50/30 dark:bg-[#0c312b]/40' : ''
+                                isSelected ? 'bg-gray-50 dark:bg-[#0c2823]' : ''
                               }`}
                               onClick={() => setSelectedRecordId(isSelected ? null : evt.commandId)}
                             >
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                                 <div className="flex items-center gap-2.5">
-                                  {evt.status === 'SYNCED' && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
-                                  {evt.status === 'PENDING' && <Clock className="w-4 h-4 text-blue-500 shrink-0" />}
-                                  {evt.status === 'BLOCKED' && <Lock className="w-4 h-4 text-amber-500 shrink-0" />}
-                                  {evt.status === 'FAILED' && <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />}
+                                  {evt.status === 'SYNCED' && <CheckCircle2 className="w-4 h-4 text-gray-500 shrink-0" />}
+                                  {evt.status === 'PENDING' && <Clock className="w-4 h-4 text-gray-500 shrink-0" />}
+                                  {evt.status === 'BLOCKED' && <Lock className="w-4 h-4 text-gray-500 shrink-0" />}
+                                  {evt.status === 'FAILED' && <AlertTriangle className="w-4 h-4 text-gray-500 shrink-0" />}
 
                                   <div>
                                     <span className="text-xs font-semibold text-gray-900 dark:text-[#daf1de] block">
