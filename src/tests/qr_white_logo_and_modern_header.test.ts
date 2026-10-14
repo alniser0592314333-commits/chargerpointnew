@@ -309,8 +309,8 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
       expect(html).toMatch(/متزامن|يعمل دون إنترنت|Synced|Offline/);
     });
 
-    it('4.5. Header layout is clean and does not render logout', () => {
-      const html = renderWithTheme(
+    it('4.5. Header shows the fixed Arabic brand title on every page and does not render logout', () => {
+      const settingsHtml = renderWithTheme(
         React.createElement(Header, {
           onOpenMobileNav: () => {},
           currentPath: '/app/settings',
@@ -318,11 +318,32 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
         'light',
         'ar'
       );
+      const homeHtml = renderWithTheme(
+        React.createElement(Header, {
+          onOpenMobileNav: () => {},
+          currentPath: '/app',
+        }),
+        'light',
+        'ar'
+      );
 
-      // Logout belongs in Settings > Account, never in the shared header.
-      expect(html).not.toContain('تسجيل الخروج');
-      // Header brand name or system title
-      expect(html).toContain('متجر التميز');
+      expect(settingsHtml).toContain('نقطة الشحن');
+      expect(homeHtml).toContain('نقطة الشحن');
+      expect(settingsHtml).not.toContain('تسجيل الخروج');
+      expect(settingsHtml).toContain('متجر التميز');
+    });
+
+    it('4.5.1. Header shows the fixed English brand title regardless of the active page', () => {
+      const html = renderWithTheme(
+        React.createElement(Header, {
+          onOpenMobileNav: () => {},
+          currentPath: '/app/customers',
+        }),
+        'light',
+        'en'
+      );
+
+      expect(html).toContain('Charging Point');
     });
 
     it('4.6. QR geometry helper computes true matrix center correctly', async () => {
