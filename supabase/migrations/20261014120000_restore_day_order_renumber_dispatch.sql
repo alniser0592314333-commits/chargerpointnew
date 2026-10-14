@@ -68,6 +68,8 @@ DECLARE
     v_distinct_number_count BIGINT;
     v_min_new_number INTEGER;
     v_max_new_number INTEGER;
+    v_requested_display_number INTEGER;
+    v_order_change_payload JSONB;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
@@ -456,6 +458,8 @@ BEGIN
             v_entity_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
             v_customer_uuid := (COALESCE(p_payload->>'customerId', p_payload->>'customer_id'))::UUID;
             v_day_uuid := (COALESCE(p_payload->>'dayId', p_payload->>'day_id'))::UUID;
+            -- Serialize order creation with renumbering for this business day.
+            PERFORM pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1));
 
             SELECT status INTO v_customer_status FROM public.customers WHERE id = v_customer_uuid;
             IF v_customer_status IS NULL THEN
@@ -465,8 +469,35 @@ BEGIN
                 RAISE EXCEPTION 'Customer Is Deleted/Frozen: Cannot create order for soft-deleted customer %', v_customer_uuid;
             END IF;
 
-            IF NOT EXISTS (SELECT 1 FROM public.business_days WHERE id = v_day_uuid) THEN
+            PERFORM id FROM public.business_days WHERE id = v_day_uuid FOR UPDATE;
+            IF NOT FOUND THEN
                 RAISE EXCEPTION 'Business Day Not Found: ID %', v_day_uuid USING ERRCODE = '23503';
+            END IF;
+
+            v_requested_display_number := COALESCE(
+                (p_payload->>'displayNumber')::INTEGER,
+                (p_payload->>'display_number')::INTEGER
+            );
+            -- Offline devices may submit reserved numbers out of order. Preserve a
+            -- requested number when it is valid and free; never reject an otherwise
+            -- valid offline order solely because a prior renumber made its reservation stale.
+            -- If the number is absent/invalid or now collides, allocate the next free number
+            -- while holding the same per-day lock used by renumbering and order creation.
+            IF v_requested_display_number IS NULL OR v_requested_display_number < 1 THEN
+                SELECT COALESCE(MAX(display_number), 0) + 1
+                INTO v_requested_display_number
+                FROM public.orders
+                WHERE day_id = v_day_uuid;
+            END IF;
+
+            IF EXISTS (
+                SELECT 1 FROM public.orders
+                WHERE day_id = v_day_uuid AND display_number = v_requested_display_number
+            ) THEN
+                SELECT COALESCE(MAX(display_number), 0) + 1
+                INTO v_requested_display_number
+                FROM public.orders
+                WHERE day_id = v_day_uuid;
             END IF;
 
             INSERT INTO public.orders (
@@ -476,7 +507,7 @@ BEGIN
                 v_entity_uuid,
                 v_day_uuid,
                 v_customer_uuid,
-                COALESCE((p_payload->>'displayNumber')::INTEGER, (p_payload->>'display_number')::INTEGER, 1),
+                v_requested_display_number,
                 'charging',
                 COALESCE(p_payload->>'notes', ''),
                 1,
@@ -488,10 +519,16 @@ BEGIN
                 updated_at = NOW(),
                 version = public.orders.version + 1;
 
-            PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', p_payload, 1);
-            v_result := jsonb_build_object('orderId', v_entity_uuid);
+            -- The change feed must carry the authoritative assigned number, not a
+            -- stale offline reservation value that collided after a manual renumber.
+            v_order_change_payload := jsonb_set(
+                jsonb_set(COALESCE(p_payload, '{}'::JSONB), '{displayNumber}', to_jsonb(v_requested_display_number), TRUE),
+                '{display_number}', to_jsonb(v_requested_display_number), TRUE
+            );
+            PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', v_order_change_payload, 1);
+            v_result := jsonb_build_object('orderId', v_entity_uuid, 'displayNumber', v_requested_display_number);
 
-WHEN 'RENUMBER_DAY_ORDERS' THEN
+        WHEN 'RENUMBER_DAY_ORDERS' THEN
             v_day_uuid := COALESCE((p_payload->>'dayId')::UUID, (p_payload->>'id')::UUID);
             IF v_day_uuid IS NULL OR COALESCE(jsonb_typeof(p_payload->'changes'), '') <> 'array' THEN
                 RAISE EXCEPTION 'Renumber validation failed: dayId and changes array are required' USING ERRCODE = 'P2201';
