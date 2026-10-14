@@ -434,4 +434,51 @@ describe('Outbox Dependency Revalidation & Automated Unblocking (Phase 2)', () =
     expect(result.blocked.get('cmd_renumber_waits_for_open')?.unsatisfiedDependencies).toContain('cmd_open_day_pending');
   });
 
+  it('does not treat failed historical renumbering as a missing day-creation dependency', async () => {
+    const dayId = 'day-renumber-existing';
+    const engine = new SyncEngine(new MockServerSyncTransport());
+
+    await localDb.set('businessDays', dayId, {
+      id: dayId,
+      date: '2026-10-14',
+      status: 'OPEN',
+    });
+    await localDb.saveHistory({
+      historyId: 'history_old_renumber',
+      commandId: 'cmd_old_renumber_failed',
+      commandType: 'RENUMBER_DAY_ORDERS',
+      entityType: 'orders',
+      entityId: dayId,
+      state: 'FAILED_PERMANENT',
+      createdAt: '2026-10-14T09:52:43.660Z',
+      updatedAt: '2026-10-14T09:52:44.229Z',
+      attemptCount: 1,
+      errorClass: 'UNKNOWN',
+      errorMessage: 'Unknown Canonical Command Type: RENUMBER_DAY_ORDERS',
+      failureStage: 'RPC',
+      rpcReached: true,
+      retryEligible: false,
+    });
+
+    await engine.queueCommand(
+      'cmd_new_renumber_after_server_fix',
+      'RENUMBER_DAY_ORDERS',
+      'orders',
+      dayId,
+      { id: dayId, dayId, changes: [{ id: 'order-1', oldNumber: 2, newNumber: 1 }] },
+      'dev_1',
+      'admin_1',
+    );
+
+    const outbox = await localDb.listOutbox();
+    const result = await new OutboxScheduler().schedule(
+      outbox,
+      outbox,
+      async (id) => localDb.getHistoryByCommandId(id),
+    );
+
+    expect(result.ready.map((item) => item.commandId)).toContain('cmd_new_renumber_after_server_fix');
+    expect(result.blocked.has('cmd_new_renumber_after_server_fix')).toBe(false);
+  });
+
 });
