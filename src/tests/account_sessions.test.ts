@@ -24,6 +24,16 @@ describe("Account session management", () => {
     expect(JSON.stringify(result)).not.toContain("unrecognized-private-user-agent");
   });
 
+  it("uses an in-app confirmation flow for session actions instead of native browser dialogs", () => {
+    const component = readFileSync("src/components/settings/AccountSessionsManager.tsx", "utf8");
+    expect(component).not.toContain("window.confirm");
+    expect(component).toContain('setPendingAction("selected")');
+    expect(component).toContain('setPendingAction("others")');
+    expect(component).toContain('setPendingAction("all")');
+    expect(component).toContain("confirmPendingAction");
+    expect(component).toContain("Confirm sign-out");
+  });
+
   it("keeps session administration caller-scoped and revokes refresh credentials", () => {
     const sql = readFileSync("supabase/migrations/20261014130000_account_session_management.sql", "utf8");
     expect(sql).toContain("ALTER TABLE public.account_sessions ENABLE ROW LEVEL SECURITY");

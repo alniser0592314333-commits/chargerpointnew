@@ -39,6 +39,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"selected" | "others" | "all" | null>(null);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
@@ -59,10 +60,6 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
 
   const handleRevokeSelected = async () => {
     if (!selected.length || busy) return;
-    const message = isArabic
-      ? `سيتم تسجيل خروج ${selected.length} جلسة محددة. هل تريد المتابعة؟`
-      : `Sign out ${selected.length} selected session(s)?`;
-    if (!window.confirm(message)) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -95,7 +92,6 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
 
   const handleRevokeOthers = async () => {
     if (busy) return;
-    if (!window.confirm(isArabic ? "سيتم إخراج كل الأجهزة الأخرى مع إبقاء هذا الجهاز. متابعة؟" : "Sign out all other devices and keep this one signed in?")) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -112,7 +108,6 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
 
   const handleRevokeAll = async () => {
     if (busy) return;
-    if (!window.confirm(isArabic ? "تحذير: سيتم تسجيل خروج الحساب من جميع الأجهزة، بما فيها هذا الجهاز. هل تريد المتابعة؟" : "Warning: this signs the account out on every device, including this one. Continue?")) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -124,6 +119,15 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
       setError(err?.message || (isArabic ? "تعذّر تسجيل الخروج من جميع الأجهزة." : "Could not sign out all devices."));
       setBusy(false);
     }
+  };
+
+  const confirmPendingAction = async () => {
+    const action = pendingAction;
+    if (!action || busy) return;
+    setPendingAction(null);
+    if (action === "selected") await handleRevokeSelected();
+    else if (action === "others") await handleRevokeOthers();
+    else await handleRevokeAll();
   };
 
   const toggleSelected = (id: string) => {
@@ -149,6 +153,30 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
 
       {error && <div role="alert" className="flex items-start gap-2 border-b border-red-200 py-2 text-xs text-red-700 dark:border-red-900 dark:text-red-300"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span className="break-words">{error}</span></div>}
       {success && <p role="status" className="border-b border-emerald-200 py-2 text-xs text-emerald-700 dark:border-emerald-900 dark:text-emerald-300">{success}</p>}
+
+      {pendingAction && (
+        <div role="group" aria-label={isArabic ? "تأكيد إخراج الجلسات" : "Confirm session sign-out"} className="rounded-xl border border-amber-300 bg-amber-50/80 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+          <p className="text-sm font-semibold text-gray-900 dark:text-[#daf1de]">
+            {pendingAction === "selected"
+              ? (isArabic ? `تأكيد إخراج ${selected.length} جلسة محددة؟` : `Confirm sign-out of ${selected.length} selected session(s)?`)
+              : pendingAction === "others"
+                ? (isArabic ? "تأكيد إخراج كل الأجهزة الأخرى مع إبقاء هذا الجهاز مسجّل الدخول؟" : "Sign out all other devices and keep this device signed in?")
+                : (isArabic ? "تحذير: سيتم إخراج الحساب من جميع الأجهزة، بما فيها هذا الجهاز." : "Warning: this signs the account out on every device, including this one.")}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-[#8eb698]">
+            {isArabic ? "لن يتم تنفيذ العملية إلا بعد ضغط زر التأكيد أدناه." : "Nothing changes until you press the confirmation button below."}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setPendingAction(null)}>
+              {isArabic ? "إلغاء" : "Cancel"}
+            </Button>
+            <Button type="button" variant="danger" size="sm" disabled={busy} onClick={() => void confirmPendingAction()}>
+              <LogOut className="h-3.5 w-3.5" />
+              {isArabic ? "تأكيد الإخراج" : "Confirm sign-out"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="divide-y divide-gray-100 dark:divide-[#0f302b]">
         {loading ? (
@@ -190,13 +218,13 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
       </div>
 
       <div className="flex flex-wrap gap-2 border-t border-gray-200/80 pt-3 dark:border-[#123832]">
-        <Button type="button" variant="outline" size="sm" disabled={busy || loading || selected.length === 0} onClick={() => void handleRevokeSelected()} className="h-9 gap-1.5 text-xs">
+        <Button type="button" variant="outline" size="sm" disabled={busy || loading || selected.length === 0} onClick={() => setPendingAction("selected")} className="h-9 gap-1.5 text-xs">
           <LogOut className="h-3.5 w-3.5" />{isArabic ? `إخراج المحدد (${selected.length})` : `Sign out selected (${selected.length})`}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.length <= 1} onClick={() => void handleRevokeOthers()} className="h-9 gap-1.5 text-xs">
+        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.length <= 1} onClick={() => setPendingAction("others")} className="h-9 gap-1.5 text-xs">
           <Globe className="h-3.5 w-3.5" />{isArabic ? "إخراج الأجهزة الأخرى" : "Sign out other devices"}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.length === 0} onClick={() => void handleRevokeAll()} className="h-9 gap-1.5 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">
+        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.length === 0} onClick={() => setPendingAction("all")} className="h-9 gap-1.5 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">
           <LogOut className="h-3.5 w-3.5" />{isArabic ? "إخراج الجميع" : "Sign out all"}
         </Button>
       </div>
