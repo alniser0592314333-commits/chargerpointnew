@@ -74,11 +74,12 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(payment.success).toBe(true);
 
-    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) {
-      const persistedDeliveredItem = await localDb.get<any>('orderItems', delivery.item.id);
-      if (persistedDeliveredItem) effectiveItems.set(delivery.item.id, persistedDeliveredItem);
-    }
+    const persistedItems = await localDb.list<any>('orderItems');
+    const effectiveItems = new Map(
+      persistedItems
+        .filter((item) => item.orderId === order.id)
+        .map((item) => [item.id, item]),
+    );
 
     const persistedOrder = await localDb.get<any>('orders', order.id);
     expect(persistedOrder).toBeTruthy();
@@ -112,11 +113,12 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(payment.success).toBe(true);
 
-    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) {
-      const persistedDeliveredItem = await localDb.get<any>('orderItems', delivery.item.id);
-      if (persistedDeliveredItem) effectiveItems.set(delivery.item.id, persistedDeliveredItem);
-    }
+    const persistedItems = await localDb.list<any>('orderItems');
+    const effectiveItems = new Map(
+      persistedItems
+        .filter((item) => item.orderId === order.id)
+        .map((item) => [item.id, item]),
+    );
 
     const persistedOrder = await localDb.get<any>('orders', order.id);
     expect(persistedOrder).toBeTruthy();
@@ -235,11 +237,12 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
     expect(delivery.success).toBe(true);
 
-    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) {
-      const persistedDeliveredItem = await localDb.get<any>('orderItems', delivery.item.id);
-      if (persistedDeliveredItem) effectiveItems.set(delivery.item.id, persistedDeliveredItem);
-    }
+    const persistedItems = await localDb.list<any>('orderItems');
+    const effectiveItems = new Map(
+      persistedItems
+        .filter((item) => item.orderId === order.id)
+        .map((item) => [item.id, item]),
+    );
 
     const persistedOrder = await localDb.get<any>('orders', order.id);
     expect(persistedOrder).toBeTruthy();
