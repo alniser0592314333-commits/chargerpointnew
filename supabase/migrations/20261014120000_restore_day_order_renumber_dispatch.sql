@@ -1,6 +1,7 @@
--- Restore atomic day-wide renumber dispatch without dropping latest order-item edit behavior.
--- Only CHARGING + UNRECOGNIZED items are mutable; delivered/financially recognized
--- items remain immutable so no financial history is rewritten by an operational edit.
+-- Restore dispatcher behavior lost when later migrations replaced the whole function
+-- from an older snapshot: atomic day renumbering, collision-safe server order numbering,
+-- and the Super Admin debt-limit policy. Preserve the current order-item edit handler.
+-- This migration changes function definitions only; it does not rewrite business rows.
 CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command_unlocked(
     p_command_id UUID,
     p_command_type TEXT,
