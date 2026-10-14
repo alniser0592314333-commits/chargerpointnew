@@ -43,15 +43,9 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
   // -------------------------------------------------------------
   // TEST 1 — True Fresh Client
   // -------------------------------------------------------------
-  it('TEST 1 — True Fresh Client: allows initial bootstrap when no data and no reset marker exist', async () => {
-    supabaseClient.setSupabaseAuthToken('mock_bootstrap_token');
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => [],
-      text: async () => '[]',
-      headers: new Headers(),
-    } as any);
+  it('TEST 1 — Fresh browser with missing version fetches the authoritative cloud snapshot', async () => {
+    const storage = typeof localStorage !== 'undefined' ? localStorage : null;
+    storage?.removeItem('sys_db_version');
 
     const getSupabaseStatusSpy = vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
       isConfigured: true,
@@ -59,23 +53,62 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
       status: 'connected',
     });
 
-    // Initial fresh database state: 0 records, marker does not exist
+    const snapshot = {
+      schema_version: 1,
+      captured_at: '2026-10-14T06:00:00.000Z',
+      server_reset_generation: 0,
+      max_change_sequence: 31168,
+      customers: [{
+        id: 'fresh-cloud-customer',
+        name: 'Fresh Cloud Customer',
+        phone: '',
+        is_active: true,
+        debt_limit_minor: 0,
+        charger_fee_exempt: false,
+        created_at: '2026-10-14T06:00:00.000Z',
+        updated_at: '2026-10-14T06:00:00.000Z',
+        version: 1,
+      }],
+      business_days: [],
+      device_types: [],
+      orders: [],
+      order_items: [],
+      financial_ledger: [],
+      payments: [],
+      payment_allocations: [],
+      order_number_reservations: [],
+      qr_tokens: [],
+      goals: [],
+      goal_requests: [],
+    };
+
+    const rpcSpy = vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: snapshot,
+      error: null,
+    } as any);
+
     expect(await localDb.isLocalResetCompleted()).toBe(false);
-    expect((await localDb.list('customers')).length).toBe(0);
+    expect(await localDb.list('customers')).toHaveLength(0);
 
-    // When store hydrates for the very first time
-    const hydrated = await dayOrdersStore.hydrateFromRemoteTables();
+    // This follows the real app entry path: clean-boot migration, then store hydration.
+    await dayOrdersStore.ensureStoreHydrated();
 
-    // Initial bootstrap REST calls should execute
-    expect(hydrated).toBe(true);
-    expect(fetchSpy).toHaveBeenCalled();
+    expect(rpcSpy).toHaveBeenCalledWith('capture_sync_bootstrap_snapshot', {});
+    expect(await localDb.isLocalResetCompleted()).toBe(false);
+    expect(await localDb.list<any>('customers')).toMatchObject([
+      { id: 'fresh-cloud-customer', name: 'Fresh Cloud Customer' },
+    ]);
+    expect(await localDb.getSyncState('global')).toMatchObject({
+      lastAppliedChangeSequence: 31168,
+      resetGeneration: 0,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
 
     getSupabaseStatusSpy.mockRestore();
-    fetchSpy.mockRestore();
-    supabaseClient.setSupabaseAuthToken(null);
+    rpcSpy.mockRestore();
   });
 
-  // -------------------------------------------------------------
   // TEST 2 — Intentional Local Reset
   // -------------------------------------------------------------
   it('TEST 2 — Intentional Local Reset: clears operational data and sets durable marker', async () => {
@@ -147,9 +180,9 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
       status: 'connected',
     });
 
-    const restGetSpy = vi
-      .spyOn(supabaseClient, 'invokeSupabaseRestGet')
-      .mockResolvedValue({ data: [], error: null });
+    const rpcSpy = vi
+      .spyOn(supabaseClient, 'invokeSupabaseRpc')
+      .mockResolvedValue({ data: null, error: 'snapshot must remain blocked after an intentional reset' } as any);
 
     // Directly set marker in storage
     await localDb.setLocalResetMarker(true);
@@ -160,12 +193,12 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
     // Hydrate store on fresh boot
     await dayOrdersStore.ensureStoreHydrated();
 
-    // Bootstrap was blocked
-    expect(restGetSpy).not.toHaveBeenCalled();
+    // Bootstrap was blocked: the intentional-reset marker must still prevent a snapshot pull.
+    expect(rpcSpy).not.toHaveBeenCalled();
     expect((await localDb.list('customers')).length).toBe(0);
 
     getSupabaseStatusSpy.mockRestore();
-    restGetSpy.mockRestore();
+    rpcSpy.mockRestore();
   });
 
   // -------------------------------------------------------------
