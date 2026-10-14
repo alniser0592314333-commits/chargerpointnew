@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 import { localDb } from '../infrastructure/localDb/localDb';
 import {
   computeCustomerOrderPaymentStatuses,
   getOrdersForDay,
   getCustomerOrders,
+  getCustomerFinancialHistory,
   topUpCustomerBalance,
   deliverSingleOrderItem,
   phase5UseCases,
@@ -18,7 +20,10 @@ import {
 describe('FIFO Order Payment Status Allocation Engine', () => {
   beforeEach(async () => {
     await localDb.clear();
+    // Seeded demo rows represent a trusted, already-checkpointed local replica.
+    await initializeCanonicalSyncState();
     if (typeof localStorage !== 'undefined') localStorage.clear();
+    setTestAppAuthSession();
     resetStoreMemory();
     await seedDemoOperationalData();
     await ensureStoreHydrated();
@@ -74,14 +79,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(payment.success).toBe(true);
 
-    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
-
-    const statuses = computeCustomerOrderPaymentStatuses(
-      custId,
-      new Map([[order.id, order]]),
-      effectiveItems
-    );
+    const statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(order.id)?.paymentStatus).toBe('PAID');
   });
 
@@ -107,14 +105,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(payment.success).toBe(true);
 
-    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
-
-    const statuses = computeCustomerOrderPaymentStatuses(
-      custId,
-      new Map([[order.id, order]]),
-      effectiveItems
-    );
+    const statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(order.id)?.paymentStatus).toBe('PARTIAL');
     expect(statuses.get(order.id)?.allocatedAmountMinor).toBe(1000);
   });
@@ -146,12 +137,6 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
       });
     }
 
-    const effectiveOrders = new Map(orders.map((entry) => [entry.id, entry.order]));
-    const effectiveItems = new Map<string, any>();
-    for (const entry of orders) {
-      effectiveItems.set(entry.itemId, entry.deliveredItem);
-    }
-
     const auth = getAuthorizedAdminContext('1234');
 
     const firstAmount = orders[0].total + Math.floor(orders[1].total / 2);
@@ -160,9 +145,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(p1.success).toBe(true);
 
-    let statuses = computeCustomerOrderPaymentStatuses(
-      custId, effectiveOrders, effectiveItems
-    );
+    let statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(orders[0].id)?.paymentStatus).toBe('PAID');
     expect(statuses.get(orders[0].id)?.allocatedAmountMinor).toBe(orders[0].total);
     expect(statuses.get(orders[1].id)?.paymentStatus).toBe('PARTIAL');
@@ -177,9 +160,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(p2.success).toBe(true);
 
-    statuses = computeCustomerOrderPaymentStatuses(
-      custId, effectiveOrders, effectiveItems
-    );
+    statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(orders[0].id)?.paymentStatus).toBe('PAID');
     expect(statuses.get(orders[1].id)?.paymentStatus).toBe('PAID');
     expect(statuses.get(orders[2].id)?.paymentStatus).toBe('PARTIAL');
@@ -187,20 +168,135 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
   });
 
 
-  it('5. Customer top-up records CREATE_PAYMENT, not CREATE_CUSTOMER_CREDIT', async () => {
+  it('5. Customer top-up records CREATE_PAYMENT and keeps idempotency after memory reset', async () => {
     const custId = 'cust-5';
+    const idempotencyKey = crypto.randomUUID();
     const result = await topUpCustomerBalance({
       customerId: custId,
       amountMinor: 1000,
       bin: '1234',
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey,
     });
 
     expect(result.success).toBe(true);
-    const commands = await (phase5UseCases as any).deps.commandRepo.get(
-      result.transactionId
+    const command = await (phase5UseCases as any).deps.commandRepo.get(idempotencyKey);
+    expect(command?.type).toBe('CREATE_PAYMENT');
+
+    resetStoreMemory();
+    await ensureStoreHydrated();
+
+    const retry = await topUpCustomerBalance({
+      customerId: custId,
+      amountMinor: 1000,
+      bin: '1234',
+      idempotencyKey,
+    });
+    expect(retry.success).toBe(true);
+
+    const mismatchedRetry = await topUpCustomerBalance({
+      customerId: custId,
+      amountMinor: 2000,
+      bin: '1234',
+      idempotencyKey,
+    });
+    expect(mismatchedRetry.success).toBe(false);
+    expect(mismatchedRetry.error).toContain('IDEMPOTENCY_CONFLICT');
+
+    const matchingCommands = (await localDb.listOutbox()).filter((entry) => entry.commandId === idempotencyKey);
+    expect(matchingCommands).toHaveLength(1);
+  });
+
+  it('shows a delivered item charge in customer history before the server ledger arrives', async () => {
+    const orderResult = await createOrderWithPhase5Engine(
+      'day-2026-10-02',
+      'cust-5',
+      [{ deviceTypeId: 'dev-1', hasCharger: false }]
     );
-    expect(commands?.type).toBe('CREATE_PAYMENT');
+    expect(orderResult.success).toBe(true);
+    const order = orderResult.order!;
+    const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
+    expect(delivery.success).toBe(true);
+
+    const history = await getCustomerFinancialHistory('cust-5', 'ar');
+    const pendingCharge = history.find(
+      (entry) => entry.eventType === 'ORDER_ITEM_CHARGE' && entry.orderItemId === order.items[0].id
+    );
+    expect(pendingCharge).toBeTruthy();
+    expect(pendingCharge?.amountMinor).toBeLessThan(0);
+  });
+
+  it('6. Equal millisecond timestamps use overlay sequence to preserve FIFO causality', async () => {
+    const customerId = 'cust-5';
+    const orderId = 'order-sequence-regression';
+    const itemId = 'item-sequence-regression';
+    const sameTimestamp = '2026-10-14T00:00:00.000Z';
+    const order = {
+      id: orderId,
+      customerId,
+      status: 'pending',
+      internalSequence: 1,
+    } as any;
+    const item = {
+      id: itemId,
+      orderId,
+      status: 'delivered',
+      financialStatus: 'RECOGNIZED',
+      totalPriceMinor: 4500,
+      finalChargeSnapshotMinor: 4500,
+      createdAt: sameTimestamp,
+      itemSequence: 1,
+    } as any;
+
+    await localDb.saveOverlay({
+      commandId: 'payment-before-item',
+      mutationKey: `customer:${customerId}`,
+      entityType: 'payments',
+      entityId: 'payment-before-item',
+      operation: 'CREATE',
+      entityPayload: { id: 'payment-before-item', customerId, amountMinor: 10000 },
+      sequence: 1,
+      createdAt: sameTimestamp,
+      status: 'PENDING',
+    } as any);
+    await localDb.saveOverlay({
+      commandId: 'item-create-sequence',
+      mutationKey: `order:${orderId}`,
+      entityType: 'order_items',
+      entityId: itemId,
+      operation: 'CREATE',
+      entityPayload: item,
+      sequence: 2,
+      createdAt: sameTimestamp,
+      status: 'PENDING',
+    } as any);
+
+    let statuses = computeCustomerOrderPaymentStatuses(
+      customerId,
+      new Map([[orderId, order]]),
+      new Map([[itemId, item]])
+    );
+    expect(statuses.get(orderId)?.paymentStatus).toBe('UNPAID');
+    expect(statuses.get(orderId)?.allocatedAmountMinor).toBe(0);
+
+    await localDb.saveOverlay({
+      commandId: 'payment-after-item',
+      mutationKey: `customer:${customerId}`,
+      entityType: 'payments',
+      entityId: 'payment-after-item',
+      operation: 'CREATE',
+      entityPayload: { id: 'payment-after-item', customerId, amountMinor: 1000 },
+      sequence: 3,
+      createdAt: sameTimestamp,
+      status: 'PENDING',
+    } as any);
+
+    statuses = computeCustomerOrderPaymentStatuses(
+      customerId,
+      new Map([[orderId, order]]),
+      new Map([[itemId, item]])
+    );
+    expect(statuses.get(orderId)?.paymentStatus).toBe('PARTIAL');
+    expect(statuses.get(orderId)?.allocatedAmountMinor).toBe(1000);
   });
 
   it('6. A pending payment cannot retroactively pay an order created after the payment', async () => {
@@ -225,14 +321,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
     expect(delivery.success).toBe(true);
 
-    const effectiveItems = new Map(order.items.map((item) => [item.id, item]));
-    if (delivery.item) effectiveItems.set(delivery.item.id, delivery.item);
-
-    const statuses = computeCustomerOrderPaymentStatuses(
-      custId,
-      new Map([[order.id, order]]),
-      effectiveItems
-    );
+    const statuses = computeCustomerOrderPaymentStatuses(custId);
 
     expect(statuses.get(order.id)?.paymentStatus).toBe('UNPAID');
     expect(statuses.get(order.id)?.allocatedAmountMinor).toBe(0);

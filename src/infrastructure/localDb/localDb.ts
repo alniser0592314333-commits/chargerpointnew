@@ -514,6 +514,15 @@ export class IndexedDBLocalDatabase {
     return this.memoryFallback.get(table)!;
   }
 
+  /**
+   * Synchronous presence check for canonical rows already loaded into the local
+   * cache. The sync read model can contain optimistic entities that have no
+   * persisted canonical row yet, so version comparisons alone are insufficient.
+   */
+  hasCachedRecord(table: string, id: ID): boolean {
+    return this.getMemoryTable(table).has(id);
+  }
+
   async get<T>(table: string, id: ID): Promise<T | null> {
     await this.ensureHydrated();
     const tableMap = this.getMemoryTable(table);
@@ -658,17 +667,29 @@ export class IndexedDBLocalDatabase {
       for (const outbox of this.memoryOutbox.values()) {
         if (!protectedStatuses.has(outbox.status)) continue;
         if (!outbox.aggregateType || !outbox.aggregateId || outbox.aggregateType === 'COMMAND') continue;
+        // Outbox aggregate types have existed in singular, plural, snake_case,
+        // and camelCase forms across app versions. Canonicalize before protecting
+        // local optimistic rows; otherwise a reset/reconciliation can silently
+        // drop a pending order merely because its aggregateType was "order".
+        const normalizedAggregateType = outbox.aggregateType
+          .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+          .replace(/[\s-]+/g, '_')
+          .toLowerCase();
         const tableAliases: Record<string, string> = {
-          business_days: 'businessDays',
-          device_types: 'deviceTypes',
-          order_items: 'orderItems',
-          financial_ledger: 'financialLedger',
-          payment_allocations: 'paymentAllocations',
-          order_number_reservations: 'orderNumberReservations',
-          goal_requests: 'goalRequests',
-          qr_tokens: 'qrTokens',
+          customer: 'customers', customers: 'customers',
+          business_day: 'businessDays', business_days: 'businessDays', businessday: 'businessDays', businessdays: 'businessDays',
+          device_type: 'deviceTypes', device_types: 'deviceTypes', devicetype: 'deviceTypes', devicetypes: 'deviceTypes',
+          order: 'orders', orders: 'orders',
+          order_item: 'orderItems', order_items: 'orderItems', orderitem: 'orderItems', orderitems: 'orderItems',
+          financial_ledger: 'financialLedger', financialledger: 'financialLedger',
+          payment: 'payments', payments: 'payments',
+          payment_allocation: 'paymentAllocations', payment_allocations: 'paymentAllocations', paymentallocation: 'paymentAllocations', paymentallocations: 'paymentAllocations',
+          order_number_reservation: 'orderNumberReservations', order_number_reservations: 'orderNumberReservations', ordernumberreservation: 'orderNumberReservations', ordernumberreservations: 'orderNumberReservations',
+          goal: 'goals', goals: 'goals',
+          goal_request: 'goalRequests', goal_requests: 'goalRequests', goalrequest: 'goalRequests', goalrequests: 'goalRequests',
+          qr_token: 'qr_tokens', qr_tokens: 'qr_tokens', qrtoken: 'qr_tokens', qrtokens: 'qr_tokens',
         };
-        const localTable = tableAliases[outbox.aggregateType] || outbox.aggregateType;
+        const localTable = tableAliases[normalizedAggregateType] || outbox.aggregateType;
         const tableMap = this.memoryFallback.get(localTable);
         const row = tableMap?.get(outbox.aggregateId);
         if (row !== undefined) {
@@ -804,53 +825,65 @@ export class IndexedDBLocalDatabase {
       this.memoryOverlays = cloneForRollback(new Map(snapshotOverlays));
     };
 
-    if (!this.db) {
-      // Memory fallback atomic transaction
-      const mockTx = {
-        db: { objectStoreNames: { contains: () => false } },
-        objectStore: (name: string) => ({
-          put: () => {},
-          get: () => {},
-          delete: () => {},
-          clear: () => {},
-        }),
-        abort: () => {
-          rollbackMemory();
-          throw new Error('IndexedDB transaction aborted');
-        },
-      } as unknown as IDBTransaction;
+    // Memory fallback transaction emulates the IndexedDB completion/abort events
+    // used by remote delta application to notify pages and roll back in-memory maps.
+    const memoryListeners = new Map<string, Array<{ listener: (event: any) => void; once: boolean }>>();
+    const dispatchMemoryEvent = (type: string) => {
+      const listeners = memoryListeners.get(type) || [];
+      for (const entry of [...listeners]) {
+        try { entry.listener({ type, target: mockTx }); } catch (error) { console.warn('Memory transaction listener failed:', error); }
+        if (entry.once) {
+          const remaining = (memoryListeners.get(type) || []).filter(item => item !== entry);
+          memoryListeners.set(type, remaining);
+        }
+      }
+    };
+    const mockTx = {
+      db: { objectStoreNames: { contains: () => false } },
+      objectStore: (_name: string) => ({
+        put: () => {},
+        get: () => {},
+        delete: () => {},
+        clear: () => {},
+      }),
+      addEventListener: (type: string, listener: (event: any) => void, options?: boolean | AddEventListenerOptions) => {
+        const entries = memoryListeners.get(type) || [];
+        entries.push({ listener, once: typeof options === 'object' && options !== null && options.once === true });
+        memoryListeners.set(type, entries);
+      },
+      abort: () => {
+        rollbackMemory();
+        dispatchMemoryEvent('abort');
+        throw new Error('IndexedDB transaction aborted');
+      },
+    } as unknown as IDBTransaction;
 
+    const runMemoryTransaction = (): Promise<T> => {
       try {
         const result = work(mockTx);
         if (result && typeof (result as any).then === 'function') {
-          return (result as Promise<T>).catch((err) => {
+          return (result as Promise<T>).then((value) => {
+            dispatchMemoryEvent('complete');
+            return value;
+          }).catch((err) => {
             rollbackMemory();
+            dispatchMemoryEvent('abort');
             throw err;
           });
         }
+        dispatchMemoryEvent('complete');
         return Promise.resolve(result as T);
       } catch (err) {
         rollbackMemory();
+        dispatchMemoryEvent('abort');
         throw err;
       }
-    }
+    };
+
+    if (!this.db) return runMemoryTransaction();
 
     const availableStores = stores.filter((s) => this.db!.objectStoreNames.contains(s));
-    if (availableStores.length === 0) {
-      try {
-        const result = work({} as any);
-        if (result && typeof (result as any).then === 'function') {
-          return (result as Promise<T>).catch((err) => {
-            rollbackMemory();
-            throw err;
-          });
-        }
-        return Promise.resolve(result as T);
-      } catch (err) {
-        rollbackMemory();
-        throw err;
-      }
-    }
+    if (availableStores.length === 0) return runMemoryTransaction();
 
     return new Promise<T>((resolve, reject) => {
       let tx: IDBTransaction | undefined;
@@ -1168,6 +1201,20 @@ export class IndexedDBLocalDatabase {
 
   listOutboxSync(): OutboxRecord[] {
     return Array.from(this.memoryOutbox.values());
+  }
+
+  /**
+   * Generate a monotonic per-device outbox timestamp. ISO timestamps have
+   * millisecond precision, so Date.now() alone can assign equal timestamps to
+   * consecutive commands and erase their causal order after a reload.
+   */
+  getNextOutboxTimestamp(): string {
+    let latestTimestamp = 0;
+    for (const record of this.memoryOutbox.values()) {
+      const parsed = Date.parse(record.createdAt || '');
+      if (Number.isFinite(parsed)) latestTimestamp = Math.max(latestTimestamp, parsed);
+    }
+    return new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString();
   }
 
   getHistorySync(historyId: ID): SyncHistoryRecord | null {

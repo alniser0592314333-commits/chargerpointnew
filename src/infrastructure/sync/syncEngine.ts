@@ -380,6 +380,7 @@ export class MockServerSyncTransport implements ServerSyncTransport {
 
 export class SyncEngine {
   private isSyncing = false;
+  public onAuthoritativeReset?: () => void;
   public onDeltaApplied?: (change: ChangeLogEntry, tx?: IDBTransaction) => Promise<void> | void;
 
   constructor(private transport: ServerSyncTransport) {}
@@ -430,7 +431,7 @@ export class SyncEngine {
       aggregateId,
       payload: { ...(p || {}), resetGeneration: currentGen },
       expectedVersion,
-      createdAt: new Date().toISOString(),
+      createdAt: localDb.getNextOutboxTimestamp(),
       deviceId,
       actorAdminId,
       status,
@@ -496,22 +497,22 @@ export class SyncEngine {
 
     this.isSyncing = true;
     syncEventEmitter.emit({ type: 'sync_started', timestamp: new Date().toISOString() });
-
-    // An intentional cloud reset creates a deliberate one-way safety barrier:
-    // keep the local dataset authoritative and block both push and pull until the
-    // user explicitly performs Local -> Online replacement. This check is before
-    // any network call, so neither a background scheduler nor manual sync can
-    // erase local data or repopulate the freshly reset cloud.
-    const cloudResetState = await localDb.getSyncState('global');
-    if (cloudResetState?.cloudResetPending) {
-      syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
-      this.isSyncing = false;
-      return { pushed: 0, pulled: 0 };
-    }
     let pushedCount = 0;
     let pulledCount = 0;
 
     try {
+      // An intentional cloud reset creates a deliberate one-way safety barrier:
+      // keep the local dataset authoritative and block both push and pull until the
+      // user explicitly performs Local -> Online replacement. Keep this read inside
+      // the try/finally so an IndexedDB failure cannot leave the engine permanently locked.
+      const cloudResetState = await localDb.getSyncState('global');
+      if (cloudResetState?.cloudResetPending || cloudResetState?.status === 'INITIALIZING') {
+        // An interrupted or active bootstrap is a hard local barrier. Never run
+        // reconciliation against a partially installed snapshot.
+        syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
+        return { pushed: 0, pulled: 0 };
+      }
+
       // 0. Preflight Pull & Reset Generation Reconciliation (Must run before pushing outbox commands)
       const syncState = (await localDb.getSyncState('global')) || {
         table: 'global',
@@ -527,9 +528,20 @@ export class SyncEngine {
         pullRes = await this.transport.pullChanges(syncState.lastAppliedChangeSequence);
       } catch (pullTransportErr) {
         console.warn('Transport pull failed during sync preflight:', pullTransportErr);
-        // Halt synchronization if we cannot confirm authoritative generation
+        // A transport failure is not an empty feed and must not leave the UI
+        // claiming that a previously-ready device is still fully synchronized.
+        try {
+          const currentState = await localDb.getSyncState('global');
+          if (currentState?.status !== 'RECONCILIATION_REQUIRED' && currentState?.reconciliationRequired !== true) {
+            await localDb.setSyncState({
+              ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+              status: 'STALE',
+            });
+          }
+        } catch (checkpointError) {
+          console.warn('Failed to persist stale sync status after preflight failure:', checkpointError);
+        }
         syncEventEmitter.emit({ type: 'sync_finished', pushed: 0, pulled: 0, timestamp: new Date().toISOString() });
-        this.isSyncing = false;
         return { pushed: 0, pulled: 0 };
       }
 
@@ -543,6 +555,7 @@ export class SyncEngine {
       const serverGen = pullRes.serverResetGeneration;
       const localGen = syncState.resetGeneration !== undefined ? syncState.resetGeneration : -1;
       const wasReconciling = syncState.status === 'RECONCILIATION_REQUIRED' || syncState.reconciliationRequired;
+      let pullCursor = syncState.lastAppliedChangeSequence || 0;
 
       if (serverGen > localGen || wasReconciling) {
         syncState.resetGeneration = serverGen;
@@ -552,6 +565,9 @@ export class SyncEngine {
           // Reset the remote read model, but never erase commands/entities that
           // were created locally and are still waiting for authoritative sync.
           await localDb.clearOperationalData({ preservePendingMutations: true });
+          // The domain read-model maps are separate from localDb's cache. Clear them
+          // before replay so equal-version canonical rows are not incorrectly skipped.
+          this.onAuthoritativeReset?.();
         }
         syncState.reconciliationRequired = false;
         syncState.status = 'READY';
@@ -660,6 +676,8 @@ export class SyncEngine {
       // Re-pull from sequence 0 after local reconciliation so the rebuilt
       // operational read model receives the complete authoritative snapshot.
       if (serverGen > localGen || wasReconciling) {
+        // Reconciliation deliberately replays the canonical log from its start.
+        pullCursor = 0;
         const rebuiltPull = await this.transport.pullChanges(0);
         if (rebuiltPull.serverResetGeneration === undefined || rebuiltPull.serverResetGeneration !== serverGen) {
           throw new Error('Authoritative reset generation changed during reconciliation; retry sync');
@@ -667,13 +685,21 @@ export class SyncEngine {
         pullRes = rebuiltPull;
       }
 
-      if (pullRes.changes.length > 0) {
+      // Drain every available page before pushing outbox commands. A single-page
+      // preflight can leave the local canonical view incomplete (especially after
+      // reset reconciliation) while the same cycle starts sending dependent writes.
+      while (pullRes.changes.length > 0) {
         const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
-        await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+        const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
+        if (!Number.isSafeInteger(maxSeq) || maxSeq <= pullCursor) {
+          throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: cursor did not advance');
+        }
+
+        await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
           for (const change of sortedChanges) {
             try {
               if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
+                await this.onDeltaApplied(change, tx);
               } else {
                 if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
                   localDb.removeWithTx(tx, change.entityType, change.entityId);
@@ -681,13 +707,11 @@ export class SyncEngine {
                   localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
                 }
               }
-              pulledCount++;
             } catch (deltaErr) {
               console.error(`Failed to apply delta change sequence ${change.sequenceId}:`, deltaErr);
               throw deltaErr;
             }
           }
-          const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
           const updatedState = {
             ...syncState,
             lastAppliedChangeSequence: maxSeq,
@@ -695,6 +719,19 @@ export class SyncEngine {
           };
           localDb.setSyncStateWithTx(tx, updatedState);
         });
+
+        // Count only committed delta pages; a rolled-back page must not inflate
+        // the reported number of successfully applied changes.
+        pulledCount += sortedChanges.length;
+        pullCursor = maxSeq;
+        syncState.lastAppliedChangeSequence = maxSeq;
+        syncState.lastPulledAt = new Date().toISOString();
+
+        if (sortedChanges.length < 500) break;
+        pullRes = await this.transport.pullChanges(pullCursor, 500);
+        if (pullRes.serverResetGeneration === undefined || pullRes.serverResetGeneration !== serverGen) {
+          throw new Error('Authoritative reset generation changed during incremental pull; retry sync');
+        }
       }
 
       // 1. Dependency-aware execution of Outbox commands
@@ -1148,38 +1185,108 @@ export class SyncEngine {
       // before the cycle is considered fully synchronized. If this pull fails,
       // successful commands remain accepted and the next cycle retries the pull.
       try {
-        const finalState = await localDb.getSyncState('global');
-        const finalCursor = finalState?.lastAppliedChangeSequence ?? 0;
-        const finalPull = await this.transport.pullChanges(finalCursor);
-        if (finalPull.changes.length > 0) {
+        let finalState = await localDb.getSyncState('global');
+        let finalCursor = finalState?.lastAppliedChangeSequence ?? 0;
+        let finalPull = await this.transport.pullChanges(finalCursor);
+        const expectedGeneration = finalState?.resetGeneration;
+        if (
+          finalPull.serverResetGeneration === undefined ||
+          expectedGeneration === undefined ||
+          finalPull.serverResetGeneration !== expectedGeneration
+        ) {
+          throw new Error('FINAL_PULL_RESET_GENERATION_CHANGED: authoritative reconciliation required');
+        }
+
+        // Drain all final pages, not only the first 500 rows. The cursor is
+        // checkpointed with each successfully applied page, so a later failure
+        // safely resumes at the last committed page.
+        while (finalPull.changes.length > 0) {
           const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
-          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+          const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
+          if (!Number.isSafeInteger(maxSeq) || maxSeq <= finalCursor) {
+            throw new Error('FINAL_PULL_INVALID_SEQUENCE: cursor did not advance');
+          }
+          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
             for (const change of sortedFinalChanges) {
               if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
+                await this.onDeltaApplied(change, tx);
               } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
                 localDb.removeWithTx(tx, change.entityType, change.entityId);
               } else {
                 localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
               }
             }
-            const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
             localDb.setSyncStateWithTx(tx, {
               ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
-              lastAppliedChangeSequence: Math.max(finalCursor, maxSeq),
+              lastAppliedChangeSequence: maxSeq,
               lastPulledAt: new Date().toISOString(),
               status: 'READY',
               reconciliationRequired: false,
             });
           });
           pulledCount += sortedFinalChanges.length;
+          finalCursor = maxSeq;
+          finalState = {
+            ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+            lastAppliedChangeSequence: maxSeq,
+            lastPulledAt: new Date().toISOString(),
+            status: 'READY',
+            reconciliationRequired: false,
+          };
+
+          if (sortedFinalChanges.length < 500) break;
+          finalPull = await this.transport.pullChanges(finalCursor);
+          if (
+            finalPull.serverResetGeneration === undefined ||
+            finalPull.serverResetGeneration !== expectedGeneration
+          ) {
+            throw new Error('FINAL_PULL_RESET_GENERATION_CHANGED: authoritative reconciliation required');
+          }
         }
-      } catch (finalPullError) {
-        console.warn('Final authoritative sync pull failed; accepted commands remain queued for reconciliation:', finalPullError);
+
+        // Even an empty final page is a successful server check. Persist READY
+        // only after the pull succeeds; a failed pull must never look fully synced.
+        const verifiedState = await localDb.getSyncState('global');
+        await localDb.setSyncState({
+          ...(verifiedState || { table: 'global', lastAppliedChangeSequence: finalCursor, lastPulledAt: '' }),
+          lastAppliedChangeSequence: finalCursor,
+          lastPulledAt: new Date().toISOString(),
+          status: 'READY',
+          reconciliationRequired: false,
+        });
+      } catch (finalPullError: any) {
+        console.warn('Final authoritative sync pull failed; local sync state marked stale or reconciliation-required:', finalPullError);
+        const generationChanged = String(finalPullError?.message || '').includes('FINAL_PULL_RESET_GENERATION_CHANGED');
+        try {
+          const currentState = await localDb.getSyncState('global');
+          await localDb.setSyncState({
+            ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+            status: generationChanged ? 'RECONCILIATION_REQUIRED' : 'STALE',
+            reconciliationRequired: generationChanged,
+          });
+        } catch (checkpointError) {
+          console.warn('Failed to persist final-pull status:', checkpointError);
+        }
       }
 
       syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
       return { pushed: pushedCount, pulled: pulledCount };
+    } catch (syncError) {
+      // A thrown sync error must not leave the UI waiting forever for sync_finished
+      // or make the last committed replica look current after a failed delta page.
+      try {
+        const currentState = await localDb.getSyncState('global');
+        if (currentState?.status !== 'RECONCILIATION_REQUIRED' && currentState?.reconciliationRequired !== true) {
+          await localDb.setSyncState({
+            ...(currentState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
+            status: 'STALE',
+          });
+        }
+      } catch (checkpointError) {
+        console.warn('Failed to persist stale state after sync error:', checkpointError);
+      }
+      syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
+      throw syncError;
     } finally {
       this.isSyncing = false;
     }

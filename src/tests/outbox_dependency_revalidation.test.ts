@@ -252,6 +252,66 @@ describe('Outbox Dependency Revalidation & Automated Unblocking (Phase 2)', () =
     expect(executed).toEqual(['cmd_1', 'cmd_2', 'cmd_3', 'cmd_4']);
   });
 
+  it('does not block goal updates when the referenced goal already exists locally', async () => {
+    const goalId = 'goal-existing-local';
+    const engine = new SyncEngine(new MockServerSyncTransport());
+    await localDb.set('goals', goalId, {
+      id: goalId,
+      customerId: 'customer-existing-local',
+      status: 'ACTIVE',
+      targetQuantity: 10,
+      currentProgress: 1,
+    });
+    await engine.queueCommand(
+      'cmd_goal_update_existing',
+      'UPDATE_GOAL_PROGRESS',
+      'goals',
+      goalId,
+      { goalId, customerId: 'customer-existing-local', progress: 2 },
+      'dev_1',
+      'admin_1',
+    );
+
+    const outbox = await localDb.listOutbox();
+    const result = await new OutboxScheduler().schedule(
+      outbox,
+      outbox,
+      async (id) => localDb.getHistoryByCommandId(id),
+    );
+
+    expect(result.ready.map((item) => item.commandId)).toContain('cmd_goal_update_existing');
+    expect(result.blocked.has('cmd_goal_update_existing')).toBe(false);
+  });
+
+  it('does not block goal-request decisions when the referenced request exists locally', async () => {
+    const requestId = 'goal-request-existing-local';
+    const engine = new SyncEngine(new MockServerSyncTransport());
+    await localDb.set('goalRequests', requestId, {
+      id: requestId,
+      customerId: 'customer-existing-local',
+      status: 'PENDING',
+    });
+    await engine.queueCommand(
+      'cmd_approve_existing_request',
+      'APPROVE_GOAL_REQUEST',
+      'goal_requests',
+      requestId,
+      { requestId, customerId: 'customer-existing-local' },
+      'dev_1',
+      'admin_1',
+    );
+
+    const outbox = await localDb.listOutbox();
+    const result = await new OutboxScheduler().schedule(
+      outbox,
+      outbox,
+      async (id) => localDb.getHistoryByCommandId(id),
+    );
+
+    expect(result.ready.map((item) => item.commandId)).toContain('cmd_approve_existing_request');
+    expect(result.blocked.has('cmd_approve_existing_request')).toBe(false);
+  });
+
   // Test I — Offline/Online transition
   it('Test I — Offline/Online transition: Multiple transitions maintain strict dependency ordering without duplication', async () => {
     const executed: string[] = [];

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as supabaseClient from '../services/supabase/client';
 import {
   ensureStoreHydrated,
   hydrateFromRemoteTables,
@@ -9,24 +10,311 @@ import {
   addNewCustomer,
   createNewBusinessDay,
   resetStoreMemory,
+  applyRemoteChange,
+  getCustomerFinancialHistory,
   globalSyncEngine,
+  subscribeStoreBootstrapProgress,
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
+import { setTestAppAuthSession } from './utils/testSetup';
 
 describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
+    setTestAppAuthSession();
     resetStoreMemory();
     await localDb.init();
     await localDb.clearOperationalTables();
+    await localDb.clearLocalResetMarker();
+    await localDb.setInitialHydrationCompleted(false);
+
+    // Most tests in this file cover local/offline behavior. Cloud-bootstrap tests
+    // explicitly opt into a configured client and mock their authoritative RPC.
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: false,
+      url: 'Not configured',
+      status: 'disconnected',
+    });
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+      setTestAppAuthSession();
+    }
   });
 
-  it('1. Fresh Client Hydration: localDb starts empty, ensureStoreHydrated initializes without crash', async () => {
+  it('rolls back in-memory financial ledger replacements when a delta transaction aborts', async () => {
+    const customerId = '00000000-0000-4000-8000-000000000101';
+    const ledgerId = '00000000-0000-4000-8000-000000000102';
+    const createdAt = '2026-10-13T12:00:00.000Z';
+
+    await localDb.set('customers', customerId, {
+      id: customerId,
+      name: 'Rollback ledger customer',
+      isActive: true,
+      debtLimitMinor: 2000,
+      chargerFeeExempt: false,
+      createdAt,
+      updatedAt: createdAt,
+      version: 1,
+    });
+    await localDb.set('financialLedger', ledgerId, {
+      id: ledgerId,
+      eventType: 'CHARGE',
+      amountMinor: -1000,
+      customerId,
+      createdAt,
+    });
+    await localDb.setInitialHydrationCompleted(true);
+    resetStoreMemory();
+
+    const before = await getCustomerFinancialHistory(customerId);
+    expect(before).toHaveLength(1);
+    expect(before[0].amountMinor).toBe(-1000);
+
+    await expect(localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+      applyRemoteChange({
+        sequenceId: 1,
+        entityType: 'financial_ledger',
+        entityId: ledgerId,
+        action: 'UPDATE',
+        payload: {
+          id: ledgerId,
+          event_type: 'CHARGE',
+          amount_minor: 700,
+          customer_id: customerId,
+          created_at: createdAt,
+        },
+        version: 2,
+        changedAt: createdAt,
+      }, tx);
+      throw new Error('abort delta transaction');
+    })).rejects.toThrow('abort delta transaction');
+
+    const after = await getCustomerFinancialHistory(customerId);
+    expect(after).toHaveLength(1);
+    expect(after[0].amountMinor).toBe(-1000);
+    expect(await localDb.get('financialLedger', ledgerId)).toMatchObject({ amountMinor: -1000 });
+  });
+
+  it('1. Fresh local-only client: localDb starts empty and initializes without cloud bootstrap', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: false,
+      url: 'Not configured',
+      status: 'disconnected',
+    });
     const daysBefore = await localDb.list('businessDays');
     expect(daysBefore.length).toBe(0);
 
     await ensureStoreHydrated();
     const days = await getDaysList();
     expect(Array.isArray(days)).toBe(true);
+  });
+
+  it('blocks a fresh configured client when the first authoritative cloud read fails', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: null,
+      error: 'simulated offline snapshot failure',
+    } as any);
+
+    await expect(ensureStoreHydrated()).rejects.toThrow(/INITIAL_BOOTSTRAP_FAILED/);
+    expect(await localDb.isInitialHydrationCompleted()).toBe(false);
+  });
+
+  it('rolls back the entire bootstrap install if a local row write fails', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: {
+        schema_version: 1,
+        captured_at: '2026-10-13T12:00:00.000Z',
+        server_reset_generation: 7,
+        max_change_sequence: 42,
+        business_days: [],
+        customers: [{ id: 'customer-atomic', name: 'Must roll back' }],
+        device_types: [],
+        orders: [],
+        order_items: [],
+        financial_ledger: [],
+        payments: [],
+        payment_allocations: [],
+        order_number_reservations: [],
+        qr_tokens: [{
+          id: 'qr-atomic',
+          token_hash: 'hash',
+          public_token: 'token',
+          token_type: 'ORDER',
+          target_id: 'order-atomic',
+          is_active: true,
+        }],
+        goals: [],
+        goal_requests: [],
+      },
+      error: null,
+    } as any);
+    localDb.__setWriteHookForTesting((table) => {
+      if (table === 'qr_tokens') throw new Error('injected local write failure');
+    });
+
+    try {
+      await expect(hydrateFromRemoteTables()).rejects.toThrow('injected local write failure');
+    } finally {
+      localDb.__setWriteHookForTesting(null);
+    }
+
+    expect(await localDb.list('customers')).toHaveLength(0);
+    expect(await localDb.get('qr_tokens', 'qr-atomic')).toBeFalsy();
+    expect(await localDb.getSyncState('global')).toMatchObject({
+      status: 'INITIALIZING',
+      reconciliationRequired: true,
+    });
+    expect(await localDb.isInitialHydrationCompleted()).toBe(false);
+  });
+
+  it('keeps an existing checkpointed local replica and catches it up incrementally', async () => {
+    await localDb.set('customers', 'existing-customer', {
+      id: 'existing-customer',
+      name: 'Local cached customer',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z',
+      version: 1,
+    });
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 42,
+      lastPulledAt: '2026-10-13T12:00:00.000Z',
+      resetGeneration: 7,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+    await localDb.setInitialHydrationCompleted(false);
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    const rpc = vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: null,
+      error: 'the full snapshot RPC must not be used for a trusted local replica',
+    } as any);
+
+    await ensureStoreHydrated();
+
+    expect(await localDb.isInitialHydrationCompleted()).toBe(true);
+    expect(await localDb.get('customers', 'existing-customer')).toMatchObject({ name: 'Local cached customer' });
+    expect(rpc.mock.calls.some(([name]) => name === 'capture_sync_bootstrap_snapshot')).toBe(false);
+  });
+
+  it('refuses to overwrite uncheckpointed local data that still has pending commands', async () => {
+    await localDb.clear();
+    await localDb.init();
+    resetStoreMemory();
+    await localDb.set('customers', 'pending-customer', {
+      id: 'pending-customer',
+      name: 'Must be preserved',
+    });
+    await localDb.saveOutbox({
+      commandId: 'pending-customer-command',
+      commandType: 'UPDATE_CUSTOMER',
+      aggregateType: 'customers',
+      aggregateId: 'pending-customer',
+      payload: { id: 'pending-customer', name: 'Pending local edit' },
+      createdAt: new Date().toISOString(),
+      deviceId: 'test-device',
+      actorAdminId: 'test-admin',
+      status: 'pending',
+      retryCount: 0,
+    });
+    await localDb.setInitialHydrationCompleted(false);
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    const rpc = vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({ data: null, error: 'should not be called' } as any);
+
+    await expect(ensureStoreHydrated()).rejects.toThrow(/LOCAL_RECONCILIATION_REQUIRED/);
+    expect(await localDb.get('customers', 'pending-customer')).toMatchObject({ name: 'Must be preserved' });
+    expect(rpc.mock.calls.some(([name]) => name === 'capture_sync_bootstrap_snapshot')).toBe(false);
+  });
+
+  it('installs the authoritative snapshot cursor before marking initial hydration complete', async () => {
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
+    });
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: {
+        schema_version: 1,
+        captured_at: '2026-10-13T12:00:00.000Z',
+        server_reset_generation: 7,
+        max_change_sequence: 42,
+        business_days: [],
+        customers: [],
+        device_types: [],
+        orders: [],
+        order_items: [],
+        financial_ledger: [],
+        payments: [],
+        payment_allocations: [],
+        order_number_reservations: [{
+          id: 'reservation-1',
+          business_day_id: 'day-1',
+          device_id: 'device-1',
+          start_number: 1,
+          end_number: 5,
+          next_number: 2,
+          status: 'ACTIVE',
+          created_at: '2026-10-13T12:00:00.000Z',
+          updated_at: '2026-10-13T12:00:00.000Z',
+          version: 1,
+        }],
+        qr_tokens: [{
+          id: 'qr-1',
+          token_hash: 'hash-1',
+          public_token: 'token-1',
+          token_type: 'ORDER',
+          target_id: 'order-1',
+          is_active: true,
+          created_at: '2026-10-13T12:00:00.000Z',
+        }],
+        goals: [],
+        goal_requests: [],
+      },
+      error: null,
+    } as any);
+
+    const progressEvents: Array<{ phase: string; percent: number; completedRows: number; totalRows: number }> = [];
+    const unsubscribe = subscribeStoreBootstrapProgress((progress) => progressEvents.push(progress));
+    expect(await hydrateFromRemoteTables()).toBe(true);
+    unsubscribe();
+
+    expect(progressEvents.some((progress) => progress.phase === 'FETCHING')).toBe(true);
+    expect(progressEvents.some((progress) => progress.phase === 'INSTALLING')).toBe(true);
+    expect(progressEvents.some((progress) => progress.phase === 'READY' && progress.percent === 100)).toBe(true);
+    expect(await localDb.getSyncState('global')).toMatchObject({
+      lastAppliedChangeSequence: 42,
+      resetGeneration: 7,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+    expect(await localDb.isInitialHydrationCompleted()).toBe(true);
+    expect(await localDb.get('orderNumberReservations', 'reservation-1')).toMatchObject({
+      id: 'reservation-1',
+      nextNumber: 2,
+    });
+    expect(await localDb.get('qr_tokens', 'qr-1')).toMatchObject({
+      id: 'qr-1',
+      publicToken: 'token-1',
+      targetId: 'order-1',
+    });
   });
 
   it('2. Offline Creation creates outbox command with pending status', async () => {

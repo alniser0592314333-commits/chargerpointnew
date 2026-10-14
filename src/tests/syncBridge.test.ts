@@ -12,16 +12,38 @@ import {
 import { localDb } from '../infrastructure/localDb/localDb';
 import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import * as dayOrdersStore from '../components/pages/dayOrdersStore';
-import { initializeCanonicalSyncState } from './utils/testSetup';
+import * as supabaseClient from '../services/supabase/client';
+import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 
 describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
   beforeEach(async () => {
-    if (typeof localStorage !== 'undefined') localStorage.clear();
+    vi.restoreAllMocks();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+    }
     await clearAllOperationalData();
+    setTestAppAuthSession();
     await initializeCanonicalSyncState();
     await localDb.clearLocalResetMarker();
+    // These tests exercise mutations after app startup, not first-run cloud bootstrap.
+    await localDb.setInitialHydrationCompleted(true);
     resetStoreMemory();
-    vi.restoreAllMocks();
+
+    // These bridge tests use a local-only replica. Keep RPC traffic mocked so
+    // the test suite never depends on a configured or production Supabase project.
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: false,
+      url: 'Not configured',
+      status: 'disconnected',
+    });
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [],
+      latestSequence: 0,
+      serverResetGeneration: 1,
+    });
+    // Simulate app startup before individual tests spy on mutation notifications.
+    await ensureStoreHydrated();
+    await vi.waitFor(() => expect((globalSyncBridge as any).isSyncing).toBe(false));
   });
 
   // 1. Customers mutation works local transaction first
@@ -134,8 +156,39 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect(syncSpy).not.toHaveBeenCalled();
   });
 
+  it('runs queued outbox work if a local commit notifies during pull-only reload', async () => {
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: new Date().toISOString(),
+      resetGeneration: 1,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+
+    let signalPullStarted!: () => void;
+    let finishPull!: (value: any) => void;
+    const pullStarted = new Promise<void>((resolve) => { signalPullStarted = resolve; });
+    const pullResult = new Promise<any>((resolve) => { finishPull = resolve; });
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockImplementationOnce(async () => {
+      signalPullStarted();
+      return pullResult;
+    });
+    const syncSpy = vi.spyOn(globalSyncEngine, 'synchronize').mockResolvedValue({ pushed: 1, pulled: 0 });
+
+    const reload = globalSyncBridge.requestLatestDataReload();
+    await pullStarted;
+    await globalSyncBridge.notifyOutboxWorkAvailable();
+    finishPull({ changes: [], latestSequence: 0, serverResetGeneration: 1 });
+    await reload;
+    await vi.waitFor(() => expect(syncSpy).toHaveBeenCalledTimes(1));
+  });
+
   // 13. requestLatestDataReload does not touch Outbox
   it('13. should never modify, delete, or re-route Outbox records during pull-only reload', async () => {
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [], latestSequence: 0, serverResetGeneration: 1,
+    });
     const initialOutbox = await localDb.listOutbox();
     await globalSyncBridge.requestLatestDataReload();
     const finalOutbox = await localDb.listOutbox();
@@ -147,9 +200,9 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     const syncState = { table: 'global', lastAppliedChangeSequence: 42, lastPulledAt: new Date().toISOString() };
     await localDb.setSyncState(syncState);
 
-    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 42 });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 42, serverResetGeneration: 1 });
     await globalSyncBridge.requestLatestDataReload();
-    expect(pullSpy).toHaveBeenCalledWith(42);
+    expect(pullSpy).toHaveBeenCalledWith(42, 500);
   });
 
   // 15. Cursor does not advance if local apply fails
@@ -175,9 +228,98 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
 
   // 16. Reload Latest Data fetches only delta changes
   it('16. should retrieve only newer changes based on current sequence sequenceId', async () => {
-    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 10 });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 10, serverResetGeneration: 1 });
     await globalSyncBridge.requestLatestDataReload();
     expect(pullSpy).toHaveBeenCalled();
+  });
+
+  it('pull-only reload drains more than one change-log page', async () => {
+    await localDb.setSyncState({
+      table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '',
+      resetGeneration: 1, status: 'READY', reconciliationRequired: false,
+    } as any);
+    const page = (start: number, count: number) => Array.from({ length: count }, (_, index) => ({
+      sequenceId: start + index + 1, entityType: 'customers',
+      entityId: `customer-${start + index + 1}`, action: 'INSERT' as const,
+      payload: { id: `customer-${start + index + 1}`, name: `Customer ${start + index + 1}`, phone: '' },
+      changedAt: new Date().toISOString(),
+    }));
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
+      .mockResolvedValueOnce({ changes: page(0, 500), latestSequence: 500, serverResetGeneration: 1 })
+      .mockResolvedValueOnce({ changes: page(500, 1), latestSequence: 501, serverResetGeneration: 1 });
+    const result = await globalSyncBridge.requestLatestDataReload();
+    expect(result.pulled).toBe(501);
+    expect(pullSpy).toHaveBeenCalledTimes(2);
+    expect(pullSpy).toHaveBeenNthCalledWith(1, 0, 500);
+    expect(pullSpy).toHaveBeenNthCalledWith(2, 500, 500);
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
+  });
+
+  it('pull-only reload requests authoritative reconciliation when sync state is marked reconciliation-required even if generation matches', async () => {
+    await localDb.setSyncState({
+      table: 'global', lastAppliedChangeSequence: 12, lastPulledAt: '',
+      resetGeneration: 2, status: 'RECONCILIATION_REQUIRED', reconciliationRequired: true,
+    } as any);
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [], latestSequence: 12, serverResetGeneration: 2,
+    });
+    const result = await globalSyncBridge.requestLatestDataReload();
+    expect(result).toEqual({ pulled: 0, needsReconciliation: true });
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(12);
+  });
+
+  it('pull-only reload requests authoritative reconciliation when reset generation changes', async () => {
+    await localDb.setSyncState({
+      table: 'global', lastAppliedChangeSequence: 12, lastPulledAt: '',
+      resetGeneration: 1, status: 'READY', reconciliationRequired: false,
+    } as any);
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
+      changes: [], latestSequence: 12, serverResetGeneration: 2,
+    });
+    const result = await globalSyncBridge.requestLatestDataReload();
+    expect(result).toEqual({ pulled: 0, needsReconciliation: true });
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(12);
+  });
+
+  it('rolls back in-memory remote entities when the IndexedDB delta transaction aborts', async () => {
+    const customerId = 'customer-abort-rollback-test';
+    await expect(localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+      applyRemoteChange({
+        sequenceId: 8,
+        entityType: 'customers',
+        entityId: customerId,
+        action: 'INSERT',
+        payload: { id: customerId, name: 'Abort rollback test customer', phone: '' },
+        changedAt: new Date().toISOString(),
+      }, tx as any);
+      throw new Error('force delta transaction abort');
+    })).rejects.toThrow('force delta transaction abort');
+
+    expect((await getCustomersList('Abort rollback test customer', 10)).length).toBe(0);
+  });
+
+  it('notifies subscribed pages only after the IndexedDB delta transaction commits', async () => {
+    const customerId = 'customer-commit-notify-test';
+    let notified = false;
+    const unsub = dayOrdersStore.subscribeStore((scope, id) => {
+      if (scope === 'customers' && id === customerId) notified = true;
+    });
+    try {
+      await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+        applyRemoteChange({
+          sequenceId: 7,
+          entityType: 'customers',
+          entityId: customerId,
+          action: 'INSERT',
+          payload: { id: customerId, name: 'Commit notification test', phone: '' },
+          changedAt: new Date().toISOString(),
+        }, tx as any);
+        expect(notified).toBe(false);
+      });
+      expect(notified).toBe(true);
+    } finally {
+      unsub();
+    }
   });
 
   // 17. No full hydration after Customer mutation
@@ -190,7 +332,7 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
   // 18. Reload Latest Data is allowed when Local Reset Completed exists
   it('18. should allow manual Reload Latest Data even when local reset completed marker exists', async () => {
     await localDb.setLocalResetMarker(true);
-    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 100 });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({ changes: [], latestSequence: 100, serverResetGeneration: 1 });
     const result = await globalSyncBridge.requestLatestDataReload();
     expect(pullSpy).toHaveBeenCalled();
     expect(result.pulled).toBe(0);
@@ -300,7 +442,8 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
           payload: { id: 'cust-after-reset', name: 'عميل بعد التصفير', phone: '0599333444', isActive: true },
           changedAt: new Date().toISOString(),
         }],
-        latestSequence: 1
+        latestSequence: 1,
+        serverResetGeneration: 1,
       });
 
       const resumeSpy = vi.spyOn(globalSyncEngine, 'resumePendingOutbox');
@@ -310,7 +453,7 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
 
       // Validations:
       expect(result.pulled).toBe(1);
-      expect(pullSpy).toHaveBeenCalledWith(0);
+      expect(pullSpy).toHaveBeenCalledWith(0, 500);
       expect(resumeSpy).not.toHaveBeenCalled();
       expect(hydrateSpy).not.toHaveBeenCalled();
 

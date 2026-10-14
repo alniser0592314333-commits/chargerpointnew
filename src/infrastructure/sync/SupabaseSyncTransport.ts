@@ -4,7 +4,7 @@
  */
 
 import { ServerSyncTransport, SyncCommandRequest, SyncCommandResponse, SyncPullResponse, ChangeLogEntry } from './syncEngine';
-import { invokeSupabaseRestGet, invokeSupabaseRpc, resolveAuthBearerToken } from '../../services/supabase/client';
+import { invokeSupabaseRpc } from '../../services/supabase/client';
 
 /**
  * Computes a deterministic string hash of a payload for idempotency verification
@@ -31,7 +31,6 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
 
   async pushCommand(req: SyncCommandRequest): Promise<SyncCommandResponse> {
     try {
-      const token = resolveAuthBearerToken();
       const p = (req.payload || {}) as Record<string, any>;
       const payloadHash = computePayloadHash(p);
 
@@ -151,58 +150,42 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
   }
 
   /**
-   * Monotonic delta change pull with strict pagination limit
-   * Minimizes egress and bandwidth consumption
+   * Pull one bounded page of canonical deltas.
+   * One RPC reads both the change page and reset generation from the same
+   * PostgreSQL snapshot. Failed reads throw instead of masquerading as an empty
+   * successful page, so callers never mistake outages for "no changes".
    */
-  async pullChanges(cursor: number, limit: number = SYNC_PULL_BATCH_SIZE): Promise<SyncPullResponse> {
-    try {
-      const batchLimit = Math.min(Math.max(1, limit), SYNC_PULL_BATCH_SIZE);
-      const [changesResult, settingResult] = await Promise.all([
-        invokeSupabaseRestGet<any>(
-          'change_log',
-          `select=sequence_id,entity_type,entity_id,action,payload,version,changed_at&sequence_id=gt.${cursor}&order=sequence_id.asc&limit=${batchLimit}`
-        ),
-        invokeSupabaseRestGet<any>(
-          'system_settings',
-          'select=value_number&key=eq.server_reset_generation'
-        )
-      ]);
-
-      const data = changesResult.data;
-      const error = changesResult.error;
-
-      if (error || !data || !Array.isArray(data)) {
-        return { changes: [], latestSequence: cursor };
-      }
-
-      if (settingResult.error || !settingResult.data || settingResult.data.length === 0) {
-        console.warn('Authoritative server reset generation fetch failed or empty:', settingResult.error);
-        return { changes: [], latestSequence: cursor };
-      }
-
-      const serverResetGeneration = Number(settingResult.data[0].value_number);
-
-      const changes: ChangeLogEntry[] = data.map((row: any) => ({
-        sequenceId: Number(row.sequence_id),
-        entityType: row.entity_type,
-        entityId: row.entity_id,
-        action: row.action,
-        payload: row.payload,
-        version: row.version !== null && row.version !== undefined ? Number(row.version) : undefined,
-        changedAt: row.changed_at,
-      }));
-
-      const latestSequence = changes.length > 0
-        ? Math.max(...changes.map((c) => c.sequenceId))
-        : cursor;
-
-      return {
-        changes,
-        latestSequence,
-        serverResetGeneration,
-      };
-    } catch {
-      return { changes: [], latestSequence: cursor };
+  async pullChanges(
+    cursor: number,
+    limit: number = SYNC_PULL_BATCH_SIZE
+  ): Promise<SyncPullResponse> {
+    const batchLimit = Math.min(Math.max(1, limit), SYNC_PULL_BATCH_SIZE);
+    const { data: rpcData, error: rpcError } = await invokeSupabaseRpc<any>('pull_canonical_changes', {
+      p_since_sequence: cursor,
+      p_limit: batchLimit,
+    });
+    if (rpcError) throw new Error(`CHANGE_LOG_PULL_FAILED: ${rpcError}`);
+    const response = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as any;
+    if (!response || !Array.isArray(response.changes)) throw new Error('CHANGE_LOG_PULL_INVALID_RESPONSE: expected changes array');
+    if (response.serverResetGeneration === null || response.serverResetGeneration === undefined) {
+      throw new Error('RESET_GENERATION_READ_FAILED: missing generation');
     }
+    const serverResetGeneration = Number(response.serverResetGeneration);
+    if (!Number.isFinite(serverResetGeneration)) throw new Error('RESET_GENERATION_READ_FAILED: invalid generation');
+
+    const changes: ChangeLogEntry[] = response.changes.map((row: any) => ({
+      sequenceId: Number(row.sequence_id ?? row.sequenceId),
+      entityType: row.entity_type ?? row.entityType,
+      entityId: row.entity_id ?? row.entityId,
+      action: row.action,
+      payload: row.payload,
+      version: row.version !== null && row.version !== undefined ? Number(row.version) : undefined,
+      changedAt: row.changed_at ?? row.changedAt,
+    }));
+    if (changes.some(change => !Number.isSafeInteger(change.sequenceId) || change.sequenceId <= cursor)) {
+      throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: returned sequence is not greater than cursor');
+    }
+    const latestSequence = changes.length > 0 ? Math.max(...changes.map(change => change.sequenceId)) : cursor;
+    return { changes, latestSequence, serverResetGeneration };
   }
 }

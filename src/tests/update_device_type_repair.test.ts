@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as supabaseClient from '../services/supabase/client';
 import { SyncEngine } from '../infrastructure/sync/syncEngine';
+import { setTestAppAuthSession } from './utils/testSetup';
 import { SupabaseSyncTransport } from '../infrastructure/sync/SupabaseSyncTransport';
 import { localDb } from '../infrastructure/localDb/localDb';
-import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import {
   addDeviceTypeWithPhase5,
   updateDeviceTypeWithPhase5,
@@ -35,7 +35,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     storageMap.clear();
     localStorageMock.setItem('sys_db_version', '6.10.3D');
     localStorageMock.setItem('app_device_id', 'test_device');
-    localStorageMock.setItem('app_auth_session', JSON.stringify({ userId: 'test_admin_user' }));
+    setTestAppAuthSession();
 
     await localDb.init();
     await localDb.clear();
@@ -61,6 +61,23 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
 
     // 1. Mock invokeSupabaseRpc to match exact execute_canonical_sync_command update logic
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (fnName, payload: any) => {
+      if (fnName === 'pull_canonical_changes') {
+        const afterSequence = Number(payload?.p_since_sequence ?? 0);
+        const changes = serverChangeLog.filter(
+          (change) => Number(change.sequence_id) > afterSequence,
+        );
+        const latestSequence = changes.length
+          ? Math.max(...changes.map((change) => Number(change.sequence_id)))
+          : afterSequence;
+        return {
+          data: {
+            changes,
+            latestSequence,
+            serverResetGeneration,
+          },
+          error: null,
+        };
+      }
       if (fnName === 'execute_sync_command') {
         const { p_command_id, p_command_type, p_payload } = payload;
         const p_expected_version = payload.p_expected_version;
@@ -93,8 +110,8 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
           const updated = {
             id,
             name: p_payload.name,
-            nameAr: p_payload.nameAr || p_payload.name,
-            nameEn: p_payload.nameEn || p_payload.name,
+            nameAr: p_payload.nameAr || p_payload.name_ar || p_payload.arabicName || p_payload.name,
+            nameEn: p_payload.nameEn || p_payload.name_en || p_payload.englishName || p_payload.name,
             icon: p_payload.icon || 'smartphone',
             base_price_minor: p_payload.basePriceMinor || 0,
             charger_fee_enabled: p_payload.chargerFeeEnabled !== false,
@@ -119,7 +136,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
         }
 
         if (p_command_type === 'UPDATE_DEVICE_TYPE') {
-          const id = p_payload.id;
+          const id = p_payload.id || payload.p_aggregate_id || payload.p_entity_id;
           if (!id) {
             return { data: null, error: 'Validation Error [P2201]: Device Type ID must be a valid UUID' };
           }
@@ -141,8 +158,8 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
           const updated = {
             ...current,
             name: p_payload.name || current.name,
-            nameAr: p_payload.nameAr || p_payload.name_ar || current.nameAr,
-            nameEn: p_payload.nameEn || p_payload.name_en || current.nameEn,
+            nameAr: p_payload.nameAr || p_payload.name_ar || p_payload.arabicName || current.nameAr,
+            nameEn: p_payload.nameEn || p_payload.name_en || p_payload.englishName || current.nameEn,
             base_price_minor: p_payload.basePriceMinor !== undefined ? p_payload.basePriceMinor : current.base_price_minor,
             charger_fee_enabled: p_payload.chargerFeeEnabled !== undefined ? p_payload.chargerFeeEnabled : current.charger_fee_enabled,
             is_active: p_payload.isActive !== undefined ? p_payload.isActive : current.is_active,
@@ -166,7 +183,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
         }
 
         if (p_command_type === 'RETIRE_DEVICE_TYPE' || p_command_type === 'DELETE_DEVICE_TYPE') {
-          const id = p_payload.id;
+          const id = p_payload.id || payload.p_aggregate_id || payload.p_entity_id;
           const current = serverDeviceTypes.get(id);
           if (!current) {
             return { data: null, error: 'Device Type Not Found [23503]' };
@@ -215,10 +232,9 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
   });
 
   afterEach(() => {
-    setTransactionCommittedHook(() => {
-      globalSyncBridge.notifyOutboxWorkAvailable().catch(() => {});
-    });
-    vi.restoreAllMocks();
+    // This suite exercises explicit SyncEngine calls; background-trigger behavior
+    // is covered separately and must not race these assertions.
+    setTransactionCommittedHook(() => {});
   });
 
   // TEST A: UPDATE DEVICE TYPE SUCCESS
@@ -415,7 +431,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     expect(syncRes2.pushed).toBe(0);
 
     const outbox = await localDb.listOutbox();
-    const staleCmd = outbox.find(o => o.payload && (o.payload as any).nameAr === 'تعديل جيل قديم');
+    const staleCmd = outbox.find(o => o.payload && ((o.payload as any).nameAr === 'تعديل جيل قديم' || (o.payload as any).name_ar === 'تعديل جيل قديم' || (o.payload as any).arabicName === 'تعديل جيل قديم'));
     expect(staleCmd?.status).toBe('rejected');
     expect(staleCmd?.lastError).toContain('RESET_GENERATION_MISMATCH');
   });

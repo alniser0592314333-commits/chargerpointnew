@@ -13,16 +13,22 @@ import { localDb } from '../infrastructure/localDb/localDb';
 import '../infrastructure/sync/syncBridge';
 import * as fs from 'fs';
 import * as path from 'path';
+import { setTestAppAuthSession } from './utils/testSetup';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
   beforeEach(async () => {
-    if (typeof localStorage !== 'undefined') localStorage.clear();
-    await clearAllOperationalData();
-    await localDb.clearLocalResetMarker();
-    resetStoreMemory();
     vi.restoreAllMocks();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+    }
+    await clearAllOperationalData();
+    setTestAppAuthSession();
+    await localDb.clearLocalResetMarker();
+    // Customer UUID tests assume an already-open local app; bootstrap is covered separately.
+    await localDb.setInitialHydrationCompleted(true);
+    resetStoreMemory();
   });
 
   // TEST A: Customer creation generates a standard UUID
@@ -141,13 +147,15 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
 
     expect(addNewCustomerBody).not.toContain('cust-${Date.now()}');
     expect(addNewCustomerBody).not.toContain('cust-');
-    expect(addNewCustomerBody).toContain('crypto.randomUUID()');
+    // The page adapter delegates identity creation to the use case; UUID
+    // generation belongs in the domain/application layer, not this wrapper.
 
     const useCasesPath = path.resolve(process.cwd(), 'src/application/useCases.ts');
     const useCasesContent = fs.readFileSync(useCasesPath, 'utf8');
     const createCustomerMatch = useCasesContent.match(/async createCustomer\([\s\S]*?^  }/m);
     expect(createCustomerMatch).not.toBeNull();
     const createCustomerBody = createCustomerMatch![0];
+    expect(createCustomerBody).toContain('crypto.randomUUID()');
     expect(createCustomerBody).not.toContain('`cust_${Date.now()}_');
   });
 

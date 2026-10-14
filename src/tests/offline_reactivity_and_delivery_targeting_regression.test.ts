@@ -9,6 +9,7 @@ import {
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { AuthorizationContext } from '../application/authContext';
+import { CURRENT_MIGRATION_VERSION } from '../components/pages/dayOrdersStore';
 import { initializeCanonicalSyncState } from './utils/testSetup';
 
 const superAdminAuth = new AuthorizationContext(
@@ -109,7 +110,7 @@ describe('Offline reactivity and delivery targeting regression', () => {
           ],
         })
       );
-      localStorage.setItem('sys_db_version', '6.10.3D');
+      localStorage.setItem('sys_db_version', CURRENT_MIGRATION_VERSION);
     }
   });
 
@@ -203,9 +204,16 @@ describe('Offline reactivity and delivery targeting regression', () => {
 
     expect(addCommands).toHaveLength(2);
     expect(deliverCommands).toHaveLength(1);
-    expect(deliverCommands[0].payload.itemId).not.toBe('item-already-delivered');
+    const deliverPayload = deliverCommands[0].payload as Record<string, unknown>;
+    expect(deliverPayload.itemId).not.toBe('item-already-delivered');
 
-    const newItemId = addCommands[0].payload.id as string;
-    expect(deliverCommands[0].payload.itemId).toBe(newItemId);
+    // The original delivered item was queued earlier in this test. Identify the
+    // newly-added item by its device type; the ADD_ORDER_ITEM payload intentionally
+    // omits the generated ID, which is the outbox commandId.
+    const newItemCommand = addCommands.find(
+      (command) => (command.payload as Record<string, unknown>).deviceTypeId === 'device-regression-2'
+    );
+    expect(newItemCommand).toBeDefined();
+    expect(deliverPayload.itemId).toBe(newItemCommand?.commandId);
   });
 });

@@ -4,6 +4,7 @@ on:
     branches:
       - fix/isolated-safe-day-renumbering-20261009
       - fix/integrated-goals-and-safe-renumbering-20261009
+      - fix/reliable-incremental-sync
   pull_request:
     branches:
       - main
@@ -24,17 +25,58 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
       - name: Run customer and home financial history grouping regressions
+        env:
+          # Test runs must never use the production Supabase project.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/customer_financial_history_grouping.test.ts src/tests/home_financial_activity_grouping.test.ts src/tests/customer_order_history_effective_overlays.test.ts
       - name: Run order-numbering safety tests
+        env:
+          # Test runs must never use the production Supabase project.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/order_numbering_safety.test.ts && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts && npx vitest run src/tests/super_admin_debt_limit_warning_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts && npx vitest run src/tests/canonical_goals_foundation.test.ts && npx vitest run src/tests/phase1_reconciliation_closure.test.ts -t 'Goal Generation Formulas|Goal Request Security & Authorization' && npx vitest run src/tests/goal_restore_normalization.test.ts
       - name: Run order-item cancellation and status regressions
-        run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts src/tests/phase6_11_4_delivery_bin_security.test.ts && npx vitest run src/tests/domain.test.ts -t 'Item Removal vs Full Order Cancellation Permission Boundaries'
-      - name: Type-check (diagnostic; repository-wide baseline)
+        env:
+          # Test runs must never use the production Supabase project.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts src/tests/phase6_11_4_delivery_bin_security.test.ts src/tests/offline_reactivity_and_delivery_targeting_regression.test.ts && npx vitest run src/tests/domain.test.ts -t 'Item Removal vs Full Order Cancellation Permission Boundaries'
+      - name: Run canonical sync engine and delta paging regressions
+        env:
+          # Test runs must never use the production Supabase project.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/sync.test.ts src/tests/delta_pull_batch_size.test.ts src/tests/canonical_architecture_foundation.test.ts src/tests/syncBridge.test.ts src/tests/central_sync_bridge_enforcement.test.ts src/tests/order_item_concurrent_conflict.test.ts src/tests/outbox_dependency_revalidation.test.ts src/tests/phase6_13_remote_sync_hydration.test.ts src/tests/phase_sync_ux_and_background_trigger.test.ts src/tests/command_identity_renovation.test.ts src/tests/fifo_payment_status_allocation.test.ts src/tests/update_device_type_repair.test.ts src/tests/cursor_atomicity.test.ts src/tests/clean_bootstrap_reconciliation.test.ts src/tests/execute_sync_command_wrapper_forensic.test.ts
+      - name: Run financial integrity and allocation regressions
+        env:
+          # These tests must use local mocks and never touch production Supabase.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/phase6_8_financials.test.ts src/tests/fifo_payment_status_allocation.test.ts src/tests/financial_consistency.test.ts
+      - name: Run auth-token and outbox-resume regressions
+        env:
+          # These tests mock all HTTP calls and need a configured client, but must never target production.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
+        run: npx vitest run src/tests/phase6_15_auth_token_and_outbox_resume.test.ts src/tests/phase6_12_2_super_admin_bootstrap.test.ts
+
+      - name: Run online create-day pipeline regressions
+        env:
+          # The RPC transport is mocked; never point this integration-style test at production.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
+        run: npx vitest run src/tests/phase6_16_online_create_day_pipeline.test.ts
+
+      - name: Type-check and lint
         run: npm run lint
-        continue-on-error: true
       - name: Build production bundle
         run: npm run build
       - name: Run full existing test suite (diagnostic)
+        env:
+          # A fake endpoint enables configured-client tests without contacting production.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
         run: npm test
         continue-on-error: true
 
@@ -91,6 +133,25 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d authoritative_snapshot_test -v ON_ERROR_STOP=1 -f supabase/tests/authoritative_snapshot_timeout_runtime.test.sql
+      - name: Create isolated database for change-log commit-order regression
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres change_log_order_test
+      - name: Prepare change-log commit-order fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d change_log_order_test -v ON_ERROR_STOP=1 -f supabase/tests/change_log_commit_order_fixture.sql
+      - name: Apply change-log commit-order migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d change_log_order_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261013110000_serialize_change_log_commit_order.sql
+      - name: Verify concurrent change-log commits cannot pass the cursor
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+          PGDATABASE: change_log_order_test
+        run: bash supabase/tests/change_log_commit_order_runtime.test.sh
       - name: Apply the renumbering migration to isolated PostgreSQL
         env:
           PGPASSWORD: postgres
@@ -146,6 +207,34 @@ jobs:
             END IF;
           END $$;
           SQL
+
+  diagnose-main-test-baseline:
+    name: Diagnose full-suite baseline on main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main baseline
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Run main baseline suite without failing the diagnostic job
+        env:
+          # Keep the baseline run isolated from the real project as well.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee main-baseline-tests.log
+          test_status=${PIPESTATUS[0]}
+          echo "MAIN_BASELINE_EXIT=${test_status}"
+          grep -E 'Test Files|Tests  ' main-baseline-tests.log | tail -n 8 || true
+          exit 0
 
   verify-smart-goal-migration:
     runs-on: ubuntu-latest

@@ -136,7 +136,7 @@ function makeAuth(permissions: string[]) {
       username: 'admin',
       fullName: 'Admin',
       role: 'ADMIN',
-      permissions,
+      permissions: permissions as import('../domain/enums').Permission[],
       isSuperAdmin: false,
     },
     (bin) => bin === TEST_BIN,

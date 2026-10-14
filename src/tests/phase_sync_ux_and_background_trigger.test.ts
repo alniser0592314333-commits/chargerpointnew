@@ -8,15 +8,18 @@ import {
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
-import { initializeCanonicalSyncState } from './utils/testSetup';
+import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 
 describe('SYNC UX + BACKGROUND SYNC — TARGETED FIX AUDIT', () => {
   beforeEach(async () => {
-    if (typeof localStorage !== 'undefined') localStorage.clear();
+    vi.restoreAllMocks();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.clear();
+    }
     await clearAllOperationalData();
+    setTestAppAuthSession();
     await initializeCanonicalSyncState();
     resetStoreMemory();
-    vi.restoreAllMocks();
   });
 
   describe('Part A & I & J — CREATE_CUSTOMER Background Sync Trigger', () => {

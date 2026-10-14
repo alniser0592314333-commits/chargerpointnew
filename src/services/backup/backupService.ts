@@ -748,7 +748,7 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
     payments: (data.payments || []).map(normalizePaymentEntity),
     paymentAllocations: (data.paymentAllocations || []).map(normalizePaymentAllocationEntity),
     deviceTypes: (data.deviceTypes || []).map(normalizeDeviceTypeEntity),
-    qrTokens: (data.qrTokens || []).map(normalizeQrTokenEntity),
+    qrTokens: (data.qrTokens || []).map((token) => normalizeQrTokenEntity(token)),
     orderNumberReservations: (data.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity),
     goals: (data.goals || []).map(normalizeGoalEntity),
     goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
@@ -2481,13 +2481,13 @@ export class BackupService {
               device_types: cloudAfterFailure.deviceTypes.length,
               business_days: cloudAfterFailure.businessDays.length,
               customers: cloudAfterFailure.customers.length,
-              qr_tokens: cloudAfterFailure.qrTokens.length,
+              qr_tokens: (cloudAfterFailure.qrTokens || []).length,
               orders: cloudAfterFailure.orders.length,
               order_items: cloudAfterFailure.orderItems.length,
               payments: cloudAfterFailure.payments.length,
               financial_ledger: cloudAfterFailure.financialLedger.length,
               payment_allocations: cloudAfterFailure.paymentAllocations.length,
-              order_number_reservations: cloudAfterFailure.orderNumberReservations.length,
+              order_number_reservations: (cloudAfterFailure.orderNumberReservations || []).length,
             },
           };
           error = null;
@@ -2538,7 +2538,7 @@ export class BackupService {
 
     // The cloud replacement clears change_log, so discard the local delta cursor
     // data as well. Business entities themselves are intentionally preserved.
-    const localChangeLog = await localDb.list('changeLog');
+    const localChangeLog = await localDb.list('changeLog') as Array<{ id: string }>;
     for (const change of localChangeLog) {
       await localDb.remove('changeLog', change.id);
     }

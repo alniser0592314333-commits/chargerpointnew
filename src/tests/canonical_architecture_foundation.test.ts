@@ -450,7 +450,7 @@ describe('Canonical Architecture Foundation (Phase 1)', () => {
   // 8. BACKUP CHECKPOINT & REFERENTIAL INTEGRITY VALIDATION
   // =======================================================================
   describe('8. Backup Checkpoint & Integrity Validation', () => {
-    it('detects invalid orphaned foreign keys in backup files (forensic RCA test)', () => {
+    it('detects invalid orphaned foreign keys in backup files (forensic RCA test)', async () => {
       // Simulate an invalid backup payload where an orderItem references a non-existent deviceTypeId
       // (The exact root cause from the user incident!)
       const invalidBackupJson = JSON.stringify({
@@ -486,14 +486,14 @@ describe('Canonical Architecture Foundation (Phase 1)', () => {
         },
       });
 
-      const validation = backupService.validateAndParsePortableBackup(invalidBackupJson);
+      const validation = await backupService.validateAndParsePortableBackup(invalidBackupJson);
 
       expect(validation.valid).toBe(false);
       expect(validation.errorCode).toBe('REFERENTIAL_INTEGRITY_VIOLATION');
       expect(validation.error).toContain('non-existent device type');
     });
 
-    it('successfully validates consistent backup payloads with valid referential integrity', () => {
+    it('successfully validates consistent backup payloads with valid referential integrity', async () => {
       const validBackupJson = JSON.stringify({
         formatIdentifier: 'ORDER_SYSTEM_PORTABLE_BACKUP',
         formatVersion: 1,
@@ -528,7 +528,7 @@ describe('Canonical Architecture Foundation (Phase 1)', () => {
         },
       });
 
-      const validation = backupService.validateAndParsePortableBackup(validBackupJson);
+      const validation = await backupService.validateAndParsePortableBackup(validBackupJson);
       expect(validation.valid).toBe(true);
       expect(validation.portableFile?.checkpointSequence).toBe(42);
     });

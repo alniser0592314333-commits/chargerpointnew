@@ -42,7 +42,9 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
   }
 
   // 3. Payload explicit dependencies
-  const payload = item.payload as any;
+  // Outbox payloads are untrusted persisted data and may be null/undefined in legacy rows.
+  // Normalize non-object payloads before domain dependency checks below.
+  const payload = item.payload && typeof item.payload === 'object' ? item.payload as any : {};
   if (payload && typeof payload === 'object') {
     if (payload.dependencyCommandId && typeof payload.dependencyCommandId === 'string') {
       deps.add(payload.dependencyCommandId);
@@ -97,6 +99,12 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
           (item.payload && (item.payload as any).dependencyCommandId === candidateId)
         ) {
           deps.add(candidateId as string);
+        } else if (isStructural) {
+          // Keep structural entity references in the dependency graph even when
+          // no CREATE/OPEN command is currently in the Outbox. The scheduler
+          // must verify that the referenced entity already exists locally;
+          // otherwise a CREATE_ORDER could be pushed without its day/customer.
+          deps.add(candidateId as string);
         }
       }
     };
@@ -149,11 +157,13 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
       const itemId = payload.itemId || payload.orderItemId || payload.id;
       if (itemId) checkCandidate(itemId, ['ADD_ORDER_ITEM', 'order_items'], true);
     } else {
-      // General referencing across commands
-      if (payload.orderId) checkCandidate(payload.orderId, undefined, true);
-      if (payload.customerId) checkCandidate(payload.customerId, undefined, false);
-      if (payload.dayId) checkCandidate(payload.dayId, undefined, true);
-      if (payload.deviceTypeId) checkCandidate(payload.deviceTypeId, undefined, false);
+      // Only entity-creation commands are prerequisites for structural references.
+      // Matching any command by aggregateId makes two payments on the same customer
+      // depend on each other and creates a permanent cycle.
+      if (payload.orderId) checkCandidate(payload.orderId, ['CREATE_ORDER', 'orders'], true);
+      if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
+      if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
+      if (payload.deviceTypeId) checkCandidate(payload.deviceTypeId, ['CREATE_DEVICE_TYPE', 'device_types'], false);
     }
   }
 
@@ -336,17 +346,11 @@ export class OutboxScheduler {
       const unsatisfied: ID[] = [];
 
       for (const depId of deps) {
-        // 1. Check in allOutbox (by commandId, aggregateId, or payload.id)
-        let outboxDep = allOutboxMap.get(depId);
-        if (!outboxDep) {
-          outboxDep = allOutbox.find(
-            (o) =>
-              o.commandId !== candidate.commandId &&
-              (o.commandId === depId ||
-                o.aggregateId === depId ||
-                (o.payload && (o.payload as any).id === depId))
-          );
-        }
+        // extractCommandDependencies converts valid creator dependencies to command IDs.
+        // Remaining IDs may be structural entity references (e.g. an existing order item),
+        // so resolving those by aggregateId would incorrectly make two concurrent mutations
+        // of the same entity depend on each other and form a deadlock cycle.
+        const outboxDep = allOutboxMap.get(depId);
 
         if (outboxDep) {
           // In outbox: satisfied ONLY if accepted
@@ -356,25 +360,48 @@ export class OutboxScheduler {
         } else {
           // 2. Check local history (by commandId or entityId/aggregateId)
           const historyDep = await getHistory(depId);
-          if (historyDep) {
+          const isOwnCommandHistory = Boolean(
+            historyDep &&
+            (historyDep.commandId === candidate.commandId || historyDep.historyId === candidate.commandId)
+          );
+          if (historyDep && !isOwnCommandHistory) {
             if (historyDep.state === 'SUCCESS' || historyDep.state === 'SUCCEEDED') {
-              // Satisfied by previous sync
+              // Satisfied by a previous command on this entity.
             } else {
-              // Prerequisite failed, blocked, or not completed (e.g. FAILED, CONFLICT, BLOCKED, etc.)
+              // A prior prerequisite failed, is blocked, or has not completed.
               unsatisfied.push(historyDep.commandId || depId);
             }
           } else {
-            // Prerequisite is not in active outbox AND not in history.
+            // No prior prerequisite history exists. Ignore this candidate's own
+            // history row and check whether the referenced entity is already local.
             // Check if the entity already exists locally in DB (e.g. existing order, day, customer, device, item)
-            const [existsInDays, existsInOrders, existsInCustomers, existsInDevices, existsInItems] = await Promise.all([
+            const [
+              existsInDays,
+              existsInOrders,
+              existsInCustomers,
+              existsInDevices,
+              existsInItems,
+              existsInGoals,
+              existsInGoalRequests,
+            ] = await Promise.all([
               localDb.get('businessDays', depId).catch(() => null),
               localDb.get('orders', depId).catch(() => null),
               localDb.get('customers', depId).catch(() => null),
               localDb.get('deviceTypes', depId).catch(() => null),
               localDb.get('orderItems', depId).catch(() => null),
+              localDb.get('goals', depId).catch(() => null),
+              localDb.get('goalRequests', depId).catch(() => null),
             ]);
 
-            const entityExistsLocally = Boolean(existsInDays || existsInOrders || existsInItems || existsInCustomers || existsInDevices);
+            const entityExistsLocally = Boolean(
+              existsInDays ||
+              existsInOrders ||
+              existsInItems ||
+              existsInCustomers ||
+              existsInDevices ||
+              existsInGoals ||
+              existsInGoalRequests
+            );
 
             if (!entityExistsLocally) {
               const isDayDep =

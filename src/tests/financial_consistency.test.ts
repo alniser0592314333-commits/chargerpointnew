@@ -38,10 +38,14 @@ describe('Financial Consistency Audit & Idempotency', () => {
           return localDb.set('financialLedger', id, { ...l, id });
         }
       },
-      paymentRepo: { 
+      paymentRepo: {
         save: (p: any) => localDb.set('payments', p.id, p),
         saveAllocation: (a: any) => localDb.set('paymentAllocations', a.id, a),
         findAllAllocations: () => localDb.list('paymentAllocations')
+      },
+      overlayRepo: {
+        getNextSequence: () => localDb.getNextSequence(),
+        save: (overlay: any) => localDb.saveOverlay(overlay),
       },
       transactionManager: { runInTransaction: (work: any) => work(mockRepo) }
     };
@@ -56,10 +60,17 @@ describe('Financial Consistency Audit & Idempotency', () => {
     await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1);
     await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1);
     
-    const payments = await localDb.list('payments');
-    expect(payments.length).toBe(1);
-    
-    const ledger = await localDb.list('financialLedger');
-    expect(ledger.filter((l: any) => l.eventType === 'PAYMENT').length).toBe(1);
+    // CREATE_PAYMENT is optimistic-overlay backed: it must not write the
+    // canonical payment/ledger tables before the outbox command is accepted.
+    const outbox = await localDb.listOutbox();
+    expect(outbox.filter((command) => command.commandId === paymentId)).toHaveLength(1);
+    expect(outbox.find((command) => command.commandId === paymentId)?.commandType).toBe('CREATE_PAYMENT');
+
+    const overlays = await localDb.listOverlays();
+    expect(overlays.filter((overlay) => overlay.commandId === paymentId)).toHaveLength(1);
+    expect(overlays.filter((overlay) => overlay.commandId === `${paymentId}:ledger`)).toHaveLength(1);
+    expect(overlays.filter((overlay) => overlay.entityType === 'ledger' && overlay.entityId === paymentId)).toHaveLength(1);
+    expect(await localDb.list('payments')).toHaveLength(0);
+    expect(await localDb.list('financialLedger')).toHaveLength(0);
   });
 });
