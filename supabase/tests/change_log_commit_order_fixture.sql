@@ -23,7 +23,9 @@ CREATE TABLE public.admins (
   is_active boolean NOT NULL DEFAULT true
 );
 INSERT INTO public.admins(id, auth_user_id, is_active)
-VALUES ('00000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000009', true);
+VALUES
+  ('00000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000009', true),
+  ('00000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000007', false);
 
 -- Snapshot collections need only the identity column for the isolated RPC test.
 CREATE TABLE public.customers (id uuid PRIMARY KEY);
