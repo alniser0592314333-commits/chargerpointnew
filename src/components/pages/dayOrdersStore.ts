@@ -4495,6 +4495,7 @@ export interface UIEditOrderItem {
   deviceName: string;
   priceMinor: number;
   hasCharger: boolean;
+  discountSnapshotMinor?: number;
   status: 'charging' | 'delivered' | 'cancelled';
   isExisting: boolean;
 }
@@ -4562,6 +4563,7 @@ export const getOrderForEdit = async (
         deviceName: devName,
         priceMinor: i.totalPriceMinor,
         hasCharger: i.hasCharger,
+        discountSnapshotMinor: i.discountSnapshotMinor ?? 0,
         status: i.status,
         isExisting: true,
       };
