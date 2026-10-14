@@ -344,17 +344,11 @@ export class OutboxScheduler {
       const unsatisfied: ID[] = [];
 
       for (const depId of deps) {
-        // 1. Check in allOutbox (by commandId, aggregateId, or payload.id)
-        let outboxDep = allOutboxMap.get(depId);
-        if (!outboxDep) {
-          outboxDep = allOutbox.find(
-            (o) =>
-              o.commandId !== candidate.commandId &&
-              (o.commandId === depId ||
-                o.aggregateId === depId ||
-                (o.payload && (o.payload as any).id === depId))
-          );
-        }
+        // extractCommandDependencies converts valid creator dependencies to command IDs.
+        // Remaining IDs may be structural entity references (e.g. an existing order item),
+        // so resolving those by aggregateId would incorrectly make two concurrent mutations
+        // of the same entity depend on each other and form a deadlock cycle.
+        const outboxDep = allOutboxMap.get(depId);
 
         if (outboxDep) {
           // In outbox: satisfied ONLY if accepted
