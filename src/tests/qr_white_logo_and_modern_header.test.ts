@@ -240,7 +240,6 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
       const html = renderWithTheme(
         React.createElement(Header, {
           onOpenMobileNav: () => {},
-          onLogout: () => {},
           currentPath: '/app',
         }),
         'light',
@@ -257,7 +256,6 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
       const html = renderWithTheme(
         React.createElement(Header, {
           onOpenMobileNav: () => {},
-          onLogout: () => {},
           currentPath: '/app',
         }),
         'light'
@@ -273,7 +271,6 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
       const htmlLight = renderWithTheme(
         React.createElement(Header, {
           onOpenMobileNav: () => {},
-          onLogout: () => {},
           currentPath: '/app',
         }),
         'light'
@@ -282,7 +279,6 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
       const htmlDark = renderWithTheme(
         React.createElement(Header, {
           onOpenMobileNav: () => {},
-          onLogout: () => {},
           currentPath: '/app',
         }),
         'dark'
@@ -301,7 +297,6 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
       const html = renderWithTheme(
         React.createElement(Header, {
           onOpenMobileNav: () => {},
-          onLogout: () => {},
           currentPath: '/app',
         }),
         'light',
@@ -314,19 +309,18 @@ describe('QR White Logo Invariant & Modern Header Redesign Contracts', () => {
       expect(html).toMatch(/متزامن|يعمل دون إنترنت|Synced|Offline/);
     });
 
-    it('4.5. Header layout is clean, responsive, and includes page title and logout', () => {
+    it('4.5. Header layout is clean and does not render logout', () => {
       const html = renderWithTheme(
         React.createElement(Header, {
           onOpenMobileNav: () => {},
-          onLogout: () => {},
           currentPath: '/app/settings',
         }),
         'light',
         'ar'
       );
 
-      // Logout button is retained
-      expect(html).toContain('تسجيل الخروج');
+      // Logout belongs in Settings > Account, never in the shared header.
+      expect(html).not.toContain('تسجيل الخروج');
       // Header brand name or system title
       expect(html).toContain('متجر التميز');
     });

@@ -460,7 +460,12 @@ export default function App() {
       case '/app/notifications':
         return <NotificationsRequestsPage />;
       case '/app/settings':
-        return <SettingsPage onNavigate={(path) => navigate(path)} />;
+        return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async () => {
+          await authService.logout();
+          setIsAuthenticated(false);
+          setUserSession(null);
+          navigate("/login", true);
+        }} />;
       case '/app/settings/renumber-day': {
         const canRenumber = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN') || Boolean(userSession?.permissions?.includes('orders:renumber-day'));
         if (!userSession || !canRenumber) return <UnauthorizedPage />;
@@ -535,12 +540,6 @@ export default function App() {
               currentPath={currentPath}
               userSession={userSession}
               onNavigate={(p) => navigate(p)}
-              onLogout={async () => {
-                await authService.logout();
-                setIsAuthenticated(false);
-                setUserSession(null);
-                navigate('/login', true);
-              }}
             >
               {renderContent()}
             </AuthenticatedLayout>

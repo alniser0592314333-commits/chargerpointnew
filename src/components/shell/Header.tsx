@@ -1,22 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
-import { Button } from '../ui/Button';
 import { AppLogo } from '../qr/AppLogo';
 import { useActiveLogo } from '../../services/storage/logoStorage';
 import { localDb } from '../../infrastructure/localDb/localDb';
 import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
-import { LogOut, RefreshCw, CheckCircle2, Clock, AlertCircle, WifiOff } from 'lucide-react';
+import { RefreshCw, CheckCircle2, Clock, AlertCircle, WifiOff } from 'lucide-react';
 
 export interface HeaderProps {
   onOpenMobileNav: () => void;
-  onLogout: () => void;
   currentPath: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenMobileNav,
-  onLogout,
   currentPath,
 }) => {
   const { locale, t } = useI18n();
@@ -217,17 +214,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
-          {/* Logout Action */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onLogout}
-            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs h-8 px-2 sm:px-2.5"
-            aria-label={t('logout')}
-          >
-            <LogOut className="w-3.5 h-3.5 sm:me-1" />
-            <span className="hidden sm:inline">{t('logout')}</span>
-          </Button>
         </div>
       </div>
     </header>
