@@ -204,10 +204,15 @@ describe('Offline reactivity and delivery targeting regression', () => {
     expect(addCommands).toHaveLength(2);
     expect(deliverCommands).toHaveLength(1);
     const deliverPayload = deliverCommands[0].payload as Record<string, unknown>;
-    const addPayload = addCommands[0].payload as Record<string, unknown>;
     expect(deliverPayload.itemId).not.toBe('item-already-delivered');
 
-    const newItemId = addPayload.id as string;
-    expect(deliverPayload.itemId).toBe(newItemId);
+    // The original delivered item was queued earlier in this test. Identify the
+    // newly-added item by its device type; the ADD_ORDER_ITEM payload intentionally
+    // omits the generated ID, which is the outbox commandId.
+    const newItemCommand = addCommands.find(
+      (command) => (command.payload as Record<string, unknown>).deviceTypeId === 'device-regression-2'
+    );
+    expect(newItemCommand).toBeDefined();
+    expect(deliverPayload.itemId).toBe(newItemCommand?.commandId);
   });
 });
