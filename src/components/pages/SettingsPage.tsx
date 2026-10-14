@@ -45,13 +45,15 @@ import {
   AlertCircle,
   Sparkles,
   ListOrdered,
+  LogOut,
 } from "lucide-react";
 
 export interface SettingsPageProps {
   onNavigate?: (path: string) => void;
+  onLogout?: () => void | Promise<void>;
 }
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
+export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, setTheme } = useTheme();
 
@@ -1335,6 +1337,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate }) => {
                 </form>
               )}
             </div>
+          </div>
+          <div className="pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onLogout?.()}
+              className="w-full h-12 justify-center gap-2 rounded-xl border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-300 dark:hover:bg-red-950/45 cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>{t("logout") || (locale === "ar" ? "تسجيل الخروج" : "Log out")}</span>
+            </Button>
           </div>
         </section>
 
