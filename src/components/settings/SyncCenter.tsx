@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
   Activity,
   Terminal,
   Trash2,
@@ -824,14 +825,18 @@ export const SyncCenter: React.FC = () => {
         </div>
       </div>
 
-      {/* FULL MODAL DIALOG FOR SYNC CENTER & SESSION EVENT LOG */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={locale === 'ar' ? 'مركز المزامنة وتشخيص الجلسة الحالية' : 'Sync Center & Session Diagnostics'}
-        className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden rounded-3xl"
-      >
-        <div className="p-5 space-y-4 overflow-y-auto max-h-[calc(90vh-80px)]">
+      {isModalOpen && (
+      <div className="space-y-4">
+        <div className="pb-3 border-b border-gray-200/80 dark:border-[#123832] flex items-center gap-3">
+          <button type="button" onClick={() => setIsModalOpen(false)} className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-gray-500 hover:text-emerald-700 hover:bg-gray-100 dark:hover:bg-[#0c312b] dark:hover:text-[#daf1de] transition-colors" aria-label={locale === 'ar' ? 'رجوع' : 'Back'}>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div className="min-w-0">
+            <h3 className="text-base font-bold text-gray-900 dark:text-[#daf1de]">{locale === 'ar' ? 'مركز المزامنة وتشخيص الجلسة الحالية' : 'Sync Center & Session Diagnostics'}</h3>
+            <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">{locale === 'ar' ? 'متابعة العمليات المعلقة والأخطاء وسجل الجلسة.' : 'Review pending operations, failures and session activity.'}</p>
+          </div>
+        </div>
+        <div className="space-y-4">
           
           {/* Top Control Action Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-gray-50 dark:bg-[#041714] border border-gray-200/80 dark:border-[#123832]">
@@ -1423,7 +1428,8 @@ export const SyncCenter: React.FC = () => {
           )}
 
         </div>
-      </Modal>
+      </div>
+      )}
     </div>
   );
 };
