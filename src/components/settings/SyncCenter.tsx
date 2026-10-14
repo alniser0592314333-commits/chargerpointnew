@@ -774,16 +774,15 @@ export const SyncCenter: React.FC = () => {
       <>
       <div className="pb-3 border-b border-gray-200/80 dark:border-[#123832]">
         <h3 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === 'ar' ? 'المزامنة وحالة النظام' : 'Synchronization & System Status'}</h3>
-        <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">{locale === 'ar' ? 'حالة الاتصال والعمليات المعلقة.' : 'Connection state and pending operations.'}</p>
       </div>
 
-      {/* CONCISE COMPACT SYNC CARD (Short & Clean) */}
+      {/* Flat synchronization status section */}
       <div className="py-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           
           {/* Status Title & Icon */}
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border border-transparent dark:border-[#14423b] ${statusCard.badgeBg}`}>
+            <div className="w-8 h-8 flex items-center justify-center shrink-0 text-gray-600 dark:text-[#8eb698]">
               {statusCard.icon}
             </div>
             <div>
@@ -791,7 +790,7 @@ export const SyncCenter: React.FC = () => {
                 <h4 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">
                   {statusCard.title}
                 </h4>
-                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-gray-50 dark:bg-[#041714] border-gray-200 dark:border-[#123832]">
+                <span className="flex items-center gap-1 text-[10px] font-medium text-gray-600 dark:text-[#8eb698]">
                   {isOnline ? (
                     <>
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -805,9 +804,6 @@ export const SyncCenter: React.FC = () => {
                   )}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-0.5">
-                {statusCard.desc}
-              </p>
             </div>
           </div>
 
@@ -818,9 +814,9 @@ export const SyncCenter: React.FC = () => {
               variant="outline"
               size="sm"
               onClick={() => setIsModalOpen(true)}
-              className="text-xs h-9 px-4 cursor-pointer font-medium bg-gray-50 dark:bg-[#0c312b] border-gray-200 dark:border-[#14423b] hover:bg-emerald-50 dark:hover:bg-[#123832] hover:text-emerald-700 dark:hover:text-[#daf1de] transition-colors"
+              className="text-xs h-9 px-3 cursor-pointer font-medium bg-transparent border-gray-300 dark:border-[#31554e] text-gray-700 dark:text-[#c1d5c8] hover:bg-gray-100 dark:hover:bg-[#0c2823] transition-colors rounded-md"
             >
-              <Activity className={`w-4 h-4 ${isRTL ? 'ml-1.5' : 'mr-1.5'} text-emerald-600 dark:text-[#8eb698]`} />
+              <Activity className={`w-4 h-4 ${isRTL ? 'ml-1.5' : 'mr-1.5'} text-gray-500 dark:text-[#8eb698]`} />
               <span>{locale === 'ar' ? 'إدارة وتفاصيل المزامنة' : 'Manage & Sync Details'}</span>
             </Button>
           </div>
@@ -832,12 +828,11 @@ export const SyncCenter: React.FC = () => {
       {isModalOpen && (
       <div className="space-y-4">
         <div className="pb-3 border-b border-gray-200/80 dark:border-[#123832] flex items-center gap-3">
-          <button type="button" onClick={() => setIsModalOpen(false)} className="w-8 h-8 shrink-0 flex items-center justify-center rounded-lg text-gray-500 hover:text-emerald-700 hover:bg-gray-100 dark:hover:bg-[#0c312b] dark:hover:text-[#daf1de] transition-colors" aria-label={locale === 'ar' ? 'رجوع' : 'Back'}>
+          <button type="button" onClick={() => setIsModalOpen(false)} className="w-8 h-8 shrink-0 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-[#0c312b] dark:hover:text-[#daf1de] transition-colors" aria-label={locale === 'ar' ? 'رجوع' : 'Back'}>
             <ChevronLeft className="w-4 h-4" />
           </button>
           <div className="min-w-0">
             <h3 className="text-base font-bold text-gray-900 dark:text-[#daf1de]">{locale === 'ar' ? 'مركز المزامنة وتشخيص الجلسة الحالية' : 'Sync Center & Session Diagnostics'}</h3>
-            <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">{locale === 'ar' ? 'متابعة العمليات المعلقة والأخطاء وسجل الجلسة.' : 'Review pending operations, failures and session activity.'}</p>
           </div>
         </div>
         <div className="space-y-4">
@@ -857,7 +852,7 @@ export const SyncCenter: React.FC = () => {
                 size="sm"
                 onClick={handleClearDiagnostics}
                 disabled={isSyncing}
-                className="text-xs h-8 px-3 cursor-pointer text-gray-700 dark:text-[#8eb698] hover:text-rose-600 dark:hover:text-rose-400 border-rose-200 dark:border-rose-900/60"
+                className="text-xs h-8 px-3 cursor-pointer text-gray-700 dark:text-[#c1d5c8] hover:text-gray-900 dark:hover:text-white border-gray-300 dark:border-[#31554e] rounded-md"
               >
                 <Trash2 className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'}`} />
                 <span>{locale === 'ar' ? 'تفريغ السجل' : 'Clear Log'}</span>
@@ -881,7 +876,7 @@ export const SyncCenter: React.FC = () => {
                 size="sm"
                 onClick={handleRetryFailedOldestFirst}
                 disabled={isSyncing || !isOnline || activeFailedCount === 0}
-                className="text-xs h-8 px-3 cursor-pointer border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                className="text-xs h-8 px-3 cursor-pointer border-gray-300 dark:border-[#31554e] text-gray-700 dark:text-[#c1d5c8] hover:bg-gray-100 dark:hover:bg-[#0c2823] rounded-md"
               >
                 <Play className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'}`} />
                 <span>{locale === 'ar' ? `إعادة محاولة الفاشلة (${activeFailedCount})` : `Retry Failed (${activeFailedCount})`}</span>
@@ -893,7 +888,7 @@ export const SyncCenter: React.FC = () => {
                 size="sm"
                 onClick={handleManualSync}
                 disabled={isSyncing || !isOnline}
-                className="text-xs h-8 px-3 cursor-pointer bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
+                className="text-xs h-8 px-3 cursor-pointer bg-transparent text-gray-700 dark:text-[#c1d5c8] border-gray-300 dark:border-[#31554e] hover:bg-gray-100 dark:hover:bg-[#0c2823] rounded-md"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'} ${isSyncing ? 'animate-spin' : ''}`} />
                 <span>{locale === 'ar' ? 'مزامنة الآن' : 'Sync Now'}</span>
@@ -949,7 +944,7 @@ export const SyncCenter: React.FC = () => {
                           : binRequiredItems.map((o) => o.commandId)
                       )
                     }
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                    className="px-2.5 py-1 text-[10px] font-medium border border-gray-300 dark:border-[#31554e] text-gray-700 dark:text-[#c1d5c8] hover:bg-gray-100 dark:hover:bg-[#0c2823] rounded-md"
                   >
                     {selectedBinCommandIds.length === binRequiredItems.length
                       ? (locale === 'ar' ? 'إلغاء تحديد الكل' : 'Clear all')
@@ -960,7 +955,7 @@ export const SyncCenter: React.FC = () => {
                     size="sm"
                     onClick={() => handleProvideBinForCommands(selectedBinCommandIds)}
                     disabled={isSyncing || !isOnline || selectedBinCommandIds.length === 0}
-                    className="text-xs h-8 px-4 cursor-pointer font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                    className="text-xs h-8 px-3 cursor-pointer font-medium bg-gray-700 hover:bg-gray-800 dark:bg-[#24443c] dark:hover:bg-[#31554e] text-white rounded-md"
                   >
                     {locale === 'ar'
                       ? `إدخال BIN (${selectedBinCommandIds.length})`
@@ -976,7 +971,7 @@ export const SyncCenter: React.FC = () => {
                   return (
                     <label
                       key={item.commandId}
-                      className="flex items-center gap-2.5 p-2 rounded-xl bg-white/70 dark:bg-[#06201c]/70 border border-emerald-200/70 dark:border-[#123832] cursor-pointer"
+                      className="flex items-center gap-2.5 py-2 border-b border-gray-100 dark:border-[#173a33] cursor-pointer"
                     >
                       <input
                         type="checkbox"
@@ -1036,7 +1031,7 @@ export const SyncCenter: React.FC = () => {
                 autoComplete="off"
                 maxLength={32}
                 placeholder={locale === 'ar' ? 'أدخل BIN هنا' : 'Enter BIN here'}
-                className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-[#14423b] bg-white dark:bg-[#041714] text-gray-900 dark:text-[#daf1de] outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full h-11 px-3 rounded-md border border-gray-300 dark:border-[#31554e] bg-white dark:bg-[#041714] text-gray-900 dark:text-[#daf1de] outline-none focus:border-gray-500"
               />
               <div className="flex justify-end gap-2">
                 <Button
@@ -1053,7 +1048,7 @@ export const SyncCenter: React.FC = () => {
                   type="button"
                   onClick={() => void handleConfirmBin()}
                   disabled={!/^\d{4,}$/.test(binInput.trim()) || isSyncing || !isOnline}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-gray-700 hover:bg-gray-800 dark:bg-[#24443c] dark:hover:bg-[#31554e] text-white rounded-md"
                 >
                   {locale === 'ar' ? 'اعتماد ومزامنة' : 'Authorize & Sync'}
                 </Button>
@@ -1063,9 +1058,9 @@ export const SyncCenter: React.FC = () => {
 
           {/* Prominent Action Banner when Blocked Items Exist */}
           {blockedCount > 0 && (
-            <div className="py-3 border-b border-amber-200 dark:border-amber-900/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200 text-xs">
-                <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div className="py-3 border-b border-gray-200 dark:border-[#123832] flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-gray-700 dark:text-[#c1d5c8] text-xs">
+                <Lock className="w-4 h-4 text-gray-500 dark:text-[#8eb698] shrink-0" />
                 <span>
                   {locale === 'ar'
                     ? `توجد ${blockedCount} عمليات محجوزة في طابور الانتظار. انقر للتحرير والمزامنة الآن.`
@@ -1078,7 +1073,7 @@ export const SyncCenter: React.FC = () => {
                 size="sm"
                 onClick={handleUnblockAll}
                 disabled={isSyncing}
-                className="text-xs h-8 px-4 cursor-pointer font-bold bg-amber-600 hover:bg-amber-700 text-white shrink-0 shadow-sm"
+                className="text-xs h-8 px-3 cursor-pointer font-medium bg-gray-700 hover:bg-gray-800 dark:bg-[#24443c] dark:hover:bg-[#31554e] text-white shrink-0 rounded-md"
               >
                 <Unlock className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'} ${isSyncing ? 'animate-spin' : ''}`} />
                 <span>{locale === 'ar' ? `إعادة تقييم ومزامنة الـ (${blockedCount}) الآن` : `Unblock & Sync (${blockedCount})`}</span>
@@ -1093,13 +1088,13 @@ export const SyncCenter: React.FC = () => {
               onClick={() => setActiveTab('SESSION')}
               className={`pb-2.5 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
                 activeTab === 'SESSION'
-                  ? 'border-emerald-600 text-emerald-700 dark:text-[#daf1de]'
+                  ? 'border-gray-600 text-gray-800 dark:text-[#daf1de]'
                   : 'border-transparent text-gray-500 dark:text-[#8eb698] hover:text-gray-900'
               }`}
             >
               <Activity className="w-4 h-4" />
               <span>{locale === 'ar' ? 'طابور الانتظار وسجل الأحداث' : 'Outbox Queue & Event Log'}</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-[#8eb698]">
+              <span className="text-[10px] text-gray-500 dark:text-[#8eb698]">
                 {sessionEvents.length}
               </span>
             </button>
@@ -1110,7 +1105,7 @@ export const SyncCenter: React.FC = () => {
                 onClick={() => setActiveTab('DIAGNOSTICS')}
                 className={`pb-2.5 px-4 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
                   activeTab === 'DIAGNOSTICS'
-                    ? 'border-emerald-600 text-emerald-700 dark:text-[#daf1de]'
+                    ? 'border-gray-600 text-gray-800 dark:text-[#daf1de]'
                     : 'border-transparent text-gray-500 dark:text-[#8eb698] hover:text-gray-900'
                 }`}
               >
@@ -1135,9 +1130,9 @@ export const SyncCenter: React.FC = () => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={locale === 'ar' ? 'بحث بالعميل أو العملية...' : 'Filter by customer/operation...'}
-                    className={`w-full h-8 text-xs rounded-xl bg-gray-50 dark:bg-[#041714] border border-gray-200 dark:border-[#123832] ${
+                    className={`w-full h-8 text-xs rounded-md bg-white dark:bg-[#041714] border border-gray-300 dark:border-[#31554e] ${
                       isRTL ? 'pr-8 pl-3' : 'pl-8 pr-3'
-                    } text-gray-900 dark:text-[#daf1de] focus:outline-none focus:border-emerald-500`}
+                    } text-gray-900 dark:text-[#daf1de] focus:outline-none focus:border-gray-500`}
                   />
                 </div>
 
@@ -1148,10 +1143,10 @@ export const SyncCenter: React.FC = () => {
                       key={filterVal}
                       type="button"
                       onClick={() => setSessionFilter(filterVal)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors whitespace-nowrap ${
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium cursor-pointer transition-colors whitespace-nowrap ${
                         sessionFilter === filterVal
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'bg-gray-100 dark:bg-[#0c312b] text-gray-600 dark:text-[#8eb698] hover:bg-gray-200'
+                          ? 'bg-gray-700 dark:bg-[#24443c] text-white'
+                          : 'bg-transparent border border-gray-200 dark:border-[#24443c] text-gray-600 dark:text-[#a8c0b2] hover:bg-gray-100 dark:hover:bg-[#0c2823]'
                       }`}
                     >
                       {filterVal === 'ALL' && (locale === 'ar' ? 'الكل' : 'All')}
@@ -1166,25 +1161,25 @@ export const SyncCenter: React.FC = () => {
 
               {/* Event Groups List */}
               {groupedSessionEvents.length === 0 ? (
-                <div className="p-8 text-center rounded-2xl bg-gray-50 dark:bg-[#041714] border border-dashed border-gray-200 dark:border-[#123832]">
+                <div className="py-8 text-center border-y border-gray-200 dark:border-[#123832]">
                   <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
                   <p className="text-xs font-semibold text-gray-700 dark:text-[#daf1de]">
                     {locale === 'ar' ? 'لا توجد عمليات بهذا الفلتر في طابور الانتظار' : 'No operations matching filter in queue.'}
                   </p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="divide-y divide-gray-200 dark:divide-[#123832]">
                   {groupedSessionEvents.map((group) => (
                     <div
                       key={group.entityId}
-                      className="rounded-2xl border border-gray-200/80 dark:border-[#123832] bg-white dark:bg-[#06201c] overflow-hidden"
+                      className="py-3"
                     >
                       {/* Group Header */}
-                      <div className="px-4 py-2.5 bg-gray-50/80 dark:bg-[#041714] border-b border-gray-200/60 dark:border-[#123832] flex items-center justify-between">
+                      <div className="py-2.5 border-b border-gray-200 dark:border-[#123832] flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {group.groupType === 'CUSTOMER' && <Users className="w-4 h-4 text-emerald-600 dark:text-[#8eb698]" />}
-                          {group.groupType === 'DAY' && <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
-                          {group.groupType === 'SYSTEM' && <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />}
+                          {group.groupType === 'DAY' && <Calendar className="w-4 h-4 text-gray-500 dark:text-[#8eb698]" />}
+                          {group.groupType === 'SYSTEM' && <Layers className="w-4 h-4 text-gray-500 dark:text-[#8eb698]" />}
                           <span className="text-xs font-bold text-gray-900 dark:text-[#daf1de]">
                             {group.groupTitle}
                           </span>
@@ -1201,17 +1196,17 @@ export const SyncCenter: React.FC = () => {
                           return (
                             <div
                               key={evt.commandId}
-                              className={`p-3 transition-colors cursor-pointer hover:bg-gray-50/60 dark:hover:bg-[#082823] ${
-                                isSelected ? 'bg-emerald-50/30 dark:bg-[#0c312b]/40' : ''
+                              className={`py-3 px-1 transition-colors cursor-pointer hover:bg-gray-50/60 dark:hover:bg-[#082823] ${
+                                isSelected ? 'bg-gray-50 dark:bg-[#0c2823]' : ''
                               }`}
                               onClick={() => setSelectedRecordId(isSelected ? null : evt.commandId)}
                             >
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                                 <div className="flex items-center gap-2.5">
-                                  {evt.status === 'SYNCED' && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />}
-                                  {evt.status === 'PENDING' && <Clock className="w-4 h-4 text-blue-500 shrink-0" />}
-                                  {evt.status === 'BLOCKED' && <Lock className="w-4 h-4 text-amber-500 shrink-0" />}
-                                  {evt.status === 'FAILED' && <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />}
+                                  {evt.status === 'SYNCED' && <CheckCircle2 className="w-4 h-4 text-gray-500 shrink-0" />}
+                                  {evt.status === 'PENDING' && <Clock className="w-4 h-4 text-gray-500 shrink-0" />}
+                                  {evt.status === 'BLOCKED' && <Lock className="w-4 h-4 text-gray-500 shrink-0" />}
+                                  {evt.status === 'FAILED' && <AlertTriangle className="w-4 h-4 text-gray-500 shrink-0" />}
 
                                   <div>
                                     <span className="text-xs font-semibold text-gray-900 dark:text-[#daf1de] block">
@@ -1232,7 +1227,7 @@ export const SyncCenter: React.FC = () => {
                                         e.stopPropagation();
                                         handleUnblockSingle(evt.commandId);
                                       }}
-                                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white cursor-pointer transition-colors shadow-sm"
+                                      className="px-2 py-1 text-[10px] font-medium border border-gray-300 dark:border-[#31554e] text-gray-700 dark:text-[#c1d5c8] hover:bg-gray-100 dark:hover:bg-[#0c2823] cursor-pointer transition-colors rounded-md"
                                     >
                                       {locale === 'ar' ? 'إلغاء الحجز ومزامنة' : 'Unblock & Sync'}
                                     </button>
@@ -1245,24 +1240,14 @@ export const SyncCenter: React.FC = () => {
                                         e.stopPropagation();
                                         handleRemoveSingleOutbox(evt.commandId);
                                       }}
-                                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer transition-colors border border-rose-200/80 dark:border-rose-900/60"
+                                      className="px-2 py-1 text-[10px] font-medium text-gray-600 dark:text-[#c1d5c8] hover:bg-gray-100 dark:hover:bg-[#0c2823] cursor-pointer transition-colors border border-gray-300 dark:border-[#31554e] rounded-md"
                                       title={locale === 'ar' ? 'حذف العملية من طابور المزامنة' : 'Remove from queue'}
                                     >
                                       {locale === 'ar' ? 'حذف' : 'Remove'}
                                     </button>
                                   )}
 
-                                  <span
-                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                      evt.status === 'SYNCED'
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                                        : evt.status === 'PENDING'
-                                        ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                                        : evt.status === 'BLOCKED'
-                                        ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
-                                        : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
-                                    }`}
-                                  >
+                                  <span className="text-[10px] font-medium text-gray-600 dark:text-[#a8c0b2]">
                                     {evt.status === 'SYNCED' && (locale === 'ar' ? 'تمت المزامنة بنجاح' : 'Synced')}
                                     {evt.status === 'PENDING' && (locale === 'ar' ? 'بانتظار الإرسال' : 'Pending')}
                                     {evt.status === 'BLOCKED' && (locale === 'ar' ? 'محجوزة (تعتمد على أمر)' : 'Blocked')}
@@ -1279,11 +1264,11 @@ export const SyncCenter: React.FC = () => {
 
                               {/* Detailed Inspection Drawer */}
                               {isSelected && (
-                                <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-[#123832] text-[11px] space-y-1.5 text-gray-600 dark:text-[#8eb698] bg-gray-50/50 dark:bg-[#041714] p-2.5 rounded-xl font-mono">
+                                <div className="mt-2.5 pt-2.5 border-t border-gray-200 dark:border-[#123832] text-[11px] space-y-1.5 text-gray-600 dark:text-[#8eb698] font-mono">
                                   <div><strong className="text-gray-900 dark:text-[#daf1de]">Command ID:</strong> {evt.commandId}</div>
                                   <div><strong className="text-gray-900 dark:text-[#daf1de]">Command Type:</strong> {evt.commandType}</div>
                                   {evt.errorMsg && (
-                                    <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 font-sans mt-1">
+                                    <div className="py-2 border-y border-gray-200 dark:border-[#31554e] text-gray-700 dark:text-[#c1d5c8] font-sans mt-1">
                                       <strong>{locale === 'ar' ? 'سبب تعليق/حجز العملية:' : 'Blocking Cause:'}</strong> {evt.errorMsg}
                                     </div>
                                   )}
@@ -1308,7 +1293,7 @@ export const SyncCenter: React.FC = () => {
 
           {/* TAB 2: DEVELOPER DIAGNOSTICS LOG (Super Admin) */}
           {activeTab === 'DIAGNOSTICS' && isSuperAdmin && (
-            <div className="space-y-3 bg-gray-950 text-gray-100 p-4 rounded-2xl border border-gray-800 text-xs font-mono overflow-hidden">
+            <div className="space-y-3 py-3 text-xs font-mono overflow-hidden">
               <div className="flex items-center justify-between border-b border-gray-800 pb-2 text-[11px] text-gray-400">
                 <div className="flex items-center gap-3">
                   <span>Total History Entries: {historyRecords.length}</span>
@@ -1336,18 +1321,18 @@ export const SyncCenter: React.FC = () => {
                     return (
                       <div
                         key={rec.historyId || rec.commandId}
-                        className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
+                        className={`py-2.5 border-b border-gray-200 dark:border-[#24443c] transition-colors cursor-pointer text-gray-700 dark:text-[#c1d5c8] hover:bg-gray-50 dark:hover:bg-[#0c2823] ${
                           rec.state === 'SUCCESS' || rec.state === 'SUCCEEDED'
-                            ? 'bg-emerald-950/30 border-emerald-800/40 text-emerald-200'
+                            ? ''
                             : rec.state === 'BLOCKED'
-                            ? 'bg-amber-950/30 border-amber-800/40 text-amber-200'
-                            : 'bg-rose-950/30 border-rose-800/40 text-rose-200'
+                            ? ''
+                            : ''
                         }`}
                         onClick={() => setSelectedRecordId(isSelected ? null : rec.commandId)}
                       >
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="font-bold text-gray-100">{rec.commandType}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-black/40">
+                          <span className="text-[10px] uppercase font-semibold text-gray-500 dark:text-[#8eb698]">
                             {rec.state}
                           </span>
                         </div>
@@ -1359,13 +1344,13 @@ export const SyncCenter: React.FC = () => {
                         </div>
 
                         {rec.errorMessage && (
-                          <div className="mt-1 text-[11px] text-rose-300 bg-rose-950/60 p-1.5 rounded border border-rose-800/50">
+                          <div className="mt-1 py-1.5 border-y border-gray-200 dark:border-[#31554e] text-gray-700 dark:text-[#c1d5c8]">
                             <span className="font-semibold">{rec.errorClass || 'ERROR'}:</span> {rec.errorMessage}
                           </div>
                         )}
 
                         {isSelected && (
-                          <div className="mt-2 pt-2 border-t border-gray-800 text-[10px] space-y-1 text-gray-300">
+                          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-[#31554e] text-[10px] space-y-1 text-gray-600 dark:text-[#a8c0b2]">
                             <div><strong className="text-gray-400">GroupId:</strong> {rec.groupId || 'N/A'}</div>
                             <div><strong className="text-gray-400">FailureStage:</strong> {rec.failureStage || 'N/A'}</div>
                             <div><strong className="text-gray-400">RpcReached:</strong> {rec.rpcReached ? 'YES' : 'NO'}</div>
