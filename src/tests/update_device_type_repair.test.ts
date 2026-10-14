@@ -4,7 +4,6 @@ import { SyncEngine } from '../infrastructure/sync/syncEngine';
 import { setTestAppAuthSession } from './utils/testSetup';
 import { SupabaseSyncTransport } from '../infrastructure/sync/SupabaseSyncTransport';
 import { localDb } from '../infrastructure/localDb/localDb';
-import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import {
   addDeviceTypeWithPhase5,
   updateDeviceTypeWithPhase5,
@@ -233,9 +232,9 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
   });
 
   afterEach(() => {
-    setTransactionCommittedHook(() => {
-      globalSyncBridge.notifyOutboxWorkAvailable().catch(() => {});
-    });
+    // This suite exercises explicit SyncEngine calls; background-trigger behavior
+    // is covered separately and must not race these assertions.
+    setTransactionCommittedHook(() => {});
   });
 
   // TEST A: UPDATE DEVICE TYPE SUCCESS
