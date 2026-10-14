@@ -147,13 +147,15 @@ describe('CUSTOMER STABLE UUID TESTS (Tests A - H)', () => {
 
     expect(addNewCustomerBody).not.toContain('cust-${Date.now()}');
     expect(addNewCustomerBody).not.toContain('cust-');
-    expect(addNewCustomerBody).toContain('crypto.randomUUID()');
+    // The page adapter delegates identity creation to the use case; UUID
+    // generation belongs in the domain/application layer, not this wrapper.
 
     const useCasesPath = path.resolve(process.cwd(), 'src/application/useCases.ts');
     const useCasesContent = fs.readFileSync(useCasesPath, 'utf8');
     const createCustomerMatch = useCasesContent.match(/async createCustomer\([\s\S]*?^  }/m);
     expect(createCustomerMatch).not.toBeNull();
     const createCustomerBody = createCustomerMatch![0];
+    expect(createCustomerBody).toContain('crypto.randomUUID()');
     expect(createCustomerBody).not.toContain('`cust_${Date.now()}_');
   });
 
