@@ -359,4 +359,79 @@ describe('Outbox Dependency Revalidation & Automated Unblocking (Phase 2)', () =
 
     expect(executed).toEqual(['cmd_x1', 'cmd_x2', 'cmd_x3']);
   });
+  it('does not block day renumbering on unrelated commands that share the day aggregate', async () => {
+    const dayId = 'day-renumber-existing';
+    const engine = new SyncEngine(new MockServerSyncTransport());
+
+    await localDb.set('businessDays', dayId, {
+      id: dayId,
+      date: '2026-10-14',
+      status: 'OPEN',
+    });
+
+    // A pending CLOSE_DAY mutates the day but is not a prerequisite for
+    // renumbering an already-existing day.
+    await engine.queueCommand(
+      'cmd_close_day_pending',
+      'CLOSE_DAY',
+      'business_days',
+      dayId,
+      { id: dayId, dayId },
+      'dev_1',
+      'admin_1',
+    );
+    await engine.queueCommand(
+      'cmd_renumber_existing_day',
+      'RENUMBER_DAY_ORDERS',
+      'orders',
+      dayId,
+      { id: dayId, dayId, changes: [{ id: 'order-1', oldNumber: 2, newNumber: 1 }] },
+      'dev_1',
+      'admin_1',
+    );
+
+    const outbox = await localDb.listOutbox();
+    const result = await new OutboxScheduler().schedule(
+      outbox,
+      outbox,
+      async (id) => localDb.getHistoryByCommandId(id),
+    );
+
+    expect(result.ready.map((item) => item.commandId)).toContain('cmd_renumber_existing_day');
+    expect(result.blocked.has('cmd_renumber_existing_day')).toBe(false);
+  });
+
+  it('still blocks day renumbering behind a pending OPEN_DAY creator command', async () => {
+    const dayId = 'day-renumber-not-yet-created';
+    const engine = new SyncEngine(new MockServerSyncTransport());
+
+    await engine.queueCommand(
+      'cmd_open_day_pending',
+      'OPEN_DAY',
+      'business_days',
+      dayId,
+      { id: dayId, dayId },
+      'dev_1',
+      'admin_1',
+    );
+    await engine.queueCommand(
+      'cmd_renumber_waits_for_open',
+      'RENUMBER_DAY_ORDERS',
+      'orders',
+      dayId,
+      { id: dayId, dayId, changes: [{ id: 'order-1', oldNumber: 2, newNumber: 1 }] },
+      'dev_1',
+      'admin_1',
+    );
+
+    const outbox = await localDb.listOutbox();
+    const result = await new OutboxScheduler().schedule(
+      outbox,
+      outbox,
+      async (id) => localDb.getHistoryByCommandId(id),
+    );
+
+    expect(result.blocked.get('cmd_renumber_waits_for_open')?.unsatisfiedDependencies).toContain('cmd_open_day_pending');
+  });
+
 });
