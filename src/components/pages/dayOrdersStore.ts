@@ -3301,13 +3301,13 @@ export const getDeviceDisplayName = (
  * - Fully covered orders are marked PAID.
  */
 export type PaymentProjectionIndexes = {
-  recognizedItems: Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>;
+  recognizedItems: Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string; createdSequence?: number }>;
   recognizedItemsByOrder: Map<
     string,
-    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
+    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string; createdSequence?: number }>
   >;
   allocatedByItem: Map<string, number>;
-  pendingPaymentsByCustomer: Map<string, Array<{ createdAt: string; amountMinor: number }>>;
+  pendingPaymentsByCustomer: Map<string, Array<{ createdAt: string; amountMinor: number; sequence?: number }>>;
   ordersByCustomer: Map<string, OrderEntity[]>;
   itemsByOrder: Map<string, OrderItemEntity[]>;
 };
@@ -3316,15 +3316,27 @@ const buildPaymentProjectionIndexes = (
   effectiveOrdersMap: Map<string, OrderEntity>,
   effectiveItemsMap: Map<string, OrderItemEntity>
 ): PaymentProjectionIndexes => {
-  const recognizedItems: Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }> = [];
+  const recognizedItems: Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string; createdSequence?: number }> = [];
   const recognizedItemsByOrder = new Map<
     string,
-    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string }>
+    Array<{ itemId: string; orderId: string; totalMinor: number; createdAt: string; createdSequence?: number }>
   >();
   const allocatedByItem = new Map<string, number>();
-  const pendingPaymentsByCustomer = new Map<string, Array<{ createdAt: string; amountMinor: number }>>();
+  const pendingPaymentsByCustomer = new Map<string, Array<{ createdAt: string; amountMinor: number; sequence?: number }>>();
   const ordersByCustomer = new Map<string, OrderEntity[]>();
   const itemsByOrder = new Map<string, OrderItemEntity[]>();
+  const pendingOverlays = localDb.listOverlaysSync().filter((overlay) => overlay.status === 'PENDING');
+  // Overlay sequence is a monotonic local transaction order. Use it when timestamps
+  // collide at millisecond precision so a payment cannot pay an item created later.
+  const itemCreateSequenceById = new Map<string, number>();
+  for (const overlay of pendingOverlays) {
+    if (
+      (overlay.entityType === 'order_items' || overlay.entityType === 'orderItems') &&
+      overlay.operation === 'CREATE'
+    ) {
+      itemCreateSequenceById.set(overlay.entityId, Number(overlay.sequence ?? 0));
+    }
+  }
 
   for (const item of effectiveItemsMap.values()) {
     let orderItems = itemsByOrder.get(item.orderId);
@@ -3353,6 +3365,7 @@ const buildPaymentProjectionIndexes = (
       orderId: item.orderId,
       totalMinor,
       createdAt: item.createdAt,
+      createdSequence: itemCreateSequenceById.get(item.id),
     };
 
     recognizedItems.push(recognized);
@@ -3436,9 +3449,8 @@ const buildPaymentProjectionIndexes = (
     }
   }
 
-  for (const overlay of localDb.listOverlaysSync()) {
+  for (const overlay of pendingOverlays) {
     if (
-      overlay.status !== 'PENDING' ||
       overlay.entityType !== 'payments' ||
       overlay.operation !== 'CREATE'
     ) {
@@ -3454,7 +3466,11 @@ const buildPaymentProjectionIndexes = (
       list = [];
       pendingPaymentsByCustomer.set(customerId, list);
     }
-    list.push({ createdAt: overlay.createdAt, amountMinor });
+    list.push({
+      createdAt: overlay.createdAt,
+      amountMinor,
+      sequence: Number(overlay.sequence ?? 0),
+    });
   }
 
   for (const list of pendingPaymentsByCustomer.values()) {
@@ -3508,7 +3524,18 @@ export const computeCustomerOrderPaymentStatuses = (
       // The server can only allocate a payment against debt that existed
       // when that payment transaction executed. Never retroactively project
       // an earlier pending payment onto an order/item created afterward.
-      if (new Date(item.createdAt).getTime() > new Date(payment.createdAt).getTime()) continue;
+      const itemCreatedAt = new Date(item.createdAt).getTime();
+      const paymentCreatedAt = new Date(payment.createdAt).getTime();
+      const hasSequenceOrder =
+        item.createdSequence !== undefined &&
+        payment.sequence !== undefined &&
+        item.createdSequence > 0 &&
+        payment.sequence > 0;
+      if (hasSequenceOrder) {
+        if (item.createdSequence! > payment.sequence!) continue;
+      } else if (itemCreatedAt > paymentCreatedAt) {
+        continue;
+      }
       const alreadyAllocated = allocatedByItem.get(item.itemId) || 0;
       const outstanding = Math.max(0, item.totalMinor - alreadyAllocated);
       if (outstanding <= 0) continue;
