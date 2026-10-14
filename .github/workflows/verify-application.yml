@@ -216,6 +216,64 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/order_numbering_runtime.test.sql
+      - name: Simulate deployed dispatcher split before later migration replacement
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER FUNCTION public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)
+            RENAME TO execute_canonical_sync_command_unlocked;
+          CREATE FUNCTION public.execute_canonical_sync_command(
+            p_command_id uuid,
+            p_command_type text,
+            p_payload jsonb,
+            p_payload_hash text DEFAULT 'no_hash'::text,
+            p_device_id text DEFAULT 'default_device'::text,
+            p_actor_id uuid DEFAULT NULL::uuid
+          )
+          RETURNS jsonb
+          LANGUAGE plpgsql
+          SECURITY DEFINER
+          SET search_path = ''
+          AS $function$
+          BEGIN
+            PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
+            RETURN public.execute_canonical_sync_command_unlocked(
+              p_command_id, p_command_type, p_payload, p_payload_hash, p_device_id, p_actor_id
+            );
+          END;
+          $function$;
+          REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid) FROM PUBLIC, anon;
+          GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid) TO authenticated, service_role;
+          SQL
+      - name: Apply restored dispatcher migration after wrapper split
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261014120000_restore_day_order_renumber_dispatch.sql
+      - name: Verify final dispatcher retains renumber and debt-limit policies
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $verify$
+          DECLARE
+            dispatcher_definition TEXT := pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure);
+          BEGIN
+            IF position('WHEN ''RENUMBER_DAY_ORDERS'' THEN' IN dispatcher_definition) = 0
+               OR position('orders:renumber-day' IN dispatcher_definition) = 0 THEN
+              RAISE EXCEPTION 'Renumber command or its permission mapping is missing after later dispatcher replacement';
+            END IF;
+            IF position('IF COALESCE(v_admin_role' IN dispatcher_definition) = 0
+               OR position('(v_rec_item.debt_limit_minor = 0 AND v_projected_balance < 0)' IN dispatcher_definition) = 0 THEN
+              RAISE EXCEPTION 'Super Admin debt-limit policy was lost during dispatcher restoration';
+            END IF;
+          END;
+          $verify$;
+          SQL
+      - name: Re-run renumber scenarios after dispatcher restoration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/order_numbering_runtime.test.sql
       - name: Verify dispatcher and audit-table privileges
         env:
           PGPASSWORD: postgres
