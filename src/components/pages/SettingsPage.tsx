@@ -4,6 +4,7 @@ import { useTheme } from "../../theme/themeContext";
 import { AppLogo } from "../qr/AppLogo";
 import { BackupDataManagement } from "../settings/BackupDataManagement";
 import { SyncCenter } from "../settings/SyncCenter";
+import { AccountSessionsManager } from "../settings/AccountSessionsManager";
 import { PWASettingsCard } from "../settings/PWASettingsCard";
 import { authService, UserSession } from "../../services/auth/authService";
 import {
@@ -1202,6 +1203,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                 </button>
               </div>
             )}
+
+            <AccountSessionsManager onLogout={onLogout} />
 
             {/* PART 1: Secure 2-Step BIN Change Area */}
             <div className="pt-3 space-y-3">
