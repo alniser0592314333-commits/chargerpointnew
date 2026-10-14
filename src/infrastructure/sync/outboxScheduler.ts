@@ -406,8 +406,12 @@ export class OutboxScheduler {
             );
 
             if (!entityExistsLocally) {
+              // Only CREATE_ORDER requires its day to be created/opened first.
+              // Day-wide operations such as RENUMBER_DAY_ORDERS target an existing day;
+              // a historical failed command on that day must not masquerade as a missing
+              // day-creation prerequisite.
               const isDayDep =
-                (candidate.commandType === 'CREATE_ORDER' || candidate.aggregateType === 'orders') &&
+                candidate.commandType === 'CREATE_ORDER' &&
                 (candidate.payload as any)?.dayId === depId;
               const isOrderDep =
                 (candidate.commandType === 'ADD_ORDER_ITEM' || candidate.aggregateType === 'order_items') &&
