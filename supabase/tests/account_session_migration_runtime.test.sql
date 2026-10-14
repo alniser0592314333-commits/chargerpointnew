@@ -70,3 +70,24 @@ BEGIN
   IF has_table_privilege('authenticated','public.account_sessions','SELECT') THEN RAISE EXCEPTION 'Authenticated role can read the private session table directly'; END IF;
   IF has_function_privilege('anon','public.get_my_account_sessions()','EXECUTE') THEN RAISE EXCEPTION 'Anonymous role can call account session RPC'; END IF;
 END $assert$;
+
+-- A still-unregistered session is tolerated during rollout only while its Auth
+-- session row exists and is unexpired. A stale JWT must fail this client gate
+-- after its underlying Auth session has disappeared.
+INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
+VALUES ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Test session');
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}',false);
+DO $assert$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'A valid unregistered Auth session should be tolerated during rollout';
+  END IF;
+END $assert$;
+DELETE FROM auth.sessions WHERE id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+DO $assert$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'A missing underlying Auth session must not be reported active';
+  END IF;
+END $assert$;
