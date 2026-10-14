@@ -1207,8 +1207,22 @@ export const runCleanBootMigrationIfNeeded = async (): Promise<boolean> => {
     return false;
   }
 
-  // Truly empty or no version: Perform clean boot initialization
+  // A clean boot must not turn a brand-new browser into an intentional local reset.
+  // clearAllOperationalData() sets local_reset_completed=true to prevent cloud data
+  // from reappearing after a user-requested reset. That marker is wrong for a fresh
+  // client because ensureStoreHydrated() uses it to skip the initial cloud snapshot.
+  const resetWasAlreadyIntentional =
+    (await localDb.isLocalResetCompleted()) ||
+    storage?.getItem('sys_operational_reset') === 'true';
+
   await clearAllOperationalData();
+
+  // Preserve the reset barrier only when the reset was explicitly requested before
+  // this migration. A blank first-run client must remain eligible for cloud bootstrap.
+  if (!resetWasAlreadyIntentional) {
+    await localDb.clearLocalResetMarker();
+  }
+
   return true;
 };
 
