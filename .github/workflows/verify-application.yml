@@ -74,9 +74,9 @@ jobs:
         run: npm run build
       - name: Run full existing test suite (diagnostic)
         env:
-          # Test runs must never use the production Supabase project.
-          VITE_SUPABASE_URL: ''
-          VITE_SUPABASE_ANON_KEY: ''
+          # A fake endpoint enables configured-client tests without contacting production.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
         run: npm test
         continue-on-error: true
 
@@ -224,8 +224,9 @@ jobs:
         run: npm install --legacy-peer-deps
       - name: Run main baseline suite without failing the diagnostic job
         env:
-          VITE_SUPABASE_URL: ''
-          VITE_SUPABASE_ANON_KEY: ''
+          # Keep the baseline run isolated from the real project as well.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
         shell: bash
         run: |
           set +e
