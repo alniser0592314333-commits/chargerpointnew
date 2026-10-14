@@ -298,14 +298,14 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $sessionguard$
 BEGIN
   IF public.is_my_account_session_active() IS NOT TRUE THEN
     RAISE EXCEPTION 'Authentication session is revoked, expired, or unavailable'
       USING ERRCODE = '28000';
   END IF;
 END;
-$;
+$sessionguard$;
 REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.assert_my_account_session_active() TO authenticated, service_role;
 
@@ -392,7 +392,7 @@ BEGIN
         'public_resolve_customer_qr',
         'public_resolve_order_qr'
       )
-      AND p.proname NOT LIKE '%\_session\_guarded\_impl' ESCAPE '\'
+      AND position('__session_guarded_impl' in p.proname) = 0
   LOOP
     v_impl_name := left(p.proname || '__session_guarded_impl', 63);
     v_identity_args := p.identity_args;
@@ -429,7 +429,37 @@ BEGIN
     END IF;
 
     v_create_sql := format(
-      'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $guarded$ %s $guarded
+      'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $sessionrpc$ %s $sessionrpc,
+      p.proname, v_full_args, v_result_type, v_body
+    );
+    EXECUTE v_create_sql;
+
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, anon, authenticated, service_role',
+      v_impl_name, v_identity_args
+    );
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, anon',
+      p.proname, v_identity_args
+    );
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.%I(%s) TO authenticated, service_role',
+      p.proname, v_identity_args
+    );
+  END LOOP;
+END;
+$rpc_guards$;
+
+-- Direct calls to the canonical implementation are not needed by clients:
+-- execute_sync_command is the public entry point and its SECURITY DEFINER owner
+-- can invoke this function internally. This closes the dispatcher bypass.
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
+  TO service_role;
+
+NOTIFY pgrst, 'reload schema';
+
 ,
       p.proname, v_full_args, v_result_type, v_body
     );
