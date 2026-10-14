@@ -205,18 +205,9 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       initialExpectedVersion
     );
 
-    const cmdCancelId = 'cmd-devB-cancel-02';
-    await engineB.queueCommand(
-      cmdCancelId,
-      'CANCEL_ORDER_ITEM',
-      'order_items',
-      targetItemId,
-      { orderItemId: targetItemId, orderId: 'ord-100', resetGeneration: 1 },
-      'device_B_tablet',
-      'admin_2',
-      initialExpectedVersion
-    );
-
+    // Queue only Device A's command in the shared test database. A real second
+    // device has an independent local outbox; queueing both here would model one
+    // device with two concurrent mutations, not two devices.
     // Device A syncs first -> succeeds (5 -> 6)
     const syncResA = await engineA.synchronize();
     expect(syncResA.pushed).toBe(1);
@@ -249,6 +240,32 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     expect(itemChangeLogs[0].payload).toMatchObject({ status: 'delivered', version: 6 });
 
     expect(serverTransport.serverLedger.length).toBe(1);
+
+    // Device B now submits its stale version-5 cancellation after Device A has
+    // committed version 6. This reaches the authoritative transport and must
+    // conflict without creating another financial entry.
+    const cmdCancelId = 'cmd-devB-cancel-02';
+    await engineB.queueCommand(
+      cmdCancelId,
+      'CANCEL_ORDER_ITEM',
+      'order_items',
+      targetItemId,
+      { orderItemId: targetItemId, orderId: 'ord-100', resetGeneration: 1 },
+      'device_B_tablet',
+      'admin_2',
+      initialExpectedVersion
+    );
+    const syncResB = await engineB.synchronize();
+    expect(syncResB.pushed).toBe(0);
+
+    const cancelRecordB = await localDb.getOutbox(cmdCancelId);
+    expect(cancelRecordB?.status).toBe('conflict');
+    expect(cancelRecordB?.lastError).toContain('VERSION_CONFLICT');
+    const historyB = await localDb.getHistoryByCommandId(cmdCancelId);
+    expect(historyB?.state).toBe('CONFLICT');
+    expect(historyB?.errorClass).toBe('CONFLICT');
+    expect(historyB?.retryEligible).toBe(false);
+    expect(serverTransport.serverLedger).toHaveLength(1);
   });
 
   it('Scenario 2: CANCEL wins, DELIVER conflicts and is rejected without duplicate recognition', async () => {
@@ -267,18 +284,7 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       initialExpectedVersion
     );
 
-    const cmdDeliverId = 'cmd-devA-deliver-lose';
-    await engineA.queueCommand(
-      cmdDeliverId,
-      'DELIVER_ORDER_ITEM',
-      'order_items',
-      targetItemId,
-      { orderItemId: targetItemId, orderId: 'ord-100', bin: '9999', resetGeneration: 1 },
-      'device_A_phone',
-      'admin_1',
-      initialExpectedVersion
-    );
-
+    // As above, don't put both devices' commands in one local outbox.
     const syncResB = await engineB.synchronize();
     expect(syncResB.pushed).toBe(1);
 
@@ -301,5 +307,25 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     const logs = serverTransport.changeLog.filter((c) => c.entityId === targetItemId);
     expect(logs.length).toBe(1);
     expect(logs[0].payload).toMatchObject({ status: 'cancelled', version: 6 });
+
+    // Device A submits its stale version-5 delivery only after Device B's
+    // cancellation has committed version 6.
+    const cmdDeliverId = 'cmd-devA-deliver-lose';
+    await engineA.queueCommand(
+      cmdDeliverId,
+      'DELIVER_ORDER_ITEM',
+      'order_items',
+      targetItemId,
+      { orderItemId: targetItemId, orderId: 'ord-100', bin: '9999', resetGeneration: 1 },
+      'device_A_phone',
+      'admin_1',
+      initialExpectedVersion
+    );
+    const syncResA = await engineA.synchronize();
+    expect(syncResA.pushed).toBe(0);
+    const deliverRecordA = await localDb.getOutbox(cmdDeliverId);
+    expect(deliverRecordA?.status).toBe('conflict');
+    expect(deliverRecordA?.lastError).toContain('VERSION_CONFLICT');
+    expect(serverTransport.serverLedger).toHaveLength(0);
   });
 });
