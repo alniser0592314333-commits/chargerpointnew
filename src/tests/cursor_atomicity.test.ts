@@ -36,8 +36,12 @@ describe('Cursor Atomicity & Transaction Boundary Tests', () => {
   beforeEach(async () => {
     await localDb.clear();
     resetStoreMemory();
-    await ensureStoreHydrated();
+    // This suite exercises delta cursor transactions, not first-device cloud
+    // bootstrap. Seed the durable marker of an already-installed local replica
+    // so an unavailable fake Supabase endpoint cannot mask the cursor assertions.
+    await localDb.setInitialHydrationCompleted(true);
     await initializeCanonicalSyncState();
+    await ensureStoreHydrated();
     transport = new TestSyncTransport();
     engine = new SyncEngine(transport);
     engine.onDeltaApplied = (change: any, tx?: IDBTransaction) => applyRemoteChange(change, tx);
