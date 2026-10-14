@@ -741,12 +741,14 @@ export class FinalUseCases {
     const device = await this.deps.deviceRepo.findById(deviceTypeId);
     if (!device || !device.isActive) throw new NotFoundError('Device type not found or inactive');
 
+    const normalizedHasCharger = device.chargerFeeEnabled ? hasCharger : false;
     const pricing = calculateItemPrice({
       basePriceMinor: device.basePriceMinor,
       chargerFeeEnabled: device.chargerFeeEnabled,
       customerExempt: customer.chargerFeeExempt,
-      hasCharger,
+      hasCharger: normalizedHasCharger,
     });
+    const finalTotalMinor = Math.max(0, pricing.totalPriceMinor - (item.discountSnapshotMinor ?? 0));
     const now = new Date().toISOString();
     const patch: Partial<OrderItemEntity> = {
       deviceTypeId,
@@ -756,9 +758,10 @@ export class FinalUseCases {
       chargerFeeEnabledSnapshot: device.chargerFeeEnabled,
       customerChargerFeeExemptSnapshot: customer.chargerFeeExempt,
       chargerFeeSnapshotMinor: pricing.chargerFeeSnapshotMinor,
-      hasCharger,
-      unitPriceMinor: pricing.unitPriceMinor,
-      totalPriceMinor: pricing.totalPriceMinor,
+      hasCharger: normalizedHasCharger,
+      finalChargeSnapshotMinor: finalTotalMinor,
+      unitPriceMinor: finalTotalMinor,
+      totalPriceMinor: finalTotalMinor,
       updatedAt: now,
       version: item.version + 1,
     };
@@ -776,7 +779,7 @@ export class FinalUseCases {
       orderItemId: item.id,
       orderId: order.id,
       deviceTypeId,
-      hasCharger,
+      hasCharger: normalizedHasCharger,
       expectedVersion: item.version,
     }, item.version);
     return { success: true, data: { ...item, ...patch } as OrderItemEntity };
