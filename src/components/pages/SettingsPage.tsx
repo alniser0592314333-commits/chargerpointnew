@@ -46,6 +46,10 @@ import {
   Sparkles,
   ListOrdered,
   LogOut,
+  Database,
+  RefreshCw,
+  Settings2,
+  ArrowLeft,
 } from "lucide-react";
 
 export interface SettingsPageProps {
@@ -56,6 +60,7 @@ export interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, setTheme } = useTheme();
+  const [activeSettingsSection, setActiveSettingsSection] = useState<"general" | "orders" | "backup" | "sync" | "account" | "about" | null>(null);
 
   const [session, setSession] = useState<UserSession | null>(null);
   useEffect(() => {
@@ -386,19 +391,90 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-24 px-4 sm:px-6">
-      {/* 1. Header Bar: Native Official Settings Header */}
-      <div className="pt-2 pb-1 border-b border-gray-200/80 dark:border-[#123832]">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-[#daf1de]">
-          {t("settingsTitle")}
-        </h1>
-        <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">
-          {t("settingsHeaderSubtitle")}
-        </p>
+      {/* Settings header: shared visual identity and in-page navigation */}
+      <div className="pt-2 pb-4 border-b border-gray-200/80 dark:border-[#123832]">
+        <div className="flex items-center gap-3">
+          {activeSettingsSection && (
+            <button type="button" onClick={() => setActiveSettingsSection(null)} aria-label={locale === "ar" ? "العودة إلى الإعدادات" : "Back to settings"} className="w-9 h-9 rounded-xl border border-gray-200 dark:border-[#245047] bg-white/70 dark:bg-[#0c312b] flex items-center justify-center text-gray-600 dark:text-[#daf1de] hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors shrink-0">
+              {isRTL ? <ChevronRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+            </button>
+          )}
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-[#daf1de]">
+              {!activeSettingsSection ? t("settingsTitle") : ({
+                general: locale === "ar" ? "التفضيلات العامة" : "General Preferences",
+                orders: locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices",
+                backup: locale === "ar" ? "النسخ الاحتياطية وإدارة البيانات" : "Backups & Data Management",
+                sync: locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status",
+                account: locale === "ar" ? "الحسابات" : "Accounts",
+                about: locale === "ar" ? "حول التطبيق" : "About the App",
+              } as const)[activeSettingsSection]}
+            </h1>
+            <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">
+              {!activeSettingsSection ? t("settingsHeaderSubtitle") : (locale === "ar" ? "إدارة إعدادات هذا القسم دون تغيير بياناتك أو طريقة عمل النظام." : "Manage this section without changing your data or system behavior.")}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* 2. System Settings Groups */}
+      {/* Main settings menu and selected section content */}
       <div className="space-y-6">
+        {!activeSettingsSection && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-2 px-0.5">
+              <div className="h-5 w-1 rounded-full bg-emerald-500 dark:bg-[#8eb698]" />
+              <h2 className="text-sm font-bold text-gray-800 dark:text-[#daf1de]">{locale === "ar" ? "إعدادات النظام" : "System Settings"}</h2>
+            </div>
+            <div className="rounded-2xl border border-gray-200/80 dark:border-[#123832] bg-white/70 dark:bg-[#061f1c]/80 divide-y divide-gray-100 dark:divide-[#0f302b] overflow-hidden">
+              <button type="button" onClick={() => setActiveSettingsSection("general")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
+                <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Settings2 className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "التفضيلات العامة" : "General Preferences"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "المظهر واللغة وهوية وشعار وإشعارات التطبيق" : "Appearance, language, app identity, branding and notifications"}</span></span>
+                <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+              </button>
+              {(hasPermission("orders:renumber-day") || hasPermission("devices:manage") || hasPermission("settings:manage")) && (
+                <button type="button" onClick={() => setActiveSettingsSection("orders")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
+                  <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ListOrdered className="w-5 h-5" /></span>
+                  <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "أرقام الطلبات وترتيبها وأنواع الأجهزة وتصميم QR" : "Order numbering, device types and QR design"}</span></span>
+                  <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                </button>
+              )}
+              {hasPermission("settings:manage") && (
+                <button type="button" onClick={() => setActiveSettingsSection("backup")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
+                  <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Database className="w-5 h-5" /></span>
+                  <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "النسخ الاحتياطية وإدارة البيانات" : "Backups & Data Management"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "النسخ والاستعادة وإدارة البيانات المحلية والسحابية" : "Backups, restore and local/cloud data operations"}</span></span>
+                  <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                </button>
+              )}
+              {(hasPermission("sync:manage") || hasPermission("sync:view") || hasPermission("settings:manage")) && (
+                <button type="button" onClick={() => setActiveSettingsSection("sync")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
+                  <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><RefreshCw className="w-5 h-5" /></span>
+                  <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "حالة الاتصال والمزامنة والعمليات المعلقة" : "Connection, synchronization and pending operations"}</span></span>
+                  <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                </button>
+              )}
+              <button type="button" onClick={() => setActiveSettingsSection("account")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
+                <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ShieldCheck className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "الحسابات" : "Accounts"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "الدور والجلسة وإدارة المشرفين ورمز الأمان" : "Role, session, admin accounts and security code"}</span></span>
+                <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+              </button>
+              <button type="button" onClick={() => setActiveSettingsSection("about")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
+                <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Info className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "حول التطبيق" : "About the App"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "معلومات التطبيق وإعدادات تثبيته" : "App information and installation options"}</span></span>
+                <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+              </button>
+            </div>
+            <div className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => onLogout?.()} className="w-full h-12 justify-center gap-2 rounded-xl border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50">
+                <LogOut className="w-4 h-4" />
+                <span>{t("logout") || (locale === "ar" ? "تسجيل الخروج" : "Log out")}</span>
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeSettingsSection && <div className="space-y-6">
         {/* GROUP 1: General Preferences (التفضيلات العامة) */}
+        {activeSettingsSection === "general" && (
         <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
           <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
             {locale === "ar" ? "التفضيلات العامة" : "General Preferences"}
@@ -510,9 +586,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
             </div>
           </div>
         </section>
+        )}
 
         {/* GROUP 2: Application Identity & Brand (هوية وشعار التطبيق) */}
-        {hasPermission("settings:manage") && (
+        {activeSettingsSection === "general" && hasPermission("settings:manage") && (
           <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-4">
             <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
               {locale === "ar" ? "هوية وشعار التطبيق" : "Brand & Application Identity"}
@@ -960,36 +1037,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
               </div>
             </div>
 
-            {/* Row 2: QR Design */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => onNavigate?.("/app/settings/qr")}
-                className="w-full py-3 px-1 flex items-center justify-between gap-3 text-start hover:bg-gray-50/60 dark:hover:bg-[#0b2924]/50 rounded-xl transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-[#0c312b] flex items-center justify-center text-gray-700 dark:text-[#8eb698] shrink-0 border border-transparent dark:border-[#14423b]">
-                    <QrCode className="w-4 h-4 text-emerald-600 dark:text-[#8eb698]" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-semibold text-gray-900 dark:text-[#daf1de] block">
-                      {t("qrDesignSectionTitle")}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-[#8eb698]">
-                      {t("qrDesignSectionDesc")}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de] transition-colors">
-                  {isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                </div>
-              </button>
-            </div>
           </section>
         )}
 
         {/* GROUP 2B: Device Types Management (إدارة أنواع الأجهزة) */}
-        {hasPermission("devices:manage") && (
+        {activeSettingsSection === "orders" && hasPermission("devices:manage") && (
           <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
             <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
               {locale === "ar" ? "إدارة الأجهزة" : "Device Types Management"}
@@ -1022,21 +1074,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         )}
 
         {/* GROUP 3: Offline Data & Backup Engine (النسخ الاحتياطي وإدارة البيانات) */}
-        {hasPermission("settings:manage") && (
+        {activeSettingsSection === "backup" && hasPermission("settings:manage") && (
           <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832]">
             <BackupDataManagement />
           </section>
         )}
 
         {/* GROUP 4: Central Sync Engine & Outbox (مركز المزامنة السحابية) */}
-        {(hasPermission("sync:manage") || hasPermission("sync:view") || hasPermission("settings:manage")) && (
+        {activeSettingsSection === "sync" && (hasPermission("sync:manage") || hasPermission("sync:view") || hasPermission("settings:manage")) && (
           <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832]">
             <SyncCenter />
           </section>
         )}
 
         {/* GROUP 5: Manual Order Number Management */}
-        {hasPermission("orders:renumber-day") && (
+        {activeSettingsSection === "orders" && hasPermission("orders:renumber-day") && (
           <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
             <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
               {locale === "ar" ? "إدارة أرقام الطلبات" : "Order Number Management"}
@@ -1070,7 +1122,40 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
           </section>
         )}
 
+        {activeSettingsSection === "orders" && hasPermission("settings:manage") && (
+          <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
+            <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "تصميم رمز QR" : "QR Design"}</div>
+            {/* Row 2: QR Design */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => onNavigate?.("/app/settings/qr")}
+                className="w-full py-3 px-1 flex items-center justify-between gap-3 text-start hover:bg-gray-50/60 dark:hover:bg-[#0b2924]/50 rounded-xl transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-[#0c312b] flex items-center justify-center text-gray-700 dark:text-[#8eb698] shrink-0 border border-transparent dark:border-[#14423b]">
+                    <QrCode className="w-4 h-4 text-emerald-600 dark:text-[#8eb698]" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-[#daf1de] block">
+                      {t("qrDesignSectionTitle")}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-[#8eb698]">
+                      {t("qrDesignSectionDesc")}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de] transition-colors">
+                  {isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </div>
+              </button>
+            </div>
+
+          </section>
+        )}
+
         {/* GROUP 6: Account & Role Security (الحساب والأمان) */}
+        {activeSettingsSection === "account" && (
         <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
           <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
             {t("accountSectionTitle")}
@@ -1338,21 +1423,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
               )}
             </div>
           </div>
-          <div className="pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onLogout?.()}
-              className="w-full h-12 justify-center gap-2 rounded-xl border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-300 dark:hover:bg-red-950/45 cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>{t("logout") || (locale === "ar" ? "تسجيل الخروج" : "Log out")}</span>
-            </Button>
-          </div>
-        </section>
+        </section>)}
 
         {/* GROUP 7: About App (حول المنظومة) */}
+        {activeSettingsSection === "about" && (
         <section className="space-y-3">
           <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
             {t("aboutSectionTitle")}
@@ -1392,12 +1466,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
               </p>
             </div>
           </div>
-        </section>
+        </section>)}
 
         {/* GROUP 8: Web App (PWA) Settings & Installation */}
+        {activeSettingsSection === "about" && (
         <section className="pt-2">
           <PWASettingsCard />
-        </section>
+        </section>)}
+        </div>}
       </div>
     </div>
   );
