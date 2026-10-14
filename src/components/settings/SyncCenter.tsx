@@ -1247,17 +1247,7 @@ export const SyncCenter: React.FC = () => {
                                     </button>
                                   )}
 
-                                  <span
-                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                      evt.status === 'SYNCED'
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                                        : evt.status === 'PENDING'
-                                        ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-                                        : evt.status === 'BLOCKED'
-                                        ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'
-                                        : 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
-                                    }`}
-                                  >
+                                  <span className="text-[10px] font-medium text-gray-600 dark:text-[#a8c0b2]">
                                     {evt.status === 'SYNCED' && (locale === 'ar' ? 'تمت المزامنة بنجاح' : 'Synced')}
                                     {evt.status === 'PENDING' && (locale === 'ar' ? 'بانتظار الإرسال' : 'Pending')}
                                     {evt.status === 'BLOCKED' && (locale === 'ar' ? 'محجوزة (تعتمد على أمر)' : 'Blocked')}
