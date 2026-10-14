@@ -162,8 +162,6 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     serverTransport = new AuthoritativeConcurrentServerTransport();
     await localDb.clear();
     await initializeCanonicalSyncState();
-    // The scheduler requires the referenced aggregate to exist on this device,
-    // just as it would on a real device before delivery/cancellation is queued.
     await localDb.set('orders', 'ord-100', {
       id: 'ord-100',
       customerId: 'cust-1',
@@ -189,11 +187,11 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     engineB = new SyncEngine(serverTransport);
   });
 
-  it('Scenario 1: DELIVER wins, CANCEL conflicts and is rejected without financial pollution', async () => {
+  it('DELIVER wins; stale CANCEL conflicts without financial pollution', async () => {
     const targetItemId = 'item-555';
     const initialExpectedVersion = 5;
-
     const cmdDeliverId = 'cmd-devA-deliver-01';
+
     await engineA.queueCommand(
       cmdDeliverId,
       'DELIVER_ORDER_ITEM',
@@ -205,45 +203,15 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       initialExpectedVersion
     );
 
-    // Queue only Device A's command in the shared test database. A real second
-    // device has an independent local outbox; queueing both here would model one
-    // device with two concurrent mutations, not two devices.
-    // Device A syncs first -> succeeds (5 -> 6)
     const syncResA = await engineA.synchronize();
     expect(syncResA.pushed).toBe(1);
+    expect((await localDb.getOutbox(cmdDeliverId))?.status).toBe('accepted');
+    expect(serverTransport.serverItems.get(targetItemId)).toMatchObject({ version: 6, status: 'delivered' });
+    expect(serverTransport.serverLedger).toHaveLength(1);
+    expect(serverTransport.serverLedger[0]).toMatchObject({ eventType: 'ORDER_ITEM_CHARGE', amountMinor: -3500 });
 
-    const deliverRecordA = await localDb.getOutbox(cmdDeliverId);
-    expect(deliverRecordA?.status).toBe('accepted');
-
-    const serverItemAfterA = serverTransport.serverItems.get(targetItemId);
-    expect(serverItemAfterA?.version).toBe(6);
-    expect(serverItemAfterA?.status).toBe('delivered');
-
-    expect(serverTransport.serverLedger.length).toBe(1);
-    expect(serverTransport.serverLedger[0].eventType).toBe('ORDER_ITEM_CHARGE');
-    expect(serverTransport.serverLedger[0].amountMinor).toBe(-3500);
-
-    const syncResB = await engineB.synchronize();
-    expect(syncResB.pushed).toBe(0);
-
-    const cancelRecordB = await localDb.getOutbox(cmdCancelId);
-    expect(cancelRecordB?.status).toBe('conflict');
-    expect(cancelRecordB?.lastError).toContain('VERSION_CONFLICT');
-
-    const historyB = await localDb.getHistoryByCommandId(cmdCancelId);
-    expect(historyB?.state).toBe('CONFLICT');
-    expect(historyB?.errorClass).toBe('CONFLICT');
-    expect(historyB?.retryEligible).toBe(false);
-
-    const itemChangeLogs = serverTransport.changeLog.filter((c) => c.entityId === targetItemId);
-    expect(itemChangeLogs.length).toBe(1);
-    expect(itemChangeLogs[0].payload).toMatchObject({ status: 'delivered', version: 6 });
-
-    expect(serverTransport.serverLedger.length).toBe(1);
-
-    // Device B now submits its stale version-5 cancellation after Device A has
-    // committed version 6. This reaches the authoritative transport and must
-    // conflict without creating another financial entry.
+    // Simulate Device B's stale local version by submitting expectedVersion=5
+    // after the server has already committed version 6 on Device A.
     const cmdCancelId = 'cmd-devB-cancel-02';
     await engineB.queueCommand(
       cmdCancelId,
@@ -257,7 +225,6 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     );
     const syncResB = await engineB.synchronize();
     expect(syncResB.pushed).toBe(0);
-
     const cancelRecordB = await localDb.getOutbox(cmdCancelId);
     expect(cancelRecordB?.status).toBe('conflict');
     expect(cancelRecordB?.lastError).toContain('VERSION_CONFLICT');
@@ -265,14 +232,17 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     expect(historyB?.state).toBe('CONFLICT');
     expect(historyB?.errorClass).toBe('CONFLICT');
     expect(historyB?.retryEligible).toBe(false);
+
+    expect(serverTransport.changeLog).toHaveLength(1);
+    expect(serverTransport.changeLog[0].payload).toMatchObject({ status: 'delivered', version: 6 });
     expect(serverTransport.serverLedger).toHaveLength(1);
   });
 
-  it('Scenario 2: CANCEL wins, DELIVER conflicts and is rejected without duplicate recognition', async () => {
+  it('CANCEL wins; stale DELIVER conflicts without creating a ledger entry', async () => {
     const targetItemId = 'item-555';
     const initialExpectedVersion = 5;
-
     const cmdCancelId = 'cmd-devB-cancel-win';
+
     await engineB.queueCommand(
       cmdCancelId,
       'CANCEL_ORDER_ITEM',
@@ -284,32 +254,12 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
       initialExpectedVersion
     );
 
-    // As above, don't put both devices' commands in one local outbox.
     const syncResB = await engineB.synchronize();
     expect(syncResB.pushed).toBe(1);
+    expect((await localDb.getOutbox(cmdCancelId))?.status).toBe('accepted');
+    expect(serverTransport.serverItems.get(targetItemId)).toMatchObject({ version: 6, status: 'cancelled' });
+    expect(serverTransport.serverLedger).toHaveLength(0);
 
-    const cancelRecordB = await localDb.getOutbox(cmdCancelId);
-    expect(cancelRecordB?.status).toBe('accepted');
-
-    const serverItem = serverTransport.serverItems.get(targetItemId);
-    expect(serverItem?.version).toBe(6);
-    expect(serverItem?.status).toBe('cancelled');
-
-    const syncResA = await engineA.synchronize();
-    expect(syncResA.pushed).toBe(0);
-
-    const deliverRecordA = await localDb.getOutbox(cmdDeliverId);
-    expect(deliverRecordA?.status).toBe('conflict');
-    expect(deliverRecordA?.lastError).toContain('VERSION_CONFLICT');
-
-    expect(serverTransport.serverLedger.length).toBe(0);
-
-    const logs = serverTransport.changeLog.filter((c) => c.entityId === targetItemId);
-    expect(logs.length).toBe(1);
-    expect(logs[0].payload).toMatchObject({ status: 'cancelled', version: 6 });
-
-    // Device A submits its stale version-5 delivery only after Device B's
-    // cancellation has committed version 6.
     const cmdDeliverId = 'cmd-devA-deliver-lose';
     await engineA.queueCommand(
       cmdDeliverId,
@@ -326,6 +276,9 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     const deliverRecordA = await localDb.getOutbox(cmdDeliverId);
     expect(deliverRecordA?.status).toBe('conflict');
     expect(deliverRecordA?.lastError).toContain('VERSION_CONFLICT');
+
+    expect(serverTransport.changeLog).toHaveLength(1);
+    expect(serverTransport.changeLog[0].payload).toMatchObject({ status: 'cancelled', version: 6 });
     expect(serverTransport.serverLedger).toHaveLength(0);
   });
 });
