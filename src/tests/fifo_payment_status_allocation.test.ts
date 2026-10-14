@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { setTestAppAuthSession } from './utils/testSetup';
+import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 import { localDb } from '../infrastructure/localDb/localDb';
 import {
   computeCustomerOrderPaymentStatuses,
@@ -20,6 +20,8 @@ import {
 describe('FIFO Order Payment Status Allocation Engine', () => {
   beforeEach(async () => {
     await localDb.clear();
+    // Seeded demo rows represent a trusted, already-checkpointed local replica.
+    await initializeCanonicalSyncState();
     if (typeof localStorage !== 'undefined') localStorage.clear();
     setTestAppAuthSession();
     resetStoreMemory();
