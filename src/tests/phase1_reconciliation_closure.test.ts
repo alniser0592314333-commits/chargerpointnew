@@ -385,7 +385,7 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
     if (!addItem1Res.success) throw new Error('Expected item 1 success');
     const item1Id = addItem1Res.data.id;
 
-    const cancelPreRes = await useCases.removeOrderItemDuringEdit(authAdmin, item1Id);
+    const cancelPreRes = await useCases.removeOrderItemDuringEdit(authAdmin, item1Id, '1234');
     expect(cancelPreRes.success).toBe(true);
 
     // Verify Item 1 has ZERO ledger entries
