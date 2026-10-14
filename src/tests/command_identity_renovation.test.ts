@@ -4,7 +4,9 @@ import {
   clearAllOperationalData,
   createOrderWithPhase5Engine,
   ensureStoreHydrated,
+  resetCanonicalReadModelsForReplay,
   resetStoreMemory,
+  applyRemoteChange,
   updateOrderWithPhase5Engine,
 } from '../components/pages/dayOrdersStore';
 import * as supabaseClient from '../services/supabase/client';
@@ -210,6 +212,10 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
 
     const transport = new SupabaseSyncTransport();
     const engine = new SyncEngine(transport);
+    // Mirror the production SyncBridge wiring so this test exercises canonical
+    // delta normalization and read-model reset, not the engine's generic fallback.
+    engine.onDeltaApplied = applyRemoteChange;
+    engine.onAuthoritativeReset = resetCanonicalReadModelsForReplay;
     await engine.synchronize();
 
     const refreshedCreateCmd = await localDb.getOutbox(createCmd!.commandId);
