@@ -286,6 +286,13 @@ export default function App() {
       const deltaX = endX - startX;
       const deltaY = Math.abs(endY - startY);
       if (Math.abs(deltaX) < 60 || deltaY > 80) return;
+      // Let the currently mounted page consume Back first (for example, closing
+      // an open Settings section). Only navigate to a route parent if no page
+      // handled the request.
+      const backEvent = new Event('app:logical-back', { cancelable: true });
+      window.dispatchEvent(backEvent);
+      if (backEvent.defaultPrevented) return;
+
       const parentPath = resolveLogicalBackPath(currentPath);
       if (parentPath) navigate(parentPath, true);
     };
@@ -305,14 +312,36 @@ export default function App() {
       window.history.replaceState({ path: currentPath }, '', currentPath);
     }
 
-    const handlePopState = (e: PopStateEvent) => {
-      const targetPath = e.state?.path || window.location.pathname || '/app';
-      setCurrentPathState(targetPath);
+    const handlePopState = () => {
+      // Browser/Android Back also follows the app's logical hierarchy. The
+      // browser has already moved one history entry, so restore the URL to the
+      // semantic parent instead of displaying whichever page was visited last.
+      const activePath = currentPath;
+      const backEvent = new Event('app:logical-back', { cancelable: true });
+      window.dispatchEvent(backEvent);
+
+      if (backEvent.defaultPrevented) {
+        window.history.replaceState({ path: activePath }, '', activePath);
+        setCurrentPathState(activePath);
+        return;
+      }
+
+      const parentPath = resolveLogicalBackPath(activePath);
+      if (parentPath) {
+        window.history.replaceState({ path: parentPath }, '', parentPath);
+        setCurrentPathState(parentPath);
+        return;
+      }
+
+      // At the app root, don't let stale entries from earlier navigation
+      // expose an unrelated page or leave the application.
+      window.history.pushState({ path: activePath }, '', activePath);
+      setCurrentPathState(activePath);
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [currentPath]);
 
   const renderContent = () => {
     const { pathname } = parseRoute(currentPath);
