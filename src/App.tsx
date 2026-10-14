@@ -11,6 +11,7 @@ import { AuthenticatedLayout } from './components/shell/AuthenticatedLayout';
 import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
 import { authService } from './services/auth/authService';
+import { isCurrentAccountSessionActive, registerCurrentAccountSession } from './services/auth/accountSessionService';
 import { refreshStoreFromRemote, ensureStoreHydrated, subscribeStoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import { globalSyncBridge } from './infrastructure/sync/syncBridge';
@@ -108,6 +109,8 @@ export default function App() {
         }
 
         if (authenticatedSession) {
+          // Register the current Auth session without blocking normal startup if the feature migration has not reached this environment yet.
+          try { await registerCurrentAccountSession(); } catch (sessionRegistrationError) { console.warn('Account session registration is unavailable; continuing normal startup.', sessionRegistrationError); }
           // Never suppress bootstrap errors: a fresh device must not open on an
           // empty or partially hydrated model. Existing local data remains usable
           // when a remote read fails before any local replacement begins.
@@ -155,6 +158,20 @@ export default function App() {
       if (active || document.visibilityState !== 'visible' || navigator.onLine === false) return;
       active = true;
       try {
+        // Revoked sessions are returned to login at the next online verification cycle.
+        try {
+          const sessionActive = await isCurrentAccountSessionActive();
+          if (!sessionActive) {
+            await authService.logout();
+            setIsAuthenticated(false);
+            setUserSession(null);
+            navigate('/app', true);
+            return;
+          }
+        } catch (sessionCheckError) {
+          // Keep the app available during rollout or transient network/RPC failures.
+          console.warn('Account session verification temporarily unavailable.', sessionCheckError);
+        }
         const result = await globalSyncBridge.requestLatestDataReload();
         if (result.needsReconciliation) await globalSyncBridge.notifyOutboxWorkAvailable();
       } catch (error) {
@@ -321,6 +338,9 @@ export default function App() {
             await ensureStoreHydrated();
             await refreshStoreFromRemote();
             const session = await authService.getCurrentSession();
+            if (session) {
+              try { await registerCurrentAccountSession(); } catch (sessionRegistrationError) { console.warn('Account session registration is unavailable; continuing after login.', sessionRegistrationError); }
+            }
             setUserSession(session);
             setBootError(null);
             setIsAuthenticated(true);
