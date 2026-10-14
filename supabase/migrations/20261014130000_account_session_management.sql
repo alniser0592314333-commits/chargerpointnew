@@ -354,7 +354,7 @@ $policies$;
 -- excluded because they must work before an authenticated app session exists.
 DO $rpc_guards$
 DECLARE
-  p record;
+  v_func record;
   v_impl_name text;
   v_identity_args text;
   v_full_args text;
@@ -363,19 +363,19 @@ DECLARE
   v_body text;
   v_create_sql text;
 BEGIN
-  FOR p IN
-    SELECT p.oid, p.proname, p.proargnames, p.pronargs, p.proretset,
-           p.prorettype, oidvectortypes(p.proargtypes) AS identity_args,
-           pg_get_function_arguments(p.oid) AS full_args,
-           pg_get_function_result(p.oid) AS result_type
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
+  FOR v_func IN
+    SELECT proc.oid, proc.proname, proc.proargnames, proc.pronargs, proc.proretset,
+           proc.prorettype, oidvectortypes(proc.proargtypes) AS identity_args,
+           pg_get_function_arguments(proc.oid) AS full_args,
+           pg_get_function_result(proc.oid) AS result_type
+    FROM pg_proc proc
+    JOIN pg_namespace n ON n.oid = proc.pronamespace
     WHERE n.nspname = 'public'
-      AND p.prokind = 'f'
-      AND p.prosecdef
-      AND p.prorettype <> 'trigger'::regtype
-      AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
-      AND p.proname NOT IN (
+      AND proc.prokind = 'f'
+      AND proc.prosecdef
+      AND proc.prorettype <> 'trigger'::regtype
+      AND has_function_privilege('authenticated', proc.oid, 'EXECUTE')
+      AND proc.proname NOT IN (
         'is_my_account_session_active',
         'assert_my_account_session_active',
         'register_my_account_session',
@@ -392,25 +392,25 @@ BEGIN
         'public_resolve_customer_qr',
         'public_resolve_order_qr'
       )
-      AND position('__session_guarded_impl' in p.proname) = 0
+      AND position('__session_guarded_impl' in proc.proname) = 0
   LOOP
-    v_impl_name := left(p.proname || '__session_guarded_impl', 63);
-    v_identity_args := p.identity_args;
-    v_full_args := p.full_args;
-    v_result_type := p.result_type;
+    v_impl_name := left(v_func.proname || '__session_guarded_impl', 63);
+    v_identity_args := v_func.identity_args;
+    v_full_args := v_func.full_args;
+    v_result_type := v_func.result_type;
     v_call_args := '';
-    IF p.pronargs > 0 THEN
+    IF v_func.pronargs > 0 THEN
       SELECT string_agg(chr(36) || g.i::text, ', ' ORDER BY g.i)
       INTO v_call_args
-      FROM generate_series(1, p.pronargs) AS g(i);
+      FROM generate_series(1, v_func.pronargs) AS g(i);
     END IF;
 
     EXECUTE format(
       'ALTER FUNCTION public.%I(%s) RENAME TO %I',
-      p.proname, v_identity_args, v_impl_name
+      v_func.proname, v_identity_args, v_impl_name
     );
 
-    IF p.proretset THEN
+    IF v_func.proretset THEN
       v_body := format(
         'BEGIN PERFORM public.assert_my_account_session_active(); RETURN QUERY SELECT * FROM public.%I(%s); RETURN; END;',
         v_impl_name, v_call_args
@@ -429,7 +429,7 @@ BEGIN
 
     v_create_sql := format(
       'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS %L',
-      p.proname, v_full_args, v_result_type, v_body
+      v_func.proname, v_full_args, v_result_type, v_body
     );
     EXECUTE v_create_sql;
 
@@ -439,11 +439,11 @@ BEGIN
     );
     EXECUTE format(
       'REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, anon',
-      p.proname, v_identity_args
+      v_func.proname, v_identity_args
     );
     EXECUTE format(
       'GRANT EXECUTE ON FUNCTION public.%I(%s) TO authenticated, service_role',
-      p.proname, v_identity_args
+      v_func.proname, v_identity_args
     );
   END LOOP;
 END;
