@@ -178,7 +178,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     const command = await (phase5UseCases as any).deps.commandRepo.get(
       result.transactionId
     );
-    expect(command?.commandType).toBe('CREATE_PAYMENT');
+    expect(command?.type).toBe('CREATE_PAYMENT');
   });
 
   it('6. Equal millisecond timestamps use overlay sequence to preserve FIFO causality', async () => {
