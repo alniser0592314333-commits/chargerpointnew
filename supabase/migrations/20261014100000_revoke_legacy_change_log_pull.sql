@@ -13,8 +13,7 @@ GRANT EXECUTE ON FUNCTION public.pull_canonical_delta_changes(bigint, integer)
 DO $verify$
 BEGIN
   IF has_function_privilege('anon', 'public.pull_canonical_delta_changes(bigint,integer)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.pull_canonical_delta_changes(bigint,integer)', 'EXECUTE')
-     OR has_function_privilege('PUBLIC', 'public.pull_canonical_delta_changes(bigint,integer)', 'EXECUTE') THEN
+     OR has_function_privilege('authenticated', 'public.pull_canonical_delta_changes(bigint,integer)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Legacy change-log pull RPC remains executable by an untrusted role';
   END IF;
   IF NOT has_function_privilege('service_role', 'public.pull_canonical_delta_changes(bigint,integer)', 'EXECUTE') THEN
