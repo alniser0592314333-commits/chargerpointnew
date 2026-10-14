@@ -59,6 +59,18 @@ function createHarness() {
       updatedAt: '',
       version: 1,
     }],
+    ['dev_2', {
+      id: 'dev_2',
+      name: 'Test Device 2',
+      icon: 'smartphone',
+      basePriceMinor: 4500,
+      chargerFeeEnabled: true,
+      isActive: true,
+      sortOrder: 2,
+      createdAt: '',
+      updatedAt: '',
+      version: 1,
+    }],
   ]);
   const ledger: FinancialLedgerEntity[] = [];
   const payments: PaymentEntity[] = [];
@@ -223,6 +235,42 @@ describe('Order-item cancellation BIN and status contract', () => {
     expect(() => validateOrderTransition('delivered', 'pending')).toThrow();
     expect(() => validateOrderTransition('cancelled', 'charging')).toThrow();
     expect(() => validateOrderTransition('cancelled', 'delivered')).toThrow();
+  });
+
+  it('updates an undelivered item through UPDATE_ORDER_ITEM without creating financial entries', async () => {
+    const h = createHarness();
+    const auth = makeAuth(['orders:create', 'orders:edit']);
+    const { item } = await createPersistedOrderAndItem(h, auth, 'order_item_edit');
+    const beforeLedgerCount = h.ledger.length;
+
+    const result = await h.useCases.updateOrderItem(auth, item.id, 'dev_2', false);
+
+    expect(result.success).toBe(true);
+    expect((result as any).data.deviceTypeId).toBe('dev_2');
+    expect((result as any).data.deviceNameSnapshot).toBe('Test Device 2');
+    expect((result as any).data.hasCharger).toBe(false);
+    expect((result as any).data.totalPriceMinor).toBe(4500);
+    const command = [...h.commands.values()].find((entry) => entry.type === 'UPDATE_ORDER_ITEM');
+    expect(command).toBeDefined();
+    expect((command!.payload as any).itemId).toBe(item.id);
+    expect((command!.payload as any).expectedVersion).toBe(item.version);
+    expect(h.ledger).toHaveLength(beforeLedgerCount);
+  });
+
+  it('rejects editing a delivered/financially recognized item', async () => {
+    const h = createHarness();
+    const auth = makeAuth(['orders:create', 'orders:edit']);
+    const { item } = await createPersistedOrderAndItem(h, auth, 'order_item_edit_delivered');
+    h.items.set(item.id, {
+      ...item,
+      status: 'delivered',
+      financialStatus: 'RECOGNIZED',
+      financiallyRecognizedAt: new Date().toISOString(),
+    });
+
+    await expect(h.useCases.updateOrderItem(auth, item.id, 'dev_2', false))
+      .rejects.toThrow('Only undelivered, financially unrecognized items can be edited');
+    expect([...h.commands.values()].filter((entry) => entry.type === 'UPDATE_ORDER_ITEM')).toHaveLength(0);
   });
 
   it('rejects adding an item to a cancelled order before queuing ADD_ORDER_ITEM', async () => {
