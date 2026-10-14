@@ -400,8 +400,7 @@ BEGIN
     v_result_type := p.result_type;
     v_call_args := '';
     IF p.pronargs > 0 THEN
-      SELECT string_agg('
- || g.i::text, ', ' ORDER BY g.i)
+      SELECT string_agg(chr(36) || g.i::text, ', ' ORDER BY g.i)
       INTO v_call_args
       FROM generate_series(1, p.pronargs) AS g(i);
     END IF;
