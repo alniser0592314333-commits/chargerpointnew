@@ -514,6 +514,15 @@ export class IndexedDBLocalDatabase {
     return this.memoryFallback.get(table)!;
   }
 
+  /**
+   * Synchronous presence check for canonical rows already loaded into the local
+   * cache. The sync read model can contain optimistic entities that have no
+   * persisted canonical row yet, so version comparisons alone are insufficient.
+   */
+  hasCachedRecord(table: string, id: ID): boolean {
+    return this.getMemoryTable(table).has(id);
+  }
+
   async get<T>(table: string, id: ID): Promise<T | null> {
     await this.ensureHydrated();
     const tableMap = this.getMemoryTable(table);
