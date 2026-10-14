@@ -537,7 +537,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                         const option = deviceOptions.find((candidate) => candidate.id === e.target.value);
                         if (!option) return;
                         const hasCharger = option.supportsCharger ? item.hasCharger : false;
-                        const priceMinor = calculateDeviceItemPreviewPrice(option.id, hasCharger, order.customerChargerFeeExempt);
+                        const priceMinor = Math.max(0, calculateDeviceItemPreviewPrice(option.id, hasCharger, order.customerChargerFeeExempt) - (item.discountSnapshotMinor ?? 0));
                         setExistingItems((prev) => prev.map((current) => current.id === item.id
                           ? { ...current, deviceTypeId: option.id, deviceName: option.name, hasCharger, priceMinor }
                           : current));
@@ -558,7 +558,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                           type="button"
                           disabled={!canEditDetails}
                           onClick={() => setExistingItems((prev) => prev.map((current) => current.id === item.id
-                            ? { ...current, hasCharger: false, priceMinor: calculateDeviceItemPreviewPrice(current.deviceTypeId, false, order.customerChargerFeeExempt) }
+                            ? { ...current, hasCharger: false, priceMinor: Math.max(0, calculateDeviceItemPreviewPrice(current.deviceTypeId, false, order.customerChargerFeeExempt) - (current.discountSnapshotMinor ?? 0)) }
                             : current))}
                           className={`px-3 py-1 rounded-md text-xs font-medium disabled:opacity-60 ${!item.hasCharger ? 'bg-white dark:bg-[#0c312b] text-gray-900 dark:text-[#daf1de] shadow-xs font-bold' : 'text-gray-600 dark:text-[#8eb698]'}`}
                         >{t('withoutCharger')}</button>
@@ -566,7 +566,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                           type="button"
                           disabled={!canEditDetails}
                           onClick={() => setExistingItems((prev) => prev.map((current) => current.id === item.id
-                            ? { ...current, hasCharger: true, priceMinor: calculateDeviceItemPreviewPrice(current.deviceTypeId, true, order.customerChargerFeeExempt) }
+                            ? { ...current, hasCharger: true, priceMinor: Math.max(0, calculateDeviceItemPreviewPrice(current.deviceTypeId, true, order.customerChargerFeeExempt) - (current.discountSnapshotMinor ?? 0)) }
                             : current))}
                           className={`px-3 py-1 rounded-md text-xs font-medium disabled:opacity-60 ${item.hasCharger ? 'bg-white dark:bg-[#0c312b] text-emerald-600 dark:text-[#7ae09e] shadow-xs font-bold' : 'text-gray-600 dark:text-[#8eb698]'}`}
                         >{t('withCharger')}</button>
