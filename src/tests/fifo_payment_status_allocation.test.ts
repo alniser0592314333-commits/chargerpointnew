@@ -181,6 +181,80 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     expect(command?.commandType).toBe('CREATE_PAYMENT');
   });
 
+  it('6. Equal millisecond timestamps use overlay sequence to preserve FIFO causality', async () => {
+    const customerId = 'cust-5';
+    const orderId = 'order-sequence-regression';
+    const itemId = 'item-sequence-regression';
+    const sameTimestamp = '2026-10-14T00:00:00.000Z';
+    const order = {
+      id: orderId,
+      customerId,
+      status: 'pending',
+      internalSequence: 1,
+    } as any;
+    const item = {
+      id: itemId,
+      orderId,
+      status: 'delivered',
+      financialStatus: 'RECOGNIZED',
+      totalPriceMinor: 4500,
+      finalChargeSnapshotMinor: 4500,
+      createdAt: sameTimestamp,
+      itemSequence: 1,
+    } as any;
+
+    await localDb.saveOverlay({
+      commandId: 'payment-before-item',
+      mutationKey: `customer:${customerId}`,
+      entityType: 'payments',
+      entityId: 'payment-before-item',
+      operation: 'CREATE',
+      entityPayload: { id: 'payment-before-item', customerId, amountMinor: 10000 },
+      sequence: 1,
+      createdAt: sameTimestamp,
+      status: 'PENDING',
+    } as any);
+    await localDb.saveOverlay({
+      commandId: 'item-create-sequence',
+      mutationKey: `order:${orderId}`,
+      entityType: 'order_items',
+      entityId: itemId,
+      operation: 'CREATE',
+      entityPayload: item,
+      sequence: 2,
+      createdAt: sameTimestamp,
+      status: 'PENDING',
+    } as any);
+
+    let statuses = computeCustomerOrderPaymentStatuses(
+      customerId,
+      new Map([[orderId, order]]),
+      new Map([[itemId, item]])
+    );
+    expect(statuses.get(orderId)?.paymentStatus).toBe('UNPAID');
+    expect(statuses.get(orderId)?.allocatedAmountMinor).toBe(0);
+
+    await localDb.saveOverlay({
+      commandId: 'payment-after-item',
+      mutationKey: `customer:${customerId}`,
+      entityType: 'payments',
+      entityId: 'payment-after-item',
+      operation: 'CREATE',
+      entityPayload: { id: 'payment-after-item', customerId, amountMinor: 1000 },
+      sequence: 3,
+      createdAt: sameTimestamp,
+      status: 'PENDING',
+    } as any);
+
+    statuses = computeCustomerOrderPaymentStatuses(
+      customerId,
+      new Map([[orderId, order]]),
+      new Map([[itemId, item]])
+    );
+    expect(statuses.get(orderId)?.paymentStatus).toBe('PARTIAL');
+    expect(statuses.get(orderId)?.allocatedAmountMinor).toBe(1000);
+  });
+
   it('6. A pending payment cannot retroactively pay an order created after the payment', async () => {
     const custId = 'cust-5';
     const dayId = 'day-2026-10-02';
