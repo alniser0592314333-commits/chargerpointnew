@@ -4645,8 +4645,8 @@ export const updateOrderWithPhase5Engine = async (
   newStatus: 'pending' | 'charging' | 'delivered' | 'cancelled',
   newItemsToAdd: { deviceTypeId: string; hasCharger: boolean }[],
   existingItemIdsToRemove: string[],
-  existingItemEdits: { itemId: string; deviceTypeId: string; hasCharger: boolean }[] = [],
-  bin?: string
+  bin?: string,
+  existingItemEdits: { itemId: string; deviceTypeId: string; hasCharger: boolean }[] = []
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     const order = await repoContext.orderRepo.findById(orderId);
