@@ -157,86 +157,6 @@ BEGIN
                 v_required_perm := 'orders:create';
             WHEN 'ADD_ORDER_ITEM', 'UPDATE_ORDER_ITEM' THEN
                 v_required_perm := 'orders:edit';
-            WHEN 'UPDATE_ORDER_ITEM' THEN
-            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
-            v_item_uuid := COALESCE((p_payload->>'itemId')::UUID, (p_payload->>'orderItemId')::UUID, (p_payload->>'id')::UUID);
-            SELECT oi.*, o.customer_id, o.status AS order_status, c.charger_fee_exempt, c.status AS cust_status
-            INTO v_rec_item
-            FROM public.order_items oi
-            JOIN public.orders o ON o.id = oi.order_id
-            JOIN public.customers c ON c.id = o.customer_id
-            WHERE oi.id = v_item_uuid
-            FOR UPDATE OF oi;
-
-            IF v_rec_item.id IS NULL THEN
-                RAISE EXCEPTION 'Order Item Not Found: ID %', v_item_uuid USING ERRCODE = '23503';
-            END IF;
-            IF v_expected_version IS NOT NULL AND v_rec_item.version <> v_expected_version THEN
-                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version USING ERRCODE='P0409';
-            END IF;
-            IF v_rec_item.order_status = 'cancelled' THEN
-                RAISE EXCEPTION 'Cannot edit an item in a cancelled order' USING ERRCODE='P2201';
-            END IF;
-            IF v_rec_item.operational_status IS DISTINCT FROM 'CHARGING' OR v_rec_item.financial_status IS DISTINCT FROM 'UNRECOGNIZED' THEN
-                RAISE EXCEPTION 'Only undelivered, financially unrecognized order items can be edited' USING ERRCODE='P2201';
-            END IF;
-            IF v_rec_item.cust_status = 'DELETED' THEN
-                RAISE EXCEPTION 'Customer is frozen/deleted. Cannot edit order item' USING ERRCODE='P2201';
-            END IF;
-
-            v_order_uuid := v_rec_item.order_id;
-            v_device_type_uuid := (COALESCE(p_payload->>'deviceTypeId', p_payload->>'device_type_id'))::UUID;
-            SELECT name, icon, base_price_minor, charger_fee_applicable
-            INTO v_dev_name, v_dev_icon, v_base_price, v_charger_applicable
-            FROM public.device_types
-            WHERE id = v_device_type_uuid AND is_active = TRUE;
-            IF v_base_price IS NULL THEN
-                RAISE EXCEPTION 'Device Type Not Found or inactive: ID %', v_device_type_uuid USING ERRCODE='23503';
-            END IF;
-
-            v_customer_exempt := COALESCE(v_rec_item.charger_fee_exempt, FALSE);
-            v_has_charger := CASE WHEN v_charger_applicable THEN COALESCE((p_payload->>'hasCharger')::BOOLEAN, (p_payload->>'has_charger')::BOOLEAN, FALSE) ELSE FALSE END;
-            IF v_charger_applicable AND NOT v_customer_exempt AND NOT v_has_charger THEN
-                v_authoritative_charger_fee := 50;
-            ELSE
-                v_authoritative_charger_fee := 0;
-            END IF;
-            v_authoritative_discount := COALESCE(v_rec_item.discount_snapshot_minor, 0);
-            v_authoritative_final_charge := GREATEST(0, v_base_price + v_authoritative_charger_fee - v_authoritative_discount);
-
-            UPDATE public.order_items
-            SET device_type_id = v_device_type_uuid,
-                device_name_snapshot = COALESCE(v_dev_name, ''),
-                device_icon_snapshot = COALESCE(v_dev_icon, 'smartphone'),
-                base_price_snapshot_minor = v_base_price,
-                charger_fee_enabled_snapshot = v_charger_applicable,
-                customer_charger_fee_exempt_snapshot = v_customer_exempt,
-                charger_fee_snapshot_minor = v_authoritative_charger_fee,
-                has_charger = v_has_charger,
-                final_charge_snapshot_minor = v_authoritative_final_charge,
-                unit_price_minor = v_authoritative_final_charge,
-                total_price_minor = v_authoritative_final_charge,
-                updated_at = NOW(),
-                version = version + 1
-            WHERE id = v_item_uuid;
-
-            PERFORM public.record_canonical_change('order_items', v_item_uuid, 'UPDATE', jsonb_build_object(
-                'id', v_item_uuid,
-                'order_id', v_order_uuid,
-                'device_type_id', v_device_type_uuid,
-                'device_name_snapshot', COALESCE(v_dev_name, ''),
-                'device_icon_snapshot', COALESCE(v_dev_icon, 'smartphone'),
-                'base_price_snapshot_minor', v_base_price,
-                'charger_fee_enabled_snapshot', v_charger_applicable,
-                'customer_charger_fee_exempt_snapshot', v_customer_exempt,
-                'charger_fee_snapshot_minor', v_authoritative_charger_fee,
-                'has_charger', v_has_charger,
-                'final_charge_snapshot_minor', v_authoritative_final_charge,
-                'unit_price_minor', v_authoritative_final_charge,
-                'total_price_minor', v_authoritative_final_charge
-            ), v_rec_item.version + 1);
-            v_result := jsonb_build_object('orderItemId', v_item_uuid, 'version', v_rec_item.version + 1, 'finalChargeMinor', v_authoritative_final_charge);
-
         WHEN 'DELIVER_ORDER_ITEM' THEN
                 v_required_perm := 'orders:deliver';
             WHEN 'CANCEL_ORDER', 'CANCEL_ORDER_ITEM' THEN
@@ -680,6 +600,86 @@ WHEN 'UPDATE_ORDER' THEN
 
             PERFORM public.record_canonical_change('order_items', v_item_uuid, 'INSERT', p_payload, 1);
             v_result := jsonb_build_object('orderItemId', v_item_uuid, 'provisionalFinalChargeMinor', v_authoritative_final_charge);
+
+        WHEN 'UPDATE_ORDER_ITEM' THEN
+            v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
+            v_item_uuid := COALESCE((p_payload->>'itemId')::UUID, (p_payload->>'orderItemId')::UUID, (p_payload->>'id')::UUID);
+            SELECT oi.*, o.customer_id, o.status AS order_status, c.charger_fee_exempt, c.status AS cust_status
+            INTO v_rec_item
+            FROM public.order_items oi
+            JOIN public.orders o ON o.id = oi.order_id
+            JOIN public.customers c ON c.id = o.customer_id
+            WHERE oi.id = v_item_uuid
+            FOR UPDATE OF oi;
+
+            IF v_rec_item.id IS NULL THEN
+                RAISE EXCEPTION 'Order Item Not Found: ID %', v_item_uuid USING ERRCODE = '23503';
+            END IF;
+            IF v_expected_version IS NOT NULL AND v_rec_item.version <> v_expected_version THEN
+                RAISE EXCEPTION 'VERSION_CONFLICT [409]: Order item %. Expected version %, current server version is %', v_item_uuid, v_expected_version, v_rec_item.version USING ERRCODE='P0409';
+            END IF;
+            IF v_rec_item.order_status = 'cancelled' THEN
+                RAISE EXCEPTION 'Cannot edit an item in a cancelled order' USING ERRCODE='P2201';
+            END IF;
+            IF v_rec_item.operational_status IS DISTINCT FROM 'CHARGING' OR v_rec_item.financial_status IS DISTINCT FROM 'UNRECOGNIZED' THEN
+                RAISE EXCEPTION 'Only undelivered, financially unrecognized order items can be edited' USING ERRCODE='P2201';
+            END IF;
+            IF v_rec_item.cust_status = 'DELETED' THEN
+                RAISE EXCEPTION 'Customer is frozen/deleted. Cannot edit order item' USING ERRCODE='P2201';
+            END IF;
+
+            v_order_uuid := v_rec_item.order_id;
+            v_device_type_uuid := (COALESCE(p_payload->>'deviceTypeId', p_payload->>'device_type_id'))::UUID;
+            SELECT name, icon, base_price_minor, charger_fee_applicable
+            INTO v_dev_name, v_dev_icon, v_base_price, v_charger_applicable
+            FROM public.device_types
+            WHERE id = v_device_type_uuid AND is_active = TRUE;
+            IF v_base_price IS NULL THEN
+                RAISE EXCEPTION 'Device Type Not Found or inactive: ID %', v_device_type_uuid USING ERRCODE='23503';
+            END IF;
+
+            v_customer_exempt := COALESCE(v_rec_item.charger_fee_exempt, FALSE);
+            v_has_charger := CASE WHEN v_charger_applicable THEN COALESCE((p_payload->>'hasCharger')::BOOLEAN, (p_payload->>'has_charger')::BOOLEAN, FALSE) ELSE FALSE END;
+            IF v_charger_applicable AND NOT v_customer_exempt AND NOT v_has_charger THEN
+                v_authoritative_charger_fee := 50;
+            ELSE
+                v_authoritative_charger_fee := 0;
+            END IF;
+            v_authoritative_discount := COALESCE(v_rec_item.discount_snapshot_minor, 0);
+            v_authoritative_final_charge := GREATEST(0, v_base_price + v_authoritative_charger_fee - v_authoritative_discount);
+
+            UPDATE public.order_items
+            SET device_type_id = v_device_type_uuid,
+                device_name_snapshot = COALESCE(v_dev_name, ''),
+                device_icon_snapshot = COALESCE(v_dev_icon, 'smartphone'),
+                base_price_snapshot_minor = v_base_price,
+                charger_fee_enabled_snapshot = v_charger_applicable,
+                customer_charger_fee_exempt_snapshot = v_customer_exempt,
+                charger_fee_snapshot_minor = v_authoritative_charger_fee,
+                has_charger = v_has_charger,
+                final_charge_snapshot_minor = v_authoritative_final_charge,
+                unit_price_minor = v_authoritative_final_charge,
+                total_price_minor = v_authoritative_final_charge,
+                updated_at = NOW(),
+                version = version + 1
+            WHERE id = v_item_uuid;
+
+            PERFORM public.record_canonical_change('order_items', v_item_uuid, 'UPDATE', jsonb_build_object(
+                'id', v_item_uuid,
+                'order_id', v_order_uuid,
+                'device_type_id', v_device_type_uuid,
+                'device_name_snapshot', COALESCE(v_dev_name, ''),
+                'device_icon_snapshot', COALESCE(v_dev_icon, 'smartphone'),
+                'base_price_snapshot_minor', v_base_price,
+                'charger_fee_enabled_snapshot', v_charger_applicable,
+                'customer_charger_fee_exempt_snapshot', v_customer_exempt,
+                'charger_fee_snapshot_minor', v_authoritative_charger_fee,
+                'has_charger', v_has_charger,
+                'final_charge_snapshot_minor', v_authoritative_final_charge,
+                'unit_price_minor', v_authoritative_final_charge,
+                'total_price_minor', v_authoritative_final_charge
+            ), v_rec_item.version + 1);
+            v_result := jsonb_build_object('orderItemId', v_item_uuid, 'version', v_rec_item.version + 1, 'finalChargeMinor', v_authoritative_final_charge);
 
         WHEN 'DELIVER_ORDER_ITEM' THEN
             v_expected_version := COALESCE((p_payload->>'expectedVersion')::INTEGER,(p_payload->>'expected_version')::INTEGER);
