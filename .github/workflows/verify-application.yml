@@ -48,6 +48,12 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/sync.test.ts src/tests/delta_pull_batch_size.test.ts src/tests/canonical_architecture_foundation.test.ts src/tests/syncBridge.test.ts src/tests/outbox_dependency_revalidation.test.ts src/tests/phase6_13_remote_sync_hydration.test.ts src/tests/phase_sync_ux_and_background_trigger.test.ts src/tests/command_identity_renovation.test.ts src/tests/update_device_type_repair.test.ts
+      - name: Run financial integrity and allocation regressions
+        env:
+          # These tests must use local mocks and never touch production Supabase.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/financial_consistency.test.ts src/tests/phase6_8_financials.test.ts src/tests/phase6_9_2_order_financial_integrity.test.ts src/tests/fifo_payment_status_allocation.test.ts src/tests/phase_replacement_payment_allocations.test.ts src/tests/phaseB1_atomic_mutation.test.ts
       - name: Run auth-token and outbox-resume regressions
         env:
           # These tests mock all HTTP calls and need a configured client, but must never target production.
