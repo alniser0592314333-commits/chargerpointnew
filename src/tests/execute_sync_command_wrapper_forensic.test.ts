@@ -30,6 +30,7 @@ describe('execute_sync_command Wrapper Contract Forensic Suite', () => {
   beforeEach(async () => {
     await localDb.clear();
     await initializeCanonicalSyncState();
+    await localDb.setInitialHydrationCompleted(true);
     resetStoreMemory();
     setRuntimeBinVerifier((bin) => bin === '1234');
   });
