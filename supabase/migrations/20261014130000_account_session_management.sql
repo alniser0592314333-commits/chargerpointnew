@@ -397,7 +397,9 @@ DECLARE
 BEGIN
   FOR v_func IN
     SELECT proc.oid, proc.proname, proc.proargnames, proc.pronargs, proc.proretset,
-           proc.prorettype, oidvectortypes(proc.proargtypes) AS identity_args,
+           proc.prorettype,
+           CASE WHEN proc.provolatile = 'v' THEN 'VOLATILE' ELSE 'STABLE' END AS wrapper_volatility,
+           oidvectortypes(proc.proargtypes) AS identity_args,
            pg_get_function_arguments(proc.oid) AS full_args,
            pg_get_function_result(proc.oid) AS result_type
     FROM pg_proc proc
@@ -460,8 +462,8 @@ BEGIN
     END IF;
 
     v_create_sql := format(
-      'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS %L',
-      v_func.proname, v_full_args, v_result_type, v_body
+      'CREATE FUNCTION public.%I(%s) RETURNS %s LANGUAGE plpgsql %s SECURITY DEFINER SET search_path = public, pg_temp AS %L',
+      v_func.proname, v_full_args, v_result_type, v_func.wrapper_volatility, v_body
     );
     EXECUTE v_create_sql;
 
