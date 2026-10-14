@@ -74,7 +74,7 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
 
     // 2. Prep devices and customer inside localDb
     await localDb.set('deviceTypes', '10000000-0000-4000-8000-000000000003', {
-      id: '10000000-0000-4000-8000-000000000003', name: 'شاشة آيفون 13 برو', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+      id: '10000000-0000-4000-8000-000000000003', name: 'شاشة آيفون 13 برو', nameAr: 'شاشة آيفون 13 برو', icon: 'smartphone', status: 'ACTIVE', basePriceMinor: 40000, chargerFeeEnabled: true, isActive: true, sortOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
     await localDb.set('deviceTypes', 'dev-2', {
       id: 'dev-2', name: 'بطارية آيفون 13', basePriceMinor: 25000, chargerFeeEnabled: false, isActive: true, sortOrder: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
@@ -85,13 +85,14 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     await localDb.set('businessDays', dayId, {
       id: dayId,
       businessDate: '2029-09-29',
+      status: 'OPEN',
       isClosed: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: 1,
     });
     await localDb.set('customers', customerId, {
-      id: customerId, name: 'Test Customer', phone: '123', isActive: true, debtLimitMinor: -10000, chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
+      id: customerId, name: 'Test Customer', phone: '123', status: 'ACTIVE', isActive: true, debtLimitMinor: -10000, chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
 
     // Now hydrate memory caches
@@ -102,7 +103,7 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     if (!createRes.success) {
       console.error('Create Order Error:', createRes.error);
     }
-    expect(createRes.success).toBe(true);
+    expect(createRes.success, createRes.error).toBe(true);
     const orderId = createRes.order!.id;
 
     // Check Outbox
