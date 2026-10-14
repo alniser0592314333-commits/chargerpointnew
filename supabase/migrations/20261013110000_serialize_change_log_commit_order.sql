@@ -131,25 +131,55 @@ CREATE OR REPLACE FUNCTION public.pull_canonical_changes(
   p_limit integer DEFAULT 500
 )
 RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = ''
 AS $function$
-  WITH page AS MATERIALIZED (
-    SELECT sequence_id, entity_type, entity_id, action, payload, version, changed_at
-    FROM public.change_log
-    WHERE sequence_id > p_since_sequence
-    ORDER BY sequence_id ASC
-    LIMIT LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500)
-  )
-  SELECT jsonb_build_object(
-    'changes', COALESCE((SELECT jsonb_agg(to_jsonb(page) ORDER BY page.sequence_id) FROM page), '[]'::jsonb),
-    'latestSequence', COALESCE((SELECT MAX(sequence_id) FROM page), p_since_sequence),
-    'serverResetGeneration', (
-      SELECT value_number FROM public.system_settings WHERE key = 'server_reset_generation' LIMIT 1
+DECLARE
+  v_admin_id uuid;
+  v_is_active boolean;
+BEGIN
+  -- The change log contains customer and financial data. Only an authenticated,
+  -- active application admin may pull it; authenticated_read table policies are
+  -- intentionally broader for existing app reads, so this RPC must guard itself.
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required: caller must be signed in';
+  END IF;
+
+  SELECT a.id, a.is_active
+    INTO v_admin_id, v_is_active
+  FROM public.admins a
+  WHERE a.auth_user_id = auth.uid()
+  LIMIT 1;
+
+  IF v_admin_id IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized: active admin profile not found';
+  END IF;
+  IF v_is_active IS NOT TRUE THEN
+    RAISE EXCEPTION 'Forbidden: admin account is inactive or disabled';
+  END IF;
+  IF p_since_sequence IS NULL OR p_since_sequence < 0 THEN
+    RAISE EXCEPTION 'Invalid change-log cursor';
+  END IF;
+
+  RETURN (
+    WITH page AS MATERIALIZED (
+      SELECT sequence_id, entity_type, entity_id, action, payload, version, changed_at
+      FROM public.change_log
+      WHERE sequence_id > p_since_sequence
+      ORDER BY sequence_id ASC
+      LIMIT LEAST(GREATEST(COALESCE(p_limit, 500), 1), 500)
+    )
+    SELECT jsonb_build_object(
+      'changes', COALESCE((SELECT jsonb_agg(to_jsonb(page) ORDER BY page.sequence_id) FROM page), '[]'::jsonb),
+      'latestSequence', COALESCE((SELECT MAX(sequence_id) FROM page), p_since_sequence),
+      'serverResetGeneration', (
+        SELECT value_number FROM public.system_settings WHERE key = 'server_reset_generation' LIMIT 1
+      )
     )
   );
+END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.pull_canonical_changes(bigint, integer) FROM PUBLIC, anon;
