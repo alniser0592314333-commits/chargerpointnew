@@ -63,12 +63,16 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     // 1. Mock invokeSupabaseRpc to match exact execute_canonical_sync_command update logic
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (fnName, payload: any) => {
       if (fnName === 'pull_canonical_changes') {
-        const latestSequence = serverChangeLog.length
-          ? Math.max(...serverChangeLog.map((change) => change.sequence_id))
-          : 0;
+        const afterSequence = Number(payload?.p_since_sequence ?? 0);
+        const changes = serverChangeLog.filter(
+          (change) => Number(change.sequence_id) > afterSequence,
+        );
+        const latestSequence = changes.length
+          ? Math.max(...changes.map((change) => Number(change.sequence_id)))
+          : afterSequence;
         return {
           data: {
-            changes: serverChangeLog,
+            changes,
             latestSequence,
             serverResetGeneration,
           },
