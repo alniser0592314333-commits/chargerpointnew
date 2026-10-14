@@ -69,9 +69,15 @@ fi
 
 # The pull RPC must reject unauthenticated calls even though the underlying
 # change_log table has a broad authenticated SELECT policy.
-auth_guard=$("${psql_cmd[@]}" -Atc "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT NULL::uuid \$auth_uid\$; DO \$auth_test\$ BEGIN BEGIN PERFORM public.pull_canonical_changes(0, 500); RAISE EXCEPTION 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED'; EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED' OR SQLERRM NOT LIKE 'Authentication required%' THEN RAISE; END IF; END; END \$auth_test\$; CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT '00000000-0000-0000-0000-000000000009'::uuid \$auth_uid\$; SELECT 'ok'")
+auth_guard=$("${psql_cmd[@]}" -Atc "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT NULL::uuid \$auth_uid\$; DO \$auth_test\$ BEGIN BEGIN PERFORM public.pull_canonical_changes(0, 500); RAISE EXCEPTION 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED'; EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'PULL_RPC_AUTH_GUARD_NOT_ENFORCED' OR SQLERRM NOT LIKE 'Authentication required%' THEN RAISE; END IF; END; BEGIN PERFORM public.capture_sync_bootstrap_snapshot(); RAISE EXCEPTION 'BOOTSTRAP_RPC_AUTH_GUARD_NOT_ENFORCED'; EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'BOOTSTRAP_RPC_AUTH_GUARD_NOT_ENFORCED' OR SQLERRM NOT LIKE 'Authentication required%' THEN RAISE; END IF; END; END \$auth_test\$; CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT '00000000-0000-0000-0000-000000000009'::uuid \$auth_uid\$; SELECT 'ok'")
 if [[ "$auth_guard" != "ok" ]]; then
   echo "Change-log pull RPC did not reject unauthenticated callers" >&2
+  exit 1
+fi
+
+inactive_guard=$("${psql_cmd[@]}" -Atc "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT '00000000-0000-0000-0000-000000000007'::uuid \$auth_uid\$; DO \$inactive_test\$ BEGIN BEGIN PERFORM public.capture_sync_bootstrap_snapshot(); RAISE EXCEPTION 'BOOTSTRAP_INACTIVE_ADMIN_GUARD_NOT_ENFORCED'; EXCEPTION WHEN OTHERS THEN IF SQLERRM = 'BOOTSTRAP_INACTIVE_ADMIN_GUARD_NOT_ENFORCED' OR SQLERRM NOT LIKE 'Forbidden: admin account is inactive%' THEN RAISE; END IF; END; END \$inactive_test\$; CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$auth_uid\$ SELECT '00000000-0000-0000-0000-000000000009'::uuid \$auth_uid\$; SELECT 'ok'")
+if [[ "$inactive_guard" != "ok" ]]; then
+  echo "Bootstrap snapshot RPC did not reject inactive admins" >&2
   exit 1
 fi
 
@@ -118,7 +124,10 @@ psql_check=$("${psql_cmd[@]}" -Atc "SELECT
   AND NOT has_function_privilege('authenticated', 'public.record_canonical_change(character varying,uuid,character varying,jsonb,integer)', 'EXECUTE')
   AND has_function_privilege('authenticated', 'public.pull_canonical_changes(bigint,integer)', 'EXECUTE')
   AND NOT has_function_privilege('anon', 'public.pull_canonical_changes(bigint,integer)', 'EXECUTE')
-  AND NOT has_function_privilege('service_role', 'public.pull_canonical_changes(bigint,integer)', 'EXECUTE')")
+  AND NOT has_function_privilege('service_role', 'public.pull_canonical_changes(bigint,integer)', 'EXECUTE')
+  AND has_function_privilege('authenticated', 'public.capture_sync_bootstrap_snapshot()', 'EXECUTE')
+  AND NOT has_function_privilege('anon', 'public.capture_sync_bootstrap_snapshot()', 'EXECUTE')
+  AND NOT has_function_privilege('service_role', 'public.capture_sync_bootstrap_snapshot()', 'EXECUTE')")
 if [[ "$psql_check" != "t" ]]; then
   echo "RPC entry-point lock wrappers or internal implementation privileges are incorrect" >&2
   exit 1
