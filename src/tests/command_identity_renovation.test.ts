@@ -161,7 +161,8 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
           });
         }
       } else if (commandType === 'ADD_ORDER_ITEM') {
-        const itemId = String(payload.id ?? '');
+        // Canonical server identity is the command UUID when the payload omits an item ID.
+        const itemId = String(payload.id ?? rpcPayload.p_command_id ?? '');
         if (itemId) {
           appendChange('order_items', itemId, {
             id: itemId,
@@ -220,6 +221,8 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
 
     const refreshedCreateCmd = await localDb.getOutbox(createCmd!.commandId);
     expect(refreshedCreateCmd?.status).toBe('accepted');
+    expect(await localDb.get('orders', orderId)).toBeTruthy();
+    expect((await localDb.list<any>('orderItems')).some((item) => item.orderId === orderId)).toBe(true);
 
     const editRes = await updateOrderWithPhase5Engine(orderId, 'Updated notes', 'pending', [], []);
     expect(editRes.success, editRes.error).toBe(true);
