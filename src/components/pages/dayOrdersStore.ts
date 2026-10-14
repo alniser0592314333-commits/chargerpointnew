@@ -1001,7 +1001,8 @@ export const resetCanonicalReadModelsForReplay = (): void => {
   customersMap.clear();
   devicesMap.clear();
   daysMap.clear();
-  commandsMap.clear();
+  // The outbox survives authoritative replay, so its command identity cache
+  // must survive too; clearing it would disable local idempotency checks.
   ledgerList.length = 0;
   paymentsMap.clear();
   allocationsList.length = 0;
@@ -1830,6 +1831,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       persistedQrTokens,
       persistedGoals,
       persistedGoalRequests,
+      persistedOutbox,
     ] = await Promise.all([
       localDb.list<CustomerEntity>('customers'),
       localDb.list<DeviceTypeEntity>('deviceTypes'),
@@ -1843,7 +1845,15 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       localDb.list<any>('qr_tokens'),
       localDb.list<GoalEntity>('goals'),
       localDb.list<GoalRequestEntity>('goalRequests'),
+      localDb.listOutbox(),
     ]);
+
+    // Rehydrate command identity state from the durable outbox. Without this,
+    // retries after a memory reset bypass local idempotency/conflict checks.
+    commandsMap.clear();
+    persistedOutbox.forEach((command) => {
+      commandsMap.set(command.commandId, { type: command.commandType, payload: command.payload });
+    });
 
     reservationsMap.clear();
     persistedReservations.forEach((r) => {
@@ -2504,6 +2514,9 @@ function createTransactionalRepoContext(
           resetGeneration: currentGen,
         };
         localDb.saveOutboxWithTx(tx, record);
+        // Keep the command identity cache in the same transaction boundary.
+        // It is used by idempotency checks before another optimistic overlay is created.
+        commandsMap.set(cmdId, { type, payload: record.payload });
         postCommitActions.push(() => {
           syncEventEmitter.emit({
             type: 'command_status_changed',
