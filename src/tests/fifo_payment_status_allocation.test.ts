@@ -165,20 +165,32 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
   });
 
 
-  it('5. Customer top-up records CREATE_PAYMENT, not CREATE_CUSTOMER_CREDIT', async () => {
+  it('5. Customer top-up records CREATE_PAYMENT and keeps idempotency after memory reset', async () => {
     const custId = 'cust-5';
+    const idempotencyKey = crypto.randomUUID();
     const result = await topUpCustomerBalance({
       customerId: custId,
       amountMinor: 1000,
       bin: '1234',
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey,
     });
 
     expect(result.success).toBe(true);
-    const command = await (phase5UseCases as any).deps.commandRepo.get(
-      result.transactionId
-    );
+    const command = await (phase5UseCases as any).deps.commandRepo.get(idempotencyKey);
     expect(command?.type).toBe('CREATE_PAYMENT');
+
+    resetStoreMemory();
+    await ensureStoreHydrated();
+
+    const retry = await topUpCustomerBalance({
+      customerId: custId,
+      amountMinor: 1000,
+      bin: '1234',
+      idempotencyKey,
+    });
+    expect(retry.success).toBe(true);
+    const matchingCommands = (await localDb.listOutbox()).filter((entry) => entry.commandId === idempotencyKey);
+    expect(matchingCommands).toHaveLength(1);
   });
 
   it('6. Equal millisecond timestamps use overlay sequence to preserve FIFO causality', async () => {
