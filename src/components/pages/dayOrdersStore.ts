@@ -4130,6 +4130,15 @@ export const getCustomerFinancialHistory = async (
     if (eventCustomerId !== targetId || !eventType || !Number.isFinite(amountMinor)) continue;
 
     const referenceId = String(payload.referenceId ?? payload.reference_id ?? '');
+    const pendingPaymentOverlay = referenceId
+      ? overlays.find((candidate) =>
+          candidate.status === 'PENDING' &&
+          candidate.entityType === 'payments' &&
+          candidate.entityId === referenceId
+        )
+      : undefined;
+    const pendingPaymentPayload = (pendingPaymentOverlay?.entityPayload || pendingPaymentOverlay?.patch || {}) as Record<string, unknown>;
+    const noteText = payload.reference ?? payload.note ?? pendingPaymentPayload.reference ?? pendingPaymentPayload.note;
     const alreadyAuthoritative = rawEvents.some((event) =>
       event.eventType === eventType &&
       ((referenceId && event.referenceId === referenceId) || event.id === overlay.entityId)
@@ -4145,10 +4154,8 @@ export const getCustomerFinancialHistory = async (
       referenceId: referenceId || undefined,
       createdAt: String(payload.createdAt ?? overlay.createdAt),
       metadata: {
-        ...(payload.metadata || {}),
-        ...(payload.reference || payload.note
-          ? { note: String(payload.reference ?? payload.note) }
-          : {}),
+        ...((payload.metadata || {}) as Record<string, unknown>),
+        ...(noteText ? { note: String(noteText) } : {}),
       },
       __projectionSequence: Number(overlay.sequence ?? 0),
     });
