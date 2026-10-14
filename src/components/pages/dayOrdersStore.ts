@@ -780,12 +780,12 @@ export const applyRemoteChange = (change: {
       createdAt: p.createdAt || p.created_at || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'financialLedger', entity.id, entity);
+    snapshotRemoteArray(tx, 'financialLedger', ledgerList);
     const existingIdx = ledgerList.findIndex((item) => item.id === entity.id);
     if (existingIdx >= 0) {
       ledgerList[existingIdx] = entity;
     } else {
-      snapshotRemoteArray(tx, 'financialLedger', ledgerList);
-    ledgerList.push(entity);
+      ledgerList.push(entity);
     }
     notifyStoreAfterTransaction('financialLedger', entity.id, tx);
   } else if (entityType === 'payments') {
@@ -830,12 +830,12 @@ export const applyRemoteChange = (change: {
       createdAt: p.createdAt || p.created_at || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'paymentAllocations', entity.id, entity);
+    snapshotRemoteArray(tx, 'paymentAllocations', allocationsList);
     const existingIdx = allocationsList.findIndex((item) => item.id === entity.id);
     if (existingIdx >= 0) {
       allocationsList[existingIdx] = entity;
     } else {
-      snapshotRemoteArray(tx, 'paymentAllocations', allocationsList);
-    allocationsList.push(entity);
+      allocationsList.push(entity);
     }
     notifyStoreAfterTransaction('paymentAllocations', entity.id, tx);
   } else {
