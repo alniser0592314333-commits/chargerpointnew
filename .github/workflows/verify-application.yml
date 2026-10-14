@@ -55,6 +55,13 @@ jobs:
           VITE_SUPABASE_ANON_KEY: test-anon-key
         run: npx vitest run src/tests/phase6_15_auth_token_and_outbox_resume.test.ts
 
+      - name: Run online create-day pipeline regressions
+        env:
+          # The RPC transport is mocked; never point this integration-style test at production.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
+        run: npx vitest run src/tests/phase6_16_online_create_day_pipeline.test.ts
+
       - name: Type-check and lint
         run: npm run lint
       - name: Build production bundle
