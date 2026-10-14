@@ -431,7 +431,7 @@ export class SyncEngine {
       aggregateId,
       payload: { ...(p || {}), resetGeneration: currentGen },
       expectedVersion,
-      createdAt: new Date().toISOString(),
+      createdAt: localDb.getNextOutboxTimestamp(),
       deviceId,
       actorAdminId,
       status,
