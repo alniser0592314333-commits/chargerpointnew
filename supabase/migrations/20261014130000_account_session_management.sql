@@ -315,6 +315,32 @@ $sessionguard$;
 REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.assert_my_account_session_active() TO authenticated, service_role;
 
+-- Legacy tables that had RLS disabled and broad PUBLIC/anon/authenticated
+-- CRUD grants are not used by the current client code. Keep any trusted
+-- server-side routines working, but remove direct Data API access so these
+-- tables cannot bypass session revocation (or be modified anonymously).
+DO $legacy_table_lockdown$
+DECLARE
+  v_table_name text;
+BEGIN
+  FOREACH v_table_name IN ARRAY ARRAY[
+    'roles',
+    'permissions',
+    'role_permissions',
+    'qr_payment_submissions',
+    'v_email',
+    'rpc_log'
+  ]
+  LOOP
+    IF to_regclass(format('public.%I', v_table_name)) IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table_name);
+      EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated', v_table_name);
+      EXECUTE format('GRANT ALL ON TABLE public.%I TO service_role', v_table_name);
+    END IF;
+  END LOOP;
+END;
+$legacy_table_lockdown$;
+
 -- Add the session gate to existing authenticated-only RLS policies without
 -- changing their business predicates. Public/anon policies are deliberately
 -- untouched (e.g. public QR resolution).
