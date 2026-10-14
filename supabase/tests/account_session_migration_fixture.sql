@@ -61,3 +61,72 @@ CREATE TABLE public.permissions (
   code text NOT NULL
 );
 GRANT ALL ON TABLE public.permissions TO anon, authenticated;
+
+-- Minimal representative application RPCs: one guarded public entry point and
+-- its internal canonical SECURITY DEFINER implementation.
+CREATE FUNCTION public.execute_canonical_sync_command(
+  p_command_id uuid,
+  p_command_type text,
+  p_payload jsonb,
+  p_payload_hash text DEFAULT 'no_hash',
+  p_device_id text DEFAULT 'default_device',
+  p_actor_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $canonical$
+  SELECT jsonb_build_object('success', true, 'actor', p_actor_id, 'command', p_command_type)
+$canonical$;
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid) TO authenticated, service_role;
+
+CREATE FUNCTION public.execute_sync_command(
+  p_command_id uuid,
+  p_command_type text,
+  p_aggregate_type text DEFAULT NULL,
+  p_aggregate_id uuid DEFAULT NULL,
+  p_payload jsonb DEFAULT '{}'::jsonb,
+  p_expected_version integer DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $sync$
+BEGIN
+  RETURN public.execute_canonical_sync_command(
+    p_command_id, p_command_type, COALESCE(p_payload, '{}'::jsonb),
+    'no_hash', 'default_device', auth.uid()
+  );
+END;
+$sync$;
+REVOKE ALL ON FUNCTION public.execute_sync_command(uuid,text,text,uuid,jsonb,integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.execute_sync_command(uuid,text,text,uuid,jsonb,integer) TO authenticated;
+
+CREATE TABLE public.session_guard_fixture_audit (marker text NOT NULL);
+CREATE FUNCTION public.fixture_sensitive_void(p_marker text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $void$
+BEGIN
+  INSERT INTO public.session_guard_fixture_audit(marker) VALUES (p_marker);
+END;
+$void$;
+REVOKE ALL ON FUNCTION public.fixture_sensitive_void(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fixture_sensitive_void(text) TO authenticated;
+
+CREATE FUNCTION public.fixture_sensitive_setof()
+RETURNS SETOF jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $setof$
+  SELECT jsonb_build_object('id', id, 'secret', secret)
+  FROM public.session_guard_fixture
+$setof$;
+REVOKE ALL ON FUNCTION public.fixture_sensitive_setof() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fixture_sensitive_setof() TO authenticated;
