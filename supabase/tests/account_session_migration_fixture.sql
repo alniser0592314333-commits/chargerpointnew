@@ -1,7 +1,5 @@
 -- Minimal Supabase Auth schema fixture for account session migration tests.
 CREATE SCHEMA auth;
-CREATE ROLE anon NOLOGIN;
-CREATE ROLE authenticated NOLOGIN;
 CREATE TABLE auth.users (
   id uuid PRIMARY KEY,
   email text
