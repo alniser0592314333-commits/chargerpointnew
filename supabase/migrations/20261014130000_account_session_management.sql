@@ -300,6 +300,12 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $sessionguard$
 BEGIN
+  -- Trusted service-role workflows are not browser sessions and must retain
+  -- their existing server-to-server behavior. Client roles are checked below.
+  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) = 'service_role' THEN
+    RETURN;
+  END IF;
+
   IF public.is_my_account_session_active() IS NOT TRUE THEN
     RAISE EXCEPTION 'Authentication session is revoked, expired, or unavailable'
       USING ERRCODE = '28000';
