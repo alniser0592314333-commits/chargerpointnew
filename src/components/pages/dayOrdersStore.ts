@@ -2482,7 +2482,7 @@ function createTransactionalRepoContext(
         const payloadRecord = (payload && typeof payload === 'object') ? (payload as any) : {};
         const aggregateId =
           payloadRecord.aggregateId ||
-          ((type === 'ADD_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM')
+          ((type === 'ADD_ORDER_ITEM' || type === 'UPDATE_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM')
             ? payloadRecord.orderId
             : type === 'PAYMENT' || type === 'POST_PAYMENT' || type === 'CREATE_PAYMENT' || type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
               ? payloadRecord.customerId
