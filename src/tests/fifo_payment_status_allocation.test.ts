@@ -134,12 +134,6 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
       });
     }
 
-    const effectiveOrders = new Map(orders.map((entry) => [entry.id, entry.order]));
-    const effectiveItems = new Map<string, any>();
-    for (const entry of orders) {
-      effectiveItems.set(entry.itemId, entry.deliveredItem);
-    }
-
     const auth = getAuthorizedAdminContext('1234');
 
     const firstAmount = orders[0].total + Math.floor(orders[1].total / 2);
@@ -148,9 +142,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(p1.success).toBe(true);
 
-    let statuses = computeCustomerOrderPaymentStatuses(
-      custId, effectiveOrders, effectiveItems
-    );
+    let statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(orders[0].id)?.paymentStatus).toBe('PAID');
     expect(statuses.get(orders[0].id)?.allocatedAmountMinor).toBe(orders[0].total);
     expect(statuses.get(orders[1].id)?.paymentStatus).toBe('PARTIAL');
@@ -165,9 +157,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     );
     expect(p2.success).toBe(true);
 
-    statuses = computeCustomerOrderPaymentStatuses(
-      custId, effectiveOrders, effectiveItems
-    );
+    statuses = computeCustomerOrderPaymentStatuses(custId);
     expect(statuses.get(orders[0].id)?.paymentStatus).toBe('PAID');
     expect(statuses.get(orders[1].id)?.paymentStatus).toBe('PAID');
     expect(statuses.get(orders[2].id)?.paymentStatus).toBe('PARTIAL');
