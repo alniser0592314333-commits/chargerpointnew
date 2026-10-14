@@ -109,8 +109,25 @@ export default function App() {
         }
 
         if (authenticatedSession) {
-          // Register the current Auth session without blocking normal startup if the feature migration has not reached this environment yet.
-          try { await registerCurrentAccountSession(); } catch (sessionRegistrationError) { console.warn('Account session registration is unavailable; continuing normal startup.', sessionRegistrationError); }
+          // Register the current Auth session and immediately detect a previously revoked session.
+          // Rollout/network failures remain non-blocking; a confirmed revocation is not.
+          try {
+            await registerCurrentAccountSession();
+            if (!(await isCurrentAccountSessionActive())) {
+              await authService.logout();
+              authenticatedSession = null;
+              if (isMounted) {
+                setIsAuthenticated(false);
+                setUserSession(null);
+              }
+              return;
+            }
+          } catch (sessionRegistrationError) {
+            console.warn('Account session verification is unavailable; continuing normal startup.', sessionRegistrationError);
+          }
+        }
+
+        if (authenticatedSession) {
           // Never suppress bootstrap errors: a fresh device must not open on an
           // empty or partially hydrated model. Existing local data remains usable
           // when a remote read fails before any local replacement begins.
@@ -204,6 +221,14 @@ export default function App() {
     const handleFocus = async () => {
       if (isAuthenticated && !isSuspended) {
         try {
+          const sessionActive = await isCurrentAccountSessionActive();
+          if (!sessionActive) {
+            await authService.logout();
+            setIsAuthenticated(false);
+            setUserSession(null);
+            navigate('/app', true);
+            return;
+          }
           const session = await authService.getCurrentSession(true); // Authoritatively verify with server
           if (!session) {
             setIsSuspended(true);
