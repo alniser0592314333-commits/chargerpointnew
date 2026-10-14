@@ -374,15 +374,33 @@ export class OutboxScheduler {
           } else {
             // Prerequisite is not in active outbox AND not in history.
             // Check if the entity already exists locally in DB (e.g. existing order, day, customer, device, item)
-            const [existsInDays, existsInOrders, existsInCustomers, existsInDevices, existsInItems] = await Promise.all([
+            const [
+              existsInDays,
+              existsInOrders,
+              existsInCustomers,
+              existsInDevices,
+              existsInItems,
+              existsInGoals,
+              existsInGoalRequests,
+            ] = await Promise.all([
               localDb.get('businessDays', depId).catch(() => null),
               localDb.get('orders', depId).catch(() => null),
               localDb.get('customers', depId).catch(() => null),
               localDb.get('deviceTypes', depId).catch(() => null),
               localDb.get('orderItems', depId).catch(() => null),
+              localDb.get('goals', depId).catch(() => null),
+              localDb.get('goalRequests', depId).catch(() => null),
             ]);
 
-            const entityExistsLocally = Boolean(existsInDays || existsInOrders || existsInItems || existsInCustomers || existsInDevices);
+            const entityExistsLocally = Boolean(
+              existsInDays ||
+              existsInOrders ||
+              existsInItems ||
+              existsInCustomers ||
+              existsInDevices ||
+              existsInGoals ||
+              existsInGoalRequests
+            );
 
             if (!entityExistsLocally) {
               const isDayDep =
