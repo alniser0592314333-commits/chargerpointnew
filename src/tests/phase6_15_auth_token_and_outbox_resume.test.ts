@@ -26,6 +26,11 @@ describe('Phase 6.15: Auth Token Resolution & Outbox Resume Security Suite', () 
     supabaseClient.clearStoredSupabaseAuthSession();
     supabaseClient.setSupabaseAuthToken(null);
     vi.restoreAllMocks();
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://test.supabase.co',
+      status: 'connected',
+    });
     vi.spyOn(supabaseClient, 'invokeSupabaseRestGet').mockImplementation(async (table: string) => {
       if (table === 'system_settings') {
         return { data: [{ value_number: 1 }], error: null };
@@ -141,17 +146,27 @@ describe('Phase 6.15: Auth Token Resolution & Outbox Resume Security Suite', () 
       await engine.synchronize();
 
       const outboxAfterFail = await localDb.listOutbox();
-      expect(outboxAfterFail[0].status).toBe('conflict');
-      expect(outboxAfterFail[0].lastError).toContain('AUTH_TOKEN_MISSING');
-      expect(outboxAfterFail[0].retryCount).toBe(1);
+      // The canonical pull is a preflight: without a user token, the engine
+      // must stop before pushing or mutating the pending command.
+      expect(outboxAfterFail[0].status).toBe('pending');
+      expect(outboxAfterFail[0].lastError).toBeUndefined();
+      expect(outboxAfterFail[0].retryCount).toBe(0);
 
       // User now logs in: token is set
       supabaseClient.setSupabaseAuthToken('valid_access_token_now');
 
-      // Mock successful server execution via execute_sync_command RPC
-      vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValueOnce({
-        data: { success: true, command_id: 'cmd-unauth-1' },
-        error: null,
+      // Mock the canonical pull page and then the command execution RPC.
+      vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (fnName, payload: any) => {
+        if (fnName === 'pull_canonical_changes') {
+          return {
+            data: { changes: [], latestSequence: 0, serverResetGeneration: 1 },
+            error: null,
+          };
+        }
+        if (fnName === 'execute_sync_command') {
+          return { data: { success: true, command_id: payload.p_command_id }, error: null };
+        }
+        return { data: null, error: `Unexpected RPC: ${fnName}` };
       });
 
       // Attempt 2: Synchronize resumes and pushes the command
