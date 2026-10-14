@@ -13,7 +13,7 @@ import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import * as supabaseClient from '../services/supabase/client';
 import { SupabaseSyncTransport } from '../infrastructure/sync/SupabaseSyncTransport';
 import { SyncEngine } from '../infrastructure/sync/syncEngine';
-import { setTestAppAuthSession } from './utils/testSetup';
+import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 
 const storageMap = new Map<string, string>();
 const localStorageMock = {
@@ -29,11 +29,11 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     storageMap.clear();
     localStorageMock.setItem('sys_db_version', '6.10.3D');
     localStorageMock.setItem('app_device_id', 'test_device');
-    setTestAppAuthSession();
-    
     await clearAllOperationalData();
     resetStoreMemory();
-    
+    await initializeCanonicalSyncState();
+    setTestAppAuthSession();
+
     supabaseClient.clearStoredSupabaseAuthSession();
     supabaseClient.setSupabaseAuthToken('mock-jwt');
     vi.restoreAllMocks();
