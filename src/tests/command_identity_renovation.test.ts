@@ -228,15 +228,16 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     expect(editRes.success, editRes.error).toBe(true);
 
     outbox = await localDb.listOutbox();
-    const allCreateCmds = outbox.filter((command) => command.commandType === 'CREATE_ORDER');
-    expect(allCreateCmds.length).toBe(2);
+    const allOrderMutationCmds = outbox.filter((command) => command.commandType === 'CREATE_ORDER' || command.commandType === 'UPDATE_ORDER');
+    expect(allOrderMutationCmds.length).toBe(2);
 
-    const originalCmd = allCreateCmds.find((command) => command.commandId === createCmd!.commandId);
-    const editCmd = allCreateCmds.find((command) => command.commandId !== createCmd!.commandId);
+    const originalCmd = allOrderMutationCmds.find((command) => command.commandId === createCmd!.commandId);
+    const editCmd = allOrderMutationCmds.find((command) => command.commandId !== createCmd!.commandId);
     expect(originalCmd?.status).toBe('accepted');
     expect(editCmd?.status).toBe('pending');
     expect(editCmd?.commandId).not.toBe(originalCmd?.commandId);
     expect(editCmd?.aggregateId).toBe(orderId);
+    expect(editCmd?.commandType).toBe('UPDATE_ORDER');
     expect((editCmd?.payload as any).notes).toBe('Updated notes');
 
     await engine.synchronize();
@@ -247,10 +248,10 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     expect(edit2Res.success, edit2Res.error).toBe(true);
 
     outbox = await localDb.listOutbox();
-    const allCreateCmdsAfter2 = outbox.filter((command) => command.commandType === 'CREATE_ORDER');
-    expect(allCreateCmdsAfter2.length).toBe(3);
+    const allOrderMutationCmdsAfter2 = outbox.filter((command) => command.commandType === 'CREATE_ORDER' || command.commandType === 'UPDATE_ORDER');
+    expect(allOrderMutationCmdsAfter2.length).toBe(3);
 
-    const edit2Cmd = allCreateCmdsAfter2.find(
+    const edit2Cmd = allOrderMutationCmdsAfter2.find(
       (command) => command.commandId !== createCmd!.commandId && command.commandId !== editCmd!.commandId,
     );
     expect(edit2Cmd?.status).toBe('pending');
