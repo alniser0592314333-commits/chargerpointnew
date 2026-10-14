@@ -1534,5 +1534,8 @@ BEGIN
  IF position('WHEN ''RENUMBER_DAY_ORDERS'' THEN' IN v_definition)=0 OR position('orders:renumber-day' IN v_definition)=0 THEN
   RAISE EXCEPTION 'Renumber dispatcher validation failed';
  END IF;
+ IF position('IF COALESCE(v_admin_role' IN v_definition)=0 OR position('(v_rec_item.debt_limit_minor = 0 AND v_projected_balance < 0)' IN v_definition)=0 THEN
+  RAISE EXCEPTION 'Renumber dispatcher validation failed: Super Admin debt-limit policy was not preserved';
+ END IF;
 END;
 $migration$;
