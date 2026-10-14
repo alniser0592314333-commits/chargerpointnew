@@ -113,6 +113,10 @@ export default function App() {
           // Rollout/network failures remain non-blocking; a confirmed revocation is not.
           try {
             await registerCurrentAccountSession();
+          } catch (sessionRegistrationError) {
+            console.warn('Account session registration is unavailable; continuing normal startup.', sessionRegistrationError);
+          }
+          try {
             if (!(await isCurrentAccountSessionActive())) {
               await authService.logout();
               authenticatedSession = null;
@@ -122,8 +126,8 @@ export default function App() {
               }
               return;
             }
-          } catch (sessionRegistrationError) {
-            console.warn('Account session verification is unavailable; continuing normal startup.', sessionRegistrationError);
+          } catch (sessionCheckError) {
+            console.warn('Account session verification is unavailable; continuing normal startup.', sessionCheckError);
           }
         }
 
@@ -221,13 +225,18 @@ export default function App() {
     const handleFocus = async () => {
       if (isAuthenticated && !isSuspended) {
         try {
-          const sessionActive = await isCurrentAccountSessionActive();
-          if (!sessionActive) {
-            await authService.logout();
-            setIsAuthenticated(false);
-            setUserSession(null);
-            navigate('/app', true);
-            return;
+          try {
+            const sessionActive = await isCurrentAccountSessionActive();
+            if (!sessionActive) {
+              await authService.logout();
+              setIsAuthenticated(false);
+              setUserSession(null);
+              navigate('/app', true);
+              return;
+            }
+          } catch (sessionCheckError) {
+            // The registry may not be deployed yet, or the network may be temporarily unavailable.
+            console.warn('Account session verification temporarily unavailable.', sessionCheckError);
           }
           const session = await authService.getCurrentSession(true); // Authoritatively verify with server
           if (!session) {
