@@ -208,6 +208,34 @@ jobs:
           END $$;
           SQL
 
+  diagnose-main-test-baseline:
+    name: Diagnose full-suite baseline on main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main baseline
+        uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      - name: Run main baseline suite without failing the diagnostic job
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee main-baseline-tests.log
+          test_status=${PIPESTATUS[0]}
+          echo "MAIN_BASELINE_EXIT=${test_status}"
+          grep -E 'Test Files|Tests  ' main-baseline-tests.log | tail -n 8 || true
+          exit 0
+
   verify-smart-goal-migration:
     runs-on: ubuntu-latest
     timeout-minutes: 15
