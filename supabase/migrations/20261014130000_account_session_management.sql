@@ -132,7 +132,19 @@ BEGIN
     RETURN false;
   END IF;
 
-  -- Sessions not yet registered are allowed briefly so older clients can upgrade.
+  -- Require the underlying Supabase Auth session to still exist and be unexpired.
+  -- This also rejects stale access tokens whose Auth session was deleted/expired.
+  IF NOT EXISTS (
+    SELECT 1 FROM auth.sessions s
+    WHERE s.id = v_session_id
+      AND s.user_id = v_user_id
+      AND (s.not_after IS NULL OR s.not_after > now())
+  ) THEN
+    RETURN false;
+  END IF;
+
+  -- Sessions not yet registered are allowed briefly so older clients can upgrade,
+  -- but a registered session is never allowed after explicit revocation.
   RETURN NOT EXISTS (
     SELECT 1 FROM public.account_sessions a
     WHERE a.session_id = v_session_id
