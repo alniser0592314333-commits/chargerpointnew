@@ -364,15 +364,20 @@ export class OutboxScheduler {
         } else {
           // 2. Check local history (by commandId or entityId/aggregateId)
           const historyDep = await getHistory(depId);
-          if (historyDep) {
+          const isOwnCommandHistory = Boolean(
+            historyDep &&
+            (historyDep.commandId === candidate.commandId || historyDep.historyId === candidate.commandId)
+          );
+          if (historyDep && !isOwnCommandHistory) {
             if (historyDep.state === 'SUCCESS' || historyDep.state === 'SUCCEEDED') {
-              // Satisfied by previous sync
+              // Satisfied by a previous command on this entity.
             } else {
-              // Prerequisite failed, blocked, or not completed (e.g. FAILED, CONFLICT, BLOCKED, etc.)
+              // A prior prerequisite failed, is blocked, or has not completed.
               unsatisfied.push(historyDep.commandId || depId);
             }
           } else {
-            // Prerequisite is not in active outbox AND not in history.
+            // No prior prerequisite history exists. Ignore this candidate's own
+            // history row and check whether the referenced entity is already local.
             // Check if the entity already exists locally in DB (e.g. existing order, day, customer, device, item)
             const [
               existsInDays,
