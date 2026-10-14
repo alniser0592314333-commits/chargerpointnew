@@ -111,8 +111,8 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
           const updated = {
             id,
             name: p_payload.name,
-            nameAr: p_payload.nameAr || p_payload.name,
-            nameEn: p_payload.nameEn || p_payload.name,
+            nameAr: p_payload.nameAr || p_payload.name_ar || p_payload.arabicName || p_payload.name,
+            nameEn: p_payload.nameEn || p_payload.name_en || p_payload.englishName || p_payload.name,
             icon: p_payload.icon || 'smartphone',
             base_price_minor: p_payload.basePriceMinor || 0,
             charger_fee_enabled: p_payload.chargerFeeEnabled !== false,
@@ -159,8 +159,8 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
           const updated = {
             ...current,
             name: p_payload.name || current.name,
-            nameAr: p_payload.nameAr || p_payload.name_ar || current.nameAr,
-            nameEn: p_payload.nameEn || p_payload.name_en || current.nameEn,
+            nameAr: p_payload.nameAr || p_payload.name_ar || p_payload.arabicName || current.nameAr,
+            nameEn: p_payload.nameEn || p_payload.name_en || p_payload.englishName || current.nameEn,
             base_price_minor: p_payload.basePriceMinor !== undefined ? p_payload.basePriceMinor : current.base_price_minor,
             charger_fee_enabled: p_payload.chargerFeeEnabled !== undefined ? p_payload.chargerFeeEnabled : current.charger_fee_enabled,
             is_active: p_payload.isActive !== undefined ? p_payload.isActive : current.is_active,
@@ -433,7 +433,7 @@ describe('UPDATE_DEVICE_TYPE Canonical Command Repair & Verification Suite', () 
     expect(syncRes2.pushed).toBe(0);
 
     const outbox = await localDb.listOutbox();
-    const staleCmd = outbox.find(o => o.payload && ((o.payload as any).nameAr === 'تعديل جيل قديم' || (o.payload as any).name_ar === 'تعديل جيل قديم'));
+    const staleCmd = outbox.find(o => o.payload && ((o.payload as any).nameAr === 'تعديل جيل قديم' || (o.payload as any).name_ar === 'تعديل جيل قديم' || (o.payload as any).arabicName === 'تعديل جيل قديم'));
     expect(staleCmd?.status).toBe('rejected');
     expect(staleCmd?.lastError).toContain('RESET_GENERATION_MISMATCH');
   });
