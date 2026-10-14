@@ -49,7 +49,6 @@ import {
   Database,
   RefreshCw,
   Settings2,
-  ArrowLeft,
 } from "lucide-react";
 
 export interface SettingsPageProps {
@@ -391,74 +390,61 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-24 px-4 sm:px-6">
-      {/* Settings header: shared visual identity and in-page navigation */}
-      <div className="pt-2 pb-4 border-b border-gray-200/80 dark:border-[#123832]">
-        <div className="flex items-center gap-3">
-          {activeSettingsSection && (
-            <button type="button" onClick={() => setActiveSettingsSection(null)} aria-label={locale === "ar" ? "العودة إلى الإعدادات" : "Back to settings"} className="w-9 h-9 rounded-xl border border-gray-200 dark:border-[#245047] bg-white/70 dark:bg-[#0c312b] flex items-center justify-center text-gray-600 dark:text-[#daf1de] hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors shrink-0">
-              {isRTL ? <ChevronRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
-            </button>
-          )}
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-[#daf1de]">
-              {!activeSettingsSection ? t("settingsTitle") : ({
-                general: locale === "ar" ? "التفضيلات العامة" : "General Preferences",
-                orders: locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices",
-                backup: locale === "ar" ? "النسخ الاحتياطية وإدارة البيانات" : "Backups & Data Management",
-                sync: locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status",
-                account: locale === "ar" ? "الحسابات" : "Accounts",
-                about: locale === "ar" ? "حول التطبيق" : "About the App",
-              } as const)[activeSettingsSection]}
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">
-              {!activeSettingsSection ? t("settingsHeaderSubtitle") : (locale === "ar" ? "إدارة إعدادات هذا القسم دون تغيير بياناتك أو طريقة عمل النظام." : "Manage this section without changing your data or system behavior.")}
-            </p>
-          </div>
-        </div>
+      {/* Flat settings header: title stays aligned to the RTL/LTR content edge */}
+      <div className="pt-2 pb-4 border-b border-gray-200/80 dark:border-[#123832] text-start">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-[#daf1de]">
+          {!activeSettingsSection ? t("settingsTitle") : ({
+            general: locale === "ar" ? "التفضيلات العامة" : "General Preferences",
+            orders: locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices",
+            backup: locale === "ar" ? "النسخ الاحتياطية وإدارة البيانات" : "Backups & Data Management",
+            sync: locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status",
+            account: locale === "ar" ? "الحسابات" : "Accounts",
+            about: locale === "ar" ? "حول التطبيق" : "About the App",
+          } as const)[activeSettingsSection]}
+        </h1>
+        <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">
+          {!activeSettingsSection ? t("settingsHeaderSubtitle") : (locale === "ar" ? "إدارة إعدادات هذا القسم دون تغيير بياناتك أو طريقة عمل النظام." : "Manage this section without changing your data or system behavior.")}
+        </p>
       </div>
 
       {/* Main settings menu and selected section content */}
       <div className="space-y-6">
         {!activeSettingsSection && (
           <div className="space-y-5">
-            <div className="flex items-center gap-2 px-0.5">
-              <div className="h-5 w-1 rounded-full bg-emerald-500 dark:bg-[#8eb698]" />
-              <h2 className="text-sm font-bold text-gray-800 dark:text-[#daf1de]">{locale === "ar" ? "إعدادات النظام" : "System Settings"}</h2>
-            </div>
-            <div className="rounded-2xl border border-gray-200/80 dark:border-[#123832] bg-white/70 dark:bg-[#061f1c]/80 divide-y divide-gray-100 dark:divide-[#0f302b] overflow-hidden">
-              <button type="button" onClick={() => setActiveSettingsSection("general")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
-                <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Settings2 className="w-5 h-5" /></span>
+            <div className="divide-y divide-gray-200/80 dark:divide-[#123832]">
+              <button type="button" onClick={() => setActiveSettingsSection("general")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Settings2 className="w-5 h-5" /></span>
                 <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "التفضيلات العامة" : "General Preferences"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "المظهر واللغة وهوية وشعار وإشعارات التطبيق" : "Appearance, language, app identity, branding and notifications"}</span></span>
                 <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
               </button>
               {(hasPermission("orders:renumber-day") || hasPermission("devices:manage") || hasPermission("settings:manage")) && (
-                <button type="button" onClick={() => setActiveSettingsSection("orders")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
-                  <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ListOrdered className="w-5 h-5" /></span>
+                <button type="button" onClick={() => setActiveSettingsSection("orders")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                  <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ListOrdered className="w-5 h-5" /></span>
                   <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "أرقام الطلبات وترتيبها وأنواع الأجهزة وتصميم QR" : "Order numbering, device types and QR design"}</span></span>
                   <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
                 </button>
               )}
               {hasPermission("settings:manage") && (
-                <button type="button" onClick={() => setActiveSettingsSection("backup")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
-                  <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Database className="w-5 h-5" /></span>
+                <button type="button" onClick={() => setActiveSettingsSection("backup")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                  <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Database className="w-5 h-5" /></span>
                   <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "النسخ الاحتياطية وإدارة البيانات" : "Backups & Data Management"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "النسخ والاستعادة وإدارة البيانات المحلية والسحابية" : "Backups, restore and local/cloud data operations"}</span></span>
                   <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
                 </button>
               )}
               {(hasPermission("sync:manage") || hasPermission("sync:view") || hasPermission("settings:manage")) && (
-                <button type="button" onClick={() => setActiveSettingsSection("sync")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
-                  <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><RefreshCw className="w-5 h-5" /></span>
+                <button type="button" onClick={() => setActiveSettingsSection("sync")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                  <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><RefreshCw className="w-5 h-5" /></span>
                   <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "حالة الاتصال والمزامنة والعمليات المعلقة" : "Connection, synchronization and pending operations"}</span></span>
                   <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
                 </button>
               )}
-              <button type="button" onClick={() => setActiveSettingsSection("account")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
-                <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ShieldCheck className="w-5 h-5" /></span>
+              <button type="button" onClick={() => setActiveSettingsSection("account")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ShieldCheck className="w-5 h-5" /></span>
                 <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "الحسابات" : "Accounts"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "الدور والجلسة وإدارة المشرفين ورمز الأمان" : "Role, session, admin accounts and security code"}</span></span>
                 <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
               </button>
-              <button type="button" onClick={() => setActiveSettingsSection("about")} className="w-full p-4 flex items-center gap-3 text-start hover:bg-gray-50/80 dark:hover:bg-[#0b2924]/70 transition-colors group">
-                <span className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-[#0c312b] border border-emerald-100 dark:border-[#14423b] flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Info className="w-5 h-5" /></span>
+              <button type="button" onClick={() => setActiveSettingsSection("about")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Info className="w-5 h-5" /></span>
                 <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "حول التطبيق" : "About the App"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "معلومات التطبيق وإعدادات تثبيته" : "App information and installation options"}</span></span>
                 <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
               </button>
