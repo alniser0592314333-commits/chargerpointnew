@@ -16,7 +16,6 @@ export interface SessionDeviceDescription {
 
 export function describeSessionUserAgent(userAgent: string | null | undefined): SessionDeviceDescription {
   const ua = userAgent || "";
-  const lower = ua.toLowerCase();
 
   let operatingSystem = "Unknown OS";
   if (/windows nt/i.test(ua)) operatingSystem = "Windows";
@@ -40,7 +39,6 @@ export function describeSessionUserAgent(userAgent: string | null | undefined): 
   else if (!ua) device = "Unknown device";
 
   // Avoid returning or displaying the raw user-agent string to the user.
-  void lower;
   return { device, browser, operatingSystem };
 }
 
