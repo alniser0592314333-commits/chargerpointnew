@@ -46,6 +46,7 @@ GRANT SELECT ON public.session_guard_fixture TO authenticated;
 CREATE FUNCTION public.fixture_sensitive_read()
 RETURNS text
 LANGUAGE sql
+STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
