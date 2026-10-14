@@ -29,3 +29,27 @@ CREATE FUNCTION auth.jwt() RETURNS jsonb
 LANGUAGE sql STABLE AS $$
   SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
 $$;
+
+
+-- Representative exposed business table and SECURITY DEFINER RPC used to prove
+-- that the migration enforces session validity beyond the client UI.
+CREATE TABLE public.session_guard_fixture (
+  id integer PRIMARY KEY,
+  secret text NOT NULL
+);
+INSERT INTO public.session_guard_fixture VALUES (1, 'fixture-secret');
+ALTER TABLE public.session_guard_fixture ENABLE ROW LEVEL SECURITY;
+CREATE POLICY session_guard_fixture_authenticated_read
+  ON public.session_guard_fixture FOR SELECT TO authenticated USING (true);
+GRANT SELECT ON public.session_guard_fixture TO authenticated;
+
+CREATE FUNCTION public.fixture_sensitive_read()
+RETURNS text
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT secret FROM public.session_guard_fixture WHERE id = 1
+$$;
+REVOKE ALL ON FUNCTION public.fixture_sensitive_read() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fixture_sensitive_read() TO authenticated;
