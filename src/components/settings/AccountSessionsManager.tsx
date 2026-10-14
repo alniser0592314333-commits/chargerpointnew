@@ -68,7 +68,14 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
     setSuccess(null);
     try {
       let revokedCurrent = false;
-      for (const id of selected) {
+      // Revoke other sessions first. If this browser session is selected, revoke
+      // it last so its token cannot prevent the remaining RPCs from completing.
+      const currentSessionId = sessions.find((session) => session.is_current)?.session_id;
+      const orderedSelected = [
+        ...selected.filter((id) => id !== currentSessionId),
+        ...selected.filter((id) => id === currentSessionId),
+      ];
+      for (const id of orderedSelected) {
         const result = await revokeAccountSession(id);
         revokedCurrent = revokedCurrent || result.revoked_current;
       }
