@@ -83,8 +83,10 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
         ) {
           if (
             !validTypes ||
-            validTypes.includes(other.commandType) ||
-            validTypes.includes(other.aggregateType)
+            // Dependency types describe prerequisite commands, not every command
+            // that happens to mutate the same aggregate. Matching aggregateType here
+            // incorrectly makes unrelated updates/closures block structural operations.
+            validTypes.includes(other.commandType)
           ) {
             deps.add(other.commandId);
             matchedInActiveOutbox = true;
@@ -110,7 +112,7 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     };
 
     // CREATE_ORDER depends on CREATE_DAY / OPEN_DAY (dayId) and CREATE_CUSTOMER (customerId)
-    if (item.commandType === 'CREATE_ORDER' || item.aggregateType === 'orders') {
+    if (item.commandType === 'CREATE_ORDER') {
       if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
       if (payload.customerId) checkCandidate(payload.customerId, ['CREATE_CUSTOMER', 'customers'], false);
 
