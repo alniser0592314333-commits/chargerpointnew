@@ -3,7 +3,14 @@ import fs from 'fs';
 import path from 'path';
 import { invokeSupabaseRpc, invokeSupabaseRestGet } from '../services/supabase/client';
 
-describe('ONLINE RESET — PRE-EXECUTION SECURITY TEST SUITE (REMOTE SUPABASE)', () => {
+// This suite calls a destructive RPC boundary and is only valid against an
+// explicitly configured disposable/staging Supabase project. Never run it
+// against production as part of the ordinary unit-test suite.
+const describeRemoteSupabase = process.env.RUN_REMOTE_SUPABASE_SECURITY_TESTS === 'true'
+  ? describe
+  : describe.skip;
+
+describeRemoteSupabase('ONLINE RESET — PRE-EXECUTION SECURITY TEST SUITE (REMOTE SUPABASE)', () => {
   const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '00020_online_business_reset.sql');
   const migrationContent = fs.readFileSync(migrationPath, 'utf8');
 
