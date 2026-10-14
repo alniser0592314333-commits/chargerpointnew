@@ -112,6 +112,22 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';"
+      - name: Create isolated database for account session management
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres account_session_test
+      - name: Prepare Supabase Auth session fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/account_session_migration_fixture.sql
+      - name: Apply account session management migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261014130000_account_session_management.sql
+      - name: Verify account session isolation and revocation behavior
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/account_session_migration_runtime.test.sql
       - name: Create isolated database for authoritative snapshot paging
         env:
           PGPASSWORD: postgres
