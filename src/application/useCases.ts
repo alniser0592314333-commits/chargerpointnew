@@ -1018,11 +1018,23 @@ export class FinalUseCases {
     });
   }
 
-  async updateCustomer(auth: AuthorizationContext, customerId: ID, updates: Partial<CustomerEntity>): Promise<Result<CustomerEntity>> {
-    const actor = auth.requireAuth();
+  async updateCustomer(
+    auth: AuthorizationContext,
+    customerId: ID,
+    updates: Partial<CustomerEntity>,
+    bin?: string
+  ): Promise<Result<CustomerEntity>> {
+    auth.requireAuth();
     auth.assertPermission('customers:edit');
-    if (updates.debtLimitMinor !== undefined && !Number.isInteger(updates.debtLimitMinor)) {
-      throw new BusinessRuleViolation('Debt limit must be an integer in minor units');
+    if (updates.debtLimitMinor !== undefined) {
+      auth.assertPermission('customers:debt-limit');
+      if (!Number.isInteger(updates.debtLimitMinor)) {
+        throw new BusinessRuleViolation('Debt limit must be an integer in minor units');
+      }
+      // A debt-limit mutation is a protected operation. Verify the credential
+      // before creating the optimistic local update and carry it only with the
+      // corresponding outbox command so the canonical RPC can verify it too.
+      await auth.verifyBin(bin || '');
     }
     const customer = await this.deps.customerRepo.findById(customerId);
     if (!customer) throw new NotFoundError('Customer not found');
@@ -1037,7 +1049,14 @@ export class FinalUseCases {
     return this.deps.transactionManager.runInTransaction((ctx) => {
       const commandId = crypto.randomUUID();
       ctx.customerRepo.save(updatedCustomer);
-      ctx.commandRepo.record(commandId, 'UPDATE_CUSTOMER', updatedCustomer, customer.version);
+      const commandPayload = {
+        id: updatedCustomer.id,
+        ...updates,
+        updatedAt: updatedCustomer.updatedAt,
+        version: updatedCustomer.version,
+        ...(updates.debtLimitMinor !== undefined ? { bin: bin!.trim() } : {}),
+      };
+      ctx.commandRepo.record(commandId, 'UPDATE_CUSTOMER', commandPayload, customer.version);
       return { success: true, data: updatedCustomer };
     });
   }
@@ -1047,10 +1066,9 @@ export class FinalUseCases {
   }
 
   async updateCustomerDebtLimit(auth: AuthorizationContext, customerId: ID, newLimitMinor: number, bin: string): Promise<Result<CustomerEntity>> {
-    const actor = auth.requireAuth();
+    auth.requireAuth();
     auth.assertPermission('customers:debt-limit');
-    await auth.verifyBin(bin);
-    return this.updateCustomer(auth, customerId, { debtLimitMinor: newLimitMinor });
+    return this.updateCustomer(auth, customerId, { debtLimitMinor: newLimitMinor }, bin);
   }
 
   async updateCustomerChargerFeeExemption(auth: AuthorizationContext, customerId: ID, exempt: boolean, bin: string): Promise<Result<CustomerEntity>> {
