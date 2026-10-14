@@ -718,6 +718,70 @@ export class FinalUseCases {
     return { success: true, data: { ...existing, ...patch } as OrderEntity };
   }
 
+  async updateOrderItem(
+    auth: AuthorizationContext,
+    itemId: ID,
+    deviceTypeId: ID,
+    hasCharger: boolean
+  ): Promise<Result<OrderItemEntity>> {
+    const actor = auth.requireAuth();
+    auth.assertPermission('orders:edit');
+    const item = await this.deps.itemRepo.findById(itemId);
+    if (!item) throw new NotFoundError('Item not found');
+    if (item.status !== 'charging' || item.financialStatus === 'RECOGNIZED') {
+      throw new BusinessRuleViolation('Only undelivered, financially unrecognized items can be edited');
+    }
+    const order = await this.deps.orderRepo.findById(item.orderId);
+    if (!order) throw new NotFoundError('Order not found');
+    if (order.status === 'cancelled') throw new BusinessRuleViolation('Cannot edit items in a cancelled order');
+    const dayIsClosed = await this.deps.dayRepo.isClosed(order.dayId);
+    if (dayIsClosed && !actor.isSuperAdmin) throw new ClosedDayError();
+    const customer = await this.deps.customerRepo.findById(order.customerId);
+    if (!customer || !customer.isActive) throw new InactiveCustomerError();
+    const device = await this.deps.deviceRepo.findById(deviceTypeId);
+    if (!device || !device.isActive) throw new NotFoundError('Device type not found or inactive');
+
+    const pricing = calculateItemPrice({
+      basePriceMinor: device.basePriceMinor,
+      chargerFeeEnabled: device.chargerFeeEnabled,
+      customerExempt: customer.chargerFeeExempt,
+      hasCharger,
+    });
+    const now = new Date().toISOString();
+    const patch: Partial<OrderItemEntity> = {
+      deviceTypeId,
+      deviceNameSnapshot: device.name,
+      deviceIconSnapshot: device.icon,
+      basePriceSnapshotMinor: device.basePriceMinor,
+      chargerFeeEnabledSnapshot: device.chargerFeeEnabled,
+      customerChargerFeeExemptSnapshot: customer.chargerFeeExempt,
+      chargerFeeSnapshotMinor: pricing.chargerFeeSnapshotMinor,
+      hasCharger,
+      unitPriceMinor: pricing.unitPriceMinor,
+      totalPriceMinor: pricing.totalPriceMinor,
+      updatedAt: now,
+      version: item.version + 1,
+    };
+    const commandId = crypto.randomUUID();
+    const mutationKey = `order:${order.id}`;
+    if (this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.capture(commandId, [
+        { table: 'orderItems', id: item.id, existed: true, data: item },
+      ]);
+    }
+    await this.createOverlay(commandId, mutationKey, 'order_items', item.id, 'PATCH', patch as Record<string, unknown>);
+    await this.deps.commandRepo.record(commandId, 'UPDATE_ORDER_ITEM', {
+      id: item.id,
+      itemId: item.id,
+      orderItemId: item.id,
+      orderId: order.id,
+      deviceTypeId,
+      hasCharger,
+      expectedVersion: item.version,
+    }, item.version);
+    return { success: true, data: { ...item, ...patch } as OrderItemEntity };
+  }
+
   async removeOrderItemDuringEdit(
     auth: AuthorizationContext,
     itemId: ID,
