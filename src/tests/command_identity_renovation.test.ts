@@ -13,6 +13,7 @@ import { globalSyncBridge } from '../infrastructure/sync/syncBridge';
 import * as supabaseClient from '../services/supabase/client';
 import { SupabaseSyncTransport } from '../infrastructure/sync/SupabaseSyncTransport';
 import { SyncEngine } from '../infrastructure/sync/syncEngine';
+import { setTestAppAuthSession } from './utils/testSetup';
 
 const storageMap = new Map<string, string>();
 const localStorageMock = {
@@ -28,7 +29,7 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     storageMap.clear();
     localStorageMock.setItem('sys_db_version', '6.10.3D');
     localStorageMock.setItem('app_device_id', 'test_device');
-    localStorageMock.setItem('app_auth_session', JSON.stringify({ userId: 'test_admin_user' }));
+    setTestAppAuthSession();
     
     await clearAllOperationalData();
     resetStoreMemory();
@@ -53,6 +54,12 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
     let rpcCallCount = 0;
     const rpcCalls: any[] = [];
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (fnName, payload: any) => {
+      if (fnName === 'pull_canonical_changes') {
+        return {
+          data: { changes: [], latestSequence: 0, serverResetGeneration: 1 },
+          error: null,
+        };
+      }
       rpcCallCount++;
       rpcCalls.push({ fnName, payload });
       return {
@@ -75,6 +82,14 @@ describe('COMMAND IDENTITY VS ENTITY ID ARCHITECTURAL RESTORATION', () => {
 
     const dayId = 'day-2029-09-29';
     const customerId = 'cust-1234';
+    await localDb.set('businessDays', dayId, {
+      id: dayId,
+      businessDate: '2029-09-29',
+      isClosed: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 1,
+    });
     await localDb.set('customers', customerId, {
       id: customerId, name: 'Test Customer', phone: '123', isActive: true, debtLimitMinor: -10000, chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1
     });
