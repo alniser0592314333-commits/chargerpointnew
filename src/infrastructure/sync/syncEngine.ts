@@ -691,11 +691,11 @@ export class SyncEngine {
           throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: cursor did not advance');
         }
 
-        await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+        await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
           for (const change of sortedChanges) {
             try {
               if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
+                await this.onDeltaApplied(change, tx);
               } else {
                 if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
                   localDb.removeWithTx(tx, change.entityType, change.entityId);
@@ -1200,10 +1200,10 @@ export class SyncEngine {
           if (!Number.isSafeInteger(maxSeq) || maxSeq <= finalCursor) {
             throw new Error('FINAL_PULL_INVALID_SEQUENCE: cursor did not advance');
           }
-          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
             for (const change of sortedFinalChanges) {
               if (this.onDeltaApplied) {
-                this.onDeltaApplied(change, tx);
+                await this.onDeltaApplied(change, tx);
               } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
                 localDb.removeWithTx(tx, change.entityType, change.entityId);
               } else {
@@ -1249,7 +1249,7 @@ export class SyncEngine {
           reconciliationRequired: false,
         });
       } catch (finalPullError: any) {
-        console.warn('Final authoritative sync pull failed; accepted commands remain queued for reconciliation:', finalPullError);
+        console.warn('Final authoritative sync pull failed; local sync state marked stale or reconciliation-required:', finalPullError);
         const generationChanged = String(finalPullError?.message || '').includes('FINAL_PULL_RESET_GENERATION_CHANGED');
         try {
           const currentState = await localDb.getSyncState('global');
@@ -1261,6 +1261,10 @@ export class SyncEngine {
         } catch (checkpointError) {
           console.warn('Failed to persist final-pull status:', checkpointError);
         }
+        // Do not report a successful sync after a failed local delta application or
+        // final authoritative pull. The cursor remains at the last committed page.
+        syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
+        throw finalPullError;
       }
 
       syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
