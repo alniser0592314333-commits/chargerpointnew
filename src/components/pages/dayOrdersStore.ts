@@ -3454,7 +3454,7 @@ const buildPaymentProjectionIndexes = (
   };
 };
 
-const computeCustomerOrderPaymentStatuses = (
+export const computeCustomerOrderPaymentStatuses = (
   customerId: string,
   effectiveOrdersMap: Map<string, OrderEntity> = ordersMap,
   effectiveItemsMap: Map<string, OrderItemEntity> = itemsMap,
