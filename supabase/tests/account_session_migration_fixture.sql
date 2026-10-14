@@ -53,3 +53,11 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION public.fixture_sensitive_read() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.fixture_sensitive_read() TO authenticated;
+
+-- Model a legacy public table whose old broad grants must be removed by the
+-- account-session migration without requiring that table in minimal fixtures.
+CREATE TABLE public.permissions (
+  id uuid PRIMARY KEY,
+  code text NOT NULL
+);
+GRANT ALL ON TABLE public.permissions TO anon, authenticated;
