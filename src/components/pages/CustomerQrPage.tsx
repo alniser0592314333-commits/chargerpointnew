@@ -58,48 +58,6 @@ export const CustomerQrPage: React.FC<CustomerQrPageProps> = ({ customerId, onBa
     };
   }, [customerId]);
 
-  // Mobile edge-swipe back navigation gesture
-  useEffect(() => {
-    let startX = 0;
-    let startY = 0;
-    let isEdge = false;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        const width = window.innerWidth;
-        if (startX < 35 || startX > width - 35) {
-          isEdge = true;
-        }
-      }
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (!isEdge) return;
-      isEdge = false;
-      const endX = e.changedTouches[0].clientX;
-      const endY = e.changedTouches[0].clientY;
-      const deltaX = endX - startX;
-      const deltaY = Math.abs(endY - startY);
-
-      if (Math.abs(deltaX) > 60 && deltaY < 80) {
-        if (onBack) {
-          onBack();
-        } else {
-          window.history.back();
-        }
-      }
-    };
-
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchend', handleTouchEnd, { passive: true });
-
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [onBack]);
 
   const handleBackClick = () => {
     if (onBack) {

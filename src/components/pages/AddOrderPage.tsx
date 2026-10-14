@@ -288,52 +288,6 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
     }
   };
 
-  // Mobile Edge-Swipe Back Gesture
-  useEffect(() => {
-    let startX = 0;
-    let startY = 0;
-    let isEdgeTouch = false;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        const x = e.touches[0].clientX;
-        const y = e.touches[0].clientY;
-        const width = window.innerWidth;
-        if (x < 40 || x > width - 40) {
-          startX = x;
-          startY = y;
-          isEdgeTouch = true;
-        } else {
-          isEdgeTouch = false;
-        }
-      }
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (isEdgeTouch && e.changedTouches.length === 1) {
-        const endX = e.changedTouches[0].clientX;
-        const endY = e.changedTouches[0].clientY;
-        const deltaX = endX - startX;
-        const deltaY = Math.abs(endY - startY);
-        const width = window.innerWidth;
-
-        if (deltaY < 50 && Math.abs(deltaX) > 45) {
-          if ((startX < 40 && deltaX > 45) || (startX > width - 40 && deltaX < -45)) {
-            onBack();
-          }
-        }
-      }
-      isEdgeTouch = false;
-    };
-
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchend', handleTouchEnd, { passive: true });
-
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [onBack]);
 
   return (
     <div className="max-w-3xl mx-auto py-6 px-4 sm:px-6 space-y-6 text-gray-900 dark:text-[#daf1de]">
