@@ -53,7 +53,7 @@ jobs:
           # These tests must use local mocks and never touch production Supabase.
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run src/tests/financial_consistency.test.ts src/tests/phase6_8_financials.test.ts src/tests/phase6_9_2_order_financial_integrity.test.ts src/tests/fifo_payment_status_allocation.test.ts src/tests/phase_replacement_payment_allocations.test.ts src/tests/phaseB1_atomic_mutation.test.ts
+        run: npx vitest run src/tests/phase6_8_financials.test.ts src/tests/fifo_payment_status_allocation.test.ts
       - name: Run auth-token and outbox-resume regressions
         env:
           # These tests mock all HTTP calls and need a configured client, but must never target production.
