@@ -1,4 +1,13 @@
 \set ON_ERROR_STOP on
+
+-- Guard wrappers must preserve the volatility contract of their original RPC.
+DO $assert$
+BEGIN
+  IF (SELECT p.provolatile FROM pg_proc p
+      WHERE p.oid = 'public.fixture_sensitive_read()'::regprocedure) <> 's' THEN
+    RAISE EXCEPTION 'Stable SECURITY DEFINER RPC wrapper lost STABLE volatility';
+  END IF;
+END $assert$;
 INSERT INTO auth.users(id,email) VALUES
  ('11111111-1111-4111-8111-111111111111','one@example.test'),
  ('22222222-2222-4222-8222-222222222222','two@example.test');
