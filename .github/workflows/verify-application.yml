@@ -27,26 +27,26 @@ jobs:
       - name: Run customer and home financial history grouping regressions
         env:
           # Test runs must never use the production Supabase project.
-          VITE_SUPABASE_URL: http://127.0.0.1:54321
-          VITE_SUPABASE_ANON_KEY: test-anon-key
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/customer_financial_history_grouping.test.ts src/tests/home_financial_activity_grouping.test.ts src/tests/customer_order_history_effective_overlays.test.ts
       - name: Run order-numbering safety tests
         env:
           # Test runs must never use the production Supabase project.
-          VITE_SUPABASE_URL: http://127.0.0.1:54321
-          VITE_SUPABASE_ANON_KEY: test-anon-key
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/order_numbering_safety.test.ts && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts && npx vitest run src/tests/super_admin_debt_limit_warning_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts && npx vitest run src/tests/canonical_goals_foundation.test.ts && npx vitest run src/tests/phase1_reconciliation_closure.test.ts -t 'Goal Generation Formulas|Goal Request Security & Authorization' && npx vitest run src/tests/goal_restore_normalization.test.ts
       - name: Run order-item cancellation and status regressions
         env:
           # Test runs must never use the production Supabase project.
-          VITE_SUPABASE_URL: http://127.0.0.1:54321
-          VITE_SUPABASE_ANON_KEY: test-anon-key
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts src/tests/phase6_11_4_delivery_bin_security.test.ts && npx vitest run src/tests/domain.test.ts -t 'Item Removal vs Full Order Cancellation Permission Boundaries'
       - name: Run canonical sync engine and delta paging regressions
         env:
           # Test runs must never use the production Supabase project.
-          VITE_SUPABASE_URL: http://127.0.0.1:54321
-          VITE_SUPABASE_ANON_KEY: test-anon-key
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/sync.test.ts src/tests/delta_pull_batch_size.test.ts
       - name: Type-check (diagnostic; repository-wide baseline)
         run: npm run lint
@@ -56,8 +56,8 @@ jobs:
       - name: Run full existing test suite (diagnostic)
         env:
           # Test runs must never use the production Supabase project.
-          VITE_SUPABASE_URL: http://127.0.0.1:54321
-          VITE_SUPABASE_ANON_KEY: test-anon-key
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
         run: npm test
         continue-on-error: true
 
