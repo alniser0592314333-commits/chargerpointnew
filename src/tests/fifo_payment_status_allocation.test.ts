@@ -5,6 +5,7 @@ import {
   computeCustomerOrderPaymentStatuses,
   getOrdersForDay,
   getCustomerOrders,
+  getCustomerFinancialHistory,
   topUpCustomerBalance,
   deliverSingleOrderItem,
   phase5UseCases,
@@ -191,6 +192,25 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
     expect(retry.success).toBe(true);
     const matchingCommands = (await localDb.listOutbox()).filter((entry) => entry.commandId === idempotencyKey);
     expect(matchingCommands).toHaveLength(1);
+  });
+
+  it('shows a delivered item charge in customer history before the server ledger arrives', async () => {
+    const orderResult = await createOrderWithPhase5Engine(
+      'day-2026-10-02',
+      'cust-5',
+      [{ deviceTypeId: 'dev-1', hasCharger: false }]
+    );
+    expect(orderResult.success).toBe(true);
+    const order = orderResult.order!;
+    const delivery = await deliverSingleOrderItem(order.items[0].id, '1234');
+    expect(delivery.success).toBe(true);
+
+    const history = await getCustomerFinancialHistory('cust-5', 'ar');
+    const pendingCharge = history.find(
+      (entry) => entry.eventType === 'ORDER_ITEM_CHARGE' && entry.orderItemId === order.items[0].id
+    );
+    expect(pendingCharge).toBeTruthy();
+    expect(pendingCharge?.amountMinor).toBeLessThan(0);
   });
 
   it('6. Equal millisecond timestamps use overlay sequence to preserve FIFO causality', async () => {
