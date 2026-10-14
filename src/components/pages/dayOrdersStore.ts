@@ -2505,7 +2505,7 @@ function createTransactionalRepoContext(
                   : type.includes('DEVICE_TYPE') ? `deviceType:${payloadRecord.deviceTypeId || aggregateId}` : undefined,
           payload: { ...(payload || {}), resetGeneration: currentGen },
           expectedVersion,
-          createdAt: new Date().toISOString(),
+          createdAt: localDb.getNextOutboxTimestamp(),
           deviceId,
           actorAdminId,
           status: currentGen === -1 ? 'PENDING_RECONCILIATION' : 'pending',
