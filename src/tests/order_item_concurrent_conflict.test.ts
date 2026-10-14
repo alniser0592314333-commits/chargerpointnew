@@ -162,6 +162,19 @@ describe('Multi-Device Same-Order-Item Concurrent Conflict Integration Suite', (
     serverTransport = new AuthoritativeConcurrentServerTransport();
     await localDb.clear();
     await initializeCanonicalSyncState();
+    // The scheduler requires the referenced aggregate to exist on this device,
+    // just as it would on a real device before delivery/cancellation is queued.
+    await localDb.set('orderItems', 'item-555', {
+      id: 'item-555',
+      orderId: 'ord-100',
+      deviceTypeId: 'dev-1',
+      itemSequence: 1,
+      status: 'charging',
+      totalPriceMinor: 3500,
+      version: 5,
+      createdAt: '2026-09-25T10:00:00Z',
+      updatedAt: '2026-09-25T10:00:00Z',
+    });
 
     engineA = new SyncEngine(serverTransport);
     engineB = new SyncEngine(serverTransport);
