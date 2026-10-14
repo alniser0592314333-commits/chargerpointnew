@@ -1261,10 +1261,6 @@ export class SyncEngine {
         } catch (checkpointError) {
           console.warn('Failed to persist final-pull status:', checkpointError);
         }
-        // Do not report a successful sync after a failed local delta application or
-        // final authoritative pull. The cursor remains at the last committed page.
-        syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
-        throw finalPullError;
       }
 
       syncEventEmitter.emit({ type: 'sync_finished', pushed: pushedCount, pulled: pulledCount, timestamp: new Date().toISOString() });
