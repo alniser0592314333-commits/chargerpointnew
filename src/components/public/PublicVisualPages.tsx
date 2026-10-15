@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   BatteryCharging, Zap, Sun, ShieldCheck, Clock, MapPin, Smartphone, Laptop,
   CheckCircle2, ChevronRight, Menu, X, Moon, Globe, CreditCard, QrCode,
-  Sparkles, ArrowRight, Info, Layers, Phone, Flame, BatteryMedium, Download,
+  Sparkles, ArrowRight, Info, Layers, Phone, Flame, BatteryMedium, Download, Search,
   CalendarClock, PackageCheck, CircleHelp, Wallet, Copy, Upload, FileCheck,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
