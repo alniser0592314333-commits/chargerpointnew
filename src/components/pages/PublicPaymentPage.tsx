@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
-import { getPublicOrderByToken, PublicOrderQrData } from './dayOrdersStore';
+import { getPublicCustomerByToken, getPublicOrderByToken, PublicCustomerQrData, PublicOrderQrData } from './dayOrdersStore';
 import { config } from '../../config/env';
 
 type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE';
@@ -58,6 +58,15 @@ const PaymentMethodLogo: React.FC<{ method: typeof methods[number] }> = ({ metho
     return <span className={`mb-3 flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-black tracking-tight ${method.markClass}`}>{method.short}</span>;
   }
   return <img src={method.logoUrl} alt={method.short} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="mb-3 h-10 w-14 rounded-md object-contain" />;
+};
+
+const parseCustomerAmountMinor = (value: string): number | null => {
+  const normalized = value.trim().replace(',', '.');
+  if (!/^\\d{1,9}(?:\\.\\d{1,2})?$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const minor = Math.round(amount * 100);
+  return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
 };
 
 const MAX_SOURCE_FILE_BYTES = 12 * 1024 * 1024;
@@ -118,6 +127,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const { theme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
   const [order, setOrder] = useState<PublicOrderQrData | null>(null);
+  const [customer, setCustomer] = useState<PublicCustomerQrData | null>(null);
+  const [amountInput, setAmountInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [method, setMethod] = useState<PaymentMethod | ''>('');
@@ -133,14 +144,26 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     let active = true;
     setLoading(true);
     setLoadError(false);
-    getPublicOrderByToken(token)
-      .then((data) => {
+    setOrder(null);
+    setCustomer(null);
+    void (async () => {
+      try {
+        const orderData = await getPublicOrderByToken(token).catch(() => null);
         if (!active) return;
-        if (data) setOrder(data);
+        if (orderData) {
+          setOrder(orderData);
+          return;
+        }
+        const customerData = await getPublicCustomerByToken(token);
+        if (!active) return;
+        if (customerData) setCustomer(customerData);
         else setLoadError(true);
-      })
-      .catch(() => { if (active) setLoadError(true); })
-      .finally(() => { if (active) setLoading(false); });
+      } catch {
+        if (active) setLoadError(true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
     return () => { active = false; };
   }, [token]);
 
@@ -154,7 +177,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     return () => URL.revokeObjectURL(url);
   }, [receipt]);
 
-  const amountDue = typeof order?.orderDueMinor === 'number' ? order.orderDueMinor : null;
+  const isCustomerPayment = Boolean(customer && !order);
+  const amountDue = order
+    ? (typeof order.orderDueMinor === 'number' ? order.orderDueMinor : null)
+    : (isCustomerPayment ? parseCustomerAmountMinor(amountInput) : null);
+  const backHref = isCustomerPayment ? `/c/${token}` : `/o/${token}`;
   const formatAmount = (amount: number) => formatCurrency(amount);
 
   const copyNumber = async () => {
@@ -196,7 +223,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       setError(isAr ? 'صورة إيصال التحويل مطلوبة لإرسال الإشعار.' : 'A transfer receipt image is required.');
       return;
     }
-    if (!order || amountDue === null || amountDue <= 0) {
+    if ((!order && !customer) || amountDue === null || amountDue <= 0) {
       setError(isAr ? 'المبلغ المستحق غير متاح حالياً. ارجع للطلب وحاول لاحقاً.' : 'The outstanding amount is not available right now. Return to the order and try again later.');
       return;
     }
@@ -211,6 +238,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       const form = new FormData();
       form.append('token', token);
       form.append('payment_method', method);
+      if (isCustomerPayment) form.append('amount_minor', String(amountDue));
       form.append('note', note.trim().slice(0, 500));
       form.append('receipt', compressed, compressed.name);
 
@@ -256,7 +284,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     <div dir={isRTL ? 'rtl' : 'ltr'} className="min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
       <header className="border-b border-[#dce6e4] bg-white/90 dark:bg-[#0a2423]/90 dark:border-[#1c4140]">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <a href={`/o/${token}`} className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600">
+          <a href={backHref} className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0f766e] text-white shadow-sm">
               <Zap className="h-5 w-5" />
             </span>
@@ -279,14 +307,14 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       <main className="mx-auto grid max-w-5xl gap-6 px-4 py-7 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-10">
         <section className="min-w-0 space-y-5">
           <div className="space-y-2">
-            <a href={`/o/${token}`} className="inline-flex items-center gap-2 text-xs font-semibold text-[#52716c] hover:text-[#0f766e] dark:text-[#a4c0b9]">
+            <a href={backHref} className="inline-flex items-center gap-2 text-xs font-semibold text-[#52716c] hover:text-[#0f766e] dark:text-[#a4c0b9]">
               {isRTL ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
-              {isAr ? 'العودة إلى تفاصيل الطلب' : 'Back to order details'}
+              {isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Back to customer account') : (isAr ? 'العودة إلى تفاصيل الطلب' : 'Back to order details')}
             </a>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#0f766e]">{isAr ? 'بوابة العميل' : 'CUSTOMER PORTAL'}</p>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{pageTitle}</h1>
             <p className="max-w-xl text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">
-              {isAr ? 'حوّل المبلغ، ثم أرفق صورة الإيصال حتى نراجع العملية. إرسال الإشعار لا يعني تأكيد الدفع تلقائياً.' : 'Complete the transfer, then attach the receipt so we can review it. Sending a notification does not automatically confirm payment.'}
+              {isCustomerPayment ? (isAr ? 'أدخل المبلغ الذي حوّلته على حسابك، ثم أرفق صورة الإيصال. الدفع يتم خارج التطبيق ويُراجع الإشعار يدوياً.' : 'Enter the amount you transferred to your customer account, then attach the receipt. Payment happens outside this app and the notification is reviewed manually.') : (isAr ? 'حوّل المبلغ، ثم أرفق صورة الإيصال حتى نراجع العملية. إرسال الإشعار لا يعني تأكيد الدفع تلقائياً.' : 'Complete the transfer, then attach the receipt so we can review it. Sending a notification does not automatically confirm payment.')}
             </p>
           </div>
 
@@ -295,21 +323,37 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           ) : loadError || !order ? (
             <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm dark:border-rose-900 dark:bg-[#0a2423]">
               <h2 className="font-semibold">{isAr ? 'تعذّر العثور على الطلب' : 'Order not found'}</h2>
-              <p className="mt-2 text-sm text-[#607874] dark:text-[#a7beb9]">{isAr ? 'رمز QR غير صالح أو منتهي.' : 'This QR code is invalid or expired.'}</p>
+              <p className="mt-2 text-sm text-[#607874] dark:text-[#a7beb9]">{isAr ? 'رمز QR غير صالح أو منتهي، أو لا يرتبط بطلب أو حساب عميل نشط.' : 'This QR code is invalid, expired, or not linked to an active order or customer account.'}</p>
             </div>
           ) : success ? (
             <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm dark:border-emerald-900 dark:bg-[#0a2423]">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="h-6 w-6" /></span>
               <h2 className="mt-5 text-xl font-semibold">{isAr ? 'شكراً إلك!' : 'Thank you!'}</h2>
               <p className="mt-2 text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">{isAr ? 'تم إرسال إشعار الدفع بنجاح، وسيتم التحقق منه. حالة الطلب لن تتغير إلا بعد مراجعة الإشعار واعتماده.' : 'Your payment notification was sent successfully and will be reviewed. The order status will not change until the notification is reviewed and approved.'}</p>
-              <a href={`/o/${token}`} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">{isAr ? 'العودة إلى الطلب' : 'Return to order'} {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}</a>
+              <a href={backHref} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">{isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Return to customer account') : (isAr ? 'العودة إلى الطلب' : 'Return to order')} {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}</a>
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-5">
+              {isCustomerPayment && (
+                <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-base font-semibold">{isAr ? '1. أدخل مبلغ التحويل' : '1. Enter transfer amount'}</h2>
+                      <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'اكتب المبلغ الذي حوّلته فعلياً، بدون إنشاء طلب جديد.' : 'Enter the amount you actually transferred; no new order is created.'}</p>
+                    </div>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">01</span>
+                  </div>
+                  <label className="mt-4 block text-xs font-semibold text-[#365653] dark:text-[#c8d9d4]">
+                    {isAr ? 'المبلغ' : 'Amount'}
+                    <input type="number" inputMode="decimal" min="0.01" step="0.01" required value={amountInput} onChange={(e) => { setAmountInput(e.target.value); setError(''); }} placeholder={isAr ? 'مثال: 50.00' : 'e.g. 50.00'} className="mt-2 w-full rounded-xl border border-[#dce6e4] bg-white px-3.5 py-3 text-lg font-semibold tabular-nums outline-none transition placeholder:text-[#8aa19c] focus:border-[#0f766e] focus:ring-2 focus:ring-[#0f766e]/10 dark:border-[#315653] dark:bg-[#0b2928] dark:placeholder:text-[#779791]" />
+                  </label>
+                  <p className="mt-2 text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{amountDue !== null && amountDue > 0 ? (isAr ? `سيتم إرسال إشعار بمبلغ ${formatAmount(amountDue)}` : `Notification amount: ${formatAmount(amountDue)}`) : (isAr ? 'أدخل مبلغاً أكبر من صفر.' : 'Enter an amount greater than zero.')}</p>
+                </section>
+              )}
               <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">{isAr ? '1. اختر طريقة التحويل' : '1. Choose a transfer method'}</h2>
+                    <h2 className="text-base font-semibold">{isCustomerPayment ? (isAr ? '2. اختر طريقة التحويل' : '2. Choose a transfer method') : (isAr ? '1. اختر طريقة التحويل' : '1. Choose a transfer method')}</h2>
                     <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'اختيار واحد مطلوب' : 'One option is required'}</p>
                   </div>
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">01</span>
@@ -334,7 +378,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">{isAr ? '2. بيانات التحويل' : '2. Transfer details'}</h2>
+                    <h2 className="text-base font-semibold">{isCustomerPayment ? (isAr ? '3. بيانات التحويل' : '3. Transfer details') : (isAr ? '2. بيانات التحويل' : '2. Transfer details')}</h2>
                     <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'استخدم الرقم نفسه للطريقة المختارة' : 'Use the same destination number for the selected method'}</p>
                   </div>
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">02</span>
@@ -360,7 +404,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">{isAr ? '3. أرفق إيصال التحويل' : '3. Attach the transfer receipt'}</h2>
+                    <h2 className="text-base font-semibold">{isCustomerPayment ? (isAr ? '4. أرفق إيصال التحويل' : '4. Attach the transfer receipt') : (isAr ? '3. أرفق إيصال التحويل' : '3. Attach the transfer receipt')}</h2>
                     <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'صورة واضحة مطلوبة' : 'A clear image is required'}</p>
                   </div>
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">03</span>
@@ -403,6 +447,19 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         </section>
 
         <aside className="h-fit space-y-4 lg:sticky lg:top-6">
+          {isCustomerPayment && customer && !loadError && (
+            <div className="overflow-hidden rounded-2xl border border-[#dce6e4] bg-white shadow-[0_8px_30px_rgba(16,55,51,0.05)] dark:border-[#1c4140] dark:bg-[#0a2423]">
+              <div className="bg-[#103c38] px-5 py-5 text-white">
+                <p className="text-[11px] font-semibold text-[#b9d8d0]">{isAr ? 'دفعة على حساب الزبون' : 'CUSTOMER ACCOUNT PAYMENT'}</p>
+                <p className="mt-2 text-sm font-medium">{customer.customerName}</p>
+                <p className="mt-1 text-xs text-[#b9d8d0]">{isAr ? 'مرجع العميل' : 'Customer reference'}: {customer.customerCode}</p>
+              </div>
+              <div className="p-5 text-sm">
+                <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'مبلغ الإشعار' : 'Notification amount'}</span><span className="font-semibold tabular-nums">{amountDue !== null && amountDue > 0 ? formatAmount(amountDue) : '—'}</span></div>
+                <p className="mt-3 text-xs leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'سيُربط الإشعار بحسابك، وبعد الاعتماد تُوزّع الدفعة على المستحقات من الأقدم للأحدث.' : 'The notification is linked to your customer account; after approval, payment is allocated to the oldest outstanding items first.'}</p>
+              </div>
+            </div>
+          )}
           {order && !loadError && (
             <div className="overflow-hidden rounded-2xl border border-[#dce6e4] bg-white shadow-[0_8px_30px_rgba(16,55,51,0.05)] dark:border-[#1c4140] dark:bg-[#0a2423]">
               <div className="bg-[#103c38] px-5 py-5 text-white">
