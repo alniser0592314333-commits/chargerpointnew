@@ -306,7 +306,7 @@ BEGIN
   )
   VALUES (
     gen_random_uuid(), v_order_id, v_customer_id, v_due_minor, v_method,
-    p_receipt_path, v_note, 'PENDING', now(), now(), 1
+    p_receipt_path, v_note, 'PENDING', clock_timestamp(), clock_timestamp(), 1
   )
   RETURNING id INTO v_submission_id;
 
