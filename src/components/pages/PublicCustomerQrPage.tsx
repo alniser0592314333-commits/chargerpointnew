@@ -1,20 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
-import { useTheme } from '../../theme/themeContext';
 import { getPublicCustomerByToken, PublicCustomerQrData } from './dayOrdersStore';
 import { Button } from '../ui/Button';
 import {
   Globe,
-  Sun,
-  Moon,
   AlertTriangle,
-  User,
+
   CheckCircle2,
   ShieldCheck,
   Zap,
-  Sparkles,
-  Layers,
-  Clock,
+
   CreditCard,
 } from 'lucide-react';
 
@@ -34,7 +29,7 @@ export interface PublicCustomerQrPageProps {
  */
 export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ token }) => {
   const { locale, setLocale, t, isRTL } = useI18n();
-  const { theme, toggleTheme } = useTheme();
+
   const [data, setData] = useState<PublicCustomerQrData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
@@ -79,7 +74,7 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f7f7] dark:bg-[#071b1b] text-[#142c2c] dark:text-[#e7f2ef] transition-colors flex flex-col justify-between p-4 sm:p-6">
+    <div className="public-portal-page min-h-screen bg-[#f4f7f7] dark:bg-[#071b1b] text-[#142c2c] dark:text-[#e7f2ef] transition-colors flex flex-col justify-between p-4 sm:p-6">
       {/* 1. Minimal Public Top Bar: Locale & Theme Switcher (No Admin Links) */}
       <header className="max-w-5xl w-full mx-auto flex items-center justify-between gap-3 py-4 border-b border-[#dce6e4] dark:border-[#1c4140]">
         <div className="flex items-center gap-2">
@@ -103,19 +98,7 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
             <span>{locale === 'ar' ? 'English' : 'عربي'}</span>
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleTheme}
-            className="h-8 w-8 p-0 text-gray-700 dark:text-[#daf1de] hover:bg-gray-100 dark:hover:bg-[#0c312b]"
-            aria-label="Toggle theme"
-          >
-            {theme === 'light' ? (
-              <Moon className="w-3.5 h-3.5 text-gray-700" />
-            ) : (
-              <Sun className="w-3.5 h-3.5 text-amber-400" />
-            )}
-          </Button>
+          
         </div>
       </header>
 
@@ -209,26 +192,13 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><CreditCard className="h-5 w-5" /></span>
                 <span>
                   <span className="block text-sm font-semibold">{locale === 'en' ? 'Pay into your customer account' : 'ادفع على حسابك'}</span>
-                  <span className="mt-1 block text-xs leading-5 text-white/80">{locale === 'en' ? 'Enter the amount, transfer externally, then send your receipt for review.' : 'أدخل المبلغ، وحوّله من وسيلة الدفع، ثم أرسل الإيصال للمراجعة.'}</span>
+                  <span className="mt-1 block text-xs leading-5 text-white/80">{locale === 'en' ? 'Copy the destination number, transfer externally, then send your receipt for review.' : 'انسخ رقم التحويل، وحوّل من تطبيق الدفع، ثم أرسل الإيصال للمراجعة.'}</span>
                 </span>
               </span>
               <span className="shrink-0 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold">{locale === 'en' ? 'Pay now' : 'ادفع الآن'}</span>
             </a>
 
-            {/* Placeholder / Future Features Card */}
-            <div className="bg-white/70 dark:bg-[#082622]/70 rounded-2xl border border-dashed border-gray-200 dark:border-[#14423b] p-4 text-center space-y-2">
-              <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#0c312b] text-gray-400 dark:text-[#8eb698] flex items-center justify-center mx-auto">
-                <Clock className="w-4 h-4" />
-              </div>
-              <p className="text-xs font-medium text-gray-600 dark:text-[#daf1de]">
-                {locale === 'en' ? 'More Customer Details Coming Soon' : 'بيانات وخدمات إضافية قريباً'}
-              </p>
-              <p className="text-[11px] text-gray-400 dark:text-[#8eb698]">
-                {locale === 'en'
-                  ? 'Recent order history and special balance services will appear here.'
-                  : 'سجل الطلبات السابقة وتفاصيل الخدمات الإضافية ستظهر هنا فور تفعيلها.'}
-              </p>
-            </div>
+
           </div>
         )}
       </main>
@@ -236,8 +206,6 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
       {/* 3. Minimal Footer */}
       <footer className="max-w-5xl w-full mx-auto text-center py-5 border-t border-[#dce6e4] dark:border-[#1c4140] text-[11px] text-[#7d9690] dark:text-[#779791]">
         <span>{locale === 'en' ? 'Charging Point • Customer Portal' : 'نقطة الشحن • بوابة العميل'}</span>
-        <span className="mx-2">·</span>
-        <a href="/public/about" className="font-semibold hover:text-[#0f766e] dark:hover:text-[#83cbbd]">{locale === 'en' ? 'About' : 'عن التطبيق'}</a>
       </footer>
     </div>
   );

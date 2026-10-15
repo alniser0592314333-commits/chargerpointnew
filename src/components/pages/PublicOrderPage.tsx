@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   BatteryCharging, CalendarClock, CheckCircle2,
-  ChevronRight, CircleHelp, Clock3, CreditCard, Globe, Moon, PackageCheck,
-  ShieldCheck, Smartphone, Sun, Zap,
+  ChevronRight, CircleHelp, Clock3, CreditCard, Globe, PackageCheck,
+  ShieldCheck, Smartphone, Zap,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { useTheme } from '../../theme/themeContext';
 import { getPublicOrderByToken, PublicOrderQrData } from './dayOrdersStore';
 
 export interface PublicOrderPageProps {
@@ -14,7 +13,7 @@ export interface PublicOrderPageProps {
 
 export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const { locale, setLocale, formatCurrency, isRTL } = useI18n();
-  const { theme, toggleTheme } = useTheme();
+
   const isAr = locale === 'ar';
   const [data, setData] = useState<PublicOrderQrData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +85,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const status = statusInfo(data?.status);
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="public-portal-page min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
       <header className="border-b border-[#dce6e4] bg-white/90 dark:bg-[#0a2423]/90 dark:border-[#1c4140]">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
@@ -98,7 +97,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
           </div>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#365653] hover:bg-[#edf4f2] dark:text-[#c8d9d4] dark:hover:bg-[#133533]" aria-label="Toggle language"><Globe className="h-4 w-4" />{isAr ? 'English' : 'عربي'}</button>
-            <button type="button" onClick={toggleTheme} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#dce6e4] hover:bg-[#edf4f2] dark:border-[#244746] dark:hover:bg-[#133533]" aria-label="Toggle theme">{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-amber-300" />}</button>
+            
           </div>
         </div>
       </header>
@@ -214,8 +213,6 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
       <footer className="border-t border-[#dce6e4] px-4 py-5 text-center text-[11px] text-[#7d9690] dark:border-[#1c4140] dark:text-[#779791]">
         <span>{isAr ? 'نقطة الشحن · بوابة العميل' : 'Charging Point · Customer Portal'}</span>
-        <span className="mx-2">·</span>
-        <a href="/public/about" className="font-semibold hover:text-[#0f766e] dark:hover:text-[#83cbbd]">{isAr ? 'عن التطبيق' : 'About'}</a>
       </footer>
     </div>
   );
