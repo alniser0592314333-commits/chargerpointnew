@@ -24,10 +24,16 @@ interface PendingQrPayment {
   receiptSignedUrl?: string;
 }
 
-const methodDetails: Record<string, { ar: string; en: string; mark: string; cls: string }> = {
-  JAWAL_PAY: { ar: 'جوال باي', en: 'Jawwal Pay', mark: 'jawwal pay', cls: 'bg-[#f5e9ed] text-[#8e2342]' },
-  PALPAY: { ar: 'بال باي', en: 'PalPay', mark: 'PALPAY', cls: 'bg-[#f2e8ff] text-[#6634a5]' },
-  BANK_OF_PALESTINE: { ar: 'بنك فلسطين', en: 'Bank of Palestine', mark: 'BOP', cls: 'bg-[#e7f1e9] text-[#1d6a45]' },
+const methodDetails: Record<string, { ar: string; en: string; mark: string; cls: string; logoUrl: string }> = {
+  JAWAL_PAY: { ar: 'جوال باي', en: 'Jawwal Pay', mark: 'jawwal pay', cls: 'bg-[#f5e9ed] text-[#8e2342]', logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg' },
+  PALPAY: { ar: 'بال باي', en: 'PalPay', mark: 'PALPAY', cls: 'bg-[#f2e8ff] text-[#6634a5]', logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png' },
+  BANK_OF_PALESTINE: { ar: 'بنك فلسطين', en: 'Bank of Palestine', mark: 'BOP', cls: 'bg-[#e7f1e9] text-[#1d6a45]', logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg' },
+};
+
+const ReviewMethodLogo: React.FC<{ detail: { mark: string; cls: string; logoUrl: string } }> = ({ detail }) => {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <ReviewMethodLogo detail={detail} />;
+  return <img src={detail.logoUrl} alt={detail.mark} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-11 w-12 rounded-lg object-contain" />;
 };
 
 async function createReceiptSignedUrl(path: string): Promise<string | null> {
@@ -212,7 +218,7 @@ export const NotificationsRequestsPage: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {items.map((item) => {
-            const detail = methodDetails[item.payment_method] || { ar: 'طريقة غير معروفة', en: 'Unknown method', mark: 'PAY', cls: 'bg-gray-100 text-gray-700' };
+            const detail = methodDetails[item.payment_method] || { ar: 'طريقة غير معروفة', en: 'Unknown method', mark: 'PAY', cls: 'bg-gray-100 text-gray-700', logoUrl: '' };
             return (
               <article key={item.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_8px_30px_rgba(16,55,51,0.03)] dark:border-[#1c4140] dark:bg-[#0a2423]">
                 <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 p-4 dark:border-[#244746] sm:p-5">
