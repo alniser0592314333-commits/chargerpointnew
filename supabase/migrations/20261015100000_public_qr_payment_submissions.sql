@@ -98,12 +98,7 @@ BEGIN
   SELECT
     count(*)::integer,
     coalesce(sum(oi.final_charge_snapshot_minor), 0)::bigint,
-    coalesce(sum(
-      CASE WHEN oi.financial_status = 'RECOGNIZED'
-        THEN greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)
-        ELSE 0
-      END
-    ), 0)::bigint,
+    coalesce(sum(greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)), 0)::bigint,
     coalesce(jsonb_agg(
       jsonb_build_object(
         'name', oi.device_name_snapshot,
@@ -113,9 +108,7 @@ BEGIN
         'unit_price_minor', oi.unit_price_minor,
         'total_price_minor', oi.final_charge_snapshot_minor,
         'paid_minor', coalesce(pa.paid_minor, 0),
-        'due_minor', CASE WHEN oi.financial_status = 'RECOGNIZED'
-          THEN greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)
-          ELSE 0 END,
+        'due_minor', greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0),
         'charger_fee_exempt', (oi.customer_charger_fee_exempt_snapshot AND oi.has_charger)
       ) ORDER BY oi.item_sequence
     ), '[]'::jsonb)
@@ -221,12 +214,7 @@ BEGIN
     RAISE EXCEPTION 'Too many payment notifications for this order. Please try again later.' USING ERRCODE = 'P0001';
   END IF;
 
-  SELECT coalesce(sum(
-    CASE WHEN oi.financial_status = 'RECOGNIZED'
-      THEN greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)
-      ELSE 0
-    END
-  ), 0)::bigint INTO v_due_minor
+  SELECT coalesce(sum(greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)), 0)::bigint INTO v_due_minor
   FROM public.order_items oi
   LEFT JOIN LATERAL (
     SELECT coalesce(sum(pal.allocated_amount_minor), 0)::bigint AS paid_minor
@@ -237,7 +225,7 @@ BEGIN
     AND oi.deleted_at IS NULL;
 
   IF v_due_minor <= 0 THEN
-    RAISE EXCEPTION 'There is no recognized outstanding amount for this order yet' USING ERRCODE = 'P0001';
+    RAISE EXCEPTION 'There is no remaining amount for this order' USING ERRCODE = 'P0001';
   END IF;
 
   INSERT INTO public.qr_payment_submissions (
