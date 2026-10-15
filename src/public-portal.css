@@ -56,8 +56,28 @@ html.light, html.light body, body:has(.public-portal-page) {
 }
 
 .public-portal-page [class*="text-[#0f766e]"],
-.public-portal-page [class*="text-emerald-600"] {
+.public-portal-page [class*="text-emerald-"],
+.public-portal-page [class*="text-teal-"] {
   color: var(--portal-champagne) !important;
+}
+
+.public-portal-page [class*="bg-emerald-"],
+.public-portal-page [class*="bg-teal-"] {
+  background-color: var(--portal-champagne-soft) !important;
+}
+
+.public-portal-page [class*="border-emerald-"],
+.public-portal-page [class*="border-teal-"] {
+  border-color: #e6d6bd !important;
+}
+
+.public-portal-page [class*="from-emerald-"] {
+  --tw-gradient-from: #c5a174 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(197 161 116 / 0) var(--tw-gradient-to-position) !important;
+}
+
+.public-portal-page [class*="to-teal-"] {
+  --tw-gradient-to: #80603b var(--tw-gradient-to-position) !important;
 }
 
 .public-portal-page [class*="text-[#142c2c]"],
