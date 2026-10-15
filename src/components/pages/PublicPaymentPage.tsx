@@ -403,7 +403,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   <span className="font-semibold tabular-nums">{typeof order.orderTotalMinor === 'number' ? formatAmount(order.orderTotalMinor) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3 border-t border-[#e5ecea] pt-4 dark:border-[#244746]">
-                  <span className="text-sm font-semibold">{isAr ? 'المبلغ المستحق' : 'Amount due'}</span>
+                  <span className="text-sm font-semibold">{isAr ? 'المبلغ المطلوب تحويله' : 'Transfer amount'}</span>
                   <span className="text-xl font-semibold tracking-tight tabular-nums text-[#0f766e] dark:text-[#83cbbd]">{amountDue !== null ? formatAmount(amountDue) : '—'}</span>
                 </div>
                 {order.items?.length ? (
@@ -418,7 +418,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   </div>
                 ) : null}
                 {amountDue === 0 && (
-                  <p className="rounded-lg bg-[#f0f8f6] p-3 text-xs leading-5 text-[#41635d] dark:bg-[#10302e] dark:text-[#b4d0c8]">{isAr ? 'لا يوجد مبلغ مستحق مسجّل لهذا الطلب حالياً. قد لا يكون الطلب قد دخل مرحلة الاستحقاق المالي بعد.' : 'No recognized outstanding amount is recorded for this order yet.'}</p>
+                  <p className="rounded-lg bg-[#f0f8f6] p-3 text-xs leading-5 text-[#41635d] dark:bg-[#10302e] dark:text-[#b4d0c8]">{isAr ? 'لا يوجد مبلغ متبقٍ على هذا الطلب حالياً.' : 'There is no remaining amount on this order.'}</p>
                 )}
               </div>
             </div>
