@@ -5,6 +5,7 @@ import './index.css';
 const root = createRoot(document.getElementById('root')!);
 const pathname = window.location.pathname;
 const isPublicPortalRoute =
+  pathname.startsWith('/design/') ||
   pathname === '/public/about' ||
   pathname.startsWith('/c/') ||
   pathname.startsWith('/o/') ||
@@ -13,14 +14,20 @@ const isPublicPortalRoute =
   pathname.startsWith('/public/qr/customer/') ||
   pathname.startsWith('/public/qr/order/');
 
-// Public QR links use a separate entry module. Do not initialize the admin app,
-// its auth/session bootstrap, PWA capture, or authenticated shell on customer pages.
+// Public QR links and isolated public-page design previews do not initialize
+// the admin app, auth/session bootstrap, PWA capture, or authenticated shell.
 if (isPublicPortalRoute) {
-  // Replace the admin application's browser identity with a customer-facing one.
-  document.title = 'نقطة الشحن | بوابة العميل';
+  document.title = pathname.startsWith('/design/')
+    ? 'نقطة الشحن | معاينة تصميم الصفحات العامة'
+    : 'نقطة الشحن | بوابة العميل';
   const description = document.querySelector('meta[name="description"]');
-  description?.setAttribute('content', 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8f6f1');
+  description?.setAttribute(
+    'content',
+    pathname.startsWith('/design/')
+      ? 'معاينة تصميم الصفحات العامة للزبائن.'
+      : 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.'
+  );
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0b1412');
   document.querySelector('link[rel="manifest"]')?.remove();
   document.querySelector('link[rel="apple-touch-icon"]')?.remove();
   document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.remove();
