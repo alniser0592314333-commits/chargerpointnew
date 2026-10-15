@@ -12,7 +12,7 @@ CREATE INDEX IF NOT EXISTS qr_payment_submissions_pending_order_created_idx
   WHERE status = 'PENDING';
 
 ALTER TABLE public.qr_payment_submissions ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.qr_payment_submissions FROM anon, authenticated;
+REVOKE ALL ON TABLE public.qr_payment_submissions FROM PUBLIC, anon, authenticated;
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
