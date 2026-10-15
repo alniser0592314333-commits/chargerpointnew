@@ -34,6 +34,11 @@ VALUES ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-0000000
 INSERT INTO public.payment_allocations (id, payment_id, order_item_id, order_id, allocated_amount_minor)
 VALUES ('00000000-0000-0000-0000-000000000701', '00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000301', 1000);
 
+INSERT INTO public.financial_ledger (event_type, amount_minor, customer_id, reference_id)
+VALUES
+  ('ORDER_CHARGE', -11500, '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000301'),
+  ('PAYMENT', 1000, '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000501');
+
 INSERT INTO storage.objects (bucket_id, name, metadata)
 VALUES
   ('qr-payment-receipts', 'orders/00000000-0000-0000-0000-000000000301/receipt.webp', '{"mimetype":"image/webp"}'),
@@ -50,6 +55,7 @@ DECLARE
   v_second_id uuid;
   v_customer_submission jsonb;
   v_customer_submission_id uuid;
+  v_public_submission jsonb;
   v_rejected boolean := false;
   v_payment_count integer;
   v_duplicate boolean := false;
@@ -138,6 +144,17 @@ BEGIN
   IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'APPROVED' THEN
     RAISE EXCEPTION 'Approval did not persist submission status';
   END IF;
+  IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> -10500
+     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> -4000 THEN
+    RAISE EXCEPTION 'Order payment approval did not persist authoritative before/after customer balances';
+  END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000001');
+  IF v_public_submission->>'status' <> 'APPROVED'
+     OR (v_public_submission->>'amount_minor')::bigint <> 6500
+     OR (v_public_submission->>'balance_before_minor')::bigint <> -10500
+     OR (v_public_submission->>'balance_after_minor')::bigint <> -4000 THEN
+    RAISE EXCEPTION 'Public order QR did not reconstruct the approved amount and balance snapshots';
+  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.payments
     WHERE id = (v_submission->>'payment_id')::uuid
@@ -182,6 +199,17 @@ BEGIN
       AND amount_minor = 12345 AND payment_method = 'JAWAL_PAY'
   ) THEN
     RAISE EXCEPTION 'Direct customer approval did not use the submitted amount and customer ID';
+  END IF;
+  IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> -4000
+     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> 8345 THEN
+    RAISE EXCEPTION 'Direct customer payment did not persist authoritative before/after balances';
+  END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000003');
+  IF v_public_submission->>'status' <> 'APPROVED'
+     OR (v_public_submission->>'amount_minor')::bigint <> 12345
+     OR (v_public_submission->>'balance_before_minor')::bigint <> -4000
+     OR (v_public_submission->>'balance_after_minor')::bigint <> 8345 THEN
+    RAISE EXCEPTION 'Public customer QR did not reconstruct the approved amount and balance snapshots';
   END IF;
 
   SELECT count(*) INTO v_payment_count FROM public.payments;
