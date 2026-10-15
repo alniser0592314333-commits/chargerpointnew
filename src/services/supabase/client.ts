@@ -46,7 +46,7 @@ export interface PublicCustomerQrRpcResult {
 
 export interface PublicQrPaymentSubmissionRpcResult {
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  amount_minor: number | string;
+  amount_minor: number | string | null;
   payment_method: string;
   created_at: string;
   reviewed_at?: string | null;
