@@ -117,14 +117,14 @@ CREATE FUNCTION public.execute_canonical_sync_command(
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
-AS $
+AS $wrapper$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
   RETURN public.execute_canonical_sync_command_unlocked(
     p_command_id, p_command_type, p_payload, p_payload_hash, p_device_id, p_actor_id
   );
 END;
-$;
+$wrapper$;
 
 CREATE TABLE public.qr_payment_submissions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
