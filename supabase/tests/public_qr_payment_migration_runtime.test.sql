@@ -1,0 +1,303 @@
+-- Runtime assertions for the public QR payment migration. Run only against the isolated fixture DB.
+INSERT INTO public.customers (id, name, status, is_active)
+VALUES ('00000000-0000-0000-0000-000000000101', 'QR Test Customer', 'ACTIVE', true);
+INSERT INTO public.admins (id, auth_user_id, is_active)
+VALUES ('00000000-0000-0000-0000-000000000201', '00000000-0000-0000-0000-000000000201', true);
+
+INSERT INTO public.orders (id, customer_id, display_number, status)
+VALUES
+  ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000101', 41, 'CHARGING'),
+  ('00000000-0000-0000-0000-000000000302', '00000000-0000-0000-0000-000000000101', 42, 'CHARGING');
+
+INSERT INTO public.qr_tokens (public_token, token_type, target_id, is_active)
+VALUES
+  ('public-token-000000000000000000000001', 'ORDER', '00000000-0000-0000-0000-000000000301', true),
+  ('public-token-000000000000000000000002', 'ORDER', '00000000-0000-0000-0000-000000000302', true),
+  ('public-token-000000000000000000000003', 'CUSTOMER', '00000000-0000-0000-0000-000000000101', true);
+
+INSERT INTO public.order_items (
+  id, order_id, item_sequence, device_name_snapshot, status, financial_status, payment_status,
+  has_charger, customer_charger_fee_exempt_snapshot, unit_price_minor, total_price_minor,
+  final_charge_snapshot_minor, created_at
+)
+VALUES
+  ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000301', 1, 'Samsung', 'CHARGING', 'PENDING', 'UNPAID', true, true, 4500, 5000, 5000, '2026-10-12T10:00:00Z'),
+  ('00000000-0000-0000-0000-000000000402', '00000000-0000-0000-0000-000000000301', 2, 'Xiaomi', 'CHARGING', 'PENDING', 'UNPAID', false, false, 2500, 2500, 2500, '2026-10-12T10:01:00Z'),
+  ('00000000-0000-0000-0000-000000000403', '00000000-0000-0000-0000-000000000301', 3, 'Cancelled item', 'CANCELLED', 'CANCELLED', 'UNPAID', false, false, 900, 900, 900, '2026-10-12T10:02:00Z'),
+  ('00000000-0000-0000-0000-000000000411', '00000000-0000-0000-0000-000000000302', 1, 'iPhone', 'CHARGING', 'PENDING', 'UNPAID', true, false, 4000, 4000, 4000, '2026-10-12T11:00:00Z');
+
+UPDATE public.order_items SET cancelled_at = now()
+WHERE id = '00000000-0000-0000-0000-000000000403';
+
+INSERT INTO public.payments (id, customer_id, amount_minor, payment_method, reference, command_id)
+VALUES ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000101', 1000, 'CASH', 'fixture seed', '00000000-0000-0000-0000-000000000601');
+INSERT INTO public.payment_allocations (id, payment_id, order_item_id, order_id, allocated_amount_minor)
+VALUES ('00000000-0000-0000-0000-000000000701', '00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000301', 1000);
+
+INSERT INTO public.financial_ledger (event_type, amount_minor, customer_id, reference_id)
+VALUES
+  ('ORDER_CHARGE', -11500, '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000301'),
+  ('PAYMENT', 1000, '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000501');
+
+INSERT INTO storage.objects (bucket_id, name, metadata)
+VALUES
+  ('qr-payment-receipts', 'orders/00000000-0000-0000-0000-000000000301/receipt.webp', '{"mimetype":"image/webp"}'),
+  ('qr-payment-receipts', 'orders/00000000-0000-0000-0000-000000000302/receipt.webp', '{"mimetype":"image/webp"}'),
+  ('qr-payment-receipts', 'customers/00000000-0000-0000-0000-000000000101/receipt.webp', '{"mimetype":"image/webp"}');
+
+DO $test$
+DECLARE
+  v_order jsonb;
+  v_item jsonb;
+  v_submission jsonb;
+  v_submission_id uuid;
+  v_second_submission jsonb;
+  v_second_id uuid;
+  v_customer_submission jsonb;
+  v_customer_submission_id uuid;
+  v_public_submission jsonb;
+  v_rejected boolean := false;
+  v_payment_count integer;
+  v_duplicate boolean := false;
+  v_review_definition text;
+BEGIN
+  v_review_definition := pg_get_functiondef('public.review_qr_payment_submission(uuid,text,text,text,bigint)'::regprocedure);
+  IF position('execute_canonical_sync_command(' IN v_review_definition) = 0
+     OR position('execute_canonical_sync_command_unlocked(' IN v_review_definition) > 0 THEN
+    RAISE EXCEPTION 'Review must use the serialized canonical command wrapper, not call the unlocked implementation directly';
+  END IF;
+  IF position('''POST_PAYMENT''' IN v_review_definition) = 0 OR position('''CREATE_PAYMENT''' IN v_review_definition) > 0 THEN
+    RAISE EXCEPTION 'Review must use the existing POST_PAYMENT FIFO branch, not the legacy CREATE_PAYMENT branch';
+  END IF;
+  IF position('resetGeneration' IN v_review_definition) = 0 OR position('server_reset_generation' IN v_review_definition) = 0 THEN
+    RAISE EXCEPTION 'Review must forward the current server reset generation to avoid stale-command rejection';
+  END IF;
+  IF position('INSERT INTO public.payment_allocations' IN v_review_definition) > 0 THEN
+    RAISE EXCEPTION 'Review must not implement a second payment allocation engine';
+  END IF;
+
+  SELECT resolved.order_json INTO v_order
+  FROM public.public_resolve_order_qr('public-token-000000000000000000000001') AS resolved(order_json);
+
+  IF v_order IS NULL THEN RAISE EXCEPTION 'Public QR resolver returned no order'; END IF;
+  IF (v_order->>'order_number')::integer <> 41 THEN RAISE EXCEPTION 'Wrong order was resolved'; END IF;
+  IF (v_order->>'order_total_minor')::bigint <> 7500 THEN RAISE EXCEPTION 'Order total should exclude cancelled items'; END IF;
+  IF (v_order->>'order_due_minor')::bigint <> 6500 THEN RAISE EXCEPTION 'Remaining amount should subtract actual allocations'; END IF;
+  IF (v_order->>'items_count')::integer <> 3 THEN RAISE EXCEPTION 'Public order should retain cancelled items for status transparency'; END IF;
+
+  SELECT value INTO v_item
+  FROM jsonb_array_elements(v_order->'items') AS item(value)
+  WHERE value->>'name' = 'Samsung';
+  IF v_item IS NULL OR (v_item->>'charger_fee_exempt')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'Recorded charger fee exemption was not exposed for the correct item';
+  END IF;
+  SELECT value INTO v_item
+  FROM jsonb_array_elements(v_order->'items') AS item(value)
+  WHERE value->>'name' = 'Xiaomi';
+  IF v_item IS NULL OR (v_item->>'charger_fee_exempt')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'Charger fee exemption was incorrectly inferred';
+  END IF;
+  SELECT value INTO v_item
+  FROM jsonb_array_elements(v_order->'items') AS item(value)
+  WHERE value->>'name' = 'Cancelled item';
+  IF v_item IS NULL OR (v_item->>'due_minor')::bigint <> 0 THEN
+    RAISE EXCEPTION 'Cancelled item must remain visible but contribute no payable amount';
+  END IF;
+
+  v_submission := public.submit_qr_payment(
+    'public-token-000000000000000000000001', 'PALPAY',
+    'orders/00000000-0000-0000-0000-000000000301/receipt.webp', 'test note'
+  );
+  v_submission_id := (v_submission->>'submission_id')::uuid;
+  IF v_submission->>'amount_minor' IS NOT NULL
+     OR (SELECT amount_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 0 THEN
+    RAISE EXCEPTION 'Pending order receipt must not store or expose a payment amount';
+  END IF;
+  IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'PENDING' THEN
+    RAISE EXCEPTION 'New submission must be pending';
+  END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000001');
+  IF v_public_submission->>'status' <> 'PENDING'
+     OR v_public_submission->>'amount_minor' IS NOT NULL THEN
+    RAISE EXCEPTION 'Pending public QR must not expose a payment amount';
+  END IF;
+
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.submit_qr_payment(
+      'public-token-000000000000000000000003', 'JAWAL_PAY',
+      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, 12345
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Customer-supplied payment amount was accepted'; END IF;
+
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.submit_qr_payment(
+      'public-token-000000000000000000000003', 'JAWAL_PAY',
+      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, NULL
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Customer-level payment must be blocked while an order payment is pending'; END IF;
+
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.submit_qr_payment(
+      'public-token-000000000000000000000001', 'PALPAY',
+      'orders/00000000-0000-0000-0000-000000000301/receipt.webp', NULL
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'A duplicate pending submission was accepted'; END IF;
+
+  PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000201', true);
+
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Approval without a reviewer-entered amount was accepted'; END IF;
+  IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'PENDING' THEN
+    RAISE EXCEPTION 'An amountless approval attempt must leave the receipt pending';
+  END IF;
+
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.review_qr_payment_submission(v_submission_id, 'APPROVE', NULL, NULL, 6200);
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Approval without an admin PIN/BIN was accepted'; END IF;
+  IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'PENDING' THEN
+    RAISE EXCEPTION 'An approval attempt without PIN/BIN must leave the receipt pending';
+  END IF;
+
+  v_submission := public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL, 6200);
+  IF v_submission->>'status' <> 'APPROVED' THEN RAISE EXCEPTION 'Approval did not return APPROVED'; END IF;
+  IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'APPROVED' THEN
+    RAISE EXCEPTION 'Approval did not persist submission status';
+  END IF;
+  IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> -10500
+     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> -4300 THEN
+    RAISE EXCEPTION 'Order payment approval did not persist authoritative before/after customer balances';
+  END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000001');
+  IF v_public_submission->>'status' <> 'APPROVED'
+     OR (v_public_submission->>'amount_minor')::bigint <> 6200
+     OR (v_public_submission->>'balance_before_minor')::bigint <> -10500
+     OR (v_public_submission->>'balance_after_minor')::bigint <> -4300 THEN
+    RAISE EXCEPTION 'Public order QR did not reconstruct the approved amount and balance snapshots';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.payments
+    WHERE id = (v_submission->>'payment_id')::uuid
+      AND amount_minor = 6200 AND payment_method = 'PALPAY'
+  ) THEN RAISE EXCEPTION 'Approval did not create the reviewer-entered payment amount'; END IF;
+
+  v_customer_submission := public.submit_qr_payment(
+    'public-token-000000000000000000000003', 'JAWAL_PAY',
+    'customers/00000000-0000-0000-0000-000000000101/receipt.webp', 'direct customer payment', NULL
+  );
+  v_customer_submission_id := (v_customer_submission->>'submission_id')::uuid;
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.submit_qr_payment(
+      'public-token-000000000000000000000003', 'JAWAL_PAY',
+      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, NULL
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Duplicate direct customer notification was accepted'; END IF;
+
+  IF v_customer_submission->>'amount_minor' IS NOT NULL
+     OR (SELECT amount_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> 0 THEN
+    RAISE EXCEPTION 'Customer QR receipt must not store or expose an unverified amount';
+  END IF;
+  IF (SELECT order_id FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) IS NOT NULL THEN
+    RAISE EXCEPTION 'Direct customer payment must not require or create an order link';
+  END IF;
+  IF (SELECT customer_id FROM public.qr_payment_submissions WHERE id = v_customer_submission_id)
+     <> '00000000-0000-0000-0000-000000000101'::uuid THEN
+    RAISE EXCEPTION 'Direct payment was not bound to the QR customer ID';
+  END IF;
+
+  v_customer_submission := public.review_qr_payment_submission(v_customer_submission_id, 'APPROVE', '1234', NULL, 12000);
+  IF v_customer_submission->>'status' <> 'APPROVED' THEN
+    RAISE EXCEPTION 'Direct customer payment was not approved';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.payments
+    WHERE id = (v_customer_submission->>'payment_id')::uuid
+      AND customer_id = '00000000-0000-0000-0000-000000000101'::uuid
+      AND amount_minor = 12000 AND payment_method = 'JAWAL_PAY'
+  ) THEN
+    RAISE EXCEPTION 'Direct customer approval did not use the reviewer-entered amount and customer ID';
+  END IF;
+  IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> -4300
+     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> 7700 THEN
+    RAISE EXCEPTION 'Direct customer payment did not persist authoritative before/after balances';
+  END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000003');
+  IF v_public_submission->>'status' <> 'APPROVED'
+     OR (v_public_submission->>'amount_minor')::bigint <> 12000
+     OR (v_public_submission->>'balance_before_minor')::bigint <> -4300
+     OR (v_public_submission->>'balance_after_minor')::bigint <> 7700 THEN
+    RAISE EXCEPTION 'Public customer QR did not reconstruct the approved amount and balance snapshots';
+  END IF;
+
+  SELECT count(*) INTO v_payment_count FROM public.payments;
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL, 6200);
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Double approval was not blocked'; END IF;
+  IF (SELECT count(*) FROM public.payments) <> v_payment_count THEN
+    RAISE EXCEPTION 'Double approval created a duplicate payment';
+  END IF;
+
+  v_second_submission := public.submit_qr_payment(
+    'public-token-000000000000000000000002', 'JAWAL_PAY',
+    'orders/00000000-0000-0000-0000-000000000302/receipt.webp', NULL
+  );
+  v_second_id := (v_second_submission->>'submission_id')::uuid;
+
+  v_rejected := false;
+  BEGIN
+    PERFORM public.review_qr_payment_submission(v_second_id, 'APPROVE', 'FAIL', NULL, 3000);
+  EXCEPTION WHEN OTHERS THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN RAISE EXCEPTION 'Simulated canonical payment failure was not propagated'; END IF;
+  IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_second_id) <> 'PENDING' THEN
+    RAISE EXCEPTION 'Failed approval must leave submission pending';
+  END IF;
+  IF (SELECT count(*) FROM public.payments) <> v_payment_count THEN
+    RAISE EXCEPTION 'Failed approval created a partial payment';
+  END IF;
+
+  v_submission := public.review_qr_payment_submission(v_second_id, 'REJECT', NULL, 'Receipt unreadable');
+  IF v_submission->>'status' <> 'REJECTED' THEN RAISE EXCEPTION 'Rejection did not return REJECTED'; END IF;
+  IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_second_id) <> 'REJECTED' THEN
+    RAISE EXCEPTION 'Rejection did not persist status';
+  END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000002');
+  IF v_public_submission->>'status' <> 'REJECTED' THEN
+    RAISE EXCEPTION 'Public order QR did not reconstruct the rejected status after reload';
+  END IF;
+  IF (SELECT count(*) FROM public.payments) <> v_payment_count THEN
+    RAISE EXCEPTION 'Rejection must not create a payment';
+  END IF;
+END;
+$test$;
+
+SELECT 'public QR payment migration runtime tests passed' AS result;

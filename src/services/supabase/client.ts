@@ -44,14 +44,39 @@ export interface PublicCustomerQrRpcResult {
   customer_code: string;
 }
 
+export interface PublicQrPaymentSubmissionRpcResult {
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  amount_minor: number | string | null;
+  payment_method: string;
+  created_at: string;
+  reviewed_at?: string | null;
+  balance_before_minor?: number | string | null;
+  balance_after_minor?: number | string | null;
+}
+
 export interface PublicOrderQrRpcResult {
   order_id: string;
   order_number: number;
   customer_name: string;
+  customer_code?: string;
   status: string;
   created_at: string;
   items_count: number;
-  items?: Array<{ name: string; status: string; has_charger: boolean }>;
+  order_total_minor?: number;
+  order_due_minor?: number;
+  items?: Array<{
+    name: string;
+    status: string;
+    operational_status?: string;
+    payment_status?: string;
+    has_charger: boolean;
+    quantity?: number;
+    unit_price_minor?: number;
+    total_price_minor?: number;
+    paid_minor?: number;
+    due_minor?: number;
+    charger_fee_exempt?: boolean;
+  }>;
 }
 
 let activeAuthToken: string | null = null;
@@ -242,6 +267,7 @@ const PUBLIC_RPCS = new Set([
   'get_email_by_username',
   'public_resolve_customer_qr',
   'public_resolve_order_qr',
+  'public_resolve_qr_payment_submission',
   'get_or_create_customer_qr',
   'get_or_create_order_qr',
   'get_global_app_identity',
@@ -1077,6 +1103,23 @@ export async function rpcResolveOrderQr(
   }
 
   return data[0];
+}
+
+/**
+ * Resolves the latest payment notification associated with a public order/customer QR token.
+ * Only safe status, amount, method, timestamps, and approved balance snapshots are returned.
+ */
+export async function rpcResolveQrPaymentSubmission(
+  publicToken: string
+): Promise<PublicQrPaymentSubmissionRpcResult | null> {
+  const { data, error } = await invokeSupabaseRpc<PublicQrPaymentSubmissionRpcResult>(
+    'public_resolve_qr_payment_submission',
+    { p_public_token: publicToken }
+  );
+  if (error || !data || !['PENDING', 'APPROVED', 'REJECTED'].includes(data.status)) {
+    return null;
+  }
+  return data;
 }
 
 /**

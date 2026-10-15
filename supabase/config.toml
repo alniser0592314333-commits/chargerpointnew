@@ -27,3 +27,6 @@ max_namespaces = 10
 
 [storage.image_transformation]
 enabled = true
+
+[functions.submit-qr-payment]
+verify_jwt = false

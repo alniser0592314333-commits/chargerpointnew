@@ -74,6 +74,12 @@ jobs:
           VITE_SUPABASE_ANON_KEY: test-anon-key
         run: npx vitest run src/tests/phase6_16_online_create_day_pipeline.test.ts
 
+      - name: Set up Deno for Edge Function validation
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check public QR payment Edge Function
+        run: deno check --no-lock --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
       - name: Type-check and lint
         run: npm run lint
       - name: Build production bundle
@@ -315,6 +321,24 @@ jobs:
             END IF;
           END $$;
           SQL
+
+
+      - name: Create isolated database for public QR payment workflow
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres public_qr_payment_test
+      - name: Prepare public QR payment migration fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/tests/public_qr_payment_migration_fixture.sql
+      - name: Apply public QR payment migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261015100000_public_qr_payment_submissions.sql
+      - name: Verify QR amount derivation, duplicate protection and atomic review
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/tests/public_qr_payment_migration_runtime.test.sql
 
   diagnose-main-test-baseline:
     name: Diagnose full-suite baseline on main

@@ -5277,10 +5277,25 @@ export interface PublicOrderQrData {
   orderId: string;
   orderNumber: number;
   customerName: string;
+  customerCode?: string;
   status: string;
   createdAt: string;
   itemsCount: number;
-  items?: Array<{ name: string; status: string; has_charger: boolean }>;
+  orderTotalMinor?: number;
+  orderDueMinor?: number;
+  items?: Array<{
+    name: string;
+    status: string;
+    operational_status?: string;
+    payment_status?: string;
+    has_charger: boolean;
+    quantity?: number;
+    unit_price_minor?: number;
+    total_price_minor?: number;
+    paid_minor?: number;
+    due_minor?: number;
+    charger_fee_exempt?: boolean;
+  }>;
   token: string;
 }
 
@@ -5312,9 +5327,12 @@ export const getPublicOrderByToken = async (
         orderId: supabaseResult.order_id,
         orderNumber: supabaseResult.order_number,
         customerName: supabaseResult.customer_name,
+        customerCode: supabaseResult.customer_code,
         status: supabaseResult.status,
         createdAt: supabaseResult.created_at,
         itemsCount: supabaseResult.items_count,
+        orderTotalMinor: supabaseResult.order_total_minor,
+        orderDueMinor: supabaseResult.order_due_minor,
         items: supabaseResult.items,
         token: publicToken,
       };

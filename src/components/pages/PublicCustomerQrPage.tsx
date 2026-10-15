@@ -15,6 +15,7 @@ import {
   Sparkles,
   Layers,
   Clock,
+  CreditCard,
 } from 'lucide-react';
 
 export interface PublicCustomerQrPageProps {
@@ -78,15 +79,15 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
   };
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] dark:bg-[#031817] text-gray-900 dark:text-[#daf1de] transition-colors flex flex-col justify-between p-4 sm:p-6">
+    <div className="min-h-screen bg-[#f4f7f7] dark:bg-[#071b1b] text-[#142c2c] dark:text-[#e7f2ef] transition-colors flex flex-col justify-between p-4 sm:p-6">
       {/* 1. Minimal Public Top Bar: Locale & Theme Switcher (No Admin Links) */}
-      <header className="max-w-md w-full mx-auto flex items-center justify-between py-2.5 border-b border-gray-200 dark:border-[#123d37]">
+      <header className="max-w-5xl w-full mx-auto flex items-center justify-between gap-3 py-4 border-b border-[#dce6e4] dark:border-[#1c4140]">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-emerald-600/10 dark:bg-emerald-400/10 flex items-center justify-center text-emerald-600 dark:text-[#7ae09e]">
+          <div className="w-10 h-10 rounded-xl bg-[#0f766e] flex items-center justify-center text-white shadow-sm">
             <Zap className="w-4 h-4" />
           </div>
-          <span className="text-xs font-bold text-gray-800 dark:text-[#daf1de]">
-            {locale === 'en' ? 'Customer Portal' : 'بوابة العميل'}
+          <span className="text-sm font-bold tracking-tight text-[#142c2c] dark:text-[#e7f2ef]">
+            {locale === 'en' ? 'Charging Point' : 'نقطة الشحن'}
           </span>
         </div>
 
@@ -203,6 +204,17 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
               </div>
             </div>
 
+            <a href={`/pay/${token}`} className="flex w-full items-center justify-between gap-4 rounded-2xl bg-[#0f766e] p-4 text-start text-white shadow-sm transition hover:bg-[#115e59] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 dark:focus:ring-offset-[#071b1b]">
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><CreditCard className="h-5 w-5" /></span>
+                <span>
+                  <span className="block text-sm font-semibold">{locale === 'en' ? 'Pay into your customer account' : 'ادفع على حسابك'}</span>
+                  <span className="mt-1 block text-xs leading-5 text-white/80">{locale === 'en' ? 'Enter the amount, transfer externally, then send your receipt for review.' : 'أدخل المبلغ، وحوّله من وسيلة الدفع، ثم أرسل الإيصال للمراجعة.'}</span>
+                </span>
+              </span>
+              <span className="shrink-0 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold">{locale === 'en' ? 'Pay now' : 'ادفع الآن'}</span>
+            </a>
+
             {/* Placeholder / Future Features Card */}
             <div className="bg-white/70 dark:bg-[#082622]/70 rounded-2xl border border-dashed border-gray-200 dark:border-[#14423b] p-4 text-center space-y-2">
               <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#0c312b] text-gray-400 dark:text-[#8eb698] flex items-center justify-center mx-auto">
@@ -222,8 +234,10 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
       </main>
 
       {/* 3. Minimal Footer */}
-      <footer className="max-w-md w-full mx-auto text-center py-3 border-t border-gray-100 dark:border-[#123d37] text-[11px] text-gray-400 dark:text-[#5e8674]">
+      <footer className="max-w-5xl w-full mx-auto text-center py-5 border-t border-[#dce6e4] dark:border-[#1c4140] text-[11px] text-[#7d9690] dark:text-[#779791]">
         <span>{locale === 'en' ? 'Charging Point • Customer Portal' : 'نقطة الشحن • بوابة العميل'}</span>
+        <span className="mx-2">·</span>
+        <a href="/public/about" className="font-semibold hover:text-[#0f766e] dark:hover:text-[#83cbbd]">{locale === 'en' ? 'About' : 'عن التطبيق'}</a>
       </footer>
     </div>
   );

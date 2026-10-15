@@ -28,6 +28,8 @@ import { CustomerQrPage } from './components/pages/CustomerQrPage';
 import { OrderQrPage } from './components/pages/OrderQrPage';
 import { PublicCustomerQrPage } from './components/pages/PublicCustomerQrPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
+import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
+import { PublicAboutPage } from './components/pages/PublicAboutPage';
 import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
@@ -346,7 +348,10 @@ export default function App() {
   const renderContent = () => {
     const { pathname } = parseRoute(currentPath);
 
-    // 0. Public Customer & Order QR Routes (Publicly accessible, zero auth, strictly read-only)
+    // 0. Public customer portal routes (no admin entry points)
+    if (pathname === '/public/about') {
+      return <PublicAboutPage />;
+    }
     if (pathname.startsWith('/c/')) {
       const token = pathname.replace('/c/', '');
       return <PublicCustomerQrPage token={token} />;
@@ -354,6 +359,10 @@ export default function App() {
     if (pathname.startsWith('/public/qr/customer/')) {
       const token = pathname.replace('/public/qr/customer/', '');
       return <PublicCustomerQrPage token={token} />;
+    }
+    if (pathname.startsWith('/pay/')) {
+      const token = pathname.replace('/pay/', '');
+      return <PublicPaymentPage token={token} />;
     }
     if (pathname.startsWith('/o/')) {
       const token = pathname.replace('/o/', '');
