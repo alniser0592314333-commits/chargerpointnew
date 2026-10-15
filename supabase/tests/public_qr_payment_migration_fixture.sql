@@ -48,6 +48,21 @@ CREATE TABLE public.customers (
   is_active boolean NOT NULL DEFAULT true,
   deleted_at timestamptz
 );
+CREATE TABLE public.financial_ledger (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sequence_number bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
+  event_type text NOT NULL,
+  amount_minor bigint NOT NULL,
+  order_id uuid,
+  order_item_id uuid,
+  customer_id uuid REFERENCES public.customers(id),
+  actor_admin_id uuid,
+  reference_id uuid,
+  linked_ledger_id uuid,
+  metadata jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.orders (
   id uuid PRIMARY KEY,
   customer_id uuid NOT NULL REFERENCES public.customers(id),
@@ -175,6 +190,17 @@ BEGIN
     p_payload->>'reference',
     p_actor_id,
     p_command_id
+  );
+  INSERT INTO public.financial_ledger (
+    event_type, amount_minor, customer_id, actor_admin_id, reference_id, metadata
+  )
+  VALUES (
+    'PAYMENT',
+    (p_payload->>'amountMinor')::bigint,
+    (p_payload->>'customerId')::uuid,
+    p_actor_id,
+    p_command_id,
+    jsonb_build_object('payment_id', (p_payload->>'id')::uuid)
   );
   RETURN jsonb_build_object('success', true, 'result', jsonb_build_object('paymentId', (p_payload->>'id')::uuid));
 END;
