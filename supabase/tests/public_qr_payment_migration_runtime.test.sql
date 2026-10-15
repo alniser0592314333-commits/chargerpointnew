@@ -66,7 +66,7 @@ BEGIN
   IF (v_order->>'order_number')::integer <> 41 THEN RAISE EXCEPTION 'Wrong order was resolved'; END IF;
   IF (v_order->>'order_total_minor')::bigint <> 7500 THEN RAISE EXCEPTION 'Order total should exclude cancelled items'; END IF;
   IF (v_order->>'order_due_minor')::bigint <> 6500 THEN RAISE EXCEPTION 'Remaining amount should subtract actual allocations'; END IF;
-  IF (v_order->>'items_count')::integer <> 2 THEN RAISE EXCEPTION 'Cancelled items must not appear in public item count'; END IF;
+  IF (v_order->>'items_count')::integer <> 3 THEN RAISE EXCEPTION 'Public order should retain cancelled items for status transparency'; END IF;
 
   SELECT value INTO v_item
   FROM jsonb_array_elements(v_order->'items') AS item(value)
@@ -79,6 +79,12 @@ BEGIN
   WHERE value->>'name' = 'Xiaomi';
   IF v_item IS NULL OR (v_item->>'charger_fee_exempt')::boolean IS NOT FALSE THEN
     RAISE EXCEPTION 'Charger fee exemption was incorrectly inferred';
+  END IF;
+  SELECT value INTO v_item
+  FROM jsonb_array_elements(v_order->'items') AS item(value)
+  WHERE value->>'name' = 'Cancelled item';
+  IF v_item IS NULL OR (v_item->>'due_minor')::bigint <> 0 THEN
+    RAISE EXCEPTION 'Cancelled item must remain visible but contribute no payable amount';
   END IF;
 
   v_submission := public.submit_qr_payment(
