@@ -16,6 +16,16 @@ const isPublicPortalRoute =
 // Public QR links use a separate entry module. Do not initialize the admin app,
 // its auth/session bootstrap, PWA capture, or authenticated shell on customer pages.
 if (isPublicPortalRoute) {
+  // Replace the admin application's browser identity with a customer-facing one.
+  document.title = 'نقطة الشحن | بوابة العميل';
+  const description = document.querySelector('meta[name="description"]');
+  description?.setAttribute('content', 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8f6f1');
+  document.querySelector('link[rel="manifest"]')?.remove();
+  document.querySelector('link[rel="apple-touch-icon"]')?.remove();
+  document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.remove();
+  document.querySelector('meta[name="mobile-web-app-capable"]')?.remove();
+  document.querySelector('meta[name="apple-mobile-web-app-title"]')?.remove();
   document.documentElement.classList.remove('dark');
   document.documentElement.classList.add('light');
   document.documentElement.lang = 'ar';
