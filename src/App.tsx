@@ -28,6 +28,7 @@ import { CustomerQrPage } from './components/pages/CustomerQrPage';
 import { OrderQrPage } from './components/pages/OrderQrPage';
 import { PublicCustomerQrPage } from './components/pages/PublicCustomerQrPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
+import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
@@ -354,6 +355,10 @@ export default function App() {
     if (pathname.startsWith('/public/qr/customer/')) {
       const token = pathname.replace('/public/qr/customer/', '');
       return <PublicCustomerQrPage token={token} />;
+    }
+    if (pathname.startsWith('/pay/')) {
+      const token = pathname.replace('/pay/', '');
+      return <PublicPaymentPage token={token} />;
     }
     if (pathname.startsWith('/o/')) {
       const token = pathname.replace('/o/', '');
