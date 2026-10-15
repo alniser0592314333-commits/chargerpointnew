@@ -24,8 +24,14 @@ ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY,
   auth_user_id uuid NOT NULL,
-  is_active boolean NOT NULL DEFAULT true
+  is_active boolean NOT NULL DEFAULT true,
+  role text NOT NULL DEFAULT 'SUPER_ADMIN'
 );
+CREATE TABLE public.system_settings (
+  key text PRIMARY KEY,
+  value_number bigint
+);
+INSERT INTO public.system_settings (key, value_number) VALUES ('server_reset_generation', 49);
 CREATE FUNCTION public.get_effective_permissions(p_admin_id uuid)
 RETURNS TABLE(permission text)
 LANGUAGE sql STABLE
@@ -129,6 +135,9 @@ AS $$
 BEGIN
   IF p_command_type <> 'POST_PAYMENT' THEN
     RAISE EXCEPTION 'Expected review to use existing POST_PAYMENT FIFO branch, got %', p_command_type;
+  END IF;
+  IF p_payload->>'resetGeneration' <> '49' THEN
+    RAISE EXCEPTION 'Review must forward the current server reset generation';
   END IF;
   IF p_payload->>'bin' = 'FAIL' THEN
     RETURN jsonb_build_object('success', false);
