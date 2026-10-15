@@ -127,23 +127,32 @@ Deno.serve(async (request: Request) => {
     // Customer-level notifications are keyed to the customer, not an order.
     // Database checks below repeat duplicate prevention and rate limiting atomically.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    let pendingQuery = supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
-      .eq("status", "PENDING");
-    let recentQuery = supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
-      .gt("created_at", oneHourAgo);
-    if (orderId) {
-      pendingQuery = pendingQuery.eq("order_id", orderId);
-      recentQuery = recentQuery.eq("order_id", orderId);
-    } else {
-      pendingQuery = pendingQuery.eq("customer_id", customerId).is("order_id", null);
-      recentQuery = recentQuery.eq("customer_id", customerId).is("order_id", null);
-    }
-    const [pendingCheck, recentCheck] = await Promise.all([pendingQuery, recentQuery]);
-    if (pendingCheck.error || recentCheck.error) {
-      console.error("Submission rate check failed", pendingCheck.error?.message, recentCheck.error?.message);
+    const pendingChecks = orderId
+      ? [
+          supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
+            .eq("status", "PENDING").eq("order_id", orderId),
+          supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
+            .eq("status", "PENDING").eq("customer_id", customerId).is("order_id", null),
+        ]
+      : [
+          supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
+            .eq("status", "PENDING").eq("customer_id", customerId),
+        ];
+    const recentQuery = orderId
+      ? supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
+          .eq("order_id", orderId).gt("created_at", oneHourAgo)
+      : supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
+          .eq("customer_id", customerId).gt("created_at", oneHourAgo);
+    const [pendingResults, recentCheck] = await Promise.all([
+      Promise.all(pendingChecks),
+      recentQuery,
+    ]);
+    const pendingError = pendingResults.find((result) => result.error)?.error;
+    if (pendingError || recentCheck.error) {
+      console.error("Submission rate check failed", pendingError?.message, recentCheck.error?.message);
       return json(500, { error: "Could not verify whether a notification is already pending" });
     }
-    if ((pendingCheck.count ?? 0) > 0) {
+    if (pendingResults.some((result) => (result.count ?? 0) > 0)) {
       return json(409, { error: "A payment notification for this account or order is already awaiting review" });
     }
     if ((recentCheck.count ?? 0) >= 3) {
