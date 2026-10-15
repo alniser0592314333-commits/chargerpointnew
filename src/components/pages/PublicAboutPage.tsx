@@ -1,14 +1,12 @@
 import React from 'react';
 import {
-  ArrowUpRight, CheckCircle2, Globe, Moon, ShieldCheck, Smartphone,
-  Sun, WalletCards, Zap,
+  ArrowUpRight, CheckCircle2, Globe, ShieldCheck, Smartphone,
+  WalletCards, Zap,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { useTheme } from '../../theme/themeContext';
-
 export const PublicAboutPage: React.FC = () => {
   const { locale, setLocale, isRTL } = useI18n();
-  const { theme, toggleTheme } = useTheme();
+
   const isAr = locale === 'ar';
 
   const features = [
@@ -30,7 +28,7 @@ export const PublicAboutPage: React.FC = () => {
   ];
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="public-portal-page min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
       <header className="border-b border-[#dce6e4] bg-white/90 dark:bg-[#0a2423]/90 dark:border-[#1c4140]">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <a href="/public/about" className="flex items-center gap-3">
@@ -42,7 +40,7 @@ export const PublicAboutPage: React.FC = () => {
           </a>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#365653] hover:bg-[#edf4f2] dark:text-[#c8d9d4] dark:hover:bg-[#133533]" aria-label="Toggle language"><Globe className="h-4 w-4" />{isAr ? 'English' : 'عربي'}</button>
-            <button type="button" onClick={toggleTheme} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#dce6e4] hover:bg-[#edf4f2] dark:border-[#244746] dark:hover:bg-[#133533]" aria-label="Toggle theme">{theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-amber-300" />}</button>
+            
           </div>
         </div>
       </header>
