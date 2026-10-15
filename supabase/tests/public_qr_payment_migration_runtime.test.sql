@@ -55,6 +55,9 @@ BEGIN
   IF position('execute_canonical_sync_command_unlocked' IN v_review_definition) = 0 THEN
     RAISE EXCEPTION 'Review must delegate payment creation to the existing canonical command';
   END IF;
+  IF position('''POST_PAYMENT''' IN v_review_definition) = 0 OR position('''CREATE_PAYMENT''' IN v_review_definition) > 0 THEN
+    RAISE EXCEPTION 'Review must use the existing POST_PAYMENT FIFO branch, not the legacy CREATE_PAYMENT branch';
+  END IF;
   IF position('INSERT INTO public.payment_allocations' IN v_review_definition) > 0 THEN
     RAISE EXCEPTION 'Review must not implement a second payment allocation engine';
   END IF;
