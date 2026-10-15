@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  ArrowUpRight, CheckCircle2, Globe, ShieldCheck, Smartphone,
+  CheckCircle2, Globe, ShieldCheck, Smartphone,
   WalletCards, Zap,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
