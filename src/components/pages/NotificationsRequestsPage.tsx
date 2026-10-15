@@ -9,6 +9,15 @@ import { config } from '../../config/env';
 
 type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE' | string;
 
+const parseApprovalAmountMinor = (value: string): number | null => {
+  const normalized = value.trim().replace(',', '.');
+  if (!/^\\d{1,9}(?:\\.\\d{1,2})?$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const minor = Math.round(amount * 100);
+  return Number.isSafeInteger(minor) && minor > 0 && minor <= 99_999_999_999 ? minor : null;
+};
+
 interface PendingQrPayment {
   id: string;
   order_id: string;
@@ -65,6 +74,7 @@ export const NotificationsRequestsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [bin, setBin] = useState('');
+  const [approvalAmounts, setApprovalAmounts] = useState<Record<string, string>>({});
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -115,12 +125,17 @@ export const NotificationsRequestsPage: React.FC = () => {
 
   const review = async (item: PendingQrPayment, action: 'APPROVE' | 'REJECT') => {
     if (processingId) return;
+    const approvedAmountMinor = action === 'APPROVE' ? parseApprovalAmountMinor(approvalAmounts[item.id] ?? '') : null;
+    if (action === 'APPROVE' && approvedAmountMinor === null) {
+      setError(isAr ? 'أدخل المبلغ الفعلي الذي تحققت منه في صورة الإيصال.' : 'Enter the actual amount verified from the receipt image.');
+      return;
+    }
     if (action === 'APPROVE' && !bin.trim()) {
       setError(isAr ? 'أدخل رمز التحقق الإداري (BIN) قبل اعتماد الدفعة.' : 'Enter the admin BIN before approving the payment.');
       return;
     }
     const confirmed = window.confirm(action === 'APPROVE'
-      ? (isAr ? `تأكيد اعتماد إشعار دفع ${item.customer_name} بمبلغ ${formatCurrency(item.amount_minor)}؟ سيتم تسجيل الدفعة وتوزيعها حسب المسار المالي الحالي.` : `Approve ${item.customer_name}'s payment notification for ${formatCurrency(item.amount_minor)}? This records the payment through the existing financial flow.`)
+      ? (isAr ? `تأكيد اعتماد إشعار دفع ${item.customer_name} بمبلغ ${formatCurrency(approvedAmountMinor!)}؟ سيتم تسجيل المبلغ الذي أدخلته وتوزيعه حسب المسار المالي الحالي.` : `Approve ${item.customer_name}'s payment notification for ${formatCurrency(approvedAmountMinor!)}? The entered amount will be recorded through the existing financial flow.`)
       : (isAr ? `رفض إشعار الدفع للزبون ${item.customer_name}؟ لن يتم تسجيل دفعة أو تعديل الرصيد.` : `Reject the payment notification for ${item.customer_name}? No payment or balance change will be recorded.`));
     if (!confirmed) return;
 
@@ -135,6 +150,7 @@ export const NotificationsRequestsPage: React.FC = () => {
           p_action: action,
           p_bin: action === 'APPROVE' ? bin.trim() : null,
           p_rejection_reason: action === 'REJECT' ? (rejectionReason.trim() || null) : null,
+          p_approved_amount_minor: action === 'APPROVE' ? approvedAmountMinor : null,
         },
       );
       if (rpcError) throw new Error(rpcError);
@@ -145,6 +161,7 @@ export const NotificationsRequestsPage: React.FC = () => {
         : (isAr ? 'تم رفض الإشعار دون تسجيل دفعة أو تغيير الرصيد.' : 'Notification rejected without recording a payment or changing the balance.'));
       setBin('');
       setRejectionReason('');
+      setApprovalAmounts((current) => { const next = { ...current }; delete next[item.id]; return next; });
     } catch (err: any) {
       console.error('Payment notification review failed:', err);
       setError(isAr
@@ -181,8 +198,8 @@ export const NotificationsRequestsPage: React.FC = () => {
           <p className="mt-3 text-2xl font-semibold tabular-nums">{items.length}</p>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423]">
-          <div className="flex items-center justify-between"><span className="text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'إجمالي المبالغ المعلّقة' : 'Pending amount total'}</span><Banknote className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /></div>
-          <p className="mt-3 text-2xl font-semibold tabular-nums">{formatCurrency(items.reduce((sum, item) => sum + item.amount_minor, 0))}</p>
+          <div className="flex items-center justify-between"><span className="text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'مبالغ تنتظر التحقق' : 'Amounts awaiting verification'}</span><Banknote className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /></div>
+          <p className="mt-3 text-2xl font-semibold tabular-nums">{isAr ? 'تُحدَّد عند القبول' : 'Set on approval'}</p>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423]">
           <div className="flex items-center justify-between"><span className="text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'ضوابط المراجعة' : 'Review safeguards'}</span><ShieldCheck className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /></div>
@@ -231,15 +248,18 @@ export const NotificationsRequestsPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-start sm:text-end">
-                    <p className="text-[11px] text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'المبلغ المرسل' : 'Submitted amount'}</p>
-                    <p className="mt-1 text-xl font-semibold tabular-nums text-[#0f766e] dark:text-[#83cbbd]">{formatCurrency(item.amount_minor)}</p>
-                    <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{isAr ? 'بانتظار المراجعة' : 'Pending review'}</span>
+                    <p className="text-[11px] text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'حالة الإشعار' : 'Notification status'}</p>
+                    <span className="mt-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{isAr ? 'بانتظار المراجعة وتحديد المبلغ' : 'Pending review and amount'}</span>
                   </div>
                 </div>
 
                 <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:p-5">
                   <div className="min-w-0 space-y-3">
                     {item.note && <div className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-700 dark:bg-[#0b2928] dark:text-[#c8d9d4]"><p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'ملاحظة العميل' : 'Customer note'}</p>{item.note}</div>}
+                    <label className="mb-3 block max-w-sm text-xs font-semibold text-gray-700 dark:text-[#c8d9d4]">
+                      {isAr ? 'المبلغ الفعلي حسب الإيصال (تحدده عند القبول)' : 'Verified amount from receipt (set on approval)'}
+                      <input type="number" inputMode="decimal" min="0.01" max="999999999.99" step="0.01" value={approvalAmounts[item.id] ?? ''} onChange={(e) => { setApprovalAmounts((current) => ({ ...current, [item.id]: e.target.value })); setError(''); }} placeholder={isAr ? 'أدخل المبلغ الذي ظهر في الإيصال' : 'Enter the amount shown on the receipt'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm font-semibold tabular-nums outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
+                    </label>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" disabled={processingId === item.id} onClick={() => void review(item, 'APPROVE')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#115e59] disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />{processingId === item.id ? (isAr ? 'جاري المعالجة…' : 'Processing…') : (isAr ? 'اعتماد الدفعة' : 'Approve payment')}</button>
                       <button type="button" disabled={processingId === item.id} onClick={() => void review(item, 'REJECT')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:bg-[#0a2423] dark:text-rose-200 dark:hover:bg-rose-950/30"><XCircle className="h-4 w-4" />{isAr ? 'رفض الإشعار' : 'Reject notification'}</button>
