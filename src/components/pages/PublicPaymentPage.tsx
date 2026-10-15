@@ -399,7 +399,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               )}
               <div className="mt-6 flex flex-wrap gap-3">
                 <a href={backHref} className="inline-flex items-center gap-2 rounded-xl border border-[#dce6e4] px-4 py-3 text-sm font-semibold transition hover:bg-[#edf4f2] dark:border-[#315653] dark:hover:bg-[#133533]">{isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Return to customer account') : (isAr ? 'العودة إلى الطلب' : 'Return to order')}</a>
-                {submission?.status !== 'PENDING' && (
+                {submission?.status !== 'PENDING' && (isCustomerPayment || (typeof order?.orderDueMinor === 'number' && order.orderDueMinor > 0)) && (
                   <button type="button" onClick={() => { setSuccess(false); setSubmission(null); setError(''); if (isCustomerPayment) setAmountInput(''); }} className="inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">
                     {isAr ? 'إشعار دفع جديد' : 'New payment notification'}
                   </button>
