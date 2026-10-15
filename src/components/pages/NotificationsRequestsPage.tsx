@@ -12,7 +12,7 @@ type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE' | string;
 interface PendingQrPayment {
   id: string;
   order_id: string;
-  order_number: number;
+  order_number: number | null;
   customer_id: string;
   customer_name: string;
   amount_minor: number;
@@ -32,7 +32,7 @@ const methodDetails: Record<string, { ar: string; en: string; mark: string; cls:
 
 const ReviewMethodLogo: React.FC<{ detail: { mark: string; cls: string; logoUrl: string } }> = ({ detail }) => {
   const [failed, setFailed] = useState(false);
-  if (failed) return <ReviewMethodLogo detail={detail} />;
+  if (failed || !detail.logoUrl) return <span className={`flex h-11 min-w-11 items-center justify-center rounded-lg px-2 text-[10px] font-black ${detail.cls}`}>{detail.mark}</span>;
   return <img src={detail.logoUrl} alt={detail.mark} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="h-11 w-12 rounded-lg object-contain" />;
 };
 
@@ -84,7 +84,7 @@ export const NotificationsRequestsPage: React.FC = () => {
       const parsed = rows.map((row) => ({
         id: String(row.id ?? ''),
         order_id: String(row.order_id ?? ''),
-        order_number: Number(row.order_number ?? 0),
+        order_number: row.order_number == null ? null : Number(row.order_number),
         customer_id: String(row.customer_id ?? ''),
         customer_name: String(row.customer_name ?? ''),
         amount_minor: Number(row.amount_minor ?? 0),
@@ -226,7 +226,7 @@ export const NotificationsRequestsPage: React.FC = () => {
                     <span className={`flex h-11 min-w-11 items-center justify-center rounded-xl px-2 text-[10px] font-black ${detail.cls}`}>{detail.mark}</span>
                     <div className="min-w-0">
                       <h2 className="text-base font-semibold">{item.customer_name || (isAr ? 'عميل' : 'Customer')}</h2>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? `طلب رقم ${item.order_number}` : `Order #${item.order_number}`} <span className="mx-1.5">·</span>{isAr ? detail.ar : detail.en}</p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-[#9bb6b0]">{item.order_number != null ? (isAr ? `طلب رقم ${item.order_number}` : `Order #${item.order_number}`) : (isAr ? 'دفعة مباشرة على حساب الزبون' : 'Direct customer-account payment')} <span className="mx-1.5">·</span>{isAr ? detail.ar : detail.en}</p>
                       <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-[#9bb6b0]"><Clock3 className="h-3.5 w-3.5" />{formatDate(item.created_at)}</p>
                     </div>
                   </div>
