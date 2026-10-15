@@ -204,6 +204,8 @@ BEGIN
       RAISE EXCEPTION 'Order QR not found or inactive' USING ERRCODE = 'P0002';
     END IF;
 
+    -- Share the customer lock with direct customer-QR submissions to prevent cross-flow races.
+    PERFORM pg_advisory_xact_lock(hashtextextended('qr-payment:customer:' || v_customer_id::text, 0));
     PERFORM pg_advisory_xact_lock(hashtextextended('qr-payment:order:' || v_order_id::text, 0));
 
     IF p_amount_minor IS NOT NULL THEN
