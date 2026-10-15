@@ -387,7 +387,7 @@ BEGIN
     'bin', coalesce(p_bin, '')
   );
 
-  v_command_result := public.execute_canonical_sync_command_unlocked(
+  v_command_result := public.execute_canonical_sync_command(
     v_submission.id,
     'POST_PAYMENT',
     v_payload,
