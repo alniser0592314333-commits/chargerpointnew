@@ -1,12 +1,260 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  AlertCircle, ArrowUpRight, Banknote, CheckCircle2, Clock3, FileImage,
+  RefreshCw, ShieldCheck, WalletCards, XCircle,
+} from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
+import { invokeSupabaseRpc, getSupabaseAuthToken } from '../../services/supabase/client';
+import { config } from '../../config/env';
+
+type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE' | string;
+
+interface PendingQrPayment {
+  id: string;
+  order_id: string;
+  order_number: number;
+  customer_id: string;
+  customer_name: string;
+  amount_minor: number;
+  payment_method: PaymentMethod;
+  receipt_path: string;
+  note?: string | null;
+  status: string;
+  created_at: string;
+  receiptSignedUrl?: string;
+}
+
+const methodDetails: Record<string, { ar: string; en: string; mark: string; cls: string }> = {
+  JAWAL_PAY: { ar: 'جوال باي', en: 'Jawwal Pay', mark: 'jawwal pay', cls: 'bg-[#f5e9ed] text-[#8e2342]' },
+  PALPAY: { ar: 'بال باي', en: 'PalPay', mark: 'PALPAY', cls: 'bg-[#f2e8ff] text-[#6634a5]' },
+  BANK_OF_PALESTINE: { ar: 'بنك فلسطين', en: 'Bank of Palestine', mark: 'BOP', cls: 'bg-[#e7f1e9] text-[#1d6a45]' },
+};
+
+async function createReceiptSignedUrl(path: string): Promise<string | null> {
+  const token = getSupabaseAuthToken();
+  if (!config.supabaseUrl || !config.supabaseAnonKey || !token || !path) return null;
+  const cleanBase = config.supabaseUrl.replace(/\/+$/, '');
+  const safePath = path.split('/').map((part) => encodeURIComponent(part)).join('/');
+  const response = await fetch(`${cleanBase}/storage/v1/object/sign/qr-payment-receipts/${safePath}`, {
+    method: 'POST',
+    headers: {
+      apikey: config.supabaseAnonKey,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ expiresIn: 300 }),
+  });
+  if (!response.ok) return null;
+  const result = await response.json().catch(() => ({}));
+  if (typeof result.signedURL !== 'string') return null;
+  return result.signedURL.startsWith('http')
+    ? result.signedURL
+    : `${cleanBase}/storage/v1${result.signedURL}`;
+}
 
 export const NotificationsRequestsPage: React.FC = () => {
-  const { t } = useI18n();
+  const { t, locale, formatCurrency, isRTL } = useI18n();
+  const isAr = locale === 'ar';
+  const [items, setItems] = useState<PendingQrPayment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [bin, setBin] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const loadPending = useCallback(async (quiet = false) => {
+    if (quiet) setRefreshing(true);
+    else setLoading(true);
+    setError('');
+    try {
+      const { data, error: rpcError } = await invokeSupabaseRpc<Array<Record<string, unknown>>>(
+        'list_pending_qr_payment_submissions',
+        {},
+      );
+      if (rpcError) throw new Error(rpcError);
+      const rows = Array.isArray(data) ? data : [];
+      const parsed = rows.map((row) => ({
+        id: String(row.id ?? ''),
+        order_id: String(row.order_id ?? ''),
+        order_number: Number(row.order_number ?? 0),
+        customer_id: String(row.customer_id ?? ''),
+        customer_name: String(row.customer_name ?? ''),
+        amount_minor: Number(row.amount_minor ?? 0),
+        payment_method: String(row.payment_method ?? 'UNKNOWN'),
+        receipt_path: String(row.receipt_path ?? ''),
+        note: row.note == null ? null : String(row.note),
+        status: String(row.status ?? 'PENDING'),
+        created_at: String(row.created_at ?? ''),
+      })).filter((row) => row.id && row.receipt_path);
+
+      const signed = await Promise.all(parsed.map(async (row) => ({
+        ...row,
+        receiptSignedUrl: await createReceiptSignedUrl(row.receipt_path) ?? undefined,
+      })));
+      setItems(signed);
+    } catch (err: any) {
+      setError(isAr
+        ? 'تعذّر تحميل إشعارات الدفع. تأكد من اتصالك وصلاحيتك ثم أعد المحاولة.'
+        : 'Could not load payment notifications. Check your connection and permissions, then retry.');
+      console.error('Failed to load QR payment submissions:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [isAr]);
+
+  useEffect(() => { void loadPending(); }, [loadPending]);
+
+  const review = async (item: PendingQrPayment, action: 'APPROVE' | 'REJECT') => {
+    if (processingId) return;
+    if (action === 'APPROVE' && !bin.trim()) {
+      setError(isAr ? 'أدخل رمز التحقق الإداري (BIN) قبل اعتماد الدفعة.' : 'Enter the admin BIN before approving the payment.');
+      return;
+    }
+    const confirmed = window.confirm(action === 'APPROVE'
+      ? (isAr ? `تأكيد اعتماد إشعار دفع ${item.customer_name} بمبلغ ${formatCurrency(item.amount_minor)}؟ سيتم تسجيل الدفعة وتوزيعها حسب المسار المالي الحالي.` : `Approve ${item.customer_name}'s payment notification for ${formatCurrency(item.amount_minor)}? This records the payment through the existing financial flow.`)
+      : (isAr ? `رفض إشعار الدفع للزبون ${item.customer_name}؟ لن يتم تسجيل دفعة أو تعديل الرصيد.` : `Reject the payment notification for ${item.customer_name}? No payment or balance change will be recorded.`));
+    if (!confirmed) return;
+
+    setProcessingId(item.id);
+    setError('');
+    setMessage('');
+    try {
+      const { data, error: rpcError } = await invokeSupabaseRpc<Record<string, unknown>>(
+        'review_qr_payment_submission',
+        {
+          p_submission_id: item.id,
+          p_action: action,
+          p_bin: action === 'APPROVE' ? bin.trim() : null,
+          p_rejection_reason: action === 'REJECT' ? (rejectionReason.trim() || null) : null,
+        },
+      );
+      if (rpcError) throw new Error(rpcError);
+      if (!data || data.success !== true) throw new Error('REVIEW_FAILED');
+      setItems((current) => current.filter((row) => row.id !== item.id));
+      setMessage(action === 'APPROVE'
+        ? (isAr ? 'تم اعتماد الدفعة وتسجيلها عبر المسار المالي الحالي.' : 'Payment approved and recorded through the existing financial flow.')
+        : (isAr ? 'تم رفض الإشعار دون تسجيل دفعة أو تغيير الرصيد.' : 'Notification rejected without recording a payment or changing the balance.'));
+      setBin('');
+      setRejectionReason('');
+    } catch (err: any) {
+      console.error('Payment notification review failed:', err);
+      setError(isAr
+        ? 'لم تكتمل المراجعة. لم يتم اعتبار الإشعار معتمداً؛ حدّث القائمة وتأكد من الرمز والصلاحيات.'
+        : 'Review did not complete. The notification was not treated as approved; refresh the list and check the BIN and permissions.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const formatDate = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString(isAr ? 'ar-PS' : 'en-GB', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  };
+
   return (
-    <div className="p-6 bg-white dark:bg-[#082622] rounded-xl border border-gray-200 dark:border-[#14423b] space-y-2 transition-colors">
-      <h1 className="text-xl font-bold text-gray-900 dark:text-[#daf1de]">{t('navNotificationsRequests')}</h1>
-      <p className="text-sm text-gray-500 dark:text-[#8eb698]">{t('notificationsSubtitle')}</p>
+    <div className="space-y-6 text-gray-900 dark:text-[#e7f2ef]">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">{isAr ? 'مركز المراجعة' : 'REVIEW CENTER'}</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{t('navNotificationsRequests')}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'راجع إشعارات التحويل المرسلة من صفحات QR. الاعتماد فقط هو الذي يسجّل الدفعة ويشغّل التوزيع المالي الحالي.' : 'Review transfer notifications submitted from QR pages. Approval records the payment and invokes the existing allocation flow.'}</p>
+        </div>
+        <button type="button" onClick={() => void loadPending(true)} disabled={refreshing || loading} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-[#244746] dark:bg-[#0a2423] dark:text-[#c8d9d4] dark:hover:bg-[#133533]">
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />{isAr ? 'تحديث القائمة' : 'Refresh list'}
+        </button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423]">
+          <div className="flex items-center justify-between"><span className="text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'بانتظار المراجعة' : 'Awaiting review'}</span><Clock3 className="h-4 w-4 text-amber-600 dark:text-amber-300" /></div>
+          <p className="mt-3 text-2xl font-semibold tabular-nums">{items.length}</p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423]">
+          <div className="flex items-center justify-between"><span className="text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'إجمالي المبالغ المعلّقة' : 'Pending amount total'}</span><Banknote className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /></div>
+          <p className="mt-3 text-2xl font-semibold tabular-nums">{formatCurrency(items.reduce((sum, item) => sum + item.amount_minor, 0))}</p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423]">
+          <div className="flex items-center justify-between"><span className="text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'ضوابط المراجعة' : 'Review safeguards'}</span><ShieldCheck className="h-4 w-4 text-emerald-700 dark:text-emerald-300" /></div>
+          <p className="mt-3 text-sm font-semibold">{isAr ? 'منع التكرار · معاملة ذرّية' : 'Duplicate-safe · Atomic review'}</p>
+        </div>
+      </div>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-5">
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="block min-w-[220px] flex-1 text-xs font-semibold text-gray-700 dark:text-[#c8d9d4]">
+            {isAr ? 'رمز التحقق الإداري (BIN) للاعتماد' : 'Admin verification BIN for approval'}
+            <input value={bin} onChange={(e) => setBin(e.target.value)} type="password" autoComplete="off" inputMode="numeric" maxLength={32} placeholder={isAr ? 'أدخل BIN عند الاعتماد فقط' : 'Enter BIN only when approving'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
+          </label>
+          <label className="block min-w-[220px] flex-1 text-xs font-semibold text-gray-700 dark:text-[#c8d9d4]">
+            {isAr ? 'سبب الرفض (اختياري)' : 'Rejection reason (optional)'}
+            <input value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value.slice(0, 500))} maxLength={500} placeholder={isAr ? 'سبب مختصر يظهر في سجل الإشعار' : 'Brief reason for the record'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
+          </label>
+        </div>
+        <p className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-gray-500 dark:text-[#9bb6b0]"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />{isAr ? 'الاعتماد ينفّذ إنشاء الدفعة وتوزيع FIFO وتحديث الإشعار داخل معاملة واحدة. الرفض لا ينشئ دفعة ولا يغيّر رصيد العميل.' : 'Approval creates the payment, applies FIFO allocation and updates the notification in one transaction. Rejection creates no payment and changes no customer balance.'}</p>
+      </section>
+
+      {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
+      {message && <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{message}</div>}
+
+      {loading ? (
+        <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-sm text-gray-500 dark:border-[#1c4140] dark:bg-[#0a2423] dark:text-[#9bb6b0]">{isAr ? 'جاري تحميل الإشعارات…' : 'Loading notifications…'}</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl border border-gray-200 bg-white px-6 py-14 text-center dark:border-[#1c4140] dark:bg-[#0a2423]">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-500 dark:bg-[#102f2d] dark:text-[#a4c0b9]"><CheckCircle2 className="h-6 w-6" /></span>
+          <h2 className="mt-4 text-base font-semibold">{isAr ? 'ما في إشعارات دفع معلّقة' : 'No pending payment notifications'}</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'الإشعارات الجديدة رح تظهر هون للمراجعة.' : 'New payment notifications will appear here for review.'}</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {items.map((item) => {
+            const detail = methodDetails[item.payment_method] || { ar: 'طريقة غير معروفة', en: 'Unknown method', mark: 'PAY', cls: 'bg-gray-100 text-gray-700' };
+            return (
+              <article key={item.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_8px_30px_rgba(16,55,51,0.03)] dark:border-[#1c4140] dark:bg-[#0a2423]">
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 p-4 dark:border-[#244746] sm:p-5">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className={`flex h-11 min-w-11 items-center justify-center rounded-xl px-2 text-[10px] font-black ${detail.cls}`}>{detail.mark}</span>
+                    <div className="min-w-0">
+                      <h2 className="text-base font-semibold">{item.customer_name || (isAr ? 'عميل' : 'Customer')}</h2>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-[#9bb6b0]">{isAr ? `طلب رقم ${item.order_number}` : `Order #${item.order_number}`} <span className="mx-1.5">·</span>{isAr ? detail.ar : detail.en}</p>
+                      <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-[#9bb6b0]"><Clock3 className="h-3.5 w-3.5" />{formatDate(item.created_at)}</p>
+                    </div>
+                  </div>
+                  <div className="text-start sm:text-end">
+                    <p className="text-[11px] text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'المبلغ المرسل' : 'Submitted amount'}</p>
+                    <p className="mt-1 text-xl font-semibold tabular-nums text-[#0f766e] dark:text-[#83cbbd]">{formatCurrency(item.amount_minor)}</p>
+                    <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{isAr ? 'بانتظار المراجعة' : 'Pending review'}</span>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:p-5">
+                  <div className="min-w-0 space-y-3">
+                    {item.note && <div className="rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-700 dark:bg-[#0b2928] dark:text-[#c8d9d4]"><p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500 dark:text-[#9bb6b0]">{isAr ? 'ملاحظة العميل' : 'Customer note'}</p>{item.note}</div>}
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" disabled={processingId === item.id} onClick={() => void review(item, 'APPROVE')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#115e59] disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />{processingId === item.id ? (isAr ? 'جاري المعالجة…' : 'Processing…') : (isAr ? 'اعتماد الدفعة' : 'Approve payment')}</button>
+                      <button type="button" disabled={processingId === item.id} onClick={() => void review(item, 'REJECT')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:bg-[#0a2423] dark:text-rose-200 dark:hover:bg-rose-950/30"><XCircle className="h-4 w-4" />{isAr ? 'رفض الإشعار' : 'Reject notification'}</button>
+                    </div>
+                  </div>
+                  <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-[#244746] dark:bg-[#0b2928]">
+                    {item.receiptSignedUrl ? (
+                      <a href={item.receiptSignedUrl} target="_blank" rel="noreferrer" className="group block">
+                        <img src={item.receiptSignedUrl} alt={isAr ? 'إيصال التحويل' : 'Transfer receipt'} loading="lazy" className="h-44 w-full object-contain transition group-hover:opacity-90" />
+                        <span className="flex items-center justify-center gap-1.5 border-t border-gray-200 bg-white px-3 py-2.5 text-[11px] font-semibold text-gray-600 dark:border-[#244746] dark:bg-[#0a2423] dark:text-[#c8d9d4]"><FileImage className="h-3.5 w-3.5" />{isAr ? 'فتح الصورة بالحجم الكامل' : 'Open full-size receipt'}<ArrowUpRight className="h-3 w-3" /></span>
+                      </a>
+                    ) : (
+                      <div className="flex h-44 flex-col items-center justify-center gap-2 px-4 text-center text-xs text-gray-500 dark:text-[#9bb6b0]"><FileImage className="h-6 w-6" />{isAr ? 'تعذّر تحميل صورة الإيصال. حدّث القائمة.' : 'Receipt preview unavailable. Refresh the list.'}</div>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
