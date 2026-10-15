@@ -73,8 +73,8 @@ export const NotificationsRequestsPage: React.FC = () => {
   const [items, setItems] = useState<PendingQrPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [bin, setBin] = useState('');
   const [approvalAmounts, setApprovalAmounts] = useState<Record<string, string>>({});
+  const [approvalBins, setApprovalBins] = useState<Record<string, string>>({});
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -130,8 +130,9 @@ export const NotificationsRequestsPage: React.FC = () => {
       setError(isAr ? 'أدخل المبلغ الفعلي الذي تحققت منه في صورة الإيصال.' : 'Enter the actual amount verified from the receipt image.');
       return;
     }
-    if (action === 'APPROVE' && !bin.trim()) {
-      setError(isAr ? 'أدخل رمز التحقق الإداري (BIN) قبل اعتماد الدفعة.' : 'Enter the admin BIN before approving the payment.');
+    const approvalBin = approvalBins[item.id]?.trim() ?? '';
+    if (action === 'APPROVE' && !approvalBin) {
+      setError(isAr ? 'أدخل رمز التحقق الإداري (PIN/BIN) لهذا الإشعار قبل الاعتماد.' : 'Enter the admin PIN/BIN for this notification before approval.');
       return;
     }
     const confirmed = window.confirm(action === 'APPROVE'
@@ -148,7 +149,7 @@ export const NotificationsRequestsPage: React.FC = () => {
         {
           p_submission_id: item.id,
           p_action: action,
-          p_bin: action === 'APPROVE' ? bin.trim() : null,
+          p_bin: action === 'APPROVE' ? approvalBin : null,
           p_rejection_reason: action === 'REJECT' ? (rejectionReason.trim() || null) : null,
           p_approved_amount_minor: action === 'APPROVE' ? approvedAmountMinor : null,
         },
@@ -159,9 +160,9 @@ export const NotificationsRequestsPage: React.FC = () => {
       setMessage(action === 'APPROVE'
         ? (isAr ? 'تم اعتماد الدفعة وتسجيلها عبر المسار المالي الحالي.' : 'Payment approved and recorded through the existing financial flow.')
         : (isAr ? 'تم رفض الإشعار دون تسجيل دفعة أو تغيير الرصيد.' : 'Notification rejected without recording a payment or changing the balance.'));
-      setBin('');
       setRejectionReason('');
       setApprovalAmounts((current) => { const next = { ...current }; delete next[item.id]; return next; });
+      setApprovalBins((current) => { const next = { ...current }; delete next[item.id]; return next; });
     } catch (err: any) {
       console.error('Payment notification review failed:', err);
       setError(isAr
@@ -210,10 +211,6 @@ export const NotificationsRequestsPage: React.FC = () => {
       <section className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-5">
         <div className="flex flex-wrap items-end gap-4">
           <label className="block min-w-[220px] flex-1 text-xs font-semibold text-gray-700 dark:text-[#c8d9d4]">
-            {isAr ? 'رمز التحقق الإداري (BIN) للاعتماد' : 'Admin verification BIN for approval'}
-            <input value={bin} onChange={(e) => setBin(e.target.value)} type="password" autoComplete="off" inputMode="numeric" maxLength={32} placeholder={isAr ? 'أدخل BIN عند الاعتماد فقط' : 'Enter BIN only when approving'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
-          </label>
-          <label className="block min-w-[220px] flex-1 text-xs font-semibold text-gray-700 dark:text-[#c8d9d4]">
             {isAr ? 'سبب الرفض (اختياري)' : 'Rejection reason (optional)'}
             <input value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value.slice(0, 500))} maxLength={500} placeholder={isAr ? 'سبب مختصر يظهر في سجل الإشعار' : 'Brief reason for the record'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
           </label>
@@ -259,6 +256,10 @@ export const NotificationsRequestsPage: React.FC = () => {
                     <label className="mb-3 block max-w-sm text-xs font-semibold text-gray-700 dark:text-[#c8d9d4]">
                       {isAr ? 'المبلغ الفعلي حسب الإيصال (تحدده عند القبول)' : 'Verified amount from receipt (set on approval)'}
                       <input type="number" inputMode="decimal" min="0.01" max="999999999.99" step="0.01" value={approvalAmounts[item.id] ?? ''} onChange={(e) => { setApprovalAmounts((current) => ({ ...current, [item.id]: e.target.value })); setError(''); }} placeholder={isAr ? 'أدخل المبلغ الذي ظهر في الإيصال' : 'Enter the amount shown on the receipt'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm font-semibold tabular-nums outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
+                    </label>
+                    <label className="mb-3 block max-w-sm text-xs font-semibold text-gray-700 dark:text-[#c8d9d4]">
+                      {isAr ? 'رمز PIN/BIN لتأكيد الاعتماد' : 'PIN/BIN to confirm approval'}
+                      <input type="password" autoComplete="off" inputMode="numeric" maxLength={32} value={approvalBins[item.id] ?? ''} onChange={(e) => { setApprovalBins((current) => ({ ...current, [item.id]: e.target.value })); setError(''); }} placeholder={isAr ? 'أدخل الرمز لهذا الإشعار' : 'Enter the code for this notification'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
                     </label>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" disabled={processingId === item.id} onClick={() => void review(item, 'APPROVE')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#115e59] disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />{processingId === item.id ? (isAr ? 'جاري المعالجة…' : 'Processing…') : (isAr ? 'اعتماد الدفعة' : 'Approve payment')}</button>
