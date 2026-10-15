@@ -98,6 +98,8 @@ BEGIN
       jsonb_build_object(
         'name', oi.device_name_snapshot,
         'status', oi.status,
+        'operational_status', oi.operational_status,
+        'payment_status', oi.payment_status,
         'has_charger', oi.has_charger,
         'quantity', 1,
         'unit_price_minor', oi.unit_price_minor,
