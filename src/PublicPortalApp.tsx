@@ -37,8 +37,13 @@ const PublicPortalApp: React.FC = () => {
   } else {
     const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
     if (route) {
-      const token = pathname.slice(route.prefix.length).split('/')[0];
-      content = token && !token.includes('..') ? route.render(decodeURIComponent(token)) : <PublicNotFound />;
+      const rawToken = pathname.slice(route.prefix.length).split('/')[0];
+      try {
+        const token = decodeURIComponent(rawToken);
+        content = token && !token.includes('..') ? route.render(token) : <PublicNotFound />;
+      } catch {
+        content = <PublicNotFound />;
+      }
     }
   }
 
