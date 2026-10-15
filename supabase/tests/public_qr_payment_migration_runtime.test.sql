@@ -137,6 +137,17 @@ BEGIN
     'customers/00000000-0000-0000-0000-000000000101/receipt.webp', 'direct customer payment', 12345
   );
   v_customer_submission_id := (v_customer_submission->>'submission_id')::uuid;
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.submit_qr_payment(
+      'public-token-000000000000000000000003', 'JAWAL_PAY',
+      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, 12345
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Duplicate direct customer notification was accepted'; END IF;
+
   IF (v_customer_submission->>'amount_minor')::bigint <> 12345 THEN
     RAISE EXCEPTION 'Customer QR amount must use the validated amount entered by the customer';
   END IF;
