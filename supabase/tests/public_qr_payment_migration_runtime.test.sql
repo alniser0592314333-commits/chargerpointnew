@@ -126,6 +126,17 @@ BEGIN
   BEGIN
     PERFORM public.submit_qr_payment(
       'public-token-000000000000000000000003', 'JAWAL_PAY',
+      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, 12345
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Customer-supplied payment amount was accepted'; END IF;
+
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.submit_qr_payment(
+      'public-token-000000000000000000000003', 'JAWAL_PAY',
       'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, NULL
     );
   EXCEPTION WHEN OTHERS THEN
