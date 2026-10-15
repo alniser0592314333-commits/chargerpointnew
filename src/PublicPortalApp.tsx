@@ -4,6 +4,7 @@ import { PublicCustomerQrPage } from './components/pages/PublicCustomerQrPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import LegacyPublicDesigns from './components/public/LegacyPublicDesigns';
 import './public-portal.css';
 
 const publicRoutes = [
@@ -32,7 +33,15 @@ const PublicPortalApp: React.FC = () => {
   const pathname = window.location.pathname;
   let content: React.ReactNode = <PublicNotFound />;
 
-  if (pathname === '/public/about') {
+  // These routes are static design previews only. They intentionally use
+  // local sample content and do not read/write app state or the database.
+  if (pathname === '/design/home') {
+    content = <LegacyPublicDesigns page="home" />;
+  } else if (pathname === '/design/customer') {
+    content = <LegacyPublicDesigns page="customer" />;
+  } else if (pathname === '/design/order') {
+    content = <LegacyPublicDesigns page="order" />;
+  } else if (pathname === '/public/about') {
     content = <PublicAboutPage />;
   } else {
     const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
