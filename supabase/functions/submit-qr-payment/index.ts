@@ -118,10 +118,8 @@ Deno.serve(async (request: Request) => {
       customerId = String(customerRecord.id);
       targetId = customerId;
       targetKind = "CUSTOMER";
-      amountMinor = Number(String(form.get("amount_minor") ?? ""));
-      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
-        return json(400, { error: "Enter a valid amount greater than zero" });
-      }
+      // The receipt is only a review request. The authorized reviewer enters the verified amount at approval.
+      amountMinor = 0;
     }
 
     // Customer-level notifications are keyed to the customer, not an order.
@@ -177,7 +175,7 @@ Deno.serve(async (request: Request) => {
       p_payment_method: method,
       p_receipt_path: uploadedPath,
       p_note: note || null,
-      p_amount_minor: orderId ? null : amountMinor,
+      p_amount_minor: null,
     });
     if (submitError || !submission?.success) {
       await supabase.storage.from("qr-payment-receipts").remove([uploadedPath]);
