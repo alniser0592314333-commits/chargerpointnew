@@ -419,7 +419,7 @@ BEGIN
       AND c.deleted_at IS NULL
       AND c.is_active = true
       AND c.status <> 'DELETED'
-    ORDER BY s.created_at DESC
+    ORDER BY s.created_at DESC, s.updated_at DESC, s.id DESC
     LIMIT 1;
   ELSE
     SELECT jsonb_build_object(
@@ -438,7 +438,7 @@ BEGIN
       AND c.deleted_at IS NULL
       AND c.is_active = true
       AND c.status <> 'DELETED'
-    ORDER BY s.created_at DESC
+    ORDER BY s.created_at DESC, s.updated_at DESC, s.id DESC
     LIMIT 1;
   END IF;
 
