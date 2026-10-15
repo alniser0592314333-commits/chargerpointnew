@@ -80,13 +80,13 @@ BEGIN
   SELECT o.id, o.display_number, o.status, o.customer_id, o.created_at
   INTO v_order
   FROM public.orders o
-  WHERE o.id = v_order_id AND o.deleted_at IS NULL;
+  WHERE o.id = v_order_id AND o.deleted_at IS NULL AND o.cancelled_at IS NULL;
 
   IF v_order.id IS NULL THEN RETURN; END IF;
 
   SELECT c.id, c.name INTO v_customer
   FROM public.customers c
-  WHERE c.id = v_order.customer_id AND c.status <> 'DELETED' AND c.deleted_at IS NULL;
+  WHERE c.id = v_order.customer_id AND c.status <> 'DELETED' AND c.is_active = true AND c.deleted_at IS NULL;
 
   IF v_customer.id IS NULL THEN RETURN; END IF;
 
@@ -380,7 +380,7 @@ BEGIN
 
   v_command_result := public.execute_canonical_sync_command_unlocked(
     v_submission.id,
-    'CREATE_PAYMENT',
+    'POST_PAYMENT',
     v_payload,
     md5(v_payload::text),
     'qr-payment-review',
