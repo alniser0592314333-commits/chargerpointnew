@@ -5,7 +5,7 @@ import { Button } from '../ui/Button';
 import {
   Globe,
   AlertTriangle,
-  User,
+
   CheckCircle2,
   ShieldCheck,
   Zap,
@@ -98,19 +98,7 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
             <span>{locale === 'ar' ? 'English' : 'عربي'}</span>
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleTheme}
-            className="h-8 w-8 p-0 text-gray-700 dark:text-[#daf1de] hover:bg-gray-100 dark:hover:bg-[#0c312b]"
-            aria-label="Toggle theme"
-          >
-            {theme === 'light' ? (
-              <Moon className="w-3.5 h-3.5 text-gray-700" />
-            ) : (
-              <Sun className="w-3.5 h-3.5 text-amber-400" />
-            )}
-          </Button>
+          
         </div>
       </header>
 
