@@ -31,6 +31,10 @@ function inspectImage(bytes: Uint8Array): { mime: string; extension: string } | 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json(405, { error: "Method not allowed" });
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > 3 * 1024 * 1024) {
+    return json(413, { error: "The upload is too large. Please choose a smaller receipt image." });
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
