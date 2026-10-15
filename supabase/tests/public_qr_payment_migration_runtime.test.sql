@@ -145,6 +145,18 @@ BEGIN
   IF NOT v_duplicate THEN RAISE EXCEPTION 'A duplicate pending submission was accepted'; END IF;
 
   PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000201', true);
+
+  v_duplicate := false;
+  BEGIN
+    PERFORM public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN
+    v_duplicate := true;
+  END;
+  IF NOT v_duplicate THEN RAISE EXCEPTION 'Approval without a reviewer-entered amount was accepted'; END IF;
+  IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'PENDING' THEN
+    RAISE EXCEPTION 'An amountless approval attempt must leave the receipt pending';
+  END IF;
+
   v_submission := public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL, 6200);
   IF v_submission->>'status' <> 'APPROVED' THEN RAISE EXCEPTION 'Approval did not return APPROVED'; END IF;
   IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'APPROVED' THEN
