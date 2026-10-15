@@ -1,19 +1,13 @@
 import React from 'react';
 import { I18nProvider } from './i18n/i18nContext';
-import { PublicCustomerQrPage } from './components/pages/PublicCustomerQrPage';
-import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import {
+  PublicLandingDesign,
+  PublicCustomerDesign,
+  PublicOrderDesign,
+} from './components/public/PublicVisualPages';
 import './public-portal.css';
-
-const publicRoutes = [
-  { prefix: '/public/qr/customer/', render: (token: string) => <PublicCustomerQrPage token={token} /> },
-  { prefix: '/public/qr/order/', render: (token: string) => <PublicOrderPage token={token} /> },
-  { prefix: '/public/order/', render: (token: string) => <PublicOrderPage token={token} /> },
-  { prefix: '/c/', render: (token: string) => <PublicCustomerQrPage token={token} /> },
-  { prefix: '/o/', render: (token: string) => <PublicOrderPage token={token} /> },
-  { prefix: '/pay/', render: (token: string) => <PublicPaymentPage token={token} /> },
-];
 
 const PublicNotFound: React.FC = () => (
   <main className="public-not-found">
@@ -25,26 +19,32 @@ const PublicNotFound: React.FC = () => (
 );
 
 /**
- * Customer-only entry point. Intentionally has no auth provider, admin app,
- * application router, authenticated layout, sidebar, or admin navigation.
+ * Public-only entry point. Visual pages use static presentation placeholders and
+ * do not fetch customer/order data or call payment, database, or sync services.
  */
 const PublicPortalApp: React.FC = () => {
   const pathname = window.location.pathname;
   let content: React.ReactNode = <PublicNotFound />;
 
-  if (pathname === '/public/about') {
+  if (pathname === '/' || pathname === '/public' || pathname === '/public/') {
+    content = <PublicLandingDesign />;
+  } else if (pathname === '/public/about') {
     content = <PublicAboutPage />;
-  } else {
-    const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
-    if (route) {
-      const rawToken = pathname.slice(route.prefix.length).split('/')[0];
-      try {
-        const token = decodeURIComponent(rawToken);
-        content = token && !token.includes('..') ? route.render(token) : <PublicNotFound />;
-      } catch {
-        content = <PublicNotFound />;
-      }
-    }
+  } else if (
+    pathname.startsWith('/public/qr/customer/') ||
+    pathname.startsWith('/c/')
+  ) {
+    content = <PublicCustomerDesign />;
+  } else if (
+    pathname.startsWith('/public/qr/order/') ||
+    pathname.startsWith('/public/order/') ||
+    pathname.startsWith('/o/')
+  ) {
+    content = <PublicOrderDesign />;
+  } else if (pathname.startsWith('/pay/')) {
+    // The separate payment page is intentionally left untouched in this design-only task.
+    const token = pathname.slice('/pay/'.length).split('/')[0];
+    content = token ? <PublicPaymentPage token={decodeURIComponent(token)} /> : <PublicNotFound />;
   }
 
   return <I18nProvider>{content}</I18nProvider>;
