@@ -25,7 +25,7 @@ interface PendingQrPayment {
 }
 
 const methodDetails: Record<string, { ar: string; en: string; mark: string; cls: string; logoUrl: string }> = {
-  JAWAL_PAY: { ar: 'جوال باي', en: 'Jawwal Pay', mark: 'jawwal pay', cls: 'bg-[#f5e9ed] text-[#8e2342]', logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg' },
+  JAWAL_PAY: { ar: 'جوال باي', en: 'Jawwal Pay', mark: 'jawwal pay', cls: 'bg-[#f5e9ed] text-[#8e2342]', logoUrl: '' },
   PALPAY: { ar: 'بال باي', en: 'PalPay', mark: 'PALPAY', cls: 'bg-[#f2e8ff] text-[#6634a5]', logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png' },
   BANK_OF_PALESTINE: { ar: 'بنك فلسطين', en: 'Bank of Palestine', mark: 'BOP', cls: 'bg-[#e7f1e9] text-[#1d6a45]', logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg' },
 };
