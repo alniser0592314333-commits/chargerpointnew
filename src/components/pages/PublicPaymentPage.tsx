@@ -7,6 +7,7 @@ import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { getPublicCustomerByToken, getPublicOrderByToken, PublicCustomerQrData, PublicOrderQrData } from './dayOrdersStore';
 import { config } from '../../config/env';
+import { PublicQrPaymentSubmissionRpcResult, rpcResolveQrPaymentSubmission } from '../../services/supabase/client';
 
 type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE';
 
@@ -129,6 +130,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const [order, setOrder] = useState<PublicOrderQrData | null>(null);
   const [customer, setCustomer] = useState<PublicCustomerQrData | null>(null);
   const [amountInput, setAmountInput] = useState('');
+  const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [method, setMethod] = useState<PaymentMethod | ''>('');
@@ -146,18 +148,35 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     setLoadError(false);
     setOrder(null);
     setCustomer(null);
+    setSubmission(null);
+    setSuccess(false);
+    setAmountInput('');
     void (async () => {
       try {
         const orderData = await getPublicOrderByToken(token).catch(() => null);
         if (!active) return;
+        let contextFound = false;
         if (orderData) {
           setOrder(orderData);
-          return;
+          contextFound = true;
+        } else {
+          const customerData = await getPublicCustomerByToken(token);
+          if (!active) return;
+          if (customerData) {
+            setCustomer(customerData);
+            contextFound = true;
+          } else {
+            setLoadError(true);
+          }
         }
-        const customerData = await getPublicCustomerByToken(token);
-        if (!active) return;
-        if (customerData) setCustomer(customerData);
-        else setLoadError(true);
+
+        if (contextFound) {
+          const previousSubmission = await rpcResolveQrPaymentSubmission(token);
+          if (active && previousSubmission) {
+            setSubmission(previousSubmission);
+            setSuccess(true);
+          }
+        }
       } catch {
         if (active) setLoadError(true);
       } finally {
@@ -261,16 +280,34 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         throw new Error('SUBMIT_FAILED');
       }
 
+      setSubmission({
+        status: 'PENDING',
+        amount_minor: Number(result.amount_minor ?? amountDue),
+        payment_method: method,
+        created_at: new Date().toISOString(),
+        reviewed_at: null,
+      });
       setSuccess(true);
       setReceipt(null);
       setNote('');
+      void rpcResolveQrPaymentSubmission(token).then((latest) => {
+        if (latest) setSubmission(latest);
+      });
     } catch (err: any) {
       const code = err?.message || '';
       if (code === 'IMAGE_REQUIRED') setError(isAr ? 'اختَر صورة إيصال صحيحة.' : 'Choose a valid receipt image.');
       else if (code === 'SOURCE_TOO_LARGE') setError(isAr ? 'الصورة الأصلية كبيرة. اختَر صورة أصغر من 12 ميغابايت.' : 'The original image is too large. Choose one under 12 MB.');
       else if (code === 'IMAGE_PROCESSING_UNAVAILABLE' || code === 'IMAGE_COMPRESSION_FAILED' || code === 'IMAGE_INVALID') setError(isAr ? 'تعذّر تجهيز الصورة. جرّب صورة أخرى واضحة.' : 'Could not process this image. Please try another clear image.');
       else if (code === 'COMPRESSED_TOO_LARGE') setError(isAr ? 'بعد الضغط بقي حجم الصورة كبيراً. اختَر صورة أوضح وأصغر.' : 'The compressed image is still too large. Choose a smaller image.');
-      else if (code === 'PENDING_EXISTS') setError(isAr ? 'يوجد إشعار دفع لهذا الحساب أو الطلب بانتظار المراجعة بالفعل.' : 'A payment notification for this account or order is already awaiting review.');
+      else if (code === 'PENDING_EXISTS') {
+        setError(isAr ? 'يوجد إشعار دفع لهذا الحساب أو الطلب بانتظار المراجعة بالفعل.' : 'A payment notification for this account or order is already awaiting review.');
+        const currentSubmission = await rpcResolveQrPaymentSubmission(token);
+        if (currentSubmission) {
+          setSubmission(currentSubmission);
+          setSuccess(true);
+          setError('');
+        }
+      }
       else if (code === 'RATE_LIMIT') setError(isAr ? 'تم إرسال عدة إشعارات لهذا الحساب أو الطلب. حاول لاحقاً.' : 'Several notifications were sent for this account or order. Please try again later.');
       else setError(isAr ? 'لم يتم إرسال الإشعار. بياناتك ما زالت موجودة؛ جرّب مرة ثانية.' : 'The notification was not sent. Your entries are preserved; please try again.');
     } finally {
@@ -326,11 +363,43 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <p className="mt-2 text-sm text-[#607874] dark:text-[#a7beb9]">{isAr ? 'رمز QR غير صالح أو منتهي، أو لا يرتبط بطلب أو حساب عميل نشط.' : 'This QR code is invalid, expired, or not linked to an active order or customer account.'}</p>
             </div>
           ) : success ? (
-            <div className="rounded-2xl border border-emerald-200 bg-white p-8 shadow-sm dark:border-emerald-900 dark:bg-[#0a2423]">
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><CheckCircle2 className="h-6 w-6" /></span>
-              <h2 className="mt-5 text-xl font-semibold">{isAr ? 'شكراً إلك!' : 'Thank you!'}</h2>
-              <p className="mt-2 text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">{isAr ? 'تم إرسال إشعار الدفع بنجاح، وسيتم التحقق منه. حالة الطلب لن تتغير إلا بعد مراجعة الإشعار واعتماده.' : 'Your payment notification was sent successfully and will be reviewed. The order status will not change until the notification is reviewed and approved.'}</p>
-              <a href={backHref} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">{isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Return to customer account') : (isAr ? 'العودة إلى الطلب' : 'Return to order')} {isRTL ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}</a>
+            <div className="rounded-2xl border border-[#dce6e4] bg-white p-8 shadow-sm dark:border-[#1c4140] dark:bg-[#0a2423]">
+              <span className={`flex h-12 w-12 items-center justify-center rounded-full ${submission?.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : submission?.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}`}>
+                {submission?.status === 'REJECTED' ? <X className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+              </span>
+              <h2 className="mt-5 text-xl font-semibold">
+                {submission?.status === 'APPROVED' ? (isAr ? 'تم اعتماد الدفعة' : 'Payment approved')
+                  : submission?.status === 'REJECTED' ? (isAr ? 'تم رفض إشعار الدفع' : 'Payment notification rejected')
+                  : (isAr ? 'إشعار الدفع بانتظار المراجعة' : 'Payment notification awaiting review')}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">
+                {submission?.status === 'APPROVED'
+                  ? (isAr ? 'تم اعتماد الإشعار وتسجيل الدفعة عبر المسار المالي الحالي.' : 'The notification was approved and the payment was recorded through the existing financial flow.')
+                  : submission?.status === 'REJECTED'
+                    ? (isAr ? 'لم تُسجّل دفعة ولم يتغير رصيد حسابك بسبب هذا الإشعار.' : 'No payment was recorded and your account balance was not changed by this notification.')
+                    : (isAr ? 'تم حفظ إشعارك. لن يتغير رصيد الحساب قبل مراجعته واعتماده.' : 'Your notification is saved. Your account balance will not change until it is reviewed and approved.')}
+              </p>
+              {submission && (
+                <div className="mt-5 space-y-3 rounded-xl border border-[#dce6e4] bg-[#f7faf9] p-4 text-sm dark:border-[#244746] dark:bg-[#0b2928]">
+                  <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ' : 'Amount'}</span><span className="font-semibold tabular-nums">{formatAmount(Number(submission.amount_minor))}</span></div>
+                  <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'طريقة الدفع' : 'Payment method'}</span><span className="font-semibold">{methods.find((item) => item.id === submission.payment_method)?.[isAr ? 'ar' : 'en'] || submission.payment_method}</span></div>
+                  {submission.status === 'APPROVED' && (
+                    <>
+                      <div className="flex items-center justify-between gap-3 border-t border-[#dce6e4] pt-3 dark:border-[#244746]"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رصيد الحساب قبل الاعتماد' : 'Balance before approval'}</span><span className="font-semibold tabular-nums">{submission.balance_before_minor == null ? '—' : formatAmount(Number(submission.balance_before_minor))}</span></div>
+                      <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رصيد الحساب بعد الاعتماد' : 'Balance after approval'}</span><span className="font-semibold tabular-nums text-[#0f766e] dark:text-[#83cbbd]">{submission.balance_after_minor == null ? '—' : formatAmount(Number(submission.balance_after_minor))}</span></div>
+                    </>
+                  )}
+                  <p className="text-[11px] text-[#7d9690]">{isAr ? 'آخر تحديث' : 'Last update'}: {new Date(submission.reviewed_at || submission.created_at).toLocaleString(isAr ? 'ar-PS' : 'en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+              )}
+              <div className="mt-6 flex flex-wrap gap-3">
+                <a href={backHref} className="inline-flex items-center gap-2 rounded-xl border border-[#dce6e4] px-4 py-3 text-sm font-semibold transition hover:bg-[#edf4f2] dark:border-[#315653] dark:hover:bg-[#133533]">{isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Return to customer account') : (isAr ? 'العودة إلى الطلب' : 'Return to order')}</a>
+                {submission?.status !== 'PENDING' && (
+                  <button type="button" onClick={() => { setSuccess(false); setSubmission(null); setError(''); if (isCustomerPayment) setAmountInput(''); }} className="inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">
+                    {isAr ? 'إشعار دفع جديد' : 'New payment notification'}
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-5">
