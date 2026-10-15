@@ -52,8 +52,9 @@ DECLARE
   v_review_definition text;
 BEGIN
   v_review_definition := pg_get_functiondef('public.review_qr_payment_submission(uuid,text,text,text)'::regprocedure);
-  IF position('execute_canonical_sync_command_unlocked' IN v_review_definition) = 0 THEN
-    RAISE EXCEPTION 'Review must delegate payment creation to the existing canonical command';
+  IF position('execute_canonical_sync_command(' IN v_review_definition) = 0
+     OR position('execute_canonical_sync_command_unlocked(' IN v_review_definition) > 0 THEN
+    RAISE EXCEPTION 'Review must use the serialized canonical command wrapper, not call the unlocked implementation directly';
   END IF;
   IF position('''POST_PAYMENT''' IN v_review_definition) = 0 OR position('''CREATE_PAYMENT''' IN v_review_definition) > 0 THEN
     RAISE EXCEPTION 'Review must use the existing POST_PAYMENT FIFO branch, not the legacy CREATE_PAYMENT branch';
