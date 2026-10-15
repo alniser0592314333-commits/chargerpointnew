@@ -48,10 +48,23 @@ export interface PublicOrderQrRpcResult {
   order_id: string;
   order_number: number;
   customer_name: string;
+  customer_code?: string;
   status: string;
   created_at: string;
   items_count: number;
-  items?: Array<{ name: string; status: string; has_charger: boolean }>;
+  order_total_minor?: number;
+  order_due_minor?: number;
+  items?: Array<{
+    name: string;
+    status: string;
+    has_charger: boolean;
+    quantity?: number;
+    unit_price_minor?: number;
+    total_price_minor?: number;
+    paid_minor?: number;
+    due_minor?: number;
+    charger_fee_exempt?: boolean;
+  }>;
 }
 
 let activeAuthToken: string | null = null;
