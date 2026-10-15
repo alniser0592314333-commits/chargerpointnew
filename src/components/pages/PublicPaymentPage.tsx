@@ -224,7 +224,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       return;
     }
     if ((!order && !customer) || amountDue === null || amountDue <= 0) {
-      setError(isAr ? 'المبلغ المستحق غير متاح حالياً. ارجع للطلب وحاول لاحقاً.' : 'The outstanding amount is not available right now. Return to the order and try again later.');
+      setError(isCustomerPayment ? (isAr ? 'أدخل مبلغاً صحيحاً أكبر من صفر.' : 'Enter a valid amount greater than zero.') : (isAr ? 'المبلغ المستحق غير متاح حالياً. ارجع للطلب وحاول لاحقاً.' : 'The outstanding amount is not available right now. Return to the order and try again later.'));
       return;
     }
     if (!config.supabaseUrl || !config.supabaseAnonKey) {
@@ -270,8 +270,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       else if (code === 'SOURCE_TOO_LARGE') setError(isAr ? 'الصورة الأصلية كبيرة. اختَر صورة أصغر من 12 ميغابايت.' : 'The original image is too large. Choose one under 12 MB.');
       else if (code === 'IMAGE_PROCESSING_UNAVAILABLE' || code === 'IMAGE_COMPRESSION_FAILED' || code === 'IMAGE_INVALID') setError(isAr ? 'تعذّر تجهيز الصورة. جرّب صورة أخرى واضحة.' : 'Could not process this image. Please try another clear image.');
       else if (code === 'COMPRESSED_TOO_LARGE') setError(isAr ? 'بعد الضغط بقي حجم الصورة كبيراً. اختَر صورة أوضح وأصغر.' : 'The compressed image is still too large. Choose a smaller image.');
-      else if (code === 'PENDING_EXISTS') setError(isAr ? 'يوجد إشعار دفع لهذا الطلب بانتظار المراجعة بالفعل.' : 'A payment notification for this order is already awaiting review.');
-      else if (code === 'RATE_LIMIT') setError(isAr ? 'تم إرسال عدة إشعارات لهذا الطلب. حاول لاحقاً.' : 'Several notifications were sent for this order. Please try again later.');
+      else if (code === 'PENDING_EXISTS') setError(isAr ? 'يوجد إشعار دفع لهذا الحساب أو الطلب بانتظار المراجعة بالفعل.' : 'A payment notification for this account or order is already awaiting review.');
+      else if (code === 'RATE_LIMIT') setError(isAr ? 'تم إرسال عدة إشعارات لهذا الحساب أو الطلب. حاول لاحقاً.' : 'Several notifications were sent for this account or order. Please try again later.');
       else setError(isAr ? 'لم يتم إرسال الإشعار. بياناتك ما زالت موجودة؛ جرّب مرة ثانية.' : 'The notification was not sent. Your entries are preserved; please try again.');
     } finally {
       setSending(false);
