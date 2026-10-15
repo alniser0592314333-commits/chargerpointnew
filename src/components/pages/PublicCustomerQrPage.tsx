@@ -224,6 +224,8 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
       {/* 3. Minimal Footer */}
       <footer className="max-w-5xl w-full mx-auto text-center py-5 border-t border-[#dce6e4] dark:border-[#1c4140] text-[11px] text-[#7d9690] dark:text-[#779791]">
         <span>{locale === 'en' ? 'Charging Point • Customer Portal' : 'نقطة الشحن • بوابة العميل'}</span>
+        <span className="mx-2">·</span>
+        <a href="/public/about" className="font-semibold hover:text-[#0f766e] dark:hover:text-[#83cbbd]">{locale === 'en' ? 'About' : 'عن التطبيق'}</a>
       </footer>
     </div>
   );
