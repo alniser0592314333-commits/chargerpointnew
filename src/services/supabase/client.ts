@@ -57,6 +57,8 @@ export interface PublicOrderQrRpcResult {
   items?: Array<{
     name: string;
     status: string;
+    operational_status?: string;
+    payment_status?: string;
     has_charger: boolean;
     quantity?: number;
     unit_price_minor?: number;
