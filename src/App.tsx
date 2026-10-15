@@ -68,6 +68,17 @@ export function parseRoute(pathAndHash: string): { pathname: string; hash: strin
   }
 }
 
+
+function isPublicPortalPath(pathname: string): boolean {
+  return pathname === '/public/about' ||
+    pathname.startsWith('/c/') ||
+    pathname.startsWith('/o/') ||
+    pathname.startsWith('/pay/') ||
+    pathname.startsWith('/public/order/') ||
+    pathname.startsWith('/public/qr/customer/') ||
+    pathname.startsWith('/public/qr/order/');
+}
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
@@ -84,8 +95,13 @@ export default function App() {
       : '/app';
   });
 
+  // Public QR links must load the isolated customer entry point, never remain inside the admin SPA.
   // Centralized Navigate function syncing with window.history
   const navigate = (newPath: string, replace = false) => {
+    if (isPublicPortalPath(parseRoute(newPath).pathname) && !isPublicPortalPath(parseRoute(currentPath).pathname)) {
+      window.location.assign(newPath);
+      return;
+    }
     if (replace) {
       window.history.replaceState({ path: newPath }, '', newPath);
     } else if (newPath !== currentPath) {
@@ -635,7 +651,9 @@ export default function App() {
     <ThemeProvider>
       <I18nProvider>
         <ToastProvider>
-          {isSuspended ? (
+          {isPublicPortalPath(parseRoute(currentPath).pathname) ? (
+            <div className="public-portal-host min-h-screen">{renderContent()}</div>
+          ) : isSuspended ? (
             <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center p-6 text-center select-none animate-in fade-in duration-300">
               <div className="max-w-md w-full bg-white dark:bg-[#061f1c] rounded-3xl p-8 border border-gray-200 dark:border-red-950/40 shadow-xl space-y-6">
                 <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center text-red-600 dark:text-red-400 mx-auto border border-red-100 dark:border-red-900/40">
