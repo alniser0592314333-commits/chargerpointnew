@@ -58,6 +58,9 @@ BEGIN
   IF position('''POST_PAYMENT''' IN v_review_definition) = 0 OR position('''CREATE_PAYMENT''' IN v_review_definition) > 0 THEN
     RAISE EXCEPTION 'Review must use the existing POST_PAYMENT FIFO branch, not the legacy CREATE_PAYMENT branch';
   END IF;
+  IF position('resetGeneration' IN v_review_definition) = 0 OR position('server_reset_generation' IN v_review_definition) = 0 THEN
+    RAISE EXCEPTION 'Review must forward the current server reset generation to avoid stale-command rejection';
+  END IF;
   IF position('INSERT INTO public.payment_allocations' IN v_review_definition) > 0 THEN
     RAISE EXCEPTION 'Review must not implement a second payment allocation engine';
   END IF;
