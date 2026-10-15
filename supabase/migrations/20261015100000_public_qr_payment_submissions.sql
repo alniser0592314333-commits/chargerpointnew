@@ -86,7 +86,7 @@ BEGIN
 
   SELECT c.id, c.name INTO v_customer
   FROM public.customers c
-  WHERE c.id = v_order.customer_id AND c.status <> 'DELETED';
+  WHERE c.id = v_order.customer_id AND c.status <> 'DELETED' AND c.deleted_at IS NULL;
 
   IF v_customer.id IS NULL THEN RETURN; END IF;
 
@@ -174,6 +174,8 @@ BEGIN
     AND qt.is_active = true
     AND (qt.expires_at IS NULL OR qt.expires_at > now())
     AND o.deleted_at IS NULL
+    AND o.cancelled_at IS NULL
+    AND c.deleted_at IS NULL
     AND c.is_active = true
     AND c.status <> 'DELETED'
   LIMIT 1;
