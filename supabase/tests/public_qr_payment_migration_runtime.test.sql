@@ -61,7 +61,7 @@ DECLARE
   v_duplicate boolean := false;
   v_review_definition text;
 BEGIN
-  v_review_definition := pg_get_functiondef('public.review_qr_payment_submission(uuid,text,text,text)'::regprocedure);
+  v_review_definition := pg_get_functiondef('public.review_qr_payment_submission(uuid,text,text,text,bigint)'::regprocedure);
   IF position('execute_canonical_sync_command(' IN v_review_definition) = 0
      OR position('execute_canonical_sync_command_unlocked(' IN v_review_definition) > 0 THEN
     RAISE EXCEPTION 'Review must use the serialized canonical command wrapper, not call the unlocked implementation directly';
@@ -109,23 +109,24 @@ BEGIN
     'orders/00000000-0000-0000-0000-000000000301/receipt.webp', 'test note'
   );
   v_submission_id := (v_submission->>'submission_id')::uuid;
-  IF (v_submission->>'amount_minor')::bigint <> 6500 THEN
-    RAISE EXCEPTION 'Submitted amount must be derived from the order, not caller input';
+  IF v_submission->>'amount_minor' IS NOT NULL
+     OR (SELECT amount_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 0 THEN
+    RAISE EXCEPTION 'Pending order receipt must not store or expose a payment amount';
   END IF;
   IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'PENDING' THEN
     RAISE EXCEPTION 'New submission must be pending';
   END IF;
   v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000001');
   IF v_public_submission->>'status' <> 'PENDING'
-     OR (v_public_submission->>'amount_minor')::bigint <> 6500 THEN
-    RAISE EXCEPTION 'Public order QR did not reconstruct the pending submission after reload';
+     OR v_public_submission->>'amount_minor' IS NOT NULL THEN
+    RAISE EXCEPTION 'Pending public QR must not expose a payment amount';
   END IF;
 
   v_duplicate := false;
   BEGIN
     PERFORM public.submit_qr_payment(
       'public-token-000000000000000000000003', 'JAWAL_PAY',
-      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, 12345
+      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, NULL
     );
   EXCEPTION WHEN OTHERS THEN
     v_duplicate := true;
@@ -144,27 +145,27 @@ BEGIN
   IF NOT v_duplicate THEN RAISE EXCEPTION 'A duplicate pending submission was accepted'; END IF;
 
   PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000201', true);
-  v_submission := public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL);
+  v_submission := public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL, 6200);
   IF v_submission->>'status' <> 'APPROVED' THEN RAISE EXCEPTION 'Approval did not return APPROVED'; END IF;
   IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'APPROVED' THEN
     RAISE EXCEPTION 'Approval did not persist submission status';
   END IF;
   IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> -10500
-     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> -4000 THEN
+     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_submission_id) <> -4300 THEN
     RAISE EXCEPTION 'Order payment approval did not persist authoritative before/after customer balances';
   END IF;
   v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000001');
   IF v_public_submission->>'status' <> 'APPROVED'
-     OR (v_public_submission->>'amount_minor')::bigint <> 6500
+     OR (v_public_submission->>'amount_minor')::bigint <> 6200
      OR (v_public_submission->>'balance_before_minor')::bigint <> -10500
-     OR (v_public_submission->>'balance_after_minor')::bigint <> -4000 THEN
+     OR (v_public_submission->>'balance_after_minor')::bigint <> -4300 THEN
     RAISE EXCEPTION 'Public order QR did not reconstruct the approved amount and balance snapshots';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.payments
     WHERE id = (v_submission->>'payment_id')::uuid
-      AND amount_minor = 6500 AND payment_method = 'PALPAY'
-  ) THEN RAISE EXCEPTION 'Approval did not create the expected payment'; END IF;
+      AND amount_minor = 6200 AND payment_method = 'PALPAY'
+  ) THEN RAISE EXCEPTION 'Approval did not create the reviewer-entered payment amount'; END IF;
 
   v_customer_submission := public.submit_qr_payment(
     'public-token-000000000000000000000003', 'JAWAL_PAY',
@@ -175,15 +176,16 @@ BEGIN
   BEGIN
     PERFORM public.submit_qr_payment(
       'public-token-000000000000000000000003', 'JAWAL_PAY',
-      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, 12345
+      'customers/00000000-0000-0000-0000-000000000101/receipt.webp', NULL, NULL
     );
   EXCEPTION WHEN OTHERS THEN
     v_duplicate := true;
   END;
   IF NOT v_duplicate THEN RAISE EXCEPTION 'Duplicate direct customer notification was accepted'; END IF;
 
-  IF (v_customer_submission->>'amount_minor')::bigint <> 12345 THEN
-    RAISE EXCEPTION 'Customer QR amount must use the validated amount entered by the customer';
+  IF v_customer_submission->>'amount_minor' IS NOT NULL
+     OR (SELECT amount_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> 0 THEN
+    RAISE EXCEPTION 'Customer QR receipt must not store or expose an unverified amount';
   END IF;
   IF (SELECT order_id FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) IS NOT NULL THEN
     RAISE EXCEPTION 'Direct customer payment must not require or create an order link';
@@ -193,7 +195,7 @@ BEGIN
     RAISE EXCEPTION 'Direct payment was not bound to the QR customer ID';
   END IF;
 
-  v_customer_submission := public.review_qr_payment_submission(v_customer_submission_id, 'APPROVE', '1234', NULL);
+  v_customer_submission := public.review_qr_payment_submission(v_customer_submission_id, 'APPROVE', '1234', NULL, 12000);
   IF v_customer_submission->>'status' <> 'APPROVED' THEN
     RAISE EXCEPTION 'Direct customer payment was not approved';
   END IF;
@@ -201,26 +203,26 @@ BEGIN
     SELECT 1 FROM public.payments
     WHERE id = (v_customer_submission->>'payment_id')::uuid
       AND customer_id = '00000000-0000-0000-0000-000000000101'::uuid
-      AND amount_minor = 12345 AND payment_method = 'JAWAL_PAY'
+      AND amount_minor = 12000 AND payment_method = 'JAWAL_PAY'
   ) THEN
     RAISE EXCEPTION 'Direct customer approval did not use the submitted amount and customer ID';
   END IF;
-  IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> -4000
-     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> 8345 THEN
+  IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> -4300
+     OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> 7700 THEN
     RAISE EXCEPTION 'Direct customer payment did not persist authoritative before/after balances';
   END IF;
   v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000003');
   IF v_public_submission->>'status' <> 'APPROVED'
-     OR (v_public_submission->>'amount_minor')::bigint <> 12345
-     OR (v_public_submission->>'balance_before_minor')::bigint <> -4000
-     OR (v_public_submission->>'balance_after_minor')::bigint <> 8345 THEN
+     OR (v_public_submission->>'amount_minor')::bigint <> 12000
+     OR (v_public_submission->>'balance_before_minor')::bigint <> -4300
+     OR (v_public_submission->>'balance_after_minor')::bigint <> 7700 THEN
     RAISE EXCEPTION 'Public customer QR did not reconstruct the approved amount and balance snapshots';
   END IF;
 
   SELECT count(*) INTO v_payment_count FROM public.payments;
   v_duplicate := false;
   BEGIN
-    PERFORM public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL);
+    PERFORM public.review_qr_payment_submission(v_submission_id, 'APPROVE', '1234', NULL, 6200);
   EXCEPTION WHEN OTHERS THEN
     v_duplicate := true;
   END;
@@ -237,7 +239,7 @@ BEGIN
 
   v_rejected := false;
   BEGIN
-    PERFORM public.review_qr_payment_submission(v_second_id, 'APPROVE', 'FAIL', NULL);
+    PERFORM public.review_qr_payment_submission(v_second_id, 'APPROVE', 'FAIL', NULL, 3000);
   EXCEPTION WHEN OTHERS THEN
     v_rejected := true;
   END;
