@@ -4,7 +4,6 @@ import './index.css';
 
 const root = createRoot(document.getElementById('root')!);
 const pathname = window.location.pathname;
-const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
 const isPublicPortalRoute =
   pathname === '/' ||
   pathname === '/public' ||
@@ -17,9 +16,8 @@ const isPublicPortalRoute =
   pathname.startsWith('/public/qr/customer/') ||
   pathname.startsWith('/public/qr/order/');
 
-// Public pages are isolated from the admin bootstrap. The admin component is unchanged
-// and remains available at /admin.
-if (isPublicPortalRoute && !isAdminRoute) {
+// The public website owns the origin root. The admin application remains on its existing /app route.
+if (isPublicPortalRoute) {
   document.title = 'نقطة الشحن | بوابة العميل';
   const description = document.querySelector('meta[name="description"]');
   description?.setAttribute('content', 'موقع نقطة الشحن العام وبوابة عرض تفاصيل الطلب والعميل.');
