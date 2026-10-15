@@ -46,7 +46,7 @@ CREATE POLICY qr_payment_receipts_admin_read
         AND EXISTS (
           SELECT 1
           FROM public.get_effective_permissions(a.id)
-          WHERE permission IN ('finance:create-payment', 'finance:manage')
+          WHERE permission = 'finance:approve-payment'
         )
     )
   );
@@ -270,7 +270,7 @@ BEGIN
 
   IF v_admin_id IS NULL OR NOT EXISTS (
     SELECT 1 FROM public.get_effective_permissions(v_admin_id)
-    WHERE permission IN ('finance:create-payment', 'finance:manage')
+    WHERE permission = 'finance:approve-payment'
   ) THEN
     RAISE EXCEPTION 'Missing payment review permission' USING ERRCODE = 'P0001';
   END IF;
@@ -332,7 +332,7 @@ BEGIN
 
   IF v_admin_id IS NULL OR NOT EXISTS (
     SELECT 1 FROM public.get_effective_permissions(v_admin_id)
-    WHERE permission IN ('finance:create-payment', 'finance:manage')
+    WHERE permission = 'finance:approve-payment'
   ) THEN
     RAISE EXCEPTION 'Missing payment review permission' USING ERRCODE = 'P0001';
   END IF;
