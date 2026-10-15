@@ -223,7 +223,7 @@ export const NotificationsRequestsPage: React.FC = () => {
               <article key={item.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_8px_30px_rgba(16,55,51,0.03)] dark:border-[#1c4140] dark:bg-[#0a2423]">
                 <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 p-4 dark:border-[#244746] sm:p-5">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className={`flex h-11 min-w-11 items-center justify-center rounded-xl px-2 text-[10px] font-black ${detail.cls}`}>{detail.mark}</span>
+                    <ReviewMethodLogo detail={detail} />
                     <div className="min-w-0">
                       <h2 className="text-base font-semibold">{item.customer_name || (isAr ? 'عميل' : 'Customer')}</h2>
                       <p className="mt-1 text-xs text-gray-500 dark:text-[#9bb6b0]">{item.order_number != null ? (isAr ? `طلب رقم ${item.order_number}` : `Order #${item.order_number}`) : (isAr ? 'دفعة مباشرة على حساب الزبون' : 'Direct customer-account payment')} <span className="mx-1.5">·</span>{isAr ? detail.ar : detail.en}</p>
