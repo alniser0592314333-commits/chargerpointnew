@@ -340,15 +340,16 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">02</span>
                 </div>
                 <div className="mt-4 rounded-xl border border-[#dce6e4] bg-[#f7faf9] p-4 dark:border-[#244746] dark:bg-[#0b2928]">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رقم التحويل' : 'Transfer number'}</p>
-                      <p dir="ltr" className="mt-1 text-xl font-semibold tracking-[0.06em]">0592369875</p>
-                    </div>
-                    <button type="button" onClick={() => void copyNumber()} className="inline-flex items-center gap-2 rounded-lg border border-[#dce6e4] bg-white px-3 py-2 text-xs font-semibold hover:bg-[#edf4f2] dark:border-[#315653] dark:bg-[#102f2d] dark:hover:bg-[#163d3a]">
-                      <Copy className="h-3.5 w-3.5" /> {copied ? (isAr ? 'تم النسخ' : 'Copied') : (isAr ? 'نسخ الرقم' : 'Copy number')}
-                    </button>
-                  </div>
+                  <button type="button" onClick={() => void copyNumber()} aria-label={isAr ? 'نسخ رقم التحويل' : 'Copy transfer number'} className="flex w-full items-center justify-between gap-3 rounded-lg text-start outline-none focus-visible:ring-2 focus-visible:ring-[#0f766e]">
+                    <span>
+                      <span className="block text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رقم التحويل · اضغط للنسخ' : 'Transfer number · tap to copy'}</span>
+                      <span dir="ltr" className="mt-1 block text-xl font-semibold tracking-[0.06em]">0592369875</span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-[#dce6e4] bg-white px-3 py-2 text-xs font-semibold hover:bg-[#edf4f2] dark:border-[#315653] dark:bg-[#102f2d] dark:hover:bg-[#163d3a]">
+                      <Copy className="h-3.5 w-3.5" /> {isAr ? 'نسخ' : 'Copy'}
+                    </span>
+                  </button>
+                  {copied && <p role="status" aria-live="polite" className="mt-3 rounded-lg bg-[#eaf7ef] px-3 py-2 text-xs font-semibold text-[#17613c] dark:bg-[#12372a] dark:text-[#a9e6c0]">{isAr ? 'تم نسخ الرقم بنجاح' : 'Number copied successfully'}</p>}
                 </div>
                 <div className="mt-4 flex items-start gap-3 rounded-xl bg-[#f0f8f6] p-3.5 text-xs leading-5 text-[#41635d] dark:bg-[#10302e] dark:text-[#b4d0c8]">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#0f766e]" />
