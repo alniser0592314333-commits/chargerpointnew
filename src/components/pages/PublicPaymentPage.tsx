@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Copy, FileImage,
-  Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud, X, Zap,
+  Clock3, Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud, X, Zap,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -365,7 +365,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           ) : success ? (
             <div className="rounded-2xl border border-[#dce6e4] bg-white p-8 shadow-sm dark:border-[#1c4140] dark:bg-[#0a2423]">
               <span className={`flex h-12 w-12 items-center justify-center rounded-full ${submission?.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : submission?.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}`}>
-                {submission?.status === 'REJECTED' ? <X className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+                {submission?.status === 'REJECTED' ? <X className="h-6 w-6" /> : submission?.status === 'PENDING' ? <Clock3 className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
               </span>
               <h2 className="mt-5 text-xl font-semibold">
                 {submission?.status === 'APPROVED' ? (isAr ? 'تم اعتماد الدفعة' : 'Payment approved')
