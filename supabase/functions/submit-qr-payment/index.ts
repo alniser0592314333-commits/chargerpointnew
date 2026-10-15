@@ -89,7 +89,7 @@ Deno.serve(async (request: Request) => {
         return json(404, { error: "This order QR is invalid or has expired" });
       }
       customerId = String(orderRecord.customer_id);
-      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor > 99_999_999_999) {
         return json(400, { error: "This order has no outstanding amount to submit" });
       }
     } else {
