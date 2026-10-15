@@ -266,7 +266,7 @@ BEGIN
       RAISE EXCEPTION 'Customer QR not found or inactive' USING ERRCODE = 'P0002';
     END IF;
 
-    IF p_amount_minor IS NULL OR p_amount_minor <= 0 THEN
+    IF p_amount_minor IS NULL OR p_amount_minor <= 0 OR p_amount_minor > 99999999999 THEN
       RAISE EXCEPTION 'Customer payment amount must be greater than zero' USING ERRCODE = '22023';
     END IF;
 
