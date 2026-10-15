@@ -18,6 +18,7 @@ const methods: Array<{
   descriptionAr: string;
   descriptionEn: string;
   markClass: string;
+  logoUrl: string;
 }> = [
   {
     id: 'JAWAL_PAY',
@@ -27,6 +28,7 @@ const methods: Array<{
     descriptionAr: 'محفظة إلكترونية',
     descriptionEn: 'Digital wallet',
     markClass: 'bg-[#f5e9ed] text-[#8e2342]',
+    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
   },
   {
     id: 'PALPAY',
@@ -36,6 +38,7 @@ const methods: Array<{
     descriptionAr: 'محفظتي',
     descriptionEn: 'Mahfazati wallet',
     markClass: 'bg-[#f2e8ff] text-[#6634a5]',
+    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png',
   },
   {
     id: 'BANK_OF_PALESTINE',
@@ -45,8 +48,17 @@ const methods: Array<{
     descriptionAr: 'تحويل بنكي',
     descriptionEn: 'Bank transfer',
     markClass: 'bg-[#e7f1e9] text-[#1d6a45]',
+    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg',
   },
 ];
+
+const PaymentMethodLogo: React.FC<{ method: typeof methods[number] }> = ({ method }) => {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <span className={`mb-3 flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-black tracking-tight ${method.markClass}`}>{method.short}</span>;
+  }
+  return <img src={method.logoUrl} alt={method.short} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="mb-3 h-10 w-14 rounded-md object-contain" />;
+};
 
 const MAX_SOURCE_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_COMPRESSED_BYTES = 2 * 1024 * 1024;
@@ -310,7 +322,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                         aria-pressed={selected}
                         className={`relative flex min-h-[122px] flex-col items-start rounded-xl border p-3.5 text-start transition-all focus:outline-none focus:ring-2 focus:ring-[#0f766e] ${selected ? 'border-[#0f766e] bg-[#f0f8f6] shadow-[0_0_0_1px_#0f766e] dark:bg-[#10302e]' : 'border-[#dce6e4] bg-white hover:border-[#a8c7c0] dark:border-[#244746] dark:bg-[#0b2928] dark:hover:border-[#3b6e67]'}`}>
                         {selected && <CheckCircle2 className="absolute end-3 top-3 h-4 w-4 text-[#0f766e] dark:text-[#9cd6c9]" />}
-                        <span className={`mb-3 flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-black tracking-tight ${item.markClass}`}>{item.short}</span>
+                        <PaymentMethodLogo method={item} />
                         <span className="text-sm font-semibold">{isAr ? item.ar : item.en}</span>
                         <span className="mt-1 text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? item.descriptionAr : item.descriptionEn}</span>
                       </button>
