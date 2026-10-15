@@ -92,8 +92,8 @@ BEGIN
 
   SELECT
     count(*)::integer,
-    coalesce(sum(oi.final_charge_snapshot_minor), 0)::bigint,
-    coalesce(sum(greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)), 0)::bigint,
+    coalesce(sum(oi.final_charge_snapshot_minor) FILTER (WHERE oi.cancelled_at IS NULL), 0)::bigint,
+    coalesce(sum(greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)) FILTER (WHERE oi.cancelled_at IS NULL), 0)::bigint,
     coalesce(jsonb_agg(
       jsonb_build_object(
         'name', oi.device_name_snapshot,
@@ -105,7 +105,9 @@ BEGIN
         'unit_price_minor', oi.unit_price_minor,
         'total_price_minor', oi.final_charge_snapshot_minor,
         'paid_minor', coalesce(pa.paid_minor, 0),
-        'due_minor', greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0),
+        'due_minor', CASE WHEN oi.cancelled_at IS NULL
+          THEN greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)
+          ELSE 0 END,
         'charger_fee_exempt', (oi.customer_charger_fee_exempt_snapshot AND oi.has_charger)
       ) ORDER BY oi.item_sequence
     ), '[]'::jsonb)
@@ -117,7 +119,6 @@ BEGIN
     WHERE pal.order_item_id = oi.id
   ) pa ON true
   WHERE oi.order_id = v_order.id
-    AND oi.cancelled_at IS NULL
     AND oi.deleted_at IS NULL;
 
   RETURN NEXT jsonb_build_object(
