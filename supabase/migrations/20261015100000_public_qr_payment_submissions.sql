@@ -15,7 +15,7 @@ ALTER TABLE public.qr_payment_submissions
   DROP CONSTRAINT IF EXISTS qr_payment_submissions_amount_minor_check;
 ALTER TABLE public.qr_payment_submissions
   ADD CONSTRAINT qr_payment_submissions_amount_minor_check
-  CHECK (amount_minor > 0 OR status = 'PENDING');
+  CHECK (amount_minor > 0 OR status IN ('PENDING', 'REJECTED'));
 
 CREATE INDEX IF NOT EXISTS qr_payment_submissions_pending_order_created_idx
   ON public.qr_payment_submissions (order_id, created_at DESC)
