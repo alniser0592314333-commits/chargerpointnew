@@ -1,5 +1,5 @@
 -- Public QR payment submissions: extend the existing submission flow without creating a second payment/allocation engine.
--- Approval delegates to the canonical CREATE_PAYMENT command, preserving its FIFO allocation and customer-credit behavior.
+-- Approval delegates to the serialized canonical POST_PAYMENT command, preserving existing FIFO allocation and customer-credit behavior.
 
 ALTER TABLE public.qr_payment_submissions
   ADD COLUMN IF NOT EXISTS order_id uuid REFERENCES public.orders(id),
