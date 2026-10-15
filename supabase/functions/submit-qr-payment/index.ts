@@ -63,35 +63,94 @@ Deno.serve(async (request: Request) => {
     const image = inspectImage(bytes);
     if (!image) return json(400, { error: "The uploaded file is not a supported JPEG, PNG, or WebP image" });
 
-    const { data: orderRows, error: resolveError } = await supabase.rpc("public_resolve_order_qr", {
+    const { data: orderRows, error: orderResolveError } = await supabase.rpc("public_resolve_order_qr", {
       p_public_token: token,
     });
-    if (resolveError) {
-      console.error("Public QR resolve failed", resolveError.message);
-      return json(500, { error: "Could not verify the order QR. Please try again." });
+    if (orderResolveError) {
+      console.error("Public order QR resolve failed", orderResolveError.message);
+      return json(500, { error: "Could not verify the QR. Please try again." });
     }
-    const order = Array.isArray(orderRows) ? orderRows[0] : orderRows;
-    if (!order?.order_id || !Number.isInteger(order?.order_number)) {
-      return json(404, { error: "This order QR is invalid or has expired" });
+    const resolvedOrder = Array.isArray(orderRows) ? orderRows[0] : orderRows;
+    let orderId: string | null = null;
+    let customerId: string;
+    let targetId: string;
+    let targetKind: "ORDER" | "CUSTOMER";
+    let amountMinor: number;
+
+    if (resolvedOrder?.order_id && Number.isInteger(Number(resolvedOrder?.order_number))) {
+      orderId = String(resolvedOrder.order_id);
+      targetId = orderId;
+      targetKind = "ORDER";
+      amountMinor = Number(resolvedOrder.order_due_minor);
+      const { data: orderRecord, error: orderLookupError } = await supabase
+        .from("orders").select("id,customer_id").eq("id", orderId).maybeSingle();
+      if (orderLookupError || !orderRecord?.customer_id) {
+        console.error("Order customer lookup failed", orderLookupError?.message);
+        return json(404, { error: "This order QR is invalid or has expired" });
+      }
+      customerId = String(orderRecord.customer_id);
+      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+        return json(400, { error: "This order has no outstanding amount to submit" });
+      }
+    } else {
+      const { data: customerRows, error: customerResolveError } = await supabase.rpc("public_resolve_customer_qr", {
+        p_public_token: token,
+      });
+      if (customerResolveError) {
+        console.error("Public customer QR resolve failed", customerResolveError.message);
+        return json(500, { error: "Could not verify the customer QR. Please try again." });
+      }
+      const resolvedCustomer = Array.isArray(customerRows) ? customerRows[0] : customerRows;
+      const { data: tokenRecord, error: tokenLookupError } = await supabase
+        .from("qr_tokens").select("target_id,expires_at")
+        .eq("public_token", token).eq("token_type", "CUSTOMER").eq("is_active", true).maybeSingle();
+      if (tokenLookupError || !resolvedCustomer || !tokenRecord?.target_id ||
+          (tokenRecord.expires_at && new Date(tokenRecord.expires_at).getTime() <= Date.now())) {
+        return json(404, { error: "This customer QR is invalid or has expired" });
+      }
+      const { data: customerRecord, error: customerLookupError } = await supabase
+        .from("customers").select("id,is_active,status,deleted_at")
+        .eq("id", tokenRecord.target_id).maybeSingle();
+      if (customerLookupError || !customerRecord || customerRecord.is_active !== true ||
+          customerRecord.deleted_at || String(customerRecord.status ?? "").toUpperCase() === "DELETED") {
+        return json(404, { error: "This customer QR is invalid or has expired" });
+      }
+      customerId = String(customerRecord.id);
+      targetId = customerId;
+      targetKind = "CUSTOMER";
+      amountMinor = Number(String(form.get("amount_minor") ?? ""));
+      if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
+        return json(400, { error: "Enter a valid amount greater than zero" });
+      }
     }
 
-    // Per-order rate limiting and duplicate-pending checks are repeated atomically
-    // by submit_qr_payment; this early check avoids needless storage uploads.
+    // Customer-level notifications are keyed to the customer, not an order.
+    // Database checks below repeat duplicate prevention and rate limiting atomically.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    const [pendingCheck, recentCheck] = await Promise.all([
-      supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
-        .eq("order_id", order.order_id).eq("status", "PENDING"),
-      supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
-        .eq("order_id", order.order_id).gt("created_at", oneHourAgo),
-    ]);
+    let pendingQuery = supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
+      .eq("status", "PENDING");
+    let recentQuery = supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
+      .gt("created_at", oneHourAgo);
+    if (orderId) {
+      pendingQuery = pendingQuery.eq("order_id", orderId);
+      recentQuery = recentQuery.eq("order_id", orderId);
+    } else {
+      pendingQuery = pendingQuery.eq("customer_id", customerId).is("order_id", null);
+      recentQuery = recentQuery.eq("customer_id", customerId).is("order_id", null);
+    }
+    const [pendingCheck, recentCheck] = await Promise.all([pendingQuery, recentQuery]);
     if (pendingCheck.error || recentCheck.error) {
       console.error("Submission rate check failed", pendingCheck.error?.message, recentCheck.error?.message);
       return json(500, { error: "Could not verify whether a notification is already pending" });
     }
-    if ((pendingCheck.count ?? 0) > 0) return json(409, { error: "A payment notification for this order is already awaiting review" });
-    if ((recentCheck.count ?? 0) >= 3) return json(429, { error: "Too many submissions for this order. Please try again later." });
+    if ((pendingCheck.count ?? 0) > 0) {
+      return json(409, { error: "A payment notification for this account or order is already awaiting review" });
+    }
+    if ((recentCheck.count ?? 0) >= 3) {
+      return json(429, { error: "Too many submissions for this account or order. Please try again later." });
+    }
 
-    uploadedPath = `${order.order_id}/${crypto.randomUUID()}.${image.extension}`;
+    uploadedPath = `${targetKind === "ORDER" ? "orders" : "customers"}/${targetId}/${crypto.randomUUID()}.${image.extension}`;
     const { error: uploadError } = await supabase.storage
       .from("qr-payment-receipts")
       .upload(uploadedPath, bytes, {
@@ -109,15 +168,16 @@ Deno.serve(async (request: Request) => {
       p_payment_method: method,
       p_receipt_path: uploadedPath,
       p_note: note || null,
+      p_amount_minor: orderId ? null : amountMinor,
     });
     if (submitError || !submission?.success) {
       await supabase.storage.from("qr-payment-receipts").remove([uploadedPath]);
       uploadedPath = null;
       const message = submitError?.message ?? "Submission was not accepted";
-      const isConflict = /already awaiting review|no recognized outstanding amount|Too many payment notifications/i.test(message);
+      const isConflict = /already awaiting review|no remaining amount|Too many payment notifications|too many submissions/i.test(message);
       return json(isConflict ? 409 : 400, {
         error: isConflict
-          ? "This order already has a pending notification or has no recognized amount due."
+          ? "This account or order already has a pending notification, or the amount is no longer payable."
           : "The payment notification could not be saved. Please try again.",
       });
     }
