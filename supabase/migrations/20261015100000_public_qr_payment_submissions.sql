@@ -33,6 +33,17 @@ CREATE POLICY qr_payment_receipts_admin_read
   USING (
     bucket_id = 'qr-payment-receipts'
     AND public.is_my_account_session_active()
+    AND EXISTS (
+      SELECT 1
+      FROM public.admins a
+      WHERE a.auth_user_id = (SELECT auth.uid())
+        AND a.is_active = true
+        AND EXISTS (
+          SELECT 1
+          FROM public.get_effective_permissions(a.id)
+          WHERE permission IN ('finance:create-payment', 'finance:manage')
+        )
+    )
   );
 
 -- Public QR order read model: safe presentation data only. No full customer UUID,
