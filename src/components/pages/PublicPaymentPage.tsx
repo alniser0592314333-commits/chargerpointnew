@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Copy, FileImage,
-  Clock3, Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud, X, Zap,
+  Clock3, Globe, LockKeyhole, ShieldCheck, UploadCloud, X, Zap,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { useTheme } from '../../theme/themeContext';
 import { getPublicCustomerByToken, getPublicOrderByToken, PublicCustomerQrData, PublicOrderQrData } from './dayOrdersStore';
 import { config } from '../../config/env';
 import { PublicQrPaymentSubmissionRpcResult, rpcResolveQrPaymentSubmission } from '../../services/supabase/client';
@@ -116,7 +115,7 @@ export interface PublicPaymentPageProps {
 
 export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) => {
   const { locale, setLocale, formatCurrency, isRTL } = useI18n();
-  const { theme, toggleTheme } = useTheme();
+
   const isAr = locale === 'ar';
   const [order, setOrder] = useState<PublicOrderQrData | null>(null);
   const [customer, setCustomer] = useState<PublicCustomerQrData | null>(null);
@@ -309,7 +308,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const pageTitle = isAr ? 'إشعار دفع' : 'Payment notification';
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="public-portal-page min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
       <header className="border-b border-[#dce6e4] bg-white/90 dark:bg-[#0a2423]/90 dark:border-[#1c4140]">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <a href={backHref} className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600">
@@ -325,9 +324,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#365653] hover:bg-[#edf4f2] dark:text-[#c8d9d4] dark:hover:bg-[#133533]" aria-label="Toggle language">
               <Globe className="h-4 w-4" /> {isAr ? 'English' : 'عربي'}
             </button>
-            <button type="button" onClick={toggleTheme} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#dce6e4] hover:bg-[#edf4f2] dark:border-[#244746] dark:hover:bg-[#133533]" aria-label="Toggle theme">
-              {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-amber-300" />}
-            </button>
+            
           </div>
         </div>
       </header>
@@ -484,7 +481,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
               {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{error}</div>}
 
-              <button type="submit" disabled={sending || !method || !receipt || amountDue === null || amountDue <= 0}
+              <button type="submit" disabled={sending || !method || !receipt || (Boolean(order) && (amountDue === null || amountDue <= 0))}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-5 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#115e59] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45 dark:focus:ring-offset-[#071b1b]">
                 {sending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <ShieldCheck className="h-4 w-4" />}
                 {sending ? (isAr ? 'جاري ضغط الصورة والإرسال…' : 'Compressing and sending…') : (isAr ? 'إرسال إشعار الدفع' : 'Send payment notification')}
@@ -551,8 +548,6 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
       <footer className="border-t border-[#dce6e4] px-4 py-5 text-center text-[11px] text-[#7d9690] dark:border-[#1c4140] dark:text-[#779791]">
         <span>{isAr ? 'نقطة الشحن · بوابة العميل' : 'Charging Point · Customer Portal'}</span>
-        <span className="mx-2">·</span>
-        <a href="/public/about" className="font-semibold hover:text-[#0f766e] dark:hover:text-[#83cbbd]">{isAr ? 'عن التطبيق' : 'About'}</a>
       </footer>
     </div>
   );
