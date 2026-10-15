@@ -169,7 +169,7 @@ BEGIN
 
   v_customer_submission := public.submit_qr_payment(
     'public-token-000000000000000000000003', 'JAWAL_PAY',
-    'customers/00000000-0000-0000-0000-000000000101/receipt.webp', 'direct customer payment', 12345
+    'customers/00000000-0000-0000-0000-000000000101/receipt.webp', 'direct customer payment', NULL
   );
   v_customer_submission_id := (v_customer_submission->>'submission_id')::uuid;
   v_duplicate := false;
@@ -205,7 +205,7 @@ BEGIN
       AND customer_id = '00000000-0000-0000-0000-000000000101'::uuid
       AND amount_minor = 12000 AND payment_method = 'JAWAL_PAY'
   ) THEN
-    RAISE EXCEPTION 'Direct customer approval did not use the submitted amount and customer ID';
+    RAISE EXCEPTION 'Direct customer approval did not use the reviewer-entered amount and customer ID';
   END IF;
   IF (SELECT balance_before_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> -4300
      OR (SELECT balance_after_minor FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) <> 7700 THEN
