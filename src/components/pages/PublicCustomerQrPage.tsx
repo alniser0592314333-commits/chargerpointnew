@@ -9,9 +9,7 @@ import {
   CheckCircle2,
   ShieldCheck,
   Zap,
-  Sparkles,
-  Layers,
-  Clock,
+
   CreditCard,
 } from 'lucide-react';
 
@@ -212,20 +210,7 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
               <span className="shrink-0 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold">{locale === 'en' ? 'Pay now' : 'ادفع الآن'}</span>
             </a>
 
-            {/* Placeholder / Future Features Card */}
-            <div className="bg-white/70 dark:bg-[#082622]/70 rounded-2xl border border-dashed border-gray-200 dark:border-[#14423b] p-4 text-center space-y-2">
-              <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#0c312b] text-gray-400 dark:text-[#8eb698] flex items-center justify-center mx-auto">
-                <Clock className="w-4 h-4" />
-              </div>
-              <p className="text-xs font-medium text-gray-600 dark:text-[#daf1de]">
-                {locale === 'en' ? 'More Customer Details Coming Soon' : 'بيانات وخدمات إضافية قريباً'}
-              </p>
-              <p className="text-[11px] text-gray-400 dark:text-[#8eb698]">
-                {locale === 'en'
-                  ? 'Recent order history and special balance services will appear here.'
-                  : 'سجل الطلبات السابقة وتفاصيل الخدمات الإضافية ستظهر هنا فور تفعيلها.'}
-              </p>
-            </div>
+
           </div>
         )}
       </main>
