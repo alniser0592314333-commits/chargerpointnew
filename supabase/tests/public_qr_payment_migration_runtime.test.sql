@@ -49,7 +49,16 @@ DECLARE
   v_rejected boolean := false;
   v_payment_count integer;
   v_duplicate boolean := false;
+  v_review_definition text;
 BEGIN
+  v_review_definition := pg_get_functiondef('public.review_qr_payment_submission(uuid,text,text,text)'::regprocedure);
+  IF position('execute_canonical_sync_command_unlocked' IN v_review_definition) = 0 THEN
+    RAISE EXCEPTION 'Review must delegate payment creation to the existing canonical command';
+  END IF;
+  IF position('INSERT INTO public.payment_allocations' IN v_review_definition) > 0 THEN
+    RAISE EXCEPTION 'Review must not implement a second payment allocation engine';
+  END IF;
+
   SELECT resolved.order_json INTO v_order
   FROM public.public_resolve_order_qr('public-token-000000000000000000000001') AS resolved(order_json);
 
