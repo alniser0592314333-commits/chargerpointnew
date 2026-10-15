@@ -398,20 +398,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-5">
-              <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className="text-base font-semibold">{isAr ? '1. أدخل مبلغ التحويل' : '1. Enter transfer amount'}</h2>
-                      <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'اكتب المبلغ الذي حوّلته فعلياً، بدون إنشاء طلب جديد.' : 'Enter the amount you actually transferred; no new order is created.'}</p>
-                    </div>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">01</span>
-                  </div>
-                  <label className="mt-4 block text-xs font-semibold text-[#365653] dark:text-[#c8d9d4]">
-                    {isAr ? 'المبلغ' : 'Amount'}
-                    <input type="number" inputMode="decimal" min="0.01" max="999999999.99" step="0.01" required value={amountInput} onChange={(e) => { setAmountInput(e.target.value); setError(''); }} placeholder={isAr ? 'مثال: 50.00' : 'e.g. 50.00'} className="mt-2 w-full rounded-xl border border-[#dce6e4] bg-white px-3.5 py-3 text-lg font-semibold tabular-nums outline-none transition placeholder:text-[#8aa19c] focus:border-[#0f766e] focus:ring-2 focus:ring-[#0f766e]/10 dark:border-[#315653] dark:bg-[#0b2928] dark:placeholder:text-[#779791]" />
-                  </label>
-                  <p className="mt-2 text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{amountDue !== null && amountDue > 0 ? (isAr ? `سيتم إرسال إشعار بمبلغ ${formatAmount(amountDue)}` : `Notification amount: ${formatAmount(amountDue)}`) : (isAr ? 'أدخل مبلغاً أكبر من صفر.' : 'Enter an amount greater than zero.')}</p>
-                </section>
+
               )}
               <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
