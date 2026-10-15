@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, CheckCircle2, Copy, CreditCard, FileImage,
-  Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud, X,
+  ArrowLeft, ArrowRight, CheckCircle2, Copy, FileImage,
+  Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud, X, Zap,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -258,7 +258,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <a href={`/o/${token}`} className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0f766e] text-white shadow-sm">
-              <CreditCard className="h-5 w-5" />
+              <Zap className="h-5 w-5" />
             </span>
             <span>
               <span className="block text-sm font-bold tracking-tight">{isAr ? 'نقطة الشحن' : 'Charging Point'}</span>
