@@ -214,7 +214,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       form.append('note', note.trim().slice(0, 500));
       form.append('receipt', compressed, compressed.name);
 
-      const endpoint = `${config.supabaseUrl.replace(/\\/+$/, '')}/functions/v1/submit-qr-payment`;
+      const endpoint = `${config.supabaseUrl.replace(/\/+$/, '')}/functions/v1/submit-qr-payment`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
