@@ -28,7 +28,7 @@ const methods: Array<{
     descriptionAr: 'محفظة إلكترونية',
     descriptionEn: 'Digital wallet',
     markClass: 'bg-[#f5e9ed] text-[#8e2342]',
-    logoUrl: '',
+    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
   },
   {
     id: 'PALPAY',
