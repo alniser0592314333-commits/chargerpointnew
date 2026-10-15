@@ -396,7 +396,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 {sending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <ShieldCheck className="h-4 w-4" />}
                 {sending ? (isAr ? 'جاري ضغط الصورة والإرسال…' : 'Compressing and sending…') : (isAr ? 'إرسال إشعار الدفع' : 'Send payment notification')}
               </button>
-              <p className="text-center text-[11px] leading-5 text-[#6b8580] dark:text-[#9bb6b0]"><LockKeyhole className="me-1 inline h-3.5 w-3.5" />{isAr ? 'لن يتم تعديل رصيدك أو حالة الطلب قبل اعتماد الإشعار من الإدارة.' : 'Your balance and order status will not change until an admin approves the notification.'}</p>
+              <p className="text-center text-[11px] leading-5 text-[#6b8580] dark:text-[#9bb6b0]"><LockKeyhole className="me-1 inline h-3.5 w-3.5" />{isAr ? 'لن يتغير رصيدك أو حالة الطلب قبل اعتماد الإشعار. بعد الاعتماد، تُوزّع الدفعة على المستحقات من الأقدم للأحدث، وأي فائض يبقى رصيداً للزبون.' : 'Your balance and order status will not change until approval. The payment is then allocated to the oldest outstanding items first; any remainder stays as customer credit.'}</p>
             </form>
           )}
         </section>
