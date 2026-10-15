@@ -190,7 +190,11 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
         )}
       </main>
 
-      <footer className="border-t border-[#dce6e4] px-4 py-5 text-center text-[11px] text-[#7d9690] dark:border-[#1c4140] dark:text-[#779791]">{isAr ? 'نقطة الشحن · بوابة العميل' : 'Charging Point · Customer Portal'}</footer>
+      <footer className="border-t border-[#dce6e4] px-4 py-5 text-center text-[11px] text-[#7d9690] dark:border-[#1c4140] dark:text-[#779791]">
+        <span>{isAr ? 'نقطة الشحن · بوابة العميل' : 'Charging Point · Customer Portal'}</span>
+        <span className="mx-2">·</span>
+        <a href="/public/about" className="font-semibold hover:text-[#0f766e] dark:hover:text-[#83cbbd]">{isAr ? 'عن التطبيق' : 'About'}</a>
+      </footer>
     </div>
   );
 };
