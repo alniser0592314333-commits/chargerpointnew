@@ -85,14 +85,14 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const status = statusInfo(data?.status);
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="public-portal-page min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page min-h-screen transition-colors">
       <header className="border-b border-[#dce6e4] bg-white/90 dark:bg-[#0a2423]/90 dark:border-[#1c4140]">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0f766e] text-white shadow-sm"><Zap className="h-5 w-5" /></span>
             <span>
               <span className="block text-sm font-bold tracking-tight">{isAr ? 'نقطة الشحن' : 'Charging Point'}</span>
-              <span className="block text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'بوابة العميل' : 'Customer portal'}</span>
+              <span className="block text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'بوابة متابعة طلب الشحن' : 'Order tracking portal'}</span>
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -102,7 +102,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-7 sm:px-6 lg:py-10">
+      <main className="mx-auto max-w-xl px-4 py-6 sm:px-6 sm:py-8">
         {loading ? (
           <div className="mx-auto max-w-3xl rounded-2xl border border-[#dce6e4] bg-white p-10 text-center shadow-sm dark:border-[#1c4140] dark:bg-[#0a2423]">
             <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#eaf4f1] text-[#0f766e] dark:bg-[#133533]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#0f766e]/30 border-t-[#0f766e]" /></span>
@@ -115,10 +115,17 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             <p className="mt-2 text-sm leading-6 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رمز QR غير صالح أو منتهي. تأكد من مسح رمز الطلب الصحيح.' : 'This QR code is invalid or expired. Please scan the correct order QR.'}</p>
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-5">
             <section className="min-w-0 space-y-5">
+              {typeof due === 'number' && due > 0 && (
+                <a href={`/pay/${token}`} className="order-payment-banner group flex items-center gap-3 rounded-2xl border p-4 sm:p-5">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-slate-950"><CreditCard className="h-6 w-6 animate-pulse" /></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-black">{isAr ? 'سداد الرسوم ورفع إشعار الدفع' : 'Pay fees and upload payment receipt'}</span><span className="mt-1 block text-xs leading-5 text-slate-400">{isAr ? 'أرفق إيصال التحويل للمراجعة وتأكيد السداد' : 'Upload your transfer receipt for review and payment confirmation'}</span></span>
+                  <span className="shrink-0 text-emerald-400"><ChevronRight className={`h-5 w-5 transition-transform group-hover:translate-x-0.5 ${isRTL ? 'rotate-180' : ''}`} /></span>
+                </a>
+              )}
               <div className="space-y-2">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#0f766e]">{isAr ? 'تفاصيل الطلب' : 'ORDER DETAILS'}</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-400">{isAr ? 'تفاصيل الطلب' : 'ORDER DETAILS'}</p>
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
                     <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{isAr ? `طلب رقم ${data.orderNumber}` : `Order #${data.orderNumber}`}</h1>
@@ -180,9 +187,9 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
               </div>
             </section>
 
-            <aside className="h-fit space-y-4 lg:sticky lg:top-6">
-              <div className="overflow-hidden rounded-2xl border border-[#dce6e4] bg-white shadow-[0_8px_30px_rgba(16,55,51,0.05)] dark:border-[#1c4140] dark:bg-[#0a2423]">
-                <div className="bg-[#103c38] px-5 py-5 text-white">
+            <aside className="h-fit space-y-4">
+              <div className="order-summary-card overflow-hidden rounded-3xl border shadow-2xl">
+                <div className="order-summary-card__header px-5 py-5 text-white">
                   <p className="text-[11px] font-semibold text-[#b9d8d0]">{isAr ? 'ملخص المبلغ' : 'AMOUNT SUMMARY'}</p>
                   <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{typeof total === 'number' ? formatCurrency(total) : '—'}</p>
                   <p className="mt-1 text-xs text-[#b9d8d0]">{isAr ? 'إجمالي قيمة الطلب' : 'Total order value'}</p>
@@ -192,13 +199,11 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     <span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ المتبقي من الطلب' : 'Remaining order amount'}</span>
                     <span className="font-semibold tabular-nums">{typeof due === 'number' ? formatCurrency(due) : '—'}</span>
                   </div>
-                  {typeof due === 'number' && due > 0 ? (
-                    <a href={`/pay/${token}`} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#115e59] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 dark:focus:ring-offset-[#0a2423]">
-                      <CreditCard className="h-4 w-4" />{isAr ? 'ادفع الآن' : 'Pay now'}<ChevronRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} />
-                    </a>
-                  ) : (
-                    <div className="rounded-xl bg-[#f0f8f6] p-3 text-xs leading-5 text-[#41635d] dark:bg-[#10302e] dark:text-[#b4d0c8]">{typeof due === 'number' && due === 0 ? (isAr ? 'لا يوجد مبلغ متبقٍ على هذا الطلب حالياً.' : 'There is no remaining amount on this order.') : (isAr ? 'تعذّر تحميل المبلغ المستحق حالياً. حاول مجدداً عند توفر الاتصال.' : 'The outstanding amount is currently unavailable. Please try again when connected.')}</div>
-                  )}
+                  {typeof due === 'number' && due === 0 ? (
+                    <div className="order-paid-note rounded-xl p-3 text-xs leading-5">{isAr ? 'لا يوجد مبلغ متبقٍ على هذا الطلب حالياً.' : 'There is no remaining amount on this order.'}</div>
+                  ) : typeof due !== 'number' ? (
+                    <div className="rounded-xl bg-amber-500/10 p-3 text-xs leading-5 text-amber-300">{isAr ? 'تعذّر تحميل المبلغ المستحق حالياً. حاول مجدداً عند توفر الاتصال.' : 'The outstanding amount is currently unavailable. Please try again when connected.'}</div>
+                  ) : null}
                   <p className="text-center text-[10px] leading-4 text-[#7d9690] dark:text-[#779791]"><ShieldCheck className="me-1 inline h-3.5 w-3.5" />{isAr ? 'إرسال إشعار الدفع لا يؤكد الدفع تلقائياً' : 'Payment notification is not automatic confirmation'}</p>
                 </div>
               </div>
