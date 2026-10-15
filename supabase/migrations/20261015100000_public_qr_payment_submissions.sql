@@ -248,7 +248,7 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.submit_qr_payment(text, text, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.submit_qr_payment(text, text, text, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_qr_payment(text, text, text, text) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.list_pending_qr_payment_submissions()
 RETURNS SETOF jsonb
