@@ -275,6 +275,15 @@ BEGIN
     RAISE EXCEPTION 'Missing payment review permission' USING ERRCODE = 'P0001';
   END IF;
 
+  IF v_action = 'APPROVE' AND NOT EXISTS (
+    SELECT 1 FROM public.get_effective_permissions(v_admin_id)
+    WHERE permission = 'finance:create-payment'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.admins a WHERE a.id = v_admin_id AND a.role IN ('SUPER_ADMIN', 'Super Admin')
+  ) THEN
+    RAISE EXCEPTION 'Missing payment creation permission required by the canonical POST_PAYMENT command' USING ERRCODE = 'P0001';
+  END IF;
+
   RETURN QUERY
   SELECT jsonb_build_object(
     'id', s.id,
@@ -374,7 +383,7 @@ BEGIN
     'amountMinor', v_submission.amount_minor,
     'paymentMethod', v_submission.payment_method,
     'reference', 'QR_PAYMENT_SUBMISSION:' || v_submission.id::text,
-    'notes', coalesce(v_submission.note, ''),
+    'resetGeneration', coalesce((SELECT value_number FROM public.system_settings WHERE key = 'server_reset_generation'), 1),
     'bin', coalesce(p_bin, '')
   );
 
