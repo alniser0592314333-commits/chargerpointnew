@@ -25,9 +25,10 @@ const PageHeader: React.FC<{ subtitle?: string }> = ({ subtitle = 'بوابة ا
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
-        <div className="flex items-center gap-2.5">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <a href="/" className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card-hover px-2 py-2 text-xs font-bold text-muted-foreground transition hover:text-foreground sm:px-3" title={locale === 'ar' ? 'العودة للرئيسية' : 'Back to home'}><ArrowRight className="h-4 w-4 rtl:rotate-0 ltr:rotate-180"/><span className="hidden sm:inline">{locale === 'ar' ? 'الرئيسية' : 'Home'}</span></a>
           <LogoMark />
-          <span><strong className="block text-sm font-black">{locale === 'ar' ? 'منظومة الصيانة والشحن' : 'Charging Point'}</strong><span className="block text-[10px] text-muted-foreground">{subtitle}</span></span>
+          <span className="min-w-0"><strong className="block truncate text-sm font-black">{locale === 'ar' ? 'منظومة الصيانة والشحن' : 'Charging Point'}</strong><span className="block text-[10px] text-muted-foreground">{subtitle}</span></span>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => { setDark(v => !v); document.documentElement.classList.toggle('dark', !dark); document.documentElement.classList.toggle('light', dark); }} className="rounded-xl border border-border bg-card-hover p-2.5 text-muted-foreground" aria-label="Toggle theme">{dark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}</button>
