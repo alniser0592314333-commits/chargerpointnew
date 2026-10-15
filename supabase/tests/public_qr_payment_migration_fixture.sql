@@ -39,7 +39,8 @@ CREATE TABLE public.customers (
   id uuid PRIMARY KEY,
   name text NOT NULL,
   status text NOT NULL DEFAULT 'ACTIVE',
-  is_active boolean NOT NULL DEFAULT true
+  is_active boolean NOT NULL DEFAULT true,
+  deleted_at timestamptz
 );
 CREATE TABLE public.orders (
   id uuid PRIMARY KEY,
@@ -47,6 +48,7 @@ CREATE TABLE public.orders (
   display_number integer NOT NULL,
   status text NOT NULL DEFAULT 'CHARGING',
   created_at timestamptz NOT NULL DEFAULT now(),
+  cancelled_at timestamptz,
   deleted_at timestamptz
 );
 CREATE TABLE public.qr_tokens (
