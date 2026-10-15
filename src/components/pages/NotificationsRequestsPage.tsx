@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle, ArrowUpRight, Banknote, CheckCircle2, Clock3, FileImage,
-  RefreshCw, ShieldCheck, WalletCards, XCircle,
+  RefreshCw, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { invokeSupabaseRpc, getSupabaseAuthToken } from '../../services/supabase/client';
@@ -53,7 +53,7 @@ async function createReceiptSignedUrl(path: string): Promise<string | null> {
 }
 
 export const NotificationsRequestsPage: React.FC = () => {
-  const { t, locale, formatCurrency, isRTL } = useI18n();
+  const { t, locale, formatCurrency } = useI18n();
   const isAr = locale === 'ar';
   const [items, setItems] = useState<PendingQrPayment[]>([]);
   const [loading, setLoading] = useState(true);
