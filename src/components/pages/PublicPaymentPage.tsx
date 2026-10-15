@@ -62,7 +62,7 @@ const PaymentMethodLogo: React.FC<{ method: typeof methods[number] }> = ({ metho
 
 const parseCustomerAmountMinor = (value: string): number | null => {
   const normalized = value.trim().replace(',', '.');
-  if (!/^\\d{1,9}(?:\\.\\d{1,2})?$/.test(normalized)) return null;
+  if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(normalized)) return null;
   const amount = Number(normalized);
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const minor = Math.round(amount * 100);
