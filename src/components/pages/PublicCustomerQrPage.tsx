@@ -83,7 +83,7 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
       <header className="max-w-5xl w-full mx-auto flex items-center justify-between gap-3 py-4 border-b border-[#dce6e4] dark:border-[#1c4140]">
         <div className="flex items-center gap-2">
           <div className="w-10 h-10 rounded-xl bg-[#0f766e] flex items-center justify-center text-white shadow-sm">
-            <Zap className="w-5 h-5" />
+            <Zap className="w-4 h-4" />
           </div>
           <span className="text-sm font-bold tracking-tight text-[#142c2c] dark:text-[#e7f2ef]">
             {locale === 'en' ? 'Charging Point' : 'نقطة الشحن'}
