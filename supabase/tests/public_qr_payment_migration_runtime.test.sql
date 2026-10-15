@@ -115,6 +115,11 @@ BEGIN
   IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_submission_id) <> 'PENDING' THEN
     RAISE EXCEPTION 'New submission must be pending';
   END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000001');
+  IF v_public_submission->>'status' <> 'PENDING'
+     OR (v_public_submission->>'amount_minor')::bigint <> 6500 THEN
+    RAISE EXCEPTION 'Public order QR did not reconstruct the pending submission after reload';
+  END IF;
 
   v_duplicate := false;
   BEGIN
@@ -248,6 +253,10 @@ BEGIN
   IF v_submission->>'status' <> 'REJECTED' THEN RAISE EXCEPTION 'Rejection did not return REJECTED'; END IF;
   IF (SELECT status FROM public.qr_payment_submissions WHERE id = v_second_id) <> 'REJECTED' THEN
     RAISE EXCEPTION 'Rejection did not persist status';
+  END IF;
+  v_public_submission := public.public_resolve_qr_payment_submission('public-token-000000000000000000000002');
+  IF v_public_submission->>'status' <> 'REJECTED' THEN
+    RAISE EXCEPTION 'Public order QR did not reconstruct the rejected status after reload';
   END IF;
   IF (SELECT count(*) FROM public.payments) <> v_payment_count THEN
     RAISE EXCEPTION 'Rejection must not create a payment';
