@@ -9,6 +9,14 @@ ALTER TABLE public.qr_payment_submissions
   ADD COLUMN IF NOT EXISTS balance_before_minor bigint,
   ADD COLUMN IF NOT EXISTS balance_after_minor bigint;
 
+-- A pending receipt is not a payment amount. Keep the required column at zero until
+-- an authorized reviewer enters the verified amount and approves the receipt.
+ALTER TABLE public.qr_payment_submissions
+  DROP CONSTRAINT IF EXISTS qr_payment_submissions_amount_minor_check;
+ALTER TABLE public.qr_payment_submissions
+  ADD CONSTRAINT qr_payment_submissions_amount_minor_check
+  CHECK (amount_minor > 0 OR status = 'PENDING');
+
 CREATE INDEX IF NOT EXISTS qr_payment_submissions_pending_order_created_idx
   ON public.qr_payment_submissions (order_id, created_at DESC)
   WHERE status = 'PENDING';
@@ -266,11 +274,11 @@ BEGIN
       RAISE EXCEPTION 'Customer QR not found or inactive' USING ERRCODE = 'P0002';
     END IF;
 
-    IF p_amount_minor IS NULL OR p_amount_minor <= 0 OR p_amount_minor > 99999999999 THEN
-      RAISE EXCEPTION 'Customer payment amount must be greater than zero' USING ERRCODE = '22023';
+    IF p_amount_minor IS NOT NULL THEN
+      RAISE EXCEPTION 'Customer-provided payment amount is not accepted; reviewer determines the amount' USING ERRCODE = '22023';
     END IF;
 
-    v_due_minor := p_amount_minor;
+    v_due_minor := 0;
     PERFORM pg_advisory_xact_lock(hashtextextended('qr-payment:customer:' || v_customer_id::text, 0));
 
     IF p_receipt_path IS NULL
@@ -305,7 +313,7 @@ BEGIN
     note, status, created_at, updated_at, version
   )
   VALUES (
-    gen_random_uuid(), v_order_id, v_customer_id, v_due_minor, v_method,
+    gen_random_uuid(), v_order_id, v_customer_id, 0, v_method,
     p_receipt_path, v_note, 'PENDING', clock_timestamp(), clock_timestamp(), 1
   )
   RETURNING id INTO v_submission_id;
@@ -313,7 +321,7 @@ BEGIN
   RETURN jsonb_build_object(
     'success', true,
     'submission_id', v_submission_id,
-    'amount_minor', v_due_minor,
+    'amount_minor', NULL,
     'status', 'PENDING'
   );
 END;
@@ -402,7 +410,7 @@ BEGIN
   IF v_token_type = 'ORDER' THEN
     SELECT jsonb_build_object(
       'status', s.status,
-      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE s.amount_minor END,
+      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE NULL END,
       'payment_method', s.payment_method,
       'created_at', s.created_at,
       'reviewed_at', s.reviewed_at,
@@ -424,7 +432,7 @@ BEGIN
   ELSE
     SELECT jsonb_build_object(
       'status', s.status,
-      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE s.amount_minor END,
+      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE NULL END,
       'payment_method', s.payment_method,
       'created_at', s.created_at,
       'reviewed_at', s.reviewed_at,
@@ -449,11 +457,14 @@ $function$;
 REVOKE ALL ON FUNCTION public.public_resolve_qr_payment_submission(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.public_resolve_qr_payment_submission(text) TO anon, authenticated, service_role;
 
+DROP FUNCTION IF EXISTS public.review_qr_payment_submission(uuid, text, text, text);
+
 CREATE OR REPLACE FUNCTION public.review_qr_payment_submission(
   p_submission_id uuid,
   p_action text,
   p_bin text DEFAULT NULL,
-  p_rejection_reason text DEFAULT NULL
+  p_rejection_reason text DEFAULT NULL,
+  p_approved_amount_minor bigint DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -488,6 +499,11 @@ BEGIN
 
   IF v_action NOT IN ('APPROVE', 'REJECT') THEN
     RAISE EXCEPTION 'Action must be APPROVE or REJECT' USING ERRCODE = '22023';
+  END IF;
+
+  IF v_action = 'APPROVE'
+     AND (p_approved_amount_minor IS NULL OR p_approved_amount_minor <= 0 OR p_approved_amount_minor > 99999999999) THEN
+    RAISE EXCEPTION 'A verified payment amount greater than zero is required for approval' USING ERRCODE = '22023';
   END IF;
 
   IF v_action = 'APPROVE'
@@ -541,7 +557,7 @@ BEGIN
   v_payload := jsonb_build_object(
     'id', v_payment_id,
     'customerId', v_submission.customer_id,
-    'amountMinor', v_submission.amount_minor,
+    'amountMinor', p_approved_amount_minor,
     'paymentMethod', v_submission.payment_method,
     'reference', 'QR_PAYMENT_SUBMISSION:' || v_submission.id::text,
     'resetGeneration', coalesce((SELECT value_number FROM public.system_settings WHERE key = 'server_reset_generation'), 1),
@@ -568,6 +584,7 @@ BEGIN
 
   UPDATE public.qr_payment_submissions
   SET status = 'APPROVED',
+      amount_minor = p_approved_amount_minor,
       payment_id = v_payment_id,
       balance_before_minor = v_balance_before_minor,
       balance_after_minor = v_balance_after_minor,
@@ -586,12 +603,12 @@ BEGIN
     'status', 'APPROVED',
     'submission_id', v_submission.id,
     'payment_id', v_payment_id,
-    'amount_minor', v_submission.amount_minor,
+    'amount_minor', p_approved_amount_minor,
     'balance_before_minor', v_balance_before_minor,
     'balance_after_minor', v_balance_after_minor
   );
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.review_qr_payment_submission(uuid, text, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.review_qr_payment_submission(uuid, text, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.review_qr_payment_submission(uuid, text, text, text, bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.review_qr_payment_submission(uuid, text, text, text, bigint) TO authenticated;
