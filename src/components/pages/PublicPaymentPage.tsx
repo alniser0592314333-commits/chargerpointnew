@@ -151,6 +151,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     setSubmission(null);
     setSuccess(false);
     setAmountInput('');
+    setMethod('');
+    setReceipt(null);
+    setNote('');
+    setError('');
+    setCopied(false);
     void (async () => {
       try {
         const orderData = await getPublicOrderByToken(token).catch(() => null);
