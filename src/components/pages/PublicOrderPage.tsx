@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ArrowRight, ArrowLeft, BatteryCharging, CalendarClock, CheckCircle2,
+  BatteryCharging, CalendarClock, CheckCircle2,
   ChevronRight, CircleHelp, Clock3, CreditCard, Globe, Moon, PackageCheck,
   ShieldCheck, Smartphone, Sun, Zap,
 } from 'lucide-react';
