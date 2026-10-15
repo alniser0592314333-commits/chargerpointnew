@@ -107,6 +107,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                   <div>
                     <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{isAr ? `طلب رقم ${data.orderNumber}` : `Order #${data.orderNumber}`}</h1>
                     <p className="mt-1 text-sm text-[#6b8580] dark:text-[#9bb6b0]">{data.customerName}</p>
+                    {data.customerCode && <p className="mt-1 text-[11px] text-[#7d9690] dark:text-[#779791]">{isAr ? 'مرجع العميل' : 'Customer reference'}: <span dir="ltr" className="font-semibold tracking-wider">{data.customerCode}</span></p>}
                   </div>
                   <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${status.cls}`}><status.icon className="h-4 w-4" />{status.label}</span>
                 </div>
@@ -138,12 +139,14 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                             <p className="text-sm font-semibold">{item.name}</p>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                               <span className="rounded-md bg-[#f1f5f4] px-2 py-1 text-[10px] font-medium text-[#58736e] dark:bg-[#102f2d] dark:text-[#b0c6c1]">{item.has_charger ? (isAr ? 'مع شاحن' : 'With charger') : (isAr ? 'بدون شاحن' : 'No charger')}</span>
+                              <span className="rounded-md bg-[#f1f5f4] px-2 py-1 text-[10px] font-medium text-[#58736e] dark:bg-[#102f2d] dark:text-[#b0c6c1]">{isAr ? `الكمية: ${item.quantity ?? 1}` : `Qty: ${item.quantity ?? 1}`}</span>
                               {item.charger_fee_exempt && <span className="rounded-md bg-[#eaf4f1] px-2 py-1 text-[10px] font-semibold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">{isAr ? 'تم إعفاؤك من رسوم الشحن' : 'Charger fee waived'}</span>}
                             </div>
                           </div>
                           <div className="shrink-0 text-end">
                             <p className="text-sm font-semibold tabular-nums">{typeof item.total_price_minor === 'number' ? formatCurrency(item.total_price_minor) : '—'}</p>
-                            {typeof item.due_minor === 'number' && item.due_minor > 0 && item.due_minor < (item.total_price_minor ?? 0) && <p className="mt-1 text-[10px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المتبقي' : 'Due'}: {formatCurrency(item.due_minor)}</p>}
+                            {typeof item.unit_price_minor === 'number' && <p className="mt-1 text-[10px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'سعر الوحدة' : 'Unit price'}: {formatCurrency(item.unit_price_minor)}</p>}
+                            {typeof item.due_minor === 'number' && item.due_minor > 0 && item.due_minor < (item.total_price_minor ?? 0) && <p className="mt-1 text-[10px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المتبقي' : 'Remaining'}: {formatCurrency(item.due_minor)}</p>}
                           </div>
                         </div>
                       ))}
