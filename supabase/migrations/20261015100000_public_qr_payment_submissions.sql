@@ -1,6 +1,11 @@
 -- Public QR payment submissions: extend the existing submission flow without creating a second payment/allocation engine.
 -- Approval delegates to the canonical CREATE_PAYMENT command, preserving its FIFO allocation and customer-credit behavior.
 
+-- The live canonical CREATE_PAYMENT implementation inserts this field; the current
+-- live payments table does not yet have it, so add it instead of changing the engine.
+ALTER TABLE public.payments
+  ADD COLUMN IF NOT EXISTS notes text;
+
 ALTER TABLE public.qr_payment_submissions
   ADD COLUMN IF NOT EXISTS order_id uuid REFERENCES public.orders(id),
   ADD COLUMN IF NOT EXISTS payment_method text NOT NULL DEFAULT 'UNKNOWN',
