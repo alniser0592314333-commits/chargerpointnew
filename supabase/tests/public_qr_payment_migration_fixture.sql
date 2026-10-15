@@ -77,6 +77,7 @@ CREATE TABLE public.order_items (
   item_sequence integer NOT NULL,
   device_name_snapshot text NOT NULL,
   status text NOT NULL DEFAULT 'CHARGING',
+  operational_status text NOT NULL DEFAULT 'CHARGING',
   financial_status text NOT NULL DEFAULT 'PENDING',
   payment_status text NOT NULL DEFAULT 'UNPAID',
   has_charger boolean NOT NULL DEFAULT false,
