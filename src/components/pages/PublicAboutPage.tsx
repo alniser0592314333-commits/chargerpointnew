@@ -76,7 +76,7 @@ export const PublicAboutPage: React.FC = () => {
               <ol className="mt-3 space-y-3 text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">
                 <li className="flex gap-2"><span className="font-semibold text-[#0f766e]">1.</span><span>{isAr ? 'اختَر طريقة التحويل المناسبة وحوّل المبلغ الظاهر في ملخص الطلب.' : 'Choose a transfer method and transfer the amount shown in the order summary.'}</span></li>
                 <li className="flex gap-2"><span className="font-semibold text-[#0f766e]">2.</span><span>{isAr ? 'أرفق صورة الإيصال وأرسل إشعار الدفع.' : 'Attach the receipt image and send the payment notification.'}</span></li>
-                <li className="flex gap-2"><span className="font-semibold text-[#0f766e]">3.</span><span>{isAr ? 'تراجع الإدارة الإيصال. عند الاعتماد فقط تُسجّل الدفعة وتُوزّع وفق المسار المالي المعتمد.' : 'An admin reviews the receipt. Only after approval is the payment recorded and allocated through the existing financial flow.'}</span></li>
+                <li className="flex gap-2"><span className="font-semibold text-[#0f766e]">3.</span><span>{isAr ? 'تراجع الإدارة الإيصال. عند الاعتماد فقط تُسجّل الدفعة وتُوزّع على المستحقات من الأقدم للأحدث، وأي فائض يبقى رصيداً للزبون.' : 'An admin reviews the receipt. Only after approval is the payment recorded and allocated oldest-to-newest; any remainder stays as customer credit.'}</span></li>
               </ol>
             </div>
           </div>
