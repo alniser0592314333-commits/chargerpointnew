@@ -47,6 +47,7 @@ export const PublicLandingDesign: React.FC = () => {
   const { locale } = useI18n();
   const ar = locale === 'ar';
   const [menu, setMenu] = useState(false);
+  const [dark, setDark] = useState(true);
   const jump = (id: string) => { setMenu(false); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); };
   const nav = [{ id: 'hero', ar: 'الرئيسية', en: 'Home' }, { id: 'pricing', ar: 'الأسعار', en: 'Pricing' }, { id: 'how-it-works', ar: 'كيف تعمل الخدمة', en: 'How it works' }, { id: 'working-hours', ar: 'أوقات العمل', en: 'Working hours' }, { id: 'location', ar: 'الموقع', en: 'Location' }];
   return (
@@ -57,6 +58,7 @@ export const PublicLandingDesign: React.FC = () => {
           <button type="button" onClick={() => jump('hero')} className="flex shrink-0 items-center gap-2.5 text-start"><LogoMark /><span className="text-xs font-black tracking-tight sm:text-sm">{ar ? 'منظومة الصيانة والشحن' : 'Charging & Maintenance'}</span></button>
           <nav className="hidden items-center gap-6 md:flex">{nav.map(n => <button key={n.id} onClick={() => jump(n.id)} className="text-xs font-bold text-muted-foreground transition-colors hover:text-foreground">{ar ? n.ar : n.en}</button>)}</nav>
           <div className="flex items-center gap-2">
+            <button type="button" onClick={() => { setDark(v => !v); document.documentElement.classList.toggle('dark', !dark); document.documentElement.classList.toggle('light', dark); }} className="rounded-xl border border-border bg-card-hover p-2.5 text-muted-foreground" aria-label="Toggle theme" title={dark ? (ar ? 'الوضع الفاتح' : 'Light mode') : (ar ? 'الوضع الداكن' : 'Dark mode')}>{dark ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4" />}</button>
             <button type="button" onClick={() => setLocale(ar ? 'en' : 'ar')} className="hidden items-center gap-1.5 rounded-xl border border-border bg-card-hover px-3 py-2 text-xs font-bold text-muted-foreground sm:flex"><Globe className="h-3.5 w-3.5" />{ar ? 'English' : 'العربية'}</button>
             <button type="button" onClick={() => setMenu(v => !v)} className="rounded-xl border border-border bg-card-hover p-2.5" aria-expanded={menu} aria-label={menu ? 'Close menu' : 'Open menu'}>{menu ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}</button>
           </div>
