@@ -28,7 +28,7 @@ const methods: Array<{
     descriptionAr: 'محفظة إلكترونية',
     descriptionEn: 'Digital wallet',
     markClass: 'bg-[#f5e9ed] text-[#8e2342]',
-    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
+    logoUrl: '',
   },
   {
     id: 'PALPAY',
@@ -54,7 +54,7 @@ const methods: Array<{
 
 const PaymentMethodLogo: React.FC<{ method: typeof methods[number] }> = ({ method }) => {
   const [failed, setFailed] = useState(false);
-  if (failed) {
+  if (failed || !method.logoUrl) {
     return <span className={`mb-3 flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-black tracking-tight ${method.markClass}`}>{method.short}</span>;
   }
   return <img src={method.logoUrl} alt={method.short} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="mb-3 h-10 w-14 rounded-md object-contain" />;
