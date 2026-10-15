@@ -102,7 +102,7 @@ export interface PublicPaymentPageProps {
 }
 
 export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) => {
-  const { locale, setLocale, t, isRTL } = useI18n();
+  const { locale, setLocale, formatCurrency, isRTL } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
   const [order, setOrder] = useState<PublicOrderQrData | null>(null);
@@ -143,9 +143,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   }, [receipt]);
 
   const amountDue = typeof order?.orderDueMinor === 'number' ? order.orderDueMinor : null;
-  const formatAmount = (amount: number) => t('formatCurrency', { amount }) || new Intl.NumberFormat(isAr ? 'ar-PS' : 'en-US', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  }).format(amount / 100);
+  const formatAmount = (amount: number) => formatCurrency(amount);
 
   const copyNumber = async () => {
     try {
