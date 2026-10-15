@@ -398,12 +398,10 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-5">
-
-              )}
               <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">{isCustomerPayment ? (isAr ? '2. اختر طريقة التحويل' : '2. Choose a transfer method') : (isAr ? '1. اختر طريقة التحويل' : '1. Choose a transfer method')}</h2>
+                    <h2 className="text-base font-semibold">{isAr ? '1. اختر طريقة التحويل' : '1. Choose a transfer method'}</h2>
                     <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'اختيار واحد مطلوب' : 'One option is required'}</p>
                   </div>
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">01</span>
@@ -428,7 +426,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">{isCustomerPayment ? (isAr ? '3. بيانات التحويل' : '3. Transfer details') : (isAr ? '2. بيانات التحويل' : '2. Transfer details')}</h2>
+                    <h2 className="text-base font-semibold">{isAr ? '2. بيانات التحويل' : '2. Transfer details'}</h2>
                     <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'استخدم الرقم نفسه للطريقة المختارة' : 'Use the same destination number for the selected method'}</p>
                   </div>
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">02</span>
@@ -454,7 +452,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-base font-semibold">{isCustomerPayment ? (isAr ? '4. أرفق إيصال التحويل' : '4. Attach the transfer receipt') : (isAr ? '3. أرفق إيصال التحويل' : '3. Attach the transfer receipt')}</h2>
+                    <h2 className="text-base font-semibold">{isAr ? '3. أرفق إيصال التحويل' : '3. Attach the transfer receipt'}</h2>
                     <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'صورة واضحة مطلوبة' : 'A clear image is required'}</p>
                   </div>
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eaf4f1] text-xs font-bold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">03</span>
