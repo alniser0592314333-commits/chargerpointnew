@@ -5,7 +5,9 @@ ALTER TABLE public.qr_payment_submissions
   ADD COLUMN IF NOT EXISTS order_id uuid REFERENCES public.orders(id),
   ADD COLUMN IF NOT EXISTS payment_method text NOT NULL DEFAULT 'UNKNOWN',
   ADD COLUMN IF NOT EXISTS payment_id uuid REFERENCES public.payments(id),
-  ADD COLUMN IF NOT EXISTS rejection_reason text;
+  ADD COLUMN IF NOT EXISTS rejection_reason text,
+  ADD COLUMN IF NOT EXISTS balance_before_minor bigint,
+  ADD COLUMN IF NOT EXISTS balance_after_minor bigint;
 
 CREATE INDEX IF NOT EXISTS qr_payment_submissions_pending_order_created_idx
   ON public.qr_payment_submissions (order_id, created_at DESC)
@@ -368,6 +370,84 @@ $function$;
 REVOKE ALL ON FUNCTION public.list_pending_qr_payment_submissions() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.list_pending_qr_payment_submissions() TO authenticated;
 
+CREATE OR REPLACE FUNCTION public.public_resolve_qr_payment_submission(p_public_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_target_id uuid;
+  v_token_type text;
+  v_result jsonb;
+BEGIN
+  IF p_public_token IS NULL OR length(p_public_token) < 20 OR length(p_public_token) > 128 THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT qt.target_id, qt.token_type INTO v_target_id, v_token_type
+  FROM public.qr_tokens qt
+  WHERE qt.public_token = p_public_token
+    AND qt.token_type IN ('ORDER', 'CUSTOMER')
+    AND qt.is_active = true
+    AND (qt.expires_at IS NULL OR qt.expires_at > now())
+  LIMIT 1;
+
+  IF v_target_id IS NULL OR v_token_type IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_token_type = 'ORDER' THEN
+    SELECT jsonb_build_object(
+      'status', s.status,
+      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE s.amount_minor END,
+      'payment_method', s.payment_method,
+      'created_at', s.created_at,
+      'reviewed_at', s.reviewed_at,
+      'balance_before_minor', CASE WHEN s.status = 'APPROVED' THEN s.balance_before_minor ELSE NULL END,
+      'balance_after_minor', CASE WHEN s.status = 'APPROVED' THEN s.balance_after_minor ELSE NULL END
+    ) INTO v_result
+    FROM public.qr_payment_submissions s
+    JOIN public.orders o ON o.id = s.order_id
+    JOIN public.customers c ON c.id = s.customer_id
+    LEFT JOIN public.payments p ON p.id = s.payment_id
+    WHERE s.order_id = v_target_id
+      AND o.deleted_at IS NULL
+      AND o.cancelled_at IS NULL
+      AND c.deleted_at IS NULL
+      AND c.is_active = true
+      AND c.status <> 'DELETED'
+    ORDER BY s.created_at DESC
+    LIMIT 1;
+  ELSE
+    SELECT jsonb_build_object(
+      'status', s.status,
+      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE s.amount_minor END,
+      'payment_method', s.payment_method,
+      'created_at', s.created_at,
+      'reviewed_at', s.reviewed_at,
+      'balance_before_minor', CASE WHEN s.status = 'APPROVED' THEN s.balance_before_minor ELSE NULL END,
+      'balance_after_minor', CASE WHEN s.status = 'APPROVED' THEN s.balance_after_minor ELSE NULL END
+    ) INTO v_result
+    FROM public.qr_payment_submissions s
+    JOIN public.customers c ON c.id = s.customer_id
+    LEFT JOIN public.payments p ON p.id = s.payment_id
+    WHERE s.customer_id = v_target_id
+      AND s.order_id IS NULL
+      AND c.deleted_at IS NULL
+      AND c.is_active = true
+      AND c.status <> 'DELETED'
+    ORDER BY s.created_at DESC
+    LIMIT 1;
+  END IF;
+
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.public_resolve_qr_payment_submission(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.public_resolve_qr_payment_submission(text) TO anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.review_qr_payment_submission(
   p_submission_id uuid,
   p_action text,
@@ -385,6 +465,8 @@ DECLARE
   v_payment_id uuid;
   v_payload jsonb;
   v_command_result jsonb;
+  v_balance_before_minor bigint;
+  v_balance_after_minor bigint;
   v_action text := upper(trim(coalesce(p_action, '')));
 BEGIN
   IF auth.uid() IS NULL OR public.is_my_account_session_active() IS NOT TRUE THEN
@@ -445,6 +527,11 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'status', 'REJECTED', 'submission_id', v_submission.id);
   END IF;
 
+  SELECT coalesce(sum(fl.amount_minor), 0)::bigint
+  INTO v_balance_before_minor
+  FROM public.financial_ledger fl
+  WHERE fl.customer_id = v_submission.customer_id;
+
   v_payment_id := gen_random_uuid();
   v_payload := jsonb_build_object(
     'id', v_payment_id,
@@ -469,9 +556,16 @@ BEGIN
     RAISE EXCEPTION 'Canonical payment command failed; notification remains pending' USING ERRCODE = 'P0001';
   END IF;
 
+  SELECT coalesce(sum(fl.amount_minor), 0)::bigint
+  INTO v_balance_after_minor
+  FROM public.financial_ledger fl
+  WHERE fl.customer_id = v_submission.customer_id;
+
   UPDATE public.qr_payment_submissions
   SET status = 'APPROVED',
       payment_id = v_payment_id,
+      balance_before_minor = v_balance_before_minor,
+      balance_after_minor = v_balance_after_minor,
       reviewed_by = v_admin_id,
       reviewed_at = now(),
       updated_at = now(),
@@ -486,7 +580,10 @@ BEGIN
     'success', true,
     'status', 'APPROVED',
     'submission_id', v_submission.id,
-    'payment_id', v_payment_id
+    'payment_id', v_payment_id,
+    'amount_minor', v_submission.amount_minor,
+    'balance_before_minor', v_balance_before_minor,
+    'balance_after_minor', v_balance_after_minor
   );
 END;
 $function$;
