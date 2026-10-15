@@ -127,6 +127,9 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  IF p_command_type <> 'POST_PAYMENT' THEN
+    RAISE EXCEPTION 'Expected review to use existing POST_PAYMENT FIFO branch, got %', p_command_type;
+  END IF;
   IF p_payload->>'bin' = 'FAIL' THEN
     RETURN jsonb_build_object('success', false);
   END IF;
