@@ -221,9 +221,11 @@ BEGIN
 
     IF EXISTS (
       SELECT 1 FROM public.qr_payment_submissions s
-      WHERE s.order_id = v_order_id AND s.status = 'PENDING'
+      WHERE s.customer_id = v_customer_id
+        AND s.status = 'PENDING'
+        AND (s.order_id = v_order_id OR s.order_id IS NULL)
     ) THEN
-      RAISE EXCEPTION 'A payment notification for this order is already awaiting review' USING ERRCODE = 'P0001';
+      RAISE EXCEPTION 'A payment notification for this customer account or order is already awaiting review' USING ERRCODE = 'P0001';
     END IF;
 
     IF (
@@ -280,14 +282,14 @@ BEGIN
 
     IF EXISTS (
       SELECT 1 FROM public.qr_payment_submissions s
-      WHERE s.customer_id = v_customer_id AND s.order_id IS NULL AND s.status = 'PENDING'
+      WHERE s.customer_id = v_customer_id AND s.status = 'PENDING'
     ) THEN
       RAISE EXCEPTION 'A payment notification for this customer account is already awaiting review' USING ERRCODE = 'P0001';
     END IF;
 
     IF (
       SELECT count(*) FROM public.qr_payment_submissions s
-      WHERE s.customer_id = v_customer_id AND s.order_id IS NULL
+      WHERE s.customer_id = v_customer_id
         AND s.created_at > now() - interval '1 hour'
     ) >= 3 THEN
       RAISE EXCEPTION 'Too many payment notifications for this customer account. Please try again later.' USING ERRCODE = 'P0001';
