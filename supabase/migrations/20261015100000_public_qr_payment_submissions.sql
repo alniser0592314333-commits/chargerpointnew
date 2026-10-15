@@ -405,6 +405,18 @@ BEGIN
     RAISE EXCEPTION 'Action must be APPROVE or REJECT' USING ERRCODE = '22023';
   END IF;
 
+  IF v_action = 'APPROVE'
+     AND NOT EXISTS (
+       SELECT 1 FROM public.get_effective_permissions(v_admin_id)
+       WHERE permission = 'finance:create-payment'
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM public.admins a
+       WHERE a.id = v_admin_id AND a.role IN ('SUPER_ADMIN', 'Super Admin')
+     ) THEN
+    RAISE EXCEPTION 'Missing payment creation permission required by the canonical POST_PAYMENT command' USING ERRCODE = 'P0001';
+  END IF;
+
   SELECT * INTO v_submission
   FROM public.qr_payment_submissions
   WHERE id = p_submission_id
