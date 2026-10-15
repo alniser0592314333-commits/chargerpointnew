@@ -168,7 +168,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                 </div>
                 <div className="space-y-4 p-5">
                   <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ المستحق' : 'Outstanding'}</span>
+                    <span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ المتبقي من الطلب' : 'Remaining order amount'}</span>
                     <span className="font-semibold tabular-nums">{typeof due === 'number' ? formatCurrency(due) : '—'}</span>
                   </div>
                   {typeof due === 'number' && due > 0 ? (
@@ -176,7 +176,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       <CreditCard className="h-4 w-4" />{isAr ? 'ادفع الآن' : 'Pay now'}<ChevronRight className={`h-4 w-4 ${isRTL ? 'rotate-180' : ''}`} />
                     </a>
                   ) : (
-                    <div className="rounded-xl bg-[#f0f8f6] p-3 text-xs leading-5 text-[#41635d] dark:bg-[#10302e] dark:text-[#b4d0c8]">{typeof due === 'number' && due === 0 ? (isAr ? 'لا يوجد مبلغ مستحق مسجّل لهذا الطلب حالياً.' : 'No recognized outstanding amount is recorded for this order yet.') : (isAr ? 'تعذّر تحميل المبلغ المستحق حالياً. حاول مجدداً عند توفر الاتصال.' : 'The outstanding amount is currently unavailable. Please try again when connected.')}</div>
+                    <div className="rounded-xl bg-[#f0f8f6] p-3 text-xs leading-5 text-[#41635d] dark:bg-[#10302e] dark:text-[#b4d0c8]">{typeof due === 'number' && due === 0 ? (isAr ? 'لا يوجد مبلغ متبقٍ على هذا الطلب حالياً.' : 'There is no remaining amount on this order.') : (isAr ? 'تعذّر تحميل المبلغ المستحق حالياً. حاول مجدداً عند توفر الاتصال.' : 'The outstanding amount is currently unavailable. Please try again when connected.')}</div>
                   )}
                   <p className="text-center text-[10px] leading-4 text-[#7d9690] dark:text-[#779791]"><ShieldCheck className="me-1 inline h-3.5 w-3.5" />{isAr ? 'إرسال إشعار الدفع لا يؤكد الدفع تلقائياً' : 'Payment notification is not automatic confirmation'}</p>
                 </div>
