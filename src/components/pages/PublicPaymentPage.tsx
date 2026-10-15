@@ -342,7 +342,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#0f766e]">{isAr ? 'بوابة العميل' : 'CUSTOMER PORTAL'}</p>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{pageTitle}</h1>
             <p className="max-w-xl text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">
-              {isCustomerPayment ? (isAr ? 'أدخل المبلغ الذي حوّلته على حسابك، ثم أرفق صورة الإيصال. الدفع يتم خارج التطبيق ويُراجع الإشعار يدوياً.' : 'Enter the amount you transferred to your customer account, then attach the receipt. Payment happens outside this app and the notification is reviewed manually.') : (isAr ? 'حوّل المبلغ، ثم أرفق صورة الإيصال حتى نراجع العملية. إرسال الإشعار لا يعني تأكيد الدفع تلقائياً.' : 'Complete the transfer, then attach the receipt so we can review it. Sending a notification does not automatically confirm payment.')}
+              {isCustomerPayment ? (isAr ? 'اختر وسيلة الدفع، وانسخ الرقم، ثم حوّل من تطبيق الدفع نفسه وأرفق صورة الإيصال. لا يتم اعتماد أي مبلغ إلا بعد مراجعة الإيصال يدوياً.' : 'Choose a payment method, copy the number, pay in that payment app, then attach the receipt. No amount is recorded until the receipt is reviewed manually.') : (isAr ? 'انسخ الرقم وحوّل من تطبيق وسيلة الدفع، ثم أرفق صورة الإيصال. المبلغ المعتمد هو المبلغ الذي نتحقق منه في الإيصال، وإرسال الإشعار لا يؤكد الدفع تلقائياً.' : 'Copy the number and transfer in the payment app, then attach the receipt. The approved amount is the amount verified from the receipt; submitting a notification does not confirm payment.')}
             </p>
           </div>
 
@@ -503,8 +503,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 <p className="mt-1 text-xs text-[#b9d8d0]">{isAr ? 'مرجع العميل' : 'Customer reference'}: {customer.customerCode}</p>
               </div>
               <div className="p-5 text-sm">
-                <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'مبلغ الإشعار' : 'Notification amount'}</span><span className="font-semibold tabular-nums">{amountDue !== null && amountDue > 0 ? formatAmount(amountDue) : '—'}</span></div>
-                <p className="mt-3 text-xs leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'سيُربط الإشعار بحسابك، وبعد الاعتماد تُوزّع الدفعة على المستحقات من الأقدم للأحدث.' : 'The notification is linked to your customer account; after approval, payment is allocated to the oldest outstanding items first.'}</p>
+                <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ المعتمد' : 'Approved amount'}</span><span className="font-semibold">{isAr ? 'بعد مراجعة الإيصال' : 'After receipt review'}</span></div>
+                <p className="mt-3 text-xs leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'سيُربط الإشعار بحسابك، وبعد الاعتماد تُوزّع الدفعة حسب المبلغ الذي تم التحقق منه على المستحقات من الأقدم للأحدث.' : 'The notification is linked to your customer account. After approval, the verified amount is allocated to the oldest outstanding items first.'}</p>
               </div>
             </div>
           )}
@@ -521,9 +521,10 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   <span className="font-semibold tabular-nums">{typeof order.orderTotalMinor === 'number' ? formatAmount(order.orderTotalMinor) : '—'}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3 border-t border-[#e5ecea] pt-4 dark:border-[#244746]">
-                  <span className="text-sm font-semibold">{isAr ? 'المبلغ المطلوب تحويله' : 'Transfer amount'}</span>
+                  <span className="text-sm font-semibold">{isAr ? 'المتبقي على الطلب (للمعلومية)' : 'Order balance due (reference only)'}</span>
                   <span className="text-xl font-semibold tracking-tight tabular-nums text-[#0f766e] dark:text-[#83cbbd]">{amountDue !== null ? formatAmount(amountDue) : '—'}</span>
                 </div>
+                <p className="-mt-2 text-xs leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'هذا الرصيد للمعلومية فقط؛ مبلغ الدفعة الفعلي تحدده الإدارة بعد التحقق من صورة الإيصال.' : 'This balance is informational only; the actual payment amount is set by an admin after checking the receipt.'}</p>
                 {order.items?.length ? (
                   <div className="space-y-2 border-t border-[#e5ecea] pt-4 dark:border-[#244746]">
                     {order.items.slice(0, 5).map((item, index) => (
