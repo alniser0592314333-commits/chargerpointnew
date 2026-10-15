@@ -61,15 +61,6 @@ const PaymentMethodLogo: React.FC<{ method: typeof methods[number] }> = ({ metho
   return <img src={method.logoUrl} alt={method.short} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="mb-3 h-10 w-14 rounded-md object-contain" />;
 };
 
-const parseCustomerAmountMinor = (value: string): number | null => {
-  const normalized = value.trim().replace(',', '.');
-  if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(normalized)) return null;
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-  const minor = Math.round(amount * 100);
-  return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
-};
-
 const MAX_SOURCE_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_COMPRESSED_BYTES = 2 * 1024 * 1024;
 
@@ -129,7 +120,6 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const isAr = locale === 'ar';
   const [order, setOrder] = useState<PublicOrderQrData | null>(null);
   const [customer, setCustomer] = useState<PublicCustomerQrData | null>(null);
-  const [amountInput, setAmountInput] = useState('');
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -150,7 +140,6 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     setCustomer(null);
     setSubmission(null);
     setSuccess(false);
-    setAmountInput('');
     setMethod('');
     setReceipt(null);
     setNote('');
@@ -202,9 +191,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   }, [receipt]);
 
   const isCustomerPayment = Boolean(customer && !order);
-  const amountDue = order
-    ? (typeof order.orderDueMinor === 'number' ? order.orderDueMinor : null)
-    : (isCustomerPayment ? parseCustomerAmountMinor(amountInput) : null);
+  const amountDue = order ? (typeof order.orderDueMinor === 'number' ? order.orderDueMinor : null) : null;
   const backHref = isCustomerPayment ? `/c/${token}` : `/o/${token}`;
   const formatAmount = (amount: number) => formatCurrency(amount);
 
@@ -247,8 +234,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       setError(isAr ? 'صورة إيصال التحويل مطلوبة لإرسال الإشعار.' : 'A transfer receipt image is required.');
       return;
     }
-    if ((!order && !customer) || amountDue === null || amountDue <= 0) {
-      setError(isCustomerPayment ? (isAr ? 'أدخل مبلغاً صحيحاً أكبر من صفر.' : 'Enter a valid amount greater than zero.') : (isAr ? 'المبلغ المستحق غير متاح حالياً. ارجع للطلب وحاول لاحقاً.' : 'The outstanding amount is not available right now. Return to the order and try again later.'));
+    if ((!order && !customer) || (order && (amountDue === null || amountDue <= 0))) {
+      setError(isAr ? 'المبلغ المستحق غير متاح حالياً. ارجع للطلب وحاول لاحقاً.' : 'The outstanding amount is not available right now. Return to the order and try again later.');
       return;
     }
     if (!config.supabaseUrl || !config.supabaseAnonKey) {
@@ -262,7 +249,6 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       const form = new FormData();
       form.append('token', token);
       form.append('payment_method', method);
-      if (isCustomerPayment) form.append('amount_minor', String(amountDue));
       form.append('note', note.trim().slice(0, 500));
       form.append('receipt', compressed, compressed.name);
 
@@ -287,7 +273,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
       setSubmission({
         status: 'PENDING',
-        amount_minor: Number(result.amount_minor ?? amountDue),
+        amount_minor: Number(result.amount_minor ?? 0),
         payment_method: method,
         created_at: new Date().toISOString(),
         reviewed_at: null,
@@ -386,7 +372,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </p>
               {submission && (
                 <div className="mt-5 space-y-3 rounded-xl border border-[#dce6e4] bg-[#f7faf9] p-4 text-sm dark:border-[#244746] dark:bg-[#0b2928]">
-                  <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ' : 'Amount'}</span><span className="font-semibold tabular-nums">{formatAmount(Number(submission.amount_minor))}</span></div>
+                  {submission.status === 'APPROVED' ? (
+                    <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ المعتمد' : 'Approved amount'}</span><span className="font-semibold tabular-nums">{formatAmount(Number(submission.amount_minor))}</span></div>
+                  ) : (
+                    <p className="text-xs leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'سيتم تحديد المبلغ بعد مراجعة الإيصال والتحقق منه.' : 'The amount will be set after the receipt is reviewed and verified.'}</p>
+                  )}
                   <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'طريقة الدفع' : 'Payment method'}</span><span className="font-semibold">{methods.find((item) => item.id === submission.payment_method)?.[isAr ? 'ar' : 'en'] || submission.payment_method}</span></div>
                   {submission.status === 'APPROVED' && (
                     <>
@@ -400,7 +390,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <div className="mt-6 flex flex-wrap gap-3">
                 <a href={backHref} className="inline-flex items-center gap-2 rounded-xl border border-[#dce6e4] px-4 py-3 text-sm font-semibold transition hover:bg-[#edf4f2] dark:border-[#315653] dark:hover:bg-[#133533]">{isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Return to customer account') : (isAr ? 'العودة إلى الطلب' : 'Return to order')}</a>
                 {submission?.status !== 'PENDING' && (isCustomerPayment || (typeof order?.orderDueMinor === 'number' && order.orderDueMinor > 0)) && (
-                  <button type="button" onClick={() => { setSuccess(false); setSubmission(null); setError(''); if (isCustomerPayment) setAmountInput(''); }} className="inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">
+                  <button type="button" onClick={() => { setSuccess(false); setSubmission(null); setError(''); }} className="inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">
                     {isAr ? 'إشعار دفع جديد' : 'New payment notification'}
                   </button>
                 )}
@@ -408,8 +398,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-5">
-              {isCustomerPayment && (
-                <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
+              <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h2 className="text-base font-semibold">{isAr ? '1. أدخل مبلغ التحويل' : '1. Enter transfer amount'}</h2>
