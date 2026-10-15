@@ -15,6 +15,7 @@ import {
   Sparkles,
   Layers,
   Clock,
+  CreditCard,
 } from 'lucide-react';
 
 export interface PublicCustomerQrPageProps {
@@ -202,6 +203,17 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
                 </div>
               </div>
             </div>
+
+            <a href={`/pay/${token}`} className="flex w-full items-center justify-between gap-4 rounded-2xl bg-[#0f766e] p-4 text-start text-white shadow-sm transition hover:bg-[#115e59] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 dark:focus:ring-offset-[#071b1b]">
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><CreditCard className="h-5 w-5" /></span>
+                <span>
+                  <span className="block text-sm font-semibold">{locale === 'en' ? 'Pay into your customer account' : 'ادفع على حسابك'}</span>
+                  <span className="mt-1 block text-xs leading-5 text-white/80">{locale === 'en' ? 'Enter the amount, transfer externally, then send your receipt for review.' : 'أدخل المبلغ، وحوّله من وسيلة الدفع، ثم أرسل الإيصال للمراجعة.'}</span>
+                </span>
+              </span>
+              <span className="shrink-0 rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold">{locale === 'en' ? 'Pay now' : 'ادفع الآن'}</span>
+            </a>
 
             {/* Placeholder / Future Features Card */}
             <div className="bg-white/70 dark:bg-[#082622]/70 rounded-2xl border border-dashed border-gray-200 dark:border-[#14423b] p-4 text-center space-y-2">
