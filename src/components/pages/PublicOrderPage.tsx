@@ -47,6 +47,23 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     });
   };
 
+  const itemOperationalLabel = (value?: string) => {
+    const key = (value || '').toUpperCase();
+    if (key === 'DELIVERED') return isAr ? 'تم التسليم' : 'Delivered';
+    if (key === 'CANCELLED' || key === 'CANCELED') return isAr ? 'ملغي' : 'Cancelled';
+    if (key === 'READY' || key === 'READY_FOR_PICKUP') return isAr ? 'جاهز للاستلام' : 'Ready for pickup';
+    if (key === 'CHARGING' || key === 'IN_PROGRESS' || key === 'PROCESSING') return isAr ? 'قيد الشحن' : 'Charging';
+    return value || (isAr ? 'قيد المعالجة' : 'In progress');
+  };
+
+  const itemPaymentLabel = (value?: string) => {
+    const key = (value || '').toUpperCase();
+    if (key === 'PAID') return isAr ? 'مدفوع بالكامل' : 'Paid';
+    if (key === 'PARTIALLY_PAID') return isAr ? 'مدفوع جزئياً' : 'Partially paid';
+    if (key === 'UNPAID') return isAr ? 'غير مدفوع' : 'Unpaid';
+    return '';
+  };
+
   const statusInfo = (status?: string) => {
     const key = (status || '').toUpperCase();
     if (['CHARGING', 'IN_PROGRESS', 'IN_PROGRESS_CHARGING', 'PROCESSING'].includes(key)) {
@@ -140,6 +157,8 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                               <span className="rounded-md bg-[#f1f5f4] px-2 py-1 text-[10px] font-medium text-[#58736e] dark:bg-[#102f2d] dark:text-[#b0c6c1]">{item.has_charger ? (isAr ? 'مع شاحن' : 'With charger') : (isAr ? 'بدون شاحن' : 'No charger')}</span>
                               <span className="rounded-md bg-[#f1f5f4] px-2 py-1 text-[10px] font-medium text-[#58736e] dark:bg-[#102f2d] dark:text-[#b0c6c1]">{isAr ? `الكمية: ${item.quantity ?? 1}` : `Qty: ${item.quantity ?? 1}`}</span>
+                              {(item.operational_status || item.status) && <span className="rounded-md bg-[#eef4ff] px-2 py-1 text-[10px] font-medium text-[#405b88] dark:bg-[#142945] dark:text-[#c0d5fa]">{itemOperationalLabel(item.operational_status || item.status)}</span>}
+                              {itemPaymentLabel(item.payment_status) && <span className={`rounded-md px-2 py-1 text-[10px] font-medium ${item.payment_status?.toUpperCase() === 'PAID' ? 'bg-[#eaf4f1] text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]' : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'}`}>{itemPaymentLabel(item.payment_status)}</span>}
                               {item.charger_fee_exempt && <span className="rounded-md bg-[#eaf4f1] px-2 py-1 text-[10px] font-semibold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">{isAr ? 'تم إعفاؤك من رسوم الشحن' : 'Charger fee waived'}</span>}
                             </div>
                           </div>
