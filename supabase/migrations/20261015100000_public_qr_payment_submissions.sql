@@ -506,6 +506,10 @@ BEGIN
     RAISE EXCEPTION 'A verified payment amount greater than zero is required for approval' USING ERRCODE = '22023';
   END IF;
 
+  IF v_action = 'APPROVE' AND nullif(trim(coalesce(p_bin, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'Admin PIN/BIN is required to approve a payment notification' USING ERRCODE = '22023';
+  END IF;
+
   IF v_action = 'APPROVE'
      AND NOT EXISTS (
        SELECT 1 FROM public.get_effective_permissions(v_admin_id)
