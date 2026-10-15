@@ -25,6 +25,9 @@ VALUES
   ('00000000-0000-0000-0000-000000000403', '00000000-0000-0000-0000-000000000301', 3, 'Cancelled item', 'CANCELLED', 'CANCELLED', 'UNPAID', false, false, 900, 900, 900, '2026-10-12T10:02:00Z'),
   ('00000000-0000-0000-0000-000000000411', '00000000-0000-0000-0000-000000000302', 1, 'iPhone', 'CHARGING', 'PENDING', 'UNPAID', true, false, 4000, 4000, 4000, '2026-10-12T11:00:00Z');
 
+UPDATE public.order_items SET cancelled_at = now()
+WHERE id = '00000000-0000-0000-0000-000000000403';
+
 INSERT INTO public.payments (id, customer_id, amount_minor, payment_method, reference, command_id)
 VALUES ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000101', 1000, 'CASH', 'fixture seed', '00000000-0000-0000-0000-000000000601');
 INSERT INTO public.payment_allocations (id, payment_id, order_item_id, order_id, allocated_amount_minor)
@@ -47,8 +50,8 @@ DECLARE
   v_payment_count integer;
   v_duplicate boolean := false;
 BEGIN
-  SELECT result INTO v_order
-  FROM (SELECT value AS result FROM public.public_resolve_order_qr('public-token-000000000000000000000001')) resolved;
+  SELECT resolved.order_json INTO v_order
+  FROM public.public_resolve_order_qr('public-token-000000000000000000000001') AS resolved(order_json);
 
   IF v_order IS NULL THEN RAISE EXCEPTION 'Public QR resolver returned no order'; END IF;
   IF (v_order->>'order_number')::integer <> 41 THEN RAISE EXCEPTION 'Wrong order was resolved'; END IF;
