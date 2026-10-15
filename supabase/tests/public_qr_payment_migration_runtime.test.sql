@@ -12,7 +12,8 @@ VALUES
 INSERT INTO public.qr_tokens (public_token, token_type, target_id, is_active)
 VALUES
   ('public-token-000000000000000000000001', 'ORDER', '00000000-0000-0000-0000-000000000301', true),
-  ('public-token-000000000000000000000002', 'ORDER', '00000000-0000-0000-0000-000000000302', true);
+  ('public-token-000000000000000000000002', 'ORDER', '00000000-0000-0000-0000-000000000302', true),
+  ('public-token-000000000000000000000003', 'CUSTOMER', '00000000-0000-0000-0000-000000000101', true);
 
 INSERT INTO public.order_items (
   id, order_id, item_sequence, device_name_snapshot, status, financial_status, payment_status,
@@ -35,8 +36,9 @@ VALUES ('00000000-0000-0000-0000-000000000701', '00000000-0000-0000-0000-0000000
 
 INSERT INTO storage.objects (bucket_id, name, metadata)
 VALUES
-  ('qr-payment-receipts', '00000000-0000-0000-0000-000000000301/receipt.webp', '{"mimetype":"image/webp"}'),
-  ('qr-payment-receipts', '00000000-0000-0000-0000-000000000302/receipt.webp', '{"mimetype":"image/webp"}');
+  ('qr-payment-receipts', 'orders/00000000-0000-0000-0000-000000000301/receipt.webp', '{"mimetype":"image/webp"}'),
+  ('qr-payment-receipts', 'orders/00000000-0000-0000-0000-000000000302/receipt.webp', '{"mimetype":"image/webp"}'),
+  ('qr-payment-receipts', 'customers/00000000-0000-0000-0000-000000000101/receipt.webp', '{"mimetype":"image/webp"}');
 
 DO $test$
 DECLARE
@@ -46,6 +48,8 @@ DECLARE
   v_submission_id uuid;
   v_second_submission jsonb;
   v_second_id uuid;
+  v_customer_submission jsonb;
+  v_customer_submission_id uuid;
   v_rejected boolean := false;
   v_payment_count integer;
   v_duplicate boolean := false;
@@ -96,7 +100,7 @@ BEGIN
 
   v_submission := public.submit_qr_payment(
     'public-token-000000000000000000000001', 'PALPAY',
-    '00000000-0000-0000-0000-000000000301/receipt.webp', 'test note'
+    'orders/00000000-0000-0000-0000-000000000301/receipt.webp', 'test note'
   );
   v_submission_id := (v_submission->>'submission_id')::uuid;
   IF (v_submission->>'amount_minor')::bigint <> 6500 THEN
@@ -109,7 +113,7 @@ BEGIN
   BEGIN
     PERFORM public.submit_qr_payment(
       'public-token-000000000000000000000001', 'PALPAY',
-      '00000000-0000-0000-0000-000000000301/receipt.webp', NULL
+      'orders/00000000-0000-0000-0000-000000000301/receipt.webp', NULL
     );
   EXCEPTION WHEN OTHERS THEN
     v_duplicate := true;
@@ -128,6 +132,35 @@ BEGIN
       AND amount_minor = 6500 AND payment_method = 'PALPAY'
   ) THEN RAISE EXCEPTION 'Approval did not create the expected payment'; END IF;
 
+  v_customer_submission := public.submit_qr_payment(
+    'public-token-000000000000000000000003', 'JAWAL_PAY',
+    'customers/00000000-0000-0000-0000-000000000101/receipt.webp', 'direct customer payment', 12345
+  );
+  v_customer_submission_id := (v_customer_submission->>'submission_id')::uuid;
+  IF (v_customer_submission->>'amount_minor')::bigint <> 12345 THEN
+    RAISE EXCEPTION 'Customer QR amount must use the validated amount entered by the customer';
+  END IF;
+  IF (SELECT order_id FROM public.qr_payment_submissions WHERE id = v_customer_submission_id) IS NOT NULL THEN
+    RAISE EXCEPTION 'Direct customer payment must not require or create an order link';
+  END IF;
+  IF (SELECT customer_id FROM public.qr_payment_submissions WHERE id = v_customer_submission_id)
+     <> '00000000-0000-0000-0000-000000000101'::uuid THEN
+    RAISE EXCEPTION 'Direct payment was not bound to the QR customer ID';
+  END IF;
+
+  v_customer_submission := public.review_qr_payment_submission(v_customer_submission_id, 'APPROVE', '1234', NULL);
+  IF v_customer_submission->>'status' <> 'APPROVED' THEN
+    RAISE EXCEPTION 'Direct customer payment was not approved';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.payments
+    WHERE id = (v_customer_submission->>'payment_id')::uuid
+      AND customer_id = '00000000-0000-0000-0000-000000000101'::uuid
+      AND amount_minor = 12345 AND payment_method = 'JAWAL_PAY'
+  ) THEN
+    RAISE EXCEPTION 'Direct customer approval did not use the submitted amount and customer ID';
+  END IF;
+
   SELECT count(*) INTO v_payment_count FROM public.payments;
   v_duplicate := false;
   BEGIN
@@ -142,7 +175,7 @@ BEGIN
 
   v_second_submission := public.submit_qr_payment(
     'public-token-000000000000000000000002', 'JAWAL_PAY',
-    '00000000-0000-0000-0000-000000000302/receipt.webp', NULL
+    'orders/00000000-0000-0000-0000-000000000302/receipt.webp', NULL
   );
   v_second_id := (v_second_submission->>'submission_id')::uuid;
 
