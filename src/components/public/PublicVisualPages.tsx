@@ -44,7 +44,7 @@ const Footer: React.FC = () => (
 );
 
 export const PublicLandingDesign: React.FC = () => {
-  const { locale } = useI18n();
+  const { locale, setLocale } = useI18n();
   const ar = locale === 'ar';
   const [menu, setMenu] = useState(false);
   const [dark, setDark] = useState(true);
