@@ -527,6 +527,10 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'status', 'REJECTED', 'submission_id', v_submission.id);
   END IF;
 
+  -- Hold the same transaction-scoped commit-order lock as the canonical command wrapper
+  -- so before/after balance snapshots bracket this payment without racing another financial command.
+  PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
+
   SELECT coalesce(sum(fl.amount_minor), 0)::bigint
   INTO v_balance_before_minor
   FROM public.financial_ledger fl
