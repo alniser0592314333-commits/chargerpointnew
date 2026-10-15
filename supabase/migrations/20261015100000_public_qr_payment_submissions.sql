@@ -433,7 +433,6 @@ BEGIN
     JOIN public.customers c ON c.id = s.customer_id
     LEFT JOIN public.payments p ON p.id = s.payment_id
     WHERE s.customer_id = v_target_id
-      AND s.order_id IS NULL
       AND c.deleted_at IS NULL
       AND c.is_active = true
       AND c.status <> 'DELETED'
