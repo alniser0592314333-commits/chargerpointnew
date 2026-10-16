@@ -520,6 +520,29 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     });
   });
 
+  it('blocks new orders when existing day numbers contain a gap until the day is renumbered', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+    for (const number of [1, 3]) {
+      const id = `gap-order-${number}`;
+      orderMap.set(id, {
+        id, dayId: 'day-1', customerId: 'cust-1', displayNumber: number, internalSequence: number,
+        status: 'pending', createdAt: now, updatedAt: now, version: 1,
+      });
+    }
+
+    const result = await createReservedOrder(auth, 'must-not-create-on-gap', 'day-1', 'cust-1', 'Blocked until renumber');
+    expect(result.success).toBe(false);
+    expect((result as any).code).toBe('ORDER_NUMBERING_GAP');
+    expect(reservationMap.size).toBe(0);
+    expect(overlays.size).toBe(0);
+    expect(recordedCommands).toHaveLength(0);
+  });
+
   it('does not consume a customer-facing number when device validation fails', async () => {
     const now = new Date().toISOString();
     dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
