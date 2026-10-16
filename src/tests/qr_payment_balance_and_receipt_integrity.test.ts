@@ -28,9 +28,11 @@ describe('QR payment eligibility and receipt storage integrity', () => {
 
   it('uses customer credit only as a boolean and blocks order-QR payment when credit is positive', () => {
     expect(migration).toContain("'customer_has_positive_credit', (v_customer_balance_minor > 0)");
+    expect(migration).toContain("'order_qr_submission_limit_reached', (v_order_qr_submission_count >= 3)");
     expect(migration).toContain("IF v_customer_balance_minor > 0 THEN");
     expect(orderPage).toContain("customerHasPositiveCredit");
     expect(orderPage).toContain("'CREDIT_COVERED'");
+    expect(orderPage).toContain('!orderQrSubmissionLimitReached');
     expect(paymentPage).toContain('order.customerHasPositiveCredit');
     expect(paymentPage).toContain('orderPaymentAllowed');
   });
