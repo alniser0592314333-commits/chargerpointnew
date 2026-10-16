@@ -2282,6 +2282,12 @@ function createTransactionalRepoContext(
         localDb.saveOverlayWithTx(tx, overlay);
       },
       hasPendingOrderChangesForDaySync: (dayId: string) => hasPendingOrderChangesForDay(dayId),
+      hasPendingRenumberForDaySync: (dayId: string) => localDb.listOutboxSync().some((item) => {
+        const payload = (item.payload || {}) as Record<string, unknown>;
+        return item.commandType === 'RENUMBER_DAY_ORDERS' &&
+          (payload.dayId === dayId || payload.id === dayId) &&
+          ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status));
+      }),
     },
     orderRepo: {
       findById: (id: string) => ordersMap.get(id) || null,
@@ -2292,18 +2298,14 @@ function createTransactionalRepoContext(
       },
       countForDay: (dayId: string) => {
         let maxNum = 0;
-        ordersMap.forEach((o) => {
-          if (isSameDayId(o.dayId, dayId)) {
-            if ((o.displayNumber || 0) > maxNum) {
-              maxNum = o.displayNumber;
-            }
-          }
+        getEffectiveOrderItemReadModel().orders.forEach((o) => {
+          if (isSameDayId(o.dayId, dayId)) maxNum = Math.max(maxNum, Number(o.displayNumber) || 0);
         });
         return maxNum;
       },
       // A true row list is required for day-wide repairs. countForDay intentionally
       // returns the current maximum number for sequential allocation, not row count.
-      findByDay: (dayId: string) => Array.from(ordersMap.values()).filter((o) => isSameDayId(o.dayId, dayId)),
+      findByDay: (dayId: string) => Array.from(getEffectiveOrderItemReadModel().orders.values()).filter((o) => isSameDayId(o.dayId, dayId)),
     },
     itemRepo: {
       findByOrderId: (orderId: string) => {
@@ -2526,6 +2528,9 @@ function createTransactionalRepoContext(
           status: currentGen === -1 ? 'PENDING_RECONCILIATION' : 'pending',
           retryCount: 0,
           groupId: (payload as any)?.groupId,
+          dependencyCommandId: payloadRecord.dependencyCommandId,
+          dependencyCommandIds: Array.isArray(payloadRecord.dependencyCommandIds) ? payloadRecord.dependencyCommandIds : undefined,
+          dependencies: Array.isArray(payloadRecord.dependencies) ? payloadRecord.dependencies : undefined,
           resetGeneration: currentGen,
         };
         localDb.saveOutboxWithTx(tx, record);
@@ -2589,6 +2594,24 @@ function createTransactionalRepoContext(
         localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
         postCommitActions.push(() => notifyStore('orderNumberReservations', r.id));
       },
+      resetForDay: (dayId: string, nextNumber: number) => {
+        const now = new Date().toISOString();
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId !== dayId) return;
+          const reset: OrderNumberReservationEntity = {
+            ...reservation,
+            startNumber: nextNumber,
+            endNumber: nextNumber - 1,
+            nextNumber,
+            status: 'EXHAUSTED',
+            updatedAt: now,
+            version: (reservation.version || 0) + 1,
+          };
+          reservationsMap.set(reset.id, reset);
+          localDb.setWithTx(tx, 'orderNumberReservations', reset.id, reset);
+          postCommitActions.push(() => notifyStore('orderNumberReservations', reset.id));
+        });
+      },
       reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
         if (commandId) {
           for (const r of reservationsMap.values()) {
@@ -2601,8 +2624,8 @@ function createTransactionalRepoContext(
         reservationsMap.forEach((r) => {
           if (r.businessDayId === dayId && r.endNumber > maxEnd) maxEnd = r.endNumber;
         });
-        ordersMap.forEach((order) => {
-          if (order.dayId === dayId && (order.displayNumber || 0) > maxEnd) maxEnd = order.displayNumber;
+        getEffectiveOrderItemReadModel().orders.forEach((order) => {
+          if (isSameDayId(order.dayId, dayId) && (order.displayNumber || 0) > maxEnd) maxEnd = order.displayNumber;
         });
         const startNumber = maxEnd + 1;
         const endNumber = startNumber + rangeSize - 1;
@@ -2977,6 +3000,15 @@ export const repoContext: RepositoryContext = {
       await ensureStoreHydrated();
       return hasPendingOrderChangesForDay(dayId);
     },
+    hasPendingRenumberForDay: async (dayId) => {
+      await ensureStoreHydrated();
+      return localDb.listOutboxSync().some((item) => {
+        const payload = (item.payload || {}) as Record<string, unknown>;
+        return item.commandType === 'RENUMBER_DAY_ORDERS' &&
+          (payload.dayId === dayId || payload.id === dayId) &&
+          ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status));
+      });
+    },
   },
   reservationRepo: {
     findActiveByDayAndDevice: async (dayId, deviceId) => {
@@ -3002,6 +3034,12 @@ export const repoContext: RepositoryContext = {
         res = ctx.reservationRepo.reserveRange(dayId, deviceId, commandId, rangeSize);
       });
       return res!;
+    },
+    resetForDay: async (dayId, nextNumber) => {
+      await ensureStoreHydrated();
+      await repoContext.transactionManager.runInTransaction((ctx: any) => {
+        ctx.reservationRepo.resetForDay(dayId, nextNumber);
+      });
     },
   },
   goalRepo: {
@@ -3713,8 +3751,20 @@ export const getOrdersForDay = async (
 };
 
 export const getNextOrderNumberForDay = async (dayId: string): Promise<number> => {
-  const count = await repoContext.orderRepo.countForDay(dayId);
-  return count + 1;
+  await ensureStoreHydrated();
+  const deviceId = getCurrentAdminAuthorizationContext().requireAuth().deviceId || 'default-device';
+  const activeReservation = await repoContext.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId);
+  if (activeReservation && activeReservation.nextNumber <= activeReservation.endNumber) {
+    return activeReservation.nextNumber;
+  }
+  let maxNumber = 0;
+  getEffectiveOrderItemReadModel().orders.forEach((order) => {
+    if (isSameDayId(order.dayId, dayId)) maxNumber = Math.max(maxNumber, Number(order.displayNumber) || 0);
+  });
+  reservationsMap.forEach((reservation) => {
+    if (reservation.businessDayId === dayId) maxNumber = Math.max(maxNumber, reservation.endNumber);
+  });
+  return maxNumber + 1;
 };
 
 export const searchCustomers = async (query: string): Promise<UICustomerItem[]> => {
