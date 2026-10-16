@@ -3119,7 +3119,7 @@ export const repoContext: RepositoryContext = {
         const postCommitActions: (() => void)[] = [];
 
         const result = await localDb.runTransaction(
-          ['kvStore', 'outbox', 'mutationSnapshots', 'optimisticOverlays'],
+          ['kvStore', 'outbox', 'mutationSnapshots', 'optimisticOverlays', 'orderNumberReservations'],
           'readwrite',
           (tx) => {
             const txCtx = createTransactionalRepoContext(tx, postCommitActions);
