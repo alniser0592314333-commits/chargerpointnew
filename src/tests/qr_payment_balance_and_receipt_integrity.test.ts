@@ -58,8 +58,9 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(edgeFunction).toContain('No payment notification was saved; please try again.');
   });
 
-  it('fails closed if credit state cannot be verified on the payment form', () => {
-    expect(paymentPage).toContain('Could not verify the account balance');
+  it('fails closed when the authoritative remaining amount cannot be verified', () => {
+    expect(paymentPage).toContain('amountDue === null || amountDue <= 0');
+    expect(paymentPage).toContain('There is no remaining amount due for this order.');
     expect(paymentPage).toContain('disabled={sending || (Boolean(order) && !orderPaymentAllowed)}');
   });
 });
