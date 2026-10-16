@@ -615,7 +615,10 @@ export class FinalUseCases {
         }
 
         const previousOrder = dayOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
-        const previousCommand = previousOrder ? repos.commandRepo.get(previousOrder.id) : null;
+        const previousCommandResult = previousOrder ? repos.commandRepo.get(previousOrder.id) : null;
+        const previousCommand = previousCommandResult && typeof (previousCommandResult as any).then !== 'function'
+          ? previousCommandResult as { type: string; payload: unknown }
+          : null;
         const dependencyCommandId = previousCommand?.type === 'CREATE_ORDER' ? previousOrder?.id : undefined;
         repos.commandRepo.record(commandId, 'CREATE_ORDER', {
           id: order.id,
