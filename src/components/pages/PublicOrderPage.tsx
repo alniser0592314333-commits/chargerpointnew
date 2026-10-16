@@ -29,13 +29,12 @@ export const getOrderPaymentViewState = (
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
   if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
+  const status = String(orderStatus ?? '').toUpperCase();
+  if (dueMinor <= 0 && ['DELIVERED', 'COMPLETED'].includes(status)) return 'PAID';
+  if (submission?.status === 'PENDING') return 'PENDING';
   // Positive account balance is customer credit, not a debt to collect through this QR.
   if (customerHasPositiveCredit) return 'CREDIT_COVERED';
-  if (dueMinor <= 0) {
-    const status = String(orderStatus ?? '').toUpperCase();
-    return ['DELIVERED', 'COMPLETED'].includes(status) ? 'PAID' : 'NOT_DUE';
-  }
-  if (submission?.status === 'PENDING') return 'PENDING';
+  if (dueMinor <= 0) return 'NOT_DUE';
   if (submission?.status === 'APPROVED') return 'APPROVED';
   if (submission?.status === 'REJECTED') return 'REJECTED';
   return 'UNPAID';
@@ -649,7 +648,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                           <h3>{isAr ? 'رصيدك الموجب سيُستخدم للطلب' : 'Your positive balance will be applied to this order'}</h3>
                           <p>{isAr
                             ? 'لا ترسل دفعة الآن. سيُستخدم رصيدك أولاً لتغطية تكلفة الأجهزة المستحقة، وسيظهر خيار الدفع فقط إذا أصبح عليك مبلغ مستحق بعد تحديث الرصيد.'
-                            : 'Do not send a payment now. Your available credit is applied first to recognized order charges. A payment option appears only if an amount remains due after the balance updates.'}</p>
+                            : 'Do not send a payment now. Your available credit is applied first when delivered devices are financially recognized. A payment option appears only if an amount remains due after the balance updates.'}</p>
                         </div>
                       </div>
                     )}
