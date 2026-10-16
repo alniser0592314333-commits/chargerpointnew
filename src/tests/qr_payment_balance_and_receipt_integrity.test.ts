@@ -35,7 +35,8 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(orderPage).toContain("'CREDIT_COVERED'");
     expect(orderPage).toContain('!orderQrSubmissionLimitReached');
     expect(orderPage).toContain('سيُخصم رصيدك من قيمة الطلب');
-    expect(paymentPage).toContain('order.customerHasPositiveCredit');
+    expect(paymentPage).toContain('server-calculated remainder already includes applicable customer credit');
+    expect(paymentPage).not.toContain("typeof order.customerHasPositiveCredit !== 'boolean'");
     expect(paymentPage).toContain('orderPaymentAllowed');
     expect(edgeFunction).not.toContain('if (resolvedOrder.customer_has_positive_credit)');
   });
