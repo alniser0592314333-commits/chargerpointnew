@@ -64,6 +64,7 @@ export interface PublicOrderQrRpcResult {
   items_count: number;
   order_total_minor?: number;
   order_due_minor?: number;
+  customer_balance_minor?: number | string | null;
   items?: Array<{
     name: string;
     name_ar?: string;
