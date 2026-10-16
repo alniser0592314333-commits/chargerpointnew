@@ -11,8 +11,8 @@ BEGIN
 END;
 $numbering_preflight$;
 
--- Keep a durable server high-water mark so deleted/renumbered rows never make an old
--- customer-facing number reusable. Existing days start at their current maximum number.
+-- Keep a durable server high-water mark so ordinary deletions cannot reuse issued numbers.
+-- An explicit, validated full-day renumber resets this mark to the new contiguous maximum.
 CREATE TABLE IF NOT EXISTS public.business_day_order_sequences (
     day_id UUID PRIMARY KEY,
     last_assigned_number INTEGER NOT NULL DEFAULT 0 CHECK (last_assigned_number >= 0),
@@ -669,6 +669,16 @@ BEGIN
                 version = o.version + 1
             FROM jsonb_array_elements(p_payload->'changes') c(value)
             WHERE o.id = (c.value->>'id')::UUID AND o.day_id = v_day_uuid;
+
+            -- The validated renumber is the only operation allowed to reset the
+            -- issued-number watermark. The per-day advisory lock makes this atomic
+            -- relative to CREATE_ORDER, and the transaction rolls both changes back
+            -- together if audit/change capture or command recording fails.
+            INSERT INTO public.business_day_order_sequences (day_id, last_assigned_number, updated_at)
+            VALUES (v_day_uuid, v_max_new_number, NOW())
+            ON CONFLICT (day_id) DO UPDATE
+            SET last_assigned_number = EXCLUDED.last_assigned_number,
+                updated_at = NOW();
 
             FOR v_rec_order IN
                 SELECT (c.value->>'id')::UUID AS id,

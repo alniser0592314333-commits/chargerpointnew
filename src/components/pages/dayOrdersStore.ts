@@ -2660,14 +2660,9 @@ function createTransactionalRepoContext(
       },
       resetForDay: (dayId: string, nextNumber: number) => {
         const now = new Date().toISOString();
-        let highWater = Math.max(0, nextNumber - 1);
-        reservationsMap.forEach((reservation) => {
-          if (reservation.businessDayId !== dayId) return;
-          const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
-            ? Math.max(0, Number(reservation.nextNumber) - 1)
-            : Number(reservation.endNumber) || 0;
-          highWater = Math.max(highWater, consumedThrough);
-        });
+        // A successful explicit renumber invalidates all prior ranges. Do not
+        // carry their obsolete high-water values into the new contiguous numbering.
+        const highWater = Math.max(0, nextNumber - 1);
         const nextHighWaterNumber = highWater + 1;
         let watermarkFound = false;
         reservationsMap.forEach((reservation) => {

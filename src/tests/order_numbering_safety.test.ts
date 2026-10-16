@@ -133,14 +133,8 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           reservationMap.set(sequence.id, sequence);
         },
         resetForDay: (dayId: string, nextNumber: number) => {
-          let highWater = Math.max(0, nextNumber - 1);
-          for (const reservation of reservationMap.values()) {
-            if (reservation.businessDayId !== dayId) continue;
-            const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
-              ? Math.max(0, Number(reservation.nextNumber) - 1)
-              : Number(reservation.endNumber) || 0;
-            highWater = Math.max(highWater, consumedThrough);
-          }
+          // Explicit renumber invalidates prior ranges instead of preserving their old high-water.
+          const highWater = Math.max(0, nextNumber - 1);
           const nextHighWaterNumber = highWater + 1;
           let watermarkFound = false;
           for (const reservation of Array.from(reservationMap.values())) {
@@ -486,7 +480,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     await localDb.removeOverlay('persisted-high-sequence');
   });
 
-  it('preserves the previously issued high-water mark after manual renumber', async () => {
+  it('resets the high-water mark to the contiguous maximum after manual renumber', async () => {
     const dayId = 'day-1';
     const now = new Date().toISOString();
     dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
@@ -513,7 +507,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const renumber = await useCases.renumberDayOrders(auth, 'renumber-stale-range', dayId, changes);
     expect(renumber.success).toBe(true);
     expect(reservationMap.get('stale-range')).toMatchObject({
-      startNumber: 1, endNumber: 19, nextNumber: 20, status: 'EXHAUSTED',
+      startNumber: 1, endNumber: 18, nextNumber: 19, status: 'EXHAUSTED',
     });
     expect(reservationMap.get(`watermark-${dayId}`)).toBeDefined();
 
@@ -530,7 +524,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     const created = await createReservedOrder(auth, 'create-after-renumber', dayId, 'cust-1', 'After renumber');
     expect(created.success).toBe(true);
-    expect((created as any).data.order.displayNumber).toBe(20);
+    expect((created as any).data.order.displayNumber).toBe(19);
   });
 
   it('never reuses numbers from an old preallocated range', async () => {
