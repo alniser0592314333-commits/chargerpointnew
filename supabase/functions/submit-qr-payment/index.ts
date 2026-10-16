@@ -28,6 +28,76 @@ function inspectImage(bytes: Uint8Array): { mime: string; extension: string } | 
   return null;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function uploadVerifiedReceipt(
+  supabase: ReturnType<typeof createClient>,
+  targetKind: "ORDER" | "CUSTOMER",
+  targetId: string,
+  bytes: Uint8Array,
+  image: { mime: string; extension: string },
+): Promise<string | null> {
+  const storage = supabase.storage.from("qr-payment-receipts");
+
+  // A successful Storage upload response is not enough: production logs showed that
+  // the metadata row existed while the backing object returned NoSuchKey on signing.
+  // Read the object back and compare its digest before creating a database reference.
+  for (let uploadAttempt = 0; uploadAttempt < 2; uploadAttempt += 1) {
+    const path = `${targetKind === "ORDER" ? "orders" : "customers"}/${targetId}/${crypto.randomUUID()}.${image.extension}`;
+    const { error: uploadError } = await storage.upload(path, bytes, {
+      contentType: image.mime,
+      cacheControl: "300",
+      upsert: false,
+    });
+
+    if (uploadError) {
+      console.error("Receipt upload attempt failed", uploadAttempt + 1, uploadError.message);
+      if (uploadAttempt === 0) await sleep(300);
+      continue;
+    }
+
+    let verified = false;
+    let lastReadError = "";
+    for (let readAttempt = 0; readAttempt < 2; readAttempt += 1) {
+      const { data: downloaded, error: readError } = await storage.download(path);
+      if (!readError && downloaded && downloaded.size === bytes.length) {
+        try {
+          const downloadedBytes = new Uint8Array(await downloaded.arrayBuffer());
+          const [sourceDigest, downloadedDigest] = await Promise.all([
+            crypto.subtle.digest("SHA-256", bytes),
+            crypto.subtle.digest("SHA-256", downloadedBytes),
+          ]);
+          const sourceHash = Array.from(new Uint8Array(sourceDigest)).join(",");
+          const downloadedHash = Array.from(new Uint8Array(downloadedDigest)).join(",");
+          if (sourceHash === downloadedHash) {
+            verified = true;
+            break;
+          }
+          lastReadError = "SHA-256 mismatch after receipt upload";
+        } catch (verifyError) {
+          lastReadError = verifyError instanceof Error ? verifyError.message : String(verifyError);
+        }
+      } else {
+        lastReadError = readError?.message ?? `read-back size mismatch (${downloaded?.size ?? "missing"} vs ${bytes.length})`;
+      }
+      if (readAttempt === 0) await sleep(300);
+    }
+
+    if (verified) return path;
+
+    console.error("Receipt upload read-back verification failed", {
+      attempt: uploadAttempt + 1,
+      path,
+      error: lastReadError,
+    });
+    const { error: cleanupError } = await storage.remove([path]);
+    if (cleanupError) console.warn("Could not clean up unverified receipt object", cleanupError.message);
+    if (uploadAttempt === 0) await sleep(500);
+  }
+
+  return null;
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json(405, { error: "Method not allowed" });
@@ -81,6 +151,13 @@ Deno.serve(async (request: Request) => {
       orderId = String(resolvedOrder.order_id);
       targetId = orderId;
       targetKind = "ORDER";
+      if (typeof resolvedOrder.customer_has_positive_credit !== "boolean") {
+        console.error("Order QR response did not include authoritative customer credit state");
+        return json(503, { error: "Could not verify the account balance. Please refresh and try again." });
+      }
+      if (resolvedOrder.customer_has_positive_credit) {
+        return json(409, { error: "Your account has positive credit. No order payment is needed right now." });
+      }
       amountMinor = Number(resolvedOrder.order_due_minor);
       const { data: orderRecord, error: orderLookupError } = await supabase
         .from("orders").select("id,customer_id").eq("id", orderId).maybeSingle();
@@ -137,8 +214,10 @@ Deno.serve(async (request: Request) => {
             .eq("status", "PENDING").eq("customer_id", customerId),
         ];
     const recentQuery = orderId
+      // Order QR lifetime cap: no more than three submissions for one order QR.
       ? supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
-          .eq("order_id", orderId).gt("created_at", oneHourAgo)
+          .eq("order_id", orderId)
+      // Customer account QR remains usable over time but is rate-limited per hour.
       : supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
           .eq("customer_id", customerId).gt("created_at", oneHourAgo);
     const [pendingResults, recentCheck] = await Promise.all([
@@ -157,17 +236,11 @@ Deno.serve(async (request: Request) => {
       return json(429, { error: "Too many submissions for this account or order. Please try again later." });
     }
 
-    uploadedPath = `${targetKind === "ORDER" ? "orders" : "customers"}/${targetId}/${crypto.randomUUID()}.${image.extension}`;
-    const { error: uploadError } = await supabase.storage
-      .from("qr-payment-receipts")
-      .upload(uploadedPath, bytes, {
-        contentType: image.mime,
-        cacheControl: "300",
-        upsert: false,
+    uploadedPath = await uploadVerifiedReceipt(supabase, targetKind, targetId, bytes, image);
+    if (!uploadedPath) {
+      return json(503, {
+        error: "The receipt could not be verified in storage. No payment notification was saved; please try again.",
       });
-    if (uploadError) {
-      console.error("Receipt upload failed", uploadError.message);
-      return json(500, { error: "The receipt image could not be uploaded. Please try again." });
     }
 
     const { data: submission, error: submitError } = await supabase.rpc("submit_qr_payment", {
