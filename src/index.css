@@ -35,13 +35,13 @@
     color-scheme: dark;
 
     --bg-primary: #031817;
-    --bg-atmosphere:
+    --bg-atmosphere: 
       radial-gradient(ellipse 95% 55% at 50% -5%, rgba(22, 74, 65, 0.48) 0%, transparent 75%),
       radial-gradient(ellipse 75% 50% at 50% 45%, rgba(14, 54, 47, 0.38) 0%, transparent 80%),
       radial-gradient(circle at 10% 25%, rgba(16, 60, 52, 0.28) 0%, transparent 50%),
       radial-gradient(circle at 90% 75%, rgba(12, 46, 40, 0.35) 0%, transparent 55%),
       linear-gradient(180deg, #05201e 0%, #031817 50%, #021211 100%);
-
+    
     --surface-header: #072420;
     --surface-sidebar: #06201c;
     --surface-content: #082622;
@@ -176,109 +176,3 @@ html.dark body {
   }
 }
 
-/*
- * Public payment portal desktop composition.
- * Scoped to the portal's main element containing the payment form so the
- * authenticated application and other public QR pages remain unchanged.
- */
-@media (min-width: 1024px) {
-  body:has(main > form) main:has(> form) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr);
-    grid-template-rows: auto 1fr;
-    align-items: start;
-    column-gap: clamp(2.5rem, 5vw, 5rem);
-    row-gap: 1.5rem;
-    max-width: 1240px;
-    min-height: 68vh;
-    padding-top: 2.5rem;
-    padding-bottom: 3rem;
-  }
-
-  body:has(main > form) main:has(> form) > .mb-6 {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    margin-bottom: 0;
-    align-items: center;
-  }
-
-  body:has(main > form) main:has(> form) > form {
-    grid-row: 2;
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    align-self: start;
-  }
-
-  body:has(main > form) main:has(> form)::after {
-    content: "";
-    display: block;
-    grid-row: 2;
-    grid-column: 2;
-    align-self: center;
-    width: 100%;
-    min-height: 470px;
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: contain;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='620' height='520' viewBox='0 0 620 520' fill='none'%3E%3Cdefs%3E%3CradialGradient id='glow' cx='0' cy='0' r='1' gradientTransform='matrix(0 220 -250 0 310 260)' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%230d9488' stop-opacity='.23'/%3E%3Cstop offset='1' stop-color='%230d9488' stop-opacity='0'/%3E%3C/radialGradient%3E%3ClinearGradient id='phone' x1='226' y1='104' x2='382' y2='405' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%231e3a3a'/%3E%3Cstop offset='1' stop-color='%23071315'/%3E%3C/linearGradient%3E%3ClinearGradient id='screen' x1='252' y1='137' x2='354' y2='366' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%2310b981'/%3E%3Cstop offset='1' stop-color='%230f766e'/%3E%3C/linearGradient%3E%3Cfilter id='shadow' x='115' y='70' width='390' height='420' color-interpolation-filters='sRGB' filterUnits='userSpaceOnUse'%3E%3CfeGaussianBlur stdDeviation='18'/%3E%3C/filter%3E%3C/defs%3E%3Cellipse cx='310' cy='277' rx='220' ry='190' fill='url(%23glow)'/%3E%3Cellipse cx='310' cy='438' rx='142' ry='17' fill='%230d9488' fill-opacity='.18' filter='url(%23shadow)'/%3E%3Cpath d='M111 178c-30 15-43 42-37 71 5 25 24 40 50 42' stroke='%230d9488' stroke-opacity='.32' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M500 168c29 15 42 41 36 68-5 23-22 38-45 43' stroke='%230d9488' stroke-opacity='.32' stroke-width='2' stroke-linecap='round'/%3E%3Ccircle cx='103' cy='175' r='6' fill='%2334d399' fill-opacity='.7'/%3E%3Ccircle cx='509' cy='163' r='5' fill='%230d9488' fill-opacity='.7'/%3E%3Crect x='213' y='80' width='194' height='350' rx='34' fill='url(%23phone)' stroke='%235e8f83' stroke-opacity='.6' stroke-width='2'/%3E%3Crect x='225' y='95' width='170' height='319' rx='25' fill='%230b191a'/%3E%3Crect x='239' y='121' width='142' height='267' rx='17' fill='url(%23screen)'/%3E%3Crect x='279' y='105' width='62' height='5' rx='2.5' fill='%235e8f83'/%3E%3Ccircle cx='310' cy='355' r='26' fill='%23d1fae5' fill-opacity='.16'/%3E%3Cpath d='M315 317l-25 36h18l-5 25 27-39h-19l4-22Z' fill='%23ecfdf5'/%3E%3Crect x='268' y='150' width='84' height='8' rx='4' fill='%23d1fae5' fill-opacity='.8'/%3E%3Crect x='280' y='166' width='60' height='5' rx='2.5' fill='%23d1fae5' fill-opacity='.45'/%3E%3Cpath d='M310 430v20c0 13 10 23 23 23h32' stroke='%230d9488' stroke-width='5' stroke-linecap='round'/%3E%3Crect x='361' y='462' width='53' height='24' rx='8' fill='%231e3a3a' stroke='%235e8f83' stroke-width='2'/%3E%3Crect x='375' y='468' width='24' height='12' rx='3' fill='%2334d399'/%3E%3Cpath d='M169 328c-18 0-32-14-32-32v-19c0-11 9-20 20-20h37c12 0 22 10 22 22v49h-47Z' fill='%23e6fffa' fill-opacity='.9' stroke='%230d9488' stroke-opacity='.45' stroke-width='2'/%3E%3Crect x='163' y='272' width='39' height='23' rx='5' fill='%230d9488' fill-opacity='.2'/%3E%3Cpath d='M182 275l-9 11h7l-2 7 10-12h-7l1-6Z' fill='%230f766e'/%3E%3Cpath d='M421 211h24c13 0 23 10 23 23v22' stroke='%230d9488' stroke-opacity='.6' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='468' cy='265' r='7' fill='%2334d399'/%3E%3Ccircle cx='170' cy='119' r='3' fill='%2334d399'/%3E%3Ccircle cx='442' cy='120' r='4' fill='%230d9488'/%3E%3C/svg%3E");
-  }
-
-  /* Mirror the composition for Arabic without changing the DOM or payment flow. */
-  body:has(main > form) div[dir="rtl"] main:has(> form) > form {
-    grid-column: 2;
-    text-align: right;
-  }
-
-  body:has(main > form) div[dir="rtl"] main:has(> form)::after {
-    grid-column: 1;
-  }
-
-  body:has(main > form) div[dir="ltr"] main:has(> form) > form {
-    grid-column: 1;
-    text-align: left;
-  }
-
-  /* Desktop is an open layout; keep individual controls and validation affordances. */
-  body:has(main > form) main:has(> form) > form > section {
-    border-color: transparent;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-    padding: 0;
-  }
-
-  body:has(main > form) main:has(> form) > form > section > div:first-child {
-    margin-bottom: 1.25rem;
-  }
-
-  body:has(main > form) main:has(> form) > form > section > div:nth-of-type(2) {
-    background: transparent;
-    border-color: var(--border-default);
-  }
-
-  /* Promote the existing localized bank/wallet label into the page heading. */
-  body:has(main > form) main:has(> form) > .mb-6 > div:last-child {
-    display: block;
-    border: 0;
-    background: transparent;
-    padding: 0;
-    border-radius: 0;
-    color: var(--foreground);
-    font-size: clamp(1.65rem, 2.5vw, 2.35rem);
-    font-weight: 900;
-    letter-spacing: -0.035em;
-    line-height: 1.15;
-  }
-
-  body:has(main > form) main:has(> form) > .mb-6 > div:last-child svg {
-    display: none;
-  }
-}
-
-/* Mobile deliberately retains the existing card layout and all touch targets. */
-@media (max-width: 1023px) {
-  body:has(main > form) main:has(> form)::after {
-    content: none;
-  }
-}
