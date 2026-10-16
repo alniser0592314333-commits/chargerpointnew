@@ -303,6 +303,22 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
+-- A number that was issued remains consumed even if its order row is later deleted.
+DELETE FROM public.orders WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222';
+SET ROLE authenticated;
+SELECT public.execute_canonical_sync_command(
+  'eeeeeeee-1111-4111-8111-111111111111'::uuid,
+  'CREATE_ORDER',
+  jsonb_build_object(
+    'id', 'eeeeeeee-2222-4222-8222-222222222222',
+    'dayId', '33333333-3333-4333-8333-333333333333',
+    'customerId', '99999999-9999-4999-8999-999999999999',
+    'displayNumber', 6,
+    'notes', 'deleted number five remains consumed'
+  )
+);
+RESET ROLE;
+
 -- A stale free reservation must fail; it must never be silently rewritten to six.
 SET ROLE authenticated;
 DO $stale_number$
@@ -360,11 +376,17 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.orders
     WHERE id = 'aaaaaaaa-2222-4222-8222-222222222222' AND display_number = 4
+  ) OR EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.orders
-    WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222' AND display_number = 5
+    WHERE id = 'eeeeeeee-2222-4222-8222-222222222222' AND display_number = 6
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.business_day_order_sequences
+    WHERE day_id = '33333333-3333-4333-8333-333333333333' AND last_assigned_number = 6
   ) THEN
-    RAISE EXCEPTION 'Server did not preserve the exact numbers assigned locally';
+    RAISE EXCEPTION 'A deleted issued number was reused or the durable high-water mark was lost';
   END IF;
 
   IF NOT EXISTS (
@@ -396,9 +418,8 @@ BEGIN
     WHERE day_id = '33333333-3333-4333-8333-333333333333'
     GROUP BY day_id
     HAVING COUNT(*) <> COUNT(DISTINCT display_number)
-       OR MAX(display_number) <> COUNT(*)
   ) THEN
-    RAISE EXCEPTION 'Rejected requests damaged contiguous canonical numbering';
+    RAISE EXCEPTION 'Duplicate customer-facing numbers exist after accepted and rejected requests';
   END IF;
 END;
 $immutable_numbers$;
