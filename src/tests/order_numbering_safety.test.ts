@@ -531,6 +531,25 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     });
   });
 
+  it('uses the same immutable local numbering transaction for the legacy single-order entrypoint', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-legacy', { id: 'day-legacy', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-legacy', {
+      id: 'cust-legacy', name: 'Legacy Customer', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+
+    const first = await useCases.createOrder(auth, 'legacy-order-1', 'day-legacy', 'cust-legacy');
+    const second = await useCases.createOrder(auth, 'legacy-order-2', 'day-legacy', 'cust-legacy');
+
+    expect(first.success && second.success).toBe(true);
+    expect((first as any).data.displayNumber).toBe(1);
+    expect((second as any).data.displayNumber).toBe(2);
+    expect((recordedCommands.find((command) => command.commandId === 'legacy-order-2')?.payload as any).dependencyCommandId).toBe('legacy-order-1');
+    expect(reservationMap.size).toBe(0);
+    expect(Array.from(overlays.values()).filter((overlay) => overlay.entityType === 'orders')).toHaveLength(2);
+  });
+
   it('blocks new orders when existing day numbers contain a gap until the day is renumbered', async () => {
     const now = new Date().toISOString();
     dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
