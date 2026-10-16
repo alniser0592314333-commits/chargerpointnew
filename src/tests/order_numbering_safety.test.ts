@@ -105,17 +105,45 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           reservationMap.set(r.id, persisted);
           void localDb.set('orderNumberReservations', r.id, persisted);
         },
+        getLastAssignedNumberForDay: (dayId: string) => {
+          let highWater = 0;
+          reservationMap.forEach((reservation) => {
+            if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+          });
+          return highWater;
+        },
+        saveLastAssignedNumberForDay: (dayId: string, assignedNumber: number) => {
+          const now = new Date().toISOString();
+          let sequence = Array.from(reservationMap.values()).find((reservation) =>
+            reservation.businessDayId === dayId && reservation.deviceId === '__order_number_sequence__'
+          );
+          if (sequence) {
+            sequence = { ...sequence, endNumber: Math.max(sequence.endNumber, assignedNumber), nextNumber: Math.max(sequence.endNumber, assignedNumber) + 1, updatedAt: now, version: sequence.version + 1 };
+          } else {
+            sequence = {
+              id: `sequence-${dayId}`, businessDayId: dayId, deviceId: '__order_number_sequence__',
+              startNumber: 1, endNumber: assignedNumber, nextNumber: assignedNumber + 1, status: 'EXHAUSTED',
+              commandId: `order-number-sequence:${dayId}`, createdAt: now, updatedAt: now, version: 1,
+            };
+          }
+          reservationMap.set(sequence.id, sequence);
+        },
         resetForDay: (dayId: string, nextNumber: number) => {
-          let watermarkFound = false;
+          let highWater = Math.max(0, nextNumber - 1);
           for (const reservation of reservationMap.values()) {
+            if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+          }
+          const nextHighWaterNumber = highWater + 1;
+          let watermarkFound = false;
+          for (const reservation of Array.from(reservationMap.values())) {
             if (reservation.businessDayId !== dayId) continue;
             const isWatermark = reservation.deviceId === '__renumber_watermark__';
             if (isWatermark) watermarkFound = true;
             reservationMap.set(reservation.id, {
               ...reservation,
-              startNumber: nextNumber,
-              endNumber: nextNumber - 1,
-              nextNumber,
+              startNumber: reservation.startNumber || 1,
+              endNumber: highWater,
+              nextNumber: nextHighWaterNumber,
               status: 'EXHAUSTED',
               updatedAt: new Date().toISOString(),
               version: reservation.version + 1,
@@ -125,7 +153,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
             const now = new Date().toISOString();
             reservationMap.set(`watermark-${dayId}`, {
               id: `watermark-${dayId}`, businessDayId: dayId, deviceId: '__renumber_watermark__',
-              startNumber: nextNumber, endNumber: nextNumber - 1, nextNumber, status: 'EXHAUSTED',
+              startNumber: 1, endNumber: highWater, nextNumber: nextHighWaterNumber, status: 'EXHAUSTED',
               commandId: `renumber-watermark:${dayId}`, createdAt: now, updatedAt: now, version: 1,
             });
           }
