@@ -681,7 +681,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect((resNext as any).data.order.displayNumber).toBe(4);
   });
 
-  it('Test A — Two offline devices get non-overlapping reserved ranges and never produce duplicate displayNumbers', async () => {
+  it('Test A — Shared local state reconciles device ranges and keeps display numbers contiguous', async () => {
     dayMap.set('day-1', {
       id: 'day-1',
       businessDate: '2026-10-03',
@@ -723,5 +723,6 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     const uniqueNumbers = new Set(numbers);
     expect(uniqueNumbers.size).toBe(5);
+    expect(numbers).toEqual([1, 2, 3, 4, 5]);
   });
 });
