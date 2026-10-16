@@ -2654,7 +2654,14 @@ function createTransactionalRepoContext(
           reservation.status === 'ACTIVE' &&
           reservation.nextNumber <= reservation.endNumber
         );
-        if (active) return active.nextNumber !== expectedNextNumber;
+        if (active) {
+          const laterRangeExists = Array.from(reservationsMap.values()).some((reservation) =>
+            reservation.businessDayId === dayId &&
+            reservation.id !== active.id &&
+            reservation.endNumber > active.endNumber
+          );
+          return active.nextNumber !== expectedNextNumber || laterRangeExists;
+        }
         let maxReservedEnd = 0;
         reservationsMap.forEach((reservation) => {
           if (reservation.businessDayId === dayId) maxReservedEnd = Math.max(maxReservedEnd, reservation.endNumber);
@@ -3105,7 +3112,14 @@ export const repoContext: RepositoryContext = {
         reservation.status === 'ACTIVE' &&
         reservation.nextNumber <= reservation.endNumber
       );
-      if (active) return active.nextNumber !== expectedNextNumber;
+      if (active) {
+        const laterRangeExists = Array.from(reservationsMap.values()).some((reservation) =>
+          reservation.businessDayId === dayId &&
+          reservation.id !== active.id &&
+          reservation.endNumber > active.endNumber
+        );
+        return active.nextNumber !== expectedNextNumber || laterRangeExists;
+      }
       let maxReservedEnd = 0;
       reservationsMap.forEach((reservation) => {
         if (reservation.businessDayId === dayId) maxReservedEnd = Math.max(maxReservedEnd, reservation.endNumber);
