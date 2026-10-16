@@ -4128,6 +4128,8 @@ export const findExistingCustomerOrderOnDay = async (
   dayId: string,
   customerId: string
 ): Promise<UIDayOrderDetail | undefined> => {
+  await ensureStoreHydrated();
+
   // UIDayOrderDetail.customerId is a display code, not the canonical customer UUID.
   // Match against the effective order entities so pending local-first orders are included
   // and orders from any other business day can never be reused.
