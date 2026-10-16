@@ -67,12 +67,26 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       return Boolean(effectiveDayId && effectiveDayId === dayId);
     });
 
+    const effectiveOrdersForDay = (dayId: string): OrderEntity[] => {
+      const effective = new Map<string, OrderEntity>(Array.from(orderMap.values()).map((order) => [order.id, { ...order }]));
+      for (const overlay of Array.from(overlays.values()).filter((entry) => entry.status === 'PENDING' && entry.entityType === 'orders')) {
+        const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+        const existing = effective.get(overlay.entityId);
+        if (overlay.operation === 'DELETE') effective.delete(overlay.entityId);
+        else effective.set(overlay.entityId, { ...(existing || {} as OrderEntity), ...patch, id: overlay.entityId } as OrderEntity);
+      }
+      return Array.from(effective.values()).filter((order) => order.dayId === dayId);
+    };
+    const hasPendingRenumberForDay = (dayId: string) => Array.from(overlays.values()).some((overlay) =>
+      overlay.status === 'PENDING' && overlay.mutationKey === `renumber-day:${dayId}`
+    );
+
     const mockCtx: RepositoryContext = {
       orderRepo: {
         findById: (id: string) => orderMap.get(id) || null,
         save: (o: OrderEntity) => { orderMap.set(o.id, { ...o }); },
-        countForDay: (dayId: string) => Array.from(orderMap.values()).filter(o => o.dayId === dayId).length,
-        findByDay: (dayId: string) => Array.from(orderMap.values()).filter(o => o.dayId === dayId),
+        countForDay: (dayId: string) => effectiveOrdersForDay(dayId).reduce((max, o) => Math.max(max, o.displayNumber || 0), 0),
+        findByDay: (dayId: string) => effectiveOrdersForDay(dayId),
       },
       reservationRepo: {
         findActiveByDayAndDevice: (dayId: string, deviceId: string) => {
@@ -84,10 +98,24 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           );
           return found ? { ...found } : null;
         },
-        save: async (r: OrderNumberReservationEntity) => {
+        save: (r: OrderNumberReservationEntity) => {
           const persisted = { ...r };
           reservationMap.set(r.id, persisted);
-          await localDb.set('orderNumberReservations', r.id, persisted);
+          void localDb.set('orderNumberReservations', r.id, persisted);
+        },
+        resetForDay: (dayId: string, nextNumber: number) => {
+          for (const reservation of reservationMap.values()) {
+            if (reservation.businessDayId !== dayId) continue;
+            reservationMap.set(reservation.id, {
+              ...reservation,
+              startNumber: nextNumber,
+              endNumber: nextNumber - 1,
+              nextNumber,
+              status: 'EXHAUSTED',
+              updatedAt: new Date().toISOString(),
+              version: reservation.version + 1,
+            });
+          }
         },
         reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
           if (commandId) {
@@ -97,9 +125,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           }
           let maxEnd = 0;
           reservationMap.forEach(r => {
-            if (r.businessDayId === dayId && r.endNumber > maxEnd) {
-              maxEnd = r.endNumber;
-            }
+            if (r.businessDayId === dayId && r.endNumber > maxEnd) maxEnd = r.endNumber;
+          });
+          effectiveOrdersForDay(dayId).forEach((order) => {
+            if ((order.displayNumber || 0) > maxEnd) maxEnd = order.displayNumber;
           });
           const startNumber = maxEnd + 1;
           const endNumber = startNumber + rangeSize - 1;
@@ -152,6 +181,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         hasPendingOrderChangesForDay: pendingOrderChangesForDay,
+        hasPendingRenumberForDay,
         getNextSequence: async () => {
           const sequence = ++overlaySequence;
           if (pendingOrderToInjectDayId) {
@@ -196,11 +226,13 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
               get: outerOverlayRepo.get,
               getNextSequence: outerOverlayRepo.getNextSequence,
               hasPendingOrderChangesForDay: outerOverlayRepo.hasPendingOrderChangesForDay,
+              hasPendingRenumberForDay: outerOverlayRepo.hasPendingRenumberForDay,
               saveWithTx: (overlay: OptimisticOverlayRecord) => {
                 if (!insideLocalTransaction) throw new Error('Overlay must be staged inside the active local transaction');
                 overlays.set(overlay.commandId, overlay);
               },
               hasPendingOrderChangesForDaySync: pendingOrderChangesForDay,
+              hasPendingRenumberForDaySync: hasPendingRenumberForDay,
             },
           };
           try {
