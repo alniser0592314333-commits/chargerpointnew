@@ -54,6 +54,7 @@ export interface RepositoryContext {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
     save(reservation: OrderNumberReservationEntity): Promise<void> | void;
     reserveRange(dayId: ID, deviceId: ID, commandId?: ID, rangeSize?: number): Promise<OrderNumberReservationEntity> | OrderNumberReservationEntity;
+    resetForDay?(dayId: ID, nextNumber: number): Promise<void> | void;
   };
   itemRepo: {
     findByOrderId(orderId: ID): Promise<OrderItemEntity[]> | OrderItemEntity[];
@@ -101,6 +102,8 @@ export interface RepositoryContext {
     saveWithTx?(overlay: OptimisticOverlayRecord): Promise<void> | void;
     hasPendingOrderChangesForDay?(dayId: ID): Promise<boolean> | boolean;
     hasPendingOrderChangesForDaySync?(dayId: ID): boolean;
+    hasPendingRenumberForDay?(dayId: ID): Promise<boolean> | boolean;
+    hasPendingRenumberForDaySync?(dayId: ID): boolean;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -444,47 +447,8 @@ export class FinalUseCases {
       return { success: false, error: 'Debt limit exceeded. Regular admin blocked.', code: 'DEBT_LIMIT_EXCEEDED' };
     }
 
-    const deviceId = actor.deviceId || 'default-device';
-    let displayNumber = 1;
-    let reservation: OrderNumberReservationEntity | null = null;
-    if (this.deps.reservationRepo) {
-      reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
-      if (!reservation || reservation.nextNumber > reservation.endNumber) {
-        try {
-          reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, commandId, 20);
-        } catch {
-          throw new OrderNumberReservationExhaustedError();
-        }
-      }
-      if (!reservation || reservation.nextNumber > reservation.endNumber) throw new OrderNumberReservationExhaustedError();
-      displayNumber = reservation.nextNumber;
-      reservation.nextNumber += 1;
-      if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
-      reservation.updatedAt = new Date().toISOString();
-      // Persist the advanced cursor. findActiveByDayAndDevice may return an in-memory
-      // entity, but mutating that object alone does not commit nextNumber to IndexedDB.
-      // A failed later order write may leave a harmless gap; reusing a consumed number
-      // after reload would be unsafe.
-      await this.deps.reservationRepo.save(reservation);
-    } else {
-      displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
-    }
-
+    const orderId = commandId || crypto.randomUUID();
     const now = new Date().toISOString();
-    const order: OrderEntity = {
-      id: commandId || crypto.randomUUID(),
-      dayId,
-      customerId,
-      displayNumber,
-      internalSequence: displayNumber,
-      status: 'pending',
-      customerBalanceSnapshotMinor: currentBalance,
-      notes,
-      createdAt: now,
-      updatedAt: now,
-      version: 1,
-    };
-
     const preparedItems: OrderItemEntity[] = [];
     for (let index = 0; index < items.length; index++) {
       const requested = items[index];
@@ -502,7 +466,7 @@ export class FinalUseCases {
       const initialStatus = isClosed && actor.isSuperAdmin ? 'delivered' : 'charging';
       preparedItems.push({
         id: crypto.randomUUID(),
-        orderId: order.id,
+        orderId,
         deviceTypeId: requested.deviceTypeId,
         itemSequence: index + 1,
         status: initialStatus,
@@ -522,68 +486,156 @@ export class FinalUseCases {
       });
     }
 
-    const mutationKey = `order:${order.id}`;
+    const overlayRepo = this.deps.overlayRepo;
+    if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingRenumberForDay) {
+      return { success: false, error: 'Safe offline order numbering is unavailable; no order was created.' };
+    }
+    if (await overlayRepo.hasPendingRenumberForDay(dayId)) {
+      return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.' };
+    }
+
+    // Reserve overlay ordering tokens only after every device has been validated.
+    // Gaps in this internal overlay sequence do not affect customer-facing order numbers.
+    const overlaySequences: number[] = [];
+    for (let index = 0; index < preparedItems.length + 1; index++) {
+      overlaySequences.push(await overlayRepo.getNextSequence());
+    }
 
     if (this.deps.mutationSnapshotRepo) {
       await this.deps.mutationSnapshotRepo.capture(commandId, [
-        { table: 'orders', id: order.id, existed: false },
+        { table: 'orders', id: orderId, existed: false },
         ...preparedItems.map(item => ({ table: 'orderItems', id: item.id, existed: false })),
       ]);
     }
 
-    // 1. Overlay Order
-    await this.createOverlay(commandId, mutationKey, 'orders', order.id, 'CREATE', order as unknown as Record<string, unknown>);
+    let transactionResult: Result<{ order: OrderEntity; items: OrderItemEntity[] }>;
+    try {
+      transactionResult = await this.deps.transactionManager.runInTransaction((repos) => {
+        const txOverlayRepo = repos.overlayRepo;
+        if (!txOverlayRepo?.saveWithTx || !txOverlayRepo.hasPendingRenumberForDaySync) {
+          return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.' };
+        }
+        if (txOverlayRepo.hasPendingRenumberForDaySync(dayId)) {
+          return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.' };
+        }
 
-    // 2. Overlay Items
-    for (const item of preparedItems) {
-      const itemOverlayId = `${commandId}:item:${item.id}`;
-      await this.createOverlay(itemOverlayId, mutationKey, 'order_items', item.id, 'CREATE', item as unknown as Record<string, unknown>);
-    }
+        const deviceId = actor.deviceId || 'default-device';
+        let reservation = repos.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId) as OrderNumberReservationEntity | null | undefined;
+        if (repos.reservationRepo && (!reservation || reservation.nextNumber > reservation.endNumber)) {
+          reservation = repos.reservationRepo.reserveRange(dayId, deviceId, commandId, 20) as OrderNumberReservationEntity;
+        }
 
-    // 3. Record Commands
-    await this.deps.commandRepo.record(commandId, 'CREATE_ORDER', {
-      id: order.id,
-      aggregateId: order.id,
-      dayId,
-      customerId,
-      displayNumber,
-      notes,
-      customerBalanceSnapshotMinor: currentBalance,
-      ...(groupId ? { groupId } : {}),
-    });
+        let displayNumber: number;
+        if (repos.reservationRepo) {
+          if (!reservation || reservation.nextNumber > reservation.endNumber) {
+            return { success: false, error: 'Could not reserve the next order number safely. No order was created.' };
+          }
+          displayNumber = reservation.nextNumber;
+          reservation.nextNumber += 1;
+          if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
+          reservation.updatedAt = new Date().toISOString();
+          repos.reservationRepo.save(reservation);
+        } else {
+          const dayOrders = repos.orderRepo.findByDay?.(dayId);
+          if (!dayOrders) return { success: false, error: 'The current day order list is unavailable. No order was created.' };
+          displayNumber = dayOrders.reduce((max, existing) => Math.max(max, Number(existing.displayNumber) || 0), 0) + 1;
+        }
 
-    for (const item of preparedItems) {
-      await this.deps.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
-        id: item.id,
-        aggregateId: order.id,
-        orderId: order.id,
-        deviceTypeId: item.deviceTypeId,
-        hasCharger: item.hasCharger,
-        ...(groupId ? { groupId } : {}),
-        deviceNameSnapshot: item.deviceNameSnapshot,
-        deviceIconSnapshot: item.deviceIconSnapshot,
-        basePriceSnapshotMinor: item.basePriceSnapshotMinor,
-        chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
-        customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
-        chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
-        unitPriceMinor: item.unitPriceMinor,
-        totalPriceMinor: item.totalPriceMinor,
-        dependencyCommandId: commandId,
+        const order: OrderEntity = {
+          id: orderId,
+          dayId,
+          customerId,
+          displayNumber,
+          internalSequence: displayNumber,
+          status: 'pending',
+          customerBalanceSnapshotMinor: currentBalance,
+          notes,
+          createdAt: now,
+          updatedAt: now,
+          version: 1,
+        };
+        const mutationKey = `order:${order.id}`;
+
+        txOverlayRepo.saveWithTx({
+          commandId,
+          mutationKey,
+          entityType: 'orders',
+          entityId: order.id,
+          operation: 'CREATE',
+          entityPayload: order as unknown as Record<string, unknown>,
+          sequence: overlaySequences[0],
+          createdAt: now,
+          status: 'PENDING',
+        });
+
+        for (let index = 0; index < preparedItems.length; index++) {
+          const item = preparedItems[index];
+          txOverlayRepo.saveWithTx({
+            commandId: `${commandId}:item:${item.id}`,
+            mutationKey,
+            entityType: 'order_items',
+            entityId: item.id,
+            operation: 'CREATE',
+            entityPayload: item as unknown as Record<string, unknown>,
+            sequence: overlaySequences[index + 1],
+            createdAt: now,
+            status: 'PENDING',
+          });
+        }
+
+        repos.commandRepo.record(commandId, 'CREATE_ORDER', {
+          id: order.id,
+          aggregateId: order.id,
+          dayId,
+          customerId,
+          displayNumber,
+          notes,
+          customerBalanceSnapshotMinor: currentBalance,
+          ...(groupId ? { groupId } : {}),
+        });
+
+        for (const item of preparedItems) {
+          repos.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
+            id: item.id,
+            aggregateId: order.id,
+            orderId: order.id,
+            deviceTypeId: item.deviceTypeId,
+            hasCharger: item.hasCharger,
+            ...(groupId ? { groupId } : {}),
+            deviceNameSnapshot: item.deviceNameSnapshot,
+            deviceIconSnapshot: item.deviceIconSnapshot,
+            basePriceSnapshotMinor: item.basePriceSnapshotMinor,
+            chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
+            customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
+            chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
+            unitPriceMinor: item.unitPriceMinor,
+            totalPriceMinor: item.totalPriceMinor,
+            dependencyCommandId: commandId,
+          });
+
+          if (item.status === 'delivered') {
+            const deliveryCommandId = crypto.randomUUID();
+            repos.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+              id: deliveryCommandId,
+              itemId: item.id,
+              orderItemId: item.id,
+              orderId: order.id,
+              dependencyCommandId: item.id,
+            }, item.version);
+          }
+        }
+
+        return { success: true, data: { order, items: preparedItems } };
       });
-
-      if (item.status === 'delivered') {
-        const deliveryCommandId = crypto.randomUUID();
-        await this.deps.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
-          id: deliveryCommandId,
-          itemId: item.id,
-          orderItemId: item.id,
-          orderId: order.id,
-          dependencyCommandId: item.id,
-        }, item.version);
-      }
+    } catch (error) {
+      if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.clear(commandId);
+      throw error;
     }
 
-    return { success: true, data: { order, items: preparedItems } };
+    if (!transactionResult.success && this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.clear(commandId);
+    }
+    return transactionResult;
   }
 
   async addItemToDeliveredOrder(
