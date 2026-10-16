@@ -32,11 +32,11 @@ export const getOrderPaymentViewState = (
   const status = String(orderStatus ?? '').toUpperCase();
   if (dueMinor <= 0 && ['DELIVERED', 'COMPLETED'].includes(status)) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
-  // Positive account balance is customer credit, not a debt to collect through this QR.
-  if (customerHasPositiveCredit) return 'CREDIT_COVERED';
-  if (dueMinor <= 0) return 'NOT_DUE';
+  if (dueMinor <= 0) return customerHasPositiveCredit ? 'CREDIT_COVERED' : 'NOT_DUE';
   if (submission?.status === 'APPROVED') return 'APPROVED';
   if (submission?.status === 'REJECTED') return 'REJECTED';
+  // Positive account balance is customer credit, not a debt to collect through this QR.
+  if (customerHasPositiveCredit) return 'CREDIT_COVERED';
   return 'UNPAID';
 };
 
@@ -635,14 +635,16 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                         <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
                         <div className="order-fully-paid-text">
                           <h3>{isAr ? 'تم قبول الدفع' : 'Payment accepted'}</h3>
-                          <p>{isAr
-                            ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
-                            : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`}</p>
+                          <p>{data.customerHasPositiveCredit
+                            ? (isAr ? 'تم اعتماد الدفعة. سيُستخدم رصيدك الموجب أولاً عند احتساب المبلغ المستحق.' : 'Your payment was approved. Your positive credit is applied first when calculating what remains due.')
+                            : (isAr
+                                ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
+                                : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`)}</p>
                         </div>
                       </div>
                     )}
 
-                    {paymentViewState === 'CREDIT_COVERED' && (
+                    {(paymentViewState === 'CREDIT_COVERED' || (data.customerHasPositiveCredit && (paymentViewState === 'APPROVED' || paymentViewState === 'REJECTED'))) && (
                       <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
                         <div className="order-fully-paid-text">
@@ -690,7 +692,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && !orderQrSubmissionLimitReached && (
+                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && !orderQrSubmissionLimitReached && !data.customerHasPositiveCredit && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
@@ -699,7 +701,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && (
+                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && !data.customerHasPositiveCredit && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
