@@ -104,6 +104,10 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('CREDIT_COVERED');
   });
 
+  it('preserves an approved payment status while positive credit still blocks another payment', () => {
+    expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED')).toBe('APPROVED');
+  });
+
   it('does not call a charging order paid before its charge is recognized', () => {
     expect(getOrderPaymentViewState(0, null, false, 'CHARGING')).toBe('NOT_DUE');
   });
