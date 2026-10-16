@@ -367,11 +367,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   return (
     <div
       dir={isRTL ? 'rtl' : 'ltr'}
-      className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-teal-50 text-slate-900 transition-colors duration-300 dark:from-[#050b0d] dark:via-[#091719] dark:to-[#102d2a] dark:text-slate-100"
+      className="public-payment-page min-h-screen bg-gradient-to-br from-slate-100 via-white to-teal-50 text-slate-900 transition-colors duration-300 dark:from-[#050b0d] dark:via-[#091719] dark:to-[#102d2a] dark:text-slate-100"
     >
       {/* 1. Header Bar */}
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#071113]/70">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
+        <div className="payment-portal-header-inner mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <a
             href={backHref}
             className="group flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -419,9 +419,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       </header>
 
       {/* 2. Main Container */}
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-9 lg:py-12">
+      <main className="payment-portal-main mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-9 lg:py-12">
         {/* Navigation Breadcrumb */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="payment-portal-breadcrumb mb-6 flex flex-wrap items-center justify-between gap-3">
           <a
             href={backHref}
             className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 transition hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
@@ -434,7 +434,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             </span>
           </a>
 
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-3 py-1 text-[11px] font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+          <div className="payment-portal-heading inline-flex items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-3 py-1 text-[11px] font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
             <ShieldCheck className="h-3.5 w-3.5" />
             <span>{isAr ? 'تحويل بنكي ومحافظ رقمية' : 'Bank & Digital Wallets'}</span>
           </div>
@@ -616,8 +616,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           </section>
         ) : (
           <>
-          {/* Simple single-card payment form */}
-          <form onSubmit={submit} className="mx-auto w-full max-w-xl space-y-4">
+          {/* Payment form and companion illustration */}
+          <div className="payment-portal-layout">
+          <form onSubmit={submit} className="payment-portal-form mx-auto w-full max-w-xl space-y-4">
             {error && (
               <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm leading-5 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -738,6 +739,25 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإشعار…' : 'Sending notification…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'}</span></>}
             </button>
           </form>
+          <aside className="payment-portal-visual" aria-label={isAr ? "خدمات نقطة الشحن" : "Charging Point service information"}>
+            <div className="payment-portal-visual-art" aria-hidden="true">
+              <svg viewBox="0 0 520 410" xmlns="http://www.w3.org/2000/svg">
+                <defs><radialGradient id="cp-glow"><stop stopColor="#10b981" stopOpacity=".24"/><stop offset="1" stopColor="#10b981" stopOpacity="0"/></radialGradient><linearGradient id="cp-phone" x1="180" y1="65" x2="330" y2="345" gradientUnits="userSpaceOnUse"><stop stopColor="#315650"/><stop offset="1" stopColor="#0c2422"/></linearGradient><linearGradient id="cp-screen" x1="205" y1="100" x2="310" y2="315" gradientUnits="userSpaceOnUse"><stop stopColor="#34d399"/><stop offset="1" stopColor="#0f766e"/></linearGradient></defs>
+                <ellipse cx="260" cy="205" rx="220" ry="190" fill="url(#cp-glow)"/><circle cx="94" cy="105" r="5" fill="#10b981"/><circle cx="410" cy="85" r="4" fill="#34d399"/><circle cx="420" cy="294" r="6" fill="#0d9488"/>
+                <path d="M96 128c-27 14-36 37-28 59M419 113c26 16 34 38 25 59" stroke="#0d9488" strokeOpacity=".5" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 8"/>
+                <rect x="165" y="42" width="190" height="324" rx="32" fill="url(#cp-phone)" stroke="#6ba99a" strokeWidth="2"/><rect x="177" y="56" width="166" height="296" rx="24" fill="#071b1a"/><rect x="190" y="83" width="140" height="250" rx="17" fill="url(#cp-screen)"/><rect x="244" y="67" width="32" height="4" rx="2" fill="#a7d8c7"/>
+                <rect x="216" y="112" width="88" height="8" rx="4" fill="#ecfdf5" fillOpacity=".85"/><rect x="230" y="128" width="60" height="5" rx="2.5" fill="#ecfdf5" fillOpacity=".5"/><circle cx="260" cy="222" r="40" fill="#ecfdf5" fillOpacity=".18"/><path d="m268 183-29 43h21l-7 31 36-48h-23l2-26Z" fill="#ecfdf5"/>
+                <path d="M260 366v16c0 13 10 23 23 23h25" stroke="#0d9488" strokeWidth="5" strokeLinecap="round"/><rect x="305" y="393" width="45" height="14" rx="6" fill="#315650" stroke="#6ba99a" strokeWidth="2"/>
+                <rect x="72" y="239" width="92" height="63" rx="17" fill="#fffefa" stroke="#d6e7df" strokeWidth="2"/><rect x="88" y="254" width="42" height="30" rx="6" fill="#e0f7ed"/><path d="m109 256-10 15h8l-3 10 14-17h-9l2-8Z" fill="#0f766e"/><path d="M141 260h10M141 269h10M141 278h6" stroke="#0f766e" strokeOpacity=".55" strokeWidth="3" strokeLinecap="round"/>
+                <rect x="350" y="178" width="95" height="61" rx="16" fill="#fffefa" stroke="#d6e7df" strokeWidth="2"/><circle cx="373" cy="208" r="10" fill="#d1fae5"/><path d="m368 208 4 4 7-8" stroke="#047857" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M391 201h38M391 211h28" stroke="#0f766e" strokeOpacity=".45" strokeWidth="3" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <p className="payment-portal-visual-eyebrow">{isAr ? "نقطة الشحن · خدمة الدفع" : "CHARGING POINT · PAYMENT SERVICE"}</p>
+            <h2>{isAr ? "تحويل بسيط، ومراجعة واضحة" : "A simple transfer. A clear review."}</h2>
+            <p>{isAr ? "اختَر محفظتك أو البنك، أرفق الإيصال، وسنراجع إشعار الدفع قبل اعتماد أي مبلغ." : "Choose your bank or wallet, attach your receipt, and your payment notification will be reviewed before any amount is credited."}</p>
+            <div className="payment-portal-visual-points"><span><CheckCircle2 className="h-4 w-4" />{isAr ? "ثلاث وسائل تحويل متاحة" : "Three transfer methods"}</span><span><ShieldCheck className="h-4 w-4" />{isAr ? "اعتماد بعد مراجعة الإيصال" : "Receipt review before approval"}</span></div>
+          </aside>
+          </div>
           </>
         )}
       </main>
