@@ -59,30 +59,37 @@ async function uploadVerifiedReceipt(
     let verified = false;
     let lastReadError = "";
     for (let readAttempt = 0; readAttempt < 2; readAttempt += 1) {
-      const { data: downloaded, error: readError } = await storage.download(path);
-      if (!readError && downloaded && downloaded.size === bytes.length) {
-        try {
-          const downloadedBytes = new Uint8Array(await downloaded.arrayBuffer());
-          // Use fresh ArrayBuffers because Deno's WebCrypto type rejects ArrayBufferLike
-          // views that may be backed by SharedArrayBuffer.
-          const sourceBuffer = bytes.slice().buffer as ArrayBuffer;
-          const downloadedBuffer = downloadedBytes.slice().buffer as ArrayBuffer;
-          const [sourceDigest, downloadedDigest] = await Promise.all([
-            crypto.subtle.digest("SHA-256", sourceBuffer),
-            crypto.subtle.digest("SHA-256", downloadedBuffer),
-          ]);
-          const sourceHash = Array.from(new Uint8Array(sourceDigest)).join(",");
-          const downloadedHash = Array.from(new Uint8Array(downloadedDigest)).join(",");
-          if (sourceHash === downloadedHash) {
-            verified = true;
-            break;
-          }
-          lastReadError = "SHA-256 mismatch after receipt upload";
-        } catch (verifyError) {
-          lastReadError = verifyError instanceof Error ? verifyError.message : String(verifyError);
-        }
+      // Verify the same signing operation used by the admin review screen, then
+      // download and hash the bytes. A metadata row or upload 200 alone is insufficient.
+      const { data: signedReceipt, error: signError } = await storage.createSignedUrl(path, 300);
+      if (signError || !signedReceipt?.signedUrl) {
+        lastReadError = signError?.message ?? "Storage did not return a signed receipt URL";
       } else {
-        lastReadError = readError?.message ?? `read-back size mismatch (${downloaded?.size ?? "missing"} vs ${bytes.length})`;
+        const { data: downloaded, error: readError } = await storage.download(path);
+        if (!readError && downloaded && downloaded.size === bytes.length) {
+          try {
+            const downloadedBytes = new Uint8Array(await downloaded.arrayBuffer());
+            // Use fresh ArrayBuffers because Deno's WebCrypto type rejects ArrayBufferLike
+            // views that may be backed by SharedArrayBuffer.
+            const sourceBuffer = bytes.slice().buffer as ArrayBuffer;
+            const downloadedBuffer = downloadedBytes.slice().buffer as ArrayBuffer;
+            const [sourceDigest, downloadedDigest] = await Promise.all([
+              crypto.subtle.digest("SHA-256", sourceBuffer),
+              crypto.subtle.digest("SHA-256", downloadedBuffer),
+            ]);
+            const sourceHash = Array.from(new Uint8Array(sourceDigest)).join(",");
+            const downloadedHash = Array.from(new Uint8Array(downloadedDigest)).join(",");
+            if (sourceHash === downloadedHash) {
+              verified = true;
+              break;
+            }
+            lastReadError = "SHA-256 mismatch after receipt upload";
+          } catch (verifyError) {
+            lastReadError = verifyError instanceof Error ? verifyError.message : String(verifyError);
+          }
+        } else {
+          lastReadError = readError?.message ?? `read-back size mismatch (${downloaded?.size ?? "missing"} vs ${bytes.length})`;
+        }
       }
       if (readAttempt === 0) await sleep(300);
     }
