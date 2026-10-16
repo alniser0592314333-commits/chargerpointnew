@@ -48,6 +48,9 @@ describe('Server-authoritative contiguous order numbering', () => {
     const renumberBranch = sql.slice(branchStart, branchEnd);
     expect(renumberBranch).toContain('SET display_number = (c.value->>\'newNumber\')::INTEGER');
     expect(renumberBranch).toContain('INSERT INTO public.order_renumber_audit');
+    expect(renumberBranch).toContain('INSERT INTO public.business_day_order_sequences (day_id, last_assigned_number, updated_at)');
+    expect(renumberBranch).toContain('VALUES (v_day_uuid, v_max_new_number, NOW())');
+    expect(renumberBranch).toContain('last_assigned_number = EXCLUDED.last_assigned_number');
   });
   it('keeps the UI preview independent of legacy reservation cursors', () => {
     const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
