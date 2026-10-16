@@ -495,10 +495,10 @@ export class FinalUseCases {
 
     const overlayRepo = this.deps.overlayRepo;
     if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingRenumberForDay) {
-      return { success: false, error: 'Safe offline order numbering is unavailable; no order was created.' };
+      return { success: false, error: 'Safe offline order numbering is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
     }
     if (await overlayRepo.hasPendingRenumberForDay(dayId)) {
-      return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.' };
+      return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.', code: 'ORDER_RENUMBER_PENDING' };
     }
 
     // Reserve overlay ordering tokens only after every device has been validated.
@@ -520,7 +520,7 @@ export class FinalUseCases {
       transactionResult = await this.deps.transactionManager.runInTransaction((repos) => {
         const txOverlayRepo = repos.overlayRepo;
         if (!txOverlayRepo?.saveWithTx || !txOverlayRepo.hasPendingRenumberForDaySync) {
-          return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.' };
+          return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
         }
         if (txOverlayRepo.hasPendingRenumberForDaySync(dayId)) {
           return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.' };
@@ -544,7 +544,7 @@ export class FinalUseCases {
         const deviceId = actor.deviceId || 'default-device';
         if (repos.reservationRepo?.needsResetForDay?.(dayId, deviceId, expectedNextNumber)) {
           if (!repos.reservationRepo.resetForDay) {
-            return { success: false, error: 'The saved order-number cursor is stale and cannot be repaired safely.' };
+            return { success: false, error: 'The saved order-number cursor is stale and cannot be repaired safely.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
           }
           repos.reservationRepo.resetForDay(dayId, expectedNextNumber);
         }
@@ -556,7 +556,7 @@ export class FinalUseCases {
         let displayNumber: number;
         if (repos.reservationRepo) {
           if (!reservation || reservation.nextNumber > reservation.endNumber) {
-            return { success: false, error: 'Could not reserve the next order number safely. No order was created.' };
+            return { success: false, error: 'Could not reserve the next order number safely. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
           }
           displayNumber = reservation.nextNumber;
           reservation.nextNumber += 1;
