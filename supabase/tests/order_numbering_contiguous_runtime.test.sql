@@ -319,7 +319,7 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
--- A stale free reservation must fail; it must never be silently rewritten to six.
+-- A previously issued number must fail; it must never be reused.
 SET ROLE authenticated;
 DO $stale_number$
 DECLARE rejected_as_conflict boolean := FALSE;
@@ -332,8 +332,8 @@ BEGIN
         'id', 'cccccccc-2222-4222-8222-222222222222',
         'dayId', '33333333-3333-4333-8333-333333333333',
         'customerId', '99999999-9999-4999-8999-999999999999',
-        'displayNumber', 21,
-        'notes', 'stale number must not be silently reassigned'
+        'displayNumber', 5,
+        'notes', 'previously issued number must not be reused'
       )
     );
   EXCEPTION WHEN SQLSTATE 'P0409' THEN
