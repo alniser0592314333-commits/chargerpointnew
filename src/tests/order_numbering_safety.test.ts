@@ -507,6 +507,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         status: 'pending', createdAt: now, updatedAt: now, version: 1,
       });
     }
+    orderMap.set('other-day-order', {
+      id: 'other-day-order', dayId: 'other-day', customerId: 'cust-1', displayNumber: 1, internalSequence: 1000,
+      status: 'pending', createdAt: now, updatedAt: now, version: 1,
+    });
     reservationMap.set('old-stale-cursor', {
       id: 'old-stale-cursor', businessDayId: dayId, deviceId: 'device_A',
       startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
@@ -516,6 +520,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const created = await createReservedOrder(auth, 'create-after-upgrade', dayId, 'cust-1', 'After upgrade');
     expect(created.success).toBe(true);
     expect((created as any).data.order.displayNumber).toBe(19);
+    expect((created as any).data.order.internalSequence).toBe(1001);
     expect(reservationMap.get('old-stale-cursor')).toMatchObject({
       startNumber: 19, endNumber: 18, nextNumber: 19, status: 'EXHAUSTED',
     });
