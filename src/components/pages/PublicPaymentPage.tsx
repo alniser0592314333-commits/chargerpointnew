@@ -238,10 +238,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     ? ''
     : typeof order.customerHasPositiveCredit !== 'boolean'
       ? (isAr ? 'تعذّر التحقق من رصيد الحساب. حدّث الصفحة قبل إرسال أي دفعة.' : 'Could not verify the account balance. Refresh before sending a payment.')
-      : order.customerHasPositiveCredit
-        ? (isAr ? 'رصيدك موجب؛ سيُستخدم عند احتساب تكلفة الأجهزة بعد التسليم. لا تحتاج لإرسال دفعة الآن.' : 'Your account has positive credit, which is applied first when delivered devices are charged. No payment is needed now.')
-        : order.orderQrSubmissionLimitReached === true && amountDue !== null && amountDue > 0
-          ? (isAr ? 'تم استخدام إشعارات الدفع الثلاثة المسموح بها لهذا الطلب. تواصل مع نقطة الشحن لمتابعة المبلغ المتبقي.' : 'This order QR has used all three allowed payment notifications. Contact Charging Point to resolve the remaining amount.')
+      : order.orderQrSubmissionLimitReached === true && amountDue !== null && amountDue > 0
+        ? (isAr ? 'تم استخدام إشعارات الدفع الثلاثة المسموح بها لهذا الطلب. تواصل مع نقطة الشحن لمتابعة المبلغ المتبقي.' : 'This order QR has used all three allowed payment notifications. Contact Charging Point to resolve the remaining amount.')
         : amountDue === null || amountDue <= 0
           ? (['DELIVERED', 'COMPLETED'].includes(String(order.status ?? '').toUpperCase())
               ? (isAr ? 'لا يوجد مبلغ مستحق على هذا الطلب حالياً.' : 'There is no remaining amount due for this order.')
@@ -373,7 +371,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       } else if (code === 'COMPRESSED_TOO_LARGE') {
         setError(isAr ? 'حجم الصورة بعد الضغط ما زال كبيراً. اختَر صورة أصغر وأوضح.' : 'Compressed image remains too large. Choose a smaller image.');
       } else if (code === 'CREDIT_BALANCE') {
-        setError(isAr ? 'رصيدك موجب؛ سيُستخدم لتغطية تكلفة الطلب أولاً، ولا يلزم إرسال دفعة الآن.' : 'Your account has positive credit, which is applied first. No payment is needed now.');
+        setError(isAr ? 'تم استخدام رصيدك لتغطية قيمة الطلب. لا يوجد مبلغ متبقٍ للدفع حالياً.' : 'Your available credit covers the order. No amount remains due right now.');
       } else if (code === 'MAX_SUBMISSIONS') {
         setError(isAr ? 'وصل هذا الطلب للحد الأقصى: ثلاثة إشعارات دفع من نفس رمز QR.' : 'This order QR has reached its limit of three payment notifications.');
       } else if (code === 'NO_AMOUNT_DUE') {
