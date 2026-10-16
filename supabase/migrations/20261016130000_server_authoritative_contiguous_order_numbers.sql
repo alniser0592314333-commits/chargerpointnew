@@ -489,6 +489,26 @@ BEGIN
                         USING ERRCODE = '23505';
                 END IF;
             ELSE
+                -- Do not let any caller extend a day that is already gapped. The UI has the
+                -- same preflight check, but this server-side guard protects direct/legacy callers.
+                SELECT
+                    COUNT(*)::BIGINT,
+                    COUNT(DISTINCT display_number)::BIGINT,
+                    COALESCE(MIN(display_number), 0),
+                    COALESCE(MAX(display_number), 0)
+                INTO v_change_count, v_payload_order_count, v_min_new_number, v_max_new_number
+                FROM public.orders
+                WHERE day_id = v_day_uuid;
+
+                IF v_change_count > 0 AND (
+                    v_min_new_number <> 1
+                    OR v_max_new_number <> v_change_count
+                    OR v_payload_order_count <> v_change_count
+                ) THEN
+                    RAISE EXCEPTION 'Order numbering is not contiguous for business day %. Renumber the day before creating another order.', v_day_uuid
+                        USING ERRCODE = 'P0409';
+                END IF;
+
                 SELECT COALESCE(MAX(display_number), 0) + 1
                 INTO v_requested_display_number
                 FROM public.orders
