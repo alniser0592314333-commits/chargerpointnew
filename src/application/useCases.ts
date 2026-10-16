@@ -523,7 +523,7 @@ export class FinalUseCases {
           return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
         }
         if (txOverlayRepo.hasPendingRenumberForDaySync(dayId)) {
-          return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.' };
+          return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.', code: 'ORDER_RENUMBER_PENDING' };
         }
 
         const dayOrders = repos.orderRepo.findByDay?.(dayId);
