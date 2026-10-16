@@ -10,14 +10,14 @@ import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
 import { getPublicOrderByToken, getItemLocalizedDeviceName, PublicOrderQrData } from './dayOrdersStore';
 import { EnergyCanvasBackground, BackgroundState } from '../energy/EnergyCanvasBackground';
-import { rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
+import { rpcResolveOrderQr, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
 
 export interface PublicOrderPageProps {
   token: string;
 }
 
 /**
- * Derives the background state from the live order operational & financial data.
+ * Derives the public payment action from the canonical balance and QR-specific submission state.
  */
 export type OrderPaymentViewState = 'PAID' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNPAID' | 'UNAVAILABLE';
 
@@ -119,11 +119,20 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       refreshing = true;
       try {
         const [latestOrder, latestSubmission] = await Promise.all([
-          getPublicOrderByToken(token),
+          rpcResolveOrderQr(token),
           rpcResolveQrPaymentSubmission(token),
         ]);
         if (!active) return;
-        if (latestOrder) setData(latestOrder);
+        // Poll the server RPC directly. The store's offline fallback is useful for initial
+        // display, but must not overwrite a confirmed server balance with stale local data.
+        if (latestOrder) {
+          setData((current) => current ? {
+            ...current,
+            status: latestOrder.status,
+            orderTotalMinor: latestOrder.order_total_minor,
+            orderDueMinor: latestOrder.order_due_minor,
+          } : current);
+        }
         // Null can mean a temporary RPC failure; do not erase a previously confirmed state.
         if (latestSubmission) setSubmission(latestSubmission);
       } catch (err) {
