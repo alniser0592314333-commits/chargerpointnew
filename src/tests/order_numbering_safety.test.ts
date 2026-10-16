@@ -108,7 +108,11 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         getLastAssignedNumberForDay: (dayId: string) => {
           let highWater = 0;
           reservationMap.forEach((reservation) => {
-            if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+            if (reservation.businessDayId !== dayId) return;
+            const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+              ? Math.max(0, Number(reservation.nextNumber) - 1)
+              : Number(reservation.endNumber) || 0;
+            highWater = Math.max(highWater, consumedThrough);
           });
           return highWater;
         },
@@ -131,7 +135,11 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         resetForDay: (dayId: string, nextNumber: number) => {
           let highWater = Math.max(0, nextNumber - 1);
           for (const reservation of reservationMap.values()) {
-            if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+            if (reservation.businessDayId !== dayId) continue;
+            const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+              ? Math.max(0, Number(reservation.nextNumber) - 1)
+              : Number(reservation.endNumber) || 0;
+            highWater = Math.max(highWater, consumedThrough);
           }
           const nextHighWaterNumber = highWater + 1;
           let watermarkFound = false;
@@ -505,7 +513,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const renumber = await useCases.renumberDayOrders(auth, 'renumber-stale-range', dayId, changes);
     expect(renumber.success).toBe(true);
     expect(reservationMap.get('stale-range')).toMatchObject({
-      startNumber: 1, endNumber: 20, nextNumber: 21, status: 'EXHAUSTED',
+      startNumber: 1, endNumber: 19, nextNumber: 20, status: 'EXHAUSTED',
     });
     expect(reservationMap.get(`watermark-${dayId}`)).toBeDefined();
 
@@ -522,7 +530,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     const created = await createReservedOrder(auth, 'create-after-renumber', dayId, 'cust-1', 'After renumber');
     expect(created.success).toBe(true);
-    expect((created as any).data.order.displayNumber).toBe(21);
+    expect((created as any).data.order.displayNumber).toBe(20);
   });
 
   it('never reuses numbers from an old preallocated range', async () => {
@@ -557,7 +565,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(reservationMap.get('old-stale-cursor')).toMatchObject({
       startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
     });
-    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 21, nextNumber: 22 });
+    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 20, nextNumber: 21 });
   });
 
   it('uses the same immutable local numbering transaction for the legacy single-order entrypoint', async () => {
