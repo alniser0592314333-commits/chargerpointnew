@@ -12,6 +12,21 @@ describe('Public payment page compact layout', () => {
     expect(source).toContain('{item.short}');
   });
 
+  it('uses circular payment choices and a theme-aware page background', () => {
+    expect(source).toContain('flex aspect-square min-w-0 flex-col items-center');
+    expect(source).toContain('rounded-full');
+    expect(source).toContain('from-slate-100 via-white to-teal-50');
+    expect(source).toContain('dark:from-[#050b0d] dark:via-[#091719] dark:to-[#102d2a]');
+    expect(source).toContain('duration-300');
+  });
+
+  it('redesigns the pending-review screen with clear status and theme-aware surfaces', () => {
+    expect(source).toContain('إشعار الدفع بانتظار المراجعة');
+    expect(source).toContain('PENDING REVIEW');
+    expect(source).toContain('dark:bg-[#101e21]/95');
+    expect(source).toContain('rounded-full px-3 py-1');
+  });
+
   it('removes the separate order/customer details sidebar', () => {
     expect(source).not.toContain('Order Items:');
     expect(source).not.toContain('lg:grid-cols-12');
