@@ -187,6 +187,10 @@ export class FinalUseCases {
     const orderId = commandId || crypto.randomUUID();
     const now = new Date().toISOString();
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
+    if (!this.deps.overlayRepo?.getNextSequence) {
+      return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+    }
+    const overlaySequence = await this.deps.overlayRepo.getNextSequence();
 
     return this.deps.transactionManager.runInTransaction((repos) => {
       const overlayRepo = repos.overlayRepo;
@@ -233,7 +237,7 @@ export class FinalUseCases {
         entityId: orderId,
         operation: 'CREATE',
         entityPayload: order as unknown as Record<string, unknown>,
-        sequence: 0,
+        sequence: overlaySequence,
         createdAt: now,
         status: 'PENDING',
       });
