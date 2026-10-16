@@ -108,6 +108,14 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(0, null, false, 'CHARGING')).toBe('NOT_DUE');
   });
 
+  it('shows the positive-credit notice for a charging order without calling it paid', () => {
+    expect(getOrderPaymentViewState(0, null, true, 'CHARGING')).toBe('CREDIT_COVERED');
+  });
+
+  it('shows a delivered order as paid when no recognized amount remains', () => {
+    expect(getOrderPaymentViewState(0, null, true, 'DELIVERED')).toBe('PAID');
+  });
+
   it('fails closed when customer balance is unavailable', () => {
     expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED')).toBe('UNAVAILABLE');
   });
