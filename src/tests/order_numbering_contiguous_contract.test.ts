@@ -13,7 +13,7 @@ describe('Server-authoritative contiguous order numbering', () => {
     return fs.readFileSync(migrationPath, 'utf8');
   };
 
-  it('ignores stale client reservation numbers and allocates MAX+1 under the day lock', () => {
+  it('validates the exact client-assigned number under the day lock without reassignment', () => {
     const sql = readMigration();
     const routeStart = sql.indexOf('-- 5. ROUTE BY CANONICAL COMMAND TYPE');
     const createStart = sql.indexOf("WHEN 'CREATE_ORDER' THEN", routeStart);
@@ -25,13 +25,17 @@ describe('Server-authoritative contiguous order numbering', () => {
 
     expect(branch).toContain("pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1))");
     expect(branch).toContain('FROM public.business_days WHERE id = v_day_uuid FOR UPDATE');
-    expect(branch).toContain('COALESCE(MAX(display_number), 0) + 1');
+    expect(branch).toContain("v_requested_display_number := NULLIF(COALESCE(");
+    expect(branch).toContain('v_requested_display_number <> v_max_new_number + 1');
+    expect(branch).toContain('ORDER_NUMBER_CONFLICT [409]');
+    expect(branch).toContain('ORDER_NUMBER_IMMUTABLE [409]');
+    expect(branch).toContain('ORDER_NUMBER_REQUIRED');
     expect(branch).toContain('Order numbering is not contiguous');
     expect(branch).toContain('v_max_new_number <> v_change_count');
     expect(branch).toContain("'{displayNumber}'");
     expect(branch).toContain("'{display_number}'");
-    expect(branch).not.toContain("p_payload->>'displayNumber'");
-    expect(branch).not.toContain('Offline devices may submit reserved numbers out of order');
+    expect(branch).toContain("p_payload->>'displayNumber'");
+    expect(branch).not.toContain('silently substitutes another number');
   });
 
   it('enforces per-day uniqueness without breaking atomic number swaps during renumbering', () => {
