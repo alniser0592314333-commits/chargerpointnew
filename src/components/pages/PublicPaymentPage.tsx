@@ -615,6 +615,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             </div>
           </section>
         ) : (
+          <>
           {/* Simple single-card payment form */}
           <form onSubmit={submit} className="mx-auto w-full max-w-xl space-y-3">
             {error && (
@@ -737,6 +738,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإشعار…' : 'Sending notification…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'}</span></>}
             </button>
           </form>
+          </>
         )}
       </main>
 
