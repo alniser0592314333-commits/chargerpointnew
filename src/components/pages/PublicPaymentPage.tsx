@@ -77,13 +77,13 @@ const PaymentMethodLogo: React.FC<{ method: PaymentMethodItem }> = ({ method }) 
   const [failed, setFailed] = useState(false);
   if (failed || !method.logoUrl) {
     return (
-      <div className={`flex h-8 w-9 shrink-0 items-center justify-center rounded-lg font-bold text-[10px] ${method.markClass}`}>
+      <div className={`flex h-8 w-9 shrink-0 items-center justify-center rounded-full font-bold text-[10px] ${method.markClass}`}>
         {method.short}
       </div>
     );
   }
   return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-800 dark:ring-slate-700">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-1.5 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-700">
       <img
         src={method.logoUrl}
         alt={method.short}
@@ -367,10 +367,10 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   return (
     <div
       dir={isRTL ? 'rtl' : 'ltr'}
-      className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-200 dark:bg-[#071313] dark:text-slate-100"
+      className="min-h-screen bg-gradient-to-br from-slate-100 via-white to-teal-50 text-slate-900 transition-colors duration-300 dark:from-[#050b0d] dark:via-[#091719] dark:to-[#102d2a] dark:text-slate-100"
     >
       {/* 1. Header Bar */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-[#163532] dark:bg-[#071313]/85">
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#071113]/70">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <a
             href={backHref}
@@ -419,7 +419,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       </header>
 
       {/* 2. Main Container */}
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-9 lg:py-12">
         {/* Navigation Breadcrumb */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <a
@@ -442,7 +442,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
         {/* Loading State */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-200/80 bg-white p-12 text-center shadow-sm dark:border-[#193a38] dark:bg-[#0c1f1e]">
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-white/80 bg-white/85 p-12 text-center shadow-xl shadow-slate-900/5 backdrop-blur-sm dark:border-white/10 dark:bg-[#0d1c1e]/90 dark:shadow-black/20">
             <RefreshCw className="h-8 w-8 animate-spin text-emerald-600 dark:text-emerald-400" />
             <p className="mt-4 text-sm font-bold text-slate-700 dark:text-slate-300">
               {isAr ? 'جارٍ تحميل بيانات الدفع والطلب…' : 'Loading payment & order details…'}
@@ -450,7 +450,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           </div>
         ) : loadError || (!order && !customer) ? (
           /* Error State: Invalid or Expired Token */
-          <div className="rounded-3xl border border-rose-200 bg-white p-8 text-center shadow-sm dark:border-rose-900/60 dark:bg-[#0c1f1e] sm:p-12">
+          <div className="rounded-3xl border border-rose-200/80 bg-white/90 p-8 text-center shadow-xl shadow-slate-900/5 backdrop-blur-sm dark:border-rose-900/50 dark:bg-[#111c20]/95 dark:shadow-black/25 sm:p-12">
             <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
               <AlertCircle className="h-7 w-7" />
             </span>
@@ -473,12 +473,12 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           </div>
         ) : success && submission ? (
           /* Success / Existing Submission Screen */
-          <section className="mx-auto max-w-2xl space-y-6">
-            <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white p-6 shadow-md transition dark:border-[#1b3d3a] dark:bg-[#0c1f1e] sm:p-8">
+          <section className="mx-auto max-w-xl space-y-5">
+            <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-2xl shadow-slate-900/10 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#101e21]/95 dark:shadow-black/30 sm:p-8">
               {/* Status Header Badge */}
               <div className="flex items-center gap-4">
                 <span
-                  className={`flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl ${
+                  className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full shadow-inner ${
                     submission.status === 'APPROVED'
                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                       : submission.status === 'REJECTED'
@@ -496,7 +496,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 </span>
                 <div>
                   <span
-                    className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-black tracking-wide uppercase ${
+                    className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-black tracking-wide uppercase ${
                       submission.status === 'APPROVED'
                         ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
                         : submission.status === 'REJECTED'
@@ -510,7 +510,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                       ? (isAr ? 'مرفوض' : 'REJECTED')
                       : (isAr ? 'قيد المراجعة' : 'PENDING REVIEW')}
                   </span>
-                  <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-50">
+                  <h1 className="mt-2 text-xl font-black tracking-tight text-slate-900 dark:text-white sm:text-2xl">
                     {submission.status === 'APPROVED'
                       ? (isAr ? 'تم اعتماد الدفعة بنجاح' : 'Payment approved')
                       : submission.status === 'REJECTED'
@@ -521,7 +521,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </div>
 
               {/* Status Explanation */}
-              <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-400">
+              <p className="mt-4 rounded-2xl bg-slate-50/90 px-4 py-3 text-sm leading-6 text-slate-600 dark:bg-white/[0.04] dark:text-slate-300">
                 {submission.status === 'APPROVED'
                   ? (isAr
                       ? 'تم التحقق من إيصال التحويل واعتماد المبلغ رسمياً في السجل المالي للنظام.'
@@ -536,7 +536,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </p>
 
               {/* Submission Metadata Breakdown */}
-              <div className="mt-6 divide-y divide-slate-200/80 rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 text-sm dark:divide-slate-800 dark:border-[#1d4440] dark:bg-[#071716]">
+              <div className="mt-5 divide-y divide-slate-200/80 rounded-2xl border border-slate-200/80 bg-white/70 p-4 text-sm dark:divide-white/10 dark:border-white/10 dark:bg-black/10">
                 <div className="flex items-center justify-between pb-3">
                   <span className="text-slate-500 dark:text-slate-400">{isAr ? 'وسيلة التحويل' : 'Payment Method'}</span>
                   <span className="font-bold text-slate-900 dark:text-slate-100">
@@ -617,7 +617,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         ) : (
           <>
           {/* Simple single-card payment form */}
-          <form onSubmit={submit} className="mx-auto w-full max-w-xl space-y-3">
+          <form onSubmit={submit} className="mx-auto w-full max-w-xl space-y-4">
             {error && (
               <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm leading-5 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -625,13 +625,13 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </div>
             )}
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#1a3c3a] dark:bg-[#0c1f1e] sm:p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <section className="rounded-[1.75rem] border border-white/90 bg-white/90 p-4 shadow-2xl shadow-slate-900/5 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#101e21]/95 dark:shadow-black/25 sm:p-6">
+              <div className="mb-5 flex items-center justify-between gap-3">
                 <div>
                   <h1 className="text-base font-extrabold text-slate-900 dark:text-slate-50">{isAr ? 'إشعار الدفع' : 'Payment notification'}</h1>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{isAr ? 'اختار وسيلة الدفع وأرفق صورة الإيصال.' : 'Choose a payment method and attach the receipt.'}</p>
                 </div>
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300">
                   <ShieldCheck className="h-5 w-5" />
                 </span>
               </div>
@@ -655,9 +655,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                         }}
                         aria-label={`${isAr ? item.ar : item.en} (${item.short})`}
                         aria-pressed={selected}
-                        className={`relative flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border px-1.5 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${selected
-                          ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600/20 dark:border-emerald-500 dark:bg-[#0e2d2a]'
-                          : 'border-slate-200 bg-white hover:border-slate-300 dark:border-[#24413f] dark:bg-[#081817] dark:hover:border-[#37615c]'
+                        className={`relative flex aspect-square min-w-0 flex-col items-center justify-center gap-2 rounded-full border p-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#101e21] ${selected
+                          ? 'border-teal-600 bg-teal-50 shadow-lg shadow-teal-700/10 ring-2 ring-teal-600/15 dark:border-teal-400 dark:bg-teal-950/50 dark:shadow-teal-950/40'
+                          : 'border-slate-200 bg-white/80 hover:border-teal-300 hover:bg-teal-50/60 dark:border-white/15 dark:bg-white/[0.03] dark:hover:border-teal-700 dark:hover:bg-teal-950/30'
                         }`}
                       >
                         <PaymentMethodLogo method={item} />
@@ -669,7 +669,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 </div>
               </section>
 
-              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-[#24413f] dark:bg-[#081817]">
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 px-3.5 py-3 dark:border-white/10 dark:bg-white/[0.035]">
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">{isAr ? 'رقم التحويل' : 'Transfer number'}</p>
                   <p dir="ltr" className="mt-0.5 font-mono text-base font-extrabold tracking-wider text-slate-900 dark:text-slate-100">0592369875</p>
@@ -720,7 +720,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   rows={2}
                   maxLength={500}
                   placeholder={isAr ? 'ملاحظة قصيرة (إن وجدت)…' : 'Add a short note if needed…'}
-                  className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 dark:border-[#24413f] dark:bg-[#081817] dark:text-slate-100 dark:placeholder:text-slate-500"
+                  className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/15 dark:border-white/15 dark:bg-[#0a1518] dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
 
