@@ -128,6 +128,18 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
             });
           }
         },
+        needsResetForDay: (dayId: string, deviceId: string, expectedNextNumber: number) => {
+          const active = Array.from(reservationMap.values()).find((reservation) =>
+            reservation.businessDayId === dayId && reservation.deviceId === deviceId &&
+            reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+          );
+          if (active) return active.nextNumber !== expectedNextNumber;
+          let maxEnd = 0;
+          reservationMap.forEach((reservation) => {
+            if (reservation.businessDayId === dayId) maxEnd = Math.max(maxEnd, reservation.endNumber);
+          });
+          return maxEnd !== expectedNextNumber - 1;
+        },
         reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
           if (commandId) {
             for (const r of reservationMap.values()) {
@@ -472,6 +484,35 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const created = await createReservedOrder(auth, 'create-after-renumber', dayId, 'cust-1', 'After renumber');
     expect(created.success).toBe(true);
     expect((created as any).data.order.displayNumber).toBe(19);
+  });
+
+  it('repairs an old stale reservation cursor before creating the next order', async () => {
+    const dayId = 'day-1';
+    const now = new Date().toISOString();
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+    for (let number = 1; number <= 18; number++) {
+      const id = `existing-${number}`;
+      orderMap.set(id, {
+        id, dayId, customerId: 'cust-1', displayNumber: number, internalSequence: number,
+        status: 'pending', createdAt: now, updatedAt: now, version: 1,
+      });
+    }
+    reservationMap.set('old-stale-cursor', {
+      id: 'old-stale-cursor', businessDayId: dayId, deviceId: 'device_A',
+      startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
+      commandId: 'old-app-range', createdAt: now, updatedAt: now, version: 1,
+    });
+
+    const created = await createReservedOrder(auth, 'create-after-upgrade', dayId, 'cust-1', 'After upgrade');
+    expect(created.success).toBe(true);
+    expect((created as any).data.order.displayNumber).toBe(19);
+    expect(reservationMap.get('old-stale-cursor')).toMatchObject({
+      startNumber: 19, endNumber: 18, nextNumber: 19, status: 'EXHAUSTED',
+    });
   });
 
   it('does not consume a customer-facing number when device validation fails', async () => {
