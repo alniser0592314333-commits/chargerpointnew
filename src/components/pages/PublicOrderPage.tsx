@@ -3,7 +3,7 @@ import {
   ArrowUpRight, BatteryCharging, CalendarClock, Check, CheckCircle2,
   CircleAlert, CircleHelp, Clock3, CreditCard, Globe,
   Monitor, Moon, PackageCheck, RefreshCw, Settings2,
-  Smartphone, Sparkles, Sun, UserRound, Zap, ShieldCheck,
+  Smartphone, Sparkles, Sun, UserRound, Zap, ShieldCheck, Wallet,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
