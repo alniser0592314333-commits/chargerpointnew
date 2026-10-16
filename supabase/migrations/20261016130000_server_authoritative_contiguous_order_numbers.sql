@@ -459,10 +459,17 @@ BEGIN
             v_entity_uuid := COALESCE((p_payload->>'id')::UUID, p_command_id);
             v_customer_uuid := (COALESCE(p_payload->>'customerId', p_payload->>'customer_id'))::UUID;
             v_day_uuid := (COALESCE(p_payload->>'dayId', p_payload->>'day_id'))::UUID;
+            v_requested_display_number := NULLIF(COALESCE(
+                p_payload->>'displayNumber',
+                p_payload->>'display_number',
+                p_payload->>'orderNumber'
+            ), '')::INTEGER;
 
-            -- Order-number allocation is server-authoritative. A local/offline number is only
-            -- an optimistic display hint and must never advance the canonical sequence by itself.
-            -- The same day lock is used by renumbering, so MAX+1 is serialized against both paths.
+            -- The customer-facing number is immutable: the local-first client assigns it
+            -- once from the effective day order list and submits that exact number here.
+            -- The server validates it under the same day lock as renumbering; it NEVER
+            -- silently substitutes another number because that would invalidate a number
+            -- already given to the customer.
             PERFORM pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1));
 
             SELECT status INTO v_customer_status FROM public.customers WHERE id = v_customer_uuid;
@@ -478,19 +485,29 @@ BEGIN
                 RAISE EXCEPTION 'Business Day Not Found: ID %', v_day_uuid USING ERRCODE = '23503';
             END IF;
 
-            -- Idempotent recovery: if this order identity already exists, keep its actual number.
-            -- Otherwise ignore the client-supplied number and allocate the next server sequence.
             IF EXISTS (SELECT 1 FROM public.orders WHERE id = v_entity_uuid) THEN
-                SELECT display_number INTO v_requested_display_number
+                SELECT display_number INTO v_min_new_number
                 FROM public.orders
                 WHERE id = v_entity_uuid AND day_id = v_day_uuid AND customer_id = v_customer_uuid;
                 IF NOT FOUND THEN
                     RAISE EXCEPTION 'Order identity already belongs to a different day or customer: %', v_entity_uuid
                         USING ERRCODE = '23505';
                 END IF;
+                IF v_requested_display_number IS NOT NULL
+                   AND v_requested_display_number > 0
+                   AND v_requested_display_number <> v_min_new_number THEN
+                    RAISE EXCEPTION 'ORDER_NUMBER_IMMUTABLE [409]: Order % was already assigned number %, refusing requested number %',
+                        v_entity_uuid, v_min_new_number, v_requested_display_number
+                        USING ERRCODE = 'P0409';
+                END IF;
+                -- Idempotent replay retains the already-persisted identity and number.
+                v_requested_display_number := v_min_new_number;
             ELSE
-                -- Do not let any caller extend a day that is already gapped. The UI has the
-                -- same preflight check, but this server-side guard protects direct/legacy callers.
+                IF v_requested_display_number IS NULL OR v_requested_display_number < 1 THEN
+                    RAISE EXCEPTION 'ORDER_NUMBER_REQUIRED: client must persist a positive customer-facing order number before sync'
+                        USING ERRCODE = 'P2201';
+                END IF;
+
                 SELECT
                     COUNT(*)::BIGINT,
                     COUNT(DISTINCT display_number)::BIGINT,
@@ -509,10 +526,11 @@ BEGIN
                         USING ERRCODE = 'P0409';
                 END IF;
 
-                SELECT COALESCE(MAX(display_number), 0) + 1
-                INTO v_requested_display_number
-                FROM public.orders
-                WHERE day_id = v_day_uuid;
+                IF v_requested_display_number <> v_max_new_number + 1 THEN
+                    RAISE EXCEPTION 'ORDER_NUMBER_CONFLICT [409]: client order number % does not match the next canonical number %. The assigned number was not changed.',
+                        v_requested_display_number, v_max_new_number + 1
+                        USING ERRCODE = 'P0409';
+                END IF;
             END IF;
 
             INSERT INTO public.orders (
@@ -533,10 +551,6 @@ BEGIN
                 notes = EXCLUDED.notes,
                 updated_at = NOW(),
                 version = public.orders.version + 1;
-
-            -- Publish the actual stored number so local hydration cannot retain a stale reservation.
-            SELECT display_number INTO v_requested_display_number
-            FROM public.orders WHERE id = v_entity_uuid;
 
             v_order_change_payload := jsonb_set(
                 jsonb_set(COALESCE(p_payload, '{}'::JSONB), '{displayNumber}', to_jsonb(v_requested_display_number), TRUE),
