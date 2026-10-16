@@ -1,7 +1,27 @@
--- Make server order-number allocation authoritative and contiguous under the per-day lock.
--- Preserve atomic day renumbering, all canonical dispatcher routes, and the current item-edit
--- and Super Admin debt-limit behavior. Existing business rows are not rewritten.
--- A deferred unique constraint protects the day/number pair while allowing full-day renumber swaps.
+-- Keep a durable server high-water mark so deleted/renumbered rows never make an old
+-- customer-facing number reusable. Existing days start at their current maximum number.
+CREATE TABLE IF NOT EXISTS public.business_day_order_sequences (
+    day_id UUID PRIMARY KEY,
+    last_assigned_number INTEGER NOT NULL DEFAULT 0 CHECK (last_assigned_number >= 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO public.business_day_order_sequences (day_id, last_assigned_number)
+SELECT day_id, COALESCE(MAX(display_number), 0)::INTEGER
+FROM public.orders
+GROUP BY day_id
+ON CONFLICT (day_id) DO UPDATE
+SET last_assigned_number = GREATEST(
+        public.business_day_order_sequences.last_assigned_number,
+        EXCLUDED.last_assigned_number
+    ),
+    updated_at = NOW();
+
+ALTER TABLE public.business_day_order_sequences ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.business_day_order_sequences FROM PUBLIC, anon, authenticated;
+
+-- Preserve atomic day renumbering, all canonical dispatcher routes, and current financial policies.
+-- A deferred unique constraint protects day/number pairs while allowing full-day renumber swaps.
 CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command_unlocked(
     p_command_id UUID,
     p_command_type TEXT,
@@ -71,6 +91,7 @@ DECLARE
     v_max_new_number INTEGER;
     v_requested_display_number INTEGER;
     v_order_change_payload JSONB;
+    v_order_exists BOOLEAN := FALSE;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
@@ -464,12 +485,11 @@ BEGIN
                 p_payload->>'display_number',
                 p_payload->>'orderNumber'
             ), '')::INTEGER;
+            v_order_exists := FALSE;
 
-            -- The customer-facing number is immutable: the local-first client assigns it
-            -- once from the effective day order list and submits that exact number here.
-            -- The server validates it under the same day lock as renumbering; it NEVER
-            -- silently substitutes another number because that would invalidate a number
-            -- already given to the customer.
+            -- The local-first client assigns a number exactly once. The server serializes
+            -- creates per day, verifies the assigned number against a durable high-water mark,
+            -- and never silently substitutes another customer-facing number.
             PERFORM pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1));
 
             SELECT status INTO v_customer_status FROM public.customers WHERE id = v_customer_uuid;
@@ -500,63 +520,66 @@ BEGIN
                         v_entity_uuid, v_min_new_number, v_requested_display_number
                         USING ERRCODE = 'P0409';
                 END IF;
-                -- Idempotent replay retains the already-persisted identity and number.
                 v_requested_display_number := v_min_new_number;
+                v_order_exists := TRUE;
             ELSE
                 IF v_requested_display_number IS NULL OR v_requested_display_number < 1 THEN
                     RAISE EXCEPTION 'ORDER_NUMBER_REQUIRED: client must persist a positive customer-facing order number before sync'
                         USING ERRCODE = 'P2201';
                 END IF;
 
-                SELECT
-                    COUNT(*)::BIGINT,
-                    COUNT(DISTINCT display_number)::BIGINT,
-                    COALESCE(MIN(display_number), 0),
-                    COALESCE(MAX(display_number), 0)
-                INTO v_change_count, v_payload_order_count, v_min_new_number, v_max_new_number
+                -- Initialize newly opened days at their current maximum. Existing gaps are
+                -- deliberately preserved; the next number is above the high-water mark.
+                INSERT INTO public.business_day_order_sequences (day_id, last_assigned_number)
+                SELECT v_day_uuid, COALESCE(MAX(display_number), 0)::INTEGER
+                FROM public.orders
+                WHERE day_id = v_day_uuid
+                ON CONFLICT (day_id) DO NOTHING;
+
+                SELECT last_assigned_number INTO v_max_new_number
+                FROM public.business_day_order_sequences
+                WHERE day_id = v_day_uuid
+                FOR UPDATE;
+
+                SELECT GREATEST(v_max_new_number, COALESCE(MAX(display_number), 0))::INTEGER
+                INTO v_max_new_number
                 FROM public.orders
                 WHERE day_id = v_day_uuid;
 
-                IF v_change_count > 0 AND (
-                    v_min_new_number <> 1
-                    OR v_max_new_number <> v_change_count
-                    OR v_payload_order_count <> v_change_count
-                ) THEN
-                    RAISE EXCEPTION 'Order numbering is not contiguous for business day %. Renumber the day before creating another order.', v_day_uuid
-                        USING ERRCODE = 'P0409';
-                END IF;
-
                 IF v_requested_display_number <> v_max_new_number + 1 THEN
-                    RAISE EXCEPTION 'ORDER_NUMBER_CONFLICT [409]: client order number % does not match the next canonical number %. The assigned number was not changed.',
+                    RAISE EXCEPTION 'ORDER_NUMBER_CONFLICT [409]: client order number % does not match the next unused number %. The assigned number was not changed.',
                         v_requested_display_number, v_max_new_number + 1
                         USING ERRCODE = 'P0409';
                 END IF;
+
+                INSERT INTO public.orders (
+                    id, day_id, customer_id, display_number, status, notes, version, created_at, updated_at
+                )
+                VALUES (
+                    v_entity_uuid,
+                    v_day_uuid,
+                    v_customer_uuid,
+                    v_requested_display_number,
+                    'charging',
+                    COALESCE(p_payload->>'notes', ''),
+                    1,
+                    NOW(),
+                    NOW()
+                );
+
+                UPDATE public.business_day_order_sequences
+                SET last_assigned_number = GREATEST(last_assigned_number, v_requested_display_number),
+                    updated_at = NOW()
+                WHERE day_id = v_day_uuid;
+
+                v_order_change_payload := jsonb_set(
+                    jsonb_set(COALESCE(p_payload, '{}'::JSONB), '{displayNumber}', to_jsonb(v_requested_display_number), TRUE),
+                    '{display_number}', to_jsonb(v_requested_display_number), TRUE
+                );
+                PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', v_order_change_payload, 1);
             END IF;
 
-            INSERT INTO public.orders (
-                id, day_id, customer_id, display_number, status, notes, version, created_at, updated_at
-            )
-            VALUES (
-                v_entity_uuid,
-                v_day_uuid,
-                v_customer_uuid,
-                v_requested_display_number,
-                'charging',
-                COALESCE(p_payload->>'notes', ''),
-                1,
-                NOW(),
-                NOW()
-            )
-            ON CONFLICT (id) DO UPDATE SET
-                notes = EXCLUDED.notes,
-                updated_at = NOW(),
-                version = public.orders.version + 1;
-
-            v_order_change_payload := jsonb_set(
-                jsonb_set(COALESCE(p_payload, '{}'::JSONB), '{displayNumber}', to_jsonb(v_requested_display_number), TRUE),
-                '{display_number}', to_jsonb(v_requested_display_number), TRUE
-            );
-            PERFORM public.record_canonical_change('orders', v_entity_uuid, 'INSERT', v_order_change_payload, 1);
+            -- A replay of an existing order retains its stored number and never mutates it.
             v_result := jsonb_build_object('orderId', v_entity_uuid, 'displayNumber', v_requested_display_number);
 
         WHEN 'RENUMBER_DAY_ORDERS' THEN
