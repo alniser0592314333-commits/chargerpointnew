@@ -189,6 +189,46 @@ export class FinalUseCases {
     const orderId = commandId || crypto.randomUUID();
     const now = new Date().toISOString();
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
+
+    // Compatibility for legacy non-offline repository adapters that expose neither
+    // overlays nor a durable local sequence. The production local-first adapter always
+    // supplies both and takes the atomic path below.
+    if (!this.deps.overlayRepo && !this.deps.reservationRepo) {
+      const legacyOrders = this.deps.orderRepo.findByDay?.(dayId) || [];
+      const legacyNumbers = legacyOrders.map((existing) => Number(existing.displayNumber));
+      if (legacyNumbers.some((number) => !Number.isSafeInteger(number) || number < 1) ||
+          new Set(legacyNumbers).size !== legacyNumbers.length) {
+        return { success: false, error: 'Existing order numbers are invalid or duplicated. No new order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      const displayNumber = legacyOrders.length
+        ? Math.max(...legacyNumbers) + 1
+        : (await this.deps.orderRepo.countForDay(dayId)) + 1;
+      const internalSequence = (this.deps.orderRepo.maxInternalSequence?.() ??
+        legacyOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
+      const order: OrderEntity = {
+        id: orderId, dayId, customerId, displayNumber, internalSequence, status: 'pending',
+        customerBalanceSnapshotMinor: currentBalance, notes, createdAt: now, updatedAt: now, version: 1,
+      };
+      await this.deps.mutationSnapshotRepo?.capture(orderId, [{ table: 'orders', id: order.id, existed: false }]);
+      await this.deps.orderRepo.save(order);
+      const previousOrder = legacyOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
+      const previousCommand = previousOrder ? await this.deps.commandRepo.get(previousOrder.id) : null;
+      await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
+        ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash as object : {}),
+        id: order.id,
+        aggregateId: order.id,
+        dayId,
+        customerId,
+        notes,
+        ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
+        customerBalanceSnapshotMinor: currentBalance,
+        displayNumber,
+        orderNumber: displayNumber,
+        ...(previousCommand?.type === 'CREATE_ORDER' && previousOrder ? { dependencyCommandId: previousOrder.id } : {}),
+      });
+      return { success: true, data: order };
+    }
+
     if (!this.deps.overlayRepo?.getNextSequence) {
       return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
     }
