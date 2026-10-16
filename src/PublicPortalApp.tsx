@@ -13,7 +13,7 @@ const publicRoutes = [
   { prefix: '/public/order/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
   { prefix: '/c/', render: (token: string) => <PublicCustomerQrPage token={token} /> },
   { prefix: '/o/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
-  { prefix: '/pay/', render: (token: string) => <PublicPaymentPage token={token} /> },
+  { prefix: '/pay/', render: (token: string) => <ThemeProvider><PublicPaymentPage token={token} /></ThemeProvider> },
 ];
 
 const PublicNotFound: React.FC = () => (
