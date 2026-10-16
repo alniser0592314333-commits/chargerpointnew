@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  ArrowUpRight, BatteryCharging, CalendarClock, Check, CheckCircle2,
+  ArrowUpRight, CalendarClock, Check, CheckCircle2,
   CircleAlert, CircleHelp, Clock3, CreditCard, Globe,
   Monitor, Moon, RefreshCw, Settings2,
   Smartphone, Sparkles, Sun, UserRound, Zap, ShieldCheck, Wallet,
