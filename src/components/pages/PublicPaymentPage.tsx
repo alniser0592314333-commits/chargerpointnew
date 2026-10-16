@@ -337,6 +337,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         if (message.toLowerCase().includes('maximum of three payment notifications')) {
           throw new Error('MAX_SUBMISSIONS');
         }
+        if (message.toLowerCase().includes('no amount is due') || message.toLowerCase().includes('no remaining amount')) {
+          throw new Error('NO_AMOUNT_DUE');
+        }
         if (message.includes('already awaiting review') || response.status === 409) {
           throw new Error('PENDING_EXISTS');
         }
@@ -371,6 +374,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         setError(isAr ? 'رصيدك موجب؛ سيُستخدم لتغطية تكلفة الطلب أولاً، ولا يلزم إرسال دفعة الآن.' : 'Your account has positive credit, which is applied first. No payment is needed now.');
       } else if (code === 'MAX_SUBMISSIONS') {
         setError(isAr ? 'وصل هذا الطلب للحد الأقصى: ثلاثة إشعارات دفع من نفس رمز QR.' : 'This order QR has reached its limit of three payment notifications.');
+      } else if (code === 'NO_AMOUNT_DUE') {
+        setError(isAr ? 'لا يوجد مبلغ مستحق للدفع عبر رمز QR هذا. لا يُقبل الدفع إلا للمبالغ المسجلة بعد التسليم.' : 'No amount is due through this QR. Payment is accepted only for charges recognized after delivery.');
       } else if (code === 'PENDING_EXISTS') {
         setError(isAr ? 'يوجد إشعار دفع سابق بانتظار المراجعة بالفعل لهذا الطلب أو الحساب.' : 'A previous payment notification is already awaiting review for this order or account.');
         const currentSubmission = await rpcResolveQrPaymentSubmission(token);
