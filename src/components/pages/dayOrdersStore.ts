@@ -4128,8 +4128,28 @@ export const findExistingCustomerOrderOnDay = async (
   dayId: string,
   customerId: string
 ): Promise<UIDayOrderDetail | undefined> => {
+  // UIDayOrderDetail.customerId is a display code, not the canonical customer UUID.
+  // Match against the effective order entities so pending local-first orders are included
+  // and orders from any other business day can never be reused.
+  const effectiveOrders = getEffectiveOrderItemReadModel().orders;
+  const matchingOrderIds = new Set(
+    Array.from(effectiveOrders.values())
+      .filter((order) =>
+        isSameDayId(order.dayId, dayId) &&
+        order.customerId === customerId &&
+        order.status !== 'cancelled'
+      )
+      .map((order) => order.id)
+  );
+
+  if (matchingOrderIds.size === 0) return undefined;
+
+  // getOrdersForDay already sorts newest/highest-numbered orders first and projects
+  // pending device changes; return the first reusable order from that same day.
   const dayOrders = await getOrdersForDay(dayId);
-  return dayOrders.find((o) => o.customerId === customerId || o.id === customerId);
+  return dayOrders.find((order) =>
+    matchingOrderIds.has(order.id) && order.status !== 'cancelled'
+  );
 };
 
 export interface UICustomerListItem {
