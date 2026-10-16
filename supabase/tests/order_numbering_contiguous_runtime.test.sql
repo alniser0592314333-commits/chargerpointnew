@@ -268,8 +268,7 @@ END;
 $$;
 
 
--- A stale offline reservation that now collides must be reconciled, not rejected,
--- and the server-assigned number must be the one published to every client.
+-- Exact local numbers are accepted and preserved through server sync.
 INSERT INTO public.customers(id, status)
 VALUES ('99999999-9999-4999-8999-999999999999', 'ACTIVE');
 
@@ -282,14 +281,10 @@ SELECT public.execute_canonical_sync_command(
     'id', 'aaaaaaaa-2222-4222-8222-222222222222',
     'dayId', '33333333-3333-4333-8333-333333333333',
     'customerId', '99999999-9999-4999-8999-999999999999',
-    'displayNumber', 2,
-    'notes', 'offline order with a stale reserved number'
+    'displayNumber', 4,
+    'notes', 'offline order whose assigned number must remain four'
   )
 );
-RESET ROLE;
-
--- A unique but stale reserved number must still be reconciled to the next contiguous server number.
-SET ROLE authenticated;
 SELECT public.execute_canonical_sync_command(
   'bbbbbbbb-1111-4111-8111-111111111111'::uuid,
   'CREATE_ORDER',
@@ -297,90 +292,110 @@ SELECT public.execute_canonical_sync_command(
     'id', 'bbbbbbbb-2222-4222-8222-222222222222',
     'dayId', '33333333-3333-4333-8333-333333333333',
     'customerId', '99999999-9999-4999-8999-999999999999',
-    'displayNumber', 21,
-    'notes', 'unique offline reservation arriving out of order'
+    'displayNumber', 5,
+    'notes', 'next offline order remains five'
   )
 );
 RESET ROLE;
 
--- The existing client path can send displayNumber=0 while waiting for server assignment.
+-- A stale free reservation must fail; it must never be silently rewritten to six.
 SET ROLE authenticated;
-SELECT public.execute_canonical_sync_command(
-  'cccccccc-1111-4111-8111-111111111111'::uuid,
-  'CREATE_ORDER',
-  jsonb_build_object(
-    'id', 'cccccccc-2222-4222-8222-222222222222',
-    'dayId', '33333333-3333-4333-8333-333333333333',
-    'customerId', '99999999-9999-4999-8999-999999999999',
-    'displayNumber', 0,
-    'notes', 'server assigned number'
-  )
-);
+DO $stale_number$
+DECLARE rejected_as_conflict boolean := FALSE;
+BEGIN
+  BEGIN
+    PERFORM public.execute_canonical_sync_command(
+      'cccccccc-1111-4111-8111-111111111111'::uuid,
+      'CREATE_ORDER',
+      jsonb_build_object(
+        'id', 'cccccccc-2222-4222-8222-222222222222',
+        'dayId', '33333333-3333-4333-8333-333333333333',
+        'customerId', '99999999-9999-4999-8999-999999999999',
+        'displayNumber', 21,
+        'notes', 'stale number must not be silently reassigned'
+      )
+    );
+  EXCEPTION WHEN SQLSTATE 'P0409' THEN
+    rejected_as_conflict := TRUE;
+  END;
+  IF NOT rejected_as_conflict THEN
+    RAISE EXCEPTION 'A stale number was silently accepted or reassigned instead of returning a conflict';
+  END IF;
+END;
+$stale_number$;
+
+-- A new order without a positive client-assigned number is rejected.
+DO $missing_number$
+DECLARE rejected_as_missing boolean := FALSE;
+BEGIN
+  BEGIN
+    PERFORM public.execute_canonical_sync_command(
+      'dddddddd-1111-4111-8111-111111111111'::uuid,
+      'CREATE_ORDER',
+      jsonb_build_object(
+        'id', 'dddddddd-2222-4222-8222-222222222222',
+        'dayId', '33333333-3333-4333-8333-333333333333',
+        'customerId', '99999999-9999-4999-8999-999999999999',
+        'displayNumber', 0,
+        'notes', 'missing local number must not be server-assigned'
+      )
+    );
+  EXCEPTION WHEN SQLSTATE 'P2201' THEN
+    rejected_as_missing := TRUE;
+  END;
+  IF NOT rejected_as_missing THEN
+    RAISE EXCEPTION 'Server accepted a new order without an immutable local number';
+  END IF;
+END;
+$missing_number$;
 RESET ROLE;
 
-DO $offline_collision$
+DO $immutable_numbers$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.orders
-    WHERE id = 'aaaaaaaa-2222-4222-8222-222222222222'
-      AND display_number = 4
+    WHERE id = 'aaaaaaaa-2222-4222-8222-222222222222' AND display_number = 4
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222' AND display_number = 5
   ) THEN
-    RAISE EXCEPTION 'A stale offline order number collision was not reassigned to the next free number';
+    RAISE EXCEPTION 'Server did not preserve the exact numbers assigned locally';
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM public.test_change_events
-    WHERE entity_table = 'orders'
-      AND entity_id = 'aaaaaaaa-2222-4222-8222-222222222222'
+    WHERE entity_table = 'orders' AND entity_id = 'aaaaaaaa-2222-4222-8222-222222222222'
       AND operation = 'INSERT'
       AND (payload->>'displayNumber')::INTEGER = 4
       AND (payload->>'display_number')::INTEGER = 4
-  ) THEN
-    RAISE EXCEPTION 'The canonical change event did not publish the authoritative reassigned number';
-  END IF;
-
-  IF NOT EXISTS (
+  ) OR NOT EXISTS (
     SELECT 1 FROM public.processed_commands
     WHERE command_id = 'aaaaaaaa-1111-4111-8111-111111111111'
       AND result_payload->>'displayNumber' = '4'
   ) THEN
-    RAISE EXCEPTION 'The successful CREATE_ORDER result did not report the authoritative number';
+    RAISE EXCEPTION 'Canonical event/result changed the client-assigned number';
   END IF;
 
-  IF NOT EXISTS (
+  IF EXISTS (
     SELECT 1 FROM public.orders
-    WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222'
-      AND display_number = 5
-  ) OR NOT EXISTS (
-    SELECT 1 FROM public.test_change_events
-    WHERE entity_table = 'orders'
-      AND entity_id = 'bbbbbbbb-2222-4222-8222-222222222222'
-      AND operation = 'INSERT'
-      AND (payload->>'displayNumber')::INTEGER = 5
-      AND (payload->>'display_number')::INTEGER = 5
+    WHERE id IN (
+      'cccccccc-2222-4222-8222-222222222222',
+      'dddddddd-2222-4222-8222-222222222222'
+    )
   ) THEN
-    RAISE EXCEPTION 'A stale free offline number was not reassigned to the next contiguous number';
+    RAISE EXCEPTION 'Rejected conflicting or unnumbered order was inserted';
   END IF;
 
-  IF NOT EXISTS (
+  IF EXISTS (
     SELECT 1 FROM public.orders
-    WHERE id = 'cccccccc-2222-4222-8222-222222222222'
-      AND display_number = 6
-  ) OR NOT EXISTS (
-    SELECT 1 FROM public.test_change_events
-    WHERE entity_table = 'orders'
-      AND entity_id = 'cccccccc-2222-4222-8222-222222222222'
-      AND operation = 'INSERT'
-      AND (payload->>'displayNumber')::INTEGER = 6
-      AND (payload->>'display_number')::INTEGER = 6
-  ) OR NOT EXISTS (
-    SELECT 1 FROM public.processed_commands
-    WHERE command_id = 'cccccccc-1111-4111-8111-111111111111'
-      AND result_payload->>'displayNumber' = '6'
+    WHERE day_id = '33333333-3333-4333-8333-333333333333'
+    GROUP BY day_id
+    HAVING COUNT(*) <> COUNT(DISTINCT display_number)
+       OR MAX(display_number) <> COUNT(*)
   ) THEN
-    RAISE EXCEPTION 'A server-assigned zero/missing number was not reconciled and published consistently';
+    RAISE EXCEPTION 'Rejected requests damaged contiguous canonical numbering';
   END IF;
 END;
-$offline_collision$;
+$immutable_numbers$;
 
 ROLLBACK;
