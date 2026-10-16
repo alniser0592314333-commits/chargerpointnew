@@ -478,7 +478,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     await localDb.removeOverlay('persisted-high-sequence');
   });
 
-  it('resets stale reserved numbers after manual renumber and reuses the next contiguous number', async () => {
+  it('preserves the previously issued high-water mark after manual renumber', async () => {
     const dayId = 'day-1';
     const now = new Date().toISOString();
     dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
@@ -505,7 +505,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const renumber = await useCases.renumberDayOrders(auth, 'renumber-stale-range', dayId, changes);
     expect(renumber.success).toBe(true);
     expect(reservationMap.get('stale-range')).toMatchObject({
-      startNumber: 19, endNumber: 18, nextNumber: 19, status: 'EXHAUSTED',
+      startNumber: 1, endNumber: 20, nextNumber: 21, status: 'EXHAUSTED',
     });
     expect(reservationMap.get(`watermark-${dayId}`)).toBeDefined();
 
@@ -522,10 +522,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     const created = await createReservedOrder(auth, 'create-after-renumber', dayId, 'cust-1', 'After renumber');
     expect(created.success).toBe(true);
-    expect((created as any).data.order.displayNumber).toBe(19);
+    expect((created as any).data.order.displayNumber).toBe(21);
   });
 
-  it('repairs an old stale reservation cursor before creating the next order', async () => {
+  it('never reuses numbers from an old preallocated range', async () => {
     const dayId = 'day-1';
     const now = new Date().toISOString();
     dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
@@ -552,11 +552,12 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     const created = await createReservedOrder(auth, 'create-after-upgrade', dayId, 'cust-1', 'After upgrade');
     expect(created.success).toBe(true);
-    expect((created as any).data.order.displayNumber).toBe(19);
+    expect((created as any).data.order.displayNumber).toBe(21);
     expect((created as any).data.order.internalSequence).toBe(1001);
     expect(reservationMap.get('old-stale-cursor')).toMatchObject({
-      startNumber: 19, endNumber: 18, nextNumber: 19, status: 'EXHAUSTED',
+      startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
     });
+    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 21, nextNumber: 22 });
   });
 
   it('uses the same immutable local numbering transaction for the legacy single-order entrypoint', async () => {
@@ -574,11 +575,12 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect((first as any).data.displayNumber).toBe(1);
     expect((second as any).data.displayNumber).toBe(2);
     expect((recordedCommands.find((command) => command.commandId === 'legacy-order-2')?.payload as any).dependencyCommandId).toBe('legacy-order-1');
-    expect(reservationMap.size).toBe(0);
+    expect(reservationMap.size).toBe(1);
+    expect(reservationMap.get('sequence-day-legacy')).toMatchObject({ endNumber: 2, nextNumber: 3 });
     expect(Array.from(overlays.values()).filter((overlay) => overlay.entityType === 'orders')).toHaveLength(2);
   });
 
-  it('blocks new orders when existing day numbers contain a gap until the day is renumbered', async () => {
+  it('preserves existing gaps and allocates above the highest previously issued number', async () => {
     const now = new Date().toISOString();
     dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
     customerMap.set('cust-1', {
@@ -593,12 +595,14 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       });
     }
 
-    const result = await createReservedOrder(auth, 'must-not-create-on-gap', 'day-1', 'cust-1', 'Blocked until renumber');
-    expect(result.success).toBe(false);
-    expect((result as any).code).toBe('ORDER_NUMBERING_GAP');
-    expect(reservationMap.size).toBe(0);
-    expect(overlays.size).toBe(0);
-    expect(recordedCommands).toHaveLength(0);
+    const result = await createReservedOrder(auth, 'create-above-gap', 'day-1', 'cust-1', 'Keep existing customer numbers');
+    expect(result.success).toBe(true);
+    expect((result as any).data.order.displayNumber).toBe(4);
+    expect(orderMap.get('gap-order-1')?.displayNumber).toBe(1);
+    expect(orderMap.get('gap-order-3')?.displayNumber).toBe(3);
+    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 4, nextNumber: 5 });
+    expect(overlays.size).toBe(2);
+    expect(recordedCommands.map((command) => command.type)).toEqual(['CREATE_ORDER', 'ADD_ORDER_ITEM']);
   });
 
   it('does not consume a customer-facing number when device validation fails', async () => {
@@ -618,7 +622,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(recordedCommands).toHaveLength(0);
   });
 
-  it('allocates consecutive immutable numbers locally without preallocating unused ranges', async () => {
+  it('allocates consecutive immutable numbers locally without preallocating ranges', async () => {
     dayMap.set('day-1', {
       id: 'day-1', businessDate: '2026-10-03', isClosed: false,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
@@ -636,7 +640,8 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     expect(results.every((result) => result.success)).toBe(true);
     expect(results.map((result: any) => result.data.order.displayNumber)).toEqual([1, 2, 3, 4, 5]);
-    expect(reservationMap.size).toBe(0);
+    expect(reservationMap.size).toBe(1);
+    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 5, nextNumber: 6 });
     expect(recordedCommands.filter((command) => command.type === 'CREATE_ORDER').map((command: any) => command.payload.displayNumber)).toEqual([1, 2, 3, 4, 5]);
     expect((recordedCommands.find((command) => command.commandId === 'cmd-immutable-2')?.payload as any).dependencyCommandId).toBe('cmd-immutable-1');
   });
@@ -666,10 +671,11 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const next = await createReservedOrder(authBackup, 'no-range-4', dayId, customerId, 'Order 4');
     expect(next.success).toBe(true);
     expect((next as any).data.order.displayNumber).toBe(4);
-    expect(reservationMap.size).toBe(0);
+    expect(reservationMap.size).toBe(1);
+    expect(reservationMap.get(`sequence-${dayId}`)).toMatchObject({ endNumber: 4, nextNumber: 5 });
   });
 
-  it('Test A — Shared local state reconciles device ranges and keeps display numbers contiguous', async () => {
+  it('keeps local display numbers contiguous across writer contexts using one day sequence', async () => {
     dayMap.set('day-1', {
       id: 'day-1',
       businessDate: '2026-10-03',
