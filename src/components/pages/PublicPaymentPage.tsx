@@ -373,11 +373,12 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#071113]/70">
         <div className="payment-portal-header-inner mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <a
-            href={backHref}
-            className="group flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            href="/public/about"
+            className="payment-portal-brand group flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            aria-label={isAr ? "نقطة الشحن - الصفحة التعريفية" : "Charging Point - About"}
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm transition group-hover:bg-emerald-700 dark:bg-emerald-500 dark:group-hover:bg-emerald-600">
-              <Zap className="h-5 w-5" />
+            <span className="payment-portal-brand-mark flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm transition group-hover:bg-emerald-700 dark:bg-emerald-500 dark:group-hover:bg-emerald-600" aria-hidden="true">
+              <svg viewBox="0 0 40 40" fill="none" className="h-7 w-7" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="5" width="19" height="30" rx="5" stroke="currentColor" strokeWidth="2.2"/><rect x="13" y="10" width="9" height="15" rx="2" fill="currentColor" fillOpacity=".2"/><path d="M24 17h4a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-1" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="m19 13-4 7h4l-2 5 6-8h-4l1-4Z" fill="currentColor"/></svg>
             </span>
             <div className="flex flex-col text-start">
               <strong className="text-sm font-black tracking-tight text-slate-900 dark:text-slate-50">
@@ -389,8 +390,12 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             </div>
           </a>
 
-          {/* Quick Header Actions: Theme & Language */}
-          <div className="flex items-center gap-2">
+          {/* Back navigation and settings stay opposite the brand in both locales. */}
+          <div className="payment-portal-header-actions flex items-center gap-2">
+            <a href={backHref} className="payment-portal-header-back inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-[#1e4440] dark:bg-[#0b1f1e] dark:text-slate-200 dark:hover:bg-[#12312f]">
+              {isRTL ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
+              <span>{isCustomerPayment ? (isAr ? "العودة إلى حساب الزبون" : "Back to Customer Account") : (isAr ? "العودة إلى تفاصيل الطلب" : "Back to Order Details")}</span>
+            </a>
             <button
               type="button"
               onClick={toggleTheme}
