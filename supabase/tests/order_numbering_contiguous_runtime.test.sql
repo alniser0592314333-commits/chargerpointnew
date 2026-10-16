@@ -345,6 +345,36 @@ BEGIN
 END;
 $stale_number$;
 
+-- Explicit renumbering releases numbers no longer assigned to any order.
+-- Here order #6 is renumbered to #5, so the next new order must receive #6 again.
+SET ROLE authenticated;
+SELECT public.execute_canonical_sync_command(
+  'fffffff1-1111-4111-8111-111111111111'::uuid,
+  'RENUMBER_DAY_ORDERS',
+  jsonb_build_object(
+    'dayId', '33333333-3333-4333-8333-333333333333',
+    'changes', jsonb_build_array(
+      jsonb_build_object('id', '44444444-4444-4444-8444-444444444444', 'expectedVersion', 2, 'oldNumber', 2, 'newNumber', 1),
+      jsonb_build_object('id', '55555555-5555-4555-8555-555555555555', 'expectedVersion', 2, 'oldNumber', 3, 'newNumber', 2),
+      jsonb_build_object('id', '66666666-6666-4666-8666-666666666666', 'expectedVersion', 2, 'oldNumber', 1, 'newNumber', 3),
+      jsonb_build_object('id', 'aaaaaaaa-2222-4222-8222-222222222222', 'expectedVersion', 1, 'oldNumber', 4, 'newNumber', 4),
+      jsonb_build_object('id', 'eeeeeeee-2222-4222-8222-222222222222', 'expectedVersion', 1, 'oldNumber', 6, 'newNumber', 5)
+    )
+  )
+);
+SELECT public.execute_canonical_sync_command(
+  'fffffff2-1111-4111-8111-111111111111'::uuid,
+  'CREATE_ORDER',
+  jsonb_build_object(
+    'id', 'fffffff2-2222-4222-8222-222222222222',
+    'dayId', '33333333-3333-4333-8333-333333333333',
+    'customerId', '99999999-9999-4999-8999-999999999999',
+    'displayNumber', 6,
+    'notes', 'next number after explicit renumber is six'
+  )
+);
+RESET ROLE;
+
 -- A new order without a positive client-assigned number is rejected.
 DO $missing_number$
 DECLARE rejected_as_missing boolean := FALSE;
@@ -381,7 +411,10 @@ BEGIN
     WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222'
   ) OR NOT EXISTS (
     SELECT 1 FROM public.orders
-    WHERE id = 'eeeeeeee-2222-4222-8222-222222222222' AND display_number = 6
+    WHERE id = 'eeeeeeee-2222-4222-8222-222222222222' AND display_number = 5
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'fffffff2-2222-4222-8222-222222222222' AND display_number = 6
   ) OR NOT EXISTS (
     SELECT 1 FROM public.business_day_order_sequences
     WHERE day_id = '33333333-3333-4333-8333-333333333333' AND last_assigned_number = 6
