@@ -226,7 +226,6 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
               ) : typeof due === 'number' && due === 0 ? (
                 <div className="order-paid-confirmation"><CheckCircle2 size={18} /><span>{isAr ? 'تم سداد الطلب بالكامل' : 'Order paid in full'}</span></div>
               ) : <div className="order-due-unavailable">{isAr ? 'المبلغ المستحق غير متاح حالياً' : 'Amount due is unavailable'}</div>}
-              <p className="order-payment-footnote"><ShieldCheck size={14} />{isAr ? 'يُعتمد الدفع بعد مراجعة الإشعار' : 'Payment is confirmed after review'}</p>
             </section>
 
             <a href="/public/about" className="order-public-home-link"><Sparkles size={17} /><span>{isAr ? 'ألقي نظرة' : 'Take a look'}</span><ArrowUpRight size={17} /></a>
