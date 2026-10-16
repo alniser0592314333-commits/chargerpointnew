@@ -1766,3 +1766,23 @@ html.light .order-about-link-card:hover {
     display: none;
   }
 }
+
+
+/* Align the public order QR header with the wider desktop page layout. */
+@media (min-width: 1024px) {
+  .order-public-qr-page .order-qr-header__inner {
+    width: min(100% - 64px, 1240px);
+    min-height: 80px;
+    gap: 24px;
+  }
+
+  .order-public-qr-page .order-brand {
+    flex: 0 1 auto;
+    max-width: calc(100% - 180px);
+  }
+
+  .order-public-qr-page .order-qr-controls {
+    flex: 0 0 auto;
+    margin-inline-start: auto;
+  }
+}
