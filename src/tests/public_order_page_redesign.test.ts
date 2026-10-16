@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBackgroundStateFromOrder } from '../components/pages/PublicOrderPage';
+import { computeBackgroundStateFromOrder, getOrderPaymentViewState } from '../components/pages/PublicOrderPage';
 import { PublicOrderQrData } from '../components/pages/dayOrdersStore';
 
 describe('Public Order Page Energy Redesign & State Machine', () => {
@@ -71,5 +71,32 @@ describe('Public Order Page Energy Redesign & State Machine', () => {
     };
 
     expect(computeBackgroundStateFromOrder(unpaidDeliveredOrder)).toBe('delivered-unpaid');
+  });
+});
+
+
+describe('Public order QR payment status presentation', () => {
+  it('shows Pay Now only when there is a confirmed outstanding balance and no QR submission', () => {
+    expect(getOrderPaymentViewState(2500, null)).toBe('UNPAID');
+  });
+
+  it('replaces Pay Now with a review state while this order QR submission is pending', () => {
+    expect(getOrderPaymentViewState(2500, { status: 'PENDING' })).toBe('PENDING');
+  });
+
+  it('shows accepted state after approval while a partial balance remains', () => {
+    expect(getOrderPaymentViewState(1200, { status: 'APPROVED' })).toBe('APPROVED');
+  });
+
+  it('allows a new payment attempt after a rejected notification', () => {
+    expect(getOrderPaymentViewState(2500, { status: 'REJECTED' })).toBe('REJECTED');
+  });
+
+  it('treats the canonical zero balance as paid even if an older notification is pending', () => {
+    expect(getOrderPaymentViewState(0, { status: 'PENDING' })).toBe('PAID');
+  });
+
+  it('does not claim that an order is paid when its balance is unavailable', () => {
+    expect(getOrderPaymentViewState(undefined, null)).toBe('UNAVAILABLE');
   });
 });
