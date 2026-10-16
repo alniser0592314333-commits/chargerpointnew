@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.117.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,7 +31,7 @@ function inspectImage(bytes: Uint8Array): { mime: string; extension: string } | 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function uploadVerifiedReceipt(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any, "public", any>,
   targetKind: "ORDER" | "CUSTOMER",
   targetId: string,
   bytes: Uint8Array,
@@ -63,9 +63,13 @@ async function uploadVerifiedReceipt(
       if (!readError && downloaded && downloaded.size === bytes.length) {
         try {
           const downloadedBytes = new Uint8Array(await downloaded.arrayBuffer());
+          // Use fresh ArrayBuffers because Deno's WebCrypto type rejects ArrayBufferLike
+          // views that may be backed by SharedArrayBuffer.
+          const sourceBuffer = bytes.slice().buffer as ArrayBuffer;
+          const downloadedBuffer = downloadedBytes.slice().buffer as ArrayBuffer;
           const [sourceDigest, downloadedDigest] = await Promise.all([
-            crypto.subtle.digest("SHA-256", bytes),
-            crypto.subtle.digest("SHA-256", downloadedBytes),
+            crypto.subtle.digest("SHA-256", sourceBuffer),
+            crypto.subtle.digest("SHA-256", downloadedBuffer),
           ]);
           const sourceHash = Array.from(new Uint8Array(sourceDigest)).join(",");
           const downloadedHash = Array.from(new Uint8Array(downloadedDigest)).join(",");
