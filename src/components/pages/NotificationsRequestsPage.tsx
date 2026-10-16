@@ -4,7 +4,7 @@ import {
   RefreshCw, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { invokeSupabaseRpc, getSupabaseAuthToken } from '../../services/supabase/client';
+import { invokeSupabaseRpc, getSupabaseAuthToken, supabaseRefreshToken } from '../../services/supabase/client';
 import { config } from '../../config/env';
 
 type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE' | string;
@@ -50,21 +50,31 @@ async function createReceiptSignedUrl(path: string): Promise<string | null> {
   if (!config.supabaseUrl || !config.supabaseAnonKey || !token || !path) return null;
   const cleanBase = config.supabaseUrl.replace(/\/+$/, '');
   const safePath = path.split('/').map((part) => encodeURIComponent(part)).join('/');
-  const response = await fetch(`${cleanBase}/storage/v1/object/sign/qr-payment-receipts/${safePath}`, {
+  const endpoint = cleanBase + '/storage/v1/object/sign/qr-payment-receipts/' + safePath;
+  const request = (bearer: string) => fetch(endpoint, {
     method: 'POST',
-    headers: {
-      apikey: config.supabaseAnonKey,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + bearer, 'Content-Type': 'application/json' },
     body: JSON.stringify({ expiresIn: 300 }),
   });
-  if (!response.ok) return null;
+  let response = await request(token);
+  if (response.status === 401) {
+    const refreshed = await supabaseRefreshToken();
+    if (refreshed.session?.access_token) response = await request(refreshed.session.access_token);
+  }
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    console.warn('Could not create signed QR payment receipt URL:', response.status, details);
+    return null;
+  }
   const result = await response.json().catch(() => ({}));
-  if (typeof result.signedURL !== 'string') return null;
-  return result.signedURL.startsWith('http')
-    ? result.signedURL
-    : `${cleanBase}/storage/v1${result.signedURL}`;
+  const signedURL = result.signedURL ?? result.signedUrl;
+  if (typeof signedURL !== 'string' || !signedURL) {
+    console.warn('Storage signed URL response did not contain signedURL.');
+    return null;
+  }
+  if (/^https?:\/\//i.test(signedURL)) return signedURL;
+  if (signedURL.startsWith('/storage/v1/')) return cleanBase + signedURL;
+  return cleanBase + '/storage/v1/' + signedURL.replace(/^\/+/, '');
 }
 
 export const NotificationsRequestsPage: React.FC = () => {
@@ -77,6 +87,7 @@ export const NotificationsRequestsPage: React.FC = () => {
   const [approvalBins, setApprovalBins] = useState<Record<string, string>>({});
   const [rejectionReason, setRejectionReason] = useState('');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<{ itemId: string; action: 'APPROVE' | 'REJECT' } | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
@@ -105,10 +116,16 @@ export const NotificationsRequestsPage: React.FC = () => {
         created_at: String(row.created_at ?? ''),
       })).filter((row) => row.id && row.receipt_path);
 
-      const signed = await Promise.all(parsed.map(async (row) => ({
-        ...row,
-        receiptSignedUrl: await createReceiptSignedUrl(row.receipt_path) ?? undefined,
-      })));
+      // Receipt storage is ancillary to the notification record. A signing/network failure
+      // must not reject the whole Promise.all and hide otherwise reviewable notifications.
+      const signed = await Promise.all(parsed.map(async (row) => {
+        try {
+          return { ...row, receiptSignedUrl: await createReceiptSignedUrl(row.receipt_path) ?? undefined };
+        } catch (receiptError) {
+          console.warn('Receipt preview unavailable for payment notification:', row.id, receiptError);
+          return row;
+        }
+      }));
       setItems(signed);
     } catch (err: any) {
       setError(isAr
@@ -123,7 +140,7 @@ export const NotificationsRequestsPage: React.FC = () => {
 
   useEffect(() => { void loadPending(); }, [loadPending]);
 
-  const review = async (item: PendingQrPayment, action: 'APPROVE' | 'REJECT') => {
+  const review = async (item: PendingQrPayment, action: 'APPROVE' | 'REJECT', confirmed = false) => {
     if (processingId) return;
     const approvedAmountMinor = action === 'APPROVE' ? parseApprovalAmountMinor(approvalAmounts[item.id] ?? '') : null;
     if (action === 'APPROVE' && approvedAmountMinor === null) {
@@ -135,10 +152,13 @@ export const NotificationsRequestsPage: React.FC = () => {
       setError(isAr ? 'أدخل رمز التحقق الإداري (PIN/BIN) لهذا الإشعار قبل الاعتماد.' : 'Enter the admin PIN/BIN for this notification before approval.');
       return;
     }
-    const confirmed = window.confirm(action === 'APPROVE'
-      ? (isAr ? `تأكيد اعتماد إشعار دفع ${item.customer_name} بمبلغ ${formatCurrency(approvedAmountMinor!)}؟ سيتم تسجيل المبلغ الذي أدخلته وتوزيعه حسب المسار المالي الحالي.` : `Approve ${item.customer_name}'s payment notification for ${formatCurrency(approvedAmountMinor!)}? The entered amount will be recorded through the existing financial flow.`)
-      : (isAr ? `رفض إشعار الدفع للزبون ${item.customer_name}؟ لن يتم تسجيل دفعة أو تعديل الرصيد.` : `Reject the payment notification for ${item.customer_name}? No payment or balance change will be recorded.`));
-    if (!confirmed) return;
+    // Embedded mobile/web previews may suppress native dialogs, making review buttons appear inert.
+    // Use an explicit in-app confirmation before sending the financial mutation.
+    if (!confirmed) {
+      setPendingConfirmation({ itemId: item.id, action });
+      return;
+    }
+    setPendingConfirmation(null);
 
     setProcessingId(item.id);
     setError('');
@@ -261,6 +281,24 @@ export const NotificationsRequestsPage: React.FC = () => {
                       {isAr ? 'رمز PIN/BIN لتأكيد الاعتماد' : 'PIN/BIN to confirm approval'}
                       <input type="password" autoComplete="off" inputMode="numeric" maxLength={32} value={approvalBins[item.id] ?? ''} onChange={(e) => { setApprovalBins((current) => ({ ...current, [item.id]: e.target.value })); setError(''); }} placeholder={isAr ? 'أدخل الرمز لهذا الإشعار' : 'Enter the code for this notification'} className="mt-2 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/10 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white" />
                     </label>
+                    {pendingConfirmation?.itemId === item.id && (
+                      <div role="alertdialog" aria-live="polite" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                        <p className="font-semibold">
+                          {pendingConfirmation.action === 'APPROVE'
+                            ? (isAr ? 'تأكيد اعتماد الدفعة بمبلغ ' + formatCurrency(approvedAmountMinor ?? 0) + '؟' : 'Confirm approval for ' + formatCurrency(approvedAmountMinor ?? 0) + '?')
+                            : (isAr ? 'تأكيد رفض إشعار الدفع للزبون ' + item.customer_name + '؟' : 'Confirm rejecting ' + item.customer_name + "'s payment notification?")}
+                        </p>
+                        <p className="mt-1 text-xs opacity-80">
+                          {pendingConfirmation.action === 'APPROVE'
+                            ? (isAr ? 'سيُسجَّل المبلغ بعد التحقق من الرمز والصلاحيات.' : 'The payment will be recorded after the BIN and permissions are validated.')
+                            : (isAr ? 'لن تُسجَّل دفعة ولن يتغيّر رصيد الزبون.' : 'No payment will be recorded and the customer balance will not change.')}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" onClick={() => setPendingConfirmation(null)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 dark:border-[#315653] dark:bg-[#0b2928] dark:text-white">{isAr ? 'إلغاء' : 'Cancel'}</button>
+                          <button type="button" disabled={processingId === item.id} onClick={() => void review(item, pendingConfirmation.action, true)} className="rounded-lg bg-[#0f766e] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{isAr ? 'تأكيد التنفيذ' : 'Confirm action'}</button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <button type="button" disabled={processingId === item.id} onClick={() => void review(item, 'APPROVE')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-[#115e59] disabled:opacity-50"><CheckCircle2 className="h-4 w-4" />{processingId === item.id ? (isAr ? 'جاري المعالجة…' : 'Processing…') : (isAr ? 'اعتماد الدفعة' : 'Approve payment')}</button>
                       <button type="button" disabled={processingId === item.id} onClick={() => void review(item, 'REJECT')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:bg-[#0a2423] dark:text-rose-200 dark:hover:bg-rose-950/30"><XCircle className="h-4 w-4" />{isAr ? 'رفض الإشعار' : 'Reject notification'}</button>
