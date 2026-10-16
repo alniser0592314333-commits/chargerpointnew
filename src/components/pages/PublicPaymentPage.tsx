@@ -51,7 +51,7 @@ const PAYMENT_METHODS: PaymentMethodItem[] = [
     id: 'JAWAL_PAY',
     ar: 'جوال باي',
     en: 'Jawwal Pay',
-    short: 'Jawwal Pay',
+    short: 'JWP',
     descriptionAr: 'محفظة إلكترونية فورية',
     descriptionEn: 'Instant digital wallet',
     badgeAr: 'محفظة رقمية',
@@ -63,7 +63,7 @@ const PAYMENT_METHODS: PaymentMethodItem[] = [
     id: 'PALPAY',
     ar: 'بال باي (محفظتي)',
     en: 'PalPay (Mahfazati)',
-    short: 'PalPay',
+    short: 'PPY',
     descriptionAr: 'محفظة بال باي الإلكترونية',
     descriptionEn: 'PalPay mobile wallet',
     badgeAr: 'محفظة رقمية',
@@ -77,13 +77,13 @@ const PaymentMethodLogo: React.FC<{ method: PaymentMethodItem }> = ({ method }) 
   const [failed, setFailed] = useState(false);
   if (failed || !method.logoUrl) {
     return (
-      <div className={`flex h-10 w-12 shrink-0 items-center justify-center rounded-lg font-bold text-xs ${method.markClass}`}>
+      <div className={`flex h-8 w-9 shrink-0 items-center justify-center rounded-lg font-bold text-[10px] ${method.markClass}`}>
         {method.short}
       </div>
     );
   }
   return (
-    <div className="flex h-11 w-13 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-800 dark:ring-slate-700">
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-800 dark:ring-slate-700">
       <img
         src={method.logoUrl}
         alt={method.short}
@@ -615,112 +615,32 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             </div>
           </section>
         ) : (
-          /* Active Payment Form: Modern, Two-Column (Responsive) Layout */
-          <form onSubmit={submit} className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
-            {/* LEFT / PRIMARY COLUMN: Steps & Actions (Col 7 on desktop) */}
-            <div className="space-y-6 lg:col-span-7">
-              {/* Global Error Banner */}
-              {error && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-3 rounded-2xl border border-rose-300 bg-rose-50/90 p-4 text-sm font-medium leading-6 text-rose-900 shadow-sm dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
-                >
-                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
-                  <div className="flex-1">{error}</div>
+          {/* Simple single-card payment form */}
+          <form onSubmit={submit} className="mx-auto w-full max-w-xl space-y-3">
+            {error && (
+              <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm leading-5 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1">{error}</div>
+              </div>
+            )}
+
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#1a3c3a] dark:bg-[#0c1f1e] sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-base font-extrabold text-slate-900 dark:text-slate-50">{isAr ? 'إشعار الدفع' : 'Payment notification'}</h1>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{isAr ? 'اختار وسيلة الدفع وأرفق صورة الإيصال.' : 'Choose a payment method and attach the receipt.'}</p>
                 </div>
-              )}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
+              </div>
 
-              {/* STEP 1: Destination Account & One-Tap Copy */}
-              <section className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm transition hover:shadow-md dark:border-[#1a3c3a] dark:bg-[#0c1f1e]">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-                      1
-                    </span>
-                    <h2 className="text-base font-black text-slate-900 dark:text-slate-50">
-                      {isAr ? 'رقم التحويل المعتمد' : 'Destination Payment Number'}
-                    </h2>
-                  </div>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-[#122c2a] dark:text-slate-300">
-                    {isAr ? 'رقم موحّد' : 'Universal'}
-                  </span>
+              <section ref={methodSectionRef} aria-label={isAr ? 'وسيلة الدفع' : 'Payment method'} className={`scroll-mt-24 rounded-xl transition ${validationError === 'method' ? 'ring-2 ring-rose-400 ring-offset-2 dark:ring-offset-[#0c1f1e]' : ''}`}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h2 className="text-xs font-bold text-slate-700 dark:text-slate-200">{isAr ? 'وسيلة الدفع' : 'Payment method'}</h2>
+                  <span className="text-[10px] text-slate-400">{isAr ? 'مطلوب' : 'Required'}</span>
                 </div>
-
-                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  {isAr
-                    ? 'استخدم هذا الرقم كوجهة تحويل في تطبيق بنك فلسطين أو محفظة جوال باي أو بال باي:'
-                    : 'Use this recipient number in Bank of Palestine, Jawwal Pay, or PalPay app:'}
-                </p>
-
-                {/* Big Number Banner with Immediate Copy Button */}
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/60 p-4 dark:border-[#1e4844] dark:bg-[#0a2321]/60">
-                  <div>
-                    <span className="block text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
-                      {isAr ? 'رقم الهاتف / الحساب' : 'Account / Mobile Number'}
-                    </span>
-                    <span
-                      dir="ltr"
-                      className="mt-1 block font-mono text-2xl font-black tracking-widest text-slate-900 dark:text-slate-50 sm:text-3xl"
-                    >
-                      0592369875
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void copyNumber()}
-                    className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 text-xs font-bold transition shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                      copied
-                        ? 'bg-emerald-600 text-white dark:bg-emerald-500'
-                        : 'bg-white text-emerald-800 hover:bg-emerald-100/70 dark:bg-[#133532] dark:text-emerald-300 dark:hover:bg-[#18423f]'
-                    }`}
-                    aria-label={isAr ? 'نسخ رقم الدفع' : 'Copy payment number'}
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        <span>{isAr ? 'تم النسخ!' : 'Copied!'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-4 w-4" />
-                        <span>{isAr ? 'نسخ الرقم' : 'Copy Number'}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {copied && (
-                  <p role="status" aria-live="polite" className="mt-2 text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                    {isAr ? 'تم نسخ الرقم بنجاح إلى الحافظة.' : 'Number copied to clipboard successfully.'}
-                  </p>
-                )}
-              </section>
-
-              {/* STEP 2: Choose Payment Method */}
-              <section
-                ref={methodSectionRef}
-                className={`scroll-mt-24 rounded-3xl border bg-white p-6 shadow-sm transition dark:bg-[#0c1f1e] ${
-                  validationError === 'method'
-                    ? 'border-rose-400 ring-2 ring-rose-300 dark:border-rose-600 dark:ring-rose-900/50'
-                    : 'border-slate-200/90 dark:border-[#1a3c3a]'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-                      2
-                    </span>
-                    <h2 className="text-base font-black text-slate-900 dark:text-slate-50">
-                      {isAr ? 'اختر وسيلة التحويل التي استخدمتها' : 'Select Used Transfer Method'}
-                    </h2>
-                  </div>
-                  <span className="text-xs font-bold text-rose-500 dark:text-rose-400">
-                    {isAr ? '* مطلوب' : '* Required'}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-3 gap-2">
                   {PAYMENT_METHODS.map((item) => {
                     const selected = method === item.id;
                     return (
@@ -732,309 +652,90 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                           setError('');
                           setValidationError(null);
                         }}
+                        aria-label={`${isAr ? item.ar : item.en} (${item.short})`}
                         aria-pressed={selected}
-                        className={`group relative flex flex-col justify-between rounded-2xl border p-4 text-start transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
-                          selected
-                            ? 'border-emerald-600 bg-emerald-50/70 shadow-sm ring-1 ring-emerald-600 dark:border-emerald-500 dark:bg-[#0e2d2a] dark:ring-emerald-500'
-                            : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/60 dark:border-[#193a38] dark:bg-[#081817] dark:hover:border-[#224f4c]'
+                        className={`relative flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border px-1.5 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${selected
+                          ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600/20 dark:border-emerald-500 dark:bg-[#0e2d2a]'
+                          : 'border-slate-200 bg-white hover:border-slate-300 dark:border-[#24413f] dark:bg-[#081817] dark:hover:border-[#37615c]'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <PaymentMethodLogo method={item} />
-                          <span
-                            className={`flex h-5 w-5 items-center justify-center rounded-full border transition ${
-                              selected
-                                ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-400 dark:bg-emerald-500'
-                                : 'border-slate-300 bg-transparent group-hover:border-slate-400 dark:border-slate-600'
-                            }`}
-                          >
-                            {selected && <Check className="h-3.5 w-3.5" />}
-                          </span>
-                        </div>
-
-                        <div className="mt-3">
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                            {isAr ? item.ar : item.en}
-                          </h3>
-                          <p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
-                            {isAr ? item.descriptionAr : item.descriptionEn}
-                          </p>
-                        </div>
+                        <PaymentMethodLogo method={item} />
+                        <span className="text-[11px] font-extrabold tracking-wide text-slate-800 dark:text-slate-100">{item.short}</span>
+                        {selected && <span className="absolute end-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white dark:bg-emerald-500" aria-hidden="true"><Check className="h-3 w-3" /></span>}
                       </button>
                     );
                   })}
                 </div>
               </section>
 
-              {/* STEP 3: Upload Transfer Receipt */}
-              <section
-                ref={receiptSectionRef}
-                className={`scroll-mt-24 rounded-3xl border bg-white p-6 shadow-sm transition dark:bg-[#0c1f1e] ${
-                  validationError === 'receipt'
-                    ? 'border-rose-400 ring-2 ring-rose-300 dark:border-rose-600 dark:ring-rose-900/50'
-                    : 'border-slate-200/90 dark:border-[#1a3c3a]'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-                      3
-                    </span>
-                    <h2 className="text-base font-black text-slate-900 dark:text-slate-50">
-                      {isAr ? 'إرفاق إيصال التحويل' : 'Attach Transfer Receipt'}
-                    </h2>
-                  </div>
-                  <span className="text-xs font-bold text-rose-500 dark:text-rose-400">
-                    {isAr ? '* مطلوب' : '* Required'}
-                  </span>
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-[#24413f] dark:bg-[#081817]">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">{isAr ? 'رقم التحويل' : 'Transfer number'}</p>
+                  <p dir="ltr" className="mt-0.5 font-mono text-base font-extrabold tracking-wider text-slate-900 dark:text-slate-100">0592369875</p>
                 </div>
+                <button type="button" onClick={() => void copyNumber()} className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-bold transition focus:outline-none focus:ring-2 focus:ring-emerald-500 ${copied
+                  ? 'border-emerald-600 bg-emerald-600 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-[#24413f] dark:bg-[#102725] dark:text-slate-200 dark:hover:bg-[#163633]'
+                }`}>
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copied ? (isAr ? 'تم النسخ' : 'Copied') : (isAr ? 'نسخ' : 'Copy')}</span>
+                </button>
+              </div>
 
-                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  {isAr
-                    ? 'التقط لقطة شاشة لإشعار التحويل من تطبيق البنك أو المحفظة وأرفقها هنا للتحقق:'
-                    : 'Upload a screenshot of the completed transfer confirmation for review:'}
-                </p>
-
-                {/* Upload Drag/Tap Surface */}
+              <section ref={receiptSectionRef} className={`mt-4 scroll-mt-24 rounded-xl transition ${validationError === 'receipt' ? 'ring-2 ring-rose-400 ring-offset-2 dark:ring-offset-[#0c1f1e]' : ''}`}>
+                <div className="mb-2">
+                  <h2 className="text-xs font-bold text-slate-700 dark:text-slate-200">{isAr ? 'إرفاق إشعار الدفع' : 'Attach payment receipt'}</h2>
+                  <p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">{isAr ? 'ارفع صورة واضحة لإشعار التحويل (حتى 12 ميغابايت).' : 'Upload a clear transfer receipt image (up to 12 MB).'}</p>
+                </div>
                 {!receipt ? (
-                  <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-center transition hover:border-emerald-500 hover:bg-emerald-50/30 focus-within:ring-2 focus-within:ring-emerald-500 dark:border-[#224d49] dark:bg-[#081817] dark:hover:border-emerald-500 dark:hover:bg-[#0c2422]">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
-                      <UploadCloud className="h-6 w-6" />
-                    </span>
-                    <span className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-200">
-                      {isAr ? 'اضغط لاختيار صورة الإيصال' : 'Tap to select receipt image'}
-                    </span>
-                    <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                      {isAr
-                        ? 'يدعم صور JPEG أو PNG أو WebP (تُضغط الصورة تلقائياً لسرعة الرفع)'
-                        : 'Supports JPEG, PNG, WebP (auto-compressed for fast upload)'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/*"
-                      className="sr-only"
-                      onChange={(e) => handleReceiptChange(e.target.files?.[0])}
-                    />
+                  <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-3 py-4 text-center transition hover:border-emerald-500 hover:bg-emerald-50/40 focus-within:ring-2 focus-within:ring-emerald-500 dark:border-[#31514e] dark:bg-[#081817] dark:hover:bg-[#0c2422]">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300"><UploadCloud className="h-5 w-5" /></span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{isAr ? 'اضغط لاختيار الصورة' : 'Tap to choose an image'}</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/*" className="sr-only" onChange={(e) => handleReceiptChange(e.target.files?.[0])} />
                   </label>
                 ) : (
-                  /* Attached Receipt Preview Card */
-                  <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-[#1d4944] dark:bg-[#0a2321]/60">
-                    <div className="flex items-center gap-3.5 overflow-hidden">
-                      {receiptPreview ? (
-                        <img
-                          src={receiptPreview}
-                          alt={isAr ? 'معاينة الإيصال' : 'Receipt preview'}
-                          className="h-14 w-14 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white text-emerald-600 dark:bg-slate-800">
-                          <FileImage className="h-6 w-6" />
-                        </div>
-                      )}
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-2.5 dark:border-[#1d4944] dark:bg-[#0a2321]/60">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      {receiptPreview ? <img src={receiptPreview} alt={isAr ? 'معاينة الإيصال' : 'Receipt preview'} className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700" /> : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 dark:bg-slate-800"><FileImage className="h-5 w-5" /></span>}
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
-                          {receipt.name}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                          {(receipt.size / 1024).toFixed(0)} KB · {isAr ? 'جاهزة للإرسال' : 'Ready'}
-                        </p>
+                        <p className="truncate text-xs font-bold text-slate-900 dark:text-slate-100">{receipt.name}</p>
+                        <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{(receipt.size / 1024).toFixed(0)} KB · {isAr ? 'جاهزة للإرسال' : 'Ready to send'}</p>
                       </div>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setReceipt(null)}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950 dark:hover:text-rose-400"
-                      aria-label={isAr ? 'حذف الصورة' : 'Remove image'}
-                      title={isAr ? 'حذف' : 'Remove'}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    <button type="button" onClick={() => setReceipt(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300" aria-label={isAr ? 'حذف الصورة' : 'Remove image'}><X className="h-4 w-4" /></button>
                   </div>
                 )}
               </section>
 
-              {/* STEP 4: Optional Transfer Note */}
-              <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm transition dark:border-[#1a3c3a] dark:bg-[#0c1f1e]">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-                      4
-                    </span>
-                    <label htmlFor="payment-note" className="text-base font-black text-slate-900 dark:text-slate-50">
-                      {isAr ? 'ملاحظة أو اسم المحوّل' : 'Note or Sender Name'}
-                    </label>
-                  </div>
-                  <span className="text-xs font-semibold text-slate-400">
-                    {isAr ? '(اختياري)' : '(Optional)'}
-                  </span>
+              <div className="mt-4">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <label htmlFor="payment-note" className="text-xs font-bold text-slate-700 dark:text-slate-200">{isAr ? 'ملاحظة' : 'Note'}</label>
+                  <span className="text-[10px] text-slate-400">{isAr ? 'اختياري' : 'Optional'}</span>
                 </div>
-
-                <div className="mt-3">
-                  <textarea
-                    id="payment-note"
-                    value={note}
-                    onChange={(e) => setNote(e.target.value.slice(0, 500))}
-                    rows={2}
-                    maxLength={500}
-                    placeholder={
-                      isAr
-                        ? 'مثال: تم التحويل من حساب فلان، أو رقم حركة التحويل…'
-                        : 'e.g., Transfer sent from account holder name or reference number…'
-                    }
-                    className="w-full resize-none rounded-2xl border border-slate-200/90 bg-slate-50/50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 dark:border-[#1e4642] dark:bg-[#081817] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:bg-[#0c1f1e]"
-                  />
-                  <div className="mt-1 text-end text-[11px] tabular-nums text-slate-400">
-                    {note.length}/500
-                  </div>
-                </div>
-              </section>
-
-              {/* STEP 5: Submit Button CTA */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={sending || (Boolean(order) && (amountDue === null || amountDue <= 0))}
-                  className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-2xl bg-emerald-600 px-6 py-4 text-base font-black text-white shadow-lg shadow-emerald-600/25 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-500 dark:shadow-emerald-950/40 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
-                >
-                  {sending ? (
-                    <>
-                      <RefreshCw className="h-5 w-5 animate-spin" />
-                      <span>{isAr ? 'جارٍ تجهيز الإشعار والإرسال…' : 'Preparing & Submitting…'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="h-5 w-5" />
-                      <span>{isAr ? 'إرسال إشعار الدفع' : 'Submit Payment Notification'}</span>
-                    </>
-                  )}
-                </button>
-
-                <p className="mt-3 text-center text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  <LockKeyhole className="me-1 inline h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  {isAr
-                    ? 'يتم فحص وتدقيق كل إشعار يدوياً قبل اعتماد الرصيد رسمياً في النظام.'
-                    : 'Each submission is verified manually before your balance is credited.'}
-                </p>
-              </div>
-            </div>
-
-            {/* RIGHT / SECONDARY COLUMN: Summary Card & Details (Col 5 on desktop) */}
-            <aside className="space-y-6 lg:col-span-5">
-              {/* Order / Customer Financial Summary Card */}
-              <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm dark:border-[#1a3c3a] dark:bg-[#0c1f1e]">
-                {/* Header Strip */}
-                <div className="border-b border-slate-200/80 bg-slate-50/80 px-6 py-4 dark:border-[#1a3c3a] dark:bg-[#091b1a]">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                      {isCustomerPayment
-                        ? (isAr ? 'حساب الزبون' : 'CUSTOMER ACCOUNT')
-                        : (isAr ? 'بيانات الطلب' : 'ORDER DETAILS')}
-                    </span>
-                    {order && (
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                        {isAr ? `طلب #${order.orderNumber}` : `Order #${order.orderNumber}`}
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 className="mt-1 truncate text-lg font-black text-slate-900 dark:text-slate-50">
-                    {order?.customerName || customer?.customerName || '—'}
-                  </h3>
-
-                  {(order?.customerCode || customer?.customerCode) && (
-                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      {isAr ? 'رمز العميل: ' : 'Customer code: '}
-                      {order?.customerCode || customer?.customerCode}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-4 p-6">
-                  {/* Amount Due Highlight */}
-                  {order && (
-                    <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-[#1d4440] dark:bg-[#08201e]/60">
-                      <span className="block text-xs font-bold text-emerald-800 dark:text-emerald-400">
-                        {isAr ? 'المبلغ المطلوب سداده' : 'Total Amount Due'}
-                      </span>
-                      <div dir="ltr" className="mt-1 text-3xl font-black tabular-nums text-slate-900 dark:text-slate-50">
-                        {amountDue !== null ? formatAmount(amountDue) : '—'}
-                      </div>
-                      <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-                        {typeof order.orderTotalMinor === 'number' && (
-                          <span>
-                            {isAr ? 'إجمالي الطلب: ' : 'Order total: '}
-                            {formatAmount(order.orderTotalMinor)}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Devices List (if order has items) */}
-                  {order?.items?.length ? (
-                    <div className="space-y-2 border-t border-slate-200/80 pt-4 dark:border-slate-800">
-                      <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                        {isAr ? 'الأجهزة المسجلة في الطلب:' : 'Order Items:'}
-                      </div>
-
-                      <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
-                        {order.items.map((item, index) => {
-                          const itemName = locale === 'en'
-                            ? (item.name_en || getItemLocalizedDeviceName(item.device_type_id || item.name, 'en', item.name))
-                            : (item.name_ar || item.name);
-
-                          return (
-                            <div
-                              key={`${item.name}-${index}`}
-                              className="flex items-center justify-between gap-3 py-2 text-xs"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <span className="font-bold text-slate-800 dark:text-slate-200">
-                                  {itemName}
-                                </span>
-                                {item.has_charger && (
-                                  <span className="ms-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">
-                                    {isAr ? '(مع شاحن)' : '(with charger)'}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="shrink-0 font-bold tabular-nums text-slate-700 dark:text-slate-300">
-                                {typeof item.total_price_minor === 'number'
-                                  ? formatAmount(item.total_price_minor)
-                                  : '—'}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* Customer Payment Context Explanation */}
-                  {isCustomerPayment && (
-                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 text-xs leading-5 text-slate-600 dark:border-[#1d4440] dark:bg-[#071716] dark:text-slate-300">
-                      {isAr
-                        ? 'سيتم تسجيل الإشعار وربطه بملف حسابك. بعد اعتماد الإيصال، تُسدّد مستحقاتك تلقائياً من الأقدم إلى الأحدث.'
-                        : 'Your payment notification is linked directly to your customer account. Verified amounts settle debts on a FIFO basis.'}
-                    </div>
-                  )}
-                </div>
+                <textarea
+                  id="payment-note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value.slice(0, 500))}
+                  rows={2}
+                  maxLength={500}
+                  placeholder={isAr ? 'ملاحظة قصيرة (إن وجدت)…' : 'Add a short note if needed…'}
+                  className="w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 dark:border-[#24413f] dark:bg-[#081817] dark:text-slate-100 dark:placeholder:text-slate-500"
+                />
               </div>
 
-              {/* Security & Verification Card */}
-              <div className="rounded-3xl border border-slate-200/90 bg-slate-50/80 p-5 text-xs leading-6 text-slate-600 shadow-sm dark:border-[#1a3c3a] dark:bg-[#0a1c1b] dark:text-slate-400">
-                <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>{isAr ? 'إجراءات الأمان والتدقيق' : 'Security & Verification'}</span>
-                </div>
-                <p className="mt-2">
-                  {isAr
-                    ? 'يُحفظ إيصالك في مساحة تخزين آمنة ومشفّرة، ولا يُعتمد أي مبلغ إلا بعد مطابقة إشعار البنك أو المحفظة فعلياً.'
-                    : 'Receipts are encrypted and stored privately. Amounts are only credited once confirmed by our accounting team.'}
-                </p>
-              </div>
-            </aside>
+              <p className="mt-3 flex items-start gap-2 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>{isAr ? 'يُرسل الإشعار عبر اتصال آمن، ولا يُعتمد الدفع إلا بعد مراجعة الإيصال.' : 'The notification is sent over a secure connection. Payment is credited only after receipt review.'}</span>
+              </p>
+            </section>
+
+            <button
+              type="submit"
+              disabled={sending || (Boolean(order) && (amountDue === null || amountDue <= 0))}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
+            >
+              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإشعار…' : 'Sending notification…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'}</span></>}
+            </button>
           </form>
         )}
       </main>
