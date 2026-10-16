@@ -54,6 +54,7 @@ export interface RepositoryContext {
     save(reservation: OrderNumberReservationEntity): Promise<void> | void;
     reserveRange(dayId: ID, deviceId: ID, commandId?: ID, rangeSize?: number): Promise<OrderNumberReservationEntity> | OrderNumberReservationEntity;
     resetForDay?(dayId: ID, nextNumber: number): Promise<void> | void;
+    needsResetForDay?(dayId: ID, deviceId: ID, expectedNextNumber: number): boolean;
   };
   itemRepo: {
     findByOrderId(orderId: ID): Promise<OrderItemEntity[]> | OrderItemEntity[];
@@ -541,17 +542,13 @@ export class FinalUseCases {
         }
         const expectedNextNumber = dayOrders.length + 1;
         const deviceId = actor.deviceId || 'default-device';
-        let reservation = repos.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId) as OrderNumberReservationEntity | null | undefined;
-
-        // Repair stale cursors left by earlier app versions or by a prior manual renumber.
-        // The current effective order set is authoritative for the next local reservation.
-        if (repos.reservationRepo && reservation && reservation.nextNumber !== expectedNextNumber) {
+        if (repos.reservationRepo?.needsResetForDay?.(dayId, deviceId, expectedNextNumber)) {
           if (!repos.reservationRepo.resetForDay) {
             return { success: false, error: 'The saved order-number cursor is stale and cannot be repaired safely.' };
           }
           repos.reservationRepo.resetForDay(dayId, expectedNextNumber);
-          reservation = null;
         }
+        let reservation = repos.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId) as OrderNumberReservationEntity | null | undefined;
         if (repos.reservationRepo && (!reservation || reservation.nextNumber > reservation.endNumber)) {
           reservation = repos.reservationRepo.reserveRange(dayId, deviceId, commandId, 20) as OrderNumberReservationEntity;
         }
