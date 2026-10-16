@@ -104,7 +104,7 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('UNPAID');
   });
 
-  it('preserves an approved payment status while positive credit still blocks another payment', () => {
+  it('preserves approved status while a remainder remains, even when the customer has positive credit', () => {
     expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED')).toBe('APPROVED');
   });
 
@@ -123,13 +123,16 @@ describe('Public order QR payment status presentation', () => {
     expect(source).not.toContain('تم قبول الدفع وسداد الطلب بالكامل');
     expect(source).not.toContain('itemOperationalLabel');
     expect(source).not.toContain('itemPaymentLabel');
+    expect(source).not.toContain('order-status-badge');
+    expect(source).not.toContain('Delivered & Paid');
+    expect(source).not.toContain('تم التسليم (مدفوع)');
   });
 
   it('shows a delivered order as paid when no recognized amount remains', () => {
     expect(getOrderPaymentViewState(0, null, true, 'DELIVERED')).toBe('PAID');
   });
 
-  it('fails closed when customer balance is unavailable', () => {
-    expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED')).toBe('UNAVAILABLE');
+  it('uses the server-calculated remainder even if the separate positive-credit flag is unavailable', () => {
+    expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED')).toBe('UNPAID');
   });
 });
