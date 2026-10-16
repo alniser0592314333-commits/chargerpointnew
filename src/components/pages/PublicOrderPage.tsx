@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
-  BatteryCharging, CalendarClock, CheckCircle2,
-  ChevronRight, CircleHelp, Clock3, CreditCard, Globe, PackageCheck,
-  ShieldCheck, Smartphone, Zap,
+  ArrowUpRight, BatteryCharging, CalendarClock, CheckCircle2, CircleHelp,
+  Clock3, CreditCard, Globe, Moon, PackageCheck, RefreshCw, ShieldCheck,
+  Smartphone, Sparkles, Sun, UserRound,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
+import { useTheme } from '../../theme/themeContext';
+import { AppLogo } from '../qr/AppLogo';
 import { getPublicOrderByToken, PublicOrderQrData } from './dayOrdersStore';
 
 export interface PublicOrderPageProps {
@@ -13,10 +15,11 @@ export interface PublicOrderPageProps {
 
 export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const { locale, setLocale, formatCurrency, isRTL } = useI18n();
-
+  const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
   const [data, setData] = useState<PublicOrderQrData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -37,6 +40,22 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     return () => { active = false; };
   }, [token]);
 
+  const refreshOrder = async () => {
+    setRefreshing(true);
+    try {
+      const result = await getPublicOrderByToken(token);
+      if (result) {
+        setData(result);
+        setError(false);
+      } else if (!data) setError(true);
+    } catch (err) {
+      console.error('Failed to refresh public order data:', err);
+      if (!data) setError(true);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return '—';
     const date = new Date(dateString);
@@ -50,175 +69,169 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     const key = (value || '').toUpperCase();
     if (key === 'DELIVERED') return isAr ? 'تم التسليم' : 'Delivered';
     if (key === 'CANCELLED' || key === 'CANCELED') return isAr ? 'ملغي' : 'Cancelled';
-    if (key === 'READY' || key === 'READY_FOR_PICKUP') return isAr ? 'جاهز للاستلام' : 'Ready for pickup';
+    if (key === 'READY' || key === 'READY_FOR_PICKUP') return isAr ? 'جاهز للاستلام' : 'Ready';
     if (key === 'CHARGING' || key === 'IN_PROGRESS' || key === 'PROCESSING') return isAr ? 'قيد الشحن' : 'Charging';
     return value || (isAr ? 'قيد المعالجة' : 'In progress');
   };
 
   const itemPaymentLabel = (value?: string) => {
     const key = (value || '').toUpperCase();
-    if (key === 'PAID') return isAr ? 'مدفوع بالكامل' : 'Paid';
-    if (key === 'PARTIALLY_PAID') return isAr ? 'مدفوع جزئياً' : 'Partially paid';
+    if (key === 'PAID') return isAr ? 'مدفوع' : 'Paid';
+    if (key === 'PARTIALLY_PAID') return isAr ? 'مدفوع جزئياً' : 'Part-paid';
     if (key === 'UNPAID') return isAr ? 'غير مدفوع' : 'Unpaid';
     return '';
   };
 
-  const statusInfo = (status?: string) => {
-    const key = (status || '').toUpperCase();
+  const statusInfo = (value?: string) => {
+    const key = (value || '').toUpperCase();
     if (['CHARGING', 'IN_PROGRESS', 'IN_PROGRESS_CHARGING', 'PROCESSING'].includes(key)) {
-      return { label: isAr ? 'قيد الشحن' : 'Charging', icon: BatteryCharging, cls: 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-200 dark:border-sky-900' };
+      return { label: isAr ? 'قيد الشحن' : 'Charging', icon: BatteryCharging, className: 'is-charging' };
     }
     if (['READY', 'READY_FOR_PICKUP'].includes(key)) {
-      return { label: isAr ? 'جاهز للاستلام' : 'Ready for pickup', icon: CheckCircle2, cls: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-900' };
+      return { label: isAr ? 'جاهز للاستلام' : 'Ready for pickup', icon: CheckCircle2, className: 'is-ready' };
     }
     if (['DELIVERED', 'COMPLETED'].includes(key)) {
-      return { label: isAr ? 'تم التسليم' : 'Delivered', icon: PackageCheck, cls: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700' };
+      return { label: isAr ? 'تم التسليم' : 'Delivered', icon: PackageCheck, className: 'is-delivered' };
     }
     if (['CANCELLED', 'CANCELED'].includes(key)) {
-      return { label: isAr ? 'ملغي' : 'Cancelled', icon: CircleHelp, cls: 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:border-rose-900' };
+      return { label: isAr ? 'ملغي' : 'Cancelled', icon: CircleHelp, className: 'is-cancelled' };
     }
-    return { label: isAr ? 'قيد المعالجة' : 'In progress', icon: Clock3, cls: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900' };
+    return { label: isAr ? 'قيد المعالجة' : 'In progress', icon: Clock3, className: 'is-pending' };
   };
 
   const total = data?.orderTotalMinor;
   const due = data?.orderDueMinor;
   const status = statusInfo(data?.status);
+  const StatusIcon = status.icon;
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page min-h-screen transition-colors">
-      <header className="border-b border-[#dce6e4] bg-white/90 dark:bg-[#0a2423]/90 dark:border-[#1c4140]">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0f766e] text-white shadow-sm"><Zap className="h-5 w-5" /></span>
-            <span>
-              <span className="block text-sm font-bold tracking-tight">{isAr ? 'نقطة الشحن' : 'Charging Point'}</span>
-              <span className="block text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'بوابة متابعة طلب الشحن' : 'Order tracking portal'}</span>
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page">
+      <div className="order-energy-field" aria-hidden="true">
+        <span className="order-energy-orb order-energy-orb--one" />
+        <span className="order-energy-orb order-energy-orb--two" />
+        <span className="order-energy-stream order-energy-stream--one" />
+        <span className="order-energy-stream order-energy-stream--two" />
+        <span className="order-energy-stream order-energy-stream--three" />
+        <span className="order-energy-stream order-energy-stream--four" />
+        <span className="order-energy-spark order-energy-spark--one" />
+        <span className="order-energy-spark order-energy-spark--two" />
+        <span className="order-energy-spark order-energy-spark--three" />
+        <span className="order-energy-spark order-energy-spark--four" />
+      </div>
+
+      <header className="order-qr-header">
+        <div className="order-qr-header__inner">
+          <a href="/public/about" className="order-brand" aria-label={isAr ? 'الصفحة العامة' : 'Public website'}>
+            <AppLogo size={42} variant="auto" />
+            <span className="order-brand__text">
+              <strong>{isAr ? 'نقطة الشحن' : 'Charging Point'}</strong>
+              <span>{isAr ? 'بوابة متابعة طلب الشحن' : 'Order tracking'}</span>
             </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#365653] hover:bg-[#edf4f2] dark:text-[#c8d9d4] dark:hover:bg-[#133533]" aria-label="Toggle language"><Globe className="h-4 w-4" />{isAr ? 'English' : 'عربي'}</button>
-            
+          </a>
+          <div className="order-qr-controls">
+            <button type="button" className="order-icon-button" onClick={() => setLocale(isAr ? 'en' : 'ar')} aria-label={isAr ? 'Switch to English' : 'التبديل إلى العربية'} title={isAr ? 'English' : 'العربية'}>
+              <Globe size={17} /><span>{isAr ? 'EN' : 'عربي'}</span>
+            </button>
+            <button type="button" className="order-icon-button order-theme-button" onClick={toggleTheme} aria-label={resolvedTheme === 'dark' ? (isAr ? 'الوضع الفاتح' : 'Light mode') : (isAr ? 'الوضع الداكن' : 'Dark mode')} title={resolvedTheme === 'dark' ? (isAr ? 'الوضع الفاتح' : 'Light mode') : (isAr ? 'الوضع الداكن' : 'Dark mode')}>
+              {resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="order-qr-main">
+        <div className="order-qr-heading">
+          <div className="order-secure-pill"><ShieldCheck size={15} /><span>{isAr ? 'جلسة موثقة ومؤمنة' : 'Secure verified session'}</span></div>
+          <button type="button" className="order-refresh-button" onClick={() => void refreshOrder()} disabled={loading || refreshing}>
+            <RefreshCw size={15} className={refreshing ? 'order-spin' : ''} /><span>{isAr ? 'تحديث' : 'Refresh'}</span>
+          </button>
+        </div>
+
         {loading ? (
-          <div className="mx-auto max-w-3xl rounded-2xl border border-[#dce6e4] bg-white p-10 text-center shadow-sm dark:border-[#1c4140] dark:bg-[#0a2423]">
-            <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#eaf4f1] text-[#0f766e] dark:bg-[#133533]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#0f766e]/30 border-t-[#0f766e]" /></span>
-            <p className="mt-4 text-sm text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'جاري تحميل تفاصيل الطلب…' : 'Loading order details…'}</p>
-          </div>
+          <section className="order-state-card" aria-live="polite">
+            <span className="order-loader" />
+            <h1>{isAr ? 'بوابة متابعة الطلب' : 'Order tracking'}</h1>
+            <p>{isAr ? 'جارٍ التحقق من رمز الطلب…' : 'Verifying your order code…'}</p>
+          </section>
         ) : error || !data ? (
-          <div className="mx-auto max-w-lg rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm dark:border-rose-900 dark:bg-[#0a2423]">
-            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200"><CircleHelp className="h-6 w-6" /></span>
-            <h1 className="mt-4 text-lg font-semibold">{isAr ? 'الطلب غير موجود' : 'Order not found'}</h1>
-            <p className="mt-2 text-sm leading-6 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رمز QR غير صالح أو منتهي. تأكد من مسح رمز الطلب الصحيح.' : 'This QR code is invalid or expired. Please scan the correct order QR.'}</p>
-          </div>
+          <section className="order-state-card order-state-card--error" aria-live="polite">
+            <span className="order-state-icon"><CircleHelp size={28} /></span>
+            <h1>{isAr ? 'تعذّر عرض الطلب' : 'Unable to load order'}</h1>
+            <p>{isAr ? 'تأكد من فتح رمز QR الصحيح ثم حاول مرة أخرى.' : 'Check that you opened the correct order QR and try again.'}</p>
+            <button type="button" className="order-primary-button order-retry-button" onClick={() => void refreshOrder()}><RefreshCw size={16} />{isAr ? 'إعادة المحاولة' : 'Try again'}</button>
+          </section>
         ) : (
-          <div className="space-y-5">
-            <section className="min-w-0 space-y-5">
-              {typeof due === 'number' && due > 0 && (
-                <a href={`/pay/${token}`} className="order-payment-banner group flex items-center gap-3 rounded-2xl border p-4 sm:p-5">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-slate-950"><CreditCard className="h-6 w-6 animate-pulse" /></span>
-                  <span className="min-w-0 flex-1"><span className="block text-sm font-black">{isAr ? 'سداد الرسوم ورفع إشعار الدفع' : 'Pay fees and upload payment receipt'}</span><span className="mt-1 block text-xs leading-5 text-slate-400">{isAr ? 'أرفق إيصال التحويل للمراجعة وتأكيد السداد' : 'Upload your transfer receipt for review and payment confirmation'}</span></span>
-                  <span className="shrink-0 text-emerald-400"><ChevronRight className={`h-5 w-5 transition-transform group-hover:translate-x-0.5 ${isRTL ? 'rotate-180' : ''}`} /></span>
-                </a>
-              )}
-              <div className="space-y-2">
-                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-400">{isAr ? 'تفاصيل الطلب' : 'ORDER DETAILS'}</p>
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div>
-                    <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{isAr ? `طلب رقم ${data.orderNumber}` : `Order #${data.orderNumber}`}</h1>
-                    <p className="mt-1 text-sm text-[#6b8580] dark:text-[#9bb6b0]">{data.customerName}</p>
-                    {data.customerCode && <p className="mt-1 text-[11px] text-[#7d9690] dark:text-[#779791]">{isAr ? 'مرجع العميل' : 'Customer reference'}: <span dir="ltr" className="font-semibold tracking-wider">{data.customerCode}</span></p>}
-                  </div>
-                  <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${status.cls}`}><status.icon className="h-4 w-4" />{status.label}</span>
+          <div className="order-qr-content">
+            <section className="order-glass-card order-details-card">
+              <div className="order-card-topline">
+                <div className="order-number-block">
+                  <span className="order-overline">{isAr ? 'رقم الطلب' : 'ORDER NUMBER'}</span>
+                  <strong className="order-number" dir="ltr">#{data.orderNumber}</strong>
                 </div>
+                <span className={'order-status-pill ' + status.className}><StatusIcon size={16} />{status.label}</span>
               </div>
 
-              <div className="rounded-2xl border border-[#dce6e4] bg-white shadow-[0_8px_30px_rgba(16,55,51,0.04)] dark:border-[#1c4140] dark:bg-[#0a2423]">
-                <div className="grid gap-4 border-b border-[#e5ecea] p-5 sm:grid-cols-2 dark:border-[#244746] sm:p-6">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#edf5f2] text-[#0f766e] dark:bg-[#133533]"><CalendarClock className="h-4 w-4" /></span>
-                    <div><p className="text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'تاريخ ووقت الطلب' : 'Order date & time'}</p><p className="mt-1 text-sm font-semibold">{formatDate(data.createdAt)}</p></div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#edf5f2] text-[#0f766e] dark:bg-[#133533]"><Smartphone className="h-4 w-4" /></span>
-                    <div><p className="text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'عدد الأجهزة' : 'Items'}</p><p className="mt-1 text-sm font-semibold">{data.itemsCount}</p></div>
-                  </div>
+              <div className="order-customer-strip">
+                <span className="order-mini-icon"><UserRound size={18} /></span>
+                <div className="order-customer-info">
+                  <span className="order-field-label">{isAr ? 'الزبون' : 'CUSTOMER'}</span>
+                  <strong>{data.customerName}</strong>
                 </div>
+                {data.customerCode ? <span className="order-customer-code" dir="ltr">{data.customerCode}</span> : null}
+              </div>
 
-                <div className="p-5 sm:p-6">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <h2 className="text-base font-semibold">{isAr ? 'الأجهزة والخدمات' : 'Devices & services'}</h2>
-                    <span className="text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? `${data.itemsCount} عنصر` : `${data.itemsCount} items`}</span>
-                  </div>
-                  {data.items?.length ? (
-                    <div className="divide-y divide-[#e5ecea] dark:divide-[#244746]">
-                      {data.items.map((item, index) => (
-                        <div key={`${item.name}-${index}`} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
-                          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0f5f4] text-[#55736d] dark:bg-[#102f2d] dark:text-[#a4c0b9]"><Smartphone className="h-4 w-4" /></span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold">{item.name}</p>
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              <span className="rounded-md bg-[#f1f5f4] px-2 py-1 text-[10px] font-medium text-[#58736e] dark:bg-[#102f2d] dark:text-[#b0c6c1]">{item.has_charger ? (isAr ? 'مع شاحن' : 'With charger') : (isAr ? 'بدون شاحن' : 'No charger')}</span>
-                              <span className="rounded-md bg-[#f1f5f4] px-2 py-1 text-[10px] font-medium text-[#58736e] dark:bg-[#102f2d] dark:text-[#b0c6c1]">{isAr ? `الكمية: ${item.quantity ?? 1}` : `Qty: ${item.quantity ?? 1}`}</span>
-                              {(item.operational_status || item.status) && <span className="rounded-md bg-[#eef4ff] px-2 py-1 text-[10px] font-medium text-[#405b88] dark:bg-[#142945] dark:text-[#c0d5fa]">{itemOperationalLabel(item.operational_status || item.status)}</span>}
-                              {itemPaymentLabel(item.payment_status) && <span className={`rounded-md px-2 py-1 text-[10px] font-medium ${item.payment_status?.toUpperCase() === 'PAID' ? 'bg-[#eaf4f1] text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]' : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'}`}>{itemPaymentLabel(item.payment_status)}</span>}
-                              {item.charger_fee_exempt && <span className="rounded-md bg-[#eaf4f1] px-2 py-1 text-[10px] font-semibold text-[#0f766e] dark:bg-[#133533] dark:text-[#a9d8cc]">{isAr ? 'تم إعفاؤك من رسوم الشحن' : 'Charger fee waived'}</span>}
-                            </div>
-                          </div>
-                          <div className="shrink-0 text-end">
-                            <p className="text-sm font-semibold tabular-nums">{typeof item.total_price_minor === 'number' ? formatCurrency(item.total_price_minor) : '—'}</p>
-                            {typeof item.unit_price_minor === 'number' && <p className="mt-1 text-[10px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'سعر الوحدة' : 'Unit price'}: {formatCurrency(item.unit_price_minor)}</p>}
-                            {typeof item.due_minor === 'number' && item.due_minor > 0 && item.due_minor < (item.total_price_minor ?? 0) && <p className="mt-1 text-[10px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المتبقي' : 'Remaining'}: {formatCurrency(item.due_minor)}</p>}
-                          </div>
-                        </div>
-                      ))}
+              <div className="order-device-heading">
+                <div><Smartphone size={18} /><h2>{isAr ? 'الأجهزة' : 'Devices'}</h2></div>
+                <span className="order-count">{data.itemsCount}</span>
+              </div>
+
+              <div className="order-device-list">
+                {data.items?.length ? data.items.map((item, index) => (
+                  <article className="order-device-row" key={item.name + '-' + index}>
+                    <span className="order-device-icon"><Smartphone size={19} /></span>
+                    <div className="order-device-info">
+                      <strong>{item.name}</strong>
+                      <div className="order-device-tags">
+                        <span>{item.has_charger ? (isAr ? 'مع شاحن' : 'With charger') : (isAr ? 'بدون شاحن' : 'No charger')}</span>
+                        {(item.quantity ?? 1) > 1 ? <span>{isAr ? 'الكمية' : 'Qty'}: {item.quantity ?? 1}</span> : null}
+                        {(item.operational_status || item.status) ? <span className={'order-item-state ' + statusInfo(item.operational_status || item.status).className}>{itemOperationalLabel(item.operational_status || item.status)}</span> : null}
+                        {itemPaymentLabel(item.payment_status) ? <span className={item.payment_status?.toUpperCase() === 'PAID' ? 'order-item-paid' : 'order-item-unpaid'}>{itemPaymentLabel(item.payment_status)}</span> : null}
+                        {item.charger_fee_exempt ? <span className="order-item-paid">{isAr ? 'إعفاء من الرسوم' : 'Fee waived'}</span> : null}
+                      </div>
                     </div>
-                  ) : (
-                    <p className="rounded-xl bg-[#f7faf9] p-4 text-sm text-[#6b8580] dark:bg-[#0b2928] dark:text-[#9bb6b0]">{isAr ? 'لا توجد تفاصيل أجهزة متاحة.' : 'No device details are available.'}</p>
-                  )}
-                </div>
+                    <strong className="order-device-price">{typeof item.total_price_minor === 'number' ? formatCurrency(item.total_price_minor) : '—'}</strong>
+                  </article>
+                )) : <div className="order-empty-items">{isAr ? 'لا توجد أجهزة مسجلة لهذا الطلب.' : 'No devices are recorded for this order.'}</div>}
               </div>
-              <div className="flex items-start gap-3 rounded-xl border border-[#dce6e4] bg-white p-4 text-xs leading-5 text-[#607874] dark:border-[#1c4140] dark:bg-[#0a2423] dark:text-[#a7beb9]">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#0f766e]" />
-                <p>{isAr ? 'هذه صفحة عامة للعرض فقط. لا تعرض بيانات دخول أو روابط إدارية، ولا يتغير الوضع المالي إلا من خلال إجراءات المراجعة المعتمدة داخل النظام.' : 'This is a public, read-only page. It exposes no login or admin links, and financial status changes only through the approved review flow inside the app.'}</p>
+
+              <div className="order-detail-meta">
+                <div><CalendarClock size={16} /><span>{isAr ? 'تاريخ الطلب' : 'Order date'}</span><strong>{formatDate(data.createdAt)}</strong></div>
+                <div><Smartphone size={16} /><span>{isAr ? 'عدد الأجهزة' : 'Devices'}</span><strong>{data.itemsCount}</strong></div>
               </div>
             </section>
 
-            <aside className="h-fit space-y-4">
-              <div className="order-summary-card overflow-hidden rounded-3xl border shadow-2xl">
-                <div className="order-summary-card__header px-5 py-5 text-white">
-                  <p className="text-[11px] font-semibold text-[#b9d8d0]">{isAr ? 'ملخص المبلغ' : 'AMOUNT SUMMARY'}</p>
-                  <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{typeof total === 'number' ? formatCurrency(total) : '—'}</p>
-                  <p className="mt-1 text-xs text-[#b9d8d0]">{isAr ? 'إجمالي قيمة الطلب' : 'Total order value'}</p>
-                </div>
-                <div className="space-y-4 p-5">
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ المتبقي من الطلب' : 'Remaining order amount'}</span>
-                    <span className="font-semibold tabular-nums">{typeof due === 'number' ? formatCurrency(due) : '—'}</span>
-                  </div>
-                  {typeof due === 'number' && due === 0 ? (
-                    <div className="order-paid-note rounded-xl p-3 text-xs leading-5">{isAr ? 'لا يوجد مبلغ متبقٍ على هذا الطلب حالياً.' : 'There is no remaining amount on this order.'}</div>
-                  ) : typeof due !== 'number' ? (
-                    <div className="rounded-xl bg-amber-500/10 p-3 text-xs leading-5 text-amber-300">{isAr ? 'تعذّر تحميل المبلغ المستحق حالياً. حاول مجدداً عند توفر الاتصال.' : 'The outstanding amount is currently unavailable. Please try again when connected.'}</div>
-                  ) : null}
-                  <p className="text-center text-[10px] leading-4 text-[#7d9690] dark:text-[#779791]"><ShieldCheck className="me-1 inline h-3.5 w-3.5" />{isAr ? 'إرسال إشعار الدفع لا يؤكد الدفع تلقائياً' : 'Payment notification is not automatic confirmation'}</p>
-                </div>
+            <section className="order-glass-card order-amount-card">
+              <div className="order-amount-heading">
+                <span className="order-amount-icon"><CreditCard size={22} /></span>
+                <div><h2>{isAr ? 'قيمة الطلب' : 'Order total'}</h2></div>
               </div>
-              <div className="rounded-2xl border border-[#dce6e4] bg-[#edf5f2] p-4 dark:border-[#1c4140] dark:bg-[#0c2927]">
-                <div className="flex items-center gap-2 text-sm font-semibold"><Zap className="h-4 w-4 text-[#0f766e]" />{isAr ? 'نقطة الشحن' : 'Charging Point'}</div>
-                <p className="mt-2 text-xs leading-5 text-[#58736e] dark:text-[#a4c0b9]">{isAr ? 'تفاصيل طلبك ومبلغك في مكان واحد، بتصميم واضح وسهل القراءة.' : 'Your order details and amount, presented in one clear and easy-to-read place.'}</p>
-              </div>
-            </aside>
+              <div className="order-total-value" dir="ltr">{typeof total === 'number' ? formatCurrency(total) : '—'}</div>
+              <div className="order-due-row"><span>{isAr ? 'المبلغ المتبقي' : 'Amount due'}</span><strong dir="ltr">{typeof due === 'number' ? formatCurrency(due) : '—'}</strong></div>
+              {typeof due === 'number' && due > 0 ? (
+                <a href={'/pay/' + encodeURIComponent(token)} className="order-primary-button order-pay-button">
+                  <CreditCard size={18} /><span>{isAr ? 'ادفع الآن' : 'Pay now'}</span><ArrowUpRight size={17} className="order-pay-arrow" />
+                </a>
+              ) : typeof due === 'number' && due === 0 ? (
+                <div className="order-paid-confirmation"><CheckCircle2 size={18} /><span>{isAr ? 'تم سداد الطلب بالكامل' : 'Order paid in full'}</span></div>
+              ) : <div className="order-due-unavailable">{isAr ? 'المبلغ المستحق غير متاح حالياً' : 'Amount due is unavailable'}</div>}
+            </section>
+
+            <a href="/public/about" className="order-public-home-link"><Sparkles size={17} /><span>{isAr ? 'ألقي نظرة' : 'Take a look'}</span><ArrowUpRight size={17} /></a>
           </div>
         )}
       </main>
 
-      <footer className="border-t border-[#dce6e4] px-4 py-5 text-center text-[11px] text-[#7d9690] dark:border-[#1c4140] dark:text-[#779791]">
-        <span>{isAr ? 'نقطة الشحن · بوابة العميل' : 'Charging Point · Customer Portal'}</span>
-      </footer>
+      <footer className="order-qr-footer"><ShieldCheck size={15} /><span>{isAr ? 'نظام إلكتروني مؤمن' : 'Secure electronic service'}</span></footer>
     </div>
   );
 };
