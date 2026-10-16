@@ -225,16 +225,16 @@ html.dark body {
   }
 
   /* Mirror the composition for Arabic without changing the DOM or payment flow. */
-  html[dir="rtl"] body:has(main > form) main:has(> form) > form {
+  body:has(main > form) div[dir="rtl"] main:has(> form) > form {
     grid-column: 2;
     text-align: right;
   }
 
-  html[dir="rtl"] body:has(main > form) main:has(> form)::after {
+  body:has(main > form) div[dir="rtl"] main:has(> form)::after {
     grid-column: 1;
   }
 
-  html[dir="ltr"] body:has(main > form) main:has(> form) > form {
+  body:has(main > form) div[dir="ltr"] main:has(> form) > form {
     grid-column: 1;
     text-align: left;
   }
