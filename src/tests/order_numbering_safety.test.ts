@@ -201,7 +201,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         findAll: () => [],
       },
       commandRepo: {
-        get: () => null,
+        get: (commandId: string) => {
+          const existing = recordedCommands.find((record) => record.commandId === commandId);
+          return existing ? { type: existing.type, payload: existing.payload } : null;
+        },
         record: (commandId: string, type: string, payload: unknown) => {
           if (type === 'RENUMBER_DAY_ORDERS' && !insideLocalTransaction) throw new Error('Renumber command must be queued in the same local transaction as overlays');
           recordedCommands.push({ commandId, type, payload });
@@ -588,6 +591,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(results.map((result: any) => result.data.order.displayNumber)).toEqual([1, 2, 3, 4, 5]);
     expect(reservationMap.size).toBe(0);
     expect(recordedCommands.filter((command) => command.type === 'CREATE_ORDER').map((command: any) => command.payload.displayNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect((recordedCommands.find((command) => command.commandId === 'cmd-immutable-2')?.payload as any).dependencyCommandId).toBe('cmd-immutable-1');
   });
 
   it('continues numbering from effective local orders even when legacy reservation records are absent', async () => {
