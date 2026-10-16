@@ -222,6 +222,9 @@ export class FinalUseCases {
     }
     await this.createOverlay(orderId, mutationKey, 'orders', orderId, 'CREATE', order as unknown as Record<string, unknown>);
 
+    const previousOrder = dayOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
+    const previousCommand = previousOrder ? await this.deps.commandRepo.get(previousOrder.id) : null;
+    const dependencyCommandId = previousCommand?.type === 'CREATE_ORDER' ? previousOrder?.id : undefined;
     await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
         ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash : {}),
         id: orderId,
@@ -232,6 +235,7 @@ export class FinalUseCases {
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
         displayNumber: order.displayNumber,
         orderNumber: (order as any).orderNumber ?? order.displayNumber,
+        ...(dependencyCommandId ? { dependencyCommandId } : {}),
     });
     
     return { success: true, data: order };
@@ -610,6 +614,9 @@ export class FinalUseCases {
           });
         }
 
+        const previousOrder = dayOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
+        const previousCommand = previousOrder ? repos.commandRepo.get(previousOrder.id) : null;
+        const dependencyCommandId = previousCommand?.type === 'CREATE_ORDER' ? previousOrder?.id : undefined;
         repos.commandRepo.record(commandId, 'CREATE_ORDER', {
           id: order.id,
           aggregateId: order.id,
@@ -619,6 +626,7 @@ export class FinalUseCases {
           notes,
           customerBalanceSnapshotMinor: currentBalance,
           ...(groupId ? { groupId } : {}),
+          ...(dependencyCommandId ? { dependencyCommandId } : {}),
         });
 
         for (const item of preparedItems) {
