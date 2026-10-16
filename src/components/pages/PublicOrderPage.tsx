@@ -298,6 +298,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
   const statusConfig = getOrderStatusConfig(data?.status, due);
   const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status);
+  const orderQrSubmissionLimitReached = data?.orderQrSubmissionLimitReached === true;
   const StatusIcon = statusConfig.icon;
 
   return (
@@ -629,7 +630,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {paymentViewState === 'APPROVED' && (
+                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && (
                       <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
                         <div className="order-fully-paid-text">
@@ -677,7 +678,19 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && (
+                    {orderQrSubmissionLimitReached && typeof due === 'number' && due > 0 && !data.customerHasPositiveCredit && submission?.status !== 'PENDING' && (
+                      <div className="order-fully-paid-banner order-payment-notice is-rejected" role="status" aria-live="polite">
+                        <div className="order-fully-paid-icon" aria-hidden="true"><CircleAlert size={22} /></div>
+                        <div className="order-fully-paid-text">
+                          <h3>{isAr ? 'تم بلوغ الحد الأقصى لإشعارات هذا الطلب' : 'This order has reached its notification limit'}</h3>
+                          <p>{isAr
+                            ? 'تم استخدام الإشعارات الثلاثة المسموح بها لهذا الرمز. تواصل مع نقطة الشحن لمتابعة أي مبلغ متبقٍ.'
+                            : 'All three notifications allowed for this QR have been used. Contact Charging Point to resolve any remaining amount.'}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && !orderQrSubmissionLimitReached && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
