@@ -1,3 +1,16 @@
+-- Read-only preflight must fail before any schema/data mutation if legacy duplicate numbers exist.
+DO $numbering_preflight$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM public.orders
+        GROUP BY day_id, display_number
+        HAVING COUNT(*) > 1
+    ) THEN
+        RAISE EXCEPTION 'Cannot install immutable order numbering: duplicate numbers already exist within a business day';
+    END IF;
+END;
+$numbering_preflight$;
+
 -- Keep a durable server high-water mark so deleted/renumbered rows never make an old
 -- customer-facing number reusable. Existing days start at their current maximum number.
 CREATE TABLE IF NOT EXISTS public.business_day_order_sequences (
