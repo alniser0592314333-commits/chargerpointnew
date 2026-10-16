@@ -13,7 +13,7 @@ describe('Server-authoritative contiguous order numbering', () => {
     return fs.readFileSync(migrationPath, 'utf8');
   };
 
-  it('validates the exact client-assigned number under the day lock without reassignment', () => {
+  it('validates the exact client-assigned number against a durable high-water mark', () => {
     const sql = readMigration();
     const routeStart = sql.indexOf('-- 5. ROUTE BY CANONICAL COMMAND TYPE');
     const createStart = sql.indexOf("WHEN 'CREATE_ORDER' THEN", routeStart);
@@ -27,10 +27,12 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(branch).toContain('FROM public.business_days WHERE id = v_day_uuid FOR UPDATE');
     expect(branch).toContain("v_requested_display_number := NULLIF(COALESCE(");
     expect(branch).toContain('v_requested_display_number <> v_max_new_number + 1');
+    expect(branch).toContain('public.business_day_order_sequences');
+    expect(branch).toContain('last_assigned_number');
+    expect(branch).toContain('GREATEST(v_max_new_number, COALESCE(MAX(display_number), 0))');
     expect(branch).toContain('ORDER_NUMBER_CONFLICT [409]');
     expect(branch).toContain('ORDER_NUMBER_IMMUTABLE [409]');
     expect(branch).toContain('ORDER_NUMBER_REQUIRED');
-    expect(branch).toContain('Order numbering is not contiguous');
     expect(branch).toContain('v_max_new_number <> v_change_count');
     expect(branch).toContain("'{displayNumber}'");
     expect(branch).toContain("'{display_number}'");
