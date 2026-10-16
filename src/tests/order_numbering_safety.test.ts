@@ -132,7 +132,13 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
             reservation.businessDayId === dayId && reservation.deviceId === deviceId &&
             reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
           );
-          if (active) return active.nextNumber !== expectedNextNumber;
+          if (active) {
+            const laterRangeExists = Array.from(reservationMap.values()).some((reservation) =>
+              reservation.businessDayId === dayId && reservation.id !== active.id &&
+              reservation.endNumber > active.endNumber
+            );
+            return active.nextNumber !== expectedNextNumber || laterRangeExists;
+          }
           let maxEnd = 0;
           reservationMap.forEach((reservation) => {
             if (reservation.businessDayId === dayId) maxEnd = Math.max(maxEnd, reservation.endNumber);
