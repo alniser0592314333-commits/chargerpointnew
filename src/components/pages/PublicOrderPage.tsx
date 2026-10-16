@@ -673,9 +673,13 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                         <div className="order-fully-paid-icon" aria-hidden="true"><CircleAlert size={22} /></div>
                         <div className="order-fully-paid-text">
                           <h3>{isAr ? 'لم يتم قبول إشعار الدفع' : 'Payment notification was not accepted'}</h3>
-                          <p>{isAr
-                            ? 'لم يُسجَّل هذا الإشعار كدفعة. يمكنك مراجعة الإيصال وإرسال إشعار جديد.'
-                            : 'This notification was not credited as a payment. Review your receipt and submit a new notification.'}</p>
+                          <p>{data.customerHasPositiveCredit
+                            ? (isAr
+                                ? 'لم يُعتمد هذا الإشعار كدفعة. رصيدك الموجب سيُستخدم أولاً، فلا ترسل دفعة جديدة الآن.'
+                                : 'This notification was not credited. Your positive credit is applied first, so do not send another payment now.')
+                            : (isAr
+                                ? 'لم يُسجَّل هذا الإشعار كدفعة. يمكنك مراجعة الإيصال وإرسال إشعار جديد.'
+                                : 'This notification was not credited as a payment. Review your receipt and submit a new notification.')}</p>
                         </div>
                       </div>
                     )}
