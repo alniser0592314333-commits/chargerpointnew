@@ -600,7 +600,7 @@ export class FinalUseCases {
         for (let index = 0; index < preparedItems.length; index++) {
           const item = preparedItems[index];
           txOverlayRepo.saveWithTx({
-            commandId: `${commandId}:item:${item.id}`,
+            commandId: item.id,
             mutationKey,
             entityType: 'order_items',
             entityId: item.id,
