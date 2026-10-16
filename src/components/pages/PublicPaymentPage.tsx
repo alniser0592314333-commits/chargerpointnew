@@ -334,6 +334,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         if (message.toLowerCase().includes('positive credit')) {
           throw new Error('CREDIT_BALANCE');
         }
+        if (message.toLowerCase().includes('maximum of three payment notifications')) {
+          throw new Error('MAX_SUBMISSIONS');
+        }
         if (message.includes('already awaiting review') || response.status === 409) {
           throw new Error('PENDING_EXISTS');
         }
@@ -366,6 +369,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         setError(isAr ? 'حجم الصورة بعد الضغط ما زال كبيراً. اختَر صورة أصغر وأوضح.' : 'Compressed image remains too large. Choose a smaller image.');
       } else if (code === 'CREDIT_BALANCE') {
         setError(isAr ? 'رصيدك موجب؛ سيُستخدم لتغطية تكلفة الطلب أولاً، ولا يلزم إرسال دفعة الآن.' : 'Your account has positive credit, which is applied first. No payment is needed now.');
+      } else if (code === 'MAX_SUBMISSIONS') {
+        setError(isAr ? 'وصل هذا الطلب للحد الأقصى: ثلاثة إشعارات دفع من نفس رمز QR.' : 'This order QR has reached its limit of three payment notifications.');
       } else if (code === 'PENDING_EXISTS') {
         setError(isAr ? 'يوجد إشعار دفع سابق بانتظار المراجعة بالفعل لهذا الطلب أو الحساب.' : 'A previous payment notification is already awaiting review for this order or account.');
         const currentSubmission = await rpcResolveQrPaymentSubmission(token);
