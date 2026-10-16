@@ -234,6 +234,18 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
   const isCustomerPayment = Boolean(customer && !order);
   const amountDue = order ? (typeof order.orderDueMinor === 'number' ? order.orderDueMinor : null) : null;
+  const orderPaymentBlockReason = !order
+    ? ''
+    : typeof order.customerBalanceMinor !== 'number' || !Number.isFinite(order.customerBalanceMinor)
+      ? (isAr ? 'تعذّر التحقق من رصيد الحساب. حدّث الصفحة قبل إرسال أي دفعة.' : 'Could not verify the account balance. Refresh before sending a payment.')
+      : order.customerBalanceMinor > 0
+        ? (isAr ? 'رصيدك موجب؛ سيُستخدم لتغطية تكلفة الطلب أولاً. لا تحتاج لإرسال دفعة الآن.' : 'Your account has positive credit, which is applied first. No payment is needed now.')
+        : amountDue === null || amountDue <= 0
+          ? (['DELIVERED', 'COMPLETED'].includes(String(order.status ?? '').toUpperCase())
+              ? (isAr ? 'لا يوجد مبلغ مستحق على هذا الطلب حالياً.' : 'There is no remaining amount due for this order.')
+              : (isAr ? 'الطلب ما زال قيد الشحن؛ لا يُطلب الدفع قبل تسجيل التسليم.' : 'This order is still charging. Payment is not due before delivery is recorded.'))
+          : '';
+  const orderPaymentAllowed = Boolean(order && !orderPaymentBlockReason);
   const backHref = isCustomerPayment ? `/c/${token}` : `/o/${token}`;
   const formatAmount = (amount: number) => formatCurrency(amount);
 
@@ -271,6 +283,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     event.preventDefault();
     setError('');
     setValidationError(null);
+
+    if (order && !orderPaymentAllowed) {
+      setError(orderPaymentBlockReason);
+      return;
+    }
 
     if (!method) {
       setValidationError('method');
@@ -672,6 +689,13 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </div>
             )}
 
+            {order && !orderPaymentAllowed && (
+              <div role="status" aria-live="polite" className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                <Wallet className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="min-w-0 flex-1">{orderPaymentBlockReason}</div>
+              </div>
+            )}
+
             <section className="rounded-[1.75rem] border border-white/90 bg-white/90 p-4 shadow-2xl shadow-slate-900/5 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#101e21]/95 dark:shadow-black/25 sm:p-6">
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div>
@@ -779,7 +803,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
             <button
               type="submit"
-              disabled={sending || (Boolean(order) && (amountDue === null || amountDue <= 0))}
+              disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
             >
               {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإشعار…' : 'Sending notification…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'}</span></>}
