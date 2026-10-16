@@ -568,117 +568,54 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(recordedCommands).toHaveLength(0);
   });
 
-  it('Test LAZY RESERVATION — Zero reservations at startup/login/sync, exact reservation on first order, no new reservation until exhaustion', async () => {
+  it('allocates consecutive immutable numbers locally without preallocating unused ranges', async () => {
     dayMap.set('day-1', {
-      id: 'day-1',
-      businessDate: '2026-10-03',
-      isClosed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
+      id: 'day-1', businessDate: '2026-10-03', isClosed: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
     });
     customerMap.set('cust-1', {
-      id: 'cust-1',
-      name: 'Customer 1',
-      isActive: true,
-      debtLimitMinor: -1000,
-      chargerFeeExempt: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
     });
 
-    // Steps 1-6: App start, login, sync, open orders page. NO order creation.
     expect(reservationMap.size).toBe(0);
+    const results = [];
+    for (let number = 1; number <= 5; number++) {
+      results.push(await createReservedOrder(auth, `cmd-immutable-${number}`, 'day-1', 'cust-1', `Order ${number}`));
+    }
 
-    // Step 7-8: Start creating the first real order
-    const res1 = await createReservedOrder(auth, 'cmd-lazy-1', 'day-1', 'cust-1', 'First Order');
-    expect(res1.success).toBe(true);
-    expect((res1 as any).data.order.displayNumber).toBe(1);
-
-    // Expected: Exactly one reservation is created
-    expect(reservationMap.size).toBe(1);
-    const reservationArray = Array.from(reservationMap.values());
-    expect(reservationArray[0].startNumber).toBe(1);
-    expect(reservationArray[0].endNumber).toBe(20); // Preserve the established twenty-number offline reservation range
-    const persistedAfterFirstOrder = Array.from(reservationMap.values())[0];
-    expect(persistedAfterFirstOrder.nextNumber).toBe(2);
-
-    // Create additional orders
-    const res2 = await createReservedOrder(auth, 'cmd-lazy-2', 'day-1', 'cust-1', 'Second Order');
-    const res3 = await createReservedOrder(auth, 'cmd-lazy-3', 'day-1', 'cust-1', 'Third Order');
-
-    expect(res2.success && res3.success).toBe(true);
-    expect((res2 as any).data.order.displayNumber).toBe(2);
-    expect((res3 as any).data.order.displayNumber).toBe(3);
-
-    // Expected: No additional server reservation is created until current range is exhausted
-    expect(reservationMap.size).toBe(1);
-    const persistedAfterThreeOrders = Array.from(reservationMap.values())[0];
-    expect(persistedAfterThreeOrders.nextNumber).toBe(4);
+    expect(results.every((result) => result.success)).toBe(true);
+    expect(results.map((result: any) => result.data.order.displayNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(reservationMap.size).toBe(0);
+    expect(recordedCommands.filter((command) => command.type === 'CREATE_ORDER').map((command: any) => command.payload.displayNumber)).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it('Test BACKUP/RESTORE RESERVATION INTEGRITY — Preserves partially consumed reservation range across backup and restore', async () => {
+  it('continues numbering from effective local orders even when legacy reservation records are absent', async () => {
     const dayId = '33333333-3333-4333-8333-333333333333';
     const customerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const authBackup = new AuthorizationContext({ ...adminActor, deviceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }, (bin) => bin === validBin);
     dayMap.set(dayId, {
-      id: dayId,
-      businessDate: '2026-10-03',
-      isClosed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
+      id: dayId, businessDate: '2026-10-03', isClosed: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
     });
     customerMap.set(customerId, {
-      id: customerId,
-      name: 'Customer 1',
-      isActive: true,
-      debtLimitMinor: -1000,
-      chargerFeeExempt: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
+      id: customerId, name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
     });
 
-    // Create 3 orders to consume #1, #2, #3 from the reserved range [1, 20], nextNumber = 4
-    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444441', dayId, customerId, 'Order 1');
-    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444442', dayId, customerId, 'Order 2');
-    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444443', dayId, customerId, 'Order 3');
-
-    for (const [id, ord] of orderMap.entries()) {
-      await localDb.set('orders', id, ord);
+    const numbers = [];
+    for (let number = 1; number <= 3; number++) {
+      const result = await createReservedOrder(authBackup, `no-range-${number}`, dayId, customerId, `Order ${number}`);
+      expect(result.success).toBe(true);
+      numbers.push((result as any).data.order.displayNumber);
     }
-    for (const [id, res] of reservationMap.entries()) {
-      await localDb.set('orderNumberReservations', id, res);
-    }
-    await localDb.set('businessDays', dayId, dayMap.get(dayId));
-    await localDb.set('customers', customerId, customerMap.get(customerId));
-
-    const snapshot = await backupService.createSnapshot('OFFLINE', authBackup, {
-      name: 'Reservation Restore Test Backup',
-      bin: validBin,
-    });
-
-    expect(snapshot).toBeDefined();
-
-    orderMap.clear();
+    expect(numbers).toEqual([1, 2, 3]);
     reservationMap.clear();
-    await localDb.clearOperationalTables();
 
-    await backupService.restoreSnapshot(snapshot.snapshotId, authBackup, { bin: validBin });
-
-    const restoredReservations = await localDb.list<OrderNumberReservationEntity>('orderNumberReservations');
-    expect(restoredReservations).toHaveLength(1);
-    expect(restoredReservations[0].startNumber).toBe(1);
-    expect(restoredReservations[0].endNumber).toBe(20);
-    expect(restoredReservations[0].nextNumber).toBe(4);
-
-    reservationMap.set(restoredReservations[0].id, restoredReservations[0]);
-
-    const resNext = await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444444', dayId, customerId, 'Order 4');
-    expect(resNext.success).toBe(true);
-    expect((resNext as any).data.order.displayNumber).toBe(4);
+    const next = await createReservedOrder(authBackup, 'no-range-4', dayId, customerId, 'Order 4');
+    expect(next.success).toBe(true);
+    expect((next as any).data.order.displayNumber).toBe(4);
+    expect(reservationMap.size).toBe(0);
   });
 
   it('Test A — Shared local state reconciles device ranges and keeps display numbers contiguous', async () => {
