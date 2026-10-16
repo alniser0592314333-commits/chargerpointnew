@@ -133,14 +133,8 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           reservationMap.set(sequence.id, sequence);
         },
         resetForDay: (dayId: string, nextNumber: number) => {
-          let highWater = Math.max(0, nextNumber - 1);
-          for (const reservation of reservationMap.values()) {
-            if (reservation.businessDayId !== dayId) continue;
-            const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
-              ? Math.max(0, Number(reservation.nextNumber) - 1)
-              : Number(reservation.endNumber) || 0;
-            highWater = Math.max(highWater, consumedThrough);
-          }
+          // Explicit renumber invalidates prior ranges instead of preserving their old high-water.
+          const highWater = Math.max(0, nextNumber - 1);
           const nextHighWaterNumber = highWater + 1;
           let watermarkFound = false;
           for (const reservation of Array.from(reservationMap.values())) {
