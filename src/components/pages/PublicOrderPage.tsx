@@ -589,11 +589,9 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                         <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
                         <div className="order-fully-paid-text">
                           <h3>{isAr ? 'تم قبول الدفع' : 'Payment accepted'}</h3>
-                          <p>{data.customerHasPositiveCredit
-                            ? (isAr ? 'تم اعتماد الدفعة. سيُستخدم رصيدك الموجب أولاً عند احتساب المبلغ المستحق.' : 'Your payment was approved. Your positive credit is applied first when calculating what remains due.')
-                            : (isAr
-                                ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
-                                : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`)}</p>
+                          <p>{isAr
+                            ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
+                            : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`}</p>
                         </div>
                       </div>
                     )}
@@ -627,13 +625,9 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                         <div className="order-fully-paid-icon" aria-hidden="true"><CircleAlert size={22} /></div>
                         <div className="order-fully-paid-text">
                           <h3>{isAr ? 'لم يتم قبول إشعار الدفع' : 'Payment notification was not accepted'}</h3>
-                          <p>{data.customerHasPositiveCredit
-                            ? (isAr
-                                ? 'لم يُعتمد هذا الإشعار كدفعة. رصيدك الموجب سيُستخدم أولاً، فلا ترسل دفعة جديدة الآن.'
-                                : 'This notification was not credited. Your positive credit is applied first, so do not send another payment now.')
-                            : (isAr
-                                ? 'لم يُسجَّل هذا الإشعار كدفعة. يمكنك مراجعة الإيصال وإرسال إشعار جديد.'
-                                : 'This notification was not credited as a payment. Review your receipt and submit a new notification.')}</p>
+                          <p>{isAr
+                            ? 'لم يُسجَّل هذا الإشعار كدفعة. يمكنك مراجعة الإيصال وإرسال إشعار جديد.'
+                            : 'This notification was not credited as a payment. Review your receipt and submit a new notification.'}</p>
                         </div>
                       </div>
                     )}
