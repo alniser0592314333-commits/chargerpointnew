@@ -234,17 +234,17 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
   const isCustomerPayment = Boolean(customer && !order);
   const amountDue = order ? (typeof order.orderDueMinor === 'number' ? order.orderDueMinor : null) : null;
+  // The server-calculated remainder already includes applicable customer credit.
+  // A positive-balance flag must never block payment when amountDue is still greater than zero.
   const orderPaymentBlockReason = !order
     ? ''
-    : typeof order.customerHasPositiveCredit !== 'boolean'
-      ? (isAr ? 'تعذّر التحقق من رصيد الحساب. حدّث الصفحة قبل إرسال أي دفعة.' : 'Could not verify the account balance. Refresh before sending a payment.')
-      : order.orderQrSubmissionLimitReached === true && amountDue !== null && amountDue > 0
-        ? (isAr ? 'تم استخدام إشعارات الدفع الثلاثة المسموح بها لهذا الطلب. تواصل مع نقطة الشحن لمتابعة المبلغ المتبقي.' : 'This order QR has used all three allowed payment notifications. Contact Charging Point to resolve the remaining amount.')
-        : amountDue === null || amountDue <= 0
-          ? (['DELIVERED', 'COMPLETED'].includes(String(order.status ?? '').toUpperCase())
-              ? (isAr ? 'لا يوجد مبلغ مستحق على هذا الطلب حالياً.' : 'There is no remaining amount due for this order.')
-              : (isAr ? 'الطلب ما زال قيد الشحن؛ لا يُطلب الدفع قبل تسجيل التسليم.' : 'This order is still charging. Payment is not due before delivery is recorded.'))
-          : '';
+    : order.orderQrSubmissionLimitReached === true && amountDue !== null && amountDue > 0
+      ? (isAr ? 'تم استخدام إشعارات الدفع الثلاثة المسموح بها لهذا الطلب. تواصل مع نقطة الشحن لمتابعة المبلغ المتبقي.' : 'This order QR has used all three allowed payment notifications. Contact Charging Point to resolve the remaining amount.')
+      : amountDue === null || amountDue <= 0
+        ? (['DELIVERED', 'COMPLETED'].includes(String(order.status ?? '').toUpperCase())
+            ? (isAr ? 'لا يوجد مبلغ مستحق على هذا الطلب حالياً.' : 'There is no remaining amount due for this order.')
+            : (isAr ? 'الطلب ما زال قيد الشحن؛ لا يُطلب الدفع قبل تسجيل التسليم.' : 'This order is still charging. Payment is not due before delivery is recorded.'))
+        : '';
   const orderPaymentAllowed = Boolean(order && !orderPaymentBlockReason);
   const backHref = isCustomerPayment ? `/c/${token}` : `/o/${token}`;
   const formatAmount = (amount: number) => formatCurrency(amount);
