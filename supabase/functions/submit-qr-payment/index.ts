@@ -233,7 +233,9 @@ Deno.serve(async (request: Request) => {
       return json(409, { error: "A payment notification for this account or order is already awaiting review" });
     }
     if ((recentCheck.count ?? 0) >= 3) {
-      return json(429, { error: "Too many submissions for this account or order. Please try again later." });
+      return orderId
+        ? json(409, { error: "Maximum of three payment notifications reached for this order QR." })
+        : json(429, { error: "Too many submissions for this customer account. Please try again later." });
     }
 
     uploadedPath = await uploadVerifiedReceipt(supabase, targetKind, targetId, bytes, image);
@@ -254,11 +256,17 @@ Deno.serve(async (request: Request) => {
       await supabase.storage.from("qr-payment-receipts").remove([uploadedPath]);
       uploadedPath = null;
       const message = submitError?.message ?? "Submission was not accepted";
-      const isConflict = /already awaiting review|no remaining amount|Too many payment notifications|too many submissions|maximum of three payment notifications/i.test(message);
-      return json(isConflict ? 409 : 400, {
-        error: isConflict
-          ? "This account or order already has a pending notification, or the amount is no longer payable."
-          : "The payment notification could not be saved. Please try again.",
+      const isMaximumSubmissions = /maximum of three payment notifications/i.test(message);
+      const isCreditBlocked = /positive credit/i.test(message);
+      const isConflict = /already awaiting review|no remaining amount|Too many payment notifications|too many submissions/i.test(message);
+      return json(isMaximumSubmissions || isConflict ? 409 : 400, {
+        error: isMaximumSubmissions
+          ? "Maximum of three payment notifications reached for this order QR."
+          : isCreditBlocked
+            ? "Your account has positive credit. No order payment is needed right now."
+            : isConflict
+              ? "This account or order already has a pending notification, or the amount is no longer payable."
+              : "The payment notification could not be saved. Please try again.",
       });
     }
 
