@@ -1,5 +1,6 @@
 import React from 'react';
 import { I18nProvider } from './i18n/i18nContext';
+import { ThemeProvider } from './theme/themeContext';
 import { PublicCustomerQrPage } from './components/pages/PublicCustomerQrPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
@@ -8,10 +9,10 @@ import './public-portal.css';
 
 const publicRoutes = [
   { prefix: '/public/qr/customer/', render: (token: string) => <PublicCustomerQrPage token={token} /> },
-  { prefix: '/public/qr/order/', render: (token: string) => <PublicOrderPage token={token} /> },
-  { prefix: '/public/order/', render: (token: string) => <PublicOrderPage token={token} /> },
+  { prefix: '/public/qr/order/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
+  { prefix: '/public/order/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
   { prefix: '/c/', render: (token: string) => <PublicCustomerQrPage token={token} /> },
-  { prefix: '/o/', render: (token: string) => <PublicOrderPage token={token} /> },
+  { prefix: '/o/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
   { prefix: '/pay/', render: (token: string) => <PublicPaymentPage token={token} /> },
 ];
 
