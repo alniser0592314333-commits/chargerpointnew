@@ -1,7 +1,7 @@
--- Restore dispatcher behavior lost when later migrations replaced the whole function
--- from an older snapshot: atomic day renumbering, collision-safe server order numbering,
--- and the Super Admin debt-limit policy. Preserve the current order-item edit handler.
--- This migration changes function definitions only; it does not rewrite business rows.
+-- Make server order-number allocation authoritative and contiguous under the per-day lock.
+-- Preserve atomic day renumbering, all canonical dispatcher routes, and the current item-edit
+-- and Super Admin debt-limit behavior. Existing business rows are not rewritten.
+-- A deferred unique constraint protects the day/number pair while allowing full-day renumber swaps.
 CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command_unlocked(
     p_command_id UUID,
     p_command_type TEXT,
