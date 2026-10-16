@@ -21,36 +21,35 @@ const methods: Array<{
   logoUrl: string;
 }> = [
   {
-      id: 'JAWAL_PAY',
-      ar: 'جوال باي',
-      en: 'Jawwal Pay',
-      short: 'jawwal pay',
-      descriptionAr: 'محفظة إلكترونية',
-      descriptionEn: 'Digital wallet',
-      markClass: 'bg-[#f5e9ed] text-[#8e2342]',
-      logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
-    },
+    id: 'JAWAL_PAY',
+    ar: 'جوال باي',
+    en: 'Jawwal Pay',
+    short: 'jawwal pay',
+    descriptionAr: 'محفظة إلكترونية',
+    descriptionEn: 'Digital wallet',
+    markClass: 'bg-[#f5e9ed] text-[#8e2342]',
+    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
+  },
   {
-      id: 'BANK_OF_PALESTINE',
-      ar: 'بنك فلسطين',
-      en: 'Bank of Palestine',
-      short: 'BOP',
-      descriptionAr: 'تحويل بنكي',
-      descriptionEn: 'Bank transfer',
-      markClass: 'bg-[#e7f1e9] text-[#1d6a45]',
-      logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg',
-    },
+    id: 'BANK_OF_PALESTINE',
+    ar: 'بنك فلسطين',
+    en: 'Bank of Palestine',
+    short: 'BOP',
+    descriptionAr: 'تحويل بنكي',
+    descriptionEn: 'Bank transfer',
+    markClass: 'bg-[#e7f1e9] text-[#1d6a45]',
+    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg',
+  },
   {
-      id: 'PALPAY',
-      ar: 'بال باي',
-      en: 'PalPay',
-      short: 'PALPAY',
-      descriptionAr: 'محفظتي',
-      descriptionEn: 'Mahfazati wallet',
-      markClass: 'bg-[#f2e8ff] text-[#6634a5]',
-      logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png',
-    },
-
+    id: 'PALPAY',
+    ar: 'بال باي',
+    en: 'PalPay',
+    short: 'PALPAY',
+    descriptionAr: 'محفظتي',
+    descriptionEn: 'Mahfazati wallet',
+    markClass: 'bg-[#f2e8ff] text-[#6634a5]',
+    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png',
+  },
 ];
 
 const PaymentMethodLogo: React.FC<{ method: typeof methods[number] }> = ({ method }) => {
@@ -240,7 +239,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     }
     if (!receipt) {
       setValidationError('receipt');
-      setError : 'Please attach a payment receipt image before sending.');
+      setError(isAr ? 'يجب إرفاق صورة إشعار الدفع قبل الإرسال.' : 'Please attach a payment receipt image before sending.');
       receiptSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
