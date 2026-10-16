@@ -236,9 +236,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const amountDue = order ? (typeof order.orderDueMinor === 'number' ? order.orderDueMinor : null) : null;
   const orderPaymentBlockReason = !order
     ? ''
-    : typeof order.customerBalanceMinor !== 'number' || !Number.isFinite(order.customerBalanceMinor)
+    : typeof order.customerHasPositiveCredit !== 'boolean'
       ? (isAr ? 'تعذّر التحقق من رصيد الحساب. حدّث الصفحة قبل إرسال أي دفعة.' : 'Could not verify the account balance. Refresh before sending a payment.')
-      : order.customerBalanceMinor > 0
+      : order.customerHasPositiveCredit
         ? (isAr ? 'رصيدك موجب؛ سيُستخدم لتغطية تكلفة الطلب أولاً. لا تحتاج لإرسال دفعة الآن.' : 'Your account has positive credit, which is applied first. No payment is needed now.')
         : amountDue === null || amountDue <= 0
           ? (['DELIVERED', 'COMPLETED'].includes(String(order.status ?? '').toUpperCase())
