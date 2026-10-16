@@ -7,7 +7,6 @@ import {
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
-import { fetchGlobalAppIdentity } from '../../services/storage/logoStorage';
 import { getPublicOrderByToken, PublicOrderQrData } from './dayOrdersStore';
 
 export interface PublicOrderPageProps {
@@ -27,7 +26,6 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     let active = true;
     setLoading(true);
     setError(false);
-    void fetchGlobalAppIdentity().catch((err) => console.warn('Unable to refresh public brand identity:', err));
     getPublicOrderByToken(token)
       .then((result) => {
         if (!active) return;
@@ -215,7 +213,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             <section className="order-glass-card order-amount-card">
               <div className="order-amount-heading">
                 <span className="order-amount-icon"><CreditCard size={22} /></span>
-                <div><span className="order-overline">{isAr ? 'قيمة الطلب' : 'ORDER TOTAL'}</span><h2>{isAr ? 'ملخص المبلغ' : 'Amount summary'}</h2></div>
+                <div><h2>{isAr ? 'قيمة الطلب' : 'Order total'}</h2></div>
               </div>
               <div className="order-total-value" dir="ltr">{typeof total === 'number' ? formatCurrency(total) : '—'}</div>
               <div className="order-due-row"><span>{isAr ? 'المبلغ المتبقي' : 'Amount due'}</span><strong dir="ltr">{typeof due === 'number' ? formatCurrency(due) : '—'}</strong></div>
