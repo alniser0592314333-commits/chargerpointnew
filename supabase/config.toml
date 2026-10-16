@@ -30,3 +30,6 @@ enabled = true
 
 [functions.submit-qr-payment]
 verify_jwt = false
+
+[functions.sign-qr-payment-receipt]
+verify_jwt = false
