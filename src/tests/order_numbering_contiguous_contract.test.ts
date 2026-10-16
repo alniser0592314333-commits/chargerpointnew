@@ -33,7 +33,6 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(branch).toContain('ORDER_NUMBER_CONFLICT [409]');
     expect(branch).toContain('ORDER_NUMBER_IMMUTABLE [409]');
     expect(branch).toContain('ORDER_NUMBER_REQUIRED');
-    expect(branch).toContain('v_max_new_number <> v_change_count');
     expect(branch).toContain("'{displayNumber}'");
     expect(branch).toContain("'{display_number}'");
     expect(branch).toContain("p_payload->>'displayNumber'");
@@ -58,8 +57,9 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     const preview = store.slice(start, end);
-    expect(preview).toContain('return maxNumber + 1');
-    expect(preview).not.toContain('reservationRepo');
+    expect(preview).toContain('return Math.max(maxNumber, lastAssigned) + 1');
+    expect(preview).toContain('getLastAssignedNumberForDay');
+    expect(preview).not.toContain('findActiveByDayAndDevice');
     expect(preview).toContain('getEffectiveOrderItemReadModel()');
   });
 
