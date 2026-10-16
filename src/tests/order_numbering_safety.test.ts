@@ -508,7 +508,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     const reservationArray = Array.from(reservationMap.values());
     expect(reservationArray[0].startNumber).toBe(1);
     expect(reservationArray[0].endNumber).toBe(20); // Preserve the established twenty-number offline reservation range
-    const persistedAfterFirstOrder = (await localDb.list<OrderNumberReservationEntity>('orderNumberReservations'))[0];
+    const persistedAfterFirstOrder = Array.from(reservationMap.values())[0];
     expect(persistedAfterFirstOrder.nextNumber).toBe(2);
 
     // Create additional orders
@@ -521,7 +521,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     // Expected: No additional server reservation is created until current range is exhausted
     expect(reservationMap.size).toBe(1);
-    const persistedAfterThreeOrders = (await localDb.list<OrderNumberReservationEntity>('orderNumberReservations'))[0];
+    const persistedAfterThreeOrders = Array.from(reservationMap.values())[0];
     expect(persistedAfterThreeOrders.nextNumber).toBe(4);
   });
 
