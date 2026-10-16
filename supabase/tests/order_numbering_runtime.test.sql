@@ -98,11 +98,6 @@ VALUES
   ('55555555-5555-4555-8555-555555555555', '33333333-3333-4333-8333-333333333333', 2, 1, 102),
   ('66666666-6666-4666-8666-666666666666', '33333333-3333-4333-8333-333333333333', 3, 1, 103);
 
-ALTER TABLE public.orders
-  ADD CONSTRAINT orders_day_display_number_key
-  UNIQUE (day_id, display_number)
-  DEFERRABLE INITIALLY DEFERRED;
-
 CREATE FUNCTION public.capture_order_change()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -288,7 +283,7 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
--- A unique but stale reserved number must still be reconciled to the next contiguous server number.
+-- A unique reserved number may still arrive out of order; it must not be forced to MAX+1.
 SET ROLE authenticated;
 SELECT public.execute_canonical_sync_command(
   'bbbbbbbb-1111-4111-8111-111111111111'::uuid,
@@ -350,33 +345,33 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.orders
     WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222'
-      AND display_number = 5
+      AND display_number = 21
   ) OR NOT EXISTS (
     SELECT 1 FROM public.test_change_events
     WHERE entity_table = 'orders'
       AND entity_id = 'bbbbbbbb-2222-4222-8222-222222222222'
       AND operation = 'INSERT'
-      AND (payload->>'displayNumber')::INTEGER = 5
-      AND (payload->>'display_number')::INTEGER = 5
+      AND (payload->>'displayNumber')::INTEGER = 21
+      AND (payload->>'display_number')::INTEGER = 21
   ) THEN
-    RAISE EXCEPTION 'A stale free offline number was not reassigned to the next contiguous number';
+    RAISE EXCEPTION 'A unique out-of-order offline reservation was incorrectly forced to MAX+1 or not published';
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM public.orders
     WHERE id = 'cccccccc-2222-4222-8222-222222222222'
-      AND display_number = 6
+      AND display_number = 22
   ) OR NOT EXISTS (
     SELECT 1 FROM public.test_change_events
     WHERE entity_table = 'orders'
       AND entity_id = 'cccccccc-2222-4222-8222-222222222222'
       AND operation = 'INSERT'
-      AND (payload->>'displayNumber')::INTEGER = 6
-      AND (payload->>'display_number')::INTEGER = 6
+      AND (payload->>'displayNumber')::INTEGER = 22
+      AND (payload->>'display_number')::INTEGER = 22
   ) OR NOT EXISTS (
     SELECT 1 FROM public.processed_commands
     WHERE command_id = 'cccccccc-1111-4111-8111-111111111111'
-      AND result_payload->>'displayNumber' = '6'
+      AND result_payload->>'displayNumber' = '22'
   ) THEN
     RAISE EXCEPTION 'A server-assigned zero/missing number was not reconciled and published consistently';
   END IF;
