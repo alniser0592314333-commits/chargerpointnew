@@ -3848,18 +3848,19 @@ export const getOrdersForDay = async (
 export const getNextOrderNumberForDay = async (dayId: string): Promise<number> => {
   await ensureStoreHydrated();
   const deviceId = getCurrentAdminAuthorizationContext().requireAuth().deviceId || 'default-device';
-  const activeReservation = await repoContext.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId);
-  if (activeReservation && activeReservation.nextNumber <= activeReservation.endNumber) {
-    return activeReservation.nextNumber;
-  }
   let maxNumber = 0;
   getEffectiveOrderItemReadModel().orders.forEach((order) => {
     if (isSameDayId(order.dayId, dayId)) maxNumber = Math.max(maxNumber, Number(order.displayNumber) || 0);
   });
-  reservationsMap.forEach((reservation) => {
-    if (reservation.businessDayId === dayId) maxNumber = Math.max(maxNumber, reservation.endNumber);
-  });
-  return maxNumber + 1;
+  const expectedNextNumber = maxNumber + 1;
+  const needsReset = repoContext.reservationRepo?.needsResetForDay(dayId, deviceId, expectedNextNumber) || false;
+  if (needsReset) return expectedNextNumber;
+
+  const activeReservation = await repoContext.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId);
+  if (activeReservation && activeReservation.nextNumber <= activeReservation.endNumber) {
+    return activeReservation.nextNumber;
+  }
+  return expectedNextNumber;
 };
 
 export const searchCustomers = async (query: string): Promise<UICustomerItem[]> => {
