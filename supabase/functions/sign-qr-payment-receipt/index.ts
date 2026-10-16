@@ -48,7 +48,7 @@ Deno.serve(async (request: Request) => {
       return respond(403, { error: "Payment-review access could not be verified" });
     }
     if (!pending.some((row: Record<string, unknown>) =>
-      row?.status === "PENDING" && row?.receipt_path === path
+      row?.receipt_path === path
     )) return respond(404, { error: "Pending receipt not found" });
 
     const { data: signed, error: signError } =
