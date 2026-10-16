@@ -546,9 +546,9 @@ BEGIN
                 FROM public.orders
                 WHERE day_id = v_day_uuid;
 
-                IF v_requested_display_number <> v_max_new_number + 1 THEN
-                    RAISE EXCEPTION 'ORDER_NUMBER_CONFLICT [409]: client order number % does not match the next unused number %. The assigned number was not changed.',
-                        v_requested_display_number, v_max_new_number + 1
+                IF v_requested_display_number <= v_max_new_number THEN
+                    RAISE EXCEPTION 'ORDER_NUMBER_CONFLICT [409]: client order number % is not above the current high-water mark %. The assigned number was not changed.',
+                        v_requested_display_number, v_max_new_number
                         USING ERRCODE = 'P0409';
                 END IF;
 
