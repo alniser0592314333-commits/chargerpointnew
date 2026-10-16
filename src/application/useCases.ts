@@ -388,6 +388,13 @@ export class FinalUseCases {
         return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
       }
 
+      if (!repos.reservationRepo?.resetForDay) {
+        return { success: false as const, error: 'Order-number reservations cannot be safely reset; no renumbering was queued.' };
+      }
+      // Invalidate every unused number range in the same transaction as the renumber command.
+      // The next new order must continue at N+1, not at a stale pre-renumber cursor.
+      repos.reservationRepo.resetForDay(dayId, changes.length + 1);
+
       const now = new Date().toISOString();
       for (let index = 0; index < changes.length; index++) {
         const change = changes[index];
