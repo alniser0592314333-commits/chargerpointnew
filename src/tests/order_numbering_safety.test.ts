@@ -66,7 +66,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       return Boolean(effectiveDayId && effectiveDayId === dayId);
     });
 
-    const effectiveOrdersForDay = (dayId: string): OrderEntity[] => {
+    const effectiveOrdersAll = (): OrderEntity[] => {
       const effective = new Map<string, OrderEntity>(Array.from(orderMap.values()).map((order) => [order.id, { ...order }]));
       for (const overlay of Array.from(overlays.values()).filter((entry) => entry.status === 'PENDING' && entry.entityType === 'orders')) {
         const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
@@ -74,8 +74,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         if (overlay.operation === 'DELETE') effective.delete(overlay.entityId);
         else effective.set(overlay.entityId, { ...(existing || {} as OrderEntity), ...patch, id: overlay.entityId } as OrderEntity);
       }
-      return Array.from(effective.values()).filter((order) => order.dayId === dayId);
+      return Array.from(effective.values());
     };
+    const effectiveOrdersForDay = (dayId: string): OrderEntity[] =>
+      effectiveOrdersAll().filter((order) => order.dayId === dayId);
     const hasPendingRenumberForDay = (dayId: string) => Array.from(overlays.values()).some((overlay) =>
       overlay.status === 'PENDING' && overlay.mutationKey === `renumber-day:${dayId}`
     );
@@ -85,7 +87,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         findById: (id: string) => orderMap.get(id) || null,
         save: (o: OrderEntity) => { orderMap.set(o.id, { ...o }); },
         countForDay: (dayId: string) => effectiveOrdersForDay(dayId).reduce((max, o) => Math.max(max, o.displayNumber || 0), 0),
-        maxInternalSequence: () => Array.from(orderMap.values()).reduce((max, order) => Math.max(max, Number(order.internalSequence) || 0), 0),
+        maxInternalSequence: () => effectiveOrdersAll().reduce((max, order) => Math.max(max, Number(order.internalSequence) || 0), 0),
         findByDay: (dayId: string) => effectiveOrdersForDay(dayId),
       },
       reservationRepo: {
