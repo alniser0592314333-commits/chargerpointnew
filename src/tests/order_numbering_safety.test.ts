@@ -85,6 +85,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         findById: (id: string) => orderMap.get(id) || null,
         save: (o: OrderEntity) => { orderMap.set(o.id, { ...o }); },
         countForDay: (dayId: string) => effectiveOrdersForDay(dayId).reduce((max, o) => Math.max(max, o.displayNumber || 0), 0),
+        maxInternalSequence: () => Array.from(orderMap.values()).reduce((max, order) => Math.max(max, Number(order.internalSequence) || 0), 0),
         findByDay: (dayId: string) => effectiveOrdersForDay(dayId),
       },
       reservationRepo: {
