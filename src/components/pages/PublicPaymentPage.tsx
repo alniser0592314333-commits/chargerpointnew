@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, FileImage,
   Clock3, Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud,
-  X, Zap, Wallet, AlertCircle, RefreshCw,
+  X, Wallet, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -361,8 +361,6 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       setSending(false);
     }
   };
-
-  const pageTitle = isAr ? 'بوابة الدفع والتحويل' : 'Payment & Transfer Portal';
 
   return (
     <div
