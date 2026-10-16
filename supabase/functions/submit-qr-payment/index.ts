@@ -167,7 +167,7 @@ Deno.serve(async (request: Request) => {
       }
       customerId = String(orderRecord.customer_id);
       if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor > 99_999_999_999) {
-        return json(400, { error: "This order has no outstanding amount to submit" });
+        return json(400, { error: "No amount is due through this order QR. Payment is accepted only for financially recognized charges." });
       }
     } else {
       const { data: customerRows, error: customerResolveError } = await supabase.rpc("public_resolve_customer_qr", {
