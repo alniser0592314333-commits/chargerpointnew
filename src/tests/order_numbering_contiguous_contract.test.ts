@@ -26,7 +26,7 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(branch).toContain("pg_advisory_xact_lock(hashtextextended(v_day_uuid::TEXT, 1))");
     expect(branch).toContain('FROM public.business_days WHERE id = v_day_uuid FOR UPDATE');
     expect(branch).toContain("v_requested_display_number := NULLIF(COALESCE(");
-    expect(branch).toContain('v_requested_display_number <> v_max_new_number + 1');
+    expect(branch).toContain('v_requested_display_number <= v_max_new_number');
     expect(branch).toContain('public.business_day_order_sequences');
     expect(branch).toContain('last_assigned_number');
     expect(branch).toContain('GREATEST(v_max_new_number, COALESCE(MAX(display_number), 0))');
