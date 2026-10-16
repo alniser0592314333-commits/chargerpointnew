@@ -253,6 +253,7 @@ export const NotificationsRequestsPage: React.FC = () => {
         <div className="space-y-4">
           {items.map((item) => {
             const detail = methodDetails[item.payment_method] || { ar: 'طريقة غير معروفة', en: 'Unknown method', mark: 'PAY', cls: 'bg-gray-100 text-gray-700', logoUrl: '' };
+            const displayApprovalAmountMinor = parseApprovalAmountMinor(approvalAmounts[item.id] ?? '');
             return (
               <article key={item.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_8px_30px_rgba(16,55,51,0.03)] dark:border-[#1c4140] dark:bg-[#0a2423]">
                 <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 p-4 dark:border-[#244746] sm:p-5">
@@ -285,7 +286,7 @@ export const NotificationsRequestsPage: React.FC = () => {
                       <div role="alertdialog" aria-live="polite" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
                         <p className="font-semibold">
                           {pendingConfirmation.action === 'APPROVE'
-                            ? (isAr ? 'تأكيد اعتماد الدفعة بمبلغ ' + formatCurrency(approvedAmountMinor ?? 0) + '؟' : 'Confirm approval for ' + formatCurrency(approvedAmountMinor ?? 0) + '?')
+                            ? (isAr ? 'تأكيد اعتماد الدفعة بمبلغ ' + formatCurrency(displayApprovalAmountMinor ?? 0) + '؟' : 'Confirm approval for ' + formatCurrency(displayApprovalAmountMinor ?? 0) + '?')
                             : (isAr ? 'تأكيد رفض إشعار الدفع للزبون ' + item.customer_name + '؟' : 'Confirm rejecting ' + item.customer_name + "'s payment notification?")}
                         </p>
                         <p className="mt-1 text-xs opacity-80">
