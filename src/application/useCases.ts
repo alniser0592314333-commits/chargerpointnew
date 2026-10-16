@@ -185,13 +185,24 @@ export class FinalUseCases {
     }
 
     const orderId = commandId || crypto.randomUUID();
+    const dayOrders = this.deps.orderRepo.findByDay?.(dayId);
+    if (!dayOrders) {
+      return { success: false, error: 'The current day order list is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+    }
+    const existingNumbers = dayOrders.map((order) => Number(order.displayNumber) || 0).sort((a, b) => a - b);
+    if (existingNumbers.some((number, index) => number !== index + 1)) {
+      return { success: false, error: 'Day numbering is not contiguous. Renumber the complete day before adding another order.', code: 'ORDER_NUMBERING_GAP' };
+    }
+    const displayNumber = dayOrders.length + 1;
+    const internalSequence = (this.deps.orderRepo.maxInternalSequence?.() ??
+      dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
 
     const order: OrderEntity = {
       id: orderId,
       dayId,
       customerId,
-      displayNumber: 0, // Will be set by server
-      internalSequence: 0,
+      displayNumber,
+      internalSequence,
       status: 'pending',
       customerBalanceSnapshotMinor: currentBalance,
       notes,
@@ -543,31 +554,18 @@ export class FinalUseCases {
         }
         const expectedNextNumber = dayOrders.length + 1;
         const deviceId = actor.deviceId || 'default-device';
-        if (repos.reservationRepo?.needsResetForDay?.(dayId, deviceId, expectedNextNumber)) {
+        // Legacy 20-number reservations are no longer used to assign customer-facing numbers.
+        // A stale active cursor may be invalidated, but the immutable number comes only from
+        // the effective local day orders inside this same IndexedDB transaction.
+        const activeReservation = repos.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId) as OrderNumberReservationEntity | null | undefined;
+        if (activeReservation && repos.reservationRepo?.needsResetForDay?.(dayId, deviceId, expectedNextNumber)) {
           if (!repos.reservationRepo.resetForDay) {
-            return { success: false, error: 'The saved order-number cursor is stale and cannot be repaired safely.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+            return { success: false, error: 'The saved legacy order-number cursor is stale and cannot be invalidated safely.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
           }
           repos.reservationRepo.resetForDay(dayId, expectedNextNumber);
         }
-        let reservation = repos.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId) as OrderNumberReservationEntity | null | undefined;
-        if (repos.reservationRepo && (!reservation || reservation.nextNumber > reservation.endNumber)) {
-          reservation = repos.reservationRepo.reserveRange(dayId, deviceId, commandId, 20) as OrderNumberReservationEntity;
-        }
 
-        let displayNumber: number;
-        if (repos.reservationRepo) {
-          if (!reservation || reservation.nextNumber > reservation.endNumber) {
-            return { success: false, error: 'Could not reserve the next order number safely. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
-          }
-          displayNumber = reservation.nextNumber;
-          reservation.nextNumber += 1;
-          if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
-          reservation.updatedAt = new Date().toISOString();
-          repos.reservationRepo.save(reservation);
-        } else {
-          displayNumber = expectedNextNumber;
-        }
-
+        const displayNumber = expectedNextNumber;
         const internalSequence = (repos.orderRepo.maxInternalSequence?.() ??
           dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
         const order: OrderEntity = {
