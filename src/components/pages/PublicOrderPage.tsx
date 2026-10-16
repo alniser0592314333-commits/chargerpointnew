@@ -630,7 +630,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && (
+                    {paymentViewState === 'APPROVED' && (
                       <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
                         <div className="order-fully-paid-text">
@@ -699,7 +699,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {paymentViewState === 'APPROVED' && (
+                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
