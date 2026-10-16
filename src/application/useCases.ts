@@ -586,7 +586,9 @@ export class FinalUseCases {
     }
 
     const overlayRepo = this.deps.overlayRepo;
-    if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingRenumberForDay) {
+    if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingRenumberForDay ||
+        !this.deps.reservationRepo?.getLastAssignedNumberForDay ||
+        !this.deps.reservationRepo?.saveLastAssignedNumberForDay) {
       return { success: false, error: 'Safe offline order numbering is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
     }
     if (await overlayRepo.hasPendingRenumberForDay(dayId)) {
