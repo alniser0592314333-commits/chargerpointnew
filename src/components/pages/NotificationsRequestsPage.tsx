@@ -48,13 +48,15 @@ const ReviewMethodLogo: React.FC<{ detail: { mark: string; cls: string; logoUrl:
 async function createReceiptSignedUrl(path: string): Promise<string | null> {
   const token = getSupabaseAuthToken();
   if (!config.supabaseUrl || !config.supabaseAnonKey || !token || !path) return null;
-  const cleanBase = config.supabaseUrl.replace(/\/+$/, '');
-  const safePath = path.split('/').map((part) => encodeURIComponent(part)).join('/');
-  const endpoint = cleanBase + '/storage/v1/object/sign/qr-payment-receipts/' + safePath;
+  const endpoint = config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/sign-qr-payment-receipt';
   const request = (bearer: string) => fetch(endpoint, {
     method: 'POST',
-    headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + bearer, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ expiresIn: 300 }),
+    headers: {
+      apikey: config.supabaseAnonKey,
+      Authorization: 'Bearer ' + bearer,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ path }),
   });
   let response = await request(token);
   if (response.status === 401) {
@@ -69,12 +71,12 @@ async function createReceiptSignedUrl(path: string): Promise<string | null> {
   const result = await response.json().catch(() => ({}));
   const signedURL = result.signedURL ?? result.signedUrl;
   if (typeof signedURL !== 'string' || !signedURL) {
-    console.warn('Storage signed URL response did not contain signedURL.');
+    console.warn('Receipt signer response did not contain signedURL.');
     return null;
   }
-  if (/^https?:\/\//i.test(signedURL)) return signedURL;
-  if (signedURL.startsWith('/storage/v1/')) return cleanBase + signedURL;
-  return cleanBase + '/storage/v1/' + signedURL.replace(/^\/+/, '');
+  if (/^https?:\\/\\//i.test(signedURL)) return signedURL;
+  if (signedURL.startsWith('/storage/v1/')) return config.supabaseUrl.replace(/\\/+$/, '') + signedURL;
+  return config.supabaseUrl.replace(/\\/+$/, '') + '/storage/v1/' + signedURL.replace(/^\\/+/, '');
 }
 
 export const NotificationsRequestsPage: React.FC = () => {
