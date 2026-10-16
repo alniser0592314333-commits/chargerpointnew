@@ -2313,6 +2313,13 @@ function createTransactionalRepoContext(
         });
         return maxNum;
       },
+      maxInternalSequence: () => {
+        let maxSequence = 0;
+        getEffectiveOrderItemReadModel().orders.forEach((order) => {
+          maxSequence = Math.max(maxSequence, Number(order.internalSequence) || 0);
+        });
+        return maxSequence;
+      },
       // A true row list is required for day-wide repairs. countForDay intentionally
       // returns the current maximum number for sequential allocation, not row count.
       findByDay: (dayId: string) => Array.from(getEffectiveOrderItemReadModel().orders.values()).filter((o) => isSameDayId(o.dayId, dayId)),
@@ -2745,14 +2752,17 @@ export const repoContext: RepositoryContext = {
     countForDay: async (dayId) => {
       await ensureStoreHydrated();
       let maxNum = 0;
-      ordersMap.forEach((o) => {
-        if (isSameDayId(o.dayId, dayId)) {
-          if ((o.displayNumber || 0) > maxNum) {
-            maxNum = o.displayNumber;
-          }
-        }
+      getEffectiveOrderItemReadModel().orders.forEach((o) => {
+        if (isSameDayId(o.dayId, dayId)) maxNum = Math.max(maxNum, Number(o.displayNumber) || 0);
       });
       return maxNum;
+    },
+    maxInternalSequence: () => {
+      let maxSequence = 0;
+      getEffectiveOrderItemReadModel().orders.forEach((order) => {
+        maxSequence = Math.max(maxSequence, Number(order.internalSequence) || 0);
+      });
+      return maxSequence;
     },
   },
   itemRepo: {
