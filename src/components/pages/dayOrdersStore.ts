@@ -3853,7 +3853,7 @@ export const getNextOrderNumberForDay = async (dayId: string): Promise<number> =
     if (isSameDayId(order.dayId, dayId)) maxNumber = Math.max(maxNumber, Number(order.displayNumber) || 0);
   });
   const expectedNextNumber = maxNumber + 1;
-  const needsReset = repoContext.reservationRepo?.needsResetForDay(dayId, deviceId, expectedNextNumber) || false;
+  const needsReset = repoContext.reservationRepo?.needsResetForDay?.(dayId, deviceId, expectedNextNumber) || false;
   if (needsReset) return expectedNextNumber;
 
   const activeReservation = await repoContext.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId);
