@@ -185,60 +185,80 @@ export class FinalUseCases {
     }
 
     const orderId = commandId || crypto.randomUUID();
-    const dayOrders = this.deps.orderRepo.findByDay?.(dayId);
-    if (!dayOrders) {
-      return { success: false, error: 'The current day order list is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
-    }
-    const existingNumbers = dayOrders.map((order) => Number(order.displayNumber) || 0).sort((a, b) => a - b);
-    if (existingNumbers.some((number, index) => number !== index + 1)) {
-      return { success: false, error: 'Day numbering is not contiguous. Renumber the complete day before adding another order.', code: 'ORDER_NUMBERING_GAP' };
-    }
-    const displayNumber = dayOrders.length + 1;
-    const internalSequence = (this.deps.orderRepo.maxInternalSequence?.() ??
-      dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
-
-    const order: OrderEntity = {
-      id: orderId,
-      dayId,
-      customerId,
-      displayNumber,
-      internalSequence,
-      status: 'pending',
-      customerBalanceSnapshotMinor: currentBalance,
-      notes,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
-    };
-
+    const now = new Date().toISOString();
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
 
-    // Phase 1.1: Use Overlay
-    const mutationKey = `order:${orderId}`;
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(orderId, [
+    return this.deps.transactionManager.runInTransaction((repos) => {
+      const overlayRepo = repos.overlayRepo;
+      if (!overlayRepo?.saveWithTx || !overlayRepo.hasPendingRenumberForDaySync) {
+        return { success: false as const, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      if (overlayRepo.hasPendingRenumberForDaySync(dayId)) {
+        return { success: false as const, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.', code: 'ORDER_RENUMBER_PENDING' };
+      }
+
+      const dayOrders = repos.orderRepo.findByDay?.(dayId);
+      if (!dayOrders) {
+        return { success: false as const, error: 'The current day order list is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      const existingNumbers = dayOrders.map((existing) => Number(existing.displayNumber) || 0).sort((a, b) => a - b);
+      if (existingNumbers.some((number, index) => number !== index + 1)) {
+        return { success: false as const, error: 'Day numbering is not contiguous. Renumber the complete day before adding another order.', code: 'ORDER_NUMBERING_GAP' };
+      }
+
+      const displayNumber = dayOrders.length + 1;
+      const internalSequence = (repos.orderRepo.maxInternalSequence?.() ??
+        dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
+      const order: OrderEntity = {
+        id: orderId,
+        dayId,
+        customerId,
+        displayNumber,
+        internalSequence,
+        status: 'pending',
+        customerBalanceSnapshotMinor: currentBalance,
+        notes,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      };
+
+      repos.mutationSnapshotRepo?.capture(orderId, [
         { table: 'orders', id: order.id, existed: false },
       ]);
-    }
-    await this.createOverlay(orderId, mutationKey, 'orders', orderId, 'CREATE', order as unknown as Record<string, unknown>);
+      overlayRepo.saveWithTx({
+        commandId: orderId,
+        mutationKey: `order:${orderId}`,
+        entityType: 'orders',
+        entityId: orderId,
+        operation: 'CREATE',
+        entityPayload: order as unknown as Record<string, unknown>,
+        sequence: 0,
+        createdAt: now,
+        status: 'PENDING',
+      });
 
-    const previousOrder = dayOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
-    const previousCommand = previousOrder ? await this.deps.commandRepo.get(previousOrder.id) : null;
-    const dependencyCommandId = previousCommand?.type === 'CREATE_ORDER' ? previousOrder?.id : undefined;
-    await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
+      const previousOrder = dayOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
+      const previousCommandResult = previousOrder ? repos.commandRepo.get(previousOrder.id) : null;
+      const previousCommand = previousCommandResult && typeof (previousCommandResult as any).then !== 'function'
+        ? previousCommandResult as { type: string; payload: unknown }
+        : null;
+      const dependencyCommandId = previousCommand?.type === 'CREATE_ORDER' ? previousOrder?.id : undefined;
+      repos.commandRepo.record(orderId, 'CREATE_ORDER', {
         ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash : {}),
-        id: orderId,
+        id: order.id,
+        aggregateId: order.id,
         dayId: order.dayId,
         customerId: order.customerId,
         notes: order.notes,
         ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
         displayNumber: order.displayNumber,
-        orderNumber: (order as any).orderNumber ?? order.displayNumber,
+        orderNumber: order.displayNumber,
         ...(dependencyCommandId ? { dependencyCommandId } : {}),
+      });
+      return { success: true as const, data: order };
     });
-    
-    return { success: true, data: order };
   }
 
   async addOrderItem(
