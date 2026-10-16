@@ -1489,12 +1489,12 @@ html.light .order-about-link-card:hover {
     color: #a7beb9;
   }
 
-  html[dir="rtl"] .public-payment-page .payment-portal-visual {
+  .public-payment-page[dir="rtl"] .payment-portal-visual {
     align-items: flex-start;
     text-align: right;
   }
 
-  html[dir="rtl"] .public-payment-page .payment-portal-visual-art {
+  .public-payment-page[dir="rtl"] .payment-portal-visual-art {
     direction: ltr;
   }
 }
@@ -1554,8 +1554,8 @@ html.light .order-about-link-card:hover {
   html.dark .public-payment-page .payment-portal-visual h2 { color:#e7f2ef !important; }
   html.dark .public-payment-page .payment-portal-visual > p:not(.payment-portal-visual-eyebrow),
   html.dark .public-payment-page .payment-portal-visual-points { color:#a7beb9; }
-  html[dir="rtl"] .public-payment-page .payment-portal-visual { text-align:right; }
-  html[dir="rtl"] .public-payment-page .payment-portal-visual-art { direction:ltr; }
+  .public-payment-page[dir="rtl"] .payment-portal-visual { text-align:right; }
+  .public-payment-page[dir="rtl"] .payment-portal-visual-art { direction:ltr; }
 }
 @media (max-width: 1023px) {
   .public-payment-page .payment-portal-header-back span { display:none; }
