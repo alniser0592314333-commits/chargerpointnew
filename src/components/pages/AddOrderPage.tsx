@@ -284,7 +284,15 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
     if (result.success) {
       onSuccess(dayId);
     } else {
-      setErrorMessage(result.error || t('errorOccurred'));
+      if (result.errorCode === 'ORDER_NUMBERING_GAP') {
+        setErrorMessage(t('orderNumberingGap'));
+      } else if (result.errorCode === 'ORDER_RENUMBER_PENDING') {
+        setErrorMessage(t('orderRenumberPending'));
+      } else if (result.errorCode === 'ORDER_NUMBERING_UNAVAILABLE') {
+        setErrorMessage(t('orderNumberingUnavailable'));
+      } else {
+        setErrorMessage(result.error || t('errorOccurred'));
+      }
     }
   };
 

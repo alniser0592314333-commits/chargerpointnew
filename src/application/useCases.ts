@@ -39,7 +39,6 @@ import {
   BusinessRuleViolation,
   IdempotencyConflictError,
   BinRequiredError,
-  OrderNumberReservationExhaustedError,
   FinancialInvariantViolation
 } from '../domain/errors';
 
@@ -49,11 +48,16 @@ export interface RepositoryContext {
     save(order: OrderEntity): Promise<void> | void;
     countForDay(dayId: ID): Promise<number> | number;
     findByDay?(dayId: ID): OrderEntity[];
+    maxInternalSequence?(): number;
   };
   reservationRepo?: {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
     save(reservation: OrderNumberReservationEntity): Promise<void> | void;
     reserveRange(dayId: ID, deviceId: ID, commandId?: ID, rangeSize?: number): Promise<OrderNumberReservationEntity> | OrderNumberReservationEntity;
+    resetForDay?(dayId: ID, nextNumber: number): Promise<void> | void;
+    needsResetForDay?(dayId: ID, deviceId: ID, expectedNextNumber: number): boolean;
+    getLastAssignedNumberForDay?(dayId: ID): number;
+    saveLastAssignedNumberForDay?(dayId: ID, assignedNumber: number): void;
   };
   itemRepo: {
     findByOrderId(orderId: ID): Promise<OrderItemEntity[]> | OrderItemEntity[];
@@ -101,6 +105,8 @@ export interface RepositoryContext {
     saveWithTx?(overlay: OptimisticOverlayRecord): Promise<void> | void;
     hasPendingOrderChangesForDay?(dayId: ID): Promise<boolean> | boolean;
     hasPendingOrderChangesForDaySync?(dayId: ID): boolean;
+    hasPendingRenumberForDay?(dayId: ID): Promise<boolean> | boolean;
+    hasPendingRenumberForDaySync?(dayId: ID): boolean;
     remove(commandId: ID): Promise<void> | void;
     get(commandId: ID): Promise<OptimisticOverlayRecord | null> | (OptimisticOverlayRecord | null);
     getNextSequence(): Promise<number> | number;
@@ -181,45 +187,133 @@ export class FinalUseCases {
     }
 
     const orderId = commandId || crypto.randomUUID();
-
-    const order: OrderEntity = {
-      id: orderId,
-      dayId,
-      customerId,
-      displayNumber: 0, // Will be set by server
-      internalSequence: 0,
-      status: 'pending',
-      customerBalanceSnapshotMinor: currentBalance,
-      notes,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
-    };
-
+    const now = new Date().toISOString();
     const effectiveGroupId = groupId || (typeof payloadHash === 'object' && payloadHash !== null ? (payloadHash as any).groupId : undefined);
 
-    // Phase 1.1: Use Overlay
-    const mutationKey = `order:${orderId}`;
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(orderId, [
+    // Compatibility for legacy non-offline repository adapters that expose neither
+    // overlays nor a durable local sequence. The production local-first adapter always
+    // supplies both and takes the atomic path below.
+    if (!this.deps.overlayRepo && !this.deps.reservationRepo) {
+      const legacyOrders = this.deps.orderRepo.findByDay?.(dayId) || [];
+      const legacyNumbers = legacyOrders.map((existing) => Number(existing.displayNumber));
+      if (legacyNumbers.some((number) => !Number.isSafeInteger(number) || number < 1) ||
+          new Set(legacyNumbers).size !== legacyNumbers.length) {
+        return { success: false, error: 'Existing order numbers are invalid or duplicated. No new order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      const displayNumber = legacyOrders.length
+        ? Math.max(...legacyNumbers) + 1
+        : (await this.deps.orderRepo.countForDay(dayId)) + 1;
+      const internalSequence = (this.deps.orderRepo.maxInternalSequence?.() ??
+        legacyOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
+      const order: OrderEntity = {
+        id: orderId, dayId, customerId, displayNumber, internalSequence, status: 'pending',
+        customerBalanceSnapshotMinor: currentBalance, notes, createdAt: now, updatedAt: now, version: 1,
+      };
+      await this.deps.mutationSnapshotRepo?.capture(orderId, [{ table: 'orders', id: order.id, existed: false }]);
+      await this.deps.orderRepo.save(order);
+      const previousOrder = legacyOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
+      const previousCommand = previousOrder ? await this.deps.commandRepo.get(previousOrder.id) : null;
+      await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
+        ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash as object : {}),
+        id: order.id,
+        aggregateId: order.id,
+        dayId,
+        customerId,
+        notes,
+        ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
+        customerBalanceSnapshotMinor: currentBalance,
+        displayNumber,
+        orderNumber: displayNumber,
+        ...(previousCommand?.type === 'CREATE_ORDER' && previousOrder ? { dependencyCommandId: previousOrder.id } : {}),
+      });
+      return { success: true, data: order };
+    }
+
+    if (!this.deps.overlayRepo?.getNextSequence) {
+      return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+    }
+    const overlaySequence = await this.deps.overlayRepo.getNextSequence();
+
+    return this.deps.transactionManager.runInTransaction((repos) => {
+      const overlayRepo = repos.overlayRepo;
+      if (!overlayRepo?.saveWithTx || !overlayRepo.hasPendingRenumberForDaySync) {
+        return { success: false as const, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      if (overlayRepo.hasPendingRenumberForDaySync(dayId)) {
+        return { success: false as const, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.', code: 'ORDER_RENUMBER_PENDING' };
+      }
+
+      const dayOrders = repos.orderRepo.findByDay?.(dayId);
+      if (!dayOrders) {
+        return { success: false as const, error: 'The current day order list is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      const existingNumbers = dayOrders.map((existing) => Number(existing.displayNumber));
+      if (existingNumbers.some((number) => !Number.isSafeInteger(number) || number < 1) ||
+          new Set(existingNumbers).size !== existingNumbers.length) {
+        return { success: false as const, error: 'Existing order numbers are invalid or duplicated. No new order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      if (!repos.reservationRepo?.getLastAssignedNumberForDay || !repos.reservationRepo?.saveLastAssignedNumberForDay) {
+        return { success: false as const, error: 'The durable order-number sequence is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+
+      const maxExistingNumber = existingNumbers.reduce((max, number) => Math.max(max, number), 0);
+      const lastAssignedNumber = repos.reservationRepo.getLastAssignedNumberForDay(dayId);
+      const displayNumber = Math.max(maxExistingNumber, lastAssignedNumber) + 1;
+      // Persist the high-water mark in the same transaction as the order and outbox.
+      // This prevents number reuse after deletions, stale backups, and explicit renumbering.
+      repos.reservationRepo.saveLastAssignedNumberForDay(dayId, displayNumber);
+      const internalSequence = (repos.orderRepo.maxInternalSequence?.() ??
+        dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
+      const order: OrderEntity = {
+        id: orderId,
+        dayId,
+        customerId,
+        displayNumber,
+        internalSequence,
+        status: 'pending',
+        customerBalanceSnapshotMinor: currentBalance,
+        notes,
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+      };
+
+      repos.mutationSnapshotRepo?.capture(orderId, [
         { table: 'orders', id: order.id, existed: false },
       ]);
-    }
-    await this.createOverlay(orderId, mutationKey, 'orders', orderId, 'CREATE', order as unknown as Record<string, unknown>);
+      overlayRepo.saveWithTx({
+        commandId: orderId,
+        mutationKey: `order:${orderId}`,
+        entityType: 'orders',
+        entityId: orderId,
+        operation: 'CREATE',
+        entityPayload: order as unknown as Record<string, unknown>,
+        sequence: overlaySequence,
+        createdAt: now,
+        status: 'PENDING',
+      });
 
-    await this.deps.commandRepo.record(orderId, 'CREATE_ORDER', {
+      const previousOrder = dayOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
+      const previousCommandResult = previousOrder ? repos.commandRepo.get(previousOrder.id) : null;
+      const previousCommand = previousCommandResult && typeof (previousCommandResult as any).then !== 'function'
+        ? previousCommandResult as { type: string; payload: unknown }
+        : null;
+      const dependencyCommandId = previousCommand?.type === 'CREATE_ORDER' ? previousOrder?.id : undefined;
+      repos.commandRepo.record(orderId, 'CREATE_ORDER', {
         ...(typeof payloadHash === 'object' && payloadHash !== null ? payloadHash : {}),
-        id: orderId,
+        id: order.id,
+        aggregateId: order.id,
         dayId: order.dayId,
         customerId: order.customerId,
         notes: order.notes,
         ...(effectiveGroupId ? { groupId: effectiveGroupId } : {}),
         customerBalanceSnapshotMinor: order.customerBalanceSnapshotMinor,
         displayNumber: order.displayNumber,
-        orderNumber: (order as any).orderNumber ?? order.displayNumber,
+        orderNumber: order.displayNumber,
+        ...(dependencyCommandId ? { dependencyCommandId } : {}),
+      });
+      return { success: true as const, data: order };
     });
-    
-    return { success: true, data: order };
   }
 
   async addOrderItem(
@@ -385,6 +479,14 @@ export class FinalUseCases {
         return { success: false as const, error: 'The complete order list is unavailable or changed. Reload the full day before renumbering.' };
       }
 
+      if (!repos.reservationRepo?.resetForDay) {
+        return { success: false as const, error: 'Order-number reservations cannot be safely reset; no renumbering was queued.' };
+      }
+      // Invalidate every unused number range in the same transaction as the renumber command.
+      // The next new order must continue at N+1, not at a stale pre-renumber cursor.
+      const highestPreviouslyIssued = changes.reduce((max, change) => Math.max(max, change.oldNumber, change.newNumber), 0);
+      repos.reservationRepo.resetForDay(dayId, highestPreviouslyIssued + 1);
+
       const now = new Date().toISOString();
       for (let index = 0; index < changes.length; index++) {
         const change = changes[index];
@@ -444,47 +546,8 @@ export class FinalUseCases {
       return { success: false, error: 'Debt limit exceeded. Regular admin blocked.', code: 'DEBT_LIMIT_EXCEEDED' };
     }
 
-    const deviceId = actor.deviceId || 'default-device';
-    let displayNumber = 1;
-    let reservation: OrderNumberReservationEntity | null = null;
-    if (this.deps.reservationRepo) {
-      reservation = await this.deps.reservationRepo.findActiveByDayAndDevice(dayId, deviceId);
-      if (!reservation || reservation.nextNumber > reservation.endNumber) {
-        try {
-          reservation = await this.deps.reservationRepo.reserveRange(dayId, deviceId, commandId, 20);
-        } catch {
-          throw new OrderNumberReservationExhaustedError();
-        }
-      }
-      if (!reservation || reservation.nextNumber > reservation.endNumber) throw new OrderNumberReservationExhaustedError();
-      displayNumber = reservation.nextNumber;
-      reservation.nextNumber += 1;
-      if (reservation.nextNumber > reservation.endNumber) reservation.status = 'EXHAUSTED';
-      reservation.updatedAt = new Date().toISOString();
-      // Persist the advanced cursor. findActiveByDayAndDevice may return an in-memory
-      // entity, but mutating that object alone does not commit nextNumber to IndexedDB.
-      // A failed later order write may leave a harmless gap; reusing a consumed number
-      // after reload would be unsafe.
-      await this.deps.reservationRepo.save(reservation);
-    } else {
-      displayNumber = (await this.deps.orderRepo.countForDay(dayId)) + 1;
-    }
-
+    const orderId = commandId || crypto.randomUUID();
     const now = new Date().toISOString();
-    const order: OrderEntity = {
-      id: commandId || crypto.randomUUID(),
-      dayId,
-      customerId,
-      displayNumber,
-      internalSequence: displayNumber,
-      status: 'pending',
-      customerBalanceSnapshotMinor: currentBalance,
-      notes,
-      createdAt: now,
-      updatedAt: now,
-      version: 1,
-    };
-
     const preparedItems: OrderItemEntity[] = [];
     for (let index = 0; index < items.length; index++) {
       const requested = items[index];
@@ -502,7 +565,7 @@ export class FinalUseCases {
       const initialStatus = isClosed && actor.isSuperAdmin ? 'delivered' : 'charging';
       preparedItems.push({
         id: crypto.randomUUID(),
-        orderId: order.id,
+        orderId,
         deviceTypeId: requested.deviceTypeId,
         itemSequence: index + 1,
         status: initialStatus,
@@ -522,68 +585,166 @@ export class FinalUseCases {
       });
     }
 
-    const mutationKey = `order:${order.id}`;
+    const overlayRepo = this.deps.overlayRepo;
+    if (!overlayRepo?.getNextSequence || !overlayRepo.hasPendingRenumberForDay ||
+        !this.deps.reservationRepo?.getLastAssignedNumberForDay) {
+      return { success: false, error: 'Safe offline order numbering is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+    }
+    if (await overlayRepo.hasPendingRenumberForDay(dayId)) {
+      return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.', code: 'ORDER_RENUMBER_PENDING' };
+    }
+
+    // Reserve overlay ordering tokens only after every device has been validated.
+    // Gaps in this internal overlay sequence do not affect customer-facing order numbers.
+    const overlaySequences: number[] = [];
+    for (let index = 0; index < preparedItems.length + 1; index++) {
+      overlaySequences.push(await overlayRepo.getNextSequence());
+    }
 
     if (this.deps.mutationSnapshotRepo) {
       await this.deps.mutationSnapshotRepo.capture(commandId, [
-        { table: 'orders', id: order.id, existed: false },
+        { table: 'orders', id: orderId, existed: false },
         ...preparedItems.map(item => ({ table: 'orderItems', id: item.id, existed: false })),
       ]);
     }
 
-    // 1. Overlay Order
-    await this.createOverlay(commandId, mutationKey, 'orders', order.id, 'CREATE', order as unknown as Record<string, unknown>);
+    let transactionResult: Result<{ order: OrderEntity; items: OrderItemEntity[] }>;
+    try {
+      transactionResult = await this.deps.transactionManager.runInTransaction((repos) => {
+        const txOverlayRepo = repos.overlayRepo;
+        if (!txOverlayRepo?.saveWithTx || !txOverlayRepo.hasPendingRenumberForDaySync) {
+          return { success: false, error: 'Atomic offline order storage is unavailable; no order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+        }
+        if (txOverlayRepo.hasPendingRenumberForDaySync(dayId)) {
+          return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.', code: 'ORDER_RENUMBER_PENDING' };
+        }
 
-    // 2. Overlay Items
-    for (const item of preparedItems) {
-      const itemOverlayId = `${commandId}:item:${item.id}`;
-      await this.createOverlay(itemOverlayId, mutationKey, 'order_items', item.id, 'CREATE', item as unknown as Record<string, unknown>);
-    }
+        const dayOrders = repos.orderRepo.findByDay?.(dayId);
+        if (!dayOrders) {
+          return { success: false, error: 'The current day order list is unavailable. No order was created.' };
+        }
+        const existingNumbers = dayOrders.map((existing) => Number(existing.displayNumber));
+        if (existingNumbers.some((number) => !Number.isSafeInteger(number) || number < 1) ||
+            new Set(existingNumbers).size !== existingNumbers.length) {
+          return {
+            success: false,
+            error: 'Existing order numbers are invalid or duplicated. No new order was created.',
+            code: 'ORDER_NUMBERING_UNAVAILABLE',
+          };
+        }
+        if (!repos.reservationRepo?.getLastAssignedNumberForDay || !repos.reservationRepo?.saveLastAssignedNumberForDay) {
+          return { success: false, error: 'The durable order-number sequence is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+        }
+        const maxExistingNumber = existingNumbers.reduce((max, number) => Math.max(max, number), 0);
+        const lastAssignedNumber = repos.reservationRepo.getLastAssignedNumberForDay(dayId);
+        const displayNumber = Math.max(maxExistingNumber, lastAssignedNumber) + 1;
+        // Commit the high-water mark with the order and all outbox commands. Legacy
+        // range reservations are never consumed to assign a customer-facing number.
+        repos.reservationRepo.saveLastAssignedNumberForDay(dayId, displayNumber);
+        const internalSequence = (repos.orderRepo.maxInternalSequence?.() ??
+          dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
+        const order: OrderEntity = {
+          id: orderId,
+          dayId,
+          customerId,
+          displayNumber,
+          internalSequence,
+          status: 'pending',
+          customerBalanceSnapshotMinor: currentBalance,
+          notes,
+          createdAt: now,
+          updatedAt: now,
+          version: 1,
+        };
+        const mutationKey = `order:${order.id}`;
 
-    // 3. Record Commands
-    await this.deps.commandRepo.record(commandId, 'CREATE_ORDER', {
-      id: order.id,
-      aggregateId: order.id,
-      dayId,
-      customerId,
-      displayNumber,
-      notes,
-      customerBalanceSnapshotMinor: currentBalance,
-      ...(groupId ? { groupId } : {}),
-    });
+        txOverlayRepo.saveWithTx({
+          commandId,
+          mutationKey,
+          entityType: 'orders',
+          entityId: order.id,
+          operation: 'CREATE',
+          entityPayload: order as unknown as Record<string, unknown>,
+          sequence: overlaySequences[0],
+          createdAt: now,
+          status: 'PENDING',
+        });
 
-    for (const item of preparedItems) {
-      await this.deps.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
-        id: item.id,
-        aggregateId: order.id,
-        orderId: order.id,
-        deviceTypeId: item.deviceTypeId,
-        hasCharger: item.hasCharger,
-        ...(groupId ? { groupId } : {}),
-        deviceNameSnapshot: item.deviceNameSnapshot,
-        deviceIconSnapshot: item.deviceIconSnapshot,
-        basePriceSnapshotMinor: item.basePriceSnapshotMinor,
-        chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
-        customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
-        chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
-        unitPriceMinor: item.unitPriceMinor,
-        totalPriceMinor: item.totalPriceMinor,
-        dependencyCommandId: commandId,
+        for (let index = 0; index < preparedItems.length; index++) {
+          const item = preparedItems[index];
+          txOverlayRepo.saveWithTx({
+            commandId: item.id,
+            mutationKey,
+            entityType: 'order_items',
+            entityId: item.id,
+            operation: 'CREATE',
+            entityPayload: item as unknown as Record<string, unknown>,
+            sequence: overlaySequences[index + 1],
+            createdAt: now,
+            status: 'PENDING',
+          });
+        }
+
+        const previousOrder = dayOrders.find((existing) => Number(existing.displayNumber) === displayNumber - 1);
+        const previousCommandResult = previousOrder ? repos.commandRepo.get(previousOrder.id) : null;
+        const previousCommand = previousCommandResult && typeof (previousCommandResult as any).then !== 'function'
+          ? previousCommandResult as { type: string; payload: unknown }
+          : null;
+        const dependencyCommandId = previousCommand?.type === 'CREATE_ORDER' ? previousOrder?.id : undefined;
+        repos.commandRepo.record(commandId, 'CREATE_ORDER', {
+          id: order.id,
+          aggregateId: order.id,
+          dayId,
+          customerId,
+          displayNumber,
+          notes,
+          customerBalanceSnapshotMinor: currentBalance,
+          ...(groupId ? { groupId } : {}),
+          ...(dependencyCommandId ? { dependencyCommandId } : {}),
+        });
+
+        for (const item of preparedItems) {
+          repos.commandRepo.record(item.id, 'ADD_ORDER_ITEM', {
+            id: item.id,
+            aggregateId: order.id,
+            orderId: order.id,
+            deviceTypeId: item.deviceTypeId,
+            hasCharger: item.hasCharger,
+            ...(groupId ? { groupId } : {}),
+            deviceNameSnapshot: item.deviceNameSnapshot,
+            deviceIconSnapshot: item.deviceIconSnapshot,
+            basePriceSnapshotMinor: item.basePriceSnapshotMinor,
+            chargerFeeEnabledSnapshot: item.chargerFeeEnabledSnapshot,
+            customerChargerFeeExemptSnapshot: item.customerChargerFeeExemptSnapshot,
+            chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
+            unitPriceMinor: item.unitPriceMinor,
+            totalPriceMinor: item.totalPriceMinor,
+            dependencyCommandId: commandId,
+          });
+
+          if (item.status === 'delivered') {
+            const deliveryCommandId = crypto.randomUUID();
+            repos.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
+              id: deliveryCommandId,
+              itemId: item.id,
+              orderItemId: item.id,
+              orderId: order.id,
+              dependencyCommandId: item.id,
+            }, item.version);
+          }
+        }
+
+        return { success: true, data: { order, items: preparedItems } };
       });
-
-      if (item.status === 'delivered') {
-        const deliveryCommandId = crypto.randomUUID();
-        await this.deps.commandRepo.record(deliveryCommandId, 'DELIVER_ORDER_ITEM', {
-          id: deliveryCommandId,
-          itemId: item.id,
-          orderItemId: item.id,
-          orderId: order.id,
-          dependencyCommandId: item.id,
-        }, item.version);
-      }
+    } catch (error) {
+      if (this.deps.mutationSnapshotRepo) await this.deps.mutationSnapshotRepo.clear(commandId);
+      throw error;
     }
 
-    return { success: true, data: { order, items: preparedItems } };
+    if (!transactionResult.success && this.deps.mutationSnapshotRepo) {
+      await this.deps.mutationSnapshotRepo.clear(commandId);
+    }
+    return transactionResult;
   }
 
   async addItemToDeliveredOrder(

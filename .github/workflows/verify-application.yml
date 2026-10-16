@@ -35,7 +35,7 @@ jobs:
           # Test runs must never use the production Supabase project.
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run src/tests/order_numbering_safety.test.ts && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts && npx vitest run src/tests/super_admin_debt_limit_warning_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts && npx vitest run src/tests/canonical_goals_foundation.test.ts && npx vitest run src/tests/phase1_reconciliation_closure.test.ts -t 'Goal Generation Formulas|Goal Request Security & Authorization' && npx vitest run src/tests/goal_restore_normalization.test.ts
+        run: npx vitest run src/tests/order_numbering_safety.test.ts && npx vitest run src/tests/order_numbering_diagnostics.test.ts && npx vitest run src/tests/order_numbering_sql_contract.test.ts src/tests/order_numbering_contiguous_contract.test.ts && npx vitest run src/tests/super_admin_debt_limit_warning_sql_contract.test.ts && npx vitest run src/domain/rules.goal.test.ts && npx vitest run src/tests/canonical_goals_foundation.test.ts && npx vitest run src/tests/phase1_reconciliation_closure.test.ts -t 'Goal Generation Formulas|Goal Request Security & Authorization' && npx vitest run src/tests/goal_restore_normalization.test.ts
       - name: Run order-item cancellation and status regressions
         env:
           # Test runs must never use the production Supabase project.
@@ -296,6 +296,29 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/order_numbering_runtime.test.sql
+      - name: Prepare isolated orders table for contiguous-numbering migration
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE public.orders (
+            id uuid,
+            day_id uuid NOT NULL,
+            display_number integer NOT NULL
+          );
+          SQL
+      - name: Apply server-authoritative contiguous-numbering migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261016130000_server_authoritative_contiguous_order_numbers.sql
+      - name: Remove temporary orders table before the full runtime fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DROP TABLE public.orders;"
+      - name: Verify contiguous numbering against the updated canonical dispatcher
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/order_numbering_contiguous_runtime.test.sql
       - name: Verify dispatcher and audit-table privileges
         env:
           PGPASSWORD: postgres

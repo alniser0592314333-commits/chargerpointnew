@@ -4,7 +4,6 @@ import { backupService } from '../services/backup/backupService';
 import { AuthorizationContext, ActorAdmin } from '../application/authContext';
 import { FinalUseCases, RepositoryContext } from '../application/useCases';
 import { OrderEntity, BusinessDayEntity, CustomerEntity, DeviceTypeEntity, OrderNumberReservationEntity } from '../domain/models';
-import { OrderNumberReservationExhaustedError } from '../domain/errors';
 
 describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', () => {
   const DEVICE_TYPE_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -67,12 +66,29 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
       return Boolean(effectiveDayId && effectiveDayId === dayId);
     });
 
+    const effectiveOrdersAll = (): OrderEntity[] => {
+      const effective = new Map<string, OrderEntity>(Array.from(orderMap.values()).map((order) => [order.id, { ...order }]));
+      for (const overlay of Array.from(overlays.values()).filter((entry) => entry.status === 'PENDING' && entry.entityType === 'orders')) {
+        const patch = (overlay.patch || overlay.entityPayload || {}) as Partial<OrderEntity>;
+        const existing = effective.get(overlay.entityId);
+        if (overlay.operation === 'DELETE') effective.delete(overlay.entityId);
+        else effective.set(overlay.entityId, { ...(existing || {} as OrderEntity), ...patch, id: overlay.entityId } as OrderEntity);
+      }
+      return Array.from(effective.values());
+    };
+    const effectiveOrdersForDay = (dayId: string): OrderEntity[] =>
+      effectiveOrdersAll().filter((order) => order.dayId === dayId);
+    const hasPendingRenumberForDay = (dayId: string) => Array.from(overlays.values()).some((overlay) =>
+      overlay.status === 'PENDING' && overlay.mutationKey === `renumber-day:${dayId}`
+    );
+
     const mockCtx: RepositoryContext = {
       orderRepo: {
         findById: (id: string) => orderMap.get(id) || null,
         save: (o: OrderEntity) => { orderMap.set(o.id, { ...o }); },
-        countForDay: (dayId: string) => Array.from(orderMap.values()).filter(o => o.dayId === dayId).length,
-        findByDay: (dayId: string) => Array.from(orderMap.values()).filter(o => o.dayId === dayId),
+        countForDay: (dayId: string) => effectiveOrdersForDay(dayId).reduce((max, o) => Math.max(max, o.displayNumber || 0), 0),
+        maxInternalSequence: () => effectiveOrdersAll().reduce((max, order) => Math.max(max, Number(order.internalSequence) || 0), 0),
+        findByDay: (dayId: string) => effectiveOrdersForDay(dayId),
       },
       reservationRepo: {
         findActiveByDayAndDevice: (dayId: string, deviceId: string) => {
@@ -84,10 +100,89 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           );
           return found ? { ...found } : null;
         },
-        save: async (r: OrderNumberReservationEntity) => {
+        save: (r: OrderNumberReservationEntity) => {
           const persisted = { ...r };
           reservationMap.set(r.id, persisted);
-          await localDb.set('orderNumberReservations', r.id, persisted);
+          void localDb.set('orderNumberReservations', r.id, persisted);
+        },
+        getLastAssignedNumberForDay: (dayId: string) => {
+          let highWater = 0;
+          reservationMap.forEach((reservation) => {
+            if (reservation.businessDayId !== dayId) return;
+            const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+              ? Math.max(0, Number(reservation.nextNumber) - 1)
+              : Number(reservation.endNumber) || 0;
+            highWater = Math.max(highWater, consumedThrough);
+          });
+          return highWater;
+        },
+        saveLastAssignedNumberForDay: (dayId: string, assignedNumber: number) => {
+          const now = new Date().toISOString();
+          let sequence = Array.from(reservationMap.values()).find((reservation) =>
+            reservation.businessDayId === dayId && reservation.deviceId === '__order_number_sequence__'
+          );
+          if (sequence) {
+            sequence = { ...sequence, endNumber: Math.max(sequence.endNumber, assignedNumber), nextNumber: Math.max(sequence.endNumber, assignedNumber) + 1, updatedAt: now, version: sequence.version + 1 };
+          } else {
+            sequence = {
+              id: `sequence-${dayId}`, businessDayId: dayId, deviceId: '__order_number_sequence__',
+              startNumber: 1, endNumber: assignedNumber, nextNumber: assignedNumber + 1, status: 'EXHAUSTED',
+              commandId: `order-number-sequence:${dayId}`, createdAt: now, updatedAt: now, version: 1,
+            };
+          }
+          reservationMap.set(sequence.id, sequence);
+        },
+        resetForDay: (dayId: string, nextNumber: number) => {
+          let highWater = Math.max(0, nextNumber - 1);
+          for (const reservation of reservationMap.values()) {
+            if (reservation.businessDayId !== dayId) continue;
+            const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+              ? Math.max(0, Number(reservation.nextNumber) - 1)
+              : Number(reservation.endNumber) || 0;
+            highWater = Math.max(highWater, consumedThrough);
+          }
+          const nextHighWaterNumber = highWater + 1;
+          let watermarkFound = false;
+          for (const reservation of Array.from(reservationMap.values())) {
+            if (reservation.businessDayId !== dayId) continue;
+            const isWatermark = reservation.deviceId === '__renumber_watermark__';
+            if (isWatermark) watermarkFound = true;
+            reservationMap.set(reservation.id, {
+              ...reservation,
+              startNumber: reservation.startNumber || 1,
+              endNumber: highWater,
+              nextNumber: nextHighWaterNumber,
+              status: 'EXHAUSTED',
+              updatedAt: new Date().toISOString(),
+              version: reservation.version + 1,
+            });
+          }
+          if (!watermarkFound) {
+            const now = new Date().toISOString();
+            reservationMap.set(`watermark-${dayId}`, {
+              id: `watermark-${dayId}`, businessDayId: dayId, deviceId: '__renumber_watermark__',
+              startNumber: 1, endNumber: highWater, nextNumber: nextHighWaterNumber, status: 'EXHAUSTED',
+              commandId: `renumber-watermark:${dayId}`, createdAt: now, updatedAt: now, version: 1,
+            });
+          }
+        },
+        needsResetForDay: (dayId: string, deviceId: string, expectedNextNumber: number) => {
+          const active = Array.from(reservationMap.values()).find((reservation) =>
+            reservation.businessDayId === dayId && reservation.deviceId === deviceId &&
+            reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+          );
+          if (active) {
+            const laterRangeExists = Array.from(reservationMap.values()).some((reservation) =>
+              reservation.businessDayId === dayId && reservation.id !== active.id &&
+              reservation.endNumber > active.endNumber
+            );
+            return active.nextNumber !== expectedNextNumber || laterRangeExists;
+          }
+          let maxEnd = 0;
+          reservationMap.forEach((reservation) => {
+            if (reservation.businessDayId === dayId) maxEnd = Math.max(maxEnd, reservation.endNumber);
+          });
+          return maxEnd !== expectedNextNumber - 1;
         },
         reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
           if (commandId) {
@@ -97,9 +192,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           }
           let maxEnd = 0;
           reservationMap.forEach(r => {
-            if (r.businessDayId === dayId && r.endNumber > maxEnd) {
-              maxEnd = r.endNumber;
-            }
+            if (r.businessDayId === dayId && r.endNumber > maxEnd) maxEnd = r.endNumber;
+          });
+          effectiveOrdersForDay(dayId).forEach((order) => {
+            if ((order.displayNumber || 0) > maxEnd) maxEnd = order.displayNumber;
           });
           const startNumber = maxEnd + 1;
           const endNumber = startNumber + rangeSize - 1;
@@ -141,7 +237,10 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         findAll: () => [],
       },
       commandRepo: {
-        get: () => null,
+        get: (commandId: string) => {
+          const existing = recordedCommands.find((record) => record.commandId === commandId);
+          return existing ? { type: existing.type, payload: existing.payload } : null;
+        },
         record: (commandId: string, type: string, payload: unknown) => {
           if (type === 'RENUMBER_DAY_ORDERS' && !insideLocalTransaction) throw new Error('Renumber command must be queued in the same local transaction as overlays');
           recordedCommands.push({ commandId, type, payload });
@@ -152,6 +251,7 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
         remove: async (id: string) => { overlays.delete(id); },
         get: async (id: string) => overlays.get(id) || null,
         hasPendingOrderChangesForDay: pendingOrderChangesForDay,
+        hasPendingRenumberForDay,
         getNextSequence: async () => {
           const sequence = ++overlaySequence;
           if (pendingOrderToInjectDayId) {
@@ -196,11 +296,13 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
               get: outerOverlayRepo.get,
               getNextSequence: outerOverlayRepo.getNextSequence,
               hasPendingOrderChangesForDay: outerOverlayRepo.hasPendingOrderChangesForDay,
+              hasPendingRenumberForDay: outerOverlayRepo.hasPendingRenumberForDay,
               saveWithTx: (overlay: OptimisticOverlayRecord) => {
                 if (!insideLocalTransaction) throw new Error('Overlay must be staged inside the active local transaction');
                 overlays.set(overlay.commandId, overlay);
               },
               hasPendingOrderChangesForDaySync: pendingOrderChangesForDay,
+              hasPendingRenumberForDaySync: hasPendingRenumberForDay,
             },
           };
           try {
@@ -384,120 +486,224 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     await localDb.removeOverlay('persisted-high-sequence');
   });
 
-  it('Test LAZY RESERVATION — Zero reservations at startup/login/sync, exact reservation on first order, no new reservation until exhaustion', async () => {
-    dayMap.set('day-1', {
-      id: 'day-1',
-      businessDate: '2026-10-03',
-      isClosed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
-    });
+  it('preserves the previously issued high-water mark after manual renumber', async () => {
+    const dayId = 'day-1';
+    const now = new Date().toISOString();
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
     customerMap.set('cust-1', {
-      id: 'cust-1',
-      name: 'Customer 1',
-      isActive: true,
-      debtLimitMinor: -1000,
-      chargerFeeExempt: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
     });
 
-    // Steps 1-6: App start, login, sync, open orders page. NO order creation.
-    expect(reservationMap.size).toBe(0);
+    const oldNumbers = [...Array.from({ length: 17 }, (_, index) => index + 1), 19];
+    const changes = oldNumbers.map((oldNumber, index) => {
+      const id = `order-${oldNumber}`;
+      orderMap.set(id, {
+        id, dayId, customerId: 'cust-1', displayNumber: oldNumber, internalSequence: oldNumber,
+        status: 'pending', createdAt: now, updatedAt: now, version: 1,
+      });
+      return { id, expectedVersion: 1, oldNumber, newNumber: index + 1 };
+    });
+    reservationMap.set('stale-range', {
+      id: 'stale-range', businessDayId: dayId, deviceId: 'device_A',
+      startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
+      commandId: 'old-reservation-command', createdAt: now, updatedAt: now, version: 1,
+    });
 
-    // Step 7-8: Start creating the first real order
-    const res1 = await createReservedOrder(auth, 'cmd-lazy-1', 'day-1', 'cust-1', 'First Order');
-    expect(res1.success).toBe(true);
-    expect((res1 as any).data.order.displayNumber).toBe(1);
+    const renumber = await useCases.renumberDayOrders(auth, 'renumber-stale-range', dayId, changes);
+    expect(renumber.success).toBe(true);
+    expect(reservationMap.get('stale-range')).toMatchObject({
+      startNumber: 1, endNumber: 19, nextNumber: 20, status: 'EXHAUSTED',
+    });
+    expect(reservationMap.get(`watermark-${dayId}`)).toBeDefined();
 
-    // Expected: Exactly one reservation is created
-    expect(reservationMap.size).toBe(1);
-    const reservationArray = Array.from(reservationMap.values());
-    expect(reservationArray[0].startNumber).toBe(1);
-    expect(reservationArray[0].endNumber).toBe(20); // Preserve the established twenty-number offline reservation range
-    const persistedAfterFirstOrder = (await localDb.list<OrderNumberReservationEntity>('orderNumberReservations'))[0];
-    expect(persistedAfterFirstOrder.nextNumber).toBe(2);
+    const blockedWhileRenumberPending = await createReservedOrder(auth, 'blocked-during-renumber', dayId, 'cust-1', 'Must wait');
+    expect(blockedWhileRenumberPending.success).toBe(false);
+    expect((blockedWhileRenumberPending as any).error).toContain('renumbered');
 
-    // Create additional orders
-    const res2 = await createReservedOrder(auth, 'cmd-lazy-2', 'day-1', 'cust-1', 'Second Order');
-    const res3 = await createReservedOrder(auth, 'cmd-lazy-3', 'day-1', 'cust-1', 'Third Order');
+    // Simulate the server's successful canonical pull after the renumber command.
+    for (const change of changes) {
+      const existing = orderMap.get(change.id)!;
+      orderMap.set(change.id, { ...existing, displayNumber: change.newNumber, version: existing.version + 1 });
+    }
+    overlays.clear();
 
-    expect(res2.success && res3.success).toBe(true);
-    expect((res2 as any).data.order.displayNumber).toBe(2);
-    expect((res3 as any).data.order.displayNumber).toBe(3);
-
-    // Expected: No additional server reservation is created until current range is exhausted
-    expect(reservationMap.size).toBe(1);
-    const persistedAfterThreeOrders = (await localDb.list<OrderNumberReservationEntity>('orderNumberReservations'))[0];
-    expect(persistedAfterThreeOrders.nextNumber).toBe(4);
+    const created = await createReservedOrder(auth, 'create-after-renumber', dayId, 'cust-1', 'After renumber');
+    expect(created.success).toBe(true);
+    expect((created as any).data.order.displayNumber).toBe(20);
   });
 
-  it('Test BACKUP/RESTORE RESERVATION INTEGRITY — Preserves partially consumed reservation range across backup and restore', async () => {
+  it('never reuses numbers from an old preallocated range', async () => {
+    const dayId = 'day-1';
+    const now = new Date().toISOString();
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+    for (let number = 1; number <= 18; number++) {
+      const id = `existing-${number}`;
+      orderMap.set(id, {
+        id, dayId, customerId: 'cust-1', displayNumber: number, internalSequence: number,
+        status: 'pending', createdAt: now, updatedAt: now, version: 1,
+      });
+    }
+    orderMap.set('other-day-order', {
+      id: 'other-day-order', dayId: 'other-day', customerId: 'cust-1', displayNumber: 1, internalSequence: 1000,
+      status: 'pending', createdAt: now, updatedAt: now, version: 1,
+    });
+    reservationMap.set('old-stale-cursor', {
+      id: 'old-stale-cursor', businessDayId: dayId, deviceId: 'device_A',
+      startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
+      commandId: 'old-app-range', createdAt: now, updatedAt: now, version: 1,
+    });
+
+    const created = await createReservedOrder(auth, 'create-after-upgrade', dayId, 'cust-1', 'After upgrade');
+    expect(created.success).toBe(true);
+    expect((created as any).data.order.displayNumber).toBe(20);
+    expect((created as any).data.order.internalSequence).toBe(1001);
+    expect(reservationMap.get('old-stale-cursor')).toMatchObject({
+      startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
+    });
+    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 20, nextNumber: 21 });
+  });
+
+  it('uses the same immutable local numbering transaction for the legacy single-order entrypoint', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-legacy', { id: 'day-legacy', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-legacy', {
+      id: 'cust-legacy', name: 'Legacy Customer', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+
+    const first = await useCases.createOrder(auth, 'legacy-order-1', 'day-legacy', 'cust-legacy');
+    const second = await useCases.createOrder(auth, 'legacy-order-2', 'day-legacy', 'cust-legacy');
+
+    expect(first.success && second.success).toBe(true);
+    expect((first as any).data.displayNumber).toBe(1);
+    expect((second as any).data.displayNumber).toBe(2);
+    expect((recordedCommands.find((command) => command.commandId === 'legacy-order-2')?.payload as any).dependencyCommandId).toBe('legacy-order-1');
+    expect(reservationMap.size).toBe(1);
+    expect(reservationMap.get('sequence-day-legacy')).toMatchObject({ endNumber: 2, nextNumber: 3 });
+    expect(Array.from(overlays.values()).filter((overlay) => overlay.entityType === 'orders')).toHaveLength(2);
+  });
+
+  it('preserves existing gaps and allocates above the highest previously issued number', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+    for (const number of [1, 3]) {
+      const id = `gap-order-${number}`;
+      orderMap.set(id, {
+        id, dayId: 'day-1', customerId: 'cust-1', displayNumber: number, internalSequence: number,
+        status: 'pending', createdAt: now, updatedAt: now, version: 1,
+      });
+    }
+
+    const result = await createReservedOrder(auth, 'create-above-gap', 'day-1', 'cust-1', 'Keep existing customer numbers');
+    expect(result.success).toBe(true);
+    expect((result as any).data.order.displayNumber).toBe(4);
+    expect(orderMap.get('gap-order-1')?.displayNumber).toBe(1);
+    expect(orderMap.get('gap-order-3')?.displayNumber).toBe(3);
+    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 4, nextNumber: 5 });
+    expect(overlays.size).toBe(2);
+    expect(recordedCommands.map((command) => command.type)).toEqual(['CREATE_ORDER', 'ADD_ORDER_ITEM']);
+  });
+
+  it('does not consume a customer-facing number when device validation fails', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+
+    await expect(useCases.createOrderWithItems(auth, 'invalid-device-order', 'day-1', 'cust-1', [
+      { deviceTypeId: 'missing-device-type', hasCharger: true },
+    ], 'Must not burn a number')).rejects.toThrow('Device type not found or inactive');
+
+    expect(reservationMap.size).toBe(0);
+    expect(overlays.size).toBe(0);
+    expect(recordedCommands).toHaveLength(0);
+  });
+
+  it('allocates consecutive immutable numbers locally without preallocating ranges', async () => {
+    dayMap.set('day-1', {
+      id: 'day-1', businessDate: '2026-10-03', isClosed: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
+    });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
+    });
+
+    expect(reservationMap.size).toBe(0);
+    const results = [];
+    for (let number = 1; number <= 5; number++) {
+      results.push(await createReservedOrder(auth, `cmd-immutable-${number}`, 'day-1', 'cust-1', `Order ${number}`));
+    }
+
+    expect(results.every((result) => result.success)).toBe(true);
+    expect(results.map((result: any) => result.data.order.displayNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(reservationMap.size).toBe(1);
+    expect(reservationMap.get('sequence-day-1')).toMatchObject({ endNumber: 5, nextNumber: 6 });
+    expect(recordedCommands.filter((command) => command.type === 'CREATE_ORDER').map((command: any) => command.payload.displayNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect((recordedCommands.find((command) => command.commandId === 'cmd-immutable-2')?.payload as any).dependencyCommandId).toBe('cmd-immutable-1');
+  });
+
+  it('never reuses a locally issued number when its order overlay is removed', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-high-water', { id: 'day-high-water', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+
+    for (let number = 1; number <= 3; number++) {
+      const result = await createReservedOrder(auth, `high-water-${number}`, 'day-high-water', 'cust-1', `Order ${number}`);
+      expect(result.success).toBe(true);
+    }
+    overlays.delete('high-water-3');
+
+    const next = await createReservedOrder(auth, 'high-water-4', 'day-high-water', 'cust-1', 'Next after removal');
+    expect(next.success).toBe(true);
+    expect((next as any).data.order.displayNumber).toBe(4);
+    expect(reservationMap.get('sequence-day-high-water')).toMatchObject({ endNumber: 4, nextNumber: 5 });
+  });
+
+  it('continues numbering from effective local orders even when legacy reservation records are absent', async () => {
     const dayId = '33333333-3333-4333-8333-333333333333';
     const customerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const authBackup = new AuthorizationContext({ ...adminActor, deviceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }, (bin) => bin === validBin);
     dayMap.set(dayId, {
-      id: dayId,
-      businessDate: '2026-10-03',
-      isClosed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
+      id: dayId, businessDate: '2026-10-03', isClosed: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
     });
     customerMap.set(customerId, {
-      id: customerId,
-      name: 'Customer 1',
-      isActive: true,
-      debtLimitMinor: -1000,
-      chargerFeeExempt: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: 1,
+      id: customerId, name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1,
     });
 
-    // Create 3 orders to consume #1, #2, #3 from the reserved range [1, 20], nextNumber = 4
-    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444441', dayId, customerId, 'Order 1');
-    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444442', dayId, customerId, 'Order 2');
-    await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444443', dayId, customerId, 'Order 3');
-
-    for (const [id, ord] of orderMap.entries()) {
-      await localDb.set('orders', id, ord);
+    const numbers = [];
+    for (let number = 1; number <= 3; number++) {
+      const result = await createReservedOrder(authBackup, `no-range-${number}`, dayId, customerId, `Order ${number}`);
+      expect(result.success).toBe(true);
+      numbers.push((result as any).data.order.displayNumber);
     }
-    for (const [id, res] of reservationMap.entries()) {
-      await localDb.set('orderNumberReservations', id, res);
-    }
-    await localDb.set('businessDays', dayId, dayMap.get(dayId));
-    await localDb.set('customers', customerId, customerMap.get(customerId));
-
-    const snapshot = await backupService.createSnapshot('OFFLINE', authBackup, {
-      name: 'Reservation Restore Test Backup',
-      bin: validBin,
-    });
-
-    expect(snapshot).toBeDefined();
-
-    orderMap.clear();
+    expect(numbers).toEqual([1, 2, 3]);
     reservationMap.clear();
-    await localDb.clearOperationalTables();
 
-    await backupService.restoreSnapshot(snapshot.snapshotId, authBackup, { bin: validBin });
-
-    const restoredReservations = await localDb.list<OrderNumberReservationEntity>('orderNumberReservations');
-    expect(restoredReservations).toHaveLength(1);
-    expect(restoredReservations[0].startNumber).toBe(1);
-    expect(restoredReservations[0].endNumber).toBe(20);
-    expect(restoredReservations[0].nextNumber).toBe(4);
-
-    reservationMap.set(restoredReservations[0].id, restoredReservations[0]);
-
-    const resNext = await createReservedOrder(authBackup, '44444444-4444-4444-8444-444444444444', dayId, customerId, 'Order 4');
-    expect(resNext.success).toBe(true);
-    expect((resNext as any).data.order.displayNumber).toBe(4);
+    const next = await createReservedOrder(authBackup, 'no-range-4', dayId, customerId, 'Order 4');
+    expect(next.success).toBe(true);
+    expect((next as any).data.order.displayNumber).toBe(4);
+    expect(reservationMap.size).toBe(1);
+    expect(reservationMap.get(`sequence-${dayId}`)).toMatchObject({ endNumber: 4, nextNumber: 5 });
   });
 
-  it('Test A — Two offline devices get non-overlapping reserved ranges and never produce duplicate displayNumbers', async () => {
+  it('keeps local display numbers contiguous across writer contexts using one day sequence', async () => {
     dayMap.set('day-1', {
       id: 'day-1',
       businessDate: '2026-10-03',
@@ -539,5 +745,6 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
 
     const uniqueNumbers = new Set(numbers);
     expect(uniqueNumbers.size).toBe(5);
+    expect(numbers).toEqual([1, 2, 3, 4, 5]);
   });
 });

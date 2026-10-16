@@ -159,6 +159,9 @@ export const translations = {
     loadingOrderData: 'جاري تحميل بيانات الطلب...',
     saveOrderModifications: 'حفظ التعديلات',
     cannotRemoveAllDevices: 'يجب أن يحتوي الطلب على جهاز واحد على الأقل.',
+    orderNumberingGap: 'ترقيم الطلبات في هذا اليوم غير متسلسل. أعد ترقيم اليوم من الإعدادات قبل إضافة طلب جديد.',
+    orderRenumberPending: 'إعادة الترقيم قيد المزامنة. انتظر تأكيد المزامنة قبل إضافة طلب جديد.',
+    orderNumberingUnavailable: 'تعذر تخصيص رقم آمن للطلب. لم يتم إنشاء الطلب؛ أعد المحاولة بعد المزامنة.',
 
     // Customer Detail Page
     customerDetailsTitle: 'تفاصيل العميل',
@@ -687,6 +690,9 @@ export const translations = {
     loadingOrderData: 'Loading order data...',
     saveOrderModifications: 'Save Changes',
     cannotRemoveAllDevices: 'An order must have at least one device.',
+    orderNumberingGap: 'Order numbers for this day are not contiguous. Renumber the day in Settings before adding another order.',
+    orderRenumberPending: 'Day renumbering is still syncing. Wait for sync confirmation before adding another order.',
+    orderNumberingUnavailable: 'A safe order number could not be allocated. No order was created; retry after syncing.',
 
     // Customer Detail Page
     customerDetailsTitle: 'Customer Details',

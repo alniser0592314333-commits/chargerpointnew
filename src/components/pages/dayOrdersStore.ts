@@ -2282,6 +2282,22 @@ function createTransactionalRepoContext(
         localDb.saveOverlayWithTx(tx, overlay);
       },
       hasPendingOrderChangesForDaySync: (dayId: string) => hasPendingOrderChangesForDay(dayId),
+      hasPendingRenumberForDaySync: (dayId: string) => {
+        const renumberCommands = localDb.listOutboxSync().filter((item) => {
+          const payload = (item.payload || {}) as Record<string, unknown>;
+          return item.commandType === 'RENUMBER_DAY_ORDERS' && (payload.dayId === dayId || payload.id === dayId);
+        });
+        if (renumberCommands.some((item) => ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status)))) return true;
+        const hasWatermark = Array.from(reservationsMap.values()).some((reservation) =>
+          reservation.businessDayId === dayId && reservation.deviceId === '__renumber_watermark__'
+        );
+        if (!hasWatermark) return false;
+        const numbers = Array.from(getEffectiveOrderItemReadModel().orders.values())
+          .filter((order) => isSameDayId(order.dayId, dayId))
+          .map((order) => Number(order.displayNumber) || 0)
+          .sort((a, b) => a - b);
+        return numbers.some((number, index) => number !== index + 1);
+      },
     },
     orderRepo: {
       findById: (id: string) => ordersMap.get(id) || null,
@@ -2292,18 +2308,21 @@ function createTransactionalRepoContext(
       },
       countForDay: (dayId: string) => {
         let maxNum = 0;
-        ordersMap.forEach((o) => {
-          if (isSameDayId(o.dayId, dayId)) {
-            if ((o.displayNumber || 0) > maxNum) {
-              maxNum = o.displayNumber;
-            }
-          }
+        getEffectiveOrderItemReadModel().orders.forEach((o) => {
+          if (isSameDayId(o.dayId, dayId)) maxNum = Math.max(maxNum, Number(o.displayNumber) || 0);
         });
         return maxNum;
       },
+      maxInternalSequence: () => {
+        let maxSequence = 0;
+        getEffectiveOrderItemReadModel().orders.forEach((order) => {
+          maxSequence = Math.max(maxSequence, Number(order.internalSequence) || 0);
+        });
+        return maxSequence;
+      },
       // A true row list is required for day-wide repairs. countForDay intentionally
       // returns the current maximum number for sequential allocation, not row count.
-      findByDay: (dayId: string) => Array.from(ordersMap.values()).filter((o) => isSameDayId(o.dayId, dayId)),
+      findByDay: (dayId: string) => Array.from(getEffectiveOrderItemReadModel().orders.values()).filter((o) => isSameDayId(o.dayId, dayId)),
     },
     itemRepo: {
       findByOrderId: (orderId: string) => {
@@ -2526,6 +2545,9 @@ function createTransactionalRepoContext(
           status: currentGen === -1 ? 'PENDING_RECONCILIATION' : 'pending',
           retryCount: 0,
           groupId: (payload as any)?.groupId,
+          dependencyCommandId: payloadRecord.dependencyCommandId,
+          dependencyCommandIds: Array.isArray(payloadRecord.dependencyCommandIds) ? payloadRecord.dependencyCommandIds : undefined,
+          dependencies: Array.isArray(payloadRecord.dependencies) ? payloadRecord.dependencies : undefined,
           resetGeneration: currentGen,
         };
         localDb.saveOutboxWithTx(tx, record);
@@ -2589,6 +2611,125 @@ function createTransactionalRepoContext(
         localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
         postCommitActions.push(() => notifyStore('orderNumberReservations', r.id));
       },
+      getLastAssignedNumberForDay: (dayId: string) => {
+        let highWater = 0;
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId !== dayId) return;
+          // An ACTIVE range has not consumed numbers at or beyond its cursor.
+          // EXHAUSTED sequence/watermark rows retain their last actually issued number.
+          const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+            ? Math.max(0, Number(reservation.nextNumber) - 1)
+            : Number(reservation.endNumber) || 0;
+          highWater = Math.max(highWater, consumedThrough);
+        });
+        return highWater;
+      },
+      saveLastAssignedNumberForDay: (dayId: string, assignedNumber: number) => {
+        const now = new Date().toISOString();
+        let sequence = Array.from(reservationsMap.values()).find((reservation) =>
+          reservation.businessDayId === dayId && reservation.deviceId === '__order_number_sequence__'
+        );
+        if (sequence) {
+          sequence = {
+            ...sequence,
+            startNumber: 1,
+            endNumber: Math.max(Number(sequence.endNumber) || 0, assignedNumber),
+            nextNumber: Math.max(Number(sequence.endNumber) || 0, assignedNumber) + 1,
+            status: 'EXHAUSTED',
+            updatedAt: now,
+            version: (sequence.version || 0) + 1,
+          };
+        } else {
+          sequence = {
+            id: crypto.randomUUID(),
+            businessDayId: dayId,
+            deviceId: '__order_number_sequence__',
+            startNumber: 1,
+            endNumber: assignedNumber,
+            nextNumber: assignedNumber + 1,
+            status: 'EXHAUSTED',
+            commandId: `order-number-sequence:${dayId}`,
+            createdAt: now,
+            updatedAt: now,
+            version: 1,
+          };
+        }
+        reservationsMap.set(sequence.id, sequence);
+        localDb.setWithTx(tx, 'orderNumberReservations', sequence.id, sequence);
+        postCommitActions.push(() => notifyStore('orderNumberReservations', sequence!.id));
+      },
+      resetForDay: (dayId: string, nextNumber: number) => {
+        const now = new Date().toISOString();
+        let highWater = Math.max(0, nextNumber - 1);
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId !== dayId) return;
+          const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+            ? Math.max(0, Number(reservation.nextNumber) - 1)
+            : Number(reservation.endNumber) || 0;
+          highWater = Math.max(highWater, consumedThrough);
+        });
+        const nextHighWaterNumber = highWater + 1;
+        let watermarkFound = false;
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId !== dayId) return;
+          const isWatermark = reservation.deviceId === '__renumber_watermark__';
+          const reset: OrderNumberReservationEntity = {
+            ...reservation,
+            deviceId: isWatermark ? '__renumber_watermark__' : reservation.deviceId,
+            startNumber: reservation.startNumber || 1,
+            endNumber: highWater,
+            nextNumber: nextHighWaterNumber,
+            status: 'EXHAUSTED',
+            updatedAt: now,
+            version: (reservation.version || 0) + 1,
+          };
+          if (isWatermark) watermarkFound = true;
+          reservationsMap.set(reset.id, reset);
+          localDb.setWithTx(tx, 'orderNumberReservations', reset.id, reset);
+          postCommitActions.push(() => notifyStore('orderNumberReservations', reset.id));
+        });
+        // The watermark must preserve the highest number ever issued. Renumbering
+        // visible rows never lowers this counter or makes an old number reusable.
+        if (!watermarkFound) {
+          const watermark: OrderNumberReservationEntity = {
+            id: crypto.randomUUID(),
+            businessDayId: dayId,
+            deviceId: '__renumber_watermark__',
+            startNumber: 1,
+            endNumber: highWater,
+            nextNumber: nextHighWaterNumber,
+            status: 'EXHAUSTED',
+            commandId: `renumber-watermark:${dayId}:${now}`,
+            createdAt: now,
+            updatedAt: now,
+            version: 1,
+          };
+          reservationsMap.set(watermark.id, watermark);
+          localDb.setWithTx(tx, 'orderNumberReservations', watermark.id, watermark);
+          postCommitActions.push(() => notifyStore('orderNumberReservations', watermark.id));
+        }
+      },
+      needsResetForDay: (dayId: string, deviceId: string, expectedNextNumber: number) => {
+        const active = Array.from(reservationsMap.values()).find((reservation) =>
+          reservation.businessDayId === dayId &&
+          reservation.deviceId === deviceId &&
+          reservation.status === 'ACTIVE' &&
+          reservation.nextNumber <= reservation.endNumber
+        );
+        if (active) {
+          const laterRangeExists = Array.from(reservationsMap.values()).some((reservation) =>
+            reservation.businessDayId === dayId &&
+            reservation.id !== active.id &&
+            reservation.endNumber > active.endNumber
+          );
+          return active.nextNumber !== expectedNextNumber || laterRangeExists;
+        }
+        let maxReservedEnd = 0;
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId === dayId) maxReservedEnd = Math.max(maxReservedEnd, reservation.endNumber);
+        });
+        return maxReservedEnd !== expectedNextNumber - 1;
+      },
       reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
         if (commandId) {
           for (const r of reservationsMap.values()) {
@@ -2601,8 +2742,8 @@ function createTransactionalRepoContext(
         reservationsMap.forEach((r) => {
           if (r.businessDayId === dayId && r.endNumber > maxEnd) maxEnd = r.endNumber;
         });
-        ordersMap.forEach((order) => {
-          if (order.dayId === dayId && (order.displayNumber || 0) > maxEnd) maxEnd = order.displayNumber;
+        getEffectiveOrderItemReadModel().orders.forEach((order) => {
+          if (isSameDayId(order.dayId, dayId) && (order.displayNumber || 0) > maxEnd) maxEnd = order.displayNumber;
         });
         const startNumber = maxEnd + 1;
         const endNumber = startNumber + rangeSize - 1;
@@ -2666,14 +2807,17 @@ export const repoContext: RepositoryContext = {
     countForDay: async (dayId) => {
       await ensureStoreHydrated();
       let maxNum = 0;
-      ordersMap.forEach((o) => {
-        if (isSameDayId(o.dayId, dayId)) {
-          if ((o.displayNumber || 0) > maxNum) {
-            maxNum = o.displayNumber;
-          }
-        }
+      getEffectiveOrderItemReadModel().orders.forEach((o) => {
+        if (isSameDayId(o.dayId, dayId)) maxNum = Math.max(maxNum, Number(o.displayNumber) || 0);
       });
       return maxNum;
+    },
+    maxInternalSequence: () => {
+      let maxSequence = 0;
+      getEffectiveOrderItemReadModel().orders.forEach((order) => {
+        maxSequence = Math.max(maxSequence, Number(order.internalSequence) || 0);
+      });
+      return maxSequence;
     },
   },
   itemRepo: {
@@ -2977,8 +3121,36 @@ export const repoContext: RepositoryContext = {
       await ensureStoreHydrated();
       return hasPendingOrderChangesForDay(dayId);
     },
+    hasPendingRenumberForDay: async (dayId) => {
+      await ensureStoreHydrated();
+      const renumberCommands = localDb.listOutboxSync().filter((item) => {
+        const payload = (item.payload || {}) as Record<string, unknown>;
+        return item.commandType === 'RENUMBER_DAY_ORDERS' && (payload.dayId === dayId || payload.id === dayId);
+      });
+      if (renumberCommands.some((item) => ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status)))) return true;
+      const hasWatermark = Array.from(reservationsMap.values()).some((reservation) =>
+        reservation.businessDayId === dayId && reservation.deviceId === '__renumber_watermark__'
+      );
+      if (!hasWatermark) return false;
+      const numbers = Array.from(getEffectiveOrderItemReadModel().orders.values())
+        .filter((order) => isSameDayId(order.dayId, dayId))
+        .map((order) => Number(order.displayNumber) || 0)
+        .sort((a, b) => a - b);
+      return numbers.some((number, index) => number !== index + 1);
+    },
   },
   reservationRepo: {
+    getLastAssignedNumberForDay: (dayId) => {
+      let highWater = 0;
+      reservationsMap.forEach((reservation) => {
+        if (reservation.businessDayId !== dayId) return;
+        const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+          ? Math.max(0, Number(reservation.nextNumber) - 1)
+          : Number(reservation.endNumber) || 0;
+        highWater = Math.max(highWater, consumedThrough);
+      });
+      return highWater;
+    },
     findActiveByDayAndDevice: async (dayId, deviceId) => {
       await ensureStoreHydrated();
       let found: OrderNumberReservationEntity | null = null;
@@ -3002,6 +3174,33 @@ export const repoContext: RepositoryContext = {
         res = ctx.reservationRepo.reserveRange(dayId, deviceId, commandId, rangeSize);
       });
       return res!;
+    },
+    resetForDay: async (dayId, nextNumber) => {
+      await ensureStoreHydrated();
+      await repoContext.transactionManager.runInTransaction((ctx: any) => {
+        ctx.reservationRepo.resetForDay(dayId, nextNumber);
+      });
+    },
+    needsResetForDay: (dayId, deviceId, expectedNextNumber) => {
+      const active = Array.from(reservationsMap.values()).find((reservation) =>
+        reservation.businessDayId === dayId &&
+        reservation.deviceId === deviceId &&
+        reservation.status === 'ACTIVE' &&
+        reservation.nextNumber <= reservation.endNumber
+      );
+      if (active) {
+        const laterRangeExists = Array.from(reservationsMap.values()).some((reservation) =>
+          reservation.businessDayId === dayId &&
+          reservation.id !== active.id &&
+          reservation.endNumber > active.endNumber
+        );
+        return active.nextNumber !== expectedNextNumber || laterRangeExists;
+      }
+      let maxReservedEnd = 0;
+      reservationsMap.forEach((reservation) => {
+        if (reservation.businessDayId === dayId) maxReservedEnd = Math.max(maxReservedEnd, reservation.endNumber);
+      });
+      return maxReservedEnd !== expectedNextNumber - 1;
     },
   },
   goalRepo: {
@@ -3081,7 +3280,7 @@ export const repoContext: RepositoryContext = {
         const postCommitActions: (() => void)[] = [];
 
         const result = await localDb.runTransaction(
-          ['kvStore', 'outbox', 'mutationSnapshots', 'optimisticOverlays'],
+          ['kvStore', 'outbox', 'mutationSnapshots', 'optimisticOverlays', 'orderNumberReservations'],
           'readwrite',
           (tx) => {
             const txCtx = createTransactionalRepoContext(tx, postCommitActions);
@@ -3713,8 +3912,15 @@ export const getOrdersForDay = async (
 };
 
 export const getNextOrderNumberForDay = async (dayId: string): Promise<number> => {
-  const count = await repoContext.orderRepo.countForDay(dayId);
-  return count + 1;
+  await ensureStoreHydrated();
+  // The preview uses the same effective orders and durable high-water mark as
+  // the local creation transaction. Legacy reserved ranges are never consumed.
+  let maxNumber = 0;
+  getEffectiveOrderItemReadModel().orders.forEach((order) => {
+    if (isSameDayId(order.dayId, dayId)) maxNumber = Math.max(maxNumber, Number(order.displayNumber) || 0);
+  });
+  const lastAssigned = repoContext.reservationRepo?.getLastAssignedNumberForDay?.(dayId) ?? 0;
+  return Math.max(maxNumber, lastAssigned) + 1;
 };
 
 export const searchCustomers = async (query: string): Promise<UICustomerItem[]> => {
@@ -5007,7 +5213,7 @@ export const createOrderWithPhase5Engine = async (
   customerId: string,
   items: { deviceTypeId: string; hasCharger: boolean }[],
   notes?: string
-): Promise<{ success: boolean; error?: string; order?: UIDayOrderDetail }> => {
+): Promise<{ success: boolean; error?: string; errorCode?: string; order?: UIDayOrderDetail }> => {
   if (!items || items.length === 0) {
     return { success: false, error: 'يجب اختيار جهاز واحد على الأقل للطلب' };
   }
@@ -5028,7 +5234,7 @@ export const createOrderWithPhase5Engine = async (
     );
 
     if (!result.success) {
-      return { success: false, error: presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء الطلب') };
+      return { success: false, error: presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء الطلب'), errorCode: 'code' in result ? result.code : undefined };
     }
 
     const orderEntity = result.data.order;

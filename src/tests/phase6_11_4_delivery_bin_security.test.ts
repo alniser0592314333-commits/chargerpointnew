@@ -18,6 +18,8 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
   let customers: Map<string, CustomerEntity>;
   let days: Map<string, BusinessDayEntity>;
   let commands: Map<string, any>;
+  let numberSequences: Map<string, number>;
+  let overlaySequence: number;
   let repoContext: RepositoryContext;
   let useCases: FinalUseCases;
 
@@ -28,6 +30,8 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
     customers = new Map();
     days = new Map();
     commands = new Map();
+    numberSequences = new Map();
+    overlaySequence = 0;
 
     customers.set('cust_1', {
       id: 'cust_1',
@@ -55,6 +59,7 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
         findById: async (id: string) => orders.get(id) || null,
         save: async (o: OrderEntity) => { orders.set(o.id, { ...o }); },
         countForDay: async () => orders.size,
+        findByDay: (dayId: string) => Array.from(orders.values()).filter((order) => order.dayId === dayId),
       },
       itemRepo: {
         findById: async (id: string) => items.get(id) || null,
@@ -102,6 +107,33 @@ describe('Phase 6.11.4: Strict Delivery & Cancellation BIN Security Regression S
       commandRepo: {
         get: async (id: string) => commands.get(id) || null,
         record: async (id: string, type: string, payload: unknown) => { commands.set(id, { type, payload }); },
+      },
+      reservationRepo: {
+        findActiveByDayAndDevice: () => null,
+        save: () => {},
+        reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize = 20) => ({
+          id: `range-${dayId}-${deviceId}`, businessDayId: dayId, deviceId,
+          startNumber: 1, endNumber: rangeSize, nextNumber: 1, status: 'ACTIVE',
+          commandId: commandId || `range-command-${dayId}`, createdAt: '', updatedAt: '', version: 1,
+        }),
+        getLastAssignedNumberForDay: (dayId: string) => Math.max(
+          numberSequences.get(dayId) || 0,
+          ...Array.from(orders.values()).filter((order) => order.dayId === dayId).map((order) => order.displayNumber),
+          0
+        ),
+        saveLastAssignedNumberForDay: (dayId: string, number: number) => numberSequences.set(dayId, Math.max(numberSequences.get(dayId) || 0, number)),
+      },
+      overlayRepo: {
+        save: (overlay: any) => {
+          if (overlay.entityType === 'orders' && overlay.entityPayload) orders.set(overlay.entityId, { ...overlay.entityPayload, id: overlay.entityId } as OrderEntity);
+        },
+        saveWithTx: (overlay: any) => {
+          if (overlay.entityType === 'orders' && overlay.entityPayload) orders.set(overlay.entityId, { ...overlay.entityPayload, id: overlay.entityId } as OrderEntity);
+        },
+        hasPendingRenumberForDaySync: () => false,
+        remove: async () => {},
+        get: async () => null,
+        getNextSequence: () => ++overlaySequence,
       },
       paymentRepo: {
         save: async () => {},

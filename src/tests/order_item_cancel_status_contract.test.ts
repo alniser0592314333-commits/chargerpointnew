@@ -76,6 +76,8 @@ function createHarness() {
   const payments: PaymentEntity[] = [];
   const allocations: PaymentAllocationEntity[] = [];
   const commands = new Map<string, { type: string; payload: unknown }>();
+  const numberSequences = new Map<string, number>();
+  let overlaySequence = 0;
 
   let repoContext: RepositoryContext;
   repoContext = {
@@ -83,6 +85,7 @@ function createHarness() {
       findById: async (id) => orders.get(id) || null,
       save: async (order) => { orders.set(order.id, { ...order }); },
       countForDay: async () => orders.size,
+      findByDay: (dayId) => Array.from(orders.values()).filter((order) => order.dayId === dayId),
     },
     itemRepo: {
       findById: async (id) => items.get(id) || null,
@@ -126,6 +129,33 @@ function createHarness() {
     commandRepo: {
       get: async (id) => commands.get(id) || null,
       record: async (id, type, payload) => { commands.set(id, { type, payload }); },
+    },
+    reservationRepo: {
+      findActiveByDayAndDevice: () => null,
+      save: () => {},
+      reserveRange: (dayId, deviceId, commandId, rangeSize = 20) => ({
+        id: `range-${dayId}-${deviceId}`, businessDayId: dayId, deviceId,
+        startNumber: 1, endNumber: rangeSize, nextNumber: 1, status: 'ACTIVE',
+        commandId: commandId || `range-command-${dayId}`, createdAt: '', updatedAt: '', version: 1,
+      }),
+      getLastAssignedNumberForDay: (dayId) => Math.max(
+        numberSequences.get(dayId) || 0,
+        ...Array.from(orders.values()).filter((order) => order.dayId === dayId).map((order) => order.displayNumber),
+        0
+      ),
+      saveLastAssignedNumberForDay: (dayId, number) => numberSequences.set(dayId, Math.max(numberSequences.get(dayId) || 0, number)),
+    },
+    overlayRepo: {
+      save: (overlay: any) => {
+        if (overlay.entityType === 'orders' && overlay.entityPayload) orders.set(overlay.entityId, { ...overlay.entityPayload, id: overlay.entityId } as OrderEntity);
+      },
+      saveWithTx: (overlay: any) => {
+        if (overlay.entityType === 'orders' && overlay.entityPayload) orders.set(overlay.entityId, { ...overlay.entityPayload, id: overlay.entityId } as OrderEntity);
+      },
+      hasPendingRenumberForDaySync: () => false,
+      remove: async () => {},
+      get: async () => null,
+      getNextSequence: () => ++overlaySequence,
     },
     transactionManager: {
       runInTransaction: async (work) => work(repoContext),
