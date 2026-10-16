@@ -17,6 +17,7 @@ DECLARE
   v_total_minor bigint;
   v_due_minor bigint;
   v_customer_balance_minor bigint;
+  v_order_qr_submission_count integer;
 BEGIN
   IF p_public_token IS NULL OR length(p_public_token) < 20 OR length(p_public_token) > 128 THEN
     RETURN;
@@ -52,6 +53,11 @@ BEGIN
   INTO v_customer_balance_minor
   FROM public.financial_ledger fl
   WHERE fl.customer_id = v_customer.id;
+
+  SELECT count(*)::integer
+  INTO v_order_qr_submission_count
+  FROM public.qr_payment_submissions s
+  WHERE s.order_id = v_order.id;
 
   SELECT
     count(*)::integer,
@@ -112,6 +118,7 @@ BEGIN
     'order_total_minor', v_total_minor,
     'order_due_minor', v_due_minor,
     'customer_has_positive_credit', (v_customer_balance_minor > 0),
+    'order_qr_submission_limit_reached', (v_order_qr_submission_count >= 3),
     'items', v_items
   );
 END;
