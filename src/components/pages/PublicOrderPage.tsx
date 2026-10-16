@@ -24,13 +24,13 @@ export type OrderPaymentViewState = 'PAID' | 'PENDING' | 'APPROVED' | 'REJECTED'
 export const getOrderPaymentViewState = (
   dueMinor: number | null | undefined,
   submission: Pick<PublicQrPaymentSubmissionRpcResult, 'status'> | null,
-  customerBalanceMinor: number | null | undefined,
+  customerHasPositiveCredit: boolean | null | undefined,
   orderStatus: string | null | undefined
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
-  if (typeof customerBalanceMinor !== 'number' || !Number.isFinite(customerBalanceMinor)) return 'UNAVAILABLE';
-  // A positive account balance is customer credit, not a debt to collect through this QR.
-  if (customerBalanceMinor > 0) return 'CREDIT_COVERED';
+  if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
+  // Positive account balance is customer credit, not a debt to collect through this QR.
+  if (customerHasPositiveCredit) return 'CREDIT_COVERED';
   if (dueMinor <= 0) {
     const status = String(orderStatus ?? '').toUpperCase();
     return ['DELIVERED', 'COMPLETED'].includes(status) ? 'PAID' : 'NOT_DUE';
@@ -298,7 +298,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       : undefined;
 
   const statusConfig = getOrderStatusConfig(data?.status, due);
-  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerBalanceMinor, data?.status);
+  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status);
   const StatusIcon = statusConfig.icon;
 
   return (
