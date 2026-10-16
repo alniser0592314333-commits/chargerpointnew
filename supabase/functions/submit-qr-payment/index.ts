@@ -156,7 +156,7 @@ Deno.serve(async (request: Request) => {
         return json(503, { error: "Could not verify the account balance. Please refresh and try again." });
       }
       if (resolvedOrder.customer_has_positive_credit) {
-        return json(409, { error: "Your account has positive credit. No order payment is needed right now." });
+        return json(400, { error: "Your account has positive credit. No order payment is needed right now." });
       }
       amountMinor = Number(resolvedOrder.order_due_minor);
       const { data: orderRecord, error: orderLookupError } = await supabase
@@ -254,7 +254,7 @@ Deno.serve(async (request: Request) => {
       await supabase.storage.from("qr-payment-receipts").remove([uploadedPath]);
       uploadedPath = null;
       const message = submitError?.message ?? "Submission was not accepted";
-      const isConflict = /already awaiting review|no remaining amount|Too many payment notifications|too many submissions/i.test(message);
+      const isConflict = /already awaiting review|no remaining amount|Too many payment notifications|too many submissions|maximum of three payment notifications/i.test(message);
       return json(isConflict ? 409 : 400, {
         error: isConflict
           ? "This account or order already has a pending notification, or the amount is no longer payable."
