@@ -525,8 +525,33 @@ export class FinalUseCases {
           return { success: false, error: 'The day is being renumbered and has not been confirmed by the server yet. Wait for sync before adding another order.' };
         }
 
+        const dayOrders = repos.orderRepo.findByDay?.(dayId);
+        if (!dayOrders) {
+          return { success: false, error: 'The current day order list is unavailable. No order was created.' };
+        }
+        const sortedNumbers = dayOrders
+          .map((existing) => Number(existing.displayNumber) || 0)
+          .sort((a, b) => a - b);
+        if (sortedNumbers.some((number, index) => number !== index + 1)) {
+          return {
+            success: false,
+            error: 'Day numbering is not contiguous. Renumber the complete day before adding another order.',
+            code: 'ORDER_NUMBERING_GAP',
+          };
+        }
+        const expectedNextNumber = dayOrders.length + 1;
         const deviceId = actor.deviceId || 'default-device';
         let reservation = repos.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId) as OrderNumberReservationEntity | null | undefined;
+
+        // Repair stale cursors left by earlier app versions or by a prior manual renumber.
+        // The current effective order set is authoritative for the next local reservation.
+        if (repos.reservationRepo && reservation && reservation.nextNumber !== expectedNextNumber) {
+          if (!repos.reservationRepo.resetForDay) {
+            return { success: false, error: 'The saved order-number cursor is stale and cannot be repaired safely.' };
+          }
+          repos.reservationRepo.resetForDay(dayId, expectedNextNumber);
+          reservation = null;
+        }
         if (repos.reservationRepo && (!reservation || reservation.nextNumber > reservation.endNumber)) {
           reservation = repos.reservationRepo.reserveRange(dayId, deviceId, commandId, 20) as OrderNumberReservationEntity;
         }
@@ -542,9 +567,7 @@ export class FinalUseCases {
           reservation.updatedAt = new Date().toISOString();
           repos.reservationRepo.save(reservation);
         } else {
-          const dayOrders = repos.orderRepo.findByDay?.(dayId);
-          if (!dayOrders) return { success: false, error: 'The current day order list is unavailable. No order was created.' };
-          displayNumber = dayOrders.reduce((max, existing) => Math.max(max, Number(existing.displayNumber) || 0), 0) + 1;
+          displayNumber = expectedNextNumber;
         }
 
         const order: OrderEntity = {
