@@ -2282,12 +2282,22 @@ function createTransactionalRepoContext(
         localDb.saveOverlayWithTx(tx, overlay);
       },
       hasPendingOrderChangesForDaySync: (dayId: string) => hasPendingOrderChangesForDay(dayId),
-      hasPendingRenumberForDaySync: (dayId: string) => localDb.listOutboxSync().some((item) => {
-        const payload = (item.payload || {}) as Record<string, unknown>;
-        return item.commandType === 'RENUMBER_DAY_ORDERS' &&
-          (payload.dayId === dayId || payload.id === dayId) &&
-          ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status));
-      }),
+      hasPendingRenumberForDaySync: (dayId: string) => {
+        const renumberCommands = localDb.listOutboxSync().filter((item) => {
+          const payload = (item.payload || {}) as Record<string, unknown>;
+          return item.commandType === 'RENUMBER_DAY_ORDERS' && (payload.dayId === dayId || payload.id === dayId);
+        });
+        if (renumberCommands.some((item) => ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status)))) return true;
+        const hasWatermark = Array.from(reservationsMap.values()).some((reservation) =>
+          reservation.businessDayId === dayId && reservation.deviceId === '__renumber_watermark__'
+        );
+        if (!hasWatermark) return false;
+        const numbers = Array.from(getEffectiveOrderItemReadModel().orders.values())
+          .filter((order) => isSameDayId(order.dayId, dayId))
+          .map((order) => Number(order.displayNumber) || 0)
+          .sort((a, b) => a - b);
+        return numbers.some((number, index) => number !== index + 1);
+      },
     },
     orderRepo: {
       findById: (id: string) => ordersMap.get(id) || null,
@@ -2596,10 +2606,13 @@ function createTransactionalRepoContext(
       },
       resetForDay: (dayId: string, nextNumber: number) => {
         const now = new Date().toISOString();
+        let watermarkFound = false;
         reservationsMap.forEach((reservation) => {
           if (reservation.businessDayId !== dayId) return;
+          const isWatermark = reservation.deviceId === '__renumber_watermark__';
           const reset: OrderNumberReservationEntity = {
             ...reservation,
+            deviceId: isWatermark ? '__renumber_watermark__' : reservation.deviceId,
             startNumber: nextNumber,
             endNumber: nextNumber - 1,
             nextNumber,
@@ -2607,10 +2620,32 @@ function createTransactionalRepoContext(
             updatedAt: now,
             version: (reservation.version || 0) + 1,
           };
+          if (isWatermark) watermarkFound = true;
           reservationsMap.set(reset.id, reset);
           localDb.setWithTx(tx, 'orderNumberReservations', reset.id, reset);
           postCommitActions.push(() => notifyStore('orderNumberReservations', reset.id));
         });
+        // Persist a watermark even when no range had ever been reserved. It lets the
+        // writer detect that the server has accepted a renumber but the canonical pull
+        // has not yet replaced stale local rows, and blocks creation while a gap remains.
+        if (!watermarkFound) {
+          const watermark: OrderNumberReservationEntity = {
+            id: crypto.randomUUID(),
+            businessDayId: dayId,
+            deviceId: '__renumber_watermark__',
+            startNumber: nextNumber,
+            endNumber: nextNumber - 1,
+            nextNumber,
+            status: 'EXHAUSTED',
+            commandId: `renumber-watermark:${dayId}:${now}`,
+            createdAt: now,
+            updatedAt: now,
+            version: 1,
+          };
+          reservationsMap.set(watermark.id, watermark);
+          localDb.setWithTx(tx, 'orderNumberReservations', watermark.id, watermark);
+          postCommitActions.push(() => notifyStore('orderNumberReservations', watermark.id));
+        }
       },
       reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
         if (commandId) {
@@ -3002,12 +3037,20 @@ export const repoContext: RepositoryContext = {
     },
     hasPendingRenumberForDay: async (dayId) => {
       await ensureStoreHydrated();
-      return localDb.listOutboxSync().some((item) => {
+      const renumberCommands = localDb.listOutboxSync().filter((item) => {
         const payload = (item.payload || {}) as Record<string, unknown>;
-        return item.commandType === 'RENUMBER_DAY_ORDERS' &&
-          (payload.dayId === dayId || payload.id === dayId) &&
-          ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status));
+        return item.commandType === 'RENUMBER_DAY_ORDERS' && (payload.dayId === dayId || payload.id === dayId);
       });
+      if (renumberCommands.some((item) => ['pending', 'syncing', 'blocked', 'PENDING_RECONCILIATION'].includes(String(item.status)))) return true;
+      const hasWatermark = Array.from(reservationsMap.values()).some((reservation) =>
+        reservation.businessDayId === dayId && reservation.deviceId === '__renumber_watermark__'
+      );
+      if (!hasWatermark) return false;
+      const numbers = Array.from(getEffectiveOrderItemReadModel().orders.values())
+        .filter((order) => isSameDayId(order.dayId, dayId))
+        .map((order) => Number(order.displayNumber) || 0)
+        .sort((a, b) => a - b);
+      return numbers.some((number, index) => number !== index + 1);
     },
   },
   reservationRepo: {
