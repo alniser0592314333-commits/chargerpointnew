@@ -3847,20 +3847,14 @@ export const getOrdersForDay = async (
 
 export const getNextOrderNumberForDay = async (dayId: string): Promise<number> => {
   await ensureStoreHydrated();
-  const deviceId = getCurrentAdminAuthorizationContext().requireAuth().deviceId || 'default-device';
+  // The preview must use the same source of truth as createOrderWithItems.
+  // Legacy reservation cursors are deliberately ignored: a previewed number is
+  // the number the local transaction will persist, not a hint from a stale range.
   let maxNumber = 0;
   getEffectiveOrderItemReadModel().orders.forEach((order) => {
     if (isSameDayId(order.dayId, dayId)) maxNumber = Math.max(maxNumber, Number(order.displayNumber) || 0);
   });
-  const expectedNextNumber = maxNumber + 1;
-  const needsReset = repoContext.reservationRepo?.needsResetForDay?.(dayId, deviceId, expectedNextNumber) || false;
-  if (needsReset) return expectedNextNumber;
-
-  const activeReservation = await repoContext.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId);
-  if (activeReservation && activeReservation.nextNumber <= activeReservation.endNumber) {
-    return activeReservation.nextNumber;
-  }
-  return expectedNextNumber;
+  return maxNumber + 1;
 };
 
 export const searchCustomers = async (query: string): Promise<UICustomerItem[]> => {
