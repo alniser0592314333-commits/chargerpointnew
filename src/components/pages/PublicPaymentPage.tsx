@@ -131,6 +131,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [validationError, setValidationError] = useState<'method' | 'receipt' | null>(null);
   const methodSectionRef = useRef<HTMLElement | null>(null);
   const receiptSectionRef = useRef<HTMLElement | null>(null);
 
@@ -203,12 +204,14 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
+      setValidationError(null);
       setError(isAr ? 'تعذّر نسخ الرقم. انسخه يدوياً.' : 'Could not copy the number. Please copy it manually.');
     }
   };
 
   const handleReceiptChange = (file?: File) => {
     setError('');
+    setValidationError(null);
     setSuccess(false);
     if (!file) {
       setReceipt(null);
@@ -228,13 +231,16 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
+    setValidationError(null);
     if (!method) {
+      setValidationError('method');
       setError(isAr ? 'يجب اختيار وسيلة الدفع قبل إرسال الإشعار.' : 'Please select a payment method before sending the notification.');
       methodSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     if (!receipt) {
-      setError(isAr ? 'يجب إرفاق صورة إشعار الدفع قبل الإرسال.' : 'Please attach a payment receipt image before sending.');
+      setValidationError('receipt');
+      setError : 'Please attach a payment receipt image before sending.');
       receiptSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
@@ -399,7 +405,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           </section>
         ) : (
           <form onSubmit={submit} className="space-y-5">
-            {error && method && receipt && (
+            {error && validationError === null && (
               <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{error}</div>
             )}
 
@@ -428,7 +434,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 {methods.map((item) => {
                   const selected = method === item.id;
                   return (
-                    <button key={item.id} type="button" onClick={() => { setMethod(item.id); setError(''); }}
+                    <button key={item.id} type="button" onClick={() => { setMethod(item.id); setError(''); setValidationError(null); }}
                       aria-pressed={selected}
                       className={`relative flex min-h-[112px] flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all focus:outline-none focus:ring-2 focus:ring-[#0f766e] sm:min-h-[124px] sm:p-3 ${selected ? 'border-[#0f766e] bg-[#f0f8f6] shadow-[0_0_0_1px_#0f766e] dark:bg-[#10302e]' : 'border-[#dce6e4] bg-white hover:border-[#a8c7c0] dark:border-[#244746] dark:bg-[#0b2928] dark:hover:border-[#3b6e67]'}`}>
                       {selected && <CheckCircle2 className="absolute end-2 top-2 h-4 w-4 text-[#0f766e] dark:text-[#9cd6c9]" />}
@@ -439,7 +445,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   );
                 })}
               </div>
-              {error && !method && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{error}</p>}
+              {error && validationError === 'method' && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{error}</p>}
             </section>
 
             <section ref={receiptSectionRef} className="scroll-mt-8 rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_12px_36px_rgba(16,55,51,0.045)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
@@ -456,7 +462,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 <span className="mt-1 max-w-sm text-[11px] leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'يُقبل ملف صورة فقط. ستُضغط الصورة قبل الرفع مع الحفاظ على وضوح بيانات التحويل.' : 'Image files only. The image is compressed before upload while keeping transfer details readable.'}</span>
                 <input type="file" accept="image/jpeg,image/png,image/webp,image/*" className="sr-only" onChange={(e) => handleReceiptChange(e.target.files?.[0])} />
               </label>
-              {error && method && !receipt && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{error}</p>}
+              {error && validationError === 'receipt' && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{error}</p>}
               {receiptPreview && (
                 <div className="mt-3 flex items-center gap-3 rounded-xl border border-[#dce6e4] p-3 dark:border-[#244746]">
                   <img src={receiptPreview} alt={isAr ? 'معاينة الإيصال' : 'Receipt preview'} className="h-16 w-16 rounded-lg object-cover" />
