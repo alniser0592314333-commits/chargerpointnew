@@ -2647,6 +2647,20 @@ function createTransactionalRepoContext(
           postCommitActions.push(() => notifyStore('orderNumberReservations', watermark.id));
         }
       },
+      needsResetForDay: (dayId: string, deviceId: string, expectedNextNumber: number) => {
+        const active = Array.from(reservationsMap.values()).find((reservation) =>
+          reservation.businessDayId === dayId &&
+          reservation.deviceId === deviceId &&
+          reservation.status === 'ACTIVE' &&
+          reservation.nextNumber <= reservation.endNumber
+        );
+        if (active) return active.nextNumber !== expectedNextNumber;
+        let maxReservedEnd = 0;
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId === dayId) maxReservedEnd = Math.max(maxReservedEnd, reservation.endNumber);
+        });
+        return maxReservedEnd !== expectedNextNumber - 1;
+      },
       reserveRange: (dayId: string, deviceId: string, commandId?: string, rangeSize: number = 20) => {
         if (commandId) {
           for (const r of reservationsMap.values()) {
@@ -3083,6 +3097,20 @@ export const repoContext: RepositoryContext = {
       await repoContext.transactionManager.runInTransaction((ctx: any) => {
         ctx.reservationRepo.resetForDay(dayId, nextNumber);
       });
+    },
+    needsResetForDay: (dayId, deviceId, expectedNextNumber) => {
+      const active = Array.from(reservationsMap.values()).find((reservation) =>
+        reservation.businessDayId === dayId &&
+        reservation.deviceId === deviceId &&
+        reservation.status === 'ACTIVE' &&
+        reservation.nextNumber <= reservation.endNumber
+      );
+      if (active) return active.nextNumber !== expectedNextNumber;
+      let maxReservedEnd = 0;
+      reservationsMap.forEach((reservation) => {
+        if (reservation.businessDayId === dayId) maxReservedEnd = Math.max(maxReservedEnd, reservation.endNumber);
+      });
+      return maxReservedEnd !== expectedNextNumber - 1;
     },
   },
   goalRepo: {
