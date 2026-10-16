@@ -70,7 +70,11 @@ BEGIN
         'device_type_id', oi.device_type_id,
         'status', oi.status,
         'operational_status', oi.operational_status,
-        'payment_status', oi.payment_status,
+        'payment_status', CASE
+          WHEN oi.financial_status = 'RECOGNIZED' AND oi.financially_recognized_at IS NOT NULL
+          THEN oi.payment_status
+          ELSE 'NOT_DUE'
+        END,
         'has_charger', oi.has_charger,
         'quantity', 1,
         'unit_price_minor', oi.unit_price_minor,
