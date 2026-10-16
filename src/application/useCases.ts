@@ -48,6 +48,7 @@ export interface RepositoryContext {
     save(order: OrderEntity): Promise<void> | void;
     countForDay(dayId: ID): Promise<number> | number;
     findByDay?(dayId: ID): OrderEntity[];
+    maxInternalSequence?(): number;
   };
   reservationRepo?: {
     findActiveByDayAndDevice(dayId: ID, deviceId: ID): Promise<OrderNumberReservationEntity | null> | (OrderNumberReservationEntity | null);
@@ -567,12 +568,14 @@ export class FinalUseCases {
           displayNumber = expectedNextNumber;
         }
 
+        const internalSequence = (repos.orderRepo.maxInternalSequence?.() ??
+          dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
         const order: OrderEntity = {
           id: orderId,
           dayId,
           customerId,
           displayNumber,
-          internalSequence: displayNumber,
+          internalSequence,
           status: 'pending',
           customerBalanceSnapshotMinor: currentBalance,
           notes,
