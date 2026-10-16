@@ -2611,8 +2611,54 @@ function createTransactionalRepoContext(
         localDb.setWithTx(tx, 'orderNumberReservations', r.id, r);
         postCommitActions.push(() => notifyStore('orderNumberReservations', r.id));
       },
+      getLastAssignedNumberForDay: (dayId: string) => {
+        let highWater = 0;
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+        });
+        return highWater;
+      },
+      saveLastAssignedNumberForDay: (dayId: string, assignedNumber: number) => {
+        const now = new Date().toISOString();
+        let sequence = Array.from(reservationsMap.values()).find((reservation) =>
+          reservation.businessDayId === dayId && reservation.deviceId === '__order_number_sequence__'
+        );
+        if (sequence) {
+          sequence = {
+            ...sequence,
+            startNumber: 1,
+            endNumber: Math.max(Number(sequence.endNumber) || 0, assignedNumber),
+            nextNumber: Math.max(Number(sequence.endNumber) || 0, assignedNumber) + 1,
+            status: 'EXHAUSTED',
+            updatedAt: now,
+            version: (sequence.version || 0) + 1,
+          };
+        } else {
+          sequence = {
+            id: crypto.randomUUID(),
+            businessDayId: dayId,
+            deviceId: '__order_number_sequence__',
+            startNumber: 1,
+            endNumber: assignedNumber,
+            nextNumber: assignedNumber + 1,
+            status: 'EXHAUSTED',
+            commandId: `order-number-sequence:${dayId}`,
+            createdAt: now,
+            updatedAt: now,
+            version: 1,
+          };
+        }
+        reservationsMap.set(sequence.id, sequence);
+        localDb.setWithTx(tx, 'orderNumberReservations', sequence.id, sequence);
+        postCommitActions.push(() => notifyStore('orderNumberReservations', sequence!.id));
+      },
       resetForDay: (dayId: string, nextNumber: number) => {
         const now = new Date().toISOString();
+        let highWater = Math.max(0, nextNumber - 1);
+        reservationsMap.forEach((reservation) => {
+          if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+        });
+        const nextHighWaterNumber = highWater + 1;
         let watermarkFound = false;
         reservationsMap.forEach((reservation) => {
           if (reservation.businessDayId !== dayId) return;
@@ -2620,9 +2666,9 @@ function createTransactionalRepoContext(
           const reset: OrderNumberReservationEntity = {
             ...reservation,
             deviceId: isWatermark ? '__renumber_watermark__' : reservation.deviceId,
-            startNumber: nextNumber,
-            endNumber: nextNumber - 1,
-            nextNumber,
+            startNumber: reservation.startNumber || 1,
+            endNumber: highWater,
+            nextNumber: nextHighWaterNumber,
             status: 'EXHAUSTED',
             updatedAt: now,
             version: (reservation.version || 0) + 1,
@@ -2632,17 +2678,16 @@ function createTransactionalRepoContext(
           localDb.setWithTx(tx, 'orderNumberReservations', reset.id, reset);
           postCommitActions.push(() => notifyStore('orderNumberReservations', reset.id));
         });
-        // Persist a watermark even when no range had ever been reserved. It lets the
-        // writer detect that the server has accepted a renumber but the canonical pull
-        // has not yet replaced stale local rows, and blocks creation while a gap remains.
+        // The watermark must preserve the highest number ever issued. Renumbering
+        // visible rows never lowers this counter or makes an old number reusable.
         if (!watermarkFound) {
           const watermark: OrderNumberReservationEntity = {
             id: crypto.randomUUID(),
             businessDayId: dayId,
             deviceId: '__renumber_watermark__',
-            startNumber: nextNumber,
-            endNumber: nextNumber - 1,
-            nextNumber,
+            startNumber: 1,
+            endNumber: highWater,
+            nextNumber: nextHighWaterNumber,
             status: 'EXHAUSTED',
             commandId: `renumber-watermark:${dayId}:${now}`,
             createdAt: now,
@@ -3085,6 +3130,13 @@ export const repoContext: RepositoryContext = {
     },
   },
   reservationRepo: {
+    getLastAssignedNumberForDay: (dayId) => {
+      let highWater = 0;
+      reservationsMap.forEach((reservation) => {
+        if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+      });
+      return highWater;
+    },
     findActiveByDayAndDevice: async (dayId, deviceId) => {
       await ensureStoreHydrated();
       let found: OrderNumberReservationEntity | null = null;
