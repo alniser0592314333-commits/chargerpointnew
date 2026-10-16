@@ -77,26 +77,50 @@ describe('Public Order Page Energy Redesign & State Machine', () => {
 
 describe('Public order QR payment status presentation', () => {
   it('shows Pay Now only when there is a confirmed outstanding balance and no QR submission', () => {
-    expect(getOrderPaymentViewState(2500, null)).toBe('UNPAID');
+    expect(getOrderPaymentViewState(2500, null, false, 'DELIVERED')).toBe('UNPAID');
   });
 
   it('replaces Pay Now with a review state while this order QR submission is pending', () => {
-    expect(getOrderPaymentViewState(2500, { status: 'PENDING' })).toBe('PENDING');
+    expect(getOrderPaymentViewState(2500, { status: 'PENDING' }, false, 'DELIVERED')).toBe('PENDING');
   });
 
   it('shows accepted state after approval while a partial balance remains', () => {
-    expect(getOrderPaymentViewState(1200, { status: 'APPROVED' })).toBe('APPROVED');
+    expect(getOrderPaymentViewState(1200, { status: 'APPROVED' }, false, 'DELIVERED')).toBe('APPROVED');
   });
 
   it('allows a new payment attempt after a rejected notification', () => {
-    expect(getOrderPaymentViewState(2500, { status: 'REJECTED' })).toBe('REJECTED');
+    expect(getOrderPaymentViewState(2500, { status: 'REJECTED' }, false, 'DELIVERED')).toBe('REJECTED');
   });
 
   it('treats the canonical zero balance as paid even if an older notification is pending', () => {
-    expect(getOrderPaymentViewState(0, { status: 'PENDING' })).toBe('PAID');
+    expect(getOrderPaymentViewState(0, { status: 'PENDING' }, false, 'DELIVERED')).toBe('PAID');
   });
 
   it('does not claim that an order is paid when its balance is unavailable', () => {
-    expect(getOrderPaymentViewState(undefined, null)).toBe('UNAVAILABLE');
+    expect(getOrderPaymentViewState(undefined, null, false, 'DELIVERED')).toBe('UNAVAILABLE');
+  });
+
+  it('suppresses Pay Now when the customer has positive credit', () => {
+    expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('CREDIT_COVERED');
+  });
+
+  it('preserves an approved payment status while positive credit still blocks another payment', () => {
+    expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED')).toBe('APPROVED');
+  });
+
+  it('does not call a charging order paid before its charge is recognized', () => {
+    expect(getOrderPaymentViewState(0, null, false, 'CHARGING')).toBe('NOT_DUE');
+  });
+
+  it('shows the positive-credit notice for a charging order without calling it paid', () => {
+    expect(getOrderPaymentViewState(0, null, true, 'CHARGING')).toBe('CREDIT_COVERED');
+  });
+
+  it('shows a delivered order as paid when no recognized amount remains', () => {
+    expect(getOrderPaymentViewState(0, null, true, 'DELIVERED')).toBe('PAID');
+  });
+
+  it('fails closed when customer balance is unavailable', () => {
+    expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED')).toBe('UNAVAILABLE');
   });
 });

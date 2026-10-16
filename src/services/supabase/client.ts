@@ -64,6 +64,8 @@ export interface PublicOrderQrRpcResult {
   items_count: number;
   order_total_minor?: number;
   order_due_minor?: number;
+  customer_has_positive_credit?: boolean | null;
+  order_qr_submission_limit_reached?: boolean | null;
   items?: Array<{
     name: string;
     name_ar?: string;

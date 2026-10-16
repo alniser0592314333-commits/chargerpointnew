@@ -5506,6 +5506,8 @@ export interface PublicOrderQrData {
   itemsCount: number;
   orderTotalMinor?: number;
   orderDueMinor?: number;
+  customerHasPositiveCredit?: boolean;
+  orderQrSubmissionLimitReached?: boolean;
   items?: Array<{
     name: string;
     name_ar?: string;
@@ -5532,8 +5534,8 @@ export interface PublicOrderQrData {
  * 1. Checks Supabase central database RPC `public_resolve_order_qr`.
  * 2. In offline/foundation mode, checks `localDb` `qr_tokens` and in-memory maps.
  * 3. STRICT PRIVACY BOUNDARY:
- *    Returns ONLY customer name, order number, status, item count, and item names.
- *    NEVER returns internal user credentials, pricing/debt calculations, or administrative details.
+ *    Returns public order details plus a boolean indicating whether positive customer credit exists.
+ *    NEVER returns the exact customer balance, phone, debt limit, credentials, or administrative details.
  */
 export const getPublicOrderByToken = async (
   publicToken: string
@@ -5559,6 +5561,8 @@ export const getPublicOrderByToken = async (
         itemsCount: supabaseResult.items_count,
         orderTotalMinor: supabaseResult.order_total_minor,
         orderDueMinor: supabaseResult.order_due_minor,
+        customerHasPositiveCredit: typeof supabaseResult.customer_has_positive_credit === 'boolean' ? supabaseResult.customer_has_positive_credit : undefined,
+        orderQrSubmissionLimitReached: typeof supabaseResult.order_qr_submission_limit_reached === 'boolean' ? supabaseResult.order_qr_submission_limit_reached : undefined,
         items: supabaseResult.items?.map((it) => {
           const dev = it.device_type_id ? devicesMap.get(it.device_type_id) : undefined;
           const foundBySnapshot = !dev

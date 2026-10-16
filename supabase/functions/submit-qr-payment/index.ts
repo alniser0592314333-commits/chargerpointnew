@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.117.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -25,6 +25,85 @@ function inspectImage(bytes: Uint8Array): { mime: string; extension: string } | 
       String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") {
     return { mime: "image/webp", extension: "webp" };
   }
+  return null;
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function uploadVerifiedReceipt(
+  storage: ReturnType<SupabaseClient<any, "public", any>["storage"]["from"]>,
+  targetKind: "ORDER" | "CUSTOMER",
+  targetId: string,
+  bytes: Uint8Array,
+  image: { mime: string; extension: string },
+): Promise<string | null> {
+  // A successful Storage upload response is not enough: production logs showed that
+  // the metadata row existed while the backing object returned NoSuchKey on signing.
+  // Read the object back and compare its digest before creating a database reference.
+  for (let uploadAttempt = 0; uploadAttempt < 2; uploadAttempt += 1) {
+    const path = `${targetKind === "ORDER" ? "orders" : "customers"}/${targetId}/${crypto.randomUUID()}.${image.extension}`;
+    const { error: uploadError } = await storage.upload(path, bytes, {
+      contentType: image.mime,
+      cacheControl: "300",
+      upsert: false,
+    });
+
+    if (uploadError) {
+      console.error("Receipt upload attempt failed", uploadAttempt + 1, uploadError.message);
+      if (uploadAttempt === 0) await sleep(300);
+      continue;
+    }
+
+    let verified = false;
+    let lastReadError = "";
+    for (let readAttempt = 0; readAttempt < 2; readAttempt += 1) {
+      // Verify the same signing operation used by the admin review screen, then
+      // download and hash the bytes. A metadata row or upload 200 alone is insufficient.
+      const { data: signedReceipt, error: signError } = await storage.createSignedUrl(path, 300);
+      if (signError || !signedReceipt?.signedUrl) {
+        lastReadError = signError?.message ?? "Storage did not return a signed receipt URL";
+      } else {
+        const { data: downloaded, error: readError } = await storage.download(path);
+        if (!readError && downloaded && downloaded.size === bytes.length) {
+          try {
+            const downloadedBytes = new Uint8Array(await downloaded.arrayBuffer());
+            // Use fresh ArrayBuffers because Deno's WebCrypto type rejects ArrayBufferLike
+            // views that may be backed by SharedArrayBuffer.
+            const sourceBuffer = bytes.slice().buffer as ArrayBuffer;
+            const downloadedBuffer = downloadedBytes.slice().buffer as ArrayBuffer;
+            const [sourceDigest, downloadedDigest] = await Promise.all([
+              crypto.subtle.digest("SHA-256", sourceBuffer),
+              crypto.subtle.digest("SHA-256", downloadedBuffer),
+            ]);
+            const sourceHash = Array.from(new Uint8Array(sourceDigest)).join(",");
+            const downloadedHash = Array.from(new Uint8Array(downloadedDigest)).join(",");
+            if (sourceHash === downloadedHash) {
+              verified = true;
+              break;
+            }
+            lastReadError = "SHA-256 mismatch after receipt upload";
+          } catch (verifyError) {
+            lastReadError = verifyError instanceof Error ? verifyError.message : String(verifyError);
+          }
+        } else {
+          lastReadError = readError?.message ?? `read-back size mismatch (${downloaded?.size ?? "missing"} vs ${bytes.length})`;
+        }
+      }
+      if (readAttempt === 0) await sleep(300);
+    }
+
+    if (verified) return path;
+
+    console.error("Receipt upload read-back verification failed", {
+      attempt: uploadAttempt + 1,
+      path,
+      error: lastReadError,
+    });
+    const { error: cleanupError } = await storage.remove([path]);
+    if (cleanupError) console.warn("Could not clean up unverified receipt object", cleanupError.message);
+    if (uploadAttempt === 0) await sleep(500);
+  }
+
   return null;
 }
 
@@ -81,6 +160,13 @@ Deno.serve(async (request: Request) => {
       orderId = String(resolvedOrder.order_id);
       targetId = orderId;
       targetKind = "ORDER";
+      if (typeof resolvedOrder.customer_has_positive_credit !== "boolean") {
+        console.error("Order QR response did not include authoritative customer credit state");
+        return json(503, { error: "Could not verify the account balance. Please refresh and try again." });
+      }
+      if (resolvedOrder.customer_has_positive_credit) {
+        return json(400, { error: "Your account has positive credit. No order payment is needed right now." });
+      }
       amountMinor = Number(resolvedOrder.order_due_minor);
       const { data: orderRecord, error: orderLookupError } = await supabase
         .from("orders").select("id,customer_id").eq("id", orderId).maybeSingle();
@@ -90,7 +176,7 @@ Deno.serve(async (request: Request) => {
       }
       customerId = String(orderRecord.customer_id);
       if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || amountMinor > 99_999_999_999) {
-        return json(400, { error: "This order has no outstanding amount to submit" });
+        return json(400, { error: "No amount is due through this order QR. Payment is accepted only for financially recognized charges." });
       }
     } else {
       const { data: customerRows, error: customerResolveError } = await supabase.rpc("public_resolve_customer_qr", {
@@ -137,8 +223,10 @@ Deno.serve(async (request: Request) => {
             .eq("status", "PENDING").eq("customer_id", customerId),
         ];
     const recentQuery = orderId
+      // Order QR lifetime cap: no more than three submissions for one order QR.
       ? supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
-          .eq("order_id", orderId).gt("created_at", oneHourAgo)
+          .eq("order_id", orderId)
+      // Customer account QR remains usable over time but is rate-limited per hour.
       : supabase.from("qr_payment_submissions").select("id", { count: "exact", head: true })
           .eq("customer_id", customerId).gt("created_at", oneHourAgo);
     const [pendingResults, recentCheck] = await Promise.all([
@@ -154,20 +242,16 @@ Deno.serve(async (request: Request) => {
       return json(409, { error: "A payment notification for this account or order is already awaiting review" });
     }
     if ((recentCheck.count ?? 0) >= 3) {
-      return json(429, { error: "Too many submissions for this account or order. Please try again later." });
+      return orderId
+        ? json(409, { error: "Maximum of three payment notifications reached for this order QR." })
+        : json(429, { error: "Too many submissions for this customer account. Please try again later." });
     }
 
-    uploadedPath = `${targetKind === "ORDER" ? "orders" : "customers"}/${targetId}/${crypto.randomUUID()}.${image.extension}`;
-    const { error: uploadError } = await supabase.storage
-      .from("qr-payment-receipts")
-      .upload(uploadedPath, bytes, {
-        contentType: image.mime,
-        cacheControl: "300",
-        upsert: false,
+    uploadedPath = await uploadVerifiedReceipt(supabase.storage.from("qr-payment-receipts"), targetKind, targetId, bytes, image);
+    if (!uploadedPath) {
+      return json(503, {
+        error: "The receipt could not be verified in storage. No payment notification was saved; please try again.",
       });
-    if (uploadError) {
-      console.error("Receipt upload failed", uploadError.message);
-      return json(500, { error: "The receipt image could not be uploaded. Please try again." });
     }
 
     const { data: submission, error: submitError } = await supabase.rpc("submit_qr_payment", {
@@ -181,11 +265,20 @@ Deno.serve(async (request: Request) => {
       await supabase.storage.from("qr-payment-receipts").remove([uploadedPath]);
       uploadedPath = null;
       const message = submitError?.message ?? "Submission was not accepted";
-      const isConflict = /already awaiting review|no remaining amount|Too many payment notifications|too many submissions/i.test(message);
-      return json(isConflict ? 409 : 400, {
-        error: isConflict
-          ? "This account or order already has a pending notification, or the amount is no longer payable."
-          : "The payment notification could not be saved. Please try again.",
+      const isMaximumSubmissions = /maximum of three payment notifications/i.test(message);
+      const isCreditBlocked = /positive credit/i.test(message);
+      const isNoAmountDue = /no remaining amount|no amount due/i.test(message);
+      const isConflict = /already awaiting review|Too many payment notifications|too many submissions/i.test(message);
+      return json(isMaximumSubmissions || isNoAmountDue || isConflict ? 409 : 400, {
+        error: isMaximumSubmissions
+          ? "Maximum of three payment notifications reached for this order QR."
+          : isCreditBlocked
+            ? "Your account has positive credit. No order payment is needed right now."
+            : isNoAmountDue
+              ? "No amount is due through this order QR. Payment is accepted only for financially recognized charges."
+              : isConflict
+                ? "This account or order already has a pending notification."
+                : "The payment notification could not be saved. Please try again.",
       });
     }
 
