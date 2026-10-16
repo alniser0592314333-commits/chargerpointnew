@@ -31,7 +31,7 @@ function inspectImage(bytes: Uint8Array): { mime: string; extension: string } | 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function uploadVerifiedReceipt(
-  supabase: SupabaseClient<any, "public", any>,
+  storage: ReturnType<SupabaseClient<any, "public", any>["storage"]["from"]>,
   targetKind: "ORDER" | "CUSTOMER",
   targetId: string,
   bytes: Uint8Array,
