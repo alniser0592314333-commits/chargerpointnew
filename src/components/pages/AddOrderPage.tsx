@@ -160,19 +160,29 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
     return () => { active = false; };
   }, [searchQuery, customerMode, isSuperAdmin]);
 
-  // Check for same-customer-same-day order when customer is selected
+  // Resolve the same-day order before committing the customer selection.
+  // If one exists, reuse its edit flow immediately instead of creating a duplicate order.
   const handleSelectCustomer = async (customer: UICustomerItem) => {
-    setSelectedCustomer(customer);
     setSearchQuery('');
     setSearchResults([]);
     setDismissedConflictAlert(false);
+    setErrorMessage('');
 
-    // Check if customer already has an order today using Phase 5 store
-    const existingOrd = await findExistingCustomerOrderOnDay(dayId, customer.id);
-    if (existingOrd) {
-      setExistingOrderForCustomer(existingOrd);
-    } else {
+    try {
+      const existingOrd = await findExistingCustomerOrderOnDay(dayId, customer.id);
+      if (existingOrd && onEditOrder) {
+        onEditOrder(dayId, existingOrd.id);
+        return;
+      }
+
+      setSelectedCustomer(customer);
+      setExistingOrderForCustomer(existingOrd || null);
+    } catch (err: any) {
+      // Do not proceed to the create form when the same-day check failed;
+      // doing so could create a duplicate because the lookup was inconclusive.
+      setSelectedCustomer(null);
       setExistingOrderForCustomer(null);
+      setErrorMessage(err?.message || t('errorOccurred'));
     }
   };
 
