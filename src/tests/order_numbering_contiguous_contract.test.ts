@@ -52,6 +52,18 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(renumberBranch).toContain('VALUES (v_day_uuid, v_max_new_number, NOW())');
     expect(renumberBranch).toContain('last_assigned_number = EXCLUDED.last_assigned_number');
   });
+  it('invalidates old local ranges instead of carrying their high-water mark through renumbering', () => {
+    const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
+    const store = fs.readFileSync(storePath, 'utf8');
+    const resetStart = store.indexOf('resetForDay: (dayId: string, nextNumber: number) =>');
+    const resetEnd = store.indexOf('needsResetForDay:', resetStart);
+    expect(resetStart).toBeGreaterThanOrEqual(0);
+    expect(resetEnd).toBeGreaterThan(resetStart);
+    const reset = store.slice(resetStart, resetEnd);
+    expect(reset).toContain('const highWater = Math.max(0, nextNumber - 1)');
+    expect(reset).not.toContain('highWater = Math.max(highWater, consumedThrough)');
+  });
+
   it('keeps the UI preview independent of legacy reservation cursors', () => {
     const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
     const store = fs.readFileSync(storePath, 'utf8');
