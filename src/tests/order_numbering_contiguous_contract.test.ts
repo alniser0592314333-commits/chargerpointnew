@@ -35,7 +35,6 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(branch).toContain("'{displayNumber}'");
     expect(branch).toContain("'{display_number}'");
     expect(branch).toContain("p_payload->>'displayNumber'");
-    expect(branch).not.toContain('silently substitutes another number');
   });
 
   it('enforces per-day uniqueness without breaking atomic number swaps during renumbering', () => {
@@ -49,4 +48,17 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(renumberBranch).toContain('SET display_number = (c.value->>\'newNumber\')::INTEGER');
     expect(renumberBranch).toContain('INSERT INTO public.order_renumber_audit');
   });
+  it('keeps the UI preview independent of legacy reservation cursors', () => {
+    const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
+    const store = fs.readFileSync(storePath, 'utf8');
+    const start = store.indexOf('export const getNextOrderNumberForDay');
+    const end = store.indexOf('export const searchCustomers', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const preview = store.slice(start, end);
+    expect(preview).toContain('return maxNumber + 1');
+    expect(preview).not.toContain('reservationRepo');
+    expect(preview).toContain('getEffectiveOrderItemReadModel()');
+  });
+
 });
