@@ -3899,14 +3899,14 @@ export const getOrdersForDay = async (
 
 export const getNextOrderNumberForDay = async (dayId: string): Promise<number> => {
   await ensureStoreHydrated();
-  // The preview must use the same source of truth as createOrderWithItems.
-  // Legacy reservation cursors are deliberately ignored: a previewed number is
-  // the number the local transaction will persist, not a hint from a stale range.
+  // The preview uses the same effective orders and durable high-water mark as
+  // the local creation transaction. Legacy reserved ranges are never consumed.
   let maxNumber = 0;
   getEffectiveOrderItemReadModel().orders.forEach((order) => {
     if (isSameDayId(order.dayId, dayId)) maxNumber = Math.max(maxNumber, Number(order.displayNumber) || 0);
   });
-  return maxNumber + 1;
+  const lastAssigned = repoContext.reservationRepo?.getLastAssignedNumberForDay?.(dayId) ?? 0;
+  return Math.max(maxNumber, lastAssigned) + 1;
 };
 
 export const searchCustomers = async (query: string): Promise<UICustomerItem[]> => {
