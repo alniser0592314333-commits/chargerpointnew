@@ -283,7 +283,7 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
--- A unique reserved number may still arrive out of order; it must not be forced to MAX+1.
+-- A unique but stale reserved number must still be reconciled to the next contiguous server number.
 SET ROLE authenticated;
 SELECT public.execute_canonical_sync_command(
   'bbbbbbbb-1111-4111-8111-111111111111'::uuid,
@@ -345,33 +345,33 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.orders
     WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222'
-      AND display_number = 21
+      AND display_number = 5
   ) OR NOT EXISTS (
     SELECT 1 FROM public.test_change_events
     WHERE entity_table = 'orders'
       AND entity_id = 'bbbbbbbb-2222-4222-8222-222222222222'
       AND operation = 'INSERT'
-      AND (payload->>'displayNumber')::INTEGER = 21
-      AND (payload->>'display_number')::INTEGER = 21
+      AND (payload->>'displayNumber')::INTEGER = 5
+      AND (payload->>'display_number')::INTEGER = 5
   ) THEN
-    RAISE EXCEPTION 'A unique out-of-order offline reservation was incorrectly forced to MAX+1 or not published';
+    RAISE EXCEPTION 'A stale free offline number was not reassigned to the next contiguous number';
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM public.orders
     WHERE id = 'cccccccc-2222-4222-8222-222222222222'
-      AND display_number = 22
+      AND display_number = 6
   ) OR NOT EXISTS (
     SELECT 1 FROM public.test_change_events
     WHERE entity_table = 'orders'
       AND entity_id = 'cccccccc-2222-4222-8222-222222222222'
       AND operation = 'INSERT'
-      AND (payload->>'displayNumber')::INTEGER = 22
-      AND (payload->>'display_number')::INTEGER = 22
+      AND (payload->>'displayNumber')::INTEGER = 6
+      AND (payload->>'display_number')::INTEGER = 6
   ) OR NOT EXISTS (
     SELECT 1 FROM public.processed_commands
     WHERE command_id = 'cccccccc-1111-4111-8111-111111111111'
-      AND result_payload->>'displayNumber' = '22'
+      AND result_payload->>'displayNumber' = '6'
   ) THEN
     RAISE EXCEPTION 'A server-assigned zero/missing number was not reconciled and published consistently';
   END IF;
