@@ -98,6 +98,11 @@ VALUES
   ('55555555-5555-4555-8555-555555555555', '33333333-3333-4333-8333-333333333333', 2, 1, 102),
   ('66666666-6666-4666-8666-666666666666', '33333333-3333-4333-8333-333333333333', 3, 1, 103);
 
+INSERT INTO public.business_day_order_sequences(day_id, last_assigned_number)
+VALUES ('33333333-3333-4333-8333-333333333333', 3)
+ON CONFLICT (day_id) DO UPDATE
+SET last_assigned_number = GREATEST(public.business_day_order_sequences.last_assigned_number, EXCLUDED.last_assigned_number);
+
 ALTER TABLE public.orders
   ADD CONSTRAINT orders_day_display_number_key
   UNIQUE (day_id, display_number)
