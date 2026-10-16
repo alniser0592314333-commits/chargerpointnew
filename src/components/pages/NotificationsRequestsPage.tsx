@@ -48,7 +48,7 @@ const ReviewMethodLogo: React.FC<{ detail: { mark: string; cls: string; logoUrl:
 async function createReceiptSignedUrl(path: string): Promise<string | null> {
   const token = getSupabaseAuthToken();
   if (!config.supabaseUrl || !config.supabaseAnonKey || !token || !path) return null;
-  const endpoint = config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/sign-qr-payment-receipt';
+  const endpoint = config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/sign-qr-payment-receipt';
   const request = (bearer: string) => fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -74,9 +74,9 @@ async function createReceiptSignedUrl(path: string): Promise<string | null> {
     console.warn('Receipt signer response did not contain signedURL.');
     return null;
   }
-  if (/^https?:\\/\\//i.test(signedURL)) return signedURL;
-  if (signedURL.startsWith('/storage/v1/')) return config.supabaseUrl.replace(/\\/+$/, '') + signedURL;
-  return config.supabaseUrl.replace(/\\/+$/, '') + '/storage/v1/' + signedURL.replace(/^\\/+/, '');
+  if (/^https?:\/\//i.test(signedURL)) return signedURL;
+  if (signedURL.startsWith('/storage/v1/')) return config.supabaseUrl.replace(/\/+$/, '') + signedURL;
+  return config.supabaseUrl.replace(/\/+$/, '') + '/storage/v1/' + signedURL.replace(/^\/+/, '');
 }
 
 export const NotificationsRequestsPage: React.FC = () => {
