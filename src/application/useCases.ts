@@ -39,7 +39,6 @@ import {
   BusinessRuleViolation,
   IdempotencyConflictError,
   BinRequiredError,
-  OrderNumberReservationExhaustedError,
   FinancialInvariantViolation
 } from '../domain/errors';
 
