@@ -258,15 +258,18 @@ Deno.serve(async (request: Request) => {
       const message = submitError?.message ?? "Submission was not accepted";
       const isMaximumSubmissions = /maximum of three payment notifications/i.test(message);
       const isCreditBlocked = /positive credit/i.test(message);
-      const isConflict = /already awaiting review|no remaining amount|Too many payment notifications|too many submissions/i.test(message);
-      return json(isMaximumSubmissions || isConflict ? 409 : 400, {
+      const isNoAmountDue = /no remaining amount|no amount due/i.test(message);
+      const isConflict = /already awaiting review|Too many payment notifications|too many submissions/i.test(message);
+      return json(isMaximumSubmissions || isNoAmountDue || isConflict ? 409 : 400, {
         error: isMaximumSubmissions
           ? "Maximum of three payment notifications reached for this order QR."
           : isCreditBlocked
             ? "Your account has positive credit. No order payment is needed right now."
-            : isConflict
-              ? "This account or order already has a pending notification, or the amount is no longer payable."
-              : "The payment notification could not be saved. Please try again.",
+            : isNoAmountDue
+              ? "No amount is due through this order QR. Payment is accepted only for financially recognized charges."
+              : isConflict
+                ? "This account or order already has a pending notification."
+                : "The payment notification could not be saved. Please try again.",
       });
     }
 
