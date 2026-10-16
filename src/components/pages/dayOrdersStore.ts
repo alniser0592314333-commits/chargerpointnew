@@ -2614,7 +2614,13 @@ function createTransactionalRepoContext(
       getLastAssignedNumberForDay: (dayId: string) => {
         let highWater = 0;
         reservationsMap.forEach((reservation) => {
-          if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+          if (reservation.businessDayId !== dayId) return;
+          // An ACTIVE range has not consumed numbers at or beyond its cursor.
+          // EXHAUSTED sequence/watermark rows retain their last actually issued number.
+          const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+            ? Math.max(0, Number(reservation.nextNumber) - 1)
+            : Number(reservation.endNumber) || 0;
+          highWater = Math.max(highWater, consumedThrough);
         });
         return highWater;
       },
@@ -2656,7 +2662,11 @@ function createTransactionalRepoContext(
         const now = new Date().toISOString();
         let highWater = Math.max(0, nextNumber - 1);
         reservationsMap.forEach((reservation) => {
-          if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+          if (reservation.businessDayId !== dayId) return;
+          const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+            ? Math.max(0, Number(reservation.nextNumber) - 1)
+            : Number(reservation.endNumber) || 0;
+          highWater = Math.max(highWater, consumedThrough);
         });
         const nextHighWaterNumber = highWater + 1;
         let watermarkFound = false;
@@ -3133,7 +3143,11 @@ export const repoContext: RepositoryContext = {
     getLastAssignedNumberForDay: (dayId) => {
       let highWater = 0;
       reservationsMap.forEach((reservation) => {
-        if (reservation.businessDayId === dayId) highWater = Math.max(highWater, Number(reservation.endNumber) || 0);
+        if (reservation.businessDayId !== dayId) return;
+        const consumedThrough = reservation.status === 'ACTIVE' && reservation.nextNumber <= reservation.endNumber
+          ? Math.max(0, Number(reservation.nextNumber) - 1)
+          : Number(reservation.endNumber) || 0;
+        highWater = Math.max(highWater, consumedThrough);
       });
       return highWater;
     },
