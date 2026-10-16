@@ -56,6 +56,8 @@ export interface RepositoryContext {
     reserveRange(dayId: ID, deviceId: ID, commandId?: ID, rangeSize?: number): Promise<OrderNumberReservationEntity> | OrderNumberReservationEntity;
     resetForDay?(dayId: ID, nextNumber: number): Promise<void> | void;
     needsResetForDay?(dayId: ID, deviceId: ID, expectedNextNumber: number): boolean;
+    getLastAssignedNumberForDay?(dayId: ID): number;
+    saveLastAssignedNumberForDay?(dayId: ID, assignedNumber: number): void;
   };
   itemRepo: {
     findByOrderId(orderId: ID): Promise<OrderItemEntity[]> | OrderItemEntity[];
@@ -205,12 +207,21 @@ export class FinalUseCases {
       if (!dayOrders) {
         return { success: false as const, error: 'The current day order list is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
       }
-      const existingNumbers = dayOrders.map((existing) => Number(existing.displayNumber) || 0).sort((a, b) => a - b);
-      if (existingNumbers.some((number, index) => number !== index + 1)) {
-        return { success: false as const, error: 'Day numbering is not contiguous. Renumber the complete day before adding another order.', code: 'ORDER_NUMBERING_GAP' };
+      const existingNumbers = dayOrders.map((existing) => Number(existing.displayNumber));
+      if (existingNumbers.some((number) => !Number.isSafeInteger(number) || number < 1) ||
+          new Set(existingNumbers).size !== existingNumbers.length) {
+        return { success: false as const, error: 'Existing order numbers are invalid or duplicated. No new order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
+      }
+      if (!repos.reservationRepo?.getLastAssignedNumberForDay || !repos.reservationRepo?.saveLastAssignedNumberForDay) {
+        return { success: false as const, error: 'The durable order-number sequence is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
       }
 
-      const displayNumber = dayOrders.length + 1;
+      const maxExistingNumber = existingNumbers.reduce((max, number) => Math.max(max, number), 0);
+      const lastAssignedNumber = repos.reservationRepo.getLastAssignedNumberForDay(dayId);
+      const displayNumber = Math.max(maxExistingNumber, lastAssignedNumber) + 1;
+      // Persist the high-water mark in the same transaction as the order and outbox.
+      // This prevents number reuse after deletions, stale backups, and explicit renumbering.
+      repos.reservationRepo.saveLastAssignedNumberForDay(dayId, displayNumber);
       const internalSequence = (repos.orderRepo.maxInternalSequence?.() ??
         dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
       const order: OrderEntity = {
@@ -433,7 +444,8 @@ export class FinalUseCases {
       }
       // Invalidate every unused number range in the same transaction as the renumber command.
       // The next new order must continue at N+1, not at a stale pre-renumber cursor.
-      repos.reservationRepo.resetForDay(dayId, changes.length + 1);
+      const highestPreviouslyIssued = changes.reduce((max, change) => Math.max(max, change.oldNumber, change.newNumber), 0);
+      repos.reservationRepo.resetForDay(dayId, highestPreviouslyIssued + 1);
 
       const now = new Date().toISOString();
       for (let index = 0; index < changes.length; index++) {
@@ -570,30 +582,24 @@ export class FinalUseCases {
         if (!dayOrders) {
           return { success: false, error: 'The current day order list is unavailable. No order was created.' };
         }
-        const sortedNumbers = dayOrders
-          .map((existing) => Number(existing.displayNumber) || 0)
-          .sort((a, b) => a - b);
-        if (sortedNumbers.some((number, index) => number !== index + 1)) {
+        const existingNumbers = dayOrders.map((existing) => Number(existing.displayNumber));
+        if (existingNumbers.some((number) => !Number.isSafeInteger(number) || number < 1) ||
+            new Set(existingNumbers).size !== existingNumbers.length) {
           return {
             success: false,
-            error: 'Day numbering is not contiguous. Renumber the complete day before adding another order.',
-            code: 'ORDER_NUMBERING_GAP',
+            error: 'Existing order numbers are invalid or duplicated. No new order was created.',
+            code: 'ORDER_NUMBERING_UNAVAILABLE',
           };
         }
-        const expectedNextNumber = dayOrders.length + 1;
-        const deviceId = actor.deviceId || 'default-device';
-        // Legacy 20-number reservations are no longer used to assign customer-facing numbers.
-        // A stale active cursor may be invalidated, but the immutable number comes only from
-        // the effective local day orders inside this same IndexedDB transaction.
-        const activeReservation = repos.reservationRepo?.findActiveByDayAndDevice(dayId, deviceId) as OrderNumberReservationEntity | null | undefined;
-        if (activeReservation && repos.reservationRepo?.needsResetForDay?.(dayId, deviceId, expectedNextNumber)) {
-          if (!repos.reservationRepo.resetForDay) {
-            return { success: false, error: 'The saved legacy order-number cursor is stale and cannot be invalidated safely.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
-          }
-          repos.reservationRepo.resetForDay(dayId, expectedNextNumber);
+        if (!repos.reservationRepo?.getLastAssignedNumberForDay || !repos.reservationRepo?.saveLastAssignedNumberForDay) {
+          return { success: false, error: 'The durable order-number sequence is unavailable. No order was created.', code: 'ORDER_NUMBERING_UNAVAILABLE' };
         }
-
-        const displayNumber = expectedNextNumber;
+        const maxExistingNumber = existingNumbers.reduce((max, number) => Math.max(max, number), 0);
+        const lastAssignedNumber = repos.reservationRepo.getLastAssignedNumberForDay(dayId);
+        const displayNumber = Math.max(maxExistingNumber, lastAssignedNumber) + 1;
+        // Commit the high-water mark with the order and all outbox commands. Legacy
+        // range reservations are never consumed to assign a customer-facing number.
+        repos.reservationRepo.saveLastAssignedNumberForDay(dayId, displayNumber);
         const internalSequence = (repos.orderRepo.maxInternalSequence?.() ??
           dayOrders.reduce((max, existing) => Math.max(max, Number(existing.internalSequence) || 0), 0)) + 1;
         const order: OrderEntity = {
