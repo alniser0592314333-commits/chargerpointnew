@@ -5285,6 +5285,9 @@ export interface PublicOrderQrData {
   orderDueMinor?: number;
   items?: Array<{
     name: string;
+    name_ar?: string;
+    name_en?: string;
+    device_type_id?: string;
     status: string;
     operational_status?: string;
     payment_status?: string;
@@ -5333,7 +5336,36 @@ export const getPublicOrderByToken = async (
         itemsCount: supabaseResult.items_count,
         orderTotalMinor: supabaseResult.order_total_minor,
         orderDueMinor: supabaseResult.order_due_minor,
-        items: supabaseResult.items,
+        items: supabaseResult.items?.map((it) => {
+          const dev = it.device_type_id ? devicesMap.get(it.device_type_id) : undefined;
+          const foundBySnapshot = !dev
+            ? Array.from(devicesMap.values()).find(
+                (d) => d.name === it.name || d.nameAr === it.name
+              )
+            : undefined;
+          const activeDev = dev || foundBySnapshot;
+
+          const resolvedNameEn =
+            it.name_en ||
+            activeDev?.nameEn ||
+            (it.device_type_id ? UI_DEVICE_LOCALIZATIONS[it.device_type_id]?.en : undefined) ||
+            UI_DEVICE_NAME_MAP[it.name]?.en;
+
+          const resolvedNameAr =
+            it.name_ar ||
+            activeDev?.nameAr ||
+            activeDev?.name ||
+            (it.device_type_id ? UI_DEVICE_LOCALIZATIONS[it.device_type_id]?.ar : undefined) ||
+            UI_DEVICE_NAME_MAP[it.name]?.ar ||
+            it.name;
+
+          return {
+            ...it,
+            name_ar: resolvedNameAr,
+            name_en: resolvedNameEn,
+            device_type_id: it.device_type_id || activeDev?.id,
+          };
+        }),
         token: publicToken,
       };
     }
@@ -5364,7 +5396,10 @@ export const getPublicOrderByToken = async (
         (i) => i.orderId === order.id && !i.deletedAt
       );
       if (orderItems.length === 0) {
-        const allDbItems = await localDb.list<OrderItemEntity>('order_items');
+        const allDbItems =
+          (await localDb.list<OrderItemEntity>('orderItems').catch(() => [])) ||
+          (await localDb.list<OrderItemEntity>('order_items').catch(() => [])) ||
+          [];
         orderItems = allDbItems.filter((i) => i.orderId === order.id && !i.deletedAt);
       }
 
@@ -5375,11 +5410,29 @@ export const getPublicOrderByToken = async (
         status: order.status,
         createdAt: order.createdAt,
         itemsCount: orderItems.length,
-        items: orderItems.map((item: OrderItemEntity) => ({
-          name: item.deviceNameSnapshot || 'جهاز',
-          status: item.status,
-          has_charger: item.hasCharger,
-        })),
+        items: orderItems.map((item: OrderItemEntity) => {
+          const dt = devicesMap.get(item.deviceTypeId);
+          const resolvedNameEn =
+            dt?.nameEn ||
+            UI_DEVICE_LOCALIZATIONS[item.deviceTypeId]?.en ||
+            (item.deviceNameSnapshot ? UI_DEVICE_NAME_MAP[item.deviceNameSnapshot]?.en : undefined);
+          const resolvedNameAr =
+            dt?.nameAr ||
+            dt?.name ||
+            UI_DEVICE_LOCALIZATIONS[item.deviceTypeId]?.ar ||
+            (item.deviceNameSnapshot ? UI_DEVICE_NAME_MAP[item.deviceNameSnapshot]?.ar : undefined) ||
+            item.deviceNameSnapshot ||
+            'جهاز';
+
+          return {
+            name: item.deviceNameSnapshot || dt?.name || 'جهاز',
+            name_ar: resolvedNameAr,
+            name_en: resolvedNameEn,
+            device_type_id: item.deviceTypeId,
+            status: item.status,
+            has_charger: item.hasCharger,
+          };
+        }),
         token: publicToken,
       };
     }

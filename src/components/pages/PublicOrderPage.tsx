@@ -8,7 +8,7 @@ import {
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
-import { getPublicOrderByToken, PublicOrderQrData } from './dayOrdersStore';
+import { getPublicOrderByToken, getItemLocalizedDeviceName, PublicOrderQrData } from './dayOrdersStore';
 import { EnergyCanvasBackground, BackgroundState } from '../energy/EnergyCanvasBackground';
 
 export interface PublicOrderPageProps {
@@ -455,7 +455,11 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     data.items.map((item, index) => (
                       <div className="order-device-row" key={`${item.name}-${index}`}>
                         <div className="order-device-body">
-                          <div className="order-device-title">{item.name}</div>
+                          <div className="order-device-title">
+                            {locale === 'en'
+                              ? (item.name_en || getItemLocalizedDeviceName(item.device_type_id || item.name, 'en', item.name))
+                              : (item.name_ar || item.name)}
+                          </div>
                           <div className="order-device-tags">
                             <span className="order-tag-inline">
                               {item.has_charger ? (

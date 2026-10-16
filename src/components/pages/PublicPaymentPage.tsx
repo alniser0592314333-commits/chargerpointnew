@@ -1,63 +1,99 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, CheckCircle2, Copy, FileImage,
-  Clock3, Globe, LockKeyhole, ShieldCheck, UploadCloud, X, Zap,
+  ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, FileImage,
+  Clock3, Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud,
+  X, Zap, CreditCard, Building2, Smartphone, Wallet, AlertCircle, RefreshCw,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { getPublicCustomerByToken, getPublicOrderByToken, PublicCustomerQrData, PublicOrderQrData } from './dayOrdersStore';
+import { useTheme } from '../../theme/themeContext';
+import {
+  getPublicCustomerByToken,
+  getPublicOrderByToken,
+  getItemLocalizedDeviceName,
+  PublicCustomerQrData,
+  PublicOrderQrData,
+} from './dayOrdersStore';
 import { config } from '../../config/env';
-import { PublicQrPaymentSubmissionRpcResult, rpcResolveQrPaymentSubmission } from '../../services/supabase/client';
+import {
+  PublicQrPaymentSubmissionRpcResult,
+  rpcResolveQrPaymentSubmission,
+} from '../../services/supabase/client';
 
 type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE';
 
-const methods: Array<{
+interface PaymentMethodItem {
   id: PaymentMethod;
   ar: string;
   en: string;
   short: string;
   descriptionAr: string;
   descriptionEn: string;
+  badgeAr: string;
+  badgeEn: string;
   markClass: string;
   logoUrl: string;
-}> = [
-  {
-    id: 'JAWAL_PAY',
-    ar: 'جوال باي',
-    en: 'Jawwal Pay',
-    short: 'jawwal pay',
-    descriptionAr: 'محفظة إلكترونية',
-    descriptionEn: 'Digital wallet',
-    markClass: 'bg-[#f5e9ed] text-[#8e2342]',
-    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
-  },
+}
+
+const PAYMENT_METHODS: PaymentMethodItem[] = [
   {
     id: 'BANK_OF_PALESTINE',
     ar: 'بنك فلسطين',
     en: 'Bank of Palestine',
     short: 'BOP',
-    descriptionAr: 'تحويل بنكي',
-    descriptionEn: 'Bank transfer',
-    markClass: 'bg-[#e7f1e9] text-[#1d6a45]',
+    descriptionAr: 'تحويل بنكي مباشر',
+    descriptionEn: 'Direct bank transfer',
+    badgeAr: 'حساب بنكي',
+    badgeEn: 'Bank Account',
+    markClass: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300',
     logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg',
   },
   {
+    id: 'JAWAL_PAY',
+    ar: 'جوال باي',
+    en: 'Jawwal Pay',
+    short: 'Jawwal Pay',
+    descriptionAr: 'محفظة إلكترونية فورية',
+    descriptionEn: 'Instant digital wallet',
+    badgeAr: 'محفظة رقمية',
+    badgeEn: 'Digital Wallet',
+    markClass: 'bg-rose-50 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300',
+    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
+  },
+  {
     id: 'PALPAY',
-    ar: 'بال باي',
-    en: 'PalPay',
-    short: 'PALPAY',
-    descriptionAr: 'محفظتي',
-    descriptionEn: 'Mahfazati wallet',
-    markClass: 'bg-[#f2e8ff] text-[#6634a5]',
+    ar: 'بال باي (محفظتي)',
+    en: 'PalPay (Mahfazati)',
+    short: 'PalPay',
+    descriptionAr: 'محفظة بال باي الإلكترونية',
+    descriptionEn: 'PalPay mobile wallet',
+    badgeAr: 'محفظة رقمية',
+    badgeEn: 'Mobile Wallet',
+    markClass: 'bg-purple-50 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300',
     logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png',
   },
 ];
 
-const PaymentMethodLogo: React.FC<{ method: typeof methods[number] }> = ({ method }) => {
+const PaymentMethodLogo: React.FC<{ method: PaymentMethodItem }> = ({ method }) => {
   const [failed, setFailed] = useState(false);
   if (failed || !method.logoUrl) {
-    return <span className={`mb-3 flex h-10 min-w-10 items-center justify-center rounded-lg px-2 text-[11px] font-black tracking-tight ${method.markClass}`}>{method.short}</span>;
+    return (
+      <div className={`flex h-10 w-12 shrink-0 items-center justify-center rounded-lg font-bold text-xs ${method.markClass}`}>
+        {method.short}
+      </div>
+    );
   }
-  return <img src={method.logoUrl} alt={method.short} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} className="mb-3 h-10 w-14 rounded-md object-contain" />;
+  return (
+    <div className="flex h-11 w-13 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-800 dark:ring-slate-700">
+      <img
+        src={method.logoUrl}
+        alt={method.short}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-contain"
+      />
+    </div>
+  );
 };
 
 const MAX_SOURCE_FILE_BYTES = 12 * 1024 * 1024;
@@ -115,6 +151,7 @@ export interface PublicPaymentPageProps {
 
 export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) => {
   const { locale, setLocale, formatCurrency, isRTL } = useI18n();
+  const { theme, resolvedTheme, toggleTheme } = useTheme();
 
   const isAr = locale === 'ar';
   const [order, setOrder] = useState<PublicOrderQrData | null>(null);
@@ -131,6 +168,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const [success, setSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
   const [validationError, setValidationError] = useState<'method' | 'receipt' | null>(null);
+
   const methodSectionRef = useRef<HTMLElement | null>(null);
   const receiptSectionRef = useRef<HTMLElement | null>(null);
 
@@ -148,6 +186,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     setError('');
     setValidationError(null);
     setCopied(false);
+
     void (async () => {
       try {
         const orderData = await getPublicOrderByToken(token).catch(() => null);
@@ -202,10 +241,10 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     try {
       await navigator.clipboard.writeText('0592369875');
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
+      window.setTimeout(() => setCopied(false), 2200);
     } catch {
       setValidationError(null);
-      setError(isAr ? 'تعذّر نسخ الرقم. انسخه يدوياً.' : 'Could not copy the number. Please copy it manually.');
+      setError(isAr ? 'تعذّر نسخ الرقم تلقائياً. يرجى نسخه يدوياً.' : 'Could not copy automatically. Please copy manually.');
     }
   };
 
@@ -218,11 +257,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       return;
     }
     if (!file.type.startsWith('image/')) {
-      setError(isAr ? 'ارفع صورة واضحة للإيصال فقط.' : 'Please upload a clear receipt image.');
+      setError(isAr ? 'يرجى اختيار ملف صورة صالح (JPEG أو PNG أو WebP).' : 'Please choose a valid image file (JPEG, PNG, or WebP).');
       return;
     }
     if (file.size > MAX_SOURCE_FILE_BYTES) {
-      setError(isAr ? 'حجم الصورة الأصلي كبير جداً. اختَر صورة أصغر.' : 'The original image is too large. Please choose a smaller image.');
+      setError(isAr ? 'حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 12 ميغابايت.' : 'File too large. Please select an image under 12 MB.');
       return;
     }
     setReceipt(file);
@@ -232,24 +271,25 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     event.preventDefault();
     setError('');
     setValidationError(null);
+
     if (!method) {
       setValidationError('method');
-      setError(isAr ? 'يجب اختيار وسيلة الدفع قبل إرسال الإشعار.' : 'Please select a payment method before sending the notification.');
+      setError(isAr ? 'يرجى اختيار وسيلة الدفع أولاً للمتابعة.' : 'Please choose a payment method to proceed.');
       methodSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     if (!receipt) {
       setValidationError('receipt');
-      setError(isAr ? 'يجب إرفاق صورة إشعار الدفع قبل الإرسال.' : 'Please attach a payment receipt image before sending.');
+      setError(isAr ? 'يرجى إرفاق صورة إشعار أو إيصال التحويل لإتمام الإرسال.' : 'Please attach your payment receipt image to complete submission.');
       receiptSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     if ((!order && !customer) || (order && (amountDue === null || amountDue <= 0))) {
-      setError(isAr ? 'المبلغ المستحق غير متاح حالياً. ارجع للطلب وحاول لاحقاً.' : 'The outstanding amount is not available right now. Return to the order and try again later.');
+      setError(isAr ? 'المبلغ المستحق غير متاح أو تم سداده بالفعل. ارجع إلى صفحة الطلب.' : 'The balance due is unavailable or already paid. Please return to your order page.');
       return;
     }
     if (!config.supabaseUrl || !config.supabaseAnonKey) {
-      setError(isAr ? 'خدمة الدفع غير متاحة حالياً. حاول لاحقاً.' : 'The payment service is unavailable right now. Please try again later.');
+      setError(isAr ? 'خدمة استقبال الإشعارات غير متاحة حالياً. يرجى المحاولة لاحقاً.' : 'Payment submission service is currently offline. Please try again later.');
       return;
     }
 
@@ -296,219 +336,716 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       });
     } catch (err: any) {
       const code = err?.message || '';
-      if (code === 'IMAGE_REQUIRED') setError(isAr ? 'اختَر صورة إيصال صحيحة.' : 'Choose a valid receipt image.');
-      else if (code === 'SOURCE_TOO_LARGE') setError(isAr ? 'الصورة الأصلية كبيرة. اختَر صورة أصغر من 12 ميغابايت.' : 'The original image is too large. Choose one under 12 MB.');
-      else if (code === 'IMAGE_PROCESSING_UNAVAILABLE' || code === 'IMAGE_COMPRESSION_FAILED' || code === 'IMAGE_INVALID') setError(isAr ? 'تعذّر تجهيز الصورة. جرّب صورة أخرى واضحة.' : 'Could not process this image. Please try another clear image.');
-      else if (code === 'COMPRESSED_TOO_LARGE') setError(isAr ? 'بعد الضغط بقي حجم الصورة كبيراً. اختَر صورة أوضح وأصغر.' : 'The compressed image is still too large. Choose a smaller image.');
-      else if (code === 'PENDING_EXISTS') {
-        setError(isAr ? 'يوجد إشعار دفع لهذا الحساب أو الطلب بانتظار المراجعة بالفعل.' : 'A payment notification for this account or order is already awaiting review.');
+      if (code === 'IMAGE_REQUIRED') {
+        setError(isAr ? 'يرجى اختيار صورة إيصال صحيحة.' : 'Please choose a valid receipt image.');
+      } else if (code === 'SOURCE_TOO_LARGE') {
+        setError(isAr ? 'الصورة الأصلية كبيرة. اختَر صورة أقل من 12 ميغابايت.' : 'Original image is too large. Select an image under 12 MB.');
+      } else if (code === 'IMAGE_PROCESSING_UNAVAILABLE' || code === 'IMAGE_COMPRESSION_FAILED' || code === 'IMAGE_INVALID') {
+        setError(isAr ? 'تعذّر تجهيز الصورة. يرجى تجربة صورة أخرى واضحة.' : 'Could not process image. Please try another clear image.');
+      } else if (code === 'COMPRESSED_TOO_LARGE') {
+        setError(isAr ? 'حجم الصورة بعد الضغط ما زال كبيراً. اختَر صورة أصغر وأوضح.' : 'Compressed image remains too large. Choose a smaller image.');
+      } else if (code === 'PENDING_EXISTS') {
+        setError(isAr ? 'يوجد إشعار دفع سابق بانتظار المراجعة بالفعل لهذا الطلب أو الحساب.' : 'A previous payment notification is already awaiting review for this order or account.');
         const currentSubmission = await rpcResolveQrPaymentSubmission(token);
         if (currentSubmission) {
           setSubmission(currentSubmission);
           setSuccess(true);
           setError('');
         }
+      } else if (code === 'RATE_LIMIT') {
+        setError(isAr ? 'تم إرسال عدة إشعارات خلال وقت قصير. يرجى الانتظار قليلاً.' : 'Too many notifications submitted recently. Please wait a moment and try again.');
+      } else {
+        setError(isAr ? 'تعذّر إرسال الإشعار حالياً. بياناتك محفوظة؛ يرجى إعادة المحاولة.' : 'Could not submit notification. Your entries are saved; please try again.');
       }
-      else if (code === 'RATE_LIMIT') setError(isAr ? 'تم إرسال عدة إشعارات لهذا الحساب أو الطلب. حاول لاحقاً.' : 'Several notifications were sent for this account or order. Please try again later.');
-      else setError(isAr ? 'لم يتم إرسال الإشعار. بياناتك ما زالت موجودة؛ جرّب مرة ثانية.' : 'The notification was not sent. Your entries are preserved; please try again.');
     } finally {
       setSending(false);
     }
   };
 
-  const pageTitle = isAr ? 'صفحة الدفع' : 'Payment page';
+  const pageTitle = isAr ? 'بوابة الدفع والتحويل' : 'Payment & Transfer Portal';
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="public-portal-page min-h-screen bg-[#f4f7f7] text-[#142c2c] dark:bg-[#071b1b] dark:text-[#e7f2ef] transition-colors">
-      <header className="border-b border-[#dce6e4] bg-white/95 dark:bg-[#0a2423]/95 dark:border-[#1c4140]">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <a href={backHref} className="flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0f766e] text-white">
+    <div
+      dir={isRTL ? 'rtl' : 'ltr'}
+      className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-200 dark:bg-[#071313] dark:text-slate-100"
+    >
+      {/* 1. Header Bar */}
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-[#163532] dark:bg-[#071313]/85">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
+          <a
+            href={backHref}
+            className="group flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm transition group-hover:bg-emerald-700 dark:bg-emerald-500 dark:group-hover:bg-emerald-600">
               <Zap className="h-5 w-5" />
             </span>
-            <span>
-              <span className="block text-sm font-bold tracking-tight">{isAr ? 'نقطة الشحن' : 'Charging Point'}</span>
-              <span className="block text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'خدمات الدفع' : 'Payment services'}</span>
-            </span>
+            <div className="flex flex-col text-start">
+              <strong className="text-sm font-black tracking-tight text-slate-900 dark:text-slate-50">
+                {isAr ? 'نقطة الشحن' : 'Charging Point'}
+              </strong>
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                {isAr ? 'خدمة الدفع والتحويل' : 'Payment & Transfer Service'}
+              </span>
+            </div>
           </a>
-          <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#dce6e4] px-3 py-2 text-xs font-semibold text-[#365653] transition hover:bg-[#edf4f2] dark:border-[#315653] dark:text-[#c8d9d4] dark:hover:bg-[#133533]" aria-label="Toggle language">
-            <Globe className="h-4 w-4" /> {isAr ? 'English' : 'عربي'}
-          </button>
+
+          {/* Quick Header Actions: Theme & Language */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-700 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-[#1e4440] dark:bg-[#0b1f1e] dark:text-slate-200 dark:hover:bg-[#12312f]"
+              aria-label={isAr ? 'تبديل المظهر (فاتح / داكن)' : 'Toggle theme (Light / Dark)'}
+              title={isAr ? 'المظهر' : 'Theme'}
+            >
+              {resolvedTheme === 'dark' ? (
+                <Sun className="h-4 w-4 text-amber-400" />
+              ) : (
+                <Moon className="h-4 w-4 text-slate-600" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLocale(isAr ? 'en' : 'ar')}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-[#1e4440] dark:bg-[#0b1f1e] dark:text-slate-200 dark:hover:bg-[#12312f]"
+              aria-label={isAr ? 'Switch to English' : 'التحويل للعربية'}
+            >
+              <Globe className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{isAr ? 'English' : 'عربي'}</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl space-y-6 px-4 py-7 sm:px-6 sm:py-9">
-        <div className="space-y-3">
-          <a href={backHref} className="inline-flex items-center gap-2 text-xs font-semibold text-[#52716c] transition hover:text-[#0f766e] dark:text-[#a4c0b9]">
+      {/* 2. Main Container */}
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
+        {/* Navigation Breadcrumb */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <a
+            href={backHref}
+            className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 transition hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+          >
             {isRTL ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
-            {isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Back to customer account') : (isAr ? 'العودة إلى تفاصيل الطلب' : 'Back to order details')}
+            <span>
+              {isCustomerPayment
+                ? (isAr ? 'العودة إلى حساب الزبون' : 'Back to Customer Account')
+                : (isAr ? 'العودة إلى تفاصيل الطلب' : 'Back to Order Details')}
+            </span>
           </a>
-          <div className="space-y-1.5">
-            <p className="text-xs font-bold tracking-wide text-[#0f766e] dark:text-[#83cbbd]">{isAr ? 'الدفع والتحويل' : 'PAYMENT & TRANSFER'}</p>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{pageTitle}</h1>
-            <p className="max-w-xl text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">
-              {isAr ? 'انسخ رقم الدفع، واختر وسيلة التحويل، ثم أرفق صورة إشعار الدفع لإرسالها للمراجعة.' : 'Copy the payment number, select a transfer method, then attach your receipt for review.'}
-            </p>
+
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-3 py-1 text-[11px] font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>{isAr ? 'تحويل بنكي ومحافظ رقمية' : 'Bank & Digital Wallets'}</span>
           </div>
         </div>
 
+        {/* Loading State */}
         {loading ? (
-          <div className="rounded-2xl border border-[#dce6e4] bg-white p-8 text-center text-sm text-[#6b8580] shadow-sm dark:border-[#1c4140] dark:bg-[#0a2423] dark:text-[#9bb6b0]">
-            {isAr ? 'جارٍ تحميل بيانات الدفع…' : 'Loading payment details…'}
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-200/80 bg-white p-12 text-center shadow-sm dark:border-[#193a38] dark:bg-[#0c1f1e]">
+            <RefreshCw className="h-8 w-8 animate-spin text-emerald-600 dark:text-emerald-400" />
+            <p className="mt-4 text-sm font-bold text-slate-700 dark:text-slate-300">
+              {isAr ? 'جارٍ تحميل بيانات الدفع والطلب…' : 'Loading payment & order details…'}
+            </p>
           </div>
         ) : loadError || (!order && !customer) ? (
-          <div className="rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-sm dark:border-rose-900 dark:bg-[#0a2423]">
-            <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"><X className="h-5 w-5" /></span>
-            <h2 className="mt-4 font-semibold">{isAr ? 'تعذّر العثور على بيانات الدفع' : 'Payment details not found'}</h2>
-            <p className="mt-2 text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">{isAr ? 'قد يكون الرابط غير صالح أو منتهي الصلاحية. افتح رابط الدفع الصحيح أو ارجع إلى صفحة الطلب.' : 'This link may be invalid or expired. Open a valid payment link or return to the order page.'}</p>
-          </div>
-        ) : success ? (
-          <section className="rounded-2xl border border-[#dce6e4] bg-white p-6 shadow-[0_12px_36px_rgba(16,55,51,0.05)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-8">
-            <span className={`flex h-12 w-12 items-center justify-center rounded-full ${submission?.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : submission?.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}`}>
-              {submission?.status === 'REJECTED' ? <X className="h-6 w-6" /> : submission?.status === 'PENDING' ? <Clock3 className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
+          /* Error State: Invalid or Expired Token */
+          <div className="rounded-3xl border border-rose-200 bg-white p-8 text-center shadow-sm dark:border-rose-900/60 dark:bg-[#0c1f1e] sm:p-12">
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+              <AlertCircle className="h-7 w-7" />
             </span>
-            <h2 className="mt-5 text-xl font-bold">
-              {submission?.status === 'APPROVED' ? (isAr ? 'تم اعتماد الدفعة' : 'Payment approved')
-                : submission?.status === 'REJECTED' ? (isAr ? 'تم رفض إشعار الدفع' : 'Payment notification rejected')
-                : (isAr ? 'إشعار الدفع بانتظار المراجعة' : 'Payment notification awaiting review')}
+            <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-slate-50">
+              {isAr ? 'تعذّر الوصول لبيانات الدفع' : 'Payment details could not be found'}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-[#607874] dark:text-[#a7beb9]">
-              {submission?.status === 'APPROVED'
-                ? (isAr ? 'تم اعتماد الإشعار وتسجيل الدفعة عبر المسار المالي الحالي.' : 'The notification was approved and the payment was recorded through the existing financial flow.')
-                : submission?.status === 'REJECTED'
-                  ? (isAr ? 'لم تُسجّل دفعة ولم يتغير رصيد حسابك بسبب هذا الإشعار.' : 'No payment was recorded and your account balance was not changed by this notification.')
-                  : (isAr ? 'تم حفظ إشعارك. لن يتغير رصيد الحساب قبل مراجعته واعتماده.' : 'Your notification is saved. Your account balance will not change until it is reviewed and approved.')}
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-400">
+              {isAr
+                ? 'الرابط غير صالح أو منتهي الصلاحية، أو تم حذفه من النظام. يرجى مسح رمز QR الصحيح مجدداً.'
+                : 'This link is invalid or expired. Please re-scan the original QR code to proceed.'}
             </p>
-            {submission && (
-              <div className="mt-5 space-y-3 rounded-xl border border-[#dce6e4] bg-[#f7faf9] p-4 text-sm dark:border-[#244746] dark:bg-[#0b2928]">
+            <div className="mt-6">
+              <a
+                href="/"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+              >
+                {isAr ? 'الصفحة الرئيسية' : 'Home page'}
+              </a>
+            </div>
+          </div>
+        ) : success && submission ? (
+          /* Success / Existing Submission Screen */
+          <section className="mx-auto max-w-2xl space-y-6">
+            <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white p-6 shadow-md transition dark:border-[#1b3d3a] dark:bg-[#0c1f1e] sm:p-8">
+              {/* Status Header Badge */}
+              <div className="flex items-center gap-4">
+                <span
+                  className={`flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl ${
+                    submission.status === 'APPROVED'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                      : submission.status === 'REJECTED'
+                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                  }`}
+                >
+                  {submission.status === 'APPROVED' ? (
+                    <CheckCircle2 className="h-7 w-7" />
+                  ) : submission.status === 'REJECTED' ? (
+                    <X className="h-7 w-7" />
+                  ) : (
+                    <Clock3 className="h-7 w-7" />
+                  )}
+                </span>
+                <div>
+                  <span
+                    className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-black tracking-wide uppercase ${
+                      submission.status === 'APPROVED'
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : submission.status === 'REJECTED'
+                        ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                        : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                    }`}
+                  >
+                    {submission.status === 'APPROVED'
+                      ? (isAr ? 'معتمد' : 'APPROVED')
+                      : submission.status === 'REJECTED'
+                      ? (isAr ? 'مرفوض' : 'REJECTED')
+                      : (isAr ? 'قيد المراجعة' : 'PENDING REVIEW')}
+                  </span>
+                  <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-50">
+                    {submission.status === 'APPROVED'
+                      ? (isAr ? 'تم اعتماد الدفعة بنجاح' : 'Payment approved')
+                      : submission.status === 'REJECTED'
+                      ? (isAr ? 'تم رفض إشعار الدفع' : 'Payment notification rejected')
+                      : (isAr ? 'إشعار الدفع بانتظار المراجعة' : 'Payment notification received')}
+                  </h1>
+                </div>
+              </div>
+
+              {/* Status Explanation */}
+              <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                {submission.status === 'APPROVED'
+                  ? (isAr
+                      ? 'تم التحقق من إيصال التحويل واعتماد المبلغ رسمياً في السجل المالي للنظام.'
+                      : 'The receipt was verified and the payment amount was officially credited.')
+                  : submission.status === 'REJECTED'
+                  ? (isAr
+                      ? 'تم رفض الإشعار بعد التدقيق. لم يتم خصم أو إضافة مبالغ لحسابك.'
+                      : 'The notification was rejected upon review. No balance change was recorded.')
+                  : (isAr
+                      ? 'تم حفظ إشعارك وصورة الإيصال بنجاح. سيقوم المسؤول بمطابقة الإيصال واعتماده قريباً.'
+                      : 'Your notification and receipt are securely saved and will be reviewed shortly by our team.')}
+              </p>
+
+              {/* Submission Metadata Breakdown */}
+              <div className="mt-6 divide-y divide-slate-200/80 rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 text-sm dark:divide-slate-800 dark:border-[#1d4440] dark:bg-[#071716]">
+                <div className="flex items-center justify-between pb-3">
+                  <span className="text-slate-500 dark:text-slate-400">{isAr ? 'وسيلة التحويل' : 'Payment Method'}</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100">
+                    {PAYMENT_METHODS.find((item) => item.id === submission.payment_method)?.[isAr ? 'ar' : 'en'] || submission.payment_method}
+                  </span>
+                </div>
+
                 {submission.status === 'APPROVED' ? (
-                  <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'المبلغ المعتمد' : 'Approved amount'}</span><span className="font-semibold tabular-nums">{formatAmount(Number(submission.amount_minor))}</span></div>
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-slate-500 dark:text-slate-400">{isAr ? 'المبلغ المعتمد' : 'Approved Amount'}</span>
+                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {formatAmount(Number(submission.amount_minor))}
+                    </span>
+                  </div>
                 ) : (
-                  <p className="text-xs leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'سيتم تحديد المبلغ بعد مراجعة الإيصال والتحقق منه.' : 'The amount will be set after the receipt is reviewed and verified.'}</p>
+                  <div className="py-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    {isAr
+                      ? 'المبلغ النهائي يُحدّد ويعتمد بواسطة الإدارة بعد التدقيق والمطابقة مع كشف الحساب.'
+                      : 'The approved amount will be set after verifying with bank/wallet records.'}
+                  </div>
                 )}
-                <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'طريقة الدفع' : 'Payment method'}</span><span className="font-semibold">{methods.find((item) => item.id === submission.payment_method)?.[isAr ? 'ar' : 'en'] || submission.payment_method}</span></div>
+
                 {submission.status === 'APPROVED' && (
                   <>
-                    <div className="flex items-center justify-between gap-3 border-t border-[#dce6e4] pt-3 dark:border-[#244746]"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رصيد الحساب قبل الاعتماد' : 'Balance before approval'}</span><span className="font-semibold tabular-nums">{submission.balance_before_minor == null ? '—' : formatAmount(Number(submission.balance_before_minor))}</span></div>
-                    <div className="flex items-center justify-between gap-3"><span className="text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'رصيد الحساب بعد الاعتماد' : 'Balance after approval'}</span><span className="font-semibold tabular-nums text-[#0f766e] dark:text-[#83cbbd]">{submission.balance_after_minor == null ? '—' : formatAmount(Number(submission.balance_after_minor))}</span></div>
+                    <div className="flex items-center justify-between py-3">
+                      <span className="text-slate-500 dark:text-slate-400">{isAr ? 'الرصيد قبل الاعتماد' : 'Balance before'}</span>
+                      <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">
+                        {submission.balance_before_minor == null ? '—' : formatAmount(Number(submission.balance_before_minor))}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-3">
+                      <span className="text-slate-500 dark:text-slate-400">{isAr ? 'الرصيد بعد الاعتماد' : 'Balance after'}</span>
+                      <span className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                        {submission.balance_after_minor == null ? '—' : formatAmount(Number(submission.balance_after_minor))}
+                      </span>
+                    </div>
                   </>
                 )}
-                <p className="text-[11px] text-[#7d9690]">{isAr ? 'آخر تحديث' : 'Last update'}: {new Date(submission.reviewed_at || submission.created_at).toLocaleString(isAr ? 'ar-PS' : 'en-GB', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+
+                <div className="flex items-center justify-between pt-3 text-xs text-slate-500 dark:text-slate-400">
+                  <span>{isAr ? 'توقيت التحديث' : 'Timestamp'}</span>
+                  <span dir="ltr" className="tabular-nums">
+                    {new Date(submission.reviewed_at || submission.created_at).toLocaleString(
+                      isAr ? 'ar-PS' : 'en-GB',
+                      { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+                    )}
+                  </span>
+                </div>
               </div>
-            )}
-            <div className="mt-6 flex flex-wrap gap-3">
-              <a href={backHref} className="inline-flex items-center gap-2 rounded-xl border border-[#dce6e4] px-4 py-3 text-sm font-semibold transition hover:bg-[#edf4f2] dark:border-[#315653] dark:hover:bg-[#133533]">{isCustomerPayment ? (isAr ? 'العودة إلى حساب الزبون' : 'Return to customer account') : (isAr ? 'العودة إلى الطلب' : 'Return to order')}</a>
-              {submission?.status !== 'PENDING' && (isCustomerPayment || (typeof order?.orderDueMinor === 'number' && order.orderDueMinor > 0)) && (
-                <button type="button" onClick={() => { setSuccess(false); setSubmission(null); setError(''); }} className="inline-flex items-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#115e59]">{isAr ? 'إشعار دفع جديد' : 'New payment notification'}</button>
-              )}
+
+              {/* Action Buttons */}
+              <div className="mt-7 flex flex-wrap items-center gap-3">
+                <a
+                  href={backHref}
+                  className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-[#1e4440] dark:bg-[#071716] dark:text-slate-200 dark:hover:bg-[#0d2624]"
+                >
+                  {isCustomerPayment
+                    ? (isAr ? 'العودة إلى حساب الزبون' : 'Back to Customer Account')
+                    : (isAr ? 'العودة إلى الطلب' : 'Back to Order')}
+                </a>
+
+                {submission.status !== 'PENDING' && (isCustomerPayment || (typeof order?.orderDueMinor === 'number' && order.orderDueMinor > 0)) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSuccess(false);
+                      setSubmission(null);
+                      setError('');
+                    }}
+                    className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600"
+                  >
+                    {isAr ? 'إرسال إشعار دفع جديد' : 'New payment notification'}
+                  </button>
+                )}
+              </div>
             </div>
           </section>
         ) : (
-          <form onSubmit={submit} className="space-y-5">
-            {error && validationError === null && (
-              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{error}</div>
-            )}
-
-            <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_12px_36px_rgba(16,55,51,0.045)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold text-[#607874] dark:text-[#a7beb9]">{isAr ? 'رقم الدفع' : 'Payment number'}</p>
-                  <p dir="ltr" className="mt-2 text-2xl font-bold tracking-[0.08em] text-[#142c2c] dark:text-[#e7f2ef] sm:text-3xl">0592369875</p>
-                </div>
-                <button type="button" onClick={() => void copyNumber()} aria-label={isAr ? 'نسخ رقم الدفع' : 'Copy payment number'} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#b9d2cc] bg-[#f5faf8] px-4 py-2.5 text-sm font-semibold text-[#0f766e] transition hover:bg-[#eaf4f1] focus:outline-none focus:ring-2 focus:ring-[#0f766e] dark:border-[#315653] dark:bg-[#102f2d] dark:text-[#a9d8cc] dark:hover:bg-[#163d3a]">
-                  <Copy className="h-4 w-4" /> {copied ? (isAr ? 'تم النسخ' : 'Copied') : (isAr ? 'نسخ الرقم' : 'Copy number')}
-                </button>
-              </div>
-              {copied && <p role="status" aria-live="polite" className="mt-3 text-xs font-semibold text-[#17613c] dark:text-[#a9e6c0]">{isAr ? 'تم نسخ رقم الدفع بنجاح.' : 'Payment number copied.'}</p>}
-            </section>
-
-            <section ref={methodSectionRef} className="scroll-mt-8 rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_12px_36px_rgba(16,55,51,0.045)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-bold">{isAr ? 'وسيلة الدفع' : 'Payment method'}</h2>
-                  <p className="mt-1 text-xs text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'اختر وسيلة واحدة لإتمام التحويل.' : 'Select one method for your transfer.'}</p>
-                </div>
-                <span className="text-xs font-semibold text-rose-600 dark:text-rose-300">{isAr ? 'مطلوب' : 'Required'}</span>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-2.5 sm:gap-3">
-                {methods.map((item) => {
-                  const selected = method === item.id;
-                  return (
-                    <button key={item.id} type="button" onClick={() => { setMethod(item.id); setError(''); setValidationError(null); }}
-                      aria-pressed={selected}
-                      className={`relative flex min-h-[112px] flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all focus:outline-none focus:ring-2 focus:ring-[#0f766e] sm:min-h-[124px] sm:p-3 ${selected ? 'border-[#0f766e] bg-[#f0f8f6] shadow-[0_0_0_1px_#0f766e] dark:bg-[#10302e]' : 'border-[#dce6e4] bg-white hover:border-[#a8c7c0] dark:border-[#244746] dark:bg-[#0b2928] dark:hover:border-[#3b6e67]'}`}>
-                      {selected && <CheckCircle2 className="absolute end-2 top-2 h-4 w-4 text-[#0f766e] dark:text-[#9cd6c9]" />}
-                      <PaymentMethodLogo method={item} />
-                      <span className="text-xs font-bold leading-5 sm:text-sm">{isAr ? item.ar : item.en}</span>
-                      <span className="mt-1 text-[10px] leading-4 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? item.descriptionAr : item.descriptionEn}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {error && validationError === 'method' && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{error}</p>}
-            </section>
-
-            <section ref={receiptSectionRef} className="scroll-mt-8 rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_12px_36px_rgba(16,55,51,0.045)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-bold">{isAr ? 'إرفاق إشعار الدفع' : 'Attach payment receipt'}</h2>
-                  <p className="mt-1 text-xs leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'يرجى إرفاق صورة واضحة لإشعار التحويل حتى نتمكن من مراجعته.' : 'Please attach a clear image of the transfer receipt so it can be reviewed.'}</p>
-                </div>
-                <span className="text-xs font-semibold text-rose-600 dark:text-rose-300">{isAr ? 'مطلوب' : 'Required'}</span>
-              </div>
-              <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-[#a8c7c0] bg-[#f8fbfa] px-4 py-7 text-center transition hover:border-[#0f766e] hover:bg-[#f0f8f6] dark:border-[#315653] dark:bg-[#0b2928] dark:hover:bg-[#10302e]">
-                <UploadCloud className="h-7 w-7 text-[#0f766e] dark:text-[#83cbbd]" />
-                <span className="mt-3 text-sm font-semibold">{receipt ? receipt.name : (isAr ? 'اضغط لاختيار صورة الإيصال' : 'Tap to choose a receipt image')}</span>
-                <span className="mt-1 max-w-sm text-[11px] leading-5 text-[#6b8580] dark:text-[#9bb6b0]">{isAr ? 'يُقبل ملف صورة فقط. ستُضغط الصورة قبل الرفع مع الحفاظ على وضوح بيانات التحويل.' : 'Image files only. The image is compressed before upload while keeping transfer details readable.'}</span>
-                <input type="file" accept="image/jpeg,image/png,image/webp,image/*" className="sr-only" onChange={(e) => handleReceiptChange(e.target.files?.[0])} />
-              </label>
-              {error && validationError === 'receipt' && <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold leading-5 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{error}</p>}
-              {receiptPreview && (
-                <div className="mt-3 flex items-center gap-3 rounded-xl border border-[#dce6e4] p-3 dark:border-[#244746]">
-                  <img src={receiptPreview} alt={isAr ? 'معاينة الإيصال' : 'Receipt preview'} className="h-16 w-16 rounded-lg object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold">{receipt?.name}</p>
-                    <p className="mt-1 text-[11px] text-[#6b8580] dark:text-[#9bb6b0]">{receipt ? `${(receipt.size / 1024).toFixed(0)} KB` : ''}</p>
-                  </div>
-                  <button type="button" onClick={() => setReceipt(null)} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-[#edf4f2] dark:hover:bg-[#133533]" aria-label={isAr ? 'إزالة الصورة' : 'Remove image'}><X className="h-4 w-4" /></button>
+          /* Active Payment Form: Modern, Two-Column (Responsive) Layout */
+          <form onSubmit={submit} className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
+            {/* LEFT / PRIMARY COLUMN: Steps & Actions (Col 7 on desktop) */}
+            <div className="space-y-6 lg:col-span-7">
+              {/* Global Error Banner */}
+              {error && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-3 rounded-2xl border border-rose-300 bg-rose-50/90 p-4 text-sm font-medium leading-6 text-rose-900 shadow-sm dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
+                >
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" />
+                  <div className="flex-1">{error}</div>
                 </div>
               )}
-            </section>
 
-            <section className="rounded-2xl border border-[#dce6e4] bg-white p-5 shadow-[0_12px_36px_rgba(16,55,51,0.045)] dark:border-[#1c4140] dark:bg-[#0a2423] sm:p-6">
-              <label className="block text-sm font-semibold">
-                {isAr ? 'ملاحظة (اختياري)' : 'Note (optional)'}
-                <textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 500))} rows={3} maxLength={500}
-                  placeholder={isAr ? 'أضف ملاحظة تساعد في مطابقة التحويل، إن لزم…' : 'Add a note to help match the transfer, if needed…'}
-                  className="mt-2 w-full resize-y rounded-xl border border-[#dce6e4] bg-white px-3.5 py-3 text-sm font-normal outline-none transition placeholder:text-[#8aa19c] focus:border-[#0f766e] focus:ring-2 focus:ring-[#0f766e]/10 dark:border-[#315653] dark:bg-[#0b2928] dark:placeholder:text-[#779791]" />
-                <span className="mt-1 block text-end text-[10px] font-normal text-[#7d9690]">{note.length}/500</span>
-              </label>
-            </section>
+              {/* STEP 1: Destination Account & One-Tap Copy */}
+              <section className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm transition hover:shadow-md dark:border-[#1a3c3a] dark:bg-[#0c1f1e]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                      1
+                    </span>
+                    <h2 className="text-base font-black text-slate-900 dark:text-slate-50">
+                      {isAr ? 'رقم التحويل المعتمد' : 'Destination Payment Number'}
+                    </h2>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-[#122c2a] dark:text-slate-300">
+                    {isAr ? 'رقم موحّد' : 'Universal'}
+                  </span>
+                </div>
 
-            <button type="submit" disabled={sending || (Boolean(order) && (amountDue === null || amountDue <= 0))}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#115e59] focus:outline-none focus:ring-2 focus:ring-[#0f766e] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-45 dark:focus:ring-offset-[#071b1b]">
-              {sending ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <ShieldCheck className="h-4 w-4" />}
-              {sending ? (isAr ? 'جارٍ تجهيز الصورة والإرسال…' : 'Preparing image and sending…') : (isAr ? 'إرسال إشعار الدفع' : 'Send payment notification')}
-            </button>
+                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {isAr
+                    ? 'استخدم هذا الرقم كوجهة تحويل في تطبيق بنك فلسطين أو محفظة جوال باي أو بال باي:'
+                    : 'Use this recipient number in Bank of Palestine, Jawwal Pay, or PalPay app:'}
+                </p>
 
-            <div className="rounded-xl border border-[#dce6e4] bg-[#edf5f2] p-4 text-xs leading-6 text-[#41635d] dark:border-[#1c4140] dark:bg-[#0c2927] dark:text-[#b4d0c8]">
-              <p className="flex items-start gap-2 font-semibold">
-                <LockKeyhole className="mt-1 h-4 w-4 shrink-0 text-[#0f766e] dark:text-[#83cbbd]" />
-                <span>{isAr ? 'لن يتغير رصيدك أو حالة الطلب قبل اعتماد إشعار الدفع.' : 'Your balance and order status will not change until the payment notification is approved.'}</span>
-              </p>
-              <p className="mt-2 ps-6">{isAr ? 'بعد الاعتماد، تُوزّع الدفعة على المستحقات من الأقدم إلى الأحدث، وأي مبلغ فائض يُضاف إلى رصيدك.' : 'After approval, the payment is allocated to the oldest outstanding items first; any excess remains as customer credit.'}</p>
+                {/* Big Number Banner with Immediate Copy Button */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/60 p-4 dark:border-[#1e4844] dark:bg-[#0a2321]/60">
+                  <div>
+                    <span className="block text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+                      {isAr ? 'رقم الهاتف / الحساب' : 'Account / Mobile Number'}
+                    </span>
+                    <span
+                      dir="ltr"
+                      className="mt-1 block font-mono text-2xl font-black tracking-widest text-slate-900 dark:text-slate-50 sm:text-3xl"
+                    >
+                      0592369875
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void copyNumber()}
+                    className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 text-xs font-bold transition shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                      copied
+                        ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                        : 'bg-white text-emerald-800 hover:bg-emerald-100/70 dark:bg-[#133532] dark:text-emerald-300 dark:hover:bg-[#18423f]'
+                    }`}
+                    aria-label={isAr ? 'نسخ رقم الدفع' : 'Copy payment number'}
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        <span>{isAr ? 'تم النسخ!' : 'Copied!'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-4 w-4" />
+                        <span>{isAr ? 'نسخ الرقم' : 'Copy Number'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {copied && (
+                  <p role="status" aria-live="polite" className="mt-2 text-center text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    {isAr ? 'تم نسخ الرقم بنجاح إلى الحافظة.' : 'Number copied to clipboard successfully.'}
+                  </p>
+                )}
+              </section>
+
+              {/* STEP 2: Choose Payment Method */}
+              <section
+                ref={methodSectionRef}
+                className={`scroll-mt-24 rounded-3xl border bg-white p-6 shadow-sm transition dark:bg-[#0c1f1e] ${
+                  validationError === 'method'
+                    ? 'border-rose-400 ring-2 ring-rose-300 dark:border-rose-600 dark:ring-rose-900/50'
+                    : 'border-slate-200/90 dark:border-[#1a3c3a]'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                      2
+                    </span>
+                    <h2 className="text-base font-black text-slate-900 dark:text-slate-50">
+                      {isAr ? 'اختر وسيلة التحويل التي استخدمتها' : 'Select Used Transfer Method'}
+                    </h2>
+                  </div>
+                  <span className="text-xs font-bold text-rose-500 dark:text-rose-400">
+                    {isAr ? '* مطلوب' : '* Required'}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {PAYMENT_METHODS.map((item) => {
+                    const selected = method === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setMethod(item.id);
+                          setError('');
+                          setValidationError(null);
+                        }}
+                        aria-pressed={selected}
+                        className={`group relative flex flex-col justify-between rounded-2xl border p-4 text-start transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                          selected
+                            ? 'border-emerald-600 bg-emerald-50/70 shadow-sm ring-1 ring-emerald-600 dark:border-emerald-500 dark:bg-[#0e2d2a] dark:ring-emerald-500'
+                            : 'border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/60 dark:border-[#193a38] dark:bg-[#081817] dark:hover:border-[#224f4c]'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <PaymentMethodLogo method={item} />
+                          <span
+                            className={`flex h-5 w-5 items-center justify-center rounded-full border transition ${
+                              selected
+                                ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-400 dark:bg-emerald-500'
+                                : 'border-slate-300 bg-transparent group-hover:border-slate-400 dark:border-slate-600'
+                            }`}
+                          >
+                            {selected && <Check className="h-3.5 w-3.5" />}
+                          </span>
+                        </div>
+
+                        <div className="mt-3">
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                            {isAr ? item.ar : item.en}
+                          </h3>
+                          <p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+                            {isAr ? item.descriptionAr : item.descriptionEn}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* STEP 3: Upload Transfer Receipt */}
+              <section
+                ref={receiptSectionRef}
+                className={`scroll-mt-24 rounded-3xl border bg-white p-6 shadow-sm transition dark:bg-[#0c1f1e] ${
+                  validationError === 'receipt'
+                    ? 'border-rose-400 ring-2 ring-rose-300 dark:border-rose-600 dark:ring-rose-900/50'
+                    : 'border-slate-200/90 dark:border-[#1a3c3a]'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                      3
+                    </span>
+                    <h2 className="text-base font-black text-slate-900 dark:text-slate-50">
+                      {isAr ? 'إرفاق إيصال التحويل' : 'Attach Transfer Receipt'}
+                    </h2>
+                  </div>
+                  <span className="text-xs font-bold text-rose-500 dark:text-rose-400">
+                    {isAr ? '* مطلوب' : '* Required'}
+                  </span>
+                </div>
+
+                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {isAr
+                    ? 'التقط لقطة شاشة لإشعار التحويل من تطبيق البنك أو المحفظة وأرفقها هنا للتحقق:'
+                    : 'Upload a screenshot of the completed transfer confirmation for review:'}
+                </p>
+
+                {/* Upload Drag/Tap Surface */}
+                {!receipt ? (
+                  <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-center transition hover:border-emerald-500 hover:bg-emerald-50/30 focus-within:ring-2 focus-within:ring-emerald-500 dark:border-[#224d49] dark:bg-[#081817] dark:hover:border-emerald-500 dark:hover:bg-[#0c2422]">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
+                      <UploadCloud className="h-6 w-6" />
+                    </span>
+                    <span className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-200">
+                      {isAr ? 'اضغط لاختيار صورة الإيصال' : 'Tap to select receipt image'}
+                    </span>
+                    <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      {isAr
+                        ? 'يدعم صور JPEG أو PNG أو WebP (تُضغط الصورة تلقائياً لسرعة الرفع)'
+                        : 'Supports JPEG, PNG, WebP (auto-compressed for fast upload)'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/*"
+                      className="sr-only"
+                      onChange={(e) => handleReceiptChange(e.target.files?.[0])}
+                    />
+                  </label>
+                ) : (
+                  /* Attached Receipt Preview Card */
+                  <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-[#1d4944] dark:bg-[#0a2321]/60">
+                    <div className="flex items-center gap-3.5 overflow-hidden">
+                      {receiptPreview ? (
+                        <img
+                          src={receiptPreview}
+                          alt={isAr ? 'معاينة الإيصال' : 'Receipt preview'}
+                          className="h-14 w-14 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-slate-700"
+                        />
+                      ) : (
+                        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white text-emerald-600 dark:bg-slate-800">
+                          <FileImage className="h-6 w-6" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+                          {receipt.name}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          {(receipt.size / 1024).toFixed(0)} KB · {isAr ? 'جاهزة للإرسال' : 'Ready'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setReceipt(null)}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/90 bg-white text-slate-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-rose-950 dark:hover:text-rose-400"
+                      aria-label={isAr ? 'حذف الصورة' : 'Remove image'}
+                      title={isAr ? 'حذف' : 'Remove'}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              {/* STEP 4: Optional Transfer Note */}
+              <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm transition dark:border-[#1a3c3a] dark:bg-[#0c1f1e]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-xs font-black text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                      4
+                    </span>
+                    <label htmlFor="payment-note" className="text-base font-black text-slate-900 dark:text-slate-50">
+                      {isAr ? 'ملاحظة أو اسم المحوّل' : 'Note or Sender Name'}
+                    </label>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-400">
+                    {isAr ? '(اختياري)' : '(Optional)'}
+                  </span>
+                </div>
+
+                <div className="mt-3">
+                  <textarea
+                    id="payment-note"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value.slice(0, 500))}
+                    rows={2}
+                    maxLength={500}
+                    placeholder={
+                      isAr
+                        ? 'مثال: تم التحويل من حساب فلان، أو رقم حركة التحويل…'
+                        : 'e.g., Transfer sent from account holder name or reference number…'
+                    }
+                    className="w-full resize-none rounded-2xl border border-slate-200/90 bg-slate-50/50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 dark:border-[#1e4642] dark:bg-[#081817] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-emerald-400 dark:focus:bg-[#0c1f1e]"
+                  />
+                  <div className="mt-1 text-end text-[11px] tabular-nums text-slate-400">
+                    {note.length}/500
+                  </div>
+                </div>
+              </section>
+
+              {/* STEP 5: Submit Button CTA */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={sending || (Boolean(order) && (amountDue === null || amountDue <= 0))}
+                  className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-2xl bg-emerald-600 px-6 py-4 text-base font-black text-white shadow-lg shadow-emerald-600/25 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-500 dark:shadow-emerald-950/40 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
+                >
+                  {sending ? (
+                    <>
+                      <RefreshCw className="h-5 w-5 animate-spin" />
+                      <span>{isAr ? 'جارٍ تجهيز الإشعار والإرسال…' : 'Preparing & Submitting…'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="h-5 w-5" />
+                      <span>{isAr ? 'إرسال إشعار الدفع' : 'Submit Payment Notification'}</span>
+                    </>
+                  )}
+                </button>
+
+                <p className="mt-3 text-center text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  <LockKeyhole className="me-1 inline h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  {isAr
+                    ? 'يتم فحص وتدقيق كل إشعار يدوياً قبل اعتماد الرصيد رسمياً في النظام.'
+                    : 'Each submission is verified manually before your balance is credited.'}
+                </p>
+              </div>
             </div>
 
-            <div className="rounded-xl border border-[#dce6e4] bg-white p-4 text-xs leading-6 text-[#607874] dark:border-[#1c4140] dark:bg-[#0a2423] dark:text-[#a7beb9]">
-              <p className="flex items-center gap-2 font-semibold text-[#365653] dark:text-[#c8d9d4]"><FileImage className="h-4 w-4 text-[#0f766e] dark:text-[#83cbbd]" />{isAr ? 'خصوصية الإيصال' : 'Receipt privacy'}</p>
-              <p className="mt-2">{isAr ? 'يُحفظ الإيصال في مساحة خاصة، ولا يطّلع عليه إلا المراجعون المصرّح لهم داخل النظام.' : 'Your receipt is stored privately and can only be viewed by authorized reviewers in the system.'}</p>
-            </div>
+            {/* RIGHT / SECONDARY COLUMN: Summary Card & Details (Col 5 on desktop) */}
+            <aside className="space-y-6 lg:col-span-5">
+              {/* Order / Customer Financial Summary Card */}
+              <div className="overflow-hidden rounded-3xl border border-slate-200/90 bg-white shadow-sm dark:border-[#1a3c3a] dark:bg-[#0c1f1e]">
+                {/* Header Strip */}
+                <div className="border-b border-slate-200/80 bg-slate-50/80 px-6 py-4 dark:border-[#1a3c3a] dark:bg-[#091b1a]">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                      {isCustomerPayment
+                        ? (isAr ? 'حساب الزبون' : 'CUSTOMER ACCOUNT')
+                        : (isAr ? 'بيانات الطلب' : 'ORDER DETAILS')}
+                    </span>
+                    {order && (
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        {isAr ? `طلب #${order.orderNumber}` : `Order #${order.orderNumber}`}
+                      </span>
+                    )}
+                  </div>
+
+                  <h3 className="mt-1 truncate text-lg font-black text-slate-900 dark:text-slate-50">
+                    {order?.customerName || customer?.customerName || '—'}
+                  </h3>
+
+                  {(order?.customerCode || customer?.customerCode) && (
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {isAr ? 'رمز العميل: ' : 'Customer code: '}
+                      {order?.customerCode || customer?.customerCode}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-4 p-6">
+                  {/* Amount Due Highlight */}
+                  {order && (
+                    <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 dark:border-[#1d4440] dark:bg-[#08201e]/60">
+                      <span className="block text-xs font-bold text-emerald-800 dark:text-emerald-400">
+                        {isAr ? 'المبلغ المطلوب سداده' : 'Total Amount Due'}
+                      </span>
+                      <div dir="ltr" className="mt-1 text-3xl font-black tabular-nums text-slate-900 dark:text-slate-50">
+                        {amountDue !== null ? formatAmount(amountDue) : '—'}
+                      </div>
+                      <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
+                        {typeof order.orderTotalMinor === 'number' && (
+                          <span>
+                            {isAr ? 'إجمالي الطلب: ' : 'Order total: '}
+                            {formatAmount(order.orderTotalMinor)}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Devices List (if order has items) */}
+                  {order?.items?.length ? (
+                    <div className="space-y-2 border-t border-slate-200/80 pt-4 dark:border-slate-800">
+                      <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                        {isAr ? 'الأجهزة المسجلة في الطلب:' : 'Order Items:'}
+                      </div>
+
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                        {order.items.map((item, index) => {
+                          const itemName = locale === 'en'
+                            ? (item.name_en || getItemLocalizedDeviceName(item.device_type_id || item.name, 'en', item.name))
+                            : (item.name_ar || item.name);
+
+                          return (
+                            <div
+                              key={`${item.name}-${index}`}
+                              className="flex items-center justify-between gap-3 py-2 text-xs"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <span className="font-bold text-slate-800 dark:text-slate-200">
+                                  {itemName}
+                                </span>
+                                {item.has_charger && (
+                                  <span className="ms-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">
+                                    {isAr ? '(مع شاحن)' : '(with charger)'}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="shrink-0 font-bold tabular-nums text-slate-700 dark:text-slate-300">
+                                {typeof item.total_price_minor === 'number'
+                                  ? formatAmount(item.total_price_minor)
+                                  : '—'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Customer Payment Context Explanation */}
+                  {isCustomerPayment && (
+                    <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 text-xs leading-5 text-slate-600 dark:border-[#1d4440] dark:bg-[#071716] dark:text-slate-300">
+                      {isAr
+                        ? 'سيتم تسجيل الإشعار وربطه بملف حسابك. بعد اعتماد الإيصال، تُسدّد مستحقاتك تلقائياً من الأقدم إلى الأحدث.'
+                        : 'Your payment notification is linked directly to your customer account. Verified amounts settle debts on a FIFO basis.'}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Security & Verification Card */}
+              <div className="rounded-3xl border border-slate-200/90 bg-slate-50/80 p-5 text-xs leading-6 text-slate-600 shadow-sm dark:border-[#1a3c3a] dark:bg-[#0a1c1b] dark:text-slate-400">
+                <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>{isAr ? 'إجراءات الأمان والتدقيق' : 'Security & Verification'}</span>
+                </div>
+                <p className="mt-2">
+                  {isAr
+                    ? 'يُحفظ إيصالك في مساحة تخزين آمنة ومشفّرة، ولا يُعتمد أي مبلغ إلا بعد مطابقة إشعار البنك أو المحفظة فعلياً.'
+                    : 'Receipts are encrypted and stored privately. Amounts are only credited once confirmed by our accounting team.'}
+                </p>
+              </div>
+            </aside>
           </form>
         )}
       </main>
 
-      <footer className="border-t border-[#dce6e4] px-4 py-5 text-center text-[11px] text-[#7d9690] dark:border-[#1c4140] dark:text-[#779791]">
-        <span>{isAr ? 'نقطة الشحن · خدمات الدفع' : 'Charging Point · Payment services'}</span>
+      {/* 3. Footer Bar */}
+      <footer className="mt-12 border-t border-slate-200/80 py-6 text-center text-xs text-slate-500 dark:border-[#163532] dark:text-slate-400">
+        <p>
+          {isAr
+            ? 'نقطة الشحن (ChargerPoint) · بوابة الدفع والتحويل الآمنة'
+            : 'Charging Point (ChargerPoint) · Secure Payment & Transfer Portal'}
+        </p>
       </footer>
     </div>
   );

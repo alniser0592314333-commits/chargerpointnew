@@ -66,6 +66,9 @@ export interface PublicOrderQrRpcResult {
   order_due_minor?: number;
   items?: Array<{
     name: string;
+    name_ar?: string;
+    name_en?: string;
+    device_type_id?: string;
     status: string;
     operational_status?: string;
     payment_status?: string;
