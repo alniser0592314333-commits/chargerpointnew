@@ -5506,6 +5506,7 @@ export interface PublicOrderQrData {
   itemsCount: number;
   orderTotalMinor?: number;
   orderDueMinor?: number;
+  customerBalanceMinor?: number;
   items?: Array<{
     name: string;
     name_ar?: string;
@@ -5559,6 +5560,7 @@ export const getPublicOrderByToken = async (
         itemsCount: supabaseResult.items_count,
         orderTotalMinor: supabaseResult.order_total_minor,
         orderDueMinor: supabaseResult.order_due_minor,
+        customerBalanceMinor: supabaseResult.customer_balance_minor == null ? undefined : Number(supabaseResult.customer_balance_minor),
         items: supabaseResult.items?.map((it) => {
           const dev = it.device_type_id ? devicesMap.get(it.device_type_id) : undefined;
           const foundBySnapshot = !dev
