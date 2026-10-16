@@ -146,6 +146,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     setReceipt(null);
     setNote('');
     setError('');
+    setValidationError(null);
     setCopied(false);
     void (async () => {
       try {
