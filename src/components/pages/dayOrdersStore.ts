@@ -5128,7 +5128,7 @@ export const createOrderWithPhase5Engine = async (
   customerId: string,
   items: { deviceTypeId: string; hasCharger: boolean }[],
   notes?: string
-): Promise<{ success: boolean; error?: string; order?: UIDayOrderDetail }> => {
+): Promise<{ success: boolean; error?: string; errorCode?: string; order?: UIDayOrderDetail }> => {
   if (!items || items.length === 0) {
     return { success: false, error: 'يجب اختيار جهاز واحد على الأقل للطلب' };
   }
@@ -5149,7 +5149,7 @@ export const createOrderWithPhase5Engine = async (
     );
 
     if (!result.success) {
-      return { success: false, error: presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء الطلب') };
+      return { success: false, error: presentError(('error' in result ? result.error : undefined) || 'فشل إنشاء الطلب'), errorCode: 'code' in result ? result.code : undefined };
     }
 
     const orderEntity = result.data.order;
