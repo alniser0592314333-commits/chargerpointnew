@@ -476,7 +476,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           </div>
         ) : success && submission ? (
           /* Success / Existing Submission Screen */
-          <section className="mx-auto max-w-xl space-y-5">
+          <div className={submission.status === 'PENDING' ? 'payment-pending-layout' : 'payment-status-layout'}>
+          <section className={`mx-auto max-w-xl space-y-5 ${submission.status === 'PENDING' ? 'payment-pending-content' : ''}`}>
             <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-2xl shadow-slate-900/10 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#101e21]/95 dark:shadow-black/30 sm:p-8">
               {/* Status Header Badge */}
               <div className="flex items-center gap-4">
@@ -617,6 +618,48 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </div>
             </div>
           </section>
+          {submission.status === 'PENDING' && (
+            <aside className="payment-portal-visual payment-pending-visual" aria-label={isAr ? 'معلومات عن مراجعة الدفع' : 'Payment review information'}>
+              <div className="payment-portal-visual-art" aria-hidden="true">
+                <svg viewBox="0 0 520 410" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <radialGradient id="pending-review-glow"><stop stopColor="#f59e0b" stopOpacity=".22"/><stop offset="1" stopColor="#f59e0b" stopOpacity="0"/></radialGradient>
+                    <linearGradient id="pending-review-paper" x1="170" y1="55" x2="340" y2="355" gradientUnits="userSpaceOnUse"><stop stopColor="#fffefa"/><stop offset="1" stopColor="#e7f5ef"/></linearGradient>
+                    <linearGradient id="pending-review-ring" x1="180" y1="80" x2="350" y2="330" gradientUnits="userSpaceOnUse"><stop stopColor="#fbbf24"/><stop offset="1" stopColor="#10b981"/></linearGradient>
+                  </defs>
+                  <ellipse cx="260" cy="205" rx="220" ry="185" fill="url(#pending-review-glow)"/>
+                  <circle cx="260" cy="205" r="145" stroke="currentColor" strokeOpacity=".09" strokeWidth="1.5" strokeDasharray="5 10"/>
+                  <g transform="rotate(-5 260 205)">
+                    <rect x="155" y="42" width="210" height="326" rx="28" fill="url(#pending-review-paper)" stroke="url(#pending-review-ring)" strokeWidth="3"/>
+                    <rect x="179" y="70" width="162" height="270" rx="18" fill="#f8fafc" stroke="#d5e8df"/>
+                    <rect x="205" y="94" width="110" height="8" rx="4" fill="#0f766e" fillOpacity=".72"/>
+                    <rect x="205" y="114" width="76" height="5" rx="2.5" fill="#64748b" fillOpacity=".45"/>
+                    <rect x="201" y="145" width="118" height="92" rx="14" fill="#fef3c7"/>
+                    <circle cx="260" cy="190" r="27" fill="#f59e0b" fillOpacity=".18" stroke="#d97706" strokeWidth="2"/>
+                    <path d="M260 174v18l12 8" stroke="#b45309" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                    <rect x="204" y="256" width="112" height="6" rx="3" fill="#0f766e" fillOpacity=".55"/>
+                    <rect x="204" y="273" width="84" height="6" rx="3" fill="#64748b" fillOpacity=".25"/>
+                    <rect x="204" y="290" width="98" height="6" rx="3" fill="#64748b" fillOpacity=".25"/>
+                    <path d="M228 318h64" stroke="#10b981" strokeWidth="5" strokeLinecap="round"/>
+                  </g>
+                  <rect x="45" y="118" width="106" height="66" rx="17" fill="currentColor" fillOpacity=".045" stroke="currentColor" strokeOpacity=".12"/>
+                  <circle cx="68" cy="140" r="7" fill="#10b981"/><path d="m64.5 140 2.4 2.4 4.6-5" stroke="#052e2b" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <rect x="84" y="136" width="48" height="5" rx="2.5" fill="currentColor" fillOpacity=".38"/><rect x="64" y="155" width="66" height="5" rx="2.5" fill="currentColor" fillOpacity=".16"/>
+                  <rect x="363" y="256" width="116" height="74" rx="18" fill="currentColor" fillOpacity=".045" stroke="currentColor" strokeOpacity=".12"/>
+                  <circle cx="387" cy="280" r="8" fill="#f59e0b" fillOpacity=".2"/><path d="M387 275v6l4 3" stroke="#b45309" strokeWidth="1.8" strokeLinecap="round"/>
+                  <rect x="405" y="276" width="53" height="5" rx="2.5" fill="currentColor" fillOpacity=".38"/><rect x="405" y="289" width="42" height="5" rx="2.5" fill="currentColor" fillOpacity=".16"/><rect x="382" y="309" width="76" height="5" rx="2.5" fill="#10b981" fillOpacity=".55"/>
+                  <circle cx="394" cy="100" r="5" fill="#38bdf8"/><circle cx="117" cy="284" r="4" fill="#10b981"/>
+                </svg>
+              </div>
+              <p className="payment-portal-visual-eyebrow">{isAr ? 'تم استلام إشعارك' : 'PAYMENT NOTICE RECEIVED'}</p>
+              <h2>{isAr ? 'دفعتك بانتظار المراجعة' : 'Your payment is under review'}</h2>
+              <p>{isAr
+                ? 'تم حفظ إشعار الدفع، وسيراجع المسؤول الإيصال قبل اعتماد المبلغ. لا تحتاج لإرسال إشعار آخر لنفس الدفعة.'
+                : 'Your payment notice is saved. The team will verify the receipt before approving the amount, so there is no need to submit it again.'}</p>
+              <div className="payment-portal-visual-points"><span><Clock3 className="h-4 w-4" />{isAr ? 'الحالة: قيد المراجعة' : 'Status: pending review'}</span><span><ShieldCheck className="h-4 w-4" />{isAr ? 'اعتماد بعد التحقق' : 'Approval after verification'}</span></div>
+            </aside>
+          )}
+          </div>
         ) : (
           <>
           {/* Payment form and companion illustration */}

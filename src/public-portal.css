@@ -1708,3 +1708,61 @@ html.light .order-about-link-card:hover {
     animation: none;
   }
 }
+
+
+/* Desktop companion layout for the pending payment review state only. */
+.public-payment-page .payment-pending-layout {
+  display: block;
+  min-width: 0;
+}
+
+.public-payment-page .payment-pending-visual {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .public-payment-page .payment-pending-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr);
+    align-items: center;
+    gap: clamp(2.5rem, 5vw, 5rem);
+  }
+
+  .public-payment-page .payment-pending-content {
+    grid-column: 1;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .public-payment-page .payment-pending-content > div:first-child {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .public-payment-page .payment-pending-visual {
+    display: flex;
+  }
+
+  .public-payment-page[dir="rtl"] .payment-pending-visual {
+    text-align: right;
+  }
+
+  .public-payment-page[dir="rtl"] .payment-pending-visual-art {
+    direction: ltr;
+  }
+}
+
+@media (max-width: 1023px) {
+  .public-payment-page .payment-pending-layout {
+    display: block;
+  }
+
+  .public-payment-page .payment-pending-visual {
+    display: none;
+  }
+}
