@@ -331,6 +331,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.success !== true) {
         const message = String(result.error || '');
+        if (message.toLowerCase().includes('positive credit')) {
+          throw new Error('CREDIT_BALANCE');
+        }
         if (message.includes('already awaiting review') || response.status === 409) {
           throw new Error('PENDING_EXISTS');
         }
@@ -361,6 +364,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         setError(isAr ? 'تعذّر تجهيز الصورة. يرجى تجربة صورة أخرى واضحة.' : 'Could not process image. Please try another clear image.');
       } else if (code === 'COMPRESSED_TOO_LARGE') {
         setError(isAr ? 'حجم الصورة بعد الضغط ما زال كبيراً. اختَر صورة أصغر وأوضح.' : 'Compressed image remains too large. Choose a smaller image.');
+      } else if (code === 'CREDIT_BALANCE') {
+        setError(isAr ? 'رصيدك موجب؛ سيُستخدم لتغطية تكلفة الطلب أولاً، ولا يلزم إرسال دفعة الآن.' : 'Your account has positive credit, which is applied first. No payment is needed now.');
       } else if (code === 'PENDING_EXISTS') {
         setError(isAr ? 'يوجد إشعار دفع سابق بانتظار المراجعة بالفعل لهذا الطلب أو الحساب.' : 'A previous payment notification is already awaiting review for this order or account.');
         const currentSubmission = await rpcResolveQrPaymentSubmission(token);
