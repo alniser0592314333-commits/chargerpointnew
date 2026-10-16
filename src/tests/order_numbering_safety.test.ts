@@ -416,6 +416,65 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     await localDb.removeOverlay('persisted-high-sequence');
   });
 
+  it('resets stale reserved numbers after manual renumber and reuses the next contiguous number', async () => {
+    const dayId = 'day-1';
+    const now = new Date().toISOString();
+    dayMap.set(dayId, { id: dayId, businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+
+    const oldNumbers = [...Array.from({ length: 17 }, (_, index) => index + 1), 19];
+    const changes = oldNumbers.map((oldNumber, index) => {
+      const id = `order-${oldNumber}`;
+      orderMap.set(id, {
+        id, dayId, customerId: 'cust-1', displayNumber: oldNumber, internalSequence: oldNumber,
+        status: 'pending', createdAt: now, updatedAt: now, version: 1,
+      });
+      return { id, expectedVersion: 1, oldNumber, newNumber: index + 1 };
+    });
+    reservationMap.set('stale-range', {
+      id: 'stale-range', businessDayId: dayId, deviceId: 'device_A',
+      startNumber: 1, endNumber: 20, nextNumber: 20, status: 'ACTIVE',
+      commandId: 'old-reservation-command', createdAt: now, updatedAt: now, version: 1,
+    });
+
+    const renumber = await useCases.renumberDayOrders(auth, 'renumber-stale-range', dayId, changes);
+    expect(renumber.success).toBe(true);
+    expect(reservationMap.get('stale-range')).toMatchObject({
+      startNumber: 19, endNumber: 18, nextNumber: 19, status: 'EXHAUSTED',
+    });
+
+    // Simulate the server's successful canonical pull after the renumber command.
+    for (const change of changes) {
+      const existing = orderMap.get(change.id)!;
+      orderMap.set(change.id, { ...existing, displayNumber: change.newNumber, version: existing.version + 1 });
+    }
+    overlays.clear();
+
+    const created = await createReservedOrder(auth, 'create-after-renumber', dayId, 'cust-1', 'After renumber');
+    expect(created.success).toBe(true);
+    expect((created as any).data.order.displayNumber).toBe(19);
+  });
+
+  it('does not consume a customer-facing number when device validation fails', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-1', { id: 'day-1', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+
+    await expect(useCases.createOrderWithItems(auth, 'invalid-device-order', 'day-1', 'cust-1', [
+      { deviceTypeId: 'missing-device-type', hasCharger: true },
+    ], 'Must not burn a number')).rejects.toThrow('Device type not found or inactive');
+
+    expect(reservationMap.size).toBe(0);
+    expect(overlays.size).toBe(0);
+    expect(recordedCommands).toHaveLength(0);
+  });
+
   it('Test LAZY RESERVATION — Zero reservations at startup/login/sync, exact reservation on first order, no new reservation until exhaustion', async () => {
     dayMap.set('day-1', {
       id: 'day-1',
