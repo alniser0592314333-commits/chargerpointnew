@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   ArrowUpRight, BatteryCharging, CalendarClock, Check, CheckCircle2,
   CircleAlert, CircleHelp, Clock3, CreditCard, Globe,
-  Monitor, Moon, PackageCheck, RefreshCw, Settings2,
+  Monitor, Moon, RefreshCw, Settings2,
   Smartphone, Sparkles, Sun, UserRound, Zap, ShieldCheck, Wallet,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
@@ -28,7 +28,6 @@ export const getOrderPaymentViewState = (
   orderStatus: string | null | undefined
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
-  if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
   const status = String(orderStatus ?? '').toUpperCase();
   if (dueMinor <= 0 && ['DELIVERED', 'COMPLETED'].includes(status)) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
@@ -231,52 +230,6 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     });
   };
 
-  const getOrderStatusConfig = (value?: string, dueMinor?: number) => {
-    const key = (value || '').toUpperCase();
-    const due = typeof dueMinor === 'number' ? dueMinor : 0;
-
-    if (['CHARGING', 'IN_PROGRESS', 'IN_PROGRESS_CHARGING', 'PROCESSING'].includes(key)) {
-      return {
-        label: isAr ? 'قيد الشحن' : 'Charging',
-        icon: BatteryCharging,
-        className: 'is-charging',
-      };
-    }
-    if (['READY', 'READY_FOR_PICKUP'].includes(key)) {
-      return {
-        label: isAr ? 'جاهز للاستلام' : 'Ready for pickup',
-        icon: CheckCircle2,
-        className: 'is-ready',
-      };
-    }
-    if (['DELIVERED', 'COMPLETED'].includes(key)) {
-      if (due > 0) {
-        return {
-          label: isAr ? 'تم التسليم (غير مدفوع)' : 'Delivered (Unpaid)',
-          icon: PackageCheck,
-          className: 'is-delivered-unpaid',
-        };
-      }
-      return {
-        label: isAr ? 'تم التسليم (مدفوع)' : 'Delivered & Paid',
-        icon: PackageCheck,
-        className: 'is-delivered-paid',
-      };
-    }
-    if (['CANCELLED', 'CANCELED'].includes(key)) {
-      return {
-        label: isAr ? 'ملغي' : 'Cancelled',
-        icon: CircleAlert,
-        className: 'is-cancelled',
-      };
-    }
-    return {
-      label: isAr ? 'قيد المعالجة' : 'In progress',
-      icon: Clock3,
-      className: 'is-pending',
-    };
-  };
-
   const total = data?.orderTotalMinor;
   const due = data?.orderDueMinor;
   const paid =
@@ -284,10 +237,8 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       ? total - due
       : undefined;
 
-  const statusConfig = getOrderStatusConfig(data?.status, due);
   const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status);
   const orderQrSubmissionLimitReached = data?.orderQrSubmissionLimitReached === true;
-  const StatusIcon = statusConfig.icon;
 
   return (
     <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page">
@@ -478,10 +429,6 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                   <div className="order-number-display">
                     <span className="order-hero-label">{isAr ? 'طلب رقم' : 'ORDER'}</span>
                     <h1 className="order-hero-number" dir="ltr">#{data.orderNumber}</h1>
-                  </div>
-                  <div className={`order-status-badge ${statusConfig.className}`}>
-                    <StatusIcon size={15} />
-                    <span>{statusConfig.label}</span>
                   </div>
                 </div>
 
