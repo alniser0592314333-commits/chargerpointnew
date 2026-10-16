@@ -43,6 +43,7 @@ describe('QR payment eligibility and receipt storage integrity', () => {
   });
 
   it('reads back and verifies the exact uploaded receipt before persisting its path', () => {
+    expect(edgeFunction).toContain('storage.createSignedUrl(path, 300)');
     expect(edgeFunction).toContain('storage.download(path)');
     expect(edgeFunction).toContain('crypto.subtle.digest("SHA-256"');
     expect(edgeFunction.indexOf('uploadVerifiedReceipt(supabase')).toBeLessThan(
