@@ -482,10 +482,11 @@ export class FinalUseCases {
       if (!repos.reservationRepo?.resetForDay) {
         return { success: false as const, error: 'Order-number reservations cannot be safely reset; no renumbering was queued.' };
       }
-      // Invalidate every unused number range in the same transaction as the renumber command.
-      // The next new order must continue at N+1, not at a stale pre-renumber cursor.
-      const highestPreviouslyIssued = changes.reduce((max, change) => Math.max(max, change.oldNumber, change.newNumber), 0);
-      repos.reservationRepo.resetForDay(dayId, highestPreviouslyIssued + 1);
+      // An explicit full-day renumber establishes a new contiguous numbering baseline.
+      // Reset the durable local high-water mark to the highest number that remains assigned,
+      // not the obsolete number previously held by an order before this explicit operation.
+      const highestAssignedAfterRenumber = changes.reduce((max, change) => Math.max(max, change.newNumber), 0);
+      repos.reservationRepo.resetForDay(dayId, highestAssignedAfterRenumber + 1);
 
       const now = new Date().toISOString();
       for (let index = 0; index < changes.length; index++) {
