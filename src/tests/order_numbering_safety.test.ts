@@ -104,8 +104,11 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
           void localDb.set('orderNumberReservations', r.id, persisted);
         },
         resetForDay: (dayId: string, nextNumber: number) => {
+          let watermarkFound = false;
           for (const reservation of reservationMap.values()) {
             if (reservation.businessDayId !== dayId) continue;
+            const isWatermark = reservation.deviceId === '__renumber_watermark__';
+            if (isWatermark) watermarkFound = true;
             reservationMap.set(reservation.id, {
               ...reservation,
               startNumber: nextNumber,
@@ -114,6 +117,14 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
               status: 'EXHAUSTED',
               updatedAt: new Date().toISOString(),
               version: reservation.version + 1,
+            });
+          }
+          if (!watermarkFound) {
+            const now = new Date().toISOString();
+            reservationMap.set(`watermark-${dayId}`, {
+              id: `watermark-${dayId}`, businessDayId: dayId, deviceId: '__renumber_watermark__',
+              startNumber: nextNumber, endNumber: nextNumber - 1, nextNumber, status: 'EXHAUSTED',
+              commandId: `renumber-watermark:${dayId}`, createdAt: now, updatedAt: now, version: 1,
             });
           }
         },
@@ -445,6 +456,11 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect(reservationMap.get('stale-range')).toMatchObject({
       startNumber: 19, endNumber: 18, nextNumber: 19, status: 'EXHAUSTED',
     });
+    expect(reservationMap.get(`watermark-${dayId}`)).toBeDefined();
+
+    const blockedWhileRenumberPending = await createReservedOrder(auth, 'blocked-during-renumber', dayId, 'cust-1', 'Must wait');
+    expect(blockedWhileRenumberPending.success).toBe(false);
+    expect((blockedWhileRenumberPending as any).error).toContain('renumbered');
 
     // Simulate the server's successful canonical pull after the renumber command.
     for (const change of changes) {
