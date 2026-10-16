@@ -646,6 +646,26 @@ describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', 
     expect((recordedCommands.find((command) => command.commandId === 'cmd-immutable-2')?.payload as any).dependencyCommandId).toBe('cmd-immutable-1');
   });
 
+  it('never reuses a locally issued number when its order overlay is removed', async () => {
+    const now = new Date().toISOString();
+    dayMap.set('day-high-water', { id: 'day-high-water', businessDate: '2026-10-09', isClosed: false, createdAt: now, updatedAt: now, version: 1 });
+    customerMap.set('cust-1', {
+      id: 'cust-1', name: 'Customer 1', isActive: true, debtLimitMinor: -1000,
+      chargerFeeExempt: false, createdAt: now, updatedAt: now, version: 1,
+    });
+
+    for (let number = 1; number <= 3; number++) {
+      const result = await createReservedOrder(auth, `high-water-${number}`, 'day-high-water', 'cust-1', `Order ${number}`);
+      expect(result.success).toBe(true);
+    }
+    overlays.delete('high-water-3');
+
+    const next = await createReservedOrder(auth, 'high-water-4', 'day-high-water', 'cust-1', 'Next after removal');
+    expect(next.success).toBe(true);
+    expect((next as any).data.order.displayNumber).toBe(4);
+    expect(reservationMap.get('sequence-day-high-water')).toMatchObject({ endNumber: 4, nextNumber: 5 });
+  });
+
   it('continues numbering from effective local orders even when legacy reservation records are absent', async () => {
     const dayId = '33333333-3333-4333-8333-333333333333';
     const customerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
