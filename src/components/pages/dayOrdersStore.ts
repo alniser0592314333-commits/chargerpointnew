@@ -5507,6 +5507,7 @@ export interface PublicOrderQrData {
   orderTotalMinor?: number;
   orderDueMinor?: number;
   customerHasPositiveCredit?: boolean;
+  orderQrSubmissionLimitReached?: boolean;
   items?: Array<{
     name: string;
     name_ar?: string;
@@ -5561,6 +5562,7 @@ export const getPublicOrderByToken = async (
         orderTotalMinor: supabaseResult.order_total_minor,
         orderDueMinor: supabaseResult.order_due_minor,
         customerHasPositiveCredit: typeof supabaseResult.customer_has_positive_credit === 'boolean' ? supabaseResult.customer_has_positive_credit : undefined,
+        orderQrSubmissionLimitReached: typeof supabaseResult.order_qr_submission_limit_reached === 'boolean' ? supabaseResult.order_qr_submission_limit_reached : undefined,
         items: supabaseResult.items?.map((it) => {
           const dev = it.device_type_id ? devicesMap.get(it.device_type_id) : undefined;
           const foundBySnapshot = !dev
