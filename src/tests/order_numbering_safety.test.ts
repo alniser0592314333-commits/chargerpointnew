@@ -4,7 +4,6 @@ import { backupService } from '../services/backup/backupService';
 import { AuthorizationContext, ActorAdmin } from '../application/authContext';
 import { FinalUseCases, RepositoryContext } from '../application/useCases';
 import { OrderEntity, BusinessDayEntity, CustomerEntity, DeviceTypeEntity, OrderNumberReservationEntity } from '../domain/models';
-import { OrderNumberReservationExhaustedError } from '../domain/errors';
 
 describe('Order Numbering Safety, Lazy Reservation & Backup/Restore Integrity', () => {
   const DEVICE_TYPE_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
