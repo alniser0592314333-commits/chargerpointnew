@@ -1563,3 +1563,16 @@ html.light .order-about-link-card:hover {
   .public-payment-page .payment-portal-layout { display:block; }
   .public-payment-page .payment-portal-visual { display:none; }
 }
+
+@media (max-width: 480px) {
+  .public-payment-page .payment-portal-header-inner { gap: .4rem; padding-inline: .65rem; }
+  .public-payment-page .payment-portal-brand { gap: .5rem; min-width: 0; }
+  .public-payment-page .payment-portal-brand-mark { width: 34px; height: 34px; flex-shrink: 0; }
+  .public-payment-page .payment-portal-brand > div { min-width: 0; }
+  .public-payment-page .payment-portal-brand > div strong { font-size: .72rem; white-space: nowrap; }
+  .public-payment-page .payment-portal-brand > div span { display: none; }
+  .public-payment-page .payment-portal-header-actions { gap: .25rem; }
+  .public-payment-page .payment-portal-header-back,
+  .public-payment-page .payment-portal-header-actions > button:first-of-type { width: 32px; min-width: 32px; height: 34px; padding-inline: 0; }
+  .public-payment-page .payment-portal-header-actions > button:last-of-type { padding-inline: .45rem; gap: .3rem; }
+}
