@@ -37,8 +37,6 @@ async function uploadVerifiedReceipt(
   bytes: Uint8Array,
   image: { mime: string; extension: string },
 ): Promise<string | null> {
-  const storage = supabase.storage.from("qr-payment-receipts");
-
   // A successful Storage upload response is not enough: production logs showed that
   // the metadata row existed while the backing object returned NoSuchKey on signing.
   // Read the object back and compare its digest before creating a database reference.
@@ -249,7 +247,7 @@ Deno.serve(async (request: Request) => {
         : json(429, { error: "Too many submissions for this customer account. Please try again later." });
     }
 
-    uploadedPath = await uploadVerifiedReceipt(supabase, targetKind, targetId, bytes, image);
+    uploadedPath = await uploadVerifiedReceipt(supabase.storage.from("qr-payment-receipts"), targetKind, targetId, bytes, image);
     if (!uploadedPath) {
       return json(503, {
         error: "The receipt could not be verified in storage. No payment notification was saved; please try again.",
