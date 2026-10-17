@@ -9,6 +9,7 @@ describe('Isolated customer QR portal security contract', () => {
   );
   const appPath = path.resolve(process.cwd(), 'src/App.tsx');
   const pagePath = path.resolve(process.cwd(), 'src/components/pages/PublicCustomerPortalPage.tsx');
+  const supabaseClientPath = path.resolve(process.cwd(), 'src/services/supabase/client.ts');
   const htmlPath = path.resolve(process.cwd(), 'index.html');
 
   it('resolves only active CUSTOMER capabilities and never grants direct table access', () => {
@@ -74,6 +75,12 @@ describe('Isolated customer QR portal security contract', () => {
     const page = fs.readFileSync(pagePath, 'utf8');
     expect(page).toContain("'public_resolve_customer_portal'");
     expect(page).toContain("p_public_token: token");
+    expect(page).toContain('false,\n        true\n      );');
+    const client = fs.readFileSync(supabaseClientPath, 'utf8');
+    expect(client).toContain('forceAnonymous: boolean = false');
+    expect(client).toContain('forceAnonymous ? null : resolveAuthBearerToken(customAuthToken)');
+    expect(client).toContain('!forceAnonymous');
+
     expect(page).toContain('setData(null)');
     expect(page).toContain('navigator.onLine');
     expect(page).toContain('requestGeneration.current += 1');
