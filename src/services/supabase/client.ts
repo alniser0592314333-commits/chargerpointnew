@@ -678,8 +678,8 @@ export async function supabaseSignInWithPassword(
     }
 
     const session = (await res.json()) as SupabaseAuthSession;
-    setSupabaseAuthToken(session.access_token);
     if (persistSession) {
+      setSupabaseAuthToken(session.access_token);
       saveStoredSupabaseAuthSession(session);
     }
     return { session, error: null, statusCode: 200 };
@@ -737,8 +737,10 @@ export async function supabaseSignInWithUsername(
         isInvalidCredentials: true,
       };
     }
-    setSupabaseAuthToken(result.session.access_token);
-    if (persistSession) saveStoredSupabaseAuthSession(result.session);
+    if (persistSession) {
+      setSupabaseAuthToken(result.session.access_token);
+      saveStoredSupabaseAuthSession(result.session);
+    }
     return { session: result.session, error: null, statusCode: 200 };
   } catch {
     return { session: null, error: "Network error during sign in", isNetworkError: true };
