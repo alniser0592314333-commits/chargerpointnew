@@ -46,3 +46,10 @@ Deno.test("rate-limit keys are stable HMAC digests and do not expose raw identif
   assertEquals(first === different, false);
   assertEquals(first.includes("203.0.113.8"), false);
 });
+
+Deno.test("Auth infrastructure failures stay distinct from invalid credentials without exposing account state", () => {
+  assertEquals(publicAuthFailure(503).status, 503);
+  assertEquals(publicAuthFailure(503).body, {
+    error: "Username sign-in is temporarily unavailable",
+  });
+});
