@@ -5,6 +5,7 @@ on:
       - fix/isolated-safe-day-renumbering-20261009
       - fix/integrated-goals-and-safe-renumbering-20261009
       - fix/reliable-incremental-sync
+      - security/root-cause-hardening-2026-10-17
   pull_request:
     branches:
       - main
@@ -82,6 +83,14 @@ jobs:
         run: deno check --no-lock --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
       - name: Type-check authorized QR receipt signer Edge Function
         run: deno check --no-lock --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/index.ts
+      - name: Test QR receipt path validation
+        run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/receiptPathValidation_test.ts
+      - name: Type-check username sign-in Edge Function
+        run: deno check --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/index.ts
+      - name: Test username sign-in request validation
+        run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/requestValidation_test.ts
+      - name: Test username sign-in request-to-Auth boundary
+        run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/handler_test.ts
       - name: Type-check and lint
         run: npm run lint
       - name: Build production bundle
@@ -99,7 +108,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
@@ -136,6 +145,58 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/account_session_migration_runtime.test.sql
+      - name: Prepare security hardening fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening_migration_fixture.sql
+      - name: Apply security hardening migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017200000_security_hardening_browser_table_privileges.sql
+      - name: Apply all-authenticated-policy and customer QR authorization hardening
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017210000_harden_all_authenticated_policies_and_customer_qr_admin_gate.sql
+      - name: Restore verified first-owner bootstrap boundary
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017220000_secure_first_super_admin_bootstrap.sql
+      - name: Restrict app identity storage writes to active Super Admin
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017230000_harden_app_identity_storage_policies.sql
+      - name: Revoke direct execution of exposed trigger-only functions
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017240000_revoke_exposed_trigger_function_execute.sql
+      - name: Pin mutable SECURITY DEFINER search paths
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017250000_fix_remaining_security_definer_search_path.sql
+      - name: Revoke unnecessary anonymous table and sequence privileges
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017260000_revoke_anon_public_table_privileges.sql
+      - name: Remove private account balances from public QR payment status
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017270000_remove_public_qr_payment_balance_disclosure.sql
+      - name: Revoke default browser execution on future functions
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017290000_revoke_default_public_function_execute.sql
+      - name: Add atomic username sign-in rate limiter
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017300000_username_signin_rate_limit.sql
+      - name: Disable public username-to-email lookup after replacement path is available
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017310000_disable_public_username_email_lookup.sql
+      - name: Verify admin-bound RLS, anonymous ACL revocation, QR/bootstrap authorization, and logo storage
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening_migration_runtime.test.sql
       - name: Create isolated database for authoritative snapshot paging
         env:
           PGPASSWORD: postgres
@@ -510,3 +571,17 @@ jobs:
             END IF;
           END $combined_check$;
           SQL
+
+  verify-username-signin-local-integration:
+    name: Verify username sign-in against local Supabase Auth
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Run isolated local Supabase Auth integration
+        run: bash supabase/tests/username_signin_local_integration.sh

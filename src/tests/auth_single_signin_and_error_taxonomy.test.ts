@@ -52,11 +52,10 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
     authService.clearPendingSuperAdminContext();
   });
 
-  // TEST 1: Username + correct password -> exactly ONE signInWithPassword call
-  it('TEST 1: Username + correct password -> exactly ONE signInWithPassword call', async () => {
+  // TEST 1: Username + correct password -> exactly ONE server-mediated username sign-in call
+  it('TEST 1: Username + correct password -> exactly ONE server-mediated username sign-in call', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -73,10 +72,9 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 2: After SUPER_ADMIN_BIN_REQUIRED: Entering BIN -> ZERO additional signInWithPassword calls
-  it('TEST 2: After SUPER_ADMIN_BIN_REQUIRED: Entering BIN -> ZERO additional signInWithPassword calls', async () => {
+  it('TEST 2: After SUPER_ADMIN_BIN_REQUIRED: Entering BIN -> ZERO additional username sign-in calls', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -103,8 +101,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   // TEST 3: Correct BIN -> Dashboard/final login succeeds using the existing temporary token
   it('TEST 3: Correct BIN -> Dashboard/final login succeeds using existing temporary token', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+    vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -124,10 +121,9 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 4: Wrong BIN -> Password is NOT authenticated again
-  it('TEST 4: Wrong BIN -> Password is NOT authenticated again', async () => {
+  it('TEST 4: Wrong BIN -> Username password verification is NOT repeated', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -161,10 +157,9 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 5: BIN locked -> Password is NOT authenticated again
-  it('TEST 5: BIN locked -> Password is NOT authenticated again', async () => {
+  it('TEST 5: BIN locked -> Username password verification is NOT repeated', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -193,8 +188,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   // TEST 6: Rate limit 429 during initial password authentication -> shows RATE_LIMIT error, NOT password error
   it('TEST 6: Rate limit 429 during initial password authentication -> throws RATE_LIMIT error', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: null,
       error: 'Too many requests, please wait before retrying.',
       statusCode: 429,
@@ -207,8 +201,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   // TEST 7: get_current_admin_profile failure after successful password auth -> shows PROFILE_RPC_FAILED, NOT password error
   it('TEST 7: Profile RPC failure after successful password auth -> throws PROFILE_RPC_FAILED', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -222,21 +215,23 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
     await expect(authService.login('superowner', 'correct_password')).rejects.toThrow('PROFILE_RPC_FAILED');
   });
 
-  // TEST 8: username lookup failure -> shows USERNAME_LOOKUP_FAILED, NOT password error
-  it('TEST 8: Username lookup failure -> throws USERNAME_LOOKUP_FAILED', async () => {
+  // TEST 8: username sign-in network failure -> shows NETWORK_ERROR, NOT password error
+  it('TEST 8: Username sign-in endpoint unavailable -> throws NETWORK_ERROR', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockRejectedValue(new Error('Network or PostgREST error resolving username'));
-    const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithPassword');
+    const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
+      session: null,
+      error: 'Network error during sign in',
+      isNetworkError: true,
+    });
 
-    await expect(authService.login('superowner', 'any_password')).rejects.toThrow('USERNAME_LOOKUP_FAILED');
-    expect(signInSpy).not.toHaveBeenCalled();
+    await expect(authService.login('superowner', 'any_password')).rejects.toThrow('NETWORK_ERROR');
+    expect(signInSpy).toHaveBeenCalledTimes(1);
   });
 
   // TEST 9: network failure -> shows NETWORK error, NOT password error
   it('TEST 9: Network failure during password auth -> throws NETWORK_ERROR', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: null,
       error: 'Failed to fetch: network unreachable',
       isNetworkError: true,
@@ -248,8 +243,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   // TEST 10: real invalid password response from GoTrue -> returns null (mapped to invalid credentials)
   it('TEST 10: Real invalid password response from GoTrue -> returns null', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: null,
       error: 'Invalid login credentials',
       statusCode: 400,
@@ -263,8 +257,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   // TEST 11: BIN verification technical error -> does NOT consume BIN attempt and does NOT show password error
   it('TEST 11: BIN verification technical error -> throws BIN_VERIFICATION_UNAVAILABLE without consuming attempt', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -291,10 +284,9 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 12 & 13: Single login call even if called with all 3 parameters (legacy backward compatibility)
-  it('TEST 12 & 13: Legacy 3-parameter call executes signInWithPassword exactly ONCE', async () => {
+  it('TEST 12 & 13: Legacy 3-parameter call executes server-mediated username sign-in exactly ONCE', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -307,15 +299,14 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
 
     const session = await authService.login('superowner', 'correct_password', '123456');
 
-    expect(signInSpy).toHaveBeenCalledTimes(1); // EXACTLY ONCE!
+    expect(signInSpy).toHaveBeenCalledTimes(1); // exactly one username sign-in
     expect(session).not.toBeNull();
   });
 
   // TEST 14: Successful Super Admin login -> final session persistence works exactly as before
   it('TEST 14: Successful Super Admin login -> final session persistence is saved in localStorage and memory', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-    vi.spyOn(supabaseClient, 'rpcGetEmailByUsername').mockResolvedValue('super@system.local');
-    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+        vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,

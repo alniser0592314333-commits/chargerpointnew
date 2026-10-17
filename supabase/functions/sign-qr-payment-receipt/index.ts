@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { isAllowedReceiptPath } from "./receiptPathValidation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,13 +35,13 @@ Deno.serve(async (request: Request) => {
     if (authError || !authData.user) return respond(401, { error: "Authentication required" });
     const input = await request.json().catch(() => null) as { path?: unknown } | null;
     const path = typeof input?.path === "string" ? input.path.trim() : "";
-    if (!path || path.length > 300 || path.startsWith("/") || path.includes("..") ||
-        path.includes("\\") ||
-        !/^orders\/[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,100}\.(jpg|jpeg|png|webp)$/i.test(path)) {
+    if (!isAllowedReceiptPath(path)) {
       return respond(400, { error: "Invalid receipt path" });
     }
 
-    // Use the same authorization-checked queue as the review page. Never sign arbitrary paths.
+    // The RPC verifies the caller has finance:approve-payment permission and returns
+    // only submissions currently pending review. Exact path matching binds the object
+    // to a reviewable submission, for both order-scoped and customer-scoped uploads.
     const { data: pending, error: pendingError } =
       await userClient.rpc("list_pending_qr_payment_submissions");
     if (pendingError || !Array.isArray(pending)) {
@@ -48,7 +49,7 @@ Deno.serve(async (request: Request) => {
       return respond(403, { error: "Payment-review access could not be verified" });
     }
     if (!pending.some((row: Record<string, unknown>) =>
-      row?.receipt_path === path
+      typeof row?.receipt_path === "string" && row.receipt_path === path
     )) return respond(404, { error: "Pending receipt not found" });
 
     const { data: signed, error: signError } =

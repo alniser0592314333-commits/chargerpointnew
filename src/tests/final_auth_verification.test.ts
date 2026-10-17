@@ -21,34 +21,46 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
     config.supabaseAnonKey = "sb_publishable_mock_key";
   });
 
-  describe("1. get_email_by_username Resolver", () => {
-    it("returns null for non-existent username", async () => {
+  describe("1. Server-mediated username sign-in", () => {
+    it("returns generic invalid credentials without exposing whether a username exists", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => null,
+        ok: false,
+        status: 401,
+        json: async () => ({ session: null, error: "Invalid login credentials" }),
       });
 
-      const email = await supabaseClient.rpcGetEmailByUsername("non_existent_user");
-      expect(email).toBeNull();
-      expect(globalThis.fetch).toHaveBeenCalled();
+      const result = await supabaseClient.supabaseSignInWithUsername("non_existent_user", "wrong");
+      expect(result.session).toBeNull();
+      expect(result.error).toBe("Invalid login credentials");
+      expect(JSON.stringify(result)).not.toContain("@");
+      const [url, init] = (globalThis.fetch as any).mock.calls[0];
+      expect(url).toContain("/functions/v1/sign-in-by-username");
+      expect(JSON.parse(init.body)).toEqual({ username: "non_existent_user", password: "wrong" });
     });
 
-    it("returns internal email when valid active username is provided", async () => {
+    it("accepts a Supabase Auth session only after the server verifies the password", async () => {
+      const session = {
+        access_token: "server-verified-token",
+        token_type: "bearer",
+        expires_in: 3600,
+        user: { id: "auth_user_01", email: "admin@system.local" },
+      };
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => "admin@system.local",
+        status: 200,
+        json: async () => ({ session, error: null }),
       });
 
-      const email = await supabaseClient.rpcGetEmailByUsername("superadmin");
-      expect(email).toBe("admin@system.local");
+      const result = await supabaseClient.supabaseSignInWithUsername("superadmin", "correct-password");
+      expect(result.session?.access_token).toBe("server-verified-token");
+      expect(result.session?.user.email).toBe("admin@system.local");
     });
   });
 
   describe("2. BIN Gate & Route Protection Lifecycle (A through Q)", () => {
     it("A & B: Correct username and password stops at BIN gate and does NOT establish full session", async () => {
       vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-      vi.spyOn(supabaseClient, "rpcGetEmailByUsername").mockResolvedValue("owner@system.local");
-      vi.spyOn(supabaseClient, "supabaseSignInWithPassword").mockResolvedValue({
+            vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
         session: {
           access_token: "jwt_token_pre_bin",
           user: { id: "user_owner_01", email: "owner@system.local" },
@@ -114,8 +126,7 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
 
     it("I & J: Wrong BIN fails verification and denies system access", async () => {
       vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-      vi.spyOn(supabaseClient, "rpcGetEmailByUsername").mockResolvedValue("owner@system.local");
-      vi.spyOn(supabaseClient, "supabaseSignInWithPassword").mockResolvedValue({
+            vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
         session: {
           access_token: "jwt_token_wrong_bin",
           user: { id: "user_owner_01", email: "owner@system.local" },
@@ -157,8 +168,7 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
 
     it("K & L: Correct BIN succeeds, creates session, and unlocks the application", async () => {
       vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-      vi.spyOn(supabaseClient, "rpcGetEmailByUsername").mockResolvedValue("owner@system.local");
-      vi.spyOn(supabaseClient, "supabaseSignInWithPassword").mockResolvedValue({
+            vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
         session: {
           access_token: "jwt_token_verified",
           user: { id: "user_owner_01", email: "owner@system.local" },
