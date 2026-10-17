@@ -76,6 +76,9 @@ describe('Isolated customer QR portal security contract', () => {
     expect(page).toContain("p_public_token: token");
     expect(page).toContain('setData(null)');
     expect(page).toContain('navigator.onLine');
+    expect(page).toContain('requestGeneration.current += 1');
+    expect(page).toContain('requestId !== requestGeneration.current');
+    expect(page).toContain('never restore financial data after connectivity drops');
     expect(page).toContain('payment_submissions');
     expect(page).toContain('bonus_recorded');
     expect(page).not.toContain('service_role');
