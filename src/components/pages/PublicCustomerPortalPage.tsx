@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BatteryCharging, CheckCircle2, Clock3, CreditCard, Globe, History, RefreshCw, ShieldCheck, Wallet, Wifi, WifiOff, Zap } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, CreditCard, Globe, History, RefreshCw, ShieldCheck, Wallet, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { invokeSupabaseRpc } from '../../services/supabase/client';
 
