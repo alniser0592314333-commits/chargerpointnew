@@ -87,14 +87,40 @@ $migration_contract$;
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '11000000-0000-0000-0000-000000000003', false);
 SELECT set_config('request.jwt.claim.role', 'authenticated', false);
-SELECT set_config('request.jwt.claims', '{"role":"authenticated","session_id":"12000000-0000-0000-0000-000000000003"}', false);
+SELECT set_config('request.jwt.claims', '{"role":"authenticated","email":"staff@example.test","session_id":"12000000-0000-0000-0000-000000000003"}', false);
 
 DO $non_admin_denied$
 DECLARE
   v_denied boolean;
+  v_profile jsonb;
   v_rows_before integer;
   v_rows_after integer;
 BEGIN
+  -- A confirmed Auth identity sharing a linked admin's email must not take over
+  -- that admin row; email matching is no longer an account-linking mechanism.
+  v_profile := public.get_current_admin_profile();
+  IF v_profile ->> 'is_admin' IS DISTINCT FROM 'false' THEN
+    RAISE EXCEPTION 'Unlinked Auth identity was automatically linked to an existing admin by email';
+  END IF;
+  IF (SELECT auth_user_id FROM public.admins WHERE id = '10000000-0000-0000-0000-000000000002')
+      IS DISTINCT FROM '11000000-0000-0000-0000-000000000002'::uuid THEN
+    RAISE EXCEPTION 'Existing admin auth_user_id was overwritten by email matching';
+  END IF;
+
+  -- A confirmed email matching an unlinked legacy row also must not auto-link.
+  PERFORM set_config('request.jwt.claim.sub', '11000000-0000-0000-0000-000000000004', false);
+  PERFORM set_config('request.jwt.claims', '{"role":"authenticated","email":"unlinked@example.test","session_id":"12000000-0000-0000-0000-000000000004"}', false);
+  v_profile := public.get_current_admin_profile();
+  IF v_profile ->> 'is_admin' IS DISTINCT FROM 'false' THEN
+    RAISE EXCEPTION 'Auth identity was automatically linked to an unlinked admin row by email';
+  END IF;
+  IF (SELECT auth_user_id FROM public.admins WHERE id = '10000000-0000-0000-0000-000000000004') IS NOT NULL THEN
+    RAISE EXCEPTION 'Unlinked legacy admin row was claimed by email matching';
+  END IF;
+
+  PERFORM set_config('request.jwt.claim.sub', '11000000-0000-0000-0000-000000000003', false);
+  PERFORM set_config('request.jwt.claims', '{"role":"authenticated","email":"staff@example.test","session_id":"12000000-0000-0000-0000-000000000003"}', false);
+
   v_denied := false;
   BEGIN PERFORM public.get_or_create_order_qr('30000000-0000-0000-0000-000000000001');
   EXCEPTION WHEN insufficient_privilege THEN v_denied := true; END;
