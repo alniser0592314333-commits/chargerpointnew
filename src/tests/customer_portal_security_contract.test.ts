@@ -106,7 +106,9 @@ describe('Isolated customer QR portal security contract', () => {
     ]) {
       const index = client.indexOf(publicRpc);
       expect(index).toBeGreaterThan(-1);
-      expect(client.slice(index, index + 220)).toContain('true');
+      const callEnd = client.indexOf(');', index);
+      const call = client.slice(index, callEnd + 2);
+      expect(call).toContain('undefined,\\n    true,\\n    false,\\n    true');
     }
 
 
