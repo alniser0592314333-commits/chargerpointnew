@@ -87,6 +87,19 @@ BEGIN
      OR has_function_privilege('authenticated', 'public._cp_guard_nonempty_replacement_payload(jsonb)', 'EXECUTE') THEN
     RAISE EXCEPTION 'A helper-only SECURITY DEFINER RPC remains directly executable';
   END IF;
+
+  IF has_table_privilege('anon', 'public.admins', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.admins', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.admins', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.admins', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.admins', 'DELETE')
+     OR has_table_privilege('anon', 'public.global_app_identity', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.global_app_identity', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.global_app_identity', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.global_app_identity', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.global_app_identity', 'DELETE') THEN
+    RAISE EXCEPTION 'Browser roles retain direct privileges on RPC-only admin/identity tables';
+  END IF;
 END
 $migration_contract$;
 
@@ -111,9 +124,13 @@ BEGIN
   IF v_profile ->> 'is_admin' IS DISTINCT FROM 'false' THEN
     RAISE EXCEPTION 'Unlinked Auth identity was automatically linked to an existing admin by email';
   END IF;
-  IF (SELECT auth_user_id FROM public.admins WHERE id = '10000000-0000-0000-0000-000000000002')
-      IS DISTINCT FROM '11000000-0000-0000-0000-000000000002'::uuid THEN
-    RAISE EXCEPTION 'Existing admin auth_user_id was overwritten by email matching';
+  -- Confirm the existing linked identity still resolves to the same admin row.
+  PERFORM set_config('request.jwt.claim.sub', '11000000-0000-0000-0000-000000000002', false);
+  PERFORM set_config('request.jwt.claims', '{"role":"authenticated","email":"staff@example.test","session_id":"12000000-0000-0000-0000-000000000002"}', false);
+  v_profile := public.get_current_admin_profile();
+  IF v_profile ->> 'is_admin' IS DISTINCT FROM 'true'
+     OR v_profile ->> 'admin_id' IS DISTINCT FROM '10000000-0000-0000-0000-000000000002' THEN
+    RAISE EXCEPTION 'Existing linked admin no longer resolves to its original identity';
   END IF;
 
   -- A confirmed email matching an unlinked legacy row also must not auto-link.
@@ -122,9 +139,6 @@ BEGIN
   v_profile := public.get_current_admin_profile();
   IF v_profile ->> 'is_admin' IS DISTINCT FROM 'false' THEN
     RAISE EXCEPTION 'Auth identity was automatically linked to an unlinked admin row by email';
-  END IF;
-  IF (SELECT auth_user_id FROM public.admins WHERE id = '10000000-0000-0000-0000-000000000004') IS NOT NULL THEN
-    RAISE EXCEPTION 'Unlinked legacy admin row was claimed by email matching';
   END IF;
 
   PERFORM set_config('request.jwt.claim.sub', '11000000-0000-0000-0000-000000000003', false);
