@@ -710,7 +710,7 @@ export async function supabaseSignInWithUsername(
     return { session: null, error: "Invalid login credentials", statusCode: 400, isInvalidCredentials: true };
   }
   try {
-    const endpoint = `${config.supabaseUrl.replace(/\\/+$/, "")}/functions/v1/sign-in-by-username`;
+    const endpoint = `${config.supabaseUrl.replace(/\/+$/, "")}/functions/v1/sign-in-by-username`;
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
