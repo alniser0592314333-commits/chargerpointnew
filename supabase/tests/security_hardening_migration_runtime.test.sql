@@ -26,7 +26,7 @@ BEGIN
     RAISE EXCEPTION 'Authenticated non-admin must not read financial ledger';
   END IF;
   IF (SELECT count(*) FROM public.customer_requests) <> 0 THEN
-    RAISE EXCEPTION 'Authenticated non-admin must not read customer requests';
+    RAISE EXCEPTION 'Authenticated non-admin must not read customer requests, including nonstandard policy names';
   END IF;
 END
 $nonadmin_read$;
@@ -60,3 +60,21 @@ BEGIN
   END IF;
 END
 $truncate_check$;
+
+
+DO $qr_wrapper_privileges$
+BEGIN
+  IF has_function_privilege('anon', 'public.get_or_create_customer_qr(uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.adopt_customer_qr_token(uuid,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Anonymous role must not execute customer QR management RPCs';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.get_or_create_customer_qr(uuid)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.adopt_customer_qr_token(uuid,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated app role lost customer QR management RPC execution';
+  END IF;
+  IF position('is_active_admin_session' IN pg_get_functiondef('public.get_or_create_customer_qr(uuid)'::regprocedure)) = 0
+     OR position('is_active_admin_session' IN pg_get_functiondef('public.adopt_customer_qr_token(uuid,text)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'Customer QR management RPCs are missing active-admin authorization';
+  END IF;
+END
+$qr_wrapper_privileges$;
