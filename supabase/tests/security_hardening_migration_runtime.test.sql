@@ -381,7 +381,14 @@ BEGIN
      OR has_function_privilege('authenticated', 'public.get_email_by_username(text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Browser roles can still execute username-to-email resolver';
   END IF;
-  IF has_function_privilege('public', 'public.get_email_by_username(text)', 'EXECUTE') THEN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc AS p
+    CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) AS acl
+    WHERE p.oid = 'public.get_email_by_username(text)'::regprocedure
+      AND acl.grantee = 0
+      AND acl.privilege_type = 'EXECUTE'
+  ) THEN
     RAISE EXCEPTION 'PUBLIC can still execute username-to-email resolver';
   END IF;
 END
