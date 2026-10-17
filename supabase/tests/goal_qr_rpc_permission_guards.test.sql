@@ -19,7 +19,7 @@ $sync_rpc_contract$;
 -- Start with an active staff account that can view orders but has no goal or
 -- customer-view permission. These are synthetic fixture rows only.
 UPDATE public.admins
-SET permissions = ARRAY['orders:view']::text[]
+SET permissions = ARRAY['orders:view','goals:view']::text[]
 WHERE id = '10000000-0000-0000-0000-000000000002';
 
 SET LOCAL ROLE authenticated;
@@ -36,7 +36,7 @@ BEGIN
 
   BEGIN
     PERFORM public.evaluate_customer_active_goal(v_customer_id);
-    RAISE EXCEPTION 'Goal evaluation unexpectedly succeeded without goals:view';
+    RAISE EXCEPTION 'Goal evaluation unexpectedly succeeded with goals:view but without goals:manage';
   EXCEPTION WHEN SQLSTATE '42501' THEN
     NULL;
   END;
@@ -66,7 +66,7 @@ $test_denials$;
 
 RESET ROLE;
 UPDATE public.admins
-SET permissions = ARRAY['orders:view','goals:view','sync:manage']::text[]
+SET permissions = ARRAY['orders:view','goals:manage','sync:manage']::text[]
 WHERE id = '10000000-0000-0000-0000-000000000002';
 
 SET LOCAL ROLE authenticated;
