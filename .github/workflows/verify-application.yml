@@ -381,6 +381,15 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/admin_bin_reset_self_target.test.sql
 
+      - name: Bind BIN recovery proofs to their issuing Auth session
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017370000_bind_bin_recovery_proofs_to_auth_session.sql
+      - name: Verify BIN recovery proof session binding and replay protection
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/bin_recovery_session_binding.test.sql
+
       - name: Create isolated database for authoritative snapshot paging
         env:
           PGPASSWORD: postgres
