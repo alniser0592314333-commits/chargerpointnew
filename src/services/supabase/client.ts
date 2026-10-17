@@ -265,7 +265,6 @@ export function parseSupabaseAuthCallbackFromUrl(): {
 
 const PUBLIC_RPCS = new Set([
   'is_system_bootstrapped',
-  'get_email_by_username',
   'public_resolve_customer_qr',
   'public_resolve_order_qr',
   'public_resolve_qr_payment_submission',
