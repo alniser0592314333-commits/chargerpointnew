@@ -811,5 +811,6 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+          github-token: ${{ github.token }}
       - name: Run isolated local Supabase Auth integration
         run: bash supabase/tests/username_signin_local_integration.sh
