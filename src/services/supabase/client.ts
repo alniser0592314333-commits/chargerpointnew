@@ -694,6 +694,59 @@ export async function supabaseSignInWithPassword(
 }
 
 /**
+ * Resolve username and verify password on the server without returning the mapped
+ * email to the browser. The Edge Function uses Supabase Auth for password checks.
+ */
+export async function supabaseSignInWithUsername(
+  username: string,
+  password: string,
+  persistSession = false
+): Promise<SupabaseSignInResult> {
+  if (!config.supabaseUrl || !config.supabaseAnonKey) {
+    return { session: null, error: "SUPABASE_NOT_CONFIGURED" };
+  }
+  const cleanUsername = username.trim();
+  if (!cleanUsername || cleanUsername.length > 64 || !password) {
+    return { session: null, error: "Invalid login credentials", statusCode: 400, isInvalidCredentials: true };
+  }
+  try {
+    const endpoint = `${config.supabaseUrl.replace(/\\/+$/, "")}/functions/v1/sign-in-by-username`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        apikey: config.supabaseAnonKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username: cleanUsername, password }),
+    });
+    const result = await response.json().catch(() => null) as (SupabaseSignInResult & { error?: string }) | null;
+    if (!response.ok || !result) {
+      if (response.status === 429) {
+        return { session: null, error: "RATE_LIMIT", statusCode: 429, isRateLimited: true };
+      }
+      if (response.status >= 500) {
+        return { session: null, error: "Network error during sign in", statusCode: response.status, isNetworkError: true };
+      }
+      return { session: null, error: "Invalid login credentials", statusCode: response.status, isInvalidCredentials: true };
+    }
+    if (!result.session) {
+      return {
+        session: null,
+        error: response.status === 429 ? "RATE_LIMIT" : "Invalid login credentials",
+        statusCode: response.status,
+        isRateLimited: response.status === 429 || result.isRateLimited === true,
+        isInvalidCredentials: true,
+      };
+    }
+    setSupabaseAuthToken(result.session.access_token);
+    if (persistSession) saveStoredSupabaseAuthSession(result.session);
+    return { session: result.session, error: null, statusCode: 200 };
+  } catch {
+    return { session: null, error: "Network error during sign in", isNetworkError: true };
+  }
+}
+
+/**
  * Supabase Auth: Update password for authenticated user
  */
 export async function supabaseUpdatePassword(password: string): Promise<{
@@ -975,36 +1028,6 @@ export async function rpcGetCurrentAdminProfile(
     return { profile: null, error: error || 'Failed to resolve admin profile' };
   }
   return { profile: data, error: null };
-}
-
-let lastGetEmailError: string | null = null;
-export const getLastGetEmailError = (): string | null => lastGetEmailError;
-
-export async function rpcResolveEmailByUsername(username: string): Promise<{
-  email: string | null;
-  error: string | null;
-}> {
-  lastGetEmailError = null;
-  const cleanUsername = username.trim();
-
-  const payload: Record<string, unknown> = {
-    p_username: cleanUsername,
-  };
-  const { data, error } = await invokeSupabaseRpc<string>('get_email_by_username', payload);
-  if (error) {
-    lastGetEmailError = error;
-    return { email: null, error };
-  }
-  if (!data) {
-    return { email: null, error: null };
-  }
-  const email = typeof data === 'string' && data.trim() ? data.trim() : null;
-  return { email, error: null };
-}
-
-export async function rpcGetEmailByUsername(username: string): Promise<string | null> {
-  const res = await rpcResolveEmailByUsername(username);
-  return res.email;
 }
 
 /**
