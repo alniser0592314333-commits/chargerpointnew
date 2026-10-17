@@ -537,5 +537,18 @@ BEGIN
      OR (v_result->>'retry_after_seconds')::integer <= 0 THEN
     RAISE EXCEPTION 'IP-wide rate limiter failed to block attempt 31';
   END IF;
+
+  -- A blocked IP must not create new per-username rows by changing usernames.
+  SELECT public.consume_username_signin_attempt(repeat('a', 64), lpad(to_hex(26), 64, '0'))
+    INTO v_result;
+  IF (v_result->>'allowed')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'IP-wide block was not retained on a subsequent attempt';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.username_signin_rate_limits
+    WHERE bucket_key = 'pair:' || repeat('a', 64) || ':' || lpad(to_hex(26), 64, '0')
+  ) THEN
+    RAISE EXCEPTION 'Blocked IP created a new per-username rate-limit bucket';
+  END IF;
 END
 $username_rate_limit_runtime$;
