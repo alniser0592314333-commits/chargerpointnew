@@ -12,6 +12,7 @@ $roles$;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 CREATE SCHEMA auth;
+CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, email_confirmed_at timestamptz);
 
 CREATE FUNCTION auth.uid()
 RETURNS uuid LANGUAGE sql STABLE
@@ -25,7 +26,7 @@ $function$;
 
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY,
-  auth_user_id uuid UNIQUE NOT NULL,
+  auth_user_id uuid UNIQUE,
   username text NOT NULL,
   full_name text NOT NULL,
   email text NOT NULL,
@@ -33,7 +34,8 @@ CREATE TABLE public.admins (
   permissions text[] NOT NULL DEFAULT '{}'::text[],
   is_active boolean NOT NULL DEFAULT true,
   version integer NOT NULL DEFAULT 1,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.customers (
@@ -177,6 +179,58 @@ $function$;
 REVOKE ALL ON FUNCTION public.rpc_fetch_admins__session_guarded_impl()
   FROM PUBLIC, anon, authenticated, service_role;
 
+-- Pre-hardening profile implementation reproduces the former email-based link
+-- behavior so the runtime test can prove the migration removes that path.
+CREATE FUNCTION public.get_current_admin_profile__session_guarded_impl()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  a public.admins;
+  v_email text;
+  v_permissions text[];
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object('authenticated', false, 'is_admin', false);
+  END IF;
+  SELECT * INTO a FROM public.admins WHERE auth_user_id = auth.uid() LIMIT 1;
+  IF a.id IS NULL THEN
+    SELECT email INTO v_email FROM auth.users WHERE id = auth.uid();
+    IF v_email IS NULL THEN v_email := auth.jwt() ->> 'email'; END IF;
+    IF v_email IS NOT NULL THEN
+      SELECT * INTO a FROM public.admins
+      WHERE email IS NOT NULL AND lower(email) = lower(v_email)
+      LIMIT 1;
+      IF a.id IS NOT NULL THEN
+        UPDATE public.admins SET auth_user_id = auth.uid(), updated_at = now()
+        WHERE id = a.id;
+        a.auth_user_id := auth.uid();
+      END IF;
+    END IF;
+  END IF;
+  IF a.id IS NULL THEN
+    RETURN jsonb_build_object('authenticated', true, 'is_admin', false, 'auth_user_id', auth.uid());
+  END IF;
+  SELECT COALESCE(array_agg(ep.permission ORDER BY ep.permission), '{}'::text[])
+    INTO v_permissions FROM public.get_effective_permissions(a.id) ep;
+  RETURN jsonb_build_object('authenticated', true, 'is_admin', true, 'admin_id', a.id,
+    'auth_user_id', a.auth_user_id, 'email', a.email, 'is_active', a.is_active,
+    'username', a.username, 'full_name', a.full_name, 'role', a.role,
+    'permissions', COALESCE(v_permissions, '{}'::text[]));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.get_current_admin_profile__session_guarded_impl()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.get_current_admin_profile()
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public.assert_my_account_session_active();
+  RETURN public.get_current_admin_profile__session_guarded_impl();
+END;
+$function$;
+GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated, service_role;
+
 -- Pre-hardening public wrappers intentionally mirror the weaker live contracts.
 CREATE FUNCTION public.get_or_create_order_qr(p_order_id uuid)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
@@ -244,6 +298,9 @@ INSERT INTO public.financial_ledger(id, customer_id, amount_minor) VALUES
  ('40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', -125),
  ('40000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 25);
 
+INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
+ ('11000000-0000-0000-0000-000000000003', 'unlinked@example.test', now());
+
 INSERT INTO public.admins(id, auth_user_id, username, full_name, email, role, permissions, is_active) VALUES
  ('10000000-0000-0000-0000-000000000001', '11000000-0000-0000-0000-000000000001',
   'fixture_super', 'Fixture Super', 'super@example.test', 'SUPER_ADMIN',
@@ -251,3 +308,7 @@ INSERT INTO public.admins(id, auth_user_id, username, full_name, email, role, pe
  ('10000000-0000-0000-0000-000000000002', '11000000-0000-0000-0000-000000000002',
   'fixture_staff', 'Fixture Staff', 'staff@example.test', 'STAFF',
   ARRAY['orders:view','customers:view','customers:edit'], true);
+INSERT INTO public.admins(id, auth_user_id, username, full_name, email, role, permissions, is_active) VALUES
+ ('10000000-0000-0000-0000-000000000004', NULL,
+  'fixture_unlinked', 'Fixture Unlinked', 'unlinked@example.test', 'STAFF',
+  ARRAY['orders:view'], true);
