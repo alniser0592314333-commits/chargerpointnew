@@ -576,6 +576,8 @@ class DefaultAuthService implements AuthService {
   }
 
   async login(emailOrUsername: string, passOrPin: string, bin?: string): Promise<UserSession | null> {
+    // A fresh login invalidates any unfinished privileged BIN-change handoff.
+    pendingBinChangeSession = null;
     const cleanIdentifier = emailOrUsername.trim();
     const cleanPass = passOrPin;
     const cleanBin = bin ? bin.trim() : "";
@@ -814,6 +816,8 @@ class DefaultAuthService implements AuthService {
   }
 
   async logout(): Promise<void> {
+    // Never retain a short-lived re-auth token across logout.
+    pendingBinChangeSession = null;
     clearStoredSupabaseAuthSession();
     inMemorySession = null;
     pendingSuperAdminContext = null;
