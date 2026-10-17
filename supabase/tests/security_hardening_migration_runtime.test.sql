@@ -445,3 +445,21 @@ BEGIN
   END IF;
 END
 $anon_maintain_acl$;
+
+
+DO $default_table_sequence_acl$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl d
+    JOIN pg_namespace n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
+    WHERE n.nspname = 'public'
+      AND d.defaclrole = 'postgres'::regrole
+      AND d.defaclobjtype IN ('r', 'S')
+      AND acl.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'anon')
+  ) THEN
+    RAISE EXCEPTION 'anon retains default table or sequence privileges in public';
+  END IF;
+END
+$default_table_sequence_acl$;
