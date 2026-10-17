@@ -1,6 +1,15 @@
 -- Additional fixture for the security-hardening migration. Run after
 -- 20261014130000_account_session_management.sql in the isolated test database.
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+-- Reproduce the production default-ACL drift: newly created public tables,
+-- sequences, and functions historically inherited broad browser grants.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT ALL ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT ALL ON SEQUENCES TO anon;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_user_id uuid UNIQUE NOT NULL,
