@@ -1,3 +1,8 @@
+-- Bind every BIN-change proof to the exact recent-authentication session that issued it.
+-- Existing proof rows are intentionally not eligible for BIN changes after this migration.
+ALTER TABLE public.admin_bin_recovery_proofs
+  ADD COLUMN IF NOT EXISTS auth_session_id uuid;
+
 -- Restore the server-authoritative BIN attempt counter and prevent direct BIN reset
 -- through legacy RPCs. BIN change requires a password re-authentication plus the current
 -- BIN, followed by a short-lived single-use proof bound to the authenticated admin.
@@ -206,9 +211,9 @@ BEGIN
   v_expires_at := now() + interval '2 minutes';
 
   INSERT INTO public.admin_bin_recovery_proofs (
-    admin_id, auth_user_id, proof_token_hash, purpose, issued_at, expires_at, is_used
+    admin_id, auth_user_id, auth_session_id, proof_token_hash, purpose, issued_at, expires_at, is_used
   ) VALUES (
-    v_admin_id, auth.uid(), v_token_hash, 'BIN_CHANGE', now(), v_expires_at, false
+    v_admin_id, auth.uid(), v_session_id, v_token_hash, 'BIN_CHANGE', now(), v_expires_at, false
   );
 
   RETURN jsonb_build_object(
@@ -234,6 +239,7 @@ DECLARE
   v_failed_attempts integer;
   v_proof_id uuid;
   v_proof_hash text;
+  v_session_id uuid;
   v_new_hash text;
 BEGIN
   PERFORM public.assert_my_account_session_active();
@@ -265,12 +271,18 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'RECOVERY_REQUIRED: Use the locked-account recovery flow');
   END IF;
 
+  v_session_id := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  IF v_session_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'RECENT_REAUTH_REQUIRED: Auth session identity is missing');
+  END IF;
+
   v_proof_hash := encode(digest(trim(p_change_proof), 'sha256'), 'hex');
 
   SELECT id INTO v_proof_id
   FROM public.admin_bin_recovery_proofs
   WHERE admin_id = v_admin_id
     AND auth_user_id = auth.uid()
+    AND auth_session_id = v_session_id
     AND proof_token_hash = v_proof_hash
     AND purpose = 'BIN_CHANGE'
     AND is_used IS false
