@@ -89,11 +89,15 @@ describe('Isolated customer QR portal security contract', () => {
   it('clears public order and payment data on offline transitions', () => {
     const order = fs.readFileSync(publicOrderPath, 'utf8');
     expect(order).toContain("window.addEventListener('offline', onOffline)");
+    expect(order).toContain("window.addEventListener('online', onOnline)");
+    expect(order).toContain('}, [token, online]);');
     expect(order).toContain('setData(null)');
     expect(order).toContain('setSubmission(null)');
     expect(order).toContain('requestId !== requestGeneration.current');
     const payment = fs.readFileSync(publicPaymentPath, 'utf8');
     expect(payment).toContain("window.addEventListener('offline', onOffline)");
+    expect(payment).toContain("window.addEventListener('online', onOnline)");
+    expect(payment).toContain('}, [token, online]);');
     expect(payment).toContain('setOrder(null)');
     expect(payment).toContain('setCustomer(null)');
     expect(payment).toContain('setSubmission(null)');
