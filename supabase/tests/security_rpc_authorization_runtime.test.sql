@@ -100,6 +100,24 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.global_app_identity', 'DELETE') THEN
     RAISE EXCEPTION 'Browser roles retain direct privileges on RPC-only admin/identity tables';
   END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p')
+      AND (
+        has_table_privilege('anon', c.oid, 'INSERT')
+        OR has_table_privilege('anon', c.oid, 'UPDATE')
+        OR has_table_privilege('anon', c.oid, 'DELETE')
+        OR has_table_privilege('authenticated', c.oid, 'INSERT')
+        OR has_table_privilege('authenticated', c.oid, 'UPDATE')
+        OR has_table_privilege('authenticated', c.oid, 'DELETE')
+      )
+  ) THEN
+    RAISE EXCEPTION 'Browser role still has direct write privileges on a public table';
+  END IF;
 END
 $migration_contract$;
 
