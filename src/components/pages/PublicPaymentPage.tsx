@@ -238,10 +238,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     ? ''
     : typeof order.customerHasPositiveCredit !== 'boolean'
       ? (isAr ? 'تعذّر التحقق من رصيد الحساب. حدّث الصفحة قبل إرسال أي دفعة.' : 'Could not verify the account balance. Refresh before sending a payment.')
-      : order.customerHasPositiveCredit
-        ? (isAr ? 'رصيدك موجب؛ سيُستخدم عند احتساب تكلفة الأجهزة بعد التسليم. لا تحتاج لإرسال دفعة الآن.' : 'Your account has positive credit, which is applied first when delivered devices are charged. No payment is needed now.')
-        : order.orderQrSubmissionLimitReached === true && amountDue !== null && amountDue > 0
-          ? (isAr ? 'تم استخدام إشعارات الدفع الثلاثة المسموح بها لهذا الطلب. تواصل مع نقطة الشحن لمتابعة المبلغ المتبقي.' : 'This order QR has used all three allowed payment notifications. Contact Charging Point to resolve the remaining amount.')
+      : order.orderQrSubmissionLimitReached === true && amountDue !== null && amountDue > 0
+        ? (isAr ? 'تم استخدام إشعارات الدفع الثلاثة المسموح بها لهذا الطلب. تواصل مع نقطة الشحن لمتابعة المبلغ المتبقي.' : 'This order QR has used all three allowed payment notifications. Contact Charging Point to resolve the remaining amount.')
         : amountDue === null || amountDue <= 0
           ? (['DELIVERED', 'COMPLETED'].includes(String(order.status ?? '').toUpperCase())
               ? (isAr ? 'لا يوجد مبلغ مستحق على هذا الطلب حالياً.' : 'There is no remaining amount due for this order.')
