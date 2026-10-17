@@ -48,13 +48,12 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
     if (request.method !== "POST") return respond(405, { error: "Method not allowed" });
 
     const url = deps.getEnv("SUPABASE_URL");
-    const secretKey = deps.getEnv("AUTH_SUPABASE_SECRET_KEY") ?? deps.getEnv("SUPABASE_SECRET_KEY");
-    const rateLimitSecret = deps.getEnv("USERNAME_SIGNIN_RATE_LIMIT_SECRET");
-    const ipForwardingEnabled = deps.getEnv("AUTH_IP_FORWARDING_ENABLED") === "true";
+    const secretKey = deps.getEnv("auth_supabase_secret_key");
+    const rateLimitSecret = deps.getEnv("username_signin_rate_limit_secret");
     if (!url || !secretKey || !secretKey.startsWith("sb_secret_")
-      || !rateLimitSecret || rateLimitSecret.length < 32 || !ipForwardingEnabled) {
-      // Fail closed unless Auth IP forwarding and modern server-only API credentials
-      // are explicitly configured. Never trust the shared Edge egress IP.
+      || !rateLimitSecret || rateLimitSecret.length < 32) {
+      // Fail closed unless modern server-only API credentials and a strong rate-limit
+      // secret are configured. Never trust the shared Edge egress IP.
       return respond(503, { error: "Username sign-in is temporarily unavailable" });
     }
 
