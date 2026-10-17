@@ -69,9 +69,9 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       secondary: { r: 16, g: 185, b: 129 },  // Radiant emerald
       accent: { r: 56, g: 189, b: 248 },     // Vibrant neon cyan
       beam: { r: 45, g: 212, b: 191 },       // Bright teal
-      speedMultiplier: 0.28,
-      particleDensity: 9,
-      glowIntensity: 0.38,
+      speedMultiplier: 0.72,
+      particleDensity: 18,
+      glowIntensity: 0.52,
     },
     charged: {
       // Serene, steady luminous emerald & jade
@@ -79,9 +79,9 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       secondary: { r: 52, g: 211, b: 153 },  // Mint jade
       accent: { r: 110, g: 231, b: 183 },    // Soft neon mint
       beam: { r: 16, g: 185, b: 129 },       // Steady emerald beam
-      speedMultiplier: 0.20,
-      particleDensity: 8,
-      glowIntensity: 0.40,
+      speedMultiplier: 0.58,
+      particleDensity: 16,
+      glowIntensity: 0.52,
     },
     'delivered-paid': {
       // Grounded luxury forest emerald with champagne gold specks
@@ -89,9 +89,9 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       secondary: { r: 16, g: 185, b: 129 },  // Emerald
       accent: { r: 245, g: 158, b: 11 },     // Champagne amber highlight
       beam: { r: 20, g: 184, b: 166 },       // Subtle teal
-      speedMultiplier: 0.16,
-      particleDensity: 7,
-      glowIntensity: 0.34,
+      speedMultiplier: 0.48,
+      particleDensity: 14,
+      glowIntensity: 0.46,
     },
     'delivered-unpaid': {
       // Refined coral amber & warm apricot warning (sophisticated, non-jarring)
@@ -99,9 +99,9 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       secondary: { r: 244, g: 63, b: 94 },   // Soft rose coral
       accent: { r: 251, g: 146, b: 60 },     // Apricot
       beam: { r: 234, g: 88, b: 12 },        // Warm burnt orange
-      speedMultiplier: 0.24,
-      particleDensity: 8,
-      glowIntensity: 0.36,
+      speedMultiplier: 0.64,
+      particleDensity: 16,
+      glowIntensity: 0.49,
     },
   },
   light: {
@@ -110,36 +110,36 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       secondary: { r: 14, g: 165, b: 233 },  // Sky cyan
       accent: { r: 16, g: 185, b: 129 },     // Fresh emerald
       beam: { r: 20, g: 184, b: 166 },
-      speedMultiplier: 0.25,
-      particleDensity: 8,
-      glowIntensity: 0.27,
+      speedMultiplier: 0.66,
+      particleDensity: 16,
+      glowIntensity: 0.39,
     },
     charged: {
       primary: { r: 5, g: 150, b: 105 },     // Emerald green
       secondary: { r: 16, g: 185, b: 129 },
       accent: { r: 52, g: 211, b: 153 },
       beam: { r: 16, g: 185, b: 129 },
-      speedMultiplier: 0.18,
-      particleDensity: 7,
-      glowIntensity: 0.29,
+      speedMultiplier: 0.54,
+      particleDensity: 14,
+      glowIntensity: 0.40,
     },
     'delivered-paid': {
       primary: { r: 15, g: 118, b: 110 },    // Deep teal
       secondary: { r: 180, g: 130, b: 70 },  // Champagne gold
       accent: { r: 16, g: 185, b: 129 },
       beam: { r: 45, g: 212, b: 191 },
-      speedMultiplier: 0.14,
-      particleDensity: 6,
-      glowIntensity: 0.24,
+      speedMultiplier: 0.44,
+      particleDensity: 12,
+      glowIntensity: 0.34,
     },
     'delivered-unpaid': {
       primary: { r: 217, g: 119, b: 6 },     // Warm amber
       secondary: { r: 225, g: 29, b: 72 },   // Muted crimson
       accent: { r: 249, g: 115, b: 22 },    // Tangerine
       beam: { r: 234, g: 88, b: 12 },
-      speedMultiplier: 0.22,
-      particleDensity: 7,
-      glowIntensity: 0.27,
+      speedMultiplier: 0.60,
+      particleDensity: 14,
+      glowIntensity: 0.38,
     },
   },
 };
@@ -207,27 +207,27 @@ export const EnergyCanvasBackground: React.FC<EnergyCanvasBackgroundProps> = ({
     const particles: Particle[] = Array.from({ length: particleCount }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      radius: Math.random() * 0.9 + 0.55,
-      speedY: Math.random() * 0.35 + 0.15,
-      driftAmp: Math.random() * 7 + 2,
-      driftSpeed: Math.random() * 0.006 + 0.003,
+      radius: Math.random() * 1.1 + 0.9,
+      speedY: Math.random() * 0.45 + 0.25,
+      driftAmp: Math.random() * 11 + 4,
+      driftSpeed: Math.random() * 0.009 + 0.004,
       driftPhase: Math.random() * Math.PI * 2,
-      baseAlpha: Math.random() * 0.22 + 0.20,
-      alpha: Math.random() * 0.22 + 0.20,
+      baseAlpha: Math.random() * 0.20 + 0.28,
+      alpha: Math.random() * 0.20 + 0.28,
       pulsePhase: Math.random() * Math.PI * 2,
-      pulseSpeed: Math.random() * 0.009 + 0.004,
+      pulseSpeed: Math.random() * 0.014 + 0.008,
     }));
 
     // Fewer, slower light beams keep the background atmospheric rather than busy.
-    const streamCount = 3;
+    const streamCount = 5;
     const streams: EnergyStream[] = Array.from({ length: streamCount }, (_, i) => ({
       x: (width / (streamCount + 1)) * (i + 1) + (Math.random() - 0.5) * 60,
       y: height + Math.random() * 250,
-      width: Math.random() * 1.1 + 0.7,
-      height: Math.random() * (height * 0.3) + height * 0.18,
-      speedY: Math.random() * 0.45 + 0.2,
+      width: Math.random() * 1.0 + 0.8,
+      height: Math.random() * (height * 0.32) + height * 0.20,
+      speedY: Math.random() * 0.55 + 0.35,
       alpha: 0,
-      maxAlpha: Math.random() * 0.10 + 0.08,
+      maxAlpha: Math.random() * 0.12 + 0.13,
       phase: Math.random() * Math.PI * 2,
     }));
 
@@ -274,13 +274,13 @@ export const EnergyCanvasBackground: React.FC<EnergyCanvasBackgroundProps> = ({
       current.speedMultiplier = lerp(current.speedMultiplier, targetPalette.speedMultiplier, lerpSpeed);
       current.glowIntensity = lerp(current.glowIntensity, targetPalette.glowIntensity, lerpSpeed);
 
-      const speedFactor = isReducedMotion ? 0.15 : current.speedMultiplier;
+      const speedFactor = isReducedMotion ? 0.12 : current.speedMultiplier;
 
       ctx.clearRect(0, 0, width, height);
 
       // 1. Draw large ambient background glow orbs
       orbs.forEach((orb) => {
-        orb.pulsePhase += (isReducedMotion ? 0.002 : 0.008) * speedFactor;
+        orb.pulsePhase += (isReducedMotion ? 0.002 : 0.012) * speedFactor;
         const currentRadius = orb.radius * (1 + Math.sin(orb.pulsePhase) * 0.08);
         const currentAlpha = orb.alpha * current.glowIntensity * (1 + Math.sin(orb.pulsePhase) * 0.15);
 
@@ -312,15 +312,15 @@ export const EnergyCanvasBackground: React.FC<EnergyCanvasBackgroundProps> = ({
 
       // 2. Draw rising energy stream lines
       streams.forEach((stream) => {
-        stream.phase += 0.003 * speedFactor;
-        stream.y -= stream.speedY * 16 * delta * speedFactor;
+        stream.phase += 0.006 * speedFactor;
+        stream.y -= stream.speedY * 24 * delta * speedFactor;
 
         // Reset when stream fully flows out top
         if (stream.y + stream.height < 0) {
           stream.y = height + Math.random() * 150;
           stream.x = Math.random() * width;
-          stream.speedY = Math.random() * 0.35 + 0.2;
-          stream.height = Math.random() * (height * 0.28) + height * 0.16;
+          stream.speedY = Math.random() * 0.45 + 0.3;
+          stream.height = Math.random() * (height * 0.30) + height * 0.18;
         }
 
         // Calculate fade based on position (fades in near bottom, peaks in middle, fades at top)
@@ -365,7 +365,7 @@ export const EnergyCanvasBackground: React.FC<EnergyCanvasBackgroundProps> = ({
         p.driftPhase += p.driftSpeed * speedFactor;
         p.pulsePhase += p.pulseSpeed * speedFactor;
 
-        p.y -= p.speedY * 14 * delta * speedFactor;
+        p.y -= p.speedY * 22 * delta * speedFactor;
         const currentX = p.x + Math.sin(p.driftPhase) * p.driftAmp;
 
         // Reset particle to bottom when it reaches top
@@ -383,7 +383,7 @@ export const EnergyCanvasBackground: React.FC<EnergyCanvasBackgroundProps> = ({
 
         ctx.fillStyle = `rgba(${pColor.r}, ${pColor.g}, ${pColor.b}, ${pAlpha})`;
         ctx.shadowColor = `rgba(${pColor.r}, ${pColor.g}, ${pColor.b}, ${pAlpha * 0.8})`;
-        ctx.shadowBlur = theme === 'dark' ? 5 : 2;
+        ctx.shadowBlur = theme === 'dark' ? 7 : 3;
 
         ctx.beginPath();
         ctx.arc(currentX, p.y, p.radius, 0, Math.PI * 2);
