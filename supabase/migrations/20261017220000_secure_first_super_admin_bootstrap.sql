@@ -119,6 +119,6 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.bootstrap_first_super_admin(text, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.bootstrap_first_super_admin(text, text, text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.bootstrap_first_super_admin(text, text, text) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
