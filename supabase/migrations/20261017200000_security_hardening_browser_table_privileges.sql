@@ -52,8 +52,8 @@ BEGIN
 END
 $policies$;
 
--- RLS does not protect TRUNCATE. This changes no row-level CRUD grants, preserving
--- existing RPC and offline-sync contracts while removing the table-wide privilege.
+-- RLS does not protect TRUNCATE. Remove grants from PUBLIC as well as browser roles
+-- so an inherited PUBLIC grant cannot silently preserve the dangerous privilege.
 DO $truncate$
 DECLARE
   v_table record;
@@ -66,7 +66,7 @@ BEGIN
       AND c.relkind IN ('r', 'p')
   LOOP
     EXECUTE format(
-      'REVOKE TRUNCATE ON TABLE %s FROM anon, authenticated',
+      'REVOKE TRUNCATE ON TABLE %s FROM PUBLIC, anon, authenticated',
       v_table.qualified_name
     );
   END LOOP;
@@ -74,7 +74,7 @@ END
 $truncate$;
 
 -- Prevent future tables created by this migration owner from inheriting TRUNCATE
--- for browser roles. Existing owner-specific default privilege configurations are
--- otherwise left untouched.
+-- for PUBLIC or browser roles. Other owner-specific default privilege configurations
+-- are otherwise left untouched.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  REVOKE TRUNCATE ON TABLES FROM anon, authenticated;
+  REVOKE TRUNCATE ON TABLES FROM PUBLIC, anon, authenticated;

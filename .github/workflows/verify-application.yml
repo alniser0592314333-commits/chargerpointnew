@@ -136,6 +136,18 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/account_session_migration_runtime.test.sql
+      - name: Prepare security hardening fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening_migration_fixture.sql
+      - name: Apply security hardening migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017200000_security_hardening_browser_table_privileges.sql
+      - name: Verify admin-bound RLS and browser TRUNCATE revocation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening_migration_runtime.test.sql
       - name: Create isolated database for authoritative snapshot paging
         env:
           PGPASSWORD: postgres
