@@ -216,7 +216,7 @@ jobs:
       - name: Apply comprehensive privileged RPC authorization closure
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261018100000_security_rpc_authorization_closure.sql
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017153708_security_rpc_authorization_closure.sql
       - name: Verify privileged RPC authorization and pgcrypto exposure
         env:
           PGPASSWORD: postgres
