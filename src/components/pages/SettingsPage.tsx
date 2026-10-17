@@ -184,7 +184,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
           message = locale === "ar"
             ? "الحساب مقفل؛ استخدم مسار استعادة رمز BIN."
             : "The account is locked; use the BIN recovery flow.";
+        } else if (res.error?.startsWith("RECENT_REAUTH_REQUIRED")) {
+          message = locale === "ar"
+            ? "انتهت صلاحية التحقق؛ أعد إدخال كلمة المرور ورمز BIN الحالي."
+            : "The verification expired; re-enter your password and current BIN.";
+        } else if (res.error?.includes("currently signed-in admin")) {
+          message = locale === "ar"
+            ? "استخدم بيانات الحساب المسجّل دخوله حاليًا فقط."
+            : "Use credentials for the currently signed-in admin only.";
+        } else if (res.error?.includes("Unable to verify account credentials")) {
+          message = locale === "ar"
+            ? "تعذر التحقق من بيانات الحساب."
+            : "Unable to verify account credentials.";
         }
+        setPasswordInput("");
+        setCurrentBinInput("");
         setBinError(message);
       }
     } catch (err: any) {
