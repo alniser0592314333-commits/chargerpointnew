@@ -32,6 +32,21 @@ END
 $nonadmin_read$;
 RESET ROLE;
 
+DO $public_qr_contract$
+DECLARE
+  v_definition text := pg_get_functiondef('public.public_resolve_qr_payment_submission(text)'::regprocedure);
+BEGIN
+  IF position('balance_before_minor' IN v_definition) > 0
+     OR position('balance_after_minor' IN v_definition) > 0 THEN
+    RAISE EXCEPTION 'Public QR payment resolver exposes account balance before/after';
+  END IF;
+  IF NOT has_function_privilege('anon', 'public.public_resolve_qr_payment_submission(text)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.public_resolve_qr_payment_submission(text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Public QR payment resolver execute contract was not preserved';
+  END IF;
+END
+$public_qr_contract$;
+
 DO $truncate_check$
 BEGIN
   IF has_table_privilege('anon', 'public.customers', 'TRUNCATE') THEN

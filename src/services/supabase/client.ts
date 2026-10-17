@@ -50,8 +50,6 @@ export interface PublicQrPaymentSubmissionRpcResult {
   payment_method: string;
   created_at: string;
   reviewed_at?: string | null;
-  balance_before_minor?: number | string | null;
-  balance_after_minor?: number | string | null;
 }
 
 export interface PublicOrderQrRpcResult {

@@ -595,22 +595,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   </div>
                 )}
 
-                {submission.status === 'APPROVED' && (
-                  <>
-                    <div className="flex items-center justify-between py-3">
-                      <span className="text-slate-500 dark:text-slate-400">{isAr ? 'الرصيد قبل الاعتماد' : 'Balance before'}</span>
-                      <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">
-                        {submission.balance_before_minor == null ? '—' : formatAmount(Number(submission.balance_before_minor))}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between py-3">
-                      <span className="text-slate-500 dark:text-slate-400">{isAr ? 'الرصيد بعد الاعتماد' : 'Balance after'}</span>
-                      <span className="font-black tabular-nums text-emerald-600 dark:text-emerald-400">
-                        {submission.balance_after_minor == null ? '—' : formatAmount(Number(submission.balance_after_minor))}
-                      </span>
-                    </div>
-                  </>
-                )}
+                
 
                 <div className="flex items-center justify-between pt-3 text-xs text-slate-500 dark:text-slate-400">
                   <span>{isAr ? 'توقيت التحديث' : 'Timestamp'}</span>
