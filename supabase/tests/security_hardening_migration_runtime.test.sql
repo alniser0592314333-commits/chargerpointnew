@@ -113,12 +113,18 @@ BEGIN
   IF NOT v_rejected THEN
     RAISE EXCEPTION 'Authenticated non-owner was able to bootstrap Super Admin';
   END IF;
+END
+$bootstrap_reject_nonowner$;
+RESET ROLE;
+DO $bootstrap_nonowner_no_side_effect$
+BEGIN
   IF EXISTS (SELECT 1 FROM public.admins WHERE role IN ('SUPER_ADMIN', 'Super Admin')) THEN
     RAISE EXCEPTION 'Rejected bootstrap left a Super Admin row behind';
   END IF;
 END
-$bootstrap_reject_nonowner$;
+$bootstrap_nonowner_no_side_effect$;
 
+SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', false);
 SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000003"}', false);
 DO $bootstrap_accept_owner$
@@ -129,6 +135,11 @@ BEGIN
   IF v_result ->> 'success' IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'Verified owner could not complete first bootstrap: %', v_result;
   END IF;
+END
+$bootstrap_accept_owner$;
+RESET ROLE;
+DO $bootstrap_owner_created$
+BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.admins
     WHERE auth_user_id = '10000000-0000-0000-0000-000000000003'
@@ -139,5 +150,4 @@ BEGIN
     RAISE EXCEPTION 'Successful owner bootstrap did not create the expected active Super Admin';
   END IF;
 END
-$bootstrap_accept_owner$;
-RESET ROLE;
+$bootstrap_owner_created$;
