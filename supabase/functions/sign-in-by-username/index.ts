@@ -60,7 +60,7 @@ Deno.serve(async (request: Request) => {
       ? matches[0].email
       : "unknown-username@invalid.example";
     const authResponse = await fetch(
-      `${url.replace(/\\/+$/, "")}/auth/v1/token?grant_type=password`,
+      `${url.replace(/\/+$/, "")}/auth/v1/token?grant_type=password`,
       {
         method: "POST",
         headers: {
