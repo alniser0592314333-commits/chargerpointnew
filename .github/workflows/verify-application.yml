@@ -166,7 +166,11 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017250000_fix_remaining_security_definer_search_path.sql
-      - name: Verify admin-bound RLS, TRUNCATE revocation, QR/bootstrap authorization, and logo storage
+      - name: Revoke unnecessary anonymous table and sequence privileges
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017260000_revoke_anon_public_table_privileges.sql
+      - name: Verify admin-bound RLS, anonymous ACL revocation, QR/bootstrap authorization, and logo storage
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening_migration_runtime.test.sql
