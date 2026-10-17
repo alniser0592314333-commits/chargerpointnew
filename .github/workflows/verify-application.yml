@@ -222,6 +222,32 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/security_rpc_authorization_runtime.test.sql
 
+      - name: Prepare goal and customer QR permission-guard RPC contracts
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE FUNCTION public.evaluate_customer_active_goal__session_guarded_impl(uuid)
+            RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''ok'', true, ''customer_id'', $1)';
+          CREATE FUNCTION public.evaluate_customer_active_goal(uuid)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.evaluate_customer_active_goal__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.adopt_customer_qr_token(uuid, text)
+            RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT $2';
+          GRANT EXECUTE ON FUNCTION public.evaluate_customer_active_goal(uuid) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.adopt_customer_qr_token(uuid, text) TO authenticated, service_role;
+          SQL
+      - name: Apply goal evaluation and customer QR permission guards
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017320000_guard_goal_evaluation_and_customer_qr_adoption.sql
+      - name: Verify goal and customer QR RPC permission boundaries
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/goal_qr_rpc_permission_guards.test.sql
+
       - name: Create isolated database for authoritative snapshot paging
         env:
           PGPASSWORD: postgres
