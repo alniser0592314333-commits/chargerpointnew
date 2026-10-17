@@ -1,6 +1,6 @@
--- Close authenticated RPC authorization gaps in goal evaluation, customer QR adoption,
--- and full sync reads. This changes RPC authorization only: no business rows, sync
--- cursors, payload shape, or local/offline storage are changed.
+-- Close authorization gaps in goal evaluation, customer QR adoption, and full sync reads,
+-- and remove legacy direct browser table access. No business rows, sync cursors, payload
+-- shape, or local/offline storage are changed.
 
 CREATE OR REPLACE FUNCTION public.evaluate_customer_active_goal(p_customer_id uuid)
 RETURNS jsonb
