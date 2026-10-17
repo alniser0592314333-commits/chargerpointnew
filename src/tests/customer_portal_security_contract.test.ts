@@ -103,6 +103,7 @@ describe('Isolated customer QR portal security contract', () => {
     expect(payment).toContain('setSubmission(null)');
     expect(payment).toContain("throw new Error('OFFLINE')");
     expect(payment).toContain('submissionGeneration !== requestGeneration.current');
+    expect(payment).toContain('Account and receipt details are hidden while offline.');
   });
 
   it('prevents QR bearer-token referrer leakage and search indexing', () => {
