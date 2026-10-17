@@ -87,7 +87,7 @@ BEGIN
 
   IF EXISTS (SELECT 1 FROM public.qr_tokens AS qt WHERE qt.public_token = v_token) THEN
     LOOP
-      v_token := replace(replace(replace(encode(public.gen_random_bytes(24), 'base64'), '+', '-'), '/', '_'), '=', '');
+      v_token := replace(replace(replace(encode(gen_random_bytes(24), 'base64'), '+', '-'), '/', '_'), '=', '');
       EXIT WHEN NOT EXISTS (SELECT 1 FROM public.qr_tokens AS qt WHERE qt.public_token = v_token);
     END LOOP;
   END IF;
@@ -96,8 +96,8 @@ BEGIN
     id, token_hash, public_token, token_type, target_id, is_active, expires_at, created_at
   )
   VALUES (
-    public.gen_random_uuid(),
-    encode(public.digest(v_token, 'sha256'), 'hex'),
+    gen_random_uuid(),
+    encode(digest(v_token, 'sha256'), 'hex'),
     v_token,
     'CUSTOMER',
     p_customer_id,
