@@ -15,7 +15,8 @@ BEGIN
     WHERE schemaname = 'public'
       AND roles = ARRAY['authenticated']::name[]
   LOOP
-    IF p.cmd IN ('SELECT', 'UPDATE', 'DELETE', 'ALL') THEN
+    IF p.cmd IN ('SELECT', 'UPDATE', 'DELETE', 'ALL')
+       AND position('is_active_admin_session' IN COALESCE(p.qual, '')) = 0 THEN
       v_using := COALESCE(p.qual, 'true');
       EXECUTE format(
         'ALTER POLICY %I ON %I.%I USING ((%s) AND public.is_active_admin_session())',
@@ -23,7 +24,8 @@ BEGIN
       );
     END IF;
 
-    IF p.cmd IN ('INSERT', 'UPDATE', 'ALL') THEN
+    IF p.cmd IN ('INSERT', 'UPDATE', 'ALL')
+       AND position('is_active_admin_session' IN COALESCE(p.with_check, p.qual, '')) = 0 THEN
       v_check := COALESCE(p.with_check, p.qual, 'true');
       EXECUTE format(
         'ALTER POLICY %I ON %I.%I WITH CHECK ((%s) AND public.is_active_admin_session())',
