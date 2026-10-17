@@ -651,6 +651,13 @@ class DefaultAuthService implements AuthService {
       return session;
     }
 
+    // Never allow bundled demo credentials to authenticate in a production build.
+    // A missing Supabase configuration must fail closed rather than silently
+    // switching a deployed app into the publicly known local Super Admin account.
+    if (config.env === "production") {
+      throw new Error("SUPABASE_NOT_CONFIGURED");
+    }
+
     // Fallback: Local / test preview environment (ONLY when Supabase is NOT configured)
     const isSuperAdminEmail =
       cleanIdentifier.toLowerCase() === SUPER_ADMIN_TEST_ACCOUNT.email ||
