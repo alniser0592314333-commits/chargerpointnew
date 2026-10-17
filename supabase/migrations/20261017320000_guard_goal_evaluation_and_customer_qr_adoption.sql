@@ -113,4 +113,42 @@ $function$;
 REVOKE ALL ON FUNCTION public.adopt_customer_qr_token(uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.adopt_customer_qr_token(uuid, text) TO authenticated, service_role;
 
+-- Full bootstrap and delta pulls contain business-wide operational and financial
+-- data. Require the explicit sync-management capability at the server boundary;
+-- an active Auth/admin session alone is not sufficient.
+CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
+  RETURN public.capture_sync_bootstrap_snapshot__session_guarded_impl();
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.capture_sync_bootstrap_snapshot() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.capture_sync_bootstrap_snapshot() TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.pull_canonical_changes(
+  p_since_sequence bigint,
+  p_limit integer DEFAULT 500
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
+  RETURN public.pull_canonical_changes__session_guarded_impl(p_since_sequence, p_limit);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.pull_canonical_changes(bigint, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated, service_role;
+
 NOTIFY pgrst, 'reload schema';
