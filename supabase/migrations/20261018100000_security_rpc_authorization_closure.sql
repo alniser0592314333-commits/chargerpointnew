@@ -81,6 +81,12 @@ REVOKE ALL ON FUNCTION public.authorize_super_admin_admin_management(text)
 REVOKE ALL ON FUNCTION public._cp_guard_nonempty_replacement_payload(jsonb)
   FROM PUBLIC, anon, authenticated, service_role;
 
+-- These tables are accessed through guarded RPCs (and the trusted sign-in Edge
+-- Function), not direct browser REST. Remove stale direct table grants as a second
+-- boundary even though RLS currently has no policies on either table.
+REVOKE ALL PRIVILEGES ON TABLE public.admins, public.global_app_identity
+  FROM PUBLIC, anon, authenticated;
+
 -- A valid Supabase Auth session is not sufficient authorization to mint or
 -- rotate customer/order QR capabilities. Require an active app admin and the
 -- permission appropriate to the target resource before entering the mutator.
