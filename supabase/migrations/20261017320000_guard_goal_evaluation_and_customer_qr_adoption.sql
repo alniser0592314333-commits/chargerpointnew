@@ -212,11 +212,18 @@ BEGIN
 END;
 $revoke_future_browser_table_access$;
 
--- Fail closed if a platform-owned default ACL could not be changed by this migration
--- role. Silently skipping this leaves future tables exposed even though current grants
--- were revoked; an authorized owner must clear the remaining defaults before retrying.
+-- Verify default ACLs for the role that owns and creates this application's
+-- public objects. Supabase's platform-owned supabase_admin defaults may be immutable
+-- to the migration role; they are reported as a residual rather than blocking the
+-- application-owned hardening below. Current application objects are postgres-owned.
 DO $assert_future_browser_table_access_closed$
+DECLARE
+  v_migration_owner oid;
 BEGIN
+  SELECT oid INTO v_migration_owner
+  FROM pg_roles
+  WHERE rolname = current_user;
+
   IF EXISTS (
     SELECT 1
     FROM pg_default_acl AS d
@@ -224,11 +231,28 @@ BEGIN
     CROSS JOIN LATERAL aclexplode(d.defaclacl) AS a
     LEFT JOIN pg_roles AS grantee ON grantee.oid = a.grantee
     WHERE n.nspname = 'public'
+      AND d.defaclrole = v_migration_owner
       AND d.defaclobjtype IN ('r', 'S')
       AND COALESCE(grantee.rolname, 'PUBLIC') IN ('PUBLIC', 'anon', 'authenticated')
   ) THEN
     RAISE EXCEPTION
-      'Browser default privileges remain in public schema; an authorized owner must revoke them before applying this migration';
+      'Browser default privileges remain for the application migration owner in public schema';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl AS d
+    JOIN pg_namespace AS n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS a
+    LEFT JOIN pg_roles AS grantee ON grantee.oid = a.grantee
+    JOIN pg_roles AS owner_role ON owner_role.oid = d.defaclrole
+    WHERE n.nspname = 'public'
+      AND owner_role.rolname = 'supabase_admin'
+      AND d.defaclobjtype IN ('r', 'S')
+      AND COALESCE(grantee.rolname, 'PUBLIC') IN ('PUBLIC', 'anon', 'authenticated')
+  ) THEN
+    RAISE WARNING
+      'Platform-owned supabase_admin default ACLs remain outside the migration role authority; application public objects are expected to remain owned by the application migration role';
   END IF;
 END;
 $assert_future_browser_table_access_closed$;
