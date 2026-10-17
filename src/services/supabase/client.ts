@@ -1293,6 +1293,53 @@ export async function rpcIssueBinRecoveryProof(
 }
 
 /**
+ * Issues a short-lived, single-use BIN_CHANGE proof after server-side verification
+ * of the current BIN. Call this only with a temporary token from a fresh password sign-in.
+ */
+export async function rpcIssueBinChangeProof(
+  currentBin: string,
+  customAuthToken?: string
+): Promise<{
+  success: boolean;
+  proofToken?: string;
+  expiresInSeconds?: number;
+  error: string | null;
+  remainingAttempts?: number;
+  failedAttempts?: number;
+  status?: BinAttemptVerificationResult['status'];
+}> {
+  const cleanBin = currentBin ? currentBin.trim() : '';
+  if (!/^\d{4,}$/.test(cleanBin)) {
+    return { success: false, error: 'Valid current BIN is required' };
+  }
+
+  const { data, error } = await invokeSupabaseRpc<any>(
+    'issue_bin_change_proof',
+    { p_current_bin: cleanBin },
+    customAuthToken
+  );
+
+  if (error) return { success: false, error };
+
+  if (!data || data.success !== true || !data.proof_token) {
+    return {
+      success: false,
+      error: data?.error || 'Failed to issue BIN change proof',
+      remainingAttempts: Number.isFinite(data?.remaining_attempts) ? data.remaining_attempts : undefined,
+      failedAttempts: Number.isFinite(data?.failed_attempts) ? data.failed_attempts : undefined,
+      status: data?.status,
+    };
+  }
+
+  return {
+    success: true,
+    proofToken: data.proof_token,
+    expiresInSeconds: data.expires_in_seconds || 120,
+    error: null,
+  };
+}
+
+/**
  * Server-Authoritative Password-Authenticated BIN Recovery RPC.
  * Requires both new BIN and a valid, server-issued single-use cryptographic recovery proof token.
  */
@@ -1361,35 +1408,36 @@ export async function rpcVerifyAdminBin(bin: string): Promise<boolean> {
 }
 
 /**
- * Server-Authoritative BIN Update RPC.
- * Invokes public.set_admin_bin(p_bin, p_admin_id) on PostgreSQL.
- * Securely hashes new BIN server-side using pgcrypto salted bcrypt.
+ * Server-Authoritative BIN Change RPC.
+ * A current-BIN proof is required; the old session-only setters are retired.
  */
 export async function rpcSetAdminBin(
   bin: string,
-  targetAdminId?: string,
+  changeProof?: string,
   customAuthToken?: string
 ): Promise<{ success: boolean; error: string | null }> {
   const cleanBin = bin ? bin.trim() : '';
+  const cleanProof = changeProof ? changeProof.trim() : '';
   if (!cleanBin || !/^\d{4,}$/.test(cleanBin)) {
     return {
       success: false,
       error: 'رمز الأمان (BIN) يجب أن يتكون من 4 أرقام على الأقل',
     };
   }
-
-  const payload: Record<string, unknown> = {
-    p_bin: cleanBin,
-  };
-  if (targetAdminId && targetAdminId.trim()) {
-    payload.p_admin_id = targetAdminId.trim();
+  if (cleanProof.length < 32) {
+    return { success: false, error: 'PROOF_REQUIRED: Verify the current password and BIN first' };
   }
 
-  const { data, error } = await invokeSupabaseRpc<boolean>('set_admin_bin', payload, customAuthToken);
-  if (error) {
-    return { success: false, error };
+  const { data, error } = await invokeSupabaseRpc<any>(
+    'change_admin_bin',
+    { p_new_bin: cleanBin, p_change_proof: cleanProof },
+    customAuthToken
+  );
+  if (error) return { success: false, error };
+  if (!data || data.success !== true) {
+    return { success: false, error: data?.error || 'Failed to update security BIN' };
   }
-  return { success: Boolean(data), error: null };
+  return { success: true, error: null };
 }
 
 export interface TopUpAtomicResult {
