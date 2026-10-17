@@ -80,6 +80,16 @@ describe('Isolated customer QR portal security contract', () => {
     expect(client).toContain('forceAnonymous: boolean = false');
     expect(client).toContain('forceAnonymous ? null : resolveAuthBearerToken(customAuthToken)');
     expect(client).toContain('!forceAnonymous');
+    for (const publicRpc of [
+      "'public_resolve_customer_qr'",
+      "'public_resolve_order_qr'",
+      "'public_resolve_qr_payment_submission'",
+    ]) {
+      const index = client.indexOf(publicRpc);
+      expect(index).toBeGreaterThan(-1);
+      expect(client.slice(index, index + 220)).toContain('true');
+    }
+
 
     expect(page).toContain('setData(null)');
     expect(page).toContain('navigator.onLine');
