@@ -145,6 +145,41 @@ describe('BIN change proof client flow', () => {
     );
   });
 
+  it('clears the temporary BIN re-auth handoff on logout', async () => {
+    vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
+    vi.spyOn(authService, 'getSupabaseAuthSession').mockResolvedValue({
+      access_token: 'existing-session-token',
+      user: { id: 'user-1' },
+    } as any);
+    vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
+      session: {
+        access_token: 'temporary-reauth-token',
+        user: { id: 'user-1', email: 'admin@example.test' },
+      },
+      error: null,
+    } as any);
+    vi.spyOn(supabaseClient, 'rpcIssueBinChangeProof').mockResolvedValue({
+      success: true,
+      proofToken: 'p'.repeat(64),
+      expiresInSeconds: 120,
+      error: null,
+    });
+    const setBinSpy = vi.spyOn(supabaseClient, 'rpcSetAdminBin');
+
+    const verified = await authService.verifyCurrentPassword(
+      'admin@example.test',
+      'correct-password',
+      '1234'
+    );
+    expect(verified.success).toBe(true);
+
+    await authService.logout();
+    const result = await authService.changeAdminBin('5678', verified.token);
+
+    expect(result.success).toBe(false);
+    expect(setBinSpy).not.toHaveBeenCalled();
+  });
+
   it('does not fall back to the ordinary stored session when the proof handoff is missing', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
     vi.spyOn(supabaseClient, 'getSupabaseAuthToken').mockReturnValue('existing-session-token');
