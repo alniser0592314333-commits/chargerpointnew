@@ -336,16 +336,16 @@ jobs:
           );
           CREATE FUNCTION public.issue_bin_recovery_proof__session_guarded_impl(text)
             RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, auth, pg_temp
-            AS $ SELECT jsonb_build_object('success', false, 'error', 'fixture recovery issue implementation') $;
+            AS 'SELECT jsonb_build_object(''success'', false, ''error'', ''fixture recovery issue implementation'')';
           CREATE FUNCTION public.recover_and_reset_admin_bin__session_guarded_impl(text, text)
             RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, auth, pg_temp
-            AS $ SELECT jsonb_build_object('success', false, 'error', 'fixture recovery reset implementation') $;
+            AS 'SELECT jsonb_build_object(''success'', false, ''error'', ''fixture recovery reset implementation'')';
           CREATE FUNCTION public.issue_bin_recovery_proof(text)
             RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
-            AS $ BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.issue_bin_recovery_proof__session_guarded_impl($1); END; $;
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.issue_bin_recovery_proof__session_guarded_impl($1); END;';
           CREATE FUNCTION public.recover_and_reset_admin_bin(text, text)
             RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
-            AS $ BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.recover_and_reset_admin_bin__session_guarded_impl($1, $2); END; $;
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.recover_and_reset_admin_bin__session_guarded_impl($1, $2); END;';
           REVOKE ALL ON FUNCTION public.issue_bin_recovery_proof__session_guarded_impl(text) FROM PUBLIC, anon, authenticated, service_role;
           REVOKE ALL ON FUNCTION public.recover_and_reset_admin_bin__session_guarded_impl(text, text) FROM PUBLIC, anon, authenticated, service_role;
           GRANT EXECUTE ON FUNCTION public.issue_bin_recovery_proof(text) TO authenticated, service_role;
