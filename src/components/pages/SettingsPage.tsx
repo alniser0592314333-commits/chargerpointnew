@@ -106,6 +106,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         setBinSuccess(null);
         setBinChangeProof(undefined);
         setPasswordInput("");
+        setCurrentBinInput("");
         setNewBin("");
         setConfirmBin("");
         return;
