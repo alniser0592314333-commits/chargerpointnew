@@ -393,3 +393,35 @@ BEGIN
   END IF;
 END
 $username_email_lookup_acl$;
+
+-- New public functions must not inherit browser execution. Probe actual PostgreSQL
+-- default ACL behavior, including the global PUBLIC default that schema-local REVOKE
+-- cannot cancel by itself.
+DO $default_function_execute$
+BEGIN
+  EXECUTE 'CREATE FUNCTION public.__security_default_acl_probe() RETURNS integer LANGUAGE sql AS ''SELECT 1''';
+  IF has_function_privilege('anon', 'public.__security_default_acl_probe()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.__security_default_acl_probe()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'New public functions inherit browser EXECUTE privileges';
+  END IF;
+  EXECUTE 'DROP FUNCTION public.__security_default_acl_probe()';
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl d
+    JOIN pg_namespace n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
+    WHERE d.defaclobjtype = 'f'
+      AND n.nspname = 'public'
+      AND d.defaclrole IN (SELECT oid FROM pg_roles WHERE rolname IN ('postgres', 'supabase_admin'))
+      AND acl.grantee IN (
+        0,
+        (SELECT oid FROM pg_roles WHERE rolname = 'anon'),
+        (SELECT oid FROM pg_roles WHERE rolname = 'authenticated')
+      )
+      AND acl.privilege_type = 'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'Browser roles retain default EXECUTE on future public functions';
+  END IF;
+END
+$default_function_execute$;
