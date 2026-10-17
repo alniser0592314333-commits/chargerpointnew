@@ -398,6 +398,8 @@ $username_email_lookup_acl$;
 -- default ACL behavior, including the global PUBLIC default that schema-local REVOKE
 -- cannot cancel by itself.
 DO $default_function_execute$
+DECLARE
+  v_creator record;
 BEGIN
   EXECUTE 'CREATE FUNCTION public.__security_default_acl_probe() RETURNS integer LANGUAGE sql AS ''SELECT 1''';
   IF has_function_privilege('anon', 'public.__security_default_acl_probe()', 'EXECUTE')
@@ -423,6 +425,31 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Browser roles retain default EXECUTE on future public functions';
   END IF;
+
+  FOR v_creator IN
+    SELECT oid, rolname FROM pg_roles WHERE rolname IN ('postgres', 'supabase_admin')
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_default_acl d
+      WHERE d.defaclrole = v_creator.oid
+        AND d.defaclnamespace = 0
+        AND d.defaclobjtype = 'f'
+    ) THEN
+      RAISE EXCEPTION 'Global function default ACL override missing for role %', v_creator.rolname;
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_default_acl d
+      CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
+      WHERE d.defaclrole = v_creator.oid
+        AND d.defaclnamespace = 0
+        AND d.defaclobjtype = 'f'
+        AND acl.grantee = 0
+        AND acl.privilege_type = 'EXECUTE'
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC retains default function EXECUTE for role %', v_creator.rolname;
+    END IF;
+  END LOOP;
 END
 $default_function_execute$;
 
