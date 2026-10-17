@@ -159,9 +159,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       if (uiState === "NORMAL_LOGIN") {
         const cleanUser = username.trim();
         const cleanPass = password;
-
-        console.info(`[AUTH_DEBUG] LoginPage handleSubmit -> cleanUser: "${cleanUser}", cleanPass length: ${cleanPass.length}, isSupabase: ${isSupabase}`);
-
         if (!cleanUser || !cleanPass) {
           setError(
             locale === "en"
@@ -175,7 +172,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
         setInternalEmail(cleanUser);
 
         try {
-          console.info(`[AUTH_DEBUG] LoginPage -> Calling authService.login directly with identifier: "${cleanUser}"`);
           const session = await authService.login(cleanUser, cleanPass);
           if (session) {
             setPassword("");
@@ -189,7 +185,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
           }
         } catch (loginErr: any) {
           const msg = loginErr?.message || "";
-          console.warn(`[AUTH_DEBUG] LoginPage -> authService.login threw:`, msg);
           if (msg === "SUPER_ADMIN_BIN_REQUIRED") {
             // Password verified! Immediately purge sensitive password from React state
             setPassword("");
