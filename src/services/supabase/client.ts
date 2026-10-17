@@ -1165,6 +1165,30 @@ export async function rpcGetOrCreateCustomerQr(
 }
 
 /**
+ * Registers an existing device-local customer QR token with the central database
+ * when possible, preserving previously shared links. This RPC requires an
+ * authenticated admin session and is deliberately not listed among public RPCs.
+ */
+export async function rpcAdoptLegacyCustomerQrToken(
+  customerId: string,
+  publicToken: string
+): Promise<string> {
+  const { data, error } = await invokeSupabaseRpc<string>(
+    'adopt_customer_qr_token',
+    { p_customer_id: customerId, p_public_token: publicToken }
+  );
+
+  if (error) {
+    throw new Error(`CUSTOMER_QR_LEGACY_ADOPTION_FAILED: ${error}`);
+  }
+  if (typeof data !== 'string' || !/^[A-Za-z0-9_-]{24,64}$/.test(data)) {
+    throw new Error('CUSTOMER_QR_LEGACY_ADOPTION_FAILED: invalid server response');
+  }
+
+  return data;
+}
+
+/**
  * Explicitly rotates a customer QR token (invalidating previous ones).
  */
 export async function rpcRotateCustomerQr(
