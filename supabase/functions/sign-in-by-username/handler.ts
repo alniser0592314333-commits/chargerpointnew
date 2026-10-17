@@ -71,9 +71,8 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
     const password = typeof input?.password === "string" ? input.password : "";
     if (!username || !password || password.length > 1024) return invalidCredentials();
 
-    const adminClient = deps.createAdminClient(url, secretKey);
-
     try {
+      const adminClient = deps.createAdminClient(url, secretKey);
       // Atomic shared rate limits prevent brute force across Edge Function instances.
       // Persist only keyed HMAC digests, never raw IP addresses or usernames.
       const [ipKey, usernameKey] = await Promise.all([
