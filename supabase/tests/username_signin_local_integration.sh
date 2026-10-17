@@ -77,9 +77,8 @@ if [[ -z "$API_URL" || -z "$DB_URL" || -z "$ANON_KEY" || -z "$SECRET_KEY" ]]; th
 fi
 
 cat > "$WORKDIR/supabase/functions/.env" <<ENV
-AUTH_SUPABASE_SECRET_KEY=$SECRET_KEY
-USERNAME_SIGNIN_RATE_LIMIT_SECRET=$(openssl rand -hex 32)
-AUTH_IP_FORWARDING_ENABLED=true
+auth_supabase_secret_key=$SECRET_KEY
+username_signin_rate_limit_secret=$(openssl rand -hex 32)
 ENV
 
 curl -fsS -X POST "$API_URL/auth/v1/signup" \
