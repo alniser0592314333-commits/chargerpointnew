@@ -89,6 +89,8 @@ jobs:
         run: deno check --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/index.ts
       - name: Test username sign-in request validation
         run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/requestValidation_test.ts
+      - name: Test username sign-in request-to-Auth boundary
+        run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/handler_test.ts
       - name: Type-check and lint
         run: npm run lint
       - name: Build production bundle
