@@ -197,6 +197,27 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening_migration_runtime.test.sql
+      - name: Create isolated database for comprehensive RPC authorization
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres security_rpc_authorization_test
+      - name: Prepare isolated RPC authorization fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/security_rpc_authorization_fixture.sql
+      - name: Apply history-aligned security function search-path migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017145728_security_function_search_path_hardening.sql
+      - name: Apply comprehensive privileged RPC authorization closure
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261018100000_security_rpc_authorization_closure.sql
+      - name: Verify privileged RPC authorization and pgcrypto exposure
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/security_rpc_authorization_runtime.test.sql
+
       - name: Create isolated database for authoritative snapshot paging
         env:
           PGPASSWORD: postgres
