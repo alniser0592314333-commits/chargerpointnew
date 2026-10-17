@@ -5301,6 +5301,60 @@ export interface PublicCustomerQrData {
 const inFlightCustomerQrTokens = new Map<string, Promise<string>>();
 
 /**
+ * Cache the authoritative server token locally for offline reads. This is a
+ * cache of an already-persisted identity, never a locally-created identity.
+ */
+const cacheCanonicalCustomerQrToken = async (
+  customerId: string,
+  publicToken: string
+): Promise<void> => {
+  const localTokens = await localDb.list<QrTokenEntity>('qr_tokens');
+
+  for (const token of localTokens) {
+    if (
+      token.targetId === customerId &&
+      token.tokenType === 'CUSTOMER' &&
+      token.isActive &&
+      token.publicToken !== publicToken
+    ) {
+      await persistQrTokenCanonical({ ...token, isActive: false });
+    }
+  }
+
+  const existing = localTokens.find(
+    (token) =>
+      token.targetId === customerId &&
+      token.tokenType === 'CUSTOMER' &&
+      token.publicToken === publicToken
+  );
+
+  if (existing) {
+    await persistQrTokenCanonical({
+      ...existing,
+      tokenHash: await computeTokenHash(publicToken),
+      publicToken,
+      isActive: true,
+    });
+    return;
+  }
+
+  const id = globalThis.crypto?.randomUUID?.();
+  if (!id) {
+    throw new Error('CUSTOMER_QR_LOCAL_CACHE_FAILED: crypto.randomUUID is unavailable.');
+  }
+
+  await persistQrTokenCanonical({
+    id,
+    publicToken,
+    tokenHash: await computeTokenHash(publicToken),
+    tokenType: 'CUSTOMER',
+    targetId: customerId,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  });
+};
+
+/**
  * Returns the canonical, server-persisted customer QR capability.
  *
  * Customer QR links are public links intended to open on other devices, so a
@@ -5334,7 +5388,9 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
     const legacyPublicToken = existingLocal?.publicToken?.trim();
 
     if (legacyPublicToken && /^[A-Za-z0-9_-]{24,64}$/.test(legacyPublicToken)) {
-      return await rpcAdoptLegacyCustomerQrToken(customerId, legacyPublicToken);
+      const adoptedToken = await rpcAdoptLegacyCustomerQrToken(customerId, legacyPublicToken);
+      await cacheCanonicalCustomerQrToken(customerId, adoptedToken);
+      return adoptedToken;
     }
 
     const centralToken = await rpcGetOrCreateCustomerQr(customerId);
@@ -5342,6 +5398,7 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
       throw new Error('CUSTOMER_QR_CENTRAL_PERSISTENCE_FAILED: Supabase did not return a valid persisted customer QR token.');
     }
 
+    await cacheCanonicalCustomerQrToken(customerId, centralToken);
     return centralToken;
   })();
 
