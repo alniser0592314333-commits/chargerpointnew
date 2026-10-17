@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { isAllowedReceiptPath } from "./receiptPathValidation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,9 +9,6 @@ const corsHeaders = {
 };
 const respond = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
-
-const RECEIPT_PATH_PATTERN =
-  /^(?:orders|customers)\/[0-9a-f-]{36}\/[A-Za-z0-9._-]{1,100}\.(?:jpg|jpeg|png|webp)$/i;
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -37,8 +35,7 @@ Deno.serve(async (request: Request) => {
     if (authError || !authData.user) return respond(401, { error: "Authentication required" });
     const input = await request.json().catch(() => null) as { path?: unknown } | null;
     const path = typeof input?.path === "string" ? input.path.trim() : "";
-    if (!path || path.length > 300 || path.startsWith("/") || path.includes("..") ||
-        path.includes("\\") || !RECEIPT_PATH_PATTERN.test(path)) {
+    if (!isAllowedReceiptPath(path)) {
       return respond(400, { error: "Invalid receipt path" });
     }
 
