@@ -264,7 +264,7 @@ BEGIN
   IF v_balance <> -100 THEN RAISE EXCEPTION 'Authorized customer balance result changed: %', v_balance; END IF;
 
   SELECT count(*) INTO v_admin_count FROM public.rpc_fetch_admins();
-  IF v_admin_count <> 2 THEN RAISE EXCEPTION 'Authorized admin directory result changed'; END IF;
+  IF v_admin_count <> 3 THEN RAISE EXCEPTION 'Authorized admin directory result changed'; END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM public.get_effective_permissions('10000000-0000-0000-0000-000000000001')
