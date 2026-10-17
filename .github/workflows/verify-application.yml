@@ -376,7 +376,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017350000_prevent_admin_bin_self_reset_bypass.sql
-      - name: Verify administrative BIN reset cannot target its caller
+      - name: Verify administrative reset RPCs cannot target the caller's own account
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/admin_bin_reset_self_target.test.sql
