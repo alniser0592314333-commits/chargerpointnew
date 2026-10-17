@@ -19,6 +19,13 @@ BEGIN
     RAISE EXCEPTION 'An intended authenticated RPC contract was removed instead of guarded';
   END IF;
 
+  IF has_function_privilege('anon', 'public.get_current_admin_profile()', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.get_current_admin_profile()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.get_current_admin_profile__session_guarded_impl()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.get_current_admin_profile__session_guarded_impl()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Admin profile RPC/helper grants do not match the intended boundary';
+  END IF;
+
   IF has_function_privilege('anon', 'public.digest(text,text)', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.digest(text,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.crypt(text,text)', 'EXECUTE')
