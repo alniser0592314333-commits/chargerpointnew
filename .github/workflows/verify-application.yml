@@ -571,3 +571,17 @@ jobs:
             END IF;
           END $combined_check$;
           SQL
+
+  verify-username-signin-local-integration:
+    name: Verify username sign-in against local Supabase Auth
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Run isolated local Supabase Auth integration
+        run: bash supabase/tests/username_signin_local_integration.sh
