@@ -136,7 +136,7 @@ Deno.test("unknown username still reaches Auth with a dummy email and returns ge
   assertEquals(response.status, 401);
   assertEquals(calls.auth, 1);
   const firstDummyEmail = String(calls.authBody?.email ?? "");
-  assertEquals(/^unknown-[0-9a-f-]{36}@invalid\\.example$/.test(firstDummyEmail), true);
+  assertEquals(/^unknown-[0-9a-f-]{36}@invalid\.example$/.test(firstDummyEmail), true);
   assertEquals(calls.authHeaders.get("Sb-Forwarded-For"), "203.0.113.8");
   assertEquals(calls.authHeaders.get("Sb-Forwarded-For") === "198.51.100.99", false);
   assertEquals(body.includes("private-admin@example.test"), false);
