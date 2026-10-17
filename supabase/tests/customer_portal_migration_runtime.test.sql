@@ -33,6 +33,16 @@ BEGIN
     v_item, v_order, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 1, 'CHARGING', 'RECOGNIZED',
     now(), 'PARTIAL', 'Phone', true, 1200
   );
+  -- A soft-deleted item must be excluded from both customer-visible items and totals.
+  INSERT INTO public.order_items(
+    id, order_id, device_type_id, item_sequence, operational_status, financial_status,
+    financially_recognized_at, payment_status, device_name_snapshot, has_charger,
+    final_charge_snapshot_minor, deleted_at
+  ) VALUES (
+    'dddddddd-dddd-4ddd-8ddd-dddddddddddd', v_order,
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 2, 'CHARGED', 'RECOGNIZED',
+    now(), 'UNPAID', 'Deleted Phone', false, 9999, now()
+  );
   INSERT INTO public.payment_allocations(order_item_id, allocated_amount_minor) VALUES (v_item, 200);
   INSERT INTO public.payments(id, amount_minor) VALUES (v_payment, 400);
   INSERT INTO public.qr_payment_submissions(id, customer_id, order_id, status, payment_method, created_at, amount_minor, payment_id)
