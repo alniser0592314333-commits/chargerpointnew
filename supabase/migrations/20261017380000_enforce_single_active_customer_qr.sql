@@ -79,7 +79,7 @@ BEGIN
     id, token_hash, public_token, token_type, target_id, is_active, expires_at, created_at
   )
   VALUES (
-    public.gen_random_uuid(),
+    gen_random_uuid(),
     encode(public.digest(v_token, 'sha256'), 'hex'),
     v_token,
     'CUSTOMER',
