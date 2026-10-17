@@ -78,6 +78,15 @@ BEGIN
      OR has_function_privilege('service_role', 'public._cp_assert_active_admin_permission(text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Internal authorization helper is directly executable';
   END IF;
+
+  IF has_function_privilege('anon', 'public.assert_my_account_session_active()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.assert_my_account_session_active()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.authorize_super_admin_admin_management(text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.authorize_super_admin_admin_management(text)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public._cp_guard_nonempty_replacement_payload(jsonb)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public._cp_guard_nonempty_replacement_payload(jsonb)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'A helper-only SECURITY DEFINER RPC remains directly executable';
+  END IF;
 END
 $migration_contract$;
 
