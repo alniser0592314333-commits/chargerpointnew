@@ -14,6 +14,7 @@ function setup(options: {
   rateLimitError?: unknown;
   matches?: Array<{ email: string }>;
   lookupError?: unknown;
+  clientCreationError?: boolean;
   authStatus?: number;
   authBody?: unknown;
 } = {}) {
@@ -32,6 +33,7 @@ function setup(options: {
     getEnv: (name) => env[name],
     createAdminClient: (_url, _key) => {
       calls.clientCreated++;
+      if (options.clientCreationError) throw new Error("invalid client configuration");
       return {
         rpc: async (name: string, args: Record<string, unknown>) => {
           assertEquals(name, "consume_username_signin_attempt");
@@ -104,6 +106,16 @@ Deno.test("username sign-in fails closed when required server configuration is m
   const response = await handler(request());
   assertEquals(response.status, 503);
   assertEquals(calls.clientCreated, 0);
+  assertEquals(calls.auth, 0);
+});
+
+Deno.test("Supabase client initialization failure returns a controlled unavailable response", async () => {
+  const { handler, calls, request } = setup({ clientCreationError: true });
+  const response = await handler(request());
+  const body = await response.text();
+  assertEquals(response.status, 503);
+  assertStringIncludes(body, "temporarily unavailable");
+  assertEquals(body.includes("invalid client configuration"), false);
   assertEquals(calls.auth, 0);
 });
 
