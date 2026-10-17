@@ -39,7 +39,7 @@ BEGIN
 
   -- Opportunistic retention bound: hashes are not kept beyond two days.
   DELETE FROM public.username_signin_rate_limits
-  WHERE updated_at < v_now - interval '2 days';
+  WHERE updated_at < v_now - interval '30 minutes';
 
   -- Per-IP bucket: 30 attempts in five minutes, then a 15-minute block.
   INSERT INTO public.username_signin_rate_limits AS current_bucket
@@ -63,6 +63,17 @@ BEGIN
     updated_at = v_now
   RETURNING current_bucket.attempt_count, current_bucket.blocked_until
   INTO v_ip_count, v_ip_blocked_until;
+
+  -- Stop before creating per-username buckets while an IP is blocked. This prevents
+  -- a blocked caller from growing the bucket table by changing usernames per request.
+  IF v_ip_blocked_until > v_now OR v_ip_count > 30 THEN
+    v_retry_after := CASE
+      WHEN v_ip_blocked_until > v_now
+        THEN greatest(1, ceil(extract(epoch FROM (v_ip_blocked_until - v_now)))::integer)
+      ELSE 900
+    END;
+    RETURN jsonb_build_object('allowed', false, 'retry_after_seconds', v_retry_after);
+  END IF;
 
   -- Per-IP + username bucket: five attempts in 15 minutes, then a 15-minute block.
   INSERT INTO public.username_signin_rate_limits AS current_bucket
