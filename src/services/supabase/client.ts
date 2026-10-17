@@ -1151,7 +1151,7 @@ export async function rpcResolveQrPaymentSubmission(
  */
 export async function rpcGetOrCreateCustomerQr(
   customerId: string
-): Promise<string | null> {
+): Promise<string> {
   const { data, error } = await invokeSupabaseRpc<string>(
     'get_or_create_customer_qr',
     { p_customer_id: customerId }
@@ -1196,7 +1196,7 @@ export async function rpcAdoptLegacyCustomerQrToken(
  */
 export async function rpcRotateCustomerQr(
   customerId: string
-): Promise<string | null> {
+): Promise<string> {
   const { data, error } = await invokeSupabaseRpc<string>(
     'rotate_customer_qr',
     { p_customer_id: customerId }
