@@ -72,7 +72,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 2: After SUPER_ADMIN_BIN_REQUIRED: Entering BIN -> ZERO additional signInWithPassword calls
-  it('TEST 2: After SUPER_ADMIN_BIN_REQUIRED: Entering BIN -> ZERO additional signInWithPassword calls', async () => {
+  it('TEST 2: After SUPER_ADMIN_BIN_REQUIRED: Entering BIN -> ZERO additional username sign-in calls', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
         const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
@@ -101,7 +101,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   // TEST 3: Correct BIN -> Dashboard/final login succeeds using the existing temporary token
   it('TEST 3: Correct BIN -> Dashboard/final login succeeds using existing temporary token', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
-        vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
+    vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
@@ -121,7 +121,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 4: Wrong BIN -> Password is NOT authenticated again
-  it('TEST 4: Wrong BIN -> Password is NOT authenticated again', async () => {
+  it('TEST 4: Wrong BIN -> Username password verification is NOT repeated', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
         const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
@@ -157,7 +157,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 5: BIN locked -> Password is NOT authenticated again
-  it('TEST 5: BIN locked -> Password is NOT authenticated again', async () => {
+  it('TEST 5: BIN locked -> Username password verification is NOT repeated', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
         const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
@@ -216,7 +216,7 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
   });
 
   // TEST 8: username sign-in network failure -> shows NETWORK_ERROR, NOT password error
-  it('TEST 8: Username lookup failure -> throws USERNAME_LOOKUP_FAILED', async () => {
+  it('TEST 8: Username sign-in endpoint unavailable -> throws NETWORK_ERROR', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
     const signInSpy = vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: null,
