@@ -159,6 +159,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const requestGeneration = useRef(0);
   const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [receipt, setReceipt] = useState<File | null>(null);
@@ -229,11 +230,12 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       active = false;
       requestGeneration.current += 1;
     };
-  }, [token]);
+  }, [token, online]);
 
   useEffect(() => {
     const onOffline = () => {
       requestGeneration.current += 1;
+      setOnline(false);
       setOrder(null);
       setCustomer(null);
       setSubmission(null);
@@ -242,8 +244,13 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       setSending(false);
       setSuccess(false);
     };
+    const onOnline = () => setOnline(true);
     window.addEventListener('offline', onOffline);
-    return () => window.removeEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
   }, []);
 
   useEffect(() => {
