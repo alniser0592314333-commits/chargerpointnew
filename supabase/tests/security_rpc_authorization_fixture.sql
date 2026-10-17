@@ -38,6 +38,20 @@ CREATE TABLE public.admins (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.global_app_identity (
+  id uuid PRIMARY KEY,
+  singleton boolean NOT NULL DEFAULT true,
+  app_name text,
+  white_logo_url text,
+  dark_logo_url text,
+  version integer NOT NULL DEFAULT 1,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid
+);
+ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.global_app_identity ENABLE ROW LEVEL SECURITY;
+GRANT ALL PRIVILEGES ON TABLE public.admins, public.global_app_identity TO authenticated;
+
 CREATE TABLE public.customers (
   id uuid PRIMARY KEY,
   name text NOT NULL,
@@ -70,8 +84,8 @@ CREATE TABLE public.financial_ledger (
   amount_minor bigint NOT NULL
 );
 
--- Fixture-only reads used to assert no unauthorized mutation occurred.
-GRANT SELECT ON public.admins, public.qr_tokens TO authenticated;
+-- Fixture-only read used to assert no unauthorized QR mutation occurred.
+GRANT SELECT ON public.qr_tokens TO authenticated;
 
 CREATE FUNCTION public.assert_my_account_session_active()
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
