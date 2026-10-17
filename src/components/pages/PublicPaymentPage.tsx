@@ -159,6 +159,8 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const requestGeneration = useRef(0);
   const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -174,6 +176,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
   useEffect(() => {
     let active = true;
+    const requestId = ++requestGeneration.current;
     setLoading(true);
     setLoadError(false);
     setOrder(null);
@@ -189,15 +192,19 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
     void (async () => {
       try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          if (active && requestId === requestGeneration.current) setLoadError(true);
+          return;
+        }
         const orderData = await getPublicOrderByToken(token).catch(() => null);
-        if (!active) return;
+        if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
         let contextFound = false;
         if (orderData) {
           setOrder(orderData);
           contextFound = true;
         } else {
           const customerData = await getPublicCustomerByToken(token);
-          if (!active) return;
+          if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
           if (customerData) {
             setCustomer(customerData);
             contextFound = true;
@@ -208,19 +215,43 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
         if (contextFound) {
           const previousSubmission = await rpcResolveQrPaymentSubmission(token);
-          if (active && previousSubmission) {
+          if (active && requestId === requestGeneration.current && navigator.onLine && previousSubmission) {
             setSubmission(previousSubmission);
             setSuccess(true);
           }
         }
       } catch {
-        if (active) setLoadError(true);
+        if (active && requestId === requestGeneration.current) setLoadError(true);
       } finally {
-        if (active) setLoading(false);
+        if (active && requestId === requestGeneration.current) setLoading(false);
       }
     })();
-    return () => { active = false; };
-  }, [token]);
+    return () => {
+      active = false;
+      requestGeneration.current += 1;
+    };
+  }, [token, online]);
+
+  useEffect(() => {
+    const onOffline = () => {
+      requestGeneration.current += 1;
+      setOnline(false);
+      setOrder(null);
+      setCustomer(null);
+      setSubmission(null);
+      setLoadError(true);
+      setLoading(false);
+      setSending(false);
+      setSuccess(false);
+    };
+    const onOnline = () => setOnline(true);
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!receipt) {
@@ -283,6 +314,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     event.preventDefault();
     setError('');
     setValidationError(null);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setError(isAr ? 'الاتصال بالإنترنت غير متاح. أعد الاتصال قبل إرسال الإيصال.' : 'You are offline. Reconnect before submitting the receipt.');
+      return;
+    }
+    const submissionGeneration = requestGeneration.current;
 
     if (order && !orderPaymentAllowed) {
       setError(orderPaymentBlockReason);
@@ -320,6 +356,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       form.append('receipt', compressed, compressed.name);
 
       const endpoint = `${config.supabaseUrl.replace(/\/+$/, '')}/functions/v1/submit-qr-payment`;
+      if (!navigator.onLine || submissionGeneration !== requestGeneration.current) {
+        throw new Error('OFFLINE');
+      }
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -328,6 +367,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         },
         body: form,
       });
+      if (!navigator.onLine || submissionGeneration !== requestGeneration.current) {
+        throw new Error('OFFLINE');
+      }
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.success !== true) {
         const message = String(result.error || '');
@@ -362,6 +404,10 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       });
     } catch (err: any) {
       const code = err?.message || '';
+      if (code === 'OFFLINE' || !navigator.onLine) {
+        setError(isAr ? 'انقطع الإنترنت قبل تأكيد الإرسال. تحقّق من سجل الإيصالات قبل إعادة المحاولة.' : 'Connection dropped before confirmation. Check receipt history before retrying.');
+        return;
+      }
       if (code === 'IMAGE_REQUIRED') {
         setError(isAr ? 'يرجى اختيار صورة إيصال صحيحة.' : 'Please choose a valid receipt image.');
       } else if (code === 'SOURCE_TOO_LARGE') {
@@ -490,12 +536,14 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <AlertCircle className="h-7 w-7" />
             </span>
             <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-slate-50">
-              {isAr ? 'تعذّر الوصول لبيانات الدفع' : 'Payment details could not be found'}
+              {!online ? (isAr ? 'الاتصال بالإنترنت غير متاح' : 'You are offline') : (isAr ? 'تعذّر الوصول لبيانات الدفع' : 'Payment details could not be found')}
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-400">
-              {isAr
-                ? 'الرابط غير صالح أو منتهي الصلاحية، أو تم حذفه من النظام. يرجى مسح رمز QR الصحيح مجدداً.'
-                : 'This link is invalid or expired. Please re-scan the original QR code to proceed.'}
+              {!online
+                ? (isAr ? 'أخفينا بيانات الحساب والإيصال أثناء انقطاع الإنترنت. أعد الاتصال وسيتم التحقق من الرمز مجدداً.' : 'Account and receipt details are hidden while offline. Reconnect to verify this QR again.')
+                : (isAr
+                  ? 'الرابط غير صالح أو منتهي الصلاحية، أو تم حذفه من النظام. يرجى مسح رمز QR الصحيح مجدداً.'
+                  : 'This link is invalid or expired. Please re-scan the original QR code to proceed.')}
             </p>
             <div className="mt-6">
               <a

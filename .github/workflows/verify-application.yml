@@ -31,6 +31,12 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/customer_financial_history_grouping.test.ts src/tests/home_financial_activity_grouping.test.ts src/tests/customer_order_history_effective_overlays.test.ts
+      - name: Run customer QR portal security contract tests
+        env:
+          # Tests inspect source contracts only; never connect to Supabase.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/customer_portal_security_contract.test.ts
       - name: Run order-numbering safety tests
         env:
           # Test runs must never use the production Supabase project.
@@ -200,6 +206,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017290000_revoke_default_public_function_execute.sql
+      - name: Fail closed if any function owner still exposes default browser execution
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017295000_assert_browser_function_default_privileges.sql
       - name: Add atomic username sign-in rate limiter
         env:
           PGPASSWORD: postgres
@@ -670,6 +680,23 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d customer_qr_resolution_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_qr_resolution_migration_runtime.test.sql
+
+      - name: Create isolated database for customer portal projection
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres customer_portal_test
+      - name: Prepare customer portal schema fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_portal_migration_fixture.sql
+      - name: Apply customer portal read model migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017410000_public_customer_portal_read_model.sql
+      - name: Verify customer portal isolation, financial projection, and QR capability checks
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_portal_migration_runtime.test.sql
 
   diagnose-main-test-baseline:
     name: Diagnose full-suite baseline on main
