@@ -86,6 +86,26 @@ BEGIN
 END;
 $function$;
 
+CREATE FUNCTION public._cp_guard_nonempty_replacement_payload(p_payload jsonb)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF p_payload IS NULL OR p_payload = '{}'::jsonb THEN
+    RAISE EXCEPTION 'Replacement payload is required' USING ERRCODE = '22023';
+  END IF;
+END;
+$function$;
+
+CREATE FUNCTION public.authorize_super_admin_admin_management(p_caller_bin text)
+RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+  SELECT a.id FROM public.admins a
+  WHERE a.auth_user_id = auth.uid()
+    AND a.is_active
+    AND upper(replace(trim(a.role), ' ', '_')) = 'SUPER_ADMIN'
+  LIMIT 1
+$function$;
+
 CREATE FUNCTION public.is_active_admin_session()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
