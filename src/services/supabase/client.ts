@@ -355,13 +355,15 @@ export async function invokeSupabaseRpc<T>(
   payload?: Record<string, unknown>,
   customAuthToken?: string,
   allowAnonymous: boolean = false,
-  isRetry: boolean = false
+  isRetry: boolean = false,
+  forceAnonymous: boolean = false
 ): Promise<{ data: T | null; error: string | null }> {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
     return { data: null, error: 'SUPABASE_NOT_CONFIGURED' };
   }
 
-  const token = resolveAuthBearerToken(customAuthToken);
+  // Public capability pages can opt out of stored administrator credentials entirely.
+  const token = forceAnonymous ? null : resolveAuthBearerToken(customAuthToken);
   const isPublic = allowAnonymous || PUBLIC_RPCS.has(functionName);
 
   if (!token && !isPublic) {
@@ -395,7 +397,7 @@ export async function invokeSupabaseRpc<T>(
       }
 
       // Check for JWT expired / 401 error and attempt auto-refresh once
-      const isExpired = res.status === 401 && !isRetry && (
+      const isExpired = res.status === 401 && !isRetry && !forceAnonymous && (
         errText.includes('JWT expired') ||
         errText.includes('PGRST303') ||
         errText.includes('token is expired') ||
@@ -405,7 +407,7 @@ export async function invokeSupabaseRpc<T>(
       if (isExpired) {
         const { session: refreshedSession } = await supabaseRefreshToken();
         if (refreshedSession?.access_token) {
-          return invokeSupabaseRpc<T>(functionName, payload, refreshedSession.access_token, allowAnonymous, true);
+          return invokeSupabaseRpc<T>(functionName, payload, refreshedSession.access_token, allowAnonymous, true, forceAnonymous);
         }
       }
 
