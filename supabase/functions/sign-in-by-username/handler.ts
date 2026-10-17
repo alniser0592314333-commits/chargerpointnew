@@ -112,7 +112,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       // disclosing account existence. Supabase Auth alone verifies the password.
       const email = matches?.length === 1 && typeof matches[0]?.email === "string"
         ? matches[0].email
-        : "unknown-username@invalid.example";
+        : `unknown-${crypto.randomUUID()}@invalid.example`;
       const authFetch = deps.authFetch ?? fetch;
       const authResponse = await authFetch(
         `${url.replace(/\/+$/, "")}/auth/v1/token?grant_type=password`,
