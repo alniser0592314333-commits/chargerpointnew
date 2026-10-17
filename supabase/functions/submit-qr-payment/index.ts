@@ -136,6 +136,9 @@ Deno.serve(async (request: Request) => {
   }
   const formHeaders = new Headers(request.headers);
   formHeaders.delete("content-length");
+  // Use an owned ArrayBuffer so the Request BodyInit type and byte range are explicit.
+  const formBody = new ArrayBuffer(boundedBody.byteLength);
+  new Uint8Array(formBody).set(boundedBody);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -150,7 +153,7 @@ Deno.serve(async (request: Request) => {
     const formRequest = new Request(request.url, {
       method: "POST",
       headers: formHeaders,
-      body: boundedBody,
+      body: formBody,
     });
     const form = await formRequest.formData();
     const token = String(form.get("token") ?? "").trim();
