@@ -481,6 +481,7 @@ class DefaultAuthService implements AuthService {
     failedAttempts?: number;
     status?: string;
   }> {
+    pendingBinChangeSession = null;
     const cleanIdentifier = emailOrUsername.trim();
     const cleanPass = currentPassword;
     const cleanBin = currentBin ? currentBin.trim() : "";
