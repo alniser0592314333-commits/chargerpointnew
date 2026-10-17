@@ -87,12 +87,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
 
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
+  const [currentBinInput, setCurrentBinInput] = useState("");
   const [newBin, setNewBin] = useState("");
   const [confirmBin, setConfirmBin] = useState("");
   const [isBinLoading, setIsBinLoading] = useState(false);
   const [binError, setBinError] = useState<string | null>(null);
   const [binSuccess, setBinSuccess] = useState<string | null>(null);
-  const [verifiedToken, setVerifiedToken] = useState<string | undefined>(undefined);
+  const [binChangeProof, setBinChangeProof] = useState<string | undefined>(undefined);
 
   // Settings has an in-page hierarchy that isn't represented by URL routes.
   // Back must close the deepest open flow/section before leaving Settings.
@@ -103,7 +104,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         setBinStep("IDLE");
         setBinError(null);
         setBinSuccess(null);
-        setVerifiedToken(undefined);
+        setBinChangeProof(undefined);
         setPasswordInput("");
         setNewBin("");
         setConfirmBin("");
@@ -125,9 +126,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
     setBinSuccess(null);
     setUsernameInput("");
     setPasswordInput("");
+    setCurrentBinInput("");
     setNewBin("");
     setConfirmBin("");
-    setVerifiedToken(undefined);
+    setBinChangeProof(undefined);
     setBinStep("VERIFY");
   };
 
@@ -137,7 +139,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
     setPasswordInput("");
     setNewBin("");
     setConfirmBin("");
-    setVerifiedToken(undefined);
+    setBinChangeProof(undefined);
     setBinStep("IDLE");
   };
 
@@ -148,30 +150,40 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
     const cleanUser = usernameInput.trim();
     const cleanPass = passwordInput;
 
-    if (!cleanUser || !cleanPass) {
+    if (!cleanUser || !cleanPass || !/^\d{4,}$/.test(currentBinInput.trim())) {
       setBinError(
         locale === "ar"
-          ? "يرجى إدخال اسم المستخدم وكلمة مرور الحساب"
-          : "Please enter username and account password"
+          ? "يرجى إدخال اسم المستخدم وكلمة المرور ورمز BIN الحالي الصحيح"
+          : "Please enter your username, password, and current numeric BIN"
       );
       return;
     }
 
     setIsBinLoading(true);
     try {
-      const res = await authService.verifyCurrentPassword(cleanUser, cleanPass);
+      const res = await authService.verifyCurrentPassword(cleanUser, cleanPass, currentBinInput.trim());
       if (res.success) {
-        setVerifiedToken(res.token);
+        setBinChangeProof(res.token);
         setPasswordInput(""); // Clear sensitive password immediately from memory
+        setCurrentBinInput(""); // Clear the current BIN immediately after the server issues the proof
         setBinStep("NEW_BIN");
         setBinError(null);
       } else {
-        setBinError(
-          res.error ||
-            (locale === "ar"
-              ? "تعذر التحقق من بيانات الحساب."
-              : "Unable to verify account credentials.")
-        );
+        let message = res.error || (locale === "ar" ? "تعذر التحقق من بيانات الحساب." : "Unable to verify account credentials.");
+        if (res.error === "WRONG_BIN") {
+          message = locale === "ar"
+            ? "رمز BIN الحالي غير صحيح. المحاولات المتبقية: " + (res.remainingAttempts ?? 0)
+            : "Current BIN is incorrect. Attempts remaining: " + (res.remainingAttempts ?? 0);
+        } else if (res.error === "BIN_LOCKED_FROZEN" || res.status === "LOCKED") {
+          message = locale === "ar"
+            ? "تم قفل رمز BIN بعد ثلاث محاولات. استخدم مسار استعادة الرمز."
+            : "The BIN is locked after three failed attempts. Use the BIN recovery flow.";
+        } else if (res.error === "RECOVERY_REQUIRED") {
+          message = locale === "ar"
+            ? "الحساب مقفل؛ استخدم مسار استعادة رمز BIN."
+            : "The account is locked; use the BIN recovery flow.";
+        }
+        setBinError(message);
       }
     } catch (err: any) {
       setBinError(
@@ -212,11 +224,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
 
     setIsBinLoading(true);
     try {
-      const res = await authService.changeAdminBin(cleanBin, verifiedToken);
+      const res = await authService.changeAdminBin(cleanBin, binChangeProof);
       if (res.success) {
         setNewBin("");
         setConfirmBin("");
-        setVerifiedToken(undefined);
+        setBinChangeProof(undefined);
         setBinStep("IDLE");
         setBinSuccess(
           locale === "ar"
@@ -718,7 +730,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                   </div>
 
                   {/* Dual Upload Cards: 1. White Logo, 2. Dark Logo */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* 1. White Logo Card */}
                     <div className="p-3 rounded-xl bg-white dark:bg-[#06201c] border border-gray-200/90 dark:border-[#14423b] space-y-2">
                       <div className="flex items-center justify-between">
@@ -1299,8 +1311,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
 
                   <p className="text-[11px] text-gray-500 dark:text-[#8eb698] leading-relaxed">
                     {t("changeBinStep1Desc") || (locale === "ar"
-                      ? "يرجى إدخال اسم المستخدم وكلمة مرور الحساب الحالية للمتابعة"
-                      : "Please enter your username and current account password to proceed")}
+                      ? "أدخل اسم المستخدم وكلمة المرور ورمز BIN الحالي للتحقق قبل تغييره"
+                      : "Enter your username, current account password, and current BIN to verify before changing it")}
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1330,6 +1342,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                         className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-[#123832] bg-white dark:bg-[#061f1c] text-gray-900 dark:text-[#daf1de] focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                       />
                     </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-[#8eb698] mb-1">
+                        {locale === "ar" ? "رمز BIN الحالي" : "Current Security BIN"}
+                      </label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        required
+                        value={currentBinInput}
+                        onChange={(e) => setCurrentBinInput(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder={locale === "ar" ? "أدخل رمز BIN الحالي" : "Enter current BIN"}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-[#123832] bg-white dark:bg-[#061f1c] text-gray-900 dark:text-[#daf1de] focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 pt-1">
@@ -1337,7 +1364,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                       type="submit"
                       variant="primary"
                       size="sm"
-                      disabled={isBinLoading || !usernameInput.trim() || !passwordInput}
+                      disabled={isBinLoading || !usernameInput.trim() || !passwordInput || !/^\d{4,}$/.test(currentBinInput.trim())}
                       className="text-xs h-8 px-4 font-semibold cursor-pointer"
                     >
                       {isBinLoading
