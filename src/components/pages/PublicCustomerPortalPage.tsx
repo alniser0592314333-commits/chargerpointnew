@@ -86,6 +86,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         'public_resolve_customer_portal',
         { p_public_token: token },
         undefined,
+        true,
+        false,
         true
       );
       // Ignore stale requests and never restore financial data after connectivity drops.
