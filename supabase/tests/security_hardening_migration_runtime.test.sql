@@ -151,3 +151,103 @@ BEGIN
   END IF;
 END
 $bootstrap_owner_created$;
+
+
+-- Anonymous callers may read public logos, but must not upload, overwrite, or delete them.
+DO $storage_policy_shape$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND cmd IN ('INSERT', 'UPDATE', 'DELETE')
+      AND ('public' = ANY(roles) OR 'anon' = ANY(roles))
+  ) THEN
+    RAISE EXCEPTION 'Public/anonymous app identity logo write policy remains';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage' AND tablename = 'objects'
+      AND cmd = 'SELECT' AND 'public' = ANY(roles)
+  ) THEN
+    RAISE EXCEPTION 'Public logo read policy was not preserved';
+  END IF;
+END
+$storage_policy_shape$;
+
+SET ROLE anon;
+DO $anon_logo_write$
+DECLARE
+  v_denied boolean := false;
+  v_rows integer;
+BEGIN
+  BEGIN
+    INSERT INTO storage.objects(bucket_id, name) VALUES ('app-identity', 'white/anon-upload.png');
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_denied := true;
+  END;
+  IF NOT v_denied THEN
+    RAISE EXCEPTION 'Anonymous caller was able to upload an app identity logo';
+  END IF;
+
+  UPDATE storage.objects SET name = 'white/anon-overwrite.png'
+  WHERE bucket_id = 'app-identity' AND name = 'existing.png';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'Anonymous caller was able to overwrite an app identity logo';
+  END IF;
+
+  DELETE FROM storage.objects
+  WHERE bucket_id = 'app-identity' AND name = 'existing.png';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 0 THEN
+    RAISE EXCEPTION 'Anonymous caller was able to delete an app identity logo';
+  END IF;
+END
+$anon_logo_write$;
+RESET ROLE;
+
+-- An active non-Super-Admin cannot write logos; the verified Super Admin can.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000001"}', false);
+DO $operator_logo_write$
+DECLARE
+  v_denied boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO storage.objects(bucket_id, name) VALUES ('app-identity', 'white/operator-upload.png');
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_denied := true;
+  END;
+  IF NOT v_denied THEN
+    RAISE EXCEPTION 'Non-Super-Admin was able to upload an app identity logo';
+  END IF;
+END
+$operator_logo_write$;
+
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000003', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000003"}', false);
+DO $super_admin_logo_write$
+DECLARE
+  v_rows integer;
+BEGIN
+  INSERT INTO storage.objects(bucket_id, name)
+  VALUES ('app-identity', 'white/super-admin-upload.png');
+
+  UPDATE storage.objects
+  SET name = 'white/super-admin-updated.png'
+  WHERE bucket_id = 'app-identity' AND name = 'white/super-admin-upload.png';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'Active Super Admin could not update an app identity logo';
+  END IF;
+
+  DELETE FROM storage.objects
+  WHERE bucket_id = 'app-identity' AND name = 'white/super-admin-updated.png';
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  IF v_rows <> 1 THEN
+    RAISE EXCEPTION 'Active Super Admin could not delete an app identity logo';
+  END IF;
+END
+$super_admin_logo_write$;
+RESET ROLE;
