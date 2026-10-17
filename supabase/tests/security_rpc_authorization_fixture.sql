@@ -11,6 +11,9 @@ END
 $roles$;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated;
+CREATE SEQUENCE public.fixture_sequence;
 CREATE SCHEMA auth;
 CREATE TABLE auth.users (id uuid PRIMARY KEY, email text, email_confirmed_at timestamptz);
 
