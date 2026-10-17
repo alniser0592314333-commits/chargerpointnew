@@ -4,11 +4,14 @@ DECLARE
   v_result record;
   v_count integer;
   v_result_type text;
+  v_token text;
+  v_token_again text;
 BEGIN
   INSERT INTO public.customers (id, name, status, is_active, deleted_at) VALUES
     ('a1b2c3d4-1111-4111-8111-111111111111', 'Active Customer', 'ACTIVE', true, NULL),
     ('b2c3d4e5-2222-4222-8222-222222222222', 'Inactive Customer', 'INACTIVE', false, NULL),
-    ('c3d4e5f6-3333-4333-8333-333333333333', 'Deleted Customer', 'ACTIVE', true, now());
+    ('c3d4e5f6-3333-4333-8333-333333333333', 'Deleted Customer', 'ACTIVE', true, now()),
+    ('d4e5f6a7-4444-4444-8444-444444444444', 'Legacy QR Customer', 'ACTIVE', true, NULL);
 
   INSERT INTO public.qr_tokens (id, token_hash, public_token, token_type, target_id, is_active, expires_at) VALUES
     ('11111111-aaaa-4111-8111-111111111111', 'hash-active', 'valid-customer-token-000000000001', 'CUSTOMER', 'a1b2c3d4-1111-4111-8111-111111111111', true, NULL),
@@ -61,6 +64,37 @@ BEGIN
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.public_resolve_customer_qr(text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'authenticated must be able to resolve public customer QR links';
+  END IF;
+
+  IF has_function_privilege('anon', 'public.adopt_customer_qr_token(uuid, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'anon must not be able to adopt legacy customer QR tokens';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.adopt_customer_qr_token(uuid, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'authenticated must be able to adopt legacy customer QR tokens';
+  END IF;
+
+  -- The old local-only link is preserved if it has never been registered.
+  SELECT public.adopt_customer_qr_token(
+    'd4e5f6a7-4444-4444-8444-444444444444',
+    'legacy-customer-token-0000000001'
+  ) INTO v_token;
+  IF v_token <> 'legacy-customer-token-0000000001' THEN
+    RAISE EXCEPTION 'Legacy QR token was not preserved: %', v_token;
+  END IF;
+
+  SELECT * INTO v_result
+  FROM public.public_resolve_customer_qr(v_token);
+  IF NOT FOUND OR v_result.customer_name <> 'Legacy QR Customer' OR v_result.customer_code <> 'D4E5' THEN
+    RAISE EXCEPTION 'Adopted legacy QR did not resolve to its customer';
+  END IF;
+
+  -- Repeated adoption is idempotent and never overwrites a current central token.
+  SELECT public.adopt_customer_qr_token(
+    'd4e5f6a7-4444-4444-8444-444444444444',
+    'another-legacy-token-00000000002'
+  ) INTO v_token_again;
+  IF v_token_again <> v_token THEN
+    RAISE EXCEPTION 'Legacy QR adoption replaced the canonical token';
   END IF;
 END;
 $test$;
