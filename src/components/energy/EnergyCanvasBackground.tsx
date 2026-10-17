@@ -100,7 +100,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 251, g: 146, b: 60 },     // Apricot
       beam: { r: 234, g: 88, b: 12 },        // Warm burnt orange
       speedMultiplier: 0.24,
-      particleDensity: 8,
+      particleDensity: 16,
       glowIntensity: 0.36,
     },
   },
@@ -111,7 +111,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 16, g: 185, b: 129 },     // Fresh emerald
       beam: { r: 20, g: 184, b: 166 },
       speedMultiplier: 0.25,
-      particleDensity: 8,
+      particleDensity: 16,
       glowIntensity: 0.27,
     },
     charged: {
@@ -120,7 +120,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 52, g: 211, b: 153 },
       beam: { r: 16, g: 185, b: 129 },
       speedMultiplier: 0.18,
-      particleDensity: 7,
+      particleDensity: 14,
       glowIntensity: 0.29,
     },
     'delivered-paid': {
@@ -138,7 +138,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 249, g: 115, b: 22 },    // Tangerine
       beam: { r: 234, g: 88, b: 12 },
       speedMultiplier: 0.22,
-      particleDensity: 7,
+      particleDensity: 14,
       glowIntensity: 0.27,
     },
   },
