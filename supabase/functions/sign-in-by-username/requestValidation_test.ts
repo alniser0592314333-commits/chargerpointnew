@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { escapeLikeLiteral, isTrustedClientIp, normalizeUsername, publicAuthFailure } from "./requestValidation.ts";
+import { escapeLikeLiteral, hashRateLimitKey, isTrustedClientIp, normalizeUsername, publicAuthFailure } from "./requestValidation.ts";
 
 Deno.test("username input is normalized and bounded", () => {
   assertEquals(normalizeUsername("  operator  "), "operator");
@@ -34,4 +34,15 @@ Deno.test("unknown usernames and bad passwords share one public failure response
     error: "RATE_LIMIT",
     isRateLimited: true,
   });
+});
+
+Deno.test("rate-limit keys are stable HMAC digests and do not expose raw identifiers", async () => {
+  const first = await hashRateLimitKey("a sufficiently long test secret for rate limits", "ip:203.0.113.8");
+  const repeat = await hashRateLimitKey("a sufficiently long test secret for rate limits", "ip:203.0.113.8");
+  const different = await hashRateLimitKey("a sufficiently long test secret for rate limits", "ip:203.0.113.9");
+  assertEquals(first, repeat);
+  assertEquals(first.length, 64);
+  assertEquals(/^[0-9a-f]{64}$/.test(first), true);
+  assertEquals(first === different, false);
+  assertEquals(first.includes("203.0.113.8"), false);
 });
