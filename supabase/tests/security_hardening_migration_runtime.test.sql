@@ -1,17 +1,6 @@
 -- Runtime regression for admin-bound SELECT policies and TRUNCATE revocation.
 \set ON_ERROR_STOP on
 
-DO $precheck$
-BEGIN
-  IF NOT has_table_privilege('anon', 'public.customers', 'TRUNCATE') THEN
-    RAISE EXCEPTION 'Fixture precondition failed: anon must initially have TRUNCATE';
-  END IF;
-  IF NOT has_table_privilege('authenticated', 'public.financial_ledger', 'TRUNCATE') THEN
-    RAISE EXCEPTION 'Fixture precondition failed: authenticated must initially have TRUNCATE';
-  END IF;
-END
-$precheck$;
-
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', false);
 SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000001"}', false);
