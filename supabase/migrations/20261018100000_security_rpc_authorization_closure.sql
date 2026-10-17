@@ -72,6 +72,15 @@ $function$;
 REVOKE ALL ON FUNCTION public._cp_assert_active_admin_permission(text)
   FROM PUBLIC, anon, authenticated, service_role;
 
+-- Guard/assertion helpers are implementation details used by SECURITY DEFINER
+-- wrappers and RLS expressions, not standalone API endpoints.
+REVOKE ALL ON FUNCTION public.assert_my_account_session_active()
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.authorize_super_admin_admin_management(text)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public._cp_guard_nonempty_replacement_payload(jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+
 -- A valid Supabase Auth session is not sufficient authorization to mint or
 -- rotate customer/order QR capabilities. Require an active app admin and the
 -- permission appropriate to the target resource before entering the mutator.
