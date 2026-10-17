@@ -81,6 +81,8 @@ jobs:
           deno-version: v2.x
       - name: Type-check public QR payment Edge Function
         run: deno check --no-lock --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
+      - name: Test hard QR payment upload body limit
+        run: deno test --no-lock --node-modules-dir=none supabase/functions/submit-qr-payment/requestBodyLimit_test.ts
       - name: Type-check authorized QR receipt signer Edge Function
         run: deno check --no-lock --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/index.ts
       - name: Test QR receipt path validation
@@ -93,6 +95,11 @@ jobs:
         run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/handler_test.ts
       - name: Type-check and lint
         run: npm run lint
+      - name: Run BIN lockout and proof-gated change client regressions
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/bin_change_proof_client_flow.test.ts src/tests/settings_phase1_refinements.test.ts src/tests/bin_attempt_tracking_authoritative.test.ts src/tests/bin_lock_isolation.test.ts
       - name: Build production bundle
         run: npm run build
       - name: Run full existing test suite (diagnostic)
@@ -173,6 +180,14 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017250000_fix_remaining_security_definer_search_path.sql
+      - name: Pin pg_temp last for remaining public-only SECURITY DEFINER paths
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017400000_pin_public_only_definer_search_paths.sql
+      - name: Verify no public-only SECURITY DEFINER search paths remain
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_definer_search_path_closure.test.sql
       - name: Revoke unnecessary anonymous table and sequence privileges
         env:
           PGPASSWORD: postgres
@@ -221,6 +236,194 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/security_rpc_authorization_runtime.test.sql
+
+      - name: Prepare goal, customer QR, sync, and table-read permission contracts
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $roles$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+              CREATE ROLE supabase_admin NOLOGIN;
+            END IF;
+          END
+          $roles$;
+          -- Recreate the legacy platform defaults that the new migration must close when manageable.
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL ON TABLES TO anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL ON SEQUENCES TO anon, authenticated;
+          ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+          CREATE POLICY authenticated_read ON public.customers FOR SELECT TO authenticated USING (true);
+          CREATE FUNCTION public.evaluate_customer_active_goal__session_guarded_impl(uuid)
+            RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''ok'', true, ''customer_id'', $1)';
+          CREATE FUNCTION public.evaluate_customer_active_goal(uuid)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.evaluate_customer_active_goal__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.adopt_customer_qr_token(uuid, text)
+            RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT $2';
+          CREATE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
+            RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''schema_version'', 1)';
+          CREATE FUNCTION public.capture_sync_bootstrap_snapshot()
+            RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.capture_sync_bootstrap_snapshot__session_guarded_impl(); END;';
+          CREATE FUNCTION public.pull_canonical_changes__session_guarded_impl(bigint, integer)
+            RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''changes'', ''[]''::jsonb, ''serverResetGeneration'', 1, ''latestSequence'', $1)';
+          CREATE FUNCTION public.pull_canonical_changes(bigint, integer DEFAULT 500)
+            RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.pull_canonical_changes__session_guarded_impl($1, $2); END;';
+          GRANT EXECUTE ON FUNCTION public.evaluate_customer_active_goal(uuid) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.adopt_customer_qr_token(uuid, text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.capture_sync_bootstrap_snapshot() TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated, service_role;
+          SQL
+      - name: Apply goal, customer QR, and sync permission guards
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017320000_guard_goal_evaluation_and_customer_qr_adoption.sql
+      - name: Verify goal, customer QR, and sync RPC permission boundaries
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/goal_qr_rpc_permission_guards.test.sql
+
+      - name: Apply guarded administrator audit log read RPC
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017340000_secure_admin_audit_log_reads.sql
+      - name: Verify audit log RPC authorization and direct table closure
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/admin_audit_log_rpc.test.sql
+      - name: Prepare isolated BIN lockout and change-proof RPC contracts
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_hash text;
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_failed_attempts integer NOT NULL DEFAULT 0;
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_status text NOT NULL DEFAULT 'ACTIVE';
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_locked_at timestamptz;
+          ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS encrypted_password text;
+          INSERT INTO auth.users(id, email, email_confirmed_at, encrypted_password)
+          VALUES (
+            '11000000-0000-0000-0000-000000000002',
+            'staff@example.test',
+            now(),
+            crypt('test-password', gen_salt('bf', 10))
+          )
+          ON CONFLICT (id) DO UPDATE SET encrypted_password = EXCLUDED.encrypted_password;
+          CREATE TABLE IF NOT EXISTS auth.sessions (
+            id uuid PRIMARY KEY,
+            user_id uuid NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            not_after timestamptz
+          );
+          CREATE TABLE IF NOT EXISTS public.admin_bin_recovery_proofs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            admin_id uuid NOT NULL REFERENCES public.admins(id) ON DELETE CASCADE,
+            auth_user_id uuid NOT NULL,
+            proof_token_hash varchar(64) NOT NULL,
+            purpose varchar(50) NOT NULL DEFAULT 'BIN_RECOVERY',
+            issued_at timestamptz NOT NULL DEFAULT now(),
+            expires_at timestamptz NOT NULL DEFAULT (now() + interval '2 minutes'),
+            is_used boolean NOT NULL DEFAULT false,
+            used_at timestamptz
+          );
+          ALTER TABLE public.admin_bin_recovery_proofs ENABLE ROW LEVEL SECURITY;
+          REVOKE ALL ON TABLE public.admin_bin_recovery_proofs FROM PUBLIC, anon, authenticated;
+          CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            actor_admin_id uuid NOT NULL REFERENCES public.admins(id),
+            action varchar(100) NOT NULL,
+            target_admin_id uuid REFERENCES public.admins(id),
+            metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          CREATE FUNCTION public.issue_bin_recovery_proof__session_guarded_impl(text)
+            RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, auth, pg_temp
+            AS 'SELECT jsonb_build_object(''success'', false, ''error'', ''fixture recovery issue implementation'')';
+          CREATE FUNCTION public.recover_and_reset_admin_bin__session_guarded_impl(text, text)
+            RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, auth, pg_temp
+            AS 'SELECT jsonb_build_object(''success'', false, ''error'', ''fixture recovery reset implementation'')';
+          CREATE FUNCTION public.issue_bin_recovery_proof(text)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.issue_bin_recovery_proof__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.recover_and_reset_admin_bin(text, text)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.recover_and_reset_admin_bin__session_guarded_impl($1, $2); END;';
+          REVOKE ALL ON FUNCTION public.issue_bin_recovery_proof__session_guarded_impl(text) FROM PUBLIC, anon, authenticated, service_role;
+          REVOKE ALL ON FUNCTION public.recover_and_reset_admin_bin__session_guarded_impl(text, text) FROM PUBLIC, anon, authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.issue_bin_recovery_proof(text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.recover_and_reset_admin_bin(text, text) TO authenticated, service_role;
+          CREATE FUNCTION public.verify_admin_bin__session_guarded_impl(text)
+            RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT false';
+          CREATE FUNCTION public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(text)
+            RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''success'', false, ''status'', ''ACTIVE'', ''is_locked'', false, ''remaining_attempts'', 3, ''failed_attempts'', 0)';
+          CREATE FUNCTION public.verify_admin_bin(text)
+            RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.verify_admin_bin__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.verify_admin_bin_with_attempt_tracking(text)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.verify_admin_bin_with_attempt_tracking__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.set_admin_bin__session_guarded_impl(text)
+            RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''success'', true)';
+          CREATE FUNCTION public.set_admin_bin(text)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.set_admin_bin__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.set_admin_bin__session_guarded_impl(text, uuid)
+            RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT true';
+          CREATE FUNCTION public.set_admin_bin(text, uuid)
+            RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.set_admin_bin__session_guarded_impl($1, $2); END;';
+          GRANT EXECUTE ON FUNCTION public.verify_admin_bin(text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.verify_admin_bin_with_attempt_tracking(text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.set_admin_bin(text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.set_admin_bin(text, uuid) TO authenticated, service_role;
+          SQL
+      - name: Apply BIN lockout and proof-gated change migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017330000_restore_bin_lockout_and_secure_bin_change.sql
+      - name: Verify BIN attempt tracking and proof-gated changes
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/bin_attempt_tracking_and_change_proof.test.sql
+
+      - name: Apply administrative BIN self-target guard
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017350000_prevent_admin_bin_self_reset_bypass.sql
+      - name: Verify administrative reset RPCs cannot target the caller's own account
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/admin_bin_reset_self_target.test.sql
+
+      - name: Bind BIN recovery proofs to their issuing Auth session
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017370000_bind_bin_recovery_proofs_to_auth_session.sql
+      - name: Verify BIN recovery proof session binding and replay protection
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/bin_recovery_session_binding.test.sql
+
+      - name: Enforce one active customer QR token per target
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017380000_enforce_single_active_customer_qr.sql
+      - name: Verify QR rotation serialization and active-token invariant
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/qr_rotation_single_active_token.test.sql
 
       - name: Create isolated database for authoritative snapshot paging
         env:
@@ -608,5 +811,6 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+          github-token: ${{ github.token }}
       - name: Run isolated local Supabase Auth integration
         run: bash supabase/tests/username_signin_local_integration.sh

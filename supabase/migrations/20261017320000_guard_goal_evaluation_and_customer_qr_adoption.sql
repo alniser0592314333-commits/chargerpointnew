@@ -1,0 +1,260 @@
+-- Close authorization gaps in goal evaluation, customer QR adoption, and full sync reads,
+-- and remove legacy direct browser table access. No business rows, sync cursors, payload
+-- shape, or local/offline storage are changed.
+
+CREATE OR REPLACE FUNCTION public.evaluate_customer_active_goal(p_customer_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  -- Evaluation can update goal progress and create a financial BONUS ledger row.
+  -- Require the goal-management capability: this evaluator can mutate progress and award a financial bonus.
+  PERFORM public._cp_assert_active_admin_permission('goals:manage');
+  RETURN public.evaluate_customer_active_goal__session_guarded_impl(p_customer_id);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.evaluate_customer_active_goal(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.evaluate_customer_active_goal(uuid) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.adopt_customer_qr_token(
+  p_customer_id uuid,
+  p_public_token text
+)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_existing_token text;
+  v_token text;
+BEGIN
+  -- QR adoption changes the customer's active public capability token.
+  -- Require customer-view permission in addition to a valid active admin session.
+  PERFORM public._cp_assert_active_admin_permission('customers:view');
+
+  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true))
+       IS DISTINCT FROM 'service_role'
+     AND public.is_active_admin_session() IS NOT TRUE
+  THEN
+    RAISE EXCEPTION 'Active administrator account required'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF p_customer_id IS NULL
+     OR p_public_token IS NULL
+     OR p_public_token !~ '^[A-Za-z0-9_-]{24,64}$'
+  THEN
+    RAISE EXCEPTION 'Invalid legacy customer QR identity';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.customers AS c
+    WHERE c.id = p_customer_id
+      AND c.is_active = TRUE
+      AND c.deleted_at IS NULL
+      AND c.status <> 'DELETED'
+  ) THEN
+    RAISE EXCEPTION 'Active customer not found for legacy QR adoption';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('customer-qr:' || p_customer_id::text, 0));
+
+  SELECT qt.public_token
+    INTO v_existing_token
+  FROM public.qr_tokens AS qt
+  WHERE qt.target_id = p_customer_id
+    AND qt.token_type = 'CUSTOMER'
+    AND qt.is_active = TRUE
+    AND (qt.expires_at IS NULL OR qt.expires_at > now())
+  LIMIT 1;
+
+  IF v_existing_token IS NOT NULL THEN
+    RETURN v_existing_token;
+  END IF;
+
+  UPDATE public.qr_tokens
+  SET is_active = FALSE
+  WHERE target_id = p_customer_id
+    AND token_type = 'CUSTOMER'
+    AND is_active = TRUE;
+
+  v_token := p_public_token;
+
+  IF EXISTS (SELECT 1 FROM public.qr_tokens AS qt WHERE qt.public_token = v_token) THEN
+    LOOP
+      v_token := replace(replace(replace(encode(gen_random_bytes(24), 'base64'), '+', '-'), '/', '_'), '=', '');
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM public.qr_tokens AS qt WHERE qt.public_token = v_token);
+    END LOOP;
+  END IF;
+
+  INSERT INTO public.qr_tokens (
+    id, token_hash, public_token, token_type, target_id, is_active, expires_at, created_at
+  )
+  VALUES (
+    gen_random_uuid(),
+    encode(digest(v_token, 'sha256'), 'hex'),
+    v_token,
+    'CUSTOMER',
+    p_customer_id,
+    TRUE,
+    NULL,
+    now()
+  );
+
+  RETURN v_token;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.adopt_customer_qr_token(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.adopt_customer_qr_token(uuid, text) TO authenticated, service_role;
+
+-- Full bootstrap and delta pulls contain business-wide operational and financial
+-- data. Require the explicit sync-management capability at the server boundary;
+-- an active Auth/admin session alone is not sufficient.
+CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
+  RETURN public.capture_sync_bootstrap_snapshot__session_guarded_impl();
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.capture_sync_bootstrap_snapshot() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.capture_sync_bootstrap_snapshot() TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.pull_canonical_changes(
+  p_since_sequence bigint,
+  p_limit integer DEFAULT 500
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
+  RETURN public.pull_canonical_changes__session_guarded_impl(p_since_sequence, p_limit);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.pull_canonical_changes(bigint, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated, service_role;
+
+-- The current client reads business data through guarded RPCs and IndexedDB, not
+-- direct PostgREST table queries. Remove legacy browser table/view grants and
+-- broad authenticated read policies so a valid session cannot bypass RPC-level
+-- permissions by querying the REST table endpoint directly.
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public
+  FROM PUBLIC, anon, authenticated;
+
+DO $drop_public_browser_read_policies$
+DECLARE
+  v_policy record;
+BEGIN
+  FOR v_policy IN
+    SELECT schemaname, tablename, policyname
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND cmd IN ('SELECT', 'ALL')
+  LOOP
+    EXECUTE format(
+      'DROP POLICY IF EXISTS %I ON %I.%I',
+      v_policy.policyname,
+      v_policy.schemaname,
+      v_policy.tablename
+    );
+  END LOOP;
+END;
+$drop_public_browser_read_policies$;
+
+-- Attempt to revoke future table/sequence grants for the migration-owner roles.
+-- A postcondition below deliberately fails the migration if a platform-owned default
+-- cannot be changed, so current grants cannot be mistaken for complete closure.
+DO $revoke_future_browser_table_access$
+DECLARE
+  v_role name;
+  v_current_is_superuser boolean;
+BEGIN
+  SELECT rolsuper INTO v_current_is_superuser
+  FROM pg_roles
+  WHERE rolname = current_user;
+
+  FOR v_role IN
+    SELECT rolname
+    FROM pg_roles
+    WHERE rolname IN ('postgres', 'supabase_admin')
+      AND (
+        rolname = current_user
+        OR COALESCE(v_current_is_superuser, false)
+        OR pg_has_role(current_user, oid, 'MEMBER')
+      )
+  LOOP
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated',
+      v_role
+    );
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated',
+      v_role
+    );
+  END LOOP;
+END;
+$revoke_future_browser_table_access$;
+
+-- Verify default ACLs for the role that owns and creates this application's
+-- public objects. Supabase's platform-owned supabase_admin defaults may be immutable
+-- to the migration role; they are reported as a residual rather than blocking the
+-- application-owned hardening below. Current application objects are postgres-owned.
+DO $assert_future_browser_table_access_closed$
+DECLARE
+  v_migration_owner oid;
+BEGIN
+  SELECT oid INTO v_migration_owner
+  FROM pg_roles
+  WHERE rolname = current_user;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl AS d
+    JOIN pg_namespace AS n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS a
+    LEFT JOIN pg_roles AS grantee ON grantee.oid = a.grantee
+    WHERE n.nspname = 'public'
+      AND d.defaclrole = v_migration_owner
+      AND d.defaclobjtype IN ('r', 'S')
+      AND COALESCE(grantee.rolname, 'PUBLIC') IN ('PUBLIC', 'anon', 'authenticated')
+  ) THEN
+    RAISE EXCEPTION
+      'Browser default privileges remain for the application migration owner in public schema';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl AS d
+    JOIN pg_namespace AS n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS a
+    LEFT JOIN pg_roles AS grantee ON grantee.oid = a.grantee
+    JOIN pg_roles AS owner_role ON owner_role.oid = d.defaclrole
+    WHERE n.nspname = 'public'
+      AND owner_role.rolname = 'supabase_admin'
+      AND d.defaclobjtype IN ('r', 'S')
+      AND COALESCE(grantee.rolname, 'PUBLIC') IN ('PUBLIC', 'anon', 'authenticated')
+  ) THEN
+    RAISE WARNING
+      'Platform-owned supabase_admin default ACLs remain outside the migration role authority; application public objects are expected to remain owned by the application migration role';
+  END IF;
+END;
+$assert_future_browser_table_access_closed$;
+
+NOTIFY pgrst, 'reload schema';

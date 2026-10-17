@@ -14,6 +14,7 @@ import {
   rpcVerifyAdminBin,
   rpcVerifyAdminBinWithTracking,
   rpcIssueBinRecoveryProof,
+  rpcIssueBinChangeProof,
   rpcRecoverAndResetAdminBin,
   rpcSetAdminBin,
   rpcGetCurrentAdminProfile,
@@ -158,6 +159,9 @@ interface PendingSuperAdminContext {
 
 let pendingSuperAdminContext: PendingSuperAdminContext | null = null;
 
+// Short-lived in-memory handoff only; never persist the re-auth token to browser storage.
+let pendingBinChangeSession: { proof: string; accessToken: string; expiresAt: number } | null = null;
+
 const getLocalStorage = () => {
   if (typeof localStorage !== "undefined") return localStorage;
   if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -197,8 +201,16 @@ export interface AuthService {
   ): Promise<{ success: boolean; session?: UserSession | null; error?: string | null }>;
   verifyCurrentPassword(
     emailOrUsername: string,
-    currentPassword: string
-  ): Promise<{ success: boolean; error: string | null; token?: string }>;
+    currentPassword: string,
+    currentBin?: string
+  ): Promise<{
+    success: boolean;
+    error: string | null;
+    token?: string;
+    remainingAttempts?: number;
+    failedAttempts?: number;
+    status?: string;
+  }>;
   changeAdminBin(
     newBin: string,
     verifiedToken?: string
@@ -457,39 +469,80 @@ class DefaultAuthService implements AuthService {
     return { success: false, error: "كلمة المرور الحالية غير صحيحة" };
   }
 
-    async verifyCurrentPassword(
+  async verifyCurrentPassword(
     emailOrUsername: string,
-    currentPassword: string
-  ): Promise<{ success: boolean; error: string | null; token?: string }> {
+    currentPassword: string,
+    currentBin?: string
+  ): Promise<{
+    success: boolean;
+    error: string | null;
+    token?: string;
+    remainingAttempts?: number;
+    failedAttempts?: number;
+    status?: string;
+  }> {
+    pendingBinChangeSession = null;
     const cleanIdentifier = emailOrUsername.trim();
     const cleanPass = currentPassword;
+    const cleanBin = currentBin ? currentBin.trim() : "";
     if (!cleanIdentifier || !cleanPass) {
       return {
         success: false,
-        error: "يرجى إدخال اسم المستخدم وكلمة المرور الحالية",
+        error: "Please enter the current account username/email and password.",
       };
     }
     if (this.isSupabaseConfigured()) {
+      if (!/^\d{4,}$/.test(cleanBin)) {
+        return { success: false, error: "A valid current BIN is required." };
+      }
+
+      // Capture the currently signed-in identity before a non-persistent re-auth attempt.
+      // Never allow this settings flow to switch the active account to another admin.
+      const currentSession = await this.getSupabaseAuthSession();
+      const currentUserId = currentSession?.user?.id;
+      if (!currentUserId) {
+        return { success: false, error: "An active signed-in admin session is required." };
+      }
+
       const signInRes = cleanIdentifier.includes("@")
         ? await supabaseSignInWithPassword(cleanIdentifier.toLowerCase(), cleanPass, false)
         : await supabaseSignInWithUsername(cleanIdentifier, cleanPass, false);
       if (signInRes.error || !signInRes.session) {
         return {
           success: false,
-          error: "تعذر التحقق من بيانات الحساب.",
+          error: "Unable to verify account credentials.",
         };
       }
-      return {
-        success: true,
-        error: null,
-        token: signInRes.session.access_token,
+      if (signInRes.session.user?.id !== currentUserId) {
+        return {
+          success: false,
+          error: "The credentials must belong to the currently signed-in admin.",
+        };
+      }
+
+      const proofRes = await rpcIssueBinChangeProof(cleanBin, signInRes.session.access_token);
+      if (!proofRes.success || !proofRes.proofToken) {
+        return {
+          success: false,
+          error: proofRes.error || "Unable to verify the current BIN.",
+          remainingAttempts: proofRes.remainingAttempts,
+          failedAttempts: proofRes.failedAttempts,
+          status: proofRes.status,
+        };
+      }
+
+      pendingBinChangeSession = {
+        proof: proofRes.proofToken,
+        accessToken: signInRes.session.access_token,
+        expiresAt: Date.now() + Math.min(proofRes.expiresInSeconds || 120, 120) * 1000,
       };
+      return { success: true, error: null, token: proofRes.proofToken };
     }
     // Local / test mode fallback
     if (cleanPass === SUPER_ADMIN_TEST_ACCOUNT.pin || cleanPass === "123456" || cleanPass === "correct_password") {
       return { success: true, error: null, token: "mock_verified_token" };
     }
-    return { success: false, error: "تعذر التحقق من بيانات الحساب." };
+    return { success: false, error: "Unable to verify account credentials." };
   }
 
   async changeAdminBin(
@@ -504,10 +557,17 @@ class DefaultAuthService implements AuthService {
       };
     }
     if (this.isSupabaseConfigured()) {
-      const token = verifiedToken || getSupabaseAuthToken();
-      const res = await rpcSetAdminBin(cleanBin, undefined, token || undefined);
+      const changeProof = verifiedToken || "";
+      // Use only the same temporary session that issued this proof. Do not fall back
+      // to the ordinary stored app session, which is not the re-authenticated session.
+      const pending = pendingBinChangeSession;
+      pendingBinChangeSession = null;
+      if (!pending || !changeProof || pending.proof !== changeProof || pending.expiresAt <= Date.now()) {
+        return { success: false, error: "RECENT_REAUTH_REQUIRED: Re-authenticate before changing the BIN." };
+      }
+      const res = await rpcSetAdminBin(cleanBin, changeProof, pending.accessToken);
       if (!res.success) {
-        return { success: false, error: res.error || "فشل تحديث رمز الأمان" };
+        return { success: false, error: res.error || "Failed to update security BIN" };
       }
       return { success: true, error: null };
     }
@@ -516,6 +576,8 @@ class DefaultAuthService implements AuthService {
   }
 
   async login(emailOrUsername: string, passOrPin: string, bin?: string): Promise<UserSession | null> {
+    // A fresh login invalidates any unfinished privileged BIN-change handoff.
+    pendingBinChangeSession = null;
     const cleanIdentifier = emailOrUsername.trim();
     const cleanPass = passOrPin;
     const cleanBin = bin ? bin.trim() : "";
@@ -754,6 +816,8 @@ class DefaultAuthService implements AuthService {
   }
 
   async logout(): Promise<void> {
+    // Never retain a short-lived re-auth token across logout.
+    pendingBinChangeSession = null;
     clearStoredSupabaseAuthSession();
     inMemorySession = null;
     pendingSuperAdminContext = null;

@@ -43,6 +43,15 @@ CREATE TABLE public.admins (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.admin_audit_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_admin_id uuid,
+  action varchar NOT NULL,
+  target_admin_id uuid,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.global_app_identity (
   id uuid PRIMARY KEY,
   singleton boolean NOT NULL DEFAULT true,
@@ -92,7 +101,7 @@ CREATE TABLE public.financial_ledger (
 -- must remove write privileges while leaving non-sensitive read contracts alone.
 GRANT ALL PRIVILEGES ON TABLE
   public.admins, public.global_app_identity, public.customers,
-  public.orders, public.qr_tokens, public.financial_ledger
+  public.orders, public.qr_tokens, public.financial_ledger, public.admin_audit_logs
 TO authenticated;
 
 CREATE FUNCTION public.assert_my_account_session_active()
@@ -127,6 +136,70 @@ AS $function$
     AND upper(replace(trim(a.role), ' ', '_')) = 'SUPER_ADMIN'
   LIMIT 1
 $function$;
+
+CREATE FUNCTION public.rpc_update_admin_bin__session_guarded_impl(
+  p_target_admin_id uuid, p_new_bin text, p_caller_bin text
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_caller_id uuid;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_caller_bin);
+  IF v_caller_id IS NULL THEN
+    RAISE EXCEPTION 'Super Admin required' USING ERRCODE = '42501';
+  END IF;
+  UPDATE public.admins SET version = version + 1 WHERE id = p_target_admin_id;
+  INSERT INTO public.admin_audit_logs(actor_admin_id, action, target_admin_id, metadata)
+  VALUES (v_caller_id, 'ADMIN_BIN_RESET', p_target_admin_id, '{"synthetic":true}'::jsonb);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rpc_update_admin_bin__session_guarded_impl(uuid, text, text)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.rpc_update_admin_bin(
+  p_target_admin_id uuid, p_new_bin text, p_caller_bin text
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public.assert_my_account_session_active();
+  PERFORM public.rpc_update_admin_bin__session_guarded_impl($1, $2, $3);
+END;
+$function$;
+GRANT EXECUTE ON FUNCTION public.rpc_update_admin_bin(uuid, text, text) TO authenticated, service_role;
+
+CREATE FUNCTION public.rpc_update_admin_password__session_guarded_impl(
+  p_target_admin_id uuid, p_new_password text, p_caller_bin text
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_caller_id uuid;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_caller_bin);
+  IF v_caller_id IS NULL THEN
+    RAISE EXCEPTION 'Super Admin required' USING ERRCODE = '42501';
+  END IF;
+  UPDATE public.admins SET version = version + 1 WHERE id = p_target_admin_id;
+  INSERT INTO public.admin_audit_logs(actor_admin_id, action, target_admin_id, metadata)
+  VALUES (v_caller_id, 'ADMIN_PASSWORD_RESET', p_target_admin_id, '{"synthetic":true}'::jsonb);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rpc_update_admin_password__session_guarded_impl(uuid, text, text)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.rpc_update_admin_password(
+  p_target_admin_id uuid, p_new_password text, p_caller_bin text
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public.assert_my_account_session_active();
+  PERFORM public.rpc_update_admin_password__session_guarded_impl($1, $2, $3);
+END;
+$function$;
+GRANT EXECUTE ON FUNCTION public.rpc_update_admin_password(uuid, text, text) TO authenticated, service_role;
 
 CREATE FUNCTION public.is_active_admin_session()
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
