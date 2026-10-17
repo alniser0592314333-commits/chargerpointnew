@@ -142,11 +142,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     };
     return map[status]?.[isAr ? 0 : 1] ?? status;
   };
-  const paymentMethodLabel = (method: string) => ({
-    BANK_OF_PALESTINE: isAr ? 'بنك فلسطين' : 'Bank of Palestine',
-    JAWAL_PAY: isAr ? 'جوال باي' : 'Jawwal Pay',
-    PALPAY: isAr ? 'بال باي' : 'PalPay',
-  }[method] ?? method);
+  const paymentMethodLabel = (method: string) => {
+    const methods: Record<string, string> = {
+      BANK_OF_PALESTINE: isAr ? 'بنك فلسطين' : 'Bank of Palestine',
+      JAWAL_PAY: isAr ? 'جوال باي' : 'Jawwal Pay',
+      PALPAY: isAr ? 'بال باي' : 'PalPay',
+    };
+    return methods[method] ?? method;
+  };
 
   return (
     <div dir={isAr ? 'rtl' : 'ltr'} className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#071b1b] dark:text-slate-100">
