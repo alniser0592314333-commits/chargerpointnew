@@ -15,7 +15,9 @@ BEGIN
   INSERT INTO public.qr_tokens(public_token, token_type, target_id, is_active)
     VALUES ('CustomerToken-0123456789ABCDEF', 'CUSTOMER', v_customer, true),
            ('OrderToken-0123456789ABCDEF', 'ORDER', v_order, true),
-           ('RevokedToken-0123456789ABCDEF', 'CUSTOMER', v_customer, false);
+           ('RevokedToken-0123456789ABCDEF', 'CUSTOMER', v_customer, false),
+           ('ExpiredToken-0123456789ABCDEF', 'CUSTOMER', v_customer, true);
+  UPDATE public.qr_tokens SET expires_at = now() - interval '1 minute' WHERE public_token = 'ExpiredToken-0123456789ABCDEF';
   INSERT INTO public.financial_ledger(id, customer_id, amount_minor)
     VALUES ('99999999-9999-4999-8999-999999999999', v_customer, -500),
            (v_bonus_ledger, v_customer, 150),
@@ -64,6 +66,9 @@ BEGIN
   END IF;
   IF public.public_resolve_customer_portal('RevokedToken-0123456789ABCDEF') IS NOT NULL THEN
     RAISE EXCEPTION 'revoked QR must not resolve';
+  END IF;
+  IF public.public_resolve_customer_portal('ExpiredToken-0123456789ABCDEF') IS NOT NULL THEN
+    RAISE EXCEPTION 'expired QR must not resolve';
   END IF;
   IF public.public_resolve_customer_portal('InvalidToken') IS NOT NULL THEN
     RAISE EXCEPTION 'invalid QR must not resolve';
