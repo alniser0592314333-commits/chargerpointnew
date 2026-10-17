@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Minimal schema reproducing the deployed customer-QR resolver contract drift.
 CREATE TABLE public.customers (
   id uuid PRIMARY KEY,
