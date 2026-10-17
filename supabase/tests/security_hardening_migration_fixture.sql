@@ -119,3 +119,20 @@ CREATE FUNCTION public.get_or_create_customer_qr__session_guarded_impl(uuid)
 RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT NULL::text';
 CREATE FUNCTION public.adopt_customer_qr_token(uuid, text)
 RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT NULL::text';
+
+
+-- Representative trigger-only SECURITY DEFINER functions. They must remain
+-- invocable by PostgreSQL triggers but not directly through exposed API roles.
+CREATE FUNCTION public.protect_super_admin_account()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION public.trg_change_capture()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  RETURN NEW;
+END;
+$$;
