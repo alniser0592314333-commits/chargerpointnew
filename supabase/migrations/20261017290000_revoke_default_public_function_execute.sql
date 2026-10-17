@@ -17,7 +17,7 @@ BEGIN
     WHERE rolname IN ('postgres', 'supabase_admin')
       AND (
         rolname = current_user
-        OR rolsuper
+        OR (SELECT self_role.rolsuper FROM pg_roles self_role WHERE self_role.rolname = current_user)
         OR pg_has_role(current_user, oid, 'MEMBER')
       )
   LOOP
