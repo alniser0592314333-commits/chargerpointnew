@@ -455,7 +455,7 @@ BEGIN
     JOIN pg_namespace n ON n.oid = d.defaclnamespace
     CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
     WHERE n.nspname = 'public'
-      AND d.defaclrole = 'postgres'::regrole
+      AND d.defaclrole IN (SELECT oid FROM pg_roles WHERE rolname IN ('postgres', 'supabase_admin'))
       AND d.defaclobjtype IN ('r', 'S')
       AND acl.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'anon')
   ) THEN
