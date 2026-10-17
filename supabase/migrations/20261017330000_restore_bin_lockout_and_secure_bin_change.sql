@@ -310,8 +310,8 @@ $function$;
 
 -- The old setters could replace a BIN with only an active Auth session. The
 -- current client now uses change_admin_bin with a proof; retire the legacy RPCs.
-REVOKE ALL ON FUNCTION public.set_admin_bin(text) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.set_admin_bin(text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.set_admin_bin(text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.set_admin_bin(text, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_admin_bin__session_guarded_impl(text)
   FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_admin_bin__session_guarded_impl(text, uuid)
