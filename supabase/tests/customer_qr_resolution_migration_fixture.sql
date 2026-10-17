@@ -31,6 +31,21 @@ BEGIN
 END;
 $function$;
 
+CREATE UNIQUE INDEX qr_tokens_one_active_per_entity
+  ON public.qr_tokens (target_id, token_type)
+  WHERE is_active = TRUE;
+
+-- The original migration has a direct implementation; the fix replaces this
+-- same public RPC with the session-guarded wrapper used by current production.
+CREATE FUNCTION public.get_or_create_customer_qr(p_customer_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+  RETURN NULL;
+END;
+$function$;
+
 CREATE FUNCTION public.derive_customer_code(p_customer_id uuid)
 RETURNS varchar
 LANGUAGE sql
