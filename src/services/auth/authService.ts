@@ -566,7 +566,6 @@ class DefaultAuthService implements AuthService {
       const profile = await this.getAdminProfile(signInRes.session.access_token);
       if (!profile || !profile.authenticated) {
         setSupabaseAuthToken(null);
-        console.warn(`[AUTH_DEBUG] getAdminProfile failed after successful password auth`);
         throw new Error("PROFILE_RPC_FAILED");
       }
 
