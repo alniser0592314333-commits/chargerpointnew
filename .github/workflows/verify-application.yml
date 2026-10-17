@@ -93,6 +93,11 @@ jobs:
         run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/handler_test.ts
       - name: Type-check and lint
         run: npm run lint
+      - name: Run BIN lockout and proof-gated change client regressions
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/bin_change_proof_client_flow.test.ts src/tests/settings_phase1_refinements.test.ts src/tests/bin_attempt_tracking_authoritative.test.ts src/tests/bin_lock_isolation.test.ts
       - name: Build production bundle
         run: npm run build
       - name: Run full existing test suite (diagnostic)
