@@ -280,6 +280,15 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/goal_qr_rpc_permission_guards.test.sql
+
+      - name: Apply guarded administrator audit log read RPC
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017340000_secure_admin_audit_log_reads.sql
+      - name: Verify audit log RPC authorization and direct table closure
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/admin_audit_log_rpc.test.sql
       - name: Prepare isolated BIN lockout and change-proof RPC contracts
         env:
           PGPASSWORD: postgres
