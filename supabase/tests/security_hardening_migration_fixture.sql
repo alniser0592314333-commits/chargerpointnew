@@ -52,6 +52,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON public.customers TO anon, auth
 GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON public.financial_ledger TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON public.customer_requests TO anon, authenticated;
 
+-- The shared minimal auth fixture intentionally omits optional GoTrue columns.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
+
 INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
   ('10000000-0000-0000-0000-000000000001', 'admin-fixture@example.invalid', now()),
   ('10000000-0000-0000-0000-000000000002', 'nonadmin-fixture@example.invalid', now()),
