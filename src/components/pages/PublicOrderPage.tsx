@@ -67,6 +67,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const requestGeneration = useRef(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -129,18 +130,24 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       active = false;
       requestGeneration.current += 1;
     };
-  }, [token]);
+  }, [token, online]);
 
   useEffect(() => {
     const onOffline = () => {
       requestGeneration.current += 1;
+      setOnline(false);
       setData(null);
       setSubmission(null);
       setError(true);
       setLoading(false);
     };
+    const onOnline = () => setOnline(true);
     window.addEventListener('offline', onOffline);
-    return () => window.removeEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
   }, []);
 
   // Read-only refresh keeps the QR page aligned with server-side review and payment allocation.
