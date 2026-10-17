@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const migration = readFileSync(
-  new URL('../../supabase/migrations/20261016140000_fix_qr_payment_balance_and_receipt_integrity.sql', import.meta.url),
+  new URL('../../supabase/migrations/20261016220000_apply_customer_credit_to_order_qr_remainder.sql', import.meta.url),
   'utf8',
 );
 const edgeFunction = readFileSync(
@@ -26,15 +26,19 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(migration).toContain("ELSE 'NOT_DUE'");
   });
 
-  it('uses customer credit only as a boolean and blocks order-QR payment when credit is positive', () => {
+  it('applies available customer credit to the order remainder without exposing the full account balance', () => {
     expect(migration).toContain("'customer_has_positive_credit', (v_customer_balance_minor > 0)");
-    expect(migration).toContain("'order_qr_submission_limit_reached', (v_order_qr_submission_count >= 3)");
-    expect(migration).toContain("IF v_customer_balance_minor > 0 THEN");
+    expect(migration).toContain("'order_due_minor', v_due_minor");
+    expect(migration).toContain("v_due_minor := greatest(v_due_minor - greatest(v_customer_balance_minor, 0), 0);");
+    expect(migration).not.toContain("IF v_customer_balance_minor > 0 THEN");
     expect(orderPage).toContain("customerHasPositiveCredit");
     expect(orderPage).toContain("'CREDIT_COVERED'");
     expect(orderPage).toContain('!orderQrSubmissionLimitReached');
-    expect(paymentPage).toContain('order.customerHasPositiveCredit');
+    expect(orderPage).toContain('سيُخصم رصيدك من قيمة الطلب');
+    expect(paymentPage).toContain('server-calculated remainder already includes applicable customer credit');
+    expect(paymentPage).not.toContain("typeof order.customerHasPositiveCredit !== 'boolean'");
     expect(paymentPage).toContain('orderPaymentAllowed');
+    expect(edgeFunction).not.toContain('if (resolvedOrder.customer_has_positive_credit)');
   });
 
   it('caps order-QR submissions at three across the lifetime of that order QR', () => {
@@ -54,8 +58,9 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(edgeFunction).toContain('No payment notification was saved; please try again.');
   });
 
-  it('fails closed if credit state cannot be verified on the payment form', () => {
-    expect(paymentPage).toContain('Could not verify the account balance');
+  it('fails closed when the authoritative remaining amount cannot be verified', () => {
+    expect(paymentPage).toContain('amountDue === null || amountDue <= 0');
+    expect(paymentPage).toContain('There is no remaining amount due for this order.');
     expect(paymentPage).toContain('disabled={sending || (Boolean(order) && !orderPaymentAllowed)}');
   });
 });

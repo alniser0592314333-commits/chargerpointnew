@@ -5534,8 +5534,9 @@ export interface PublicOrderQrData {
  * 1. Checks Supabase central database RPC `public_resolve_order_qr`.
  * 2. In offline/foundation mode, checks `localDb` `qr_tokens` and in-memory maps.
  * 3. STRICT PRIVACY BOUNDARY:
- *    Returns public order details plus a boolean indicating whether positive customer credit exists.
- *    NEVER returns the exact customer balance, phone, debt limit, credentials, or administrative details.
+ *    Returns public order details, the remaining amount after available credit is applied, and a
+ *    boolean indicating whether credit exists. NEVER returns the exact account balance, phone,
+ *    debt limit, credentials, or administrative details.
  */
 export const getPublicOrderByToken = async (
   publicToken: string
