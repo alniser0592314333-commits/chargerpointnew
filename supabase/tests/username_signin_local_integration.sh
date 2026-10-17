@@ -77,6 +77,7 @@ if [[ -z "$API_URL" || -z "$DB_URL" || -z "$ANON_KEY" || -z "$SECRET_KEY" ]]; th
 fi
 
 cat > "$WORKDIR/supabase/functions/.env" <<ENV
+AUTH_SUPABASE_SECRET_KEY=$SECRET_KEY
 USERNAME_SIGNIN_RATE_LIMIT_SECRET=$(openssl rand -hex 32)
 AUTH_IP_FORWARDING_ENABLED=true
 ENV
