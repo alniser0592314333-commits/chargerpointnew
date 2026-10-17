@@ -406,6 +406,15 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/bin_recovery_session_binding.test.sql
 
+      - name: Enforce one active customer QR token per target
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017380000_enforce_single_active_customer_qr.sql
+      - name: Verify QR rotation serialization and active-token invariant
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/qr_rotation_single_active_token.test.sql
+
       - name: Create isolated database for authoritative snapshot paging
         env:
           PGPASSWORD: postgres
