@@ -1,7 +1,7 @@
 export function normalizeUsername(value: unknown): string | null {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || /[\u0000-\u001f\u007f]/.test(value)) return null;
   const username = value.trim();
-  if (!username || username.length > 64 || /[\u0000-\u001f\u007f]/.test(username)) return null;
+  if (!username || username.length > 64) return null;
   return username;
 }
 
