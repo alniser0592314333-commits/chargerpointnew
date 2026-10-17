@@ -67,6 +67,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const requestGeneration = useRef(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Background state controller with unified setter:
@@ -84,37 +85,63 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     }
   }, [data]);
 
-  // Initial order fetch
+  // Initial order fetch. Public financial data is never retained across an offline transition.
   useEffect(() => {
     let active = true;
+    const requestId = ++requestGeneration.current;
     setLoading(true);
     setError(false);
     setSubmission(null);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setData(null);
+      setError(true);
+      setLoading(false);
+      return () => { active = false; requestGeneration.current += 1; };
+    }
+
     getPublicOrderByToken(token)
       .then((result) => {
-        if (!active) return;
+        if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
         if (result) {
           setData(result);
           void rpcResolveQrPaymentSubmission(token).then((latest) => {
-            if (active && latest) setSubmission(latest);
+            if (active && requestId === requestGeneration.current && navigator.onLine && latest) setSubmission(latest);
           }).catch((err) => {
             console.warn('Could not resolve public order payment status:', err);
           });
         } else {
+          setData(null);
           setError(true);
         }
       })
       .catch((err) => {
         console.error('Failed to load public order data:', err);
-        if (active) setError(true);
+        if (active && requestId === requestGeneration.current) {
+          setData(null);
+          setSubmission(null);
+          setError(true);
+        }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && requestId === requestGeneration.current) setLoading(false);
       });
     return () => {
       active = false;
+      requestGeneration.current += 1;
     };
   }, [token]);
+
+  useEffect(() => {
+    const onOffline = () => {
+      requestGeneration.current += 1;
+      setData(null);
+      setSubmission(null);
+      setError(true);
+      setLoading(false);
+    };
+    window.addEventListener('offline', onOffline);
+    return () => window.removeEventListener('offline', onOffline);
+  }, []);
 
   // Read-only refresh keeps the QR page aligned with server-side review and payment allocation.
   useEffect(() => {
@@ -122,16 +149,16 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     let refreshing = false;
 
     const refreshPublicPaymentState = async () => {
-      if (!active || refreshing) return;
+      if (!active || refreshing || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
       refreshing = true;
+      const requestId = requestGeneration.current;
       try {
         const [latestOrder, latestSubmission] = await Promise.all([
           rpcResolveOrderQr(token),
           rpcResolveQrPaymentSubmission(token),
         ]);
-        if (!active) return;
-        // Poll the server RPC directly. The store's offline fallback is useful for initial
-        // display, but must not overwrite a confirmed server balance with stale local data.
+        if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
+        // Poll the server RPC directly; stale responses are ignored after route changes/offline transitions.
         if (latestOrder) {
           setData((current) => current ? {
             ...current,
@@ -170,20 +197,36 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
   // Retry order fetch handler (used on error fallback)
   const refreshOrder = async () => {
+    const requestId = ++requestGeneration.current;
     setLoading(true);
     try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setData(null);
+        setSubmission(null);
+        setError(true);
+        return;
+      }
       const result = await getPublicOrderByToken(token);
+      if (requestId !== requestGeneration.current || !navigator.onLine) return;
       if (result) {
         setData(result);
         setError(false);
-      } else if (!data) {
+        const latest = await rpcResolveQrPaymentSubmission(token);
+        if (requestId === requestGeneration.current && navigator.onLine && latest) setSubmission(latest);
+      } else {
+        setData(null);
+        setSubmission(null);
         setError(true);
       }
     } catch (err) {
       console.error('Failed to reload public order data:', err);
-      if (!data) setError(true);
+      if (requestId === requestGeneration.current) {
+        setData(null);
+        setSubmission(null);
+        setError(true);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestGeneration.current) setLoading(false);
     }
   };
 
