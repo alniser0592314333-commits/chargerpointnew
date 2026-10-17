@@ -144,3 +144,8 @@ CREATE FUNCTION public.calculate_customer_authoritative_balance__session_guarded
 RETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER AS 'SELECT 0::bigint';
 REVOKE ALL ON FUNCTION public.calculate_customer_authoritative_balance__session_guarded_impl(uuid)
   FROM PUBLIC, anon, authenticated, service_role;
+
+-- Existing browser-visible username resolver; the hardening migration must revoke
+-- API execution while leaving no browser-side dependency on it.
+CREATE FUNCTION public.get_email_by_username(p_username text)
+RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT NULL::text';
