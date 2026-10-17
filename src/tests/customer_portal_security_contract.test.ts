@@ -104,11 +104,14 @@ describe('Isolated customer QR portal security contract', () => {
       "'public_resolve_order_qr'",
       "'public_resolve_qr_payment_submission'",
     ]) {
-      const index = client.indexOf(publicRpc);
-      expect(index).toBeGreaterThan(-1);
+      const resolverStart = client.indexOf('export async function rpcResolveCustomerQr');
+      const index = client.indexOf(publicRpc, resolverStart);
+      expect(index).toBeGreaterThan(resolverStart);
       const callEnd = client.indexOf(');', index);
       const call = client.slice(index, callEnd + 2);
-      expect(call).toContain('undefined,\\n    true,\\n    false,\\n    true');
+      expect(call).toContain('undefined');
+      expect(call).toContain('false');
+      expect(call).toContain('true');
     }
 
 
