@@ -536,12 +536,14 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               <AlertCircle className="h-7 w-7" />
             </span>
             <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-slate-50">
-              {isAr ? 'تعذّر الوصول لبيانات الدفع' : 'Payment details could not be found'}
+              {!online ? (isAr ? 'الاتصال بالإنترنت غير متاح' : 'You are offline') : (isAr ? 'تعذّر الوصول لبيانات الدفع' : 'Payment details could not be found')}
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-400">
-              {isAr
-                ? 'الرابط غير صالح أو منتهي الصلاحية، أو تم حذفه من النظام. يرجى مسح رمز QR الصحيح مجدداً.'
-                : 'This link is invalid or expired. Please re-scan the original QR code to proceed.'}
+              {!online
+                ? (isAr ? 'أخفينا بيانات الحساب والإيصال أثناء انقطاع الإنترنت. أعد الاتصال وسيتم التحقق من الرمز مجدداً.' : 'Account and receipt details are hidden while offline. Reconnect to verify this QR again.')
+                : (isAr
+                  ? 'الرابط غير صالح أو منتهي الصلاحية، أو تم حذفه من النظام. يرجى مسح رمز QR الصحيح مجدداً.'
+                  : 'This link is invalid or expired. Please re-scan the original QR code to proceed.')}
             </p>
             <div className="mt-6">
               <a
