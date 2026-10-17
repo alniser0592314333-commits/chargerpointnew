@@ -136,3 +136,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+
+-- Representative SECURITY DEFINER function with the search_path drift observed
+-- in production. It is internal-only and intentionally starts without proconfig.
+CREATE FUNCTION public.calculate_customer_authoritative_balance__session_guarded_impl(p_customer_id uuid)
+RETURNS bigint LANGUAGE sql STABLE SECURITY DEFINER AS 'SELECT 0::bigint';
+REVOKE ALL ON FUNCTION public.calculate_customer_authoritative_balance__session_guarded_impl(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
