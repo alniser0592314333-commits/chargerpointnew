@@ -33,3 +33,6 @@ verify_jwt = false
 
 [functions.sign-qr-payment-receipt]
 verify_jwt = false
+
+[functions.sign-in-by-username]
+verify_jwt = false
