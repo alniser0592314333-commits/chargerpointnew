@@ -1,9 +1,11 @@
 \set ON_ERROR_STOP on
 BEGIN;
 
-UPDATE auth.sessions
-SET created_at = now(), not_after = NULL
-WHERE id = '11000000-0000-0000-0000-000000000009';
+INSERT INTO auth.sessions(id, user_id, created_at, not_after)
+VALUES ('11000000-0000-0000-0000-000000000009',
+        '11000000-0000-0000-0000-000000000002', now(), NULL)
+ON CONFLICT (id) DO UPDATE
+SET user_id = EXCLUDED.user_id, created_at = now(), not_after = NULL;
 
 SET LOCAL ROLE authenticated;
 DO $rotate_customer_qr_twice$
