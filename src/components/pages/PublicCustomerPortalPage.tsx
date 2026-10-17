@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock3, CreditCard, Globe, History, RefreshCw, ShieldCheck, Wallet, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { invokeSupabaseRpc } from '../../services/supabase/client';
@@ -67,8 +67,10 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
+  const requestGeneration = useRef(0);
 
   const load = useCallback(async (manual = false) => {
+    const requestId = ++requestGeneration.current;
     if (manual) setRefreshing(true); else setLoading(true);
     setError(null);
     // Never show a cached/local financial snapshot as if it were current.
@@ -86,6 +88,13 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         undefined,
         true
       );
+      // Ignore stale requests and never restore financial data after connectivity drops.
+      if (requestId !== requestGeneration.current) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setData(null);
+        setError('service');
+        return;
+      }
       if (rpcError || !response) {
         setData(null);
         setError(rpcError ? 'service' : 'invalid');
@@ -103,21 +112,33 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         setData(response);
       }
     } catch {
-      setData(null);
-      setError('service');
+      if (requestId === requestGeneration.current) {
+        setData(null);
+        setError('service');
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestGeneration.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [token]);
 
   useEffect(() => {
     void load();
     const onOnline = () => { setOnline(true); void load(); };
-    const onOffline = () => { setOnline(false); setData(null); setError('service'); };
+    const onOffline = () => {
+      requestGeneration.current += 1;
+      setOnline(false);
+      setData(null);
+      setError('service');
+      setLoading(false);
+      setRefreshing(false);
+    };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
     return () => {
+      requestGeneration.current += 1;
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
     };
