@@ -1,9 +1,18 @@
 -- Additional fixture for the security-hardening migration. Run after
 -- 20261014130000_account_session_management.sql in the isolated test database.
 CREATE TABLE public.admins (
-  id uuid PRIMARY KEY,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_user_id uuid UNIQUE NOT NULL,
-  is_active boolean NOT NULL DEFAULT true
+  username varchar(64) UNIQUE,
+  full_name varchar(200),
+  email varchar(255) UNIQUE,
+  role text NOT NULL DEFAULT 'OPERATOR',
+  permissions text[] NOT NULL DEFAULT '{}'::text[],
+  bin_hash varchar(255),
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  version integer NOT NULL DEFAULT 1
 );
 
 CREATE TABLE public.customers (
@@ -43,17 +52,21 @@ GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON public.customers TO anon, auth
 GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON public.financial_ledger TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON public.customer_requests TO anon, authenticated;
 
-INSERT INTO auth.users(id, email) VALUES
-  ('10000000-0000-0000-0000-000000000001', 'admin-fixture@example.invalid'),
-  ('10000000-0000-0000-0000-000000000002', 'nonadmin-fixture@example.invalid');
+INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
+  ('10000000-0000-0000-0000-000000000001', 'admin-fixture@example.invalid', now()),
+  ('10000000-0000-0000-0000-000000000002', 'nonadmin-fixture@example.invalid', now()),
+  ('10000000-0000-0000-0000-000000000003', 'al.niser.0592314333@gmail.com', now());
 INSERT INTO auth.sessions(id, user_id, not_after) VALUES
   ('11000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', now() + interval '1 hour'),
   ('11000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', now() + interval '1 hour');
 INSERT INTO public.account_sessions(session_id, user_id) VALUES
   ('11000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001'),
   ('11000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002');
-INSERT INTO public.admins(id, auth_user_id, is_active) VALUES
-  ('12000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', true);
+INSERT INTO public.admins(id, auth_user_id, username, email, role, is_active) VALUES
+  ('12000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'fixture_admin', 'admin-fixture@example.invalid', 'OPERATOR', true);
+
+INSERT INTO auth.sessions(id, user_id, not_after) VALUES
+  ('11000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', now() + interval '1 hour');
 
 
 -- Minimal existing function signatures for migration replacement in this isolated fixture.
