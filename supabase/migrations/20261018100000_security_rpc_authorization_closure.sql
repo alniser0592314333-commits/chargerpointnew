@@ -192,6 +192,13 @@ DECLARE
   );
   v_current_admin_id uuid;
 BEGIN
+  -- RLS policies may call this with current_admin_id() = NULL for non-admin
+  -- sessions. Preserve the safe empty-set behavior rather than throwing from
+  -- inside policy evaluation.
+  IF p_admin_id IS NULL THEN
+    RETURN;
+  END IF;
+
   IF v_request_role = 'service_role' THEN
     RETURN QUERY
     SELECT ep.permission
@@ -200,11 +207,6 @@ BEGIN
   END IF;
 
   v_current_admin_id := public._cp_assert_active_admin_permission(NULL);
-
-  IF p_admin_id IS NULL THEN
-    RAISE EXCEPTION 'Admin id is required'
-      USING ERRCODE = '22023';
-  END IF;
 
   IF p_admin_id IS DISTINCT FROM v_current_admin_id THEN
     PERFORM public._cp_assert_active_admin_permission('admin:manage');
