@@ -16,8 +16,8 @@ BEGIN
 END
 $sync_rpc_contract$;
 
--- Start with an active staff account that can view orders but has no goal or
--- customer-view permission. These are synthetic fixture rows only.
+-- Start with an active staff account that can view orders and goals, but lacks
+-- goal-management, customer-view, and sync-management permissions. Synthetic rows only.
 UPDATE public.admins
 SET permissions = ARRAY['orders:view','goals:view']::text[]
 WHERE id = '10000000-0000-0000-0000-000000000002';
