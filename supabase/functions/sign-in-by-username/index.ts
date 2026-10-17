@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { escapeLikeLiteral, isTrustedClientIp, normalizeUsername } from "./requestValidation.ts";
+import { escapeLikeLiteral, isTrustedClientIp, normalizeUsername, publicAuthFailure } from "./requestValidation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,8 +10,10 @@ const corsHeaders = {
 const respond = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
 
-const invalidCredentials = () =>
-  respond(401, { session: null, error: "Invalid login credentials", isInvalidCredentials: true });
+const invalidCredentials = () => {
+  const failure = publicAuthFailure(401);
+  return respond(failure.status, failure.body);
+};
 
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -72,12 +74,10 @@ Deno.serve(async (request: Request) => {
       },
     );
 
-    if (authResponse.status === 429) {
-      return respond(429, { session: null, error: "RATE_LIMIT", isRateLimited: true });
-    }
     if (!authResponse.ok) {
       // Do not forward Auth's raw body: it can reveal confirmation/account state.
-      return invalidCredentials();
+      const failure = publicAuthFailure(authResponse.status);
+      return respond(failure.status, failure.body);
     }
 
     const session = await authResponse.json().catch(() => null);
