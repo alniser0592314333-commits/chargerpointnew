@@ -5,6 +5,8 @@
  * these tests enforce the central-identity contract.
  */
 export const configureCustomerQrRpcMocks = (mocks: any, localDb: any): void => {
+  for (const mock of Object.values(mocks) as any[]) mock.mockReset();
+
   const activeTokenByCustomer = new Map<string, string>();
   const customerByToken = new Map<string, string>();
   const customerCodes: Record<string, string> = {
