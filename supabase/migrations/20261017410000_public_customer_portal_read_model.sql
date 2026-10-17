@@ -66,11 +66,12 @@ BEGIN
         LEFT JOIN LATERAL (
           SELECT
             COALESCE(sum(oi.final_charge_snapshot_minor)
-              FILTER (WHERE oi.cancelled_at IS NULL), 0)::bigint AS total_minor,
+              FILTER (WHERE oi.cancelled_at IS NULL AND oi.deleted_at IS NULL), 0)::bigint AS total_minor,
             COALESCE(sum(
               GREATEST(oi.final_charge_snapshot_minor - COALESCE(pa.paid_minor, 0), 0)
             ) FILTER (
               WHERE oi.cancelled_at IS NULL
+                AND oi.deleted_at IS NULL
                 AND oi.financial_status = 'RECOGNIZED'
                 AND oi.financially_recognized_at IS NOT NULL
             ), 0)::bigint AS due_minor,
@@ -87,6 +88,7 @@ BEGIN
               'paid_minor', COALESCE(pa.paid_minor, 0),
               'due_minor', CASE
                 WHEN oi.cancelled_at IS NULL
+                 AND oi.deleted_at IS NULL
                  AND oi.financial_status = 'RECOGNIZED'
                  AND oi.financially_recognized_at IS NOT NULL
                 THEN GREATEST(oi.final_charge_snapshot_minor - COALESCE(pa.paid_minor, 0), 0)
