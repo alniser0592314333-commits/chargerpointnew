@@ -2,7 +2,6 @@
 -- Also close the obsolete username-to-email resolver and a public test-only RPC.
 -- These changes do not modify business rows or financial data.
 
-BEGIN;
 
 REVOKE ALL ON FUNCTION public.get_email_by_username(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.test_fn(text) FROM PUBLIC, anon, authenticated;
@@ -22,4 +21,3 @@ ALTER FUNCTION public.freeze_recognized_order_item_snapshots() SET search_path T
 
 NOTIFY pgrst, 'reload schema';
 
-COMMIT;
