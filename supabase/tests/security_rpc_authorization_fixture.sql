@@ -299,7 +299,8 @@ INSERT INTO public.financial_ledger(id, customer_id, amount_minor) VALUES
  ('40000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 25);
 
 INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
- ('11000000-0000-0000-0000-000000000003', 'unlinked@example.test', now());
+ ('11000000-0000-0000-0000-000000000003', 'staff@example.test', now()),
+ ('11000000-0000-0000-0000-000000000004', 'unlinked@example.test', now());
 
 INSERT INTO public.admins(id, auth_user_id, username, full_name, email, role, permissions, is_active) VALUES
  ('10000000-0000-0000-0000-000000000001', '11000000-0000-0000-0000-000000000001',
