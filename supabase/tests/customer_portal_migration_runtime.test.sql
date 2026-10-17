@@ -59,6 +59,7 @@ BEGIN
   IF (v_result->'orders'->0->>'order_number')::integer <> 17 THEN RAISE EXCEPTION 'wrong order returned'; END IF;
   IF (v_result->'orders'->0->>'total_minor')::bigint <> 1200 THEN RAISE EXCEPTION 'wrong order total'; END IF;
   IF (v_result->'orders'->0->>'due_minor')::bigint <> 1000 THEN RAISE EXCEPTION 'wrong order due'; END IF;
+  IF jsonb_array_length(v_result->'orders'->0->'items') <> 1 THEN RAISE EXCEPTION 'soft-deleted order item leaked into customer view'; END IF;
   IF jsonb_array_length(v_result->'payment_submissions') <> 2 THEN RAISE EXCEPTION 'payment history missing'; END IF;
   IF v_result->'payment_submissions'->0->>'status' <> 'PENDING'
      OR v_result->'payment_submissions'->0->'amount_minor' <> 'null'::jsonb THEN
