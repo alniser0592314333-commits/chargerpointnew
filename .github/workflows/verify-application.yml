@@ -158,6 +158,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017230000_harden_app_identity_storage_policies.sql
+      - name: Revoke direct execution of exposed trigger-only functions
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017240000_revoke_exposed_trigger_function_execute.sql
       - name: Verify admin-bound RLS, TRUNCATE revocation, QR/bootstrap authorization, and logo storage
         env:
           PGPASSWORD: postgres
