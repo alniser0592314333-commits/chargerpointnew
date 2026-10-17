@@ -40,6 +40,18 @@ VALUES (
 ON CONFLICT (id) DO UPDATE
 SET user_id = EXCLUDED.user_id, created_at = now(), not_after = NULL;
 
+-- A second fresh session for the same Auth user must not be able to redeem
+-- a proof issued to the first session.
+INSERT INTO auth.sessions(id, user_id, created_at, not_after)
+VALUES (
+  '11000000-0000-0000-0000-000000000010',
+  '11000000-0000-0000-0000-000000000002',
+  now(),
+  NULL
+)
+ON CONFLICT (id) DO UPDATE
+SET user_id = EXCLUDED.user_id, created_at = now(), not_after = NULL;
+
 SET LOCAL ROLE authenticated;
 
 DO $bin_attempt_tracking$
@@ -187,6 +199,25 @@ BEGIN
   END IF;
 
   v_proof := v_result->>'proof_token';
+
+  -- The same user on a different Auth session cannot redeem the proof.
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"role":"authenticated","sub":"11000000-0000-0000-0000-000000000002","session_id":"11000000-0000-0000-0000-000000000010"}',
+    true
+  );
+  v_change := public.change_admin_bin('5678', v_proof);
+  IF v_change->>'success' IS DISTINCT FROM 'false'
+     OR v_change->>'error' NOT LIKE 'INVALID_OR_EXPIRED_PROOF%' THEN
+    RAISE EXCEPTION 'A different Auth session redeemed a BIN change proof: %', v_change;
+  END IF;
+
+  -- Restore the issuing session and confirm the proof remains usable there.
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"role":"authenticated","sub":"11000000-0000-0000-0000-000000000002","session_id":"11000000-0000-0000-0000-000000000009"}',
+    true
+  );
   v_change := public.change_admin_bin('5678', v_proof);
   IF v_change->>'success' IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'Valid BIN change proof was rejected: %', v_change;
