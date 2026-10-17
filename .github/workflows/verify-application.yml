@@ -222,7 +222,7 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/security_rpc_authorization_runtime.test.sql
 
-      - name: Prepare goal and customer QR permission-guard RPC contracts
+      - name: Prepare goal, customer QR, and sync permission-guard RPC contracts
         env:
           PGPASSWORD: postgres
         run: |
@@ -236,14 +236,28 @@ jobs:
           CREATE FUNCTION public.adopt_customer_qr_token(uuid, text)
             RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
             AS 'SELECT $2';
+          CREATE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
+            RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''schema_version'', 1)';
+          CREATE FUNCTION public.capture_sync_bootstrap_snapshot()
+            RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.capture_sync_bootstrap_snapshot__session_guarded_impl(); END;';
+          CREATE FUNCTION public.pull_canonical_changes__session_guarded_impl(bigint, integer)
+            RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''changes'', ''[]''::jsonb, ''serverResetGeneration'', 1, ''latestSequence'', $1)';
+          CREATE FUNCTION public.pull_canonical_changes(bigint, integer DEFAULT 500)
+            RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.pull_canonical_changes__session_guarded_impl($1, $2); END;';
           GRANT EXECUTE ON FUNCTION public.evaluate_customer_active_goal(uuid) TO authenticated, service_role;
           GRANT EXECUTE ON FUNCTION public.adopt_customer_qr_token(uuid, text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.capture_sync_bootstrap_snapshot() TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated, service_role;
           SQL
-      - name: Apply goal evaluation and customer QR permission guards
+      - name: Apply goal, customer QR, and sync permission guards
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017320000_guard_goal_evaluation_and_customer_qr_adoption.sql
-      - name: Verify goal and customer QR RPC permission boundaries
+      - name: Verify goal, customer QR, and sync RPC permission boundaries
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/goal_qr_rpc_permission_guards.test.sql
