@@ -84,6 +84,28 @@ REVOKE ALL ON FUNCTION public._cp_guard_nonempty_replacement_payload(jsonb)
 -- These tables are accessed through guarded RPCs (and the trusted sign-in Edge
 -- Function), not direct browser REST. Remove stale direct table grants as a second
 -- boundary even though RLS currently has no policies on either table.
+DO $revoke_browser_table_writes$
+DECLARE
+  v_table record;
+BEGIN
+  -- The application writes through server-side SECURITY DEFINER RPCs and the
+  -- sync-command boundary. No public table should accept direct browser DML.
+  FOR v_table IN
+    SELECT n.nspname, c.relname
+    FROM pg_class AS c
+    JOIN pg_namespace AS n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p')
+  LOOP
+    EXECUTE format(
+      'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE %I.%I FROM PUBLIC, anon, authenticated',
+      v_table.nspname,
+      v_table.relname
+    );
+  END LOOP;
+END;
+$revoke_browser_table_writes$;
+
 REVOKE ALL PRIVILEGES ON TABLE public.admins, public.global_app_identity
   FROM PUBLIC, anon, authenticated;
 
