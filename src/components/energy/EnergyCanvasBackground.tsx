@@ -70,7 +70,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 56, g: 189, b: 248 },     // Vibrant neon cyan
       beam: { r: 45, g: 212, b: 191 },       // Bright teal
       speedMultiplier: 0.28,
-      particleDensity: 9,
+      particleDensity: 18,
       glowIntensity: 0.38,
     },
     charged: {
@@ -80,7 +80,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 110, g: 231, b: 183 },    // Soft neon mint
       beam: { r: 16, g: 185, b: 129 },       // Steady emerald beam
       speedMultiplier: 0.20,
-      particleDensity: 8,
+      particleDensity: 16,
       glowIntensity: 0.40,
     },
     'delivered-paid': {
@@ -90,7 +90,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 245, g: 158, b: 11 },     // Champagne amber highlight
       beam: { r: 20, g: 184, b: 166 },       // Subtle teal
       speedMultiplier: 0.16,
-      particleDensity: 7,
+      particleDensity: 14,
       glowIntensity: 0.34,
     },
     'delivered-unpaid': {
@@ -129,7 +129,7 @@ const PALETTES: Record<'dark' | 'light', Record<BackgroundState, StateColorPalet
       accent: { r: 16, g: 185, b: 129 },
       beam: { r: 45, g: 212, b: 191 },
       speedMultiplier: 0.14,
-      particleDensity: 6,
+      particleDensity: 12,
       glowIntensity: 0.24,
     },
     'delivered-unpaid': {
@@ -227,7 +227,7 @@ export const EnergyCanvasBackground: React.FC<EnergyCanvasBackgroundProps> = ({
       height: Math.random() * (height * 0.3) + height * 0.18,
       speedY: Math.random() * 0.45 + 0.2,
       alpha: 0,
-      maxAlpha: Math.random() * 0.10 + 0.08,
+      maxAlpha: Math.random() * 0.09 + 0.13,
       phase: Math.random() * Math.PI * 2,
     }));
 
@@ -274,7 +274,10 @@ export const EnergyCanvasBackground: React.FC<EnergyCanvasBackgroundProps> = ({
       current.speedMultiplier = lerp(current.speedMultiplier, targetPalette.speedMultiplier, lerpSpeed);
       current.glowIntensity = lerp(current.glowIntensity, targetPalette.glowIntensity, lerpSpeed);
 
-      const speedFactor = isReducedMotion ? 0.15 : current.speedMultiplier;
+      // Keep movement visibly alive while slowing the original effect down.
+      // Palette multipliers remain the state-specific speed controls; this
+      // scaling prevents the particles and streams from appearing frozen.
+      const speedFactor = isReducedMotion ? 0.18 : current.speedMultiplier * 2.2;
 
       ctx.clearRect(0, 0, width, height);
 
