@@ -70,6 +70,9 @@ CREATE TABLE public.financial_ledger (
   amount_minor bigint NOT NULL
 );
 
+-- Fixture-only reads used to assert no unauthorized mutation occurred.
+GRANT SELECT ON public.admins, public.qr_tokens TO authenticated;
+
 CREATE FUNCTION public.assert_my_account_session_active()
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
