@@ -21,9 +21,11 @@ Deno.serve(async (request: Request) => {
 
   const url = Deno.env.get("SUPABASE_URL");
   const secretKey = Deno.env.get("SUPABASE_SECRET_KEY");
-  if (!url || !secretKey || !secretKey.startsWith("sb_secret_")) {
-    // IP forwarding to Supabase Auth requires a modern secret API key. Do not silently
-    // fall back to a legacy service_role key that cannot provide per-client rate limits.
+  const ipForwardingEnabled = Deno.env.get("SUPABASE_AUTH_IP_FORWARDING_ENABLED") === "true";
+  if (!url || !secretKey || !secretKey.startsWith("sb_secret_") || !ipForwardingEnabled) {
+    // Deployment must explicitly attest that Auth IP forwarding was enabled in the
+    // project settings. Never silently fall back to a shared Edge Function egress IP
+    // or a legacy service_role key for per-client rate limiting.
     return respond(503, { error: "Username sign-in is temporarily unavailable" });
   }
 
