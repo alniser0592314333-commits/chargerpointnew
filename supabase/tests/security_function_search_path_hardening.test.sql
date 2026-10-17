@@ -1,4 +1,4 @@
--- Run after applying 20261018090000_security_function_search_path_hardening.sql.
+-- Run after applying 20261017145728_security_function_search_path_hardening.sql.
 -- Read-only assertions; no business data is changed.
 
 DO $security_function_search_path_assertions$

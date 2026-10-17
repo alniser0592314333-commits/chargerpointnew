@@ -1,4 +1,5 @@
 -- Pin search_path for the remaining database functions flagged by Supabase.
+-- Migration version reconciled with the already-applied live version 20261017145728.
 -- Also close the obsolete username-to-email resolver and a public test-only RPC.
 -- These changes do not modify business rows or financial data.
 
