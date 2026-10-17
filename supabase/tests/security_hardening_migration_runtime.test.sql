@@ -494,5 +494,21 @@ BEGIN
      OR (v_result->>'retry_after_seconds')::integer <= 0 THEN
     RAISE EXCEPTION 'Rate limiter failed to block the attempt after the configured threshold';
   END IF;
+
+  -- Different usernames from the same IP must still share the IP-wide bucket.
+  FOR i IN 1..24 LOOP
+    SELECT public.consume_username_signin_attempt(repeat('a', 64), lpad(to_hex(i), 64, '0'))
+      INTO v_result;
+    IF (v_result->>'allowed')::boolean IS NOT TRUE THEN
+      RAISE EXCEPTION 'IP-wide rate limiter blocked before 30 attempts';
+    END IF;
+  END LOOP;
+
+  SELECT public.consume_username_signin_attempt(repeat('a', 64), lpad(to_hex(25), 64, '0'))
+    INTO v_result;
+  IF (v_result->>'allowed')::boolean IS NOT FALSE
+     OR (v_result->>'retry_after_seconds')::integer <= 0 THEN
+    RAISE EXCEPTION 'IP-wide rate limiter failed to block attempt 31';
+  END IF;
 END
 $username_rate_limit_runtime$;
