@@ -118,6 +118,40 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Browser role still has direct write privileges on a public table';
   END IF;
+
+  IF has_sequence_privilege('anon', 'public.fixture_sequence', 'USAGE')
+     OR has_sequence_privilege('anon', 'public.fixture_sequence', 'SELECT')
+     OR has_sequence_privilege('anon', 'public.fixture_sequence', 'UPDATE')
+     OR has_sequence_privilege('authenticated', 'public.fixture_sequence', 'USAGE')
+     OR has_sequence_privilege('authenticated', 'public.fixture_sequence', 'SELECT')
+     OR has_sequence_privilege('authenticated', 'public.fixture_sequence', 'UPDATE') THEN
+    RAISE EXCEPTION 'Browser roles retain direct sequence privileges';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl d
+    JOIN pg_namespace n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+    LEFT JOIN pg_roles grantee ON grantee.oid = a.grantee
+    WHERE d.defaclrole = 'postgres'::regrole
+      AND n.nspname = 'public'
+      AND d.defaclobjtype = 'r'
+      AND grantee.rolname IN ('anon', 'authenticated')
+      AND a.privilege_type IN ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_default_acl d
+    JOIN pg_namespace n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+    LEFT JOIN pg_roles grantee ON grantee.oid = a.grantee
+    WHERE d.defaclrole = 'postgres'::regrole
+      AND n.nspname = 'public'
+      AND d.defaclobjtype = 'S'
+      AND grantee.rolname IN ('anon', 'authenticated')
+  ) THEN
+    RAISE EXCEPTION 'Browser DML/sequence privileges remain in public-schema defaults';
+  END IF;
 END
 $migration_contract$;
 
