@@ -16,10 +16,20 @@ DO $default_anon_acl$
 DECLARE
   v_role name;
 BEGIN
+  -- Hosted Supabase's postgres migration role is not necessarily a member of
+  -- supabase_admin. PostgreSQL rejects ALTER DEFAULT PRIVILEGES FOR ROLE when
+  -- the migration role lacks membership, which would abort this entire migration.
+  -- Harden the current owner and any other owner this migration role can legally
+  -- manage; never attempt an unauthorized cross-role change.
   FOR v_role IN
     SELECT rolname
     FROM pg_roles
     WHERE rolname IN ('postgres', 'supabase_admin')
+      AND (
+        rolname = current_user
+        OR rolsuper
+        OR pg_has_role(current_user, oid, 'MEMBER')
+      )
   LOOP
     EXECUTE format(
       'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL PRIVILEGES ON TABLES FROM anon',
