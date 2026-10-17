@@ -64,3 +64,23 @@ END
 $verify_anon_acl$;
 
 NOTIFY pgrst, 'reload schema';
+
+
+DO $anon_maintain_acl$
+BEGIN
+  -- PostgreSQL 17 added MAINTAIN. Inspect ACL entries rather than calling
+  -- has_table_privilege('MAINTAIN'), which is not recognized on PostgreSQL 16.
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    CROSS JOIN LATERAL aclexplode(coalesce(c.relacl, acldefault('r'::"char", c.relowner))) AS acl
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p')
+      AND acl.grantee IN (0, (SELECT oid FROM pg_roles WHERE rolname = 'anon'))
+      AND acl.privilege_type = 'MAINTAIN'
+  ) THEN
+    RAISE EXCEPTION 'PUBLIC or anon retains MAINTAIN on a public table';
+  END IF;
+END
+$anon_maintain_acl$;
