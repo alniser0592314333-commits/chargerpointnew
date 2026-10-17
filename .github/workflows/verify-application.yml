@@ -183,6 +183,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017280000_disable_public_username_email_lookup.sql
+      - name: Revoke default browser execution on future functions
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017290000_revoke_default_public_function_execute.sql
       - name: Verify admin-bound RLS, anonymous ACL revocation, QR/bootstrap authorization, and logo storage
         env:
           PGPASSWORD: postgres
