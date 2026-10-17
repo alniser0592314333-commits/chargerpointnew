@@ -173,6 +173,10 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN v_denied := true; END;
   IF NOT v_denied THEN RAISE EXCEPTION 'Non-admin read a customer authoritative balance'; END IF;
 
+  IF EXISTS (SELECT 1 FROM public.get_effective_permissions(NULL::uuid)) THEN
+    RAISE EXCEPTION 'Null permission lookup must return an empty set';
+  END IF;
+
   v_denied := false;
   BEGIN
     PERFORM * FROM public.get_effective_permissions('10000000-0000-0000-0000-000000000001');
