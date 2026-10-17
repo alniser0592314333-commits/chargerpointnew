@@ -100,11 +100,11 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(undefined, null, false, 'DELIVERED')).toBe('UNAVAILABLE');
   });
 
-  it('suppresses Pay Now when the customer has positive credit', () => {
-    expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('CREDIT_COVERED');
+  it('shows Pay Now when positive customer credit does not cover the full order remainder', () => {
+    expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('UNPAID');
   });
 
-  it('preserves an approved payment status while positive credit still blocks another payment', () => {
+  it('preserves an approved payment status when positive credit only partially covers the order', () => {
     expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED')).toBe('APPROVED');
   });
 

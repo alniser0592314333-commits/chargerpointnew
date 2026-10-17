@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const migration = readFileSync(
-  new URL('../../supabase/migrations/20261016140000_fix_qr_payment_balance_and_receipt_integrity.sql', import.meta.url),
+  new URL('../../supabase/migrations/20261017190000_apply_customer_credit_to_order_qr_remainder.sql', import.meta.url),
   'utf8',
 );
 const edgeFunction = readFileSync(
@@ -26,15 +26,15 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(migration).toContain("ELSE 'NOT_DUE'");
   });
 
-  it('uses customer credit only as a boolean and blocks order-QR payment when credit is positive', () => {
+  it('applies available customer credit to the order remainder and permits payment of the uncovered amount', () => {
     expect(migration).toContain("'customer_has_positive_credit', (v_customer_balance_minor > 0)");
     expect(migration).toContain("'order_qr_submission_limit_reached', (v_order_qr_submission_count >= 3)");
-    expect(migration).toContain("IF v_customer_balance_minor > 0 THEN");
-    expect(orderPage).toContain("customerHasPositiveCredit");
+    expect(migration).toContain('v_due_minor := greatest(v_due_minor - greatest(v_customer_balance_minor, 0), 0);');
+    expect(migration).not.toContain('IF v_customer_balance_minor > 0 THEN');
     expect(orderPage).toContain("'CREDIT_COVERED'");
-    expect(orderPage).toContain('!orderQrSubmissionLimitReached');
-    expect(paymentPage).toContain('order.customerHasPositiveCredit');
+    expect(orderPage).not.toContain("if (customerHasPositiveCredit) return 'CREDIT_COVERED'");
     expect(paymentPage).toContain('orderPaymentAllowed');
+    expect(edgeFunction).not.toContain('if (resolvedOrder.customer_has_positive_credit)');
   });
 
   it('caps order-QR submissions at three across the lifetime of that order QR', () => {

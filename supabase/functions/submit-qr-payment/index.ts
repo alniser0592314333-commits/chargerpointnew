@@ -164,9 +164,9 @@ Deno.serve(async (request: Request) => {
         console.error("Order QR response did not include authoritative customer credit state");
         return json(503, { error: "Could not verify the account balance. Please refresh and try again." });
       }
-      if (resolvedOrder.customer_has_positive_credit) {
-        return json(400, { error: "Your account has positive credit. No order payment is needed right now." });
-      }
+      // The canonical order_due_minor is already net of available customer credit.
+      // Permit payment only for a positive remainder; do not block merely because
+      // the customer still has some positive credit.
       amountMinor = Number(resolvedOrder.order_due_minor);
       const { data: orderRecord, error: orderLookupError } = await supabase
         .from("orders").select("id,customer_id").eq("id", orderId).maybeSingle();
