@@ -84,6 +84,15 @@ REVOKE ALL ON FUNCTION public._cp_guard_nonempty_replacement_payload(jsonb)
 -- These tables are accessed through guarded RPCs (and the trusted sign-in Edge
 -- Function), not direct browser REST. Remove stale direct table grants as a second
 -- boundary even though RLS currently has no policies on either table.
+-- Harden defaults for future tables/sequences created by the application migration
+-- owner. The project has explicit browser DML defaults, so revoke those as well.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLES
+  FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL PRIVILEGES ON SEQUENCES FROM PUBLIC, anon, authenticated;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+
 DO $revoke_browser_table_writes$
 DECLARE
   v_table record;
