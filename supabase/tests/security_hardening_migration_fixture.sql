@@ -15,6 +15,45 @@ CREATE TABLE public.admins (
   version integer NOT NULL DEFAULT 1
 );
 
+
+-- Minimal Storage fixture reproducing the deployed public-write policy drift.
+CREATE SCHEMA IF NOT EXISTS storage;
+CREATE TABLE storage.objects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  bucket_id text NOT NULL,
+  name text NOT NULL
+);
+INSERT INTO storage.objects(bucket_id, name) VALUES ('app-identity', 'existing.png');
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+GRANT USAGE ON SCHEMA storage TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO anon, authenticated;
+CREATE POLICY "Public Read Access" ON storage.objects
+  FOR SELECT TO public USING (bucket_id = 'app-identity');
+CREATE POLICY "Public Upload App Identity Logos" ON storage.objects
+  FOR INSERT TO public WITH CHECK (bucket_id = 'app-identity');
+CREATE POLICY "Public Update App Identity Logos" ON storage.objects
+  FOR UPDATE TO public USING (bucket_id = 'app-identity') WITH CHECK (bucket_id = 'app-identity');
+CREATE POLICY "Public Delete App Identity Logos" ON storage.objects
+  FOR DELETE TO public USING (bucket_id = 'app-identity');
+CREATE POLICY "Admin Insert Access" ON storage.objects
+  FOR INSERT TO authenticated WITH CHECK (
+    bucket_id = 'app-identity' AND EXISTS (
+      SELECT 1 FROM public.admins WHERE auth_user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Admin Update Access" ON storage.objects
+  FOR UPDATE TO authenticated USING (
+    bucket_id = 'app-identity' AND EXISTS (
+      SELECT 1 FROM public.admins WHERE auth_user_id = auth.uid()
+    )
+  );
+CREATE POLICY "Admin Delete Access" ON storage.objects
+  FOR DELETE TO authenticated USING (
+    bucket_id = 'app-identity' AND EXISTS (
+      SELECT 1 FROM public.admins WHERE auth_user_id = auth.uid()
+    )
+  );
+
 CREATE TABLE public.customers (
   id uuid PRIMARY KEY,
   name text NOT NULL
