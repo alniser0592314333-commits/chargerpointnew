@@ -488,7 +488,7 @@ class DefaultAuthService implements AuthService {
       };
     }
     if (this.isSupabaseConfigured()) {
-      if (!/^\\d{4,}$/.test(cleanBin)) {
+      if (!/^\d{4,}$/.test(cleanBin)) {
         return { success: false, error: "A valid current BIN is required." };
       }
 
