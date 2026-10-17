@@ -283,6 +283,28 @@ $super_admin_logo_write$;
 RESET ROLE;
 
 
+-- The public QR payment-status response may confirm a payment, but must not
+-- expose account-wide balance-before/after fields.
+DO $public_qr_payment_contract$
+DECLARE
+  v_definition text;
+BEGIN
+  SELECT pg_get_functiondef('public.public_resolve_qr_payment_submission(text)'::regprocedure)
+  INTO v_definition;
+
+  IF position('balance_before_minor' IN v_definition) > 0
+     OR position('balance_after_minor' IN v_definition) > 0 THEN
+    RAISE EXCEPTION 'Public QR payment-status RPC still exposes private account balance fields';
+  END IF;
+
+  IF position('payment_method' IN v_definition) = 0
+     OR position('reviewed_at' IN v_definition) = 0 THEN
+    RAISE EXCEPTION 'Public QR payment-status RPC lost expected non-sensitive status fields';
+  END IF;
+END
+$public_qr_payment_contract$;
+
+
 -- Trigger-returning SECURITY DEFINER routines are internal implementation
 -- details, not RPCs. Their attached triggers still fire after execute is revoked.
 DO $trigger_function_privileges$
