@@ -3,9 +3,8 @@ import { createUsernameSignInHandler } from "./handler.ts";
 
 const validEnv: Record<string, string> = {
   SUPABASE_URL: "https://project.example",
-  AUTH_SUPABASE_SECRET_KEY: "sb_secret_test_only",
-  USERNAME_SIGNIN_RATE_LIMIT_SECRET: "x".repeat(40),
-  AUTH_IP_FORWARDING_ENABLED: "true",
+  auth_supabase_secret_key: "sb_secret_test_only",
+  username_signin_rate_limit_secret: "x".repeat(40),
 };
 
 function setup(options: {
@@ -102,7 +101,7 @@ function setup(options: {
 }
 
 Deno.test("username sign-in fails closed when required server configuration is missing", async () => {
-  const { handler, calls, request } = setup({ env: { AUTH_SUPABASE_SECRET_KEY: "legacy-service-role-key" } });
+  const { handler, calls, request } = setup({ env: { auth_supabase_secret_key: "legacy-service-role-key" } });
   const response = await handler(request());
   assertEquals(response.status, 503);
   assertEquals(calls.clientCreated, 0);
