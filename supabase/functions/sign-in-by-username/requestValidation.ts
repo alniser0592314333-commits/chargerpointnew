@@ -25,3 +25,14 @@ export function isTrustedClientIp(value: string): boolean {
     return false;
   }
 }
+
+export function publicAuthFailure(status: number): { status: number; body: Record<string, unknown> } {
+  if (status === 429) {
+    return { status: 429, body: { session: null, error: "RATE_LIMIT", isRateLimited: true } };
+  }
+  // Never surface whether a username exists or whether its Auth account is confirmed.
+  return {
+    status: 401,
+    body: { session: null, error: "Invalid login credentials", isInvalidCredentials: true },
+  };
+}
