@@ -10,6 +10,7 @@ describe('Isolated customer QR portal security contract', () => {
   const appPath = path.resolve(process.cwd(), 'src/App.tsx');
   const pagePath = path.resolve(process.cwd(), 'src/components/pages/PublicCustomerPortalPage.tsx');
   const supabaseClientPath = path.resolve(process.cwd(), 'src/services/supabase/client.ts');
+  const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
   const htmlPath = path.resolve(process.cwd(), 'index.html');
 
   it('resolves only active CUSTOMER capabilities and never grants direct table access', () => {
@@ -63,6 +64,24 @@ describe('Isolated customer QR portal security contract', () => {
     expect(storeBootstrap).toBeGreaterThan(publicGuard);
     expect(app.slice(publicGuard, authLookup)).toContain('setIsAuthChecking(false)');
     expect(app.slice(publicGuard, authLookup)).toContain('return () => { isMounted = false; }');
+  });
+
+  it('keeps all public customer/order QR lookups out of the admin local business store', () => {
+    const store = fs.readFileSync(storePath, 'utf8');
+    const customerStart = store.indexOf('export const getPublicCustomerByToken = async (');
+    const customerEnd = store.indexOf('export interface PublicOrderQrData', customerStart);
+    const orderStart = store.indexOf('export const getPublicOrderByToken = async (');
+    const orderEnd = store.indexOf('export interface UIRecentFinancialActivityItem', orderStart);
+    expect(customerStart).toBeGreaterThan(-1);
+    expect(orderStart).toBeGreaterThan(-1);
+    const customerResolver = store.slice(customerStart, customerEnd);
+    const orderResolver = store.slice(orderStart, orderEnd);
+    for (const resolver of [customerResolver, orderResolver]) {
+      expect(resolver).toContain('if (isBrowserOffline()) return null');
+      expect(resolver).not.toContain('ensureStoreHydrated');
+      expect(resolver).not.toContain('initDbIfNeeded');
+      expect(resolver).not.toContain('localDb');
+    }
   });
 
   it('prevents QR bearer-token referrer leakage and search indexing', () => {
