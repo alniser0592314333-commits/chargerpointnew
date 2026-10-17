@@ -39,6 +39,9 @@ BEGIN
     RAISE EXCEPTION 'A direct public-schema SELECT policy remains after RPC-only read closure';
   END IF;
 
+  -- Assert defaults for the migration role that owns the app's public objects.
+  -- Platform-owned supabase_admin defaults are outside this migration's authority
+  -- and are separately reported by the migration as a residual.
   IF EXISTS (
     SELECT 1
     FROM pg_default_acl d
@@ -46,10 +49,11 @@ BEGIN
     CROSS JOIN LATERAL aclexplode(d.defaclacl) a
     LEFT JOIN pg_roles grantee ON grantee.oid = a.grantee
     WHERE n.nspname = 'public'
+      AND d.defaclrole = (SELECT oid FROM pg_roles WHERE rolname = current_user)
       AND d.defaclobjtype IN ('r', 'S')
       AND COALESCE(grantee.rolname, 'PUBLIC') IN ('PUBLIC', 'anon', 'authenticated')
   ) THEN
-    RAISE EXCEPTION 'Future public tables/sequences retain browser default privileges';
+    RAISE EXCEPTION 'Application migration owner retains browser default privileges';
   END IF;
 END
 $browser_table_read_closure$;
