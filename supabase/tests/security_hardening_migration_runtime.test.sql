@@ -463,3 +463,36 @@ BEGIN
   END IF;
 END
 $default_table_sequence_acl$;
+
+DO $username_rate_limit_runtime$
+DECLARE
+  v_result jsonb;
+  i integer;
+BEGIN
+  IF has_function_privilege('anon', 'public.consume_username_signin_attempt(text,text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.consume_username_signin_attempt(text,text)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.consume_username_signin_attempt(text,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Username rate limiter execute boundary is incorrect';
+  END IF;
+  IF has_table_privilege('anon', 'public.username_signin_rate_limits', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.username_signin_rate_limits', 'SELECT')
+     OR has_table_privilege('service_role', 'public.username_signin_rate_limits', 'SELECT') THEN
+    RAISE EXCEPTION 'Username rate-limit state is directly readable';
+  END IF;
+
+  FOR i IN 1..5 LOOP
+    SELECT public.consume_username_signin_attempt(repeat('a', 64), repeat('b', 64))
+      INTO v_result;
+    IF (v_result->>'allowed')::boolean IS NOT TRUE THEN
+      RAISE EXCEPTION 'Rate limiter blocked an attempt before the configured threshold';
+    END IF;
+  END LOOP;
+
+  SELECT public.consume_username_signin_attempt(repeat('a', 64), repeat('b', 64))
+    INTO v_result;
+  IF (v_result->>'allowed')::boolean IS NOT FALSE
+     OR (v_result->>'retry_after_seconds')::integer <= 0 THEN
+    RAISE EXCEPTION 'Rate limiter failed to block the attempt after the configured threshold';
+  END IF;
+END
+$username_rate_limit_runtime$;
