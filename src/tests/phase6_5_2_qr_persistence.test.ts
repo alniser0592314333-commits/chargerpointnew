@@ -235,6 +235,43 @@ describe('Phase 6.5.2B: Persistent Random Public Capability Handle (Option C)', 
     expect((publicResult as any).orders).toBeUndefined();
   });
 
+  it('does not create a local-only QR when central creation fails', async () => {
+    customerQrRpcMocks.getOrCreate.mockRejectedValueOnce(new Error('central RPC unavailable'));
+
+    await expect(getOrCreateCustomerQrToken('cust-1')).rejects.toThrow('central RPC unavailable');
+
+    const tokens = await localDb.list<QrTokenEntity>('qr_tokens');
+    expect(tokens.filter((token) => token.targetId === 'cust-1' && token.tokenType === 'CUSTOMER' && token.isActive)).toHaveLength(0);
+  });
+
+  it('preserves an existing local QR by adopting it into central storage', async () => {
+    const legacyToken = '0123456789abcdef0123456789abcdef';
+    const legacyRecord: QrTokenEntity = {
+      id: 'legacy-local-qr-cust-1',
+      publicToken: legacyToken,
+      tokenHash: legacyToken,
+      tokenType: 'CUSTOMER',
+      targetId: 'cust-1',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    };
+    await localDb.set('qr_tokens', legacyRecord.id, legacyRecord);
+
+    const result = await getOrCreateCustomerQrToken('cust-1');
+
+    expect(result).toBe(legacyToken);
+    expect(customerQrRpcMocks.adopt).toHaveBeenCalledWith('cust-1', legacyToken);
+    const resolved = await getPublicCustomerByToken(legacyToken);
+    expect(resolved?.customerName).toBe('محمد علي');
+  });
+
+  it('surfaces central resolver errors instead of masking them as an invalid token', async () => {
+    const token = await getOrCreateCustomerQrToken('cust-1');
+    customerQrRpcMocks.resolve.mockRejectedValueOnce(new Error('SQLSTATE 42804'));
+
+    await expect(getPublicCustomerByToken(token)).rejects.toThrow('SQLSTATE 42804');
+  });
+
   // 19. Public identifier has at least 128-bit entropy.
   it('19. Public identifier has at least 128-bit entropy (32 hex characters)', () => {
     const token1 = generateSecurePublicToken();
