@@ -50,7 +50,6 @@ CREATE TABLE public.global_app_identity (
 );
 ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.global_app_identity ENABLE ROW LEVEL SECURITY;
-GRANT ALL PRIVILEGES ON TABLE public.admins, public.global_app_identity TO authenticated;
 
 CREATE TABLE public.customers (
   id uuid PRIMARY KEY,
@@ -84,8 +83,12 @@ CREATE TABLE public.financial_ledger (
   amount_minor bigint NOT NULL
 );
 
--- Fixture-only read used to assert no unauthorized QR mutation occurred.
-GRANT SELECT ON public.qr_tokens TO authenticated;
+-- Model the broad legacy DML grants present in the live project. The migration
+-- must remove write privileges while leaving non-sensitive read contracts alone.
+GRANT ALL PRIVILEGES ON TABLE
+  public.admins, public.global_app_identity, public.customers,
+  public.orders, public.qr_tokens, public.financial_ledger
+TO authenticated;
 
 CREATE FUNCTION public.assert_my_account_session_active()
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
