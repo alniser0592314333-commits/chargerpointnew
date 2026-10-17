@@ -178,10 +178,9 @@ BEGIN
 END;
 $drop_public_browser_read_policies$;
 
--- Prevent future table/sequence grants from the migration-owner roles where
--- the current database role is authorized to manage their defaults. Supabase
--- may restrict changes to supabase_admin defaults; in that case this block
--- deliberately skips that role instead of failing the entire migration.
+-- Attempt to revoke future table/sequence grants for the migration-owner roles.
+-- A postcondition below deliberately fails the migration if a platform-owned default
+-- cannot be changed, so current grants cannot be mistaken for complete closure.
 DO $revoke_future_browser_table_access$
 DECLARE
   v_role name;
@@ -212,5 +211,26 @@ BEGIN
   END LOOP;
 END;
 $revoke_future_browser_table_access$;
+
+-- Fail closed if a platform-owned default ACL could not be changed by this migration
+-- role. Silently skipping this leaves future tables exposed even though current grants
+-- were revoked; an authorized owner must clear the remaining defaults before retrying.
+DO $assert_future_browser_table_access_closed$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl AS d
+    JOIN pg_namespace AS n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) AS a
+    LEFT JOIN pg_roles AS grantee ON grantee.oid = a.grantee
+    WHERE n.nspname = 'public'
+      AND d.defaclobjtype IN ('r', 'S')
+      AND COALESCE(grantee.rolname, 'PUBLIC') IN ('PUBLIC', 'anon', 'authenticated')
+  ) THEN
+    RAISE EXCEPTION
+      'Browser default privileges remain in public schema; an authorized owner must revoke them before applying this migration';
+  END IF;
+END;
+$assert_future_browser_table_access_closed$;
 
 NOTIFY pgrst, 'reload schema';
