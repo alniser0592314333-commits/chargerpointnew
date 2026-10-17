@@ -420,12 +420,6 @@ class DefaultAuthService implements AuthService {
       if (signInRes.error || !signInRes.session) {
         return { success: false, error: "كلمة المرور الحالية غير صحيحة" };
       }
-      if (signInRes.error || !signInRes.session) {
-        return {
-          success: false,
-          error: "كلمة المرور الحالية غير صحيحة",
-        };
-      }
 
       // Step 2: Request Server-Authoritative Single-Use Recovery Proof Token
       const proofRes = await rpcIssueBinRecoveryProof(cleanPass, signInRes.session.access_token);
