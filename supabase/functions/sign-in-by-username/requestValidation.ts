@@ -30,6 +30,9 @@ export function publicAuthFailure(status: number): { status: number; body: Recor
   if (status === 429) {
     return { status: 429, body: { session: null, error: "RATE_LIMIT", isRateLimited: true } };
   }
+  if (status >= 500) {
+    return { status: 503, body: { error: "Username sign-in is temporarily unavailable" } };
+  }
   // Never surface whether a username exists or whether its Auth account is confirmed.
   return {
     status: 401,
