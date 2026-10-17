@@ -206,6 +206,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017290000_revoke_default_public_function_execute.sql
+      - name: Fail closed if any function owner still exposes default browser execution
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017420000_assert_browser_function_default_privileges.sql
       - name: Add atomic username sign-in rate limiter
         env:
           PGPASSWORD: postgres
