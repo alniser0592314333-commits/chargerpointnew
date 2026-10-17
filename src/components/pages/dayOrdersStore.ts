@@ -5300,14 +5300,11 @@ export interface PublicCustomerQrData {
 const inFlightCustomerQrTokens = new Map<string, Promise<string>>();
 
 /**
- * getOrCreateCustomerQrToken
- * Persistent, device-independent public capability identifier for a customer.
- * 
- * 1. Checks Supabase central database via `rpcGetOrCreateCustomerQr(customerId)`.
- * 2. In offline/foundation mode, checks `localDb` for an existing active token for this customer.
- * 3. If an active token already exists, returns it (IDEMPOTENT - never replaces or invalidates).
- * 4. Handles concurrent calls safely via inFlight promise lock and DB unique constraint.
- * 5. Device A, Device B, Device C, or after browser reset -> Returns EXACT same identifier.
+ * Returns the canonical, server-persisted customer QR capability.
+ *
+ * Customer QR links are public links intended to open on other devices, so a
+ * browser-local token is not a valid substitute for a server token. Never mint
+ * or return a local-only token when central persistence is unavailable.
  */
 export const getOrCreateCustomerQrToken = async (customerId: string): Promise<string> => {
   if (inFlightCustomerQrTokens.has(customerId)) {
@@ -5315,45 +5312,20 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
   }
 
   const promise = (async () => {
-    await ensureStoreHydrated();
-    await initDbIfNeeded();
-
-    // 1. Centralized Supabase lookup / creation (when configured)
-    try {
-      const centralToken = await rpcGetOrCreateCustomerQr(customerId);
-      if (centralToken) {
-        return centralToken;
-      }
-    } catch (err) {
-      console.info('Supabase central QR lookup deferred or offline:', err);
+    if (isBrowserOffline()) {
+      throw new Error('CUSTOMER_QR_REQUIRES_ONLINE: Connect to the internet to create a shareable customer QR code.');
     }
 
-    // 2. Centralized / Shared Local Database Store
-    // Query all qr_tokens to find any active token for this customer
-    const allTokens = await localDb.list<QrTokenEntity>('qr_tokens');
-    const existingActive = allTokens.find(
-      (t) => t.targetId === customerId && t.tokenType === 'CUSTOMER' && t.isActive
-    );
-
-    if (existingActive) {
-      return existingActive.publicToken || existingActive.tokenHash || existingActive.id;
+    if (!getSupabaseStatus().isConfigured) {
+      throw new Error('CUSTOMER_QR_REQUIRES_SUPABASE: Central QR storage is not configured.');
     }
 
-    // 3. Atomically generate a 128-bit cryptographically secure random public token
-    const publicToken = generateSecurePublicToken();
+    const centralToken = await rpcGetOrCreateCustomerQr(customerId);
+    if (!centralToken || !/^[A-Za-z0-9_-]{24,64}$/.test(centralToken)) {
+      throw new Error('CUSTOMER_QR_CENTRAL_PERSISTENCE_FAILED: Supabase did not return a valid persisted customer QR token.');
+    }
 
-    const qrRecord: QrTokenEntity = {
-      id: crypto.randomUUID(),
-      publicToken,
-      tokenHash: await computeTokenHash(publicToken),
-      tokenType: 'CUSTOMER',
-      targetId: customerId,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    };
-
-    await persistQrTokenCanonical(qrRecord);
-    return publicToken;
+    return centralToken;
   })();
 
   inFlightCustomerQrTokens.set(customerId, promise);
@@ -5365,47 +5337,24 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
 };
 
 /**
- * rotateCustomerQrToken
- * Explicit administrative action to rotate a customer's QR token.
- * Inactivates previous active tokens and generates a fresh 128-bit capability identifier.
+ * Rotates a customer QR only through the authoritative server RPC.
+ * Local-only rotation would invalidate a server token or issue an unresolvable public URL.
  */
 export const rotateCustomerQrToken = async (customerId: string): Promise<string> => {
-  await ensureStoreHydrated();
-  await initDbIfNeeded();
-
-  // 1. Centralized Supabase rotation (when configured)
-  try {
-    const rotated = await rpcRotateCustomerQr(customerId);
-    if (rotated) {
-      return rotated;
-    }
-  } catch (err) {
-    console.info('Supabase rotation deferred or offline:', err);
+  if (isBrowserOffline()) {
+    throw new Error('CUSTOMER_QR_REQUIRES_ONLINE: Connect to the internet to rotate a shareable customer QR code.');
   }
 
-  // 2. Deactivate any existing active tokens for this customer in localDb
-  const allTokens = await localDb.list<QrTokenEntity>('qr_tokens');
-  for (const token of allTokens) {
-    if (token.targetId === customerId && token.tokenType === 'CUSTOMER' && token.isActive) {
-      token.isActive = false;
-      await persistQrTokenCanonical(token);
-    }
+  if (!getSupabaseStatus().isConfigured) {
+    throw new Error('CUSTOMER_QR_REQUIRES_SUPABASE: Central QR storage is not configured.');
   }
 
-  // 3. Issue new active public token
-  const newPublicToken = generateSecurePublicToken();
-  const newRecord: QrTokenEntity = {
-    id: crypto.randomUUID(),
-    publicToken: newPublicToken,
-    tokenHash: newPublicToken,
-    tokenType: 'CUSTOMER',
-    targetId: customerId,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-  };
+  const rotated = await rpcRotateCustomerQr(customerId);
+  if (!rotated || !/^[A-Za-z0-9_-]{24,64}$/.test(rotated)) {
+    throw new Error('CUSTOMER_QR_CENTRAL_ROTATION_FAILED: Supabase did not return a valid persisted customer QR token.');
+  }
 
-  await persistQrTokenCanonical(newRecord);
-  return newPublicToken;
+  return rotated;
 };
 
 export const getCustomerQrCardData = async (
@@ -5435,41 +5384,37 @@ export const getCustomerQrCardData = async (
 };
 
 /**
- * getPublicCustomerByToken
- * Resolves customer name and customer code from the public URL token.
- * 
- * 1. Checks Supabase central database RPC `public_resolve_customer_qr`.
- * 2. In offline/foundation mode, checks `localDb` `qr_tokens` table by publicToken.
- * 3. Enforces customer active check (generic null / 404 response on inactive/deactivated customer).
- * 4. STRICT PRIVACY BOUNDARY:
- *    Returns ONLY customerName and customerCode.
- *    NEVER returns internal UUID, phone, debt limit, balance, or orders.
+ * Resolves a customer QR through the authoritative public RPC whenever online.
+ * Device-local lookup is strictly an offline-only fallback; a server failure must
+ * never be misreported as an invalid token or masked by stale local data.
+ * Returns only the public customer name and code.
  */
 export const getPublicCustomerByToken = async (
   publicToken: string
 ): Promise<PublicCustomerQrData | null> => {
-  await ensureStoreHydrated();
-  await initDbIfNeeded();
-
   if (!publicToken || typeof publicToken !== 'string') {
     return null;
   }
 
-  // 1. Central Database Lookup via Supabase RPC (when online)
-  try {
-    const supabaseResult = await rpcResolveCustomerQr(publicToken);
-    if (supabaseResult) {
-      return {
-        customerName: supabaseResult.customerName,
-        customerCode: supabaseResult.customerCode,
-        token: publicToken,
-      };
+  if (!isBrowserOffline()) {
+    if (!getSupabaseStatus().isConfigured) {
+      throw new Error('CUSTOMER_QR_SUPABASE_NOT_CONFIGURED: Cannot resolve a public customer QR without the central service.');
     }
-  } catch (err) {
-    console.warn('Supabase public lookup deferred, querying localDb:', err);
+
+    const supabaseResult = await rpcResolveCustomerQr(publicToken);
+    if (!supabaseResult) return null;
+
+    return {
+      customerName: supabaseResult.customerName,
+      customerCode: supabaseResult.customerCode,
+      token: publicToken,
+    };
   }
 
-  // 2. Offline / Foundation Persistence Lookup via localDb
+  // Offline-only fallback: this can resolve only on a device that already holds the token.
+  await ensureStoreHydrated();
+  await initDbIfNeeded();
+
   const allTokens = await localDb.list<QrTokenEntity>('qr_tokens');
   const localRecord =
     (await localDb.get<QrTokenEntity>('qr_tokens', publicToken)) ||
@@ -5482,8 +5427,6 @@ export const getPublicCustomerByToken = async (
       customersMap.get(localRecord.targetId) ||
       (await localDb.get<CustomerEntity>('customers', localRecord.targetId));
 
-    // STRICT CUSTOMER ACTIVE CHECK:
-    // If customer is deactivated, do NOT return customer data (generic 404 behavior, zero data leakage)
     if (customer && customer.isActive) {
       return {
         customerName: customer.name,
