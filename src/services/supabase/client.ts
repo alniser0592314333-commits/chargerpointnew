@@ -1081,7 +1081,11 @@ export async function rpcResolveCustomerQr(
 ): Promise<{ customerName: string; customerCode: string } | null> {
   const { data, error } = await invokeSupabaseRpc<PublicCustomerQrRpcResult[]>(
     'public_resolve_customer_qr',
-    { p_public_token: publicToken }
+    { p_public_token: publicToken },
+    undefined,
+    true,
+    false,
+    true
   );
 
   if (error) {
@@ -1122,7 +1126,11 @@ export async function rpcResolveOrderQr(
 ): Promise<PublicOrderQrRpcResult | null> {
   const { data, error } = await invokeSupabaseRpc<PublicOrderQrRpcResult[]>(
     'public_resolve_order_qr',
-    { p_public_token: publicToken }
+    { p_public_token: publicToken },
+    undefined,
+    true,
+    false,
+    true
   );
 
   if (error || !data || data.length === 0) {
@@ -1141,7 +1149,11 @@ export async function rpcResolveQrPaymentSubmission(
 ): Promise<PublicQrPaymentSubmissionRpcResult | null> {
   const { data, error } = await invokeSupabaseRpc<PublicQrPaymentSubmissionRpcResult>(
     'public_resolve_qr_payment_submission',
-    { p_public_token: publicToken }
+    { p_public_token: publicToken },
+    undefined,
+    true,
+    false,
+    true
   );
   if (error || !data || !['PENDING', 'APPROVED', 'REJECTED'].includes(data.status)) {
     return null;
