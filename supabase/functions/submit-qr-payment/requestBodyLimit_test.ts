@@ -37,6 +37,23 @@ Deno.test("rejects an oversized streamed body even without Content-Length", asyn
   assertEquals(await readBoundedRequestBody(request, 4), null);
 });
 
+Deno.test("rejects an oversized body when Content-Length lies about the actual size", async () => {
+  let pulls = 0;
+  const request = new Request("https://example.test/upload", {
+    method: "POST",
+    headers: { "content-length": "1" },
+    body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(3));
+      },
+    }),
+  });
+
+  assertEquals(await readBoundedRequestBody(request, 4), null);
+  assertEquals(pulls >= 2, true);
+});
+
 Deno.test("rejects invalid limits rather than silently disabling protection", async () => {
   const request = new Request("https://example.test/upload", { method: "POST" });
   let thrown = false;
