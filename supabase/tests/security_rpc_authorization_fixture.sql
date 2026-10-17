@@ -43,6 +43,15 @@ CREATE TABLE public.admins (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.admin_audit_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_admin_id uuid,
+  action varchar NOT NULL,
+  target_admin_id uuid,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.global_app_identity (
   id uuid PRIMARY KEY,
   singleton boolean NOT NULL DEFAULT true,
@@ -92,7 +101,7 @@ CREATE TABLE public.financial_ledger (
 -- must remove write privileges while leaving non-sensitive read contracts alone.
 GRANT ALL PRIVILEGES ON TABLE
   public.admins, public.global_app_identity, public.customers,
-  public.orders, public.qr_tokens, public.financial_ledger
+  public.orders, public.qr_tokens, public.financial_ledger, public.admin_audit_logs
 TO authenticated;
 
 CREATE FUNCTION public.assert_my_account_session_active()
