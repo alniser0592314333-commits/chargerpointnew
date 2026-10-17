@@ -671,6 +671,23 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d customer_qr_resolution_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_qr_resolution_migration_runtime.test.sql
 
+      - name: Create isolated database for customer portal projection
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres customer_portal_test
+      - name: Prepare customer portal schema fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_portal_migration_fixture.sql
+      - name: Apply customer portal read model migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017410000_public_customer_portal_read_model.sql
+      - name: Verify customer portal isolation, financial projection, and QR capability checks
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_portal_migration_runtime.test.sql
+
   diagnose-main-test-baseline:
     name: Diagnose full-suite baseline on main
     runs-on: ubuntu-latest
