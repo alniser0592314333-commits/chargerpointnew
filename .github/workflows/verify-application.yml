@@ -179,10 +179,6 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017270000_remove_public_qr_payment_balance_disclosure.sql
-      - name: Disable public username-to-email lookup
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017280000_disable_public_username_email_lookup.sql
       - name: Revoke default browser execution on future functions
         env:
           PGPASSWORD: postgres
@@ -191,6 +187,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017300000_username_signin_rate_limit.sql
+      - name: Disable public username-to-email lookup after replacement path is available
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017310000_disable_public_username_email_lookup.sql
       - name: Verify admin-bound RLS, anonymous ACL revocation, QR/bootstrap authorization, and logo storage
         env:
           PGPASSWORD: postgres
