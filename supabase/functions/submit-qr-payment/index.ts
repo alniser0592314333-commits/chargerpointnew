@@ -125,7 +125,12 @@ Deno.serve(async (request: Request) => {
 
   // Content-Length is only an early-rejection hint; enforce the limit while
   // consuming the actual stream so missing or dishonest headers cannot bypass it.
-  const boundedBody = await readBoundedRequestBody(request, maxRequestBytes);
+  let boundedBody: Uint8Array | null;
+  try {
+    boundedBody = await readBoundedRequestBody(request, maxRequestBytes);
+  } catch {
+    return json(400, { error: "Could not read the upload body" });
+  }
   if (boundedBody === null) {
     return json(413, { error: "The upload is too large. Please choose a smaller receipt image." });
   }
