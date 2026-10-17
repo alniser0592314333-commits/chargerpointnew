@@ -297,6 +297,67 @@ $function$;
 REVOKE ALL ON FUNCTION public.rpc_fetch_admins() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.rpc_fetch_admins() TO authenticated, service_role;
 
+-- Do not auto-link an Auth user to an existing admin row by email. The former
+-- implementation could overwrite an already-linked auth_user_id after matching
+-- the email, which turns email matching into an account-link takeover path.
+-- All current production admin rows are already linked; new admins are linked by
+-- the bootstrap/admin-creation RPCs, so this removes only the unsafe legacy fallback.
+CREATE OR REPLACE FUNCTION public.get_current_admin_profile__session_guarded_impl()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  a public.admins;
+  v_permissions text[] := '{}'::text[];
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object('authenticated', false, 'is_admin', false);
+  END IF;
+
+  SELECT *
+    INTO a
+  FROM public.admins
+  WHERE auth_user_id = auth.uid()
+  LIMIT 1;
+
+  -- No email-based fallback: an Auth identity must be explicitly linked by the
+  -- trusted bootstrap/admin-creation flow. A matching email alone is not enough.
+  IF a.id IS NULL THEN
+    RETURN jsonb_build_object(
+      'authenticated', true,
+      'is_admin', false,
+      'auth_user_id', auth.uid()
+    );
+  END IF;
+
+  -- Preserve the suspended-account response without querying the active-admin
+  -- permissions wrapper, which intentionally rejects inactive administrators.
+  IF a.is_active IS TRUE THEN
+    SELECT COALESCE(array_agg(ep.permission ORDER BY ep.permission), '{}'::text[])
+      INTO v_permissions
+    FROM public.get_effective_permissions(a.id) AS ep;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'authenticated', true,
+    'is_admin', true,
+    'is_active', COALESCE(a.is_active, false),
+    'admin_id', a.id,
+    'auth_user_id', a.auth_user_id,
+    'username', a.username,
+    'full_name', a.full_name,
+    'email', a.email,
+    'role', a.role,
+    'permissions', COALESCE(v_permissions, '{}'::text[])
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.get_current_admin_profile__session_guarded_impl()
+  FROM PUBLIC, anon, authenticated, service_role;
+
 -- Pin the last two public SECURITY DEFINER getters to a deterministic path and
 -- avoid inheriting broad PUBLIC grants. Anonymous access remains explicit where
 -- required by first-run bootstrap and public branding.
