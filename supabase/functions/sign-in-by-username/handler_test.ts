@@ -5,7 +5,7 @@ const validEnv: Record<string, string> = {
   SUPABASE_URL: "https://project.example",
   SUPABASE_SECRET_KEY: "sb_secret_test_only",
   USERNAME_SIGNIN_RATE_LIMIT_SECRET: "x".repeat(40),
-  SUPABASE_AUTH_IP_FORWARDING_ENABLED: "true",
+  AUTH_IP_FORWARDING_ENABLED: "true",
 };
 
 function setup(options: {
