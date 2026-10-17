@@ -66,13 +66,19 @@ DECLARE
   v_relation record;
 BEGIN
   FOR v_relation IN
-    SELECT c.oid::regclass AS relation_name
+    SELECT c.oid::regclass AS relation_name, c.relkind
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public'
-      AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
   LOOP
-    IF has_table_privilege('anon', v_relation.relation_name, 'SELECT')
+    IF v_relation.relkind = 'S' THEN
+      IF has_sequence_privilege('anon', v_relation.relation_name, 'USAGE')
+         OR has_sequence_privilege('anon', v_relation.relation_name, 'SELECT')
+         OR has_sequence_privilege('anon', v_relation.relation_name, 'UPDATE') THEN
+        RAISE EXCEPTION 'anon retains an unnecessary sequence privilege on %', v_relation.relation_name;
+      END IF;
+    ELSIF has_table_privilege('anon', v_relation.relation_name, 'SELECT')
        OR has_table_privilege('anon', v_relation.relation_name, 'INSERT')
        OR has_table_privilege('anon', v_relation.relation_name, 'UPDATE')
        OR has_table_privilege('anon', v_relation.relation_name, 'DELETE')
@@ -82,10 +88,6 @@ BEGIN
       RAISE EXCEPTION 'anon retains an unnecessary table privilege on %', v_relation.relation_name;
     END IF;
   END LOOP;
-
-  IF has_sequence_privilege('anon', 'public.customers_id_seq', 'USAGE') THEN
-    RAISE EXCEPTION 'anon retains sequence USAGE on customers_id_seq';
-  END IF;
 END
 $anon_table_acl$;
 
