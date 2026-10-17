@@ -9,6 +9,7 @@ describe('Isolated customer QR portal security contract', () => {
   );
   const appPath = path.resolve(process.cwd(), 'src/App.tsx');
   const pagePath = path.resolve(process.cwd(), 'src/components/pages/PublicCustomerPortalPage.tsx');
+  const htmlPath = path.resolve(process.cwd(), 'index.html');
 
   it('resolves only active CUSTOMER capabilities and never grants direct table access', () => {
     const sql = fs.readFileSync(migrationPath, 'utf8');
@@ -49,6 +50,12 @@ describe('Isolated customer QR portal security contract', () => {
     expect(app).toContain("pathname.startsWith('/public/qr/customer/')");
     expect(app).toContain('<PublicCustomerPortalPage token={token} />');
     expect(app).not.toContain('<PublicCustomerQrPage token={token} />');
+  });
+
+  it('prevents QR bearer-token referrer leakage and search indexing', () => {
+    const html = fs.readFileSync(htmlPath, 'utf8');
+    expect(html).toContain('<meta name="referrer" content="no-referrer" />');
+    expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive" />');
   });
 
   it('uses only the scoped RPC, suppresses financial data offline, and does not expose admin controls', () => {
