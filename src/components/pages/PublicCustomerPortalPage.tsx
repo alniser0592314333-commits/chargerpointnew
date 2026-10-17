@@ -134,9 +134,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const map: Record<string, [string, string]> = {
       'تم الشحن': ['تم الشحن', 'Charged'], 'قيد الشحن': ['قيد الشحن', 'Charging'],
       CHARGED: ['تم الشحن', 'Charged'], CHARGING: ['قيد الشحن', 'Charging'],
-      DELIVERED: ['تم التسليم', 'Delivered'], PENDING: ['بانتظار المراجعة', 'Pending review'],
+      charging: ['قيد الشحن', 'Charging'], DELIVERED: ['تم التسليم', 'Delivered'],
+      delivered: ['تم التسليم', 'Delivered'], CANCELLED: ['ملغي', 'Cancelled'],
+      cancelled: ['ملغي', 'Cancelled'], PENDING: ['بانتظار المراجعة', 'Pending review'],
       APPROVED: ['مقبول', 'Approved'], REJECTED: ['مرفوض', 'Rejected'],
       PAID: ['مدفوع', 'Paid'], PARTIAL: ['مدفوع جزئياً', 'Partially paid'],
+      PARTIALLY_PAID: ['مدفوع جزئياً', 'Partially paid'],
       UNPAID: ['غير مدفوع', 'Unpaid'], NOT_DUE: ['غير مستحق حالياً', 'Not due'],
       ACTIVE: ['فعّال', 'Active'], COMPLETED: ['مكتمل', 'Completed'], EXPIRED: ['منتهي', 'Expired'],
     };
