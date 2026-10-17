@@ -204,13 +204,15 @@ export interface AuthService {
     success: boolean;
     error: string | null;
     token?: string;
+    authSessionToken?: string;
     remainingAttempts?: number;
     failedAttempts?: number;
     status?: string;
   }>;
   changeAdminBin(
     newBin: string,
-    verifiedToken?: string
+    verifiedToken?: string,
+    reauthSessionToken?: string
   ): Promise<{ success: boolean; error: string | null }>;
   bootstrapFirstSuperAdmin(payload: {
     username: string;
@@ -474,6 +476,7 @@ class DefaultAuthService implements AuthService {
     success: boolean;
     error: string | null;
     token?: string;
+    authSessionToken?: string;
     remainingAttempts?: number;
     failedAttempts?: number;
     status?: string;
@@ -527,7 +530,12 @@ class DefaultAuthService implements AuthService {
         };
       }
 
-      return { success: true, error: null, token: proofRes.proofToken };
+      return {
+        success: true,
+        error: null,
+        token: proofRes.proofToken,
+        authSessionToken: signInRes.session.access_token,
+      };
     }
     // Local / test mode fallback
     if (cleanPass === SUPER_ADMIN_TEST_ACCOUNT.pin || cleanPass === "123456" || cleanPass === "correct_password") {
@@ -538,7 +546,8 @@ class DefaultAuthService implements AuthService {
 
   async changeAdminBin(
     newBin: string,
-    verifiedToken?: string
+    verifiedToken?: string,
+    reauthSessionToken?: string
   ): Promise<{ success: boolean; error: string | null }> {
     const cleanBin = newBin.trim();
     if (!cleanBin || !/^\d{4,}$/.test(cleanBin)) {
@@ -549,8 +558,13 @@ class DefaultAuthService implements AuthService {
     }
     if (this.isSupabaseConfigured()) {
       const changeProof = verifiedToken || "";
-      const token = getSupabaseAuthToken();
-      const res = await rpcSetAdminBin(cleanBin, changeProof, token || undefined);
+      // The proof is bound server-side to the exact re-authenticated Auth session.
+      // Never substitute the previously stored application session here.
+      const token = reauthSessionToken?.trim();
+      if (!token) {
+        return { success: false, error: "RECENT_REAUTH_REQUIRED: Re-authenticate before changing the BIN." };
+      }
+      const res = await rpcSetAdminBin(cleanBin, changeProof, token);
       if (!res.success) {
         return { success: false, error: res.error || "Failed to update security BIN" };
       }
