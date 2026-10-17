@@ -148,10 +148,11 @@ describe('BIN change proof client flow', () => {
   it('does not fall back to the ordinary stored session when the proof handoff is missing', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
     vi.spyOn(supabaseClient, 'getSupabaseAuthToken').mockReturnValue('existing-session-token');
+    const setBinSpy = vi.spyOn(supabaseClient, 'rpcSetAdminBin');
 
     const result = await authService.changeAdminBin('5678', 'p'.repeat(64));
 
     expect(result.success).toBe(false);
-    expect(supabaseClient.rpcSetAdminBin).not.toHaveBeenCalled();
+    expect(setBinSpy).not.toHaveBeenCalled();
   });
 });
