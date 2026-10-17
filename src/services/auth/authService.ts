@@ -17,9 +17,7 @@ import {
   rpcRecoverAndResetAdminBin,
   rpcSetAdminBin,
   rpcGetCurrentAdminProfile,
-  rpcGetEmailByUsername,
-  rpcResolveEmailByUsername,
-  getLastGetEmailError,
+  supabaseSignInWithUsername,
   AdminProfileRpcResult,
   setSupabaseAuthToken,
   getSupabaseAuthToken,
@@ -415,17 +413,13 @@ class DefaultAuthService implements AuthService {
     }
 
     if (this.isSupabaseConfigured()) {
-      let resolvedEmail = cleanIdentifier.toLowerCase();
-      if (!cleanIdentifier.includes("@")) {
-        const emailFromUsername = await rpcGetEmailByUsername(cleanIdentifier);
-        if (!emailFromUsername) {
-          return { success: false, error: "المستخدم غير موجود" };
-        }
-        resolvedEmail = emailFromUsername.toLowerCase();
+      // Re-authenticate without disclosing the account email to the browser.
+      const signInRes = cleanIdentifier.includes("@")
+        ? await supabaseSignInWithPassword(cleanIdentifier.toLowerCase(), cleanPass, false)
+        : await supabaseSignInWithUsername(cleanIdentifier, cleanPass, false);
+      if (signInRes.error || !signInRes.session) {
+        return { success: false, error: "كلمة المرور الحالية غير صحيحة" };
       }
-
-      // Step 1: Re-authenticate with current password
-      const signInRes = await supabaseSignInWithPassword(resolvedEmail, cleanPass, false);
       if (signInRes.error || !signInRes.session) {
         return {
           success: false,
@@ -482,15 +476,9 @@ class DefaultAuthService implements AuthService {
       };
     }
     if (this.isSupabaseConfigured()) {
-      let resolvedEmail = cleanIdentifier.toLowerCase();
-      if (!cleanIdentifier.includes("@")) {
-        const emailFromUsername = await rpcGetEmailByUsername(cleanIdentifier);
-        if (!emailFromUsername) {
-          return { success: false, error: "تعذر التحقق من بيانات الحساب." };
-        }
-        resolvedEmail = emailFromUsername.toLowerCase();
-      }
-      const signInRes = await supabaseSignInWithPassword(resolvedEmail, cleanPass, false);
+      const signInRes = cleanIdentifier.includes("@")
+        ? await supabaseSignInWithPassword(cleanIdentifier.toLowerCase(), cleanPass, false)
+        : await supabaseSignInWithUsername(cleanIdentifier, cleanPass, false);
       if (signInRes.error || !signInRes.session) {
         return {
           success: false,
@@ -548,26 +536,12 @@ class DefaultAuthService implements AuthService {
       // Clear any prior temporary context at the start of a fresh password authentication
       pendingSuperAdminContext = null;
 
-      let resolvedEmail = cleanIdentifier.toLowerCase();
-      if (!cleanIdentifier.includes("@")) {
-        try {
-          const emailFromUsername = await rpcGetEmailByUsername(cleanIdentifier);
-          if (getLastGetEmailError()) {
-            throw new Error("USERNAME_LOOKUP_FAILED");
-          }
-          if (!emailFromUsername) {
-            // Username does not exist in system
-            return null;
-          }
-          resolvedEmail = emailFromUsername.toLowerCase();
-        } catch (err: any) {
-          throw new Error("USERNAME_LOOKUP_FAILED");
-        }
-      }
-
-      // Step 1: Authenticate Email + Password against Supabase Auth WITHOUT persisting yet.
-      // EXACTLY ONE call to supabaseSignInWithPassword!
-      const signInRes = await supabaseSignInWithPassword(resolvedEmail, cleanPass, false);
+      const resolvedEmail = cleanIdentifier.toLowerCase();
+      // Username resolution and password verification happen server-side. The browser
+      // receives no account email before successful Supabase Auth authentication.
+      const signInRes = cleanIdentifier.includes("@")
+        ? await supabaseSignInWithPassword(resolvedEmail, cleanPass, false)
+        : await supabaseSignInWithUsername(cleanIdentifier, cleanPass, false);
       if (signInRes.error || !signInRes.session) {
         if (signInRes.isRateLimited || signInRes.statusCode === 429) {
           throw new Error("RATE_LIMIT");
