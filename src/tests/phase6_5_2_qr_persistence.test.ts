@@ -1,4 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const customerQrRpcMocks = vi.hoisted(() => ({
+  getOrCreate: vi.fn(),
+  adopt: vi.fn(),
+  rotate: vi.fn(),
+  resolve: vi.fn(),
+}));
+
+vi.mock('../services/supabase/client', async () => {
+  const actual = await vi.importActual<typeof import('../services/supabase/client')>('../services/supabase/client');
+  return {
+    ...actual,
+    rpcGetOrCreateCustomerQr: customerQrRpcMocks.getOrCreate,
+    rpcAdoptLegacyCustomerQrToken: customerQrRpcMocks.adopt,
+    rpcRotateCustomerQr: customerQrRpcMocks.rotate,
+    rpcResolveCustomerQr: customerQrRpcMocks.resolve,
+  };
+});
 import { generateSecurePublicToken } from '../services/supabase/qrSecurity';
 import {
   getCustomerQrCardData,
@@ -10,6 +28,7 @@ import {
   seedDemoOperationalData,
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
+import { configureCustomerQrRpcMocks } from './helpers/customerQrRpcMocks';
 import { QrTokenEntity } from '../domain/models';
 
 describe('Phase 6.5.2B: Persistent Random Public Capability Handle (Option C)', () => {
@@ -18,6 +37,7 @@ describe('Phase 6.5.2B: Persistent Random Public Capability Handle (Option C)', 
     if (typeof localStorage !== 'undefined') localStorage.clear();
     resetStoreMemory();
     await seedDemoOperationalData();
+    configureCustomerQrRpcMocks(customerQrRpcMocks, localDb);
   });
 
   // 1. First customer QR creation -> creates exactly one identity.
