@@ -16,6 +16,44 @@ BEGIN
 END
 $sync_rpc_contract$;
 
+DO $browser_table_read_closure$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+      AND (
+        has_table_privilege('anon', c.oid, 'SELECT')
+        OR has_table_privilege('authenticated', c.oid, 'SELECT')
+      )
+  ) THEN
+    RAISE EXCEPTION 'Browser roles retain direct SELECT access to a public table or view';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND cmd IN ('SELECT', 'ALL')
+  ) THEN
+    RAISE EXCEPTION 'A direct public-schema SELECT policy remains after RPC-only read closure';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_default_acl d
+    JOIN pg_namespace n ON n.oid = d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+    LEFT JOIN pg_roles grantee ON grantee.oid = a.grantee
+    WHERE n.nspname = 'public'
+      AND d.defaclobjtype IN ('r', 'S')
+      AND COALESCE(grantee.rolname, 'PUBLIC') IN ('PUBLIC', 'anon', 'authenticated')
+  ) THEN
+    RAISE EXCEPTION 'Future public tables/sequences retain browser default privileges';
+  END IF;
+END
+$browser_table_read_closure$;
+
 -- Start with an active staff account that can view orders and goals, but lacks
 -- goal-management, customer-view, and sync-management permissions. Synthetic rows only.
 UPDATE public.admins
