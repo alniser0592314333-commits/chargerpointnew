@@ -52,6 +52,18 @@ describe('Isolated customer QR portal security contract', () => {
     expect(app).not.toContain('<PublicCustomerQrPage token={token} />');
   });
 
+  it('skips admin session inspection and business-store bootstrap on public capability routes', () => {
+    const app = fs.readFileSync(appPath, 'utf8');
+    const publicGuard = app.indexOf('if (isPublicPortalPath(parseRoute(window.location.pathname).pathname))');
+    const authLookup = app.indexOf('authService.captureAuthCallback()');
+    const storeBootstrap = app.indexOf('await ensureStoreHydrated();');
+    expect(publicGuard).toBeGreaterThan(-1);
+    expect(authLookup).toBeGreaterThan(publicGuard);
+    expect(storeBootstrap).toBeGreaterThan(publicGuard);
+    expect(app.slice(publicGuard, authLookup)).toContain('setIsAuthChecking(false)');
+    expect(app.slice(publicGuard, authLookup)).toContain('return () => { isMounted = false; }');
+  });
+
   it('prevents QR bearer-token referrer leakage and search indexing', () => {
     const html = fs.readFileSync(htmlPath, 'utf8');
     expect(html).toContain('<meta name="referrer" content="no-referrer" />');
