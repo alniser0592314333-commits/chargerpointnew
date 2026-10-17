@@ -21,15 +21,15 @@ describe("Auth Regression Fix Verification (A through F)", () => {
     config.supabaseAnonKey = "sb_publishable_mock_key";
   });
 
-  it("A: Login with username -> authService.login receives username and resolves email via rpcGetEmailByUsername", async () => {
+  it("A: Login with username uses server-mediated sign-in without resolving email in the browser", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    const rpcSpy = vi.spyOn(supabaseClient, "rpcGetEmailByUsername").mockResolvedValue("al.niser.0592314333@gmail.com");
-    const signInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithPassword").mockResolvedValue({
+    const signInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
       session: {
         access_token: "jwt_123",
         user: { id: "user_123", email: "al.niser.0592314333@gmail.com" },
       },
       error: null,
+      statusCode: 200,
     });
     vi.spyOn(authService, "getAdminProfile").mockResolvedValue({
       authenticated: true,
@@ -42,15 +42,14 @@ describe("Auth Regression Fix Verification (A through F)", () => {
 
     const session = await authService.login("superadmin", "validpass123");
 
-    expect(rpcSpy).toHaveBeenCalledWith("superadmin");
-    expect(signInSpy).toHaveBeenCalledWith("al.niser.0592314333@gmail.com", "validpass123", false);
+    expect(signInSpy).toHaveBeenCalledWith("superadmin", "validpass123", false);
     expect(session).not.toBeNull();
     expect(session?.email).toBe("al.niser.0592314333@gmail.com");
   });
 
-  it("B: Login with email -> authService.login receives email directly and rpcGetEmailByUsername is NOT called", async () => {
+  it("B: Login with email uses Supabase Auth directly", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    const rpcSpy = vi.spyOn(supabaseClient, "rpcGetEmailByUsername");
+    const usernameSignInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithUsername");
     const signInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithPassword").mockResolvedValue({
       session: {
         access_token: "jwt_456",
@@ -69,26 +68,29 @@ describe("Auth Regression Fix Verification (A through F)", () => {
 
     const session = await authService.login("al.niser.0592314333@gmail.com", "validpass123");
 
-    expect(rpcSpy).not.toHaveBeenCalled();
+    expect(usernameSignInSpy).not.toHaveBeenCalled();
     expect(signInSpy).toHaveBeenCalledWith("al.niser.0592314333@gmail.com", "validpass123", false);
     expect(session).not.toBeNull();
   });
 
-  it("C: Invalid username -> rpcGetEmailByUsername returns null and authService.login returns null", async () => {
+  it("C: Invalid username returns generic invalid credentials without exposing an email", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    const rpcSpy = vi.spyOn(supabaseClient, "rpcGetEmailByUsername").mockResolvedValue(null);
-    const signInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithPassword");
+    const signInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
+      session: null,
+      error: "Invalid login credentials",
+      statusCode: 401,
+      isInvalidCredentials: true,
+    });
 
     const session = await authService.login("invalid_user_name", "somepass");
 
-    expect(rpcSpy).toHaveBeenCalledWith("invalid_user_name");
-    expect(signInSpy).not.toHaveBeenCalled();
+    expect(signInSpy).toHaveBeenCalledWith("invalid_user_name", "somepass", false);
     expect(session).toBeNull();
   });
 
   it("D: Invalid password for valid identifier -> password authentication is actually attempted and returns null on failure", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    const rpcSpy = vi.spyOn(supabaseClient, "rpcGetEmailByUsername");
+    const usernameSignInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithUsername");
     const signInSpy = vi.spyOn(supabaseClient, "supabaseSignInWithPassword").mockResolvedValue({
       session: null,
       error: "Invalid login credentials",
@@ -96,7 +98,7 @@ describe("Auth Regression Fix Verification (A through F)", () => {
 
     const session = await authService.login("al.niser.0592314333@gmail.com", "wrongpassword");
 
-    expect(rpcSpy).not.toHaveBeenCalled();
+    expect(usernameSignInSpy).not.toHaveBeenCalled();
     expect(signInSpy).toHaveBeenCalledWith("al.niser.0592314333@gmail.com", "wrongpassword", false);
     expect(session).toBeNull();
   });
