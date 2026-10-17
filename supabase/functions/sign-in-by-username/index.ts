@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { escapeLikeLiteral, isTrustedClientIp, normalizeUsername, publicAuthFailure } from "./requestValidation.ts";
+import { escapeLikeLiteral, hashRateLimitKey, isTrustedClientIp, normalizeUsername, publicAuthFailure } from "./requestValidation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,8 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json",
 };
-const respond = (status: number, body: Record<string, unknown>) =>
-  new Response(JSON.stringify(body), { status, headers: corsHeaders });
+const respond = (status: number, body: Record<string, unknown>, extraHeaders: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, ...extraHeaders } });
 
 const invalidCredentials = () => {
   const failure = publicAuthFailure(401);
@@ -21,8 +21,10 @@ Deno.serve(async (request: Request) => {
 
   const url = Deno.env.get("SUPABASE_URL");
   const secretKey = Deno.env.get("SUPABASE_SECRET_KEY");
+  const rateLimitSecret = Deno.env.get("USERNAME_SIGNIN_RATE_LIMIT_SECRET");
   const ipForwardingEnabled = Deno.env.get("SUPABASE_AUTH_IP_FORWARDING_ENABLED") === "true";
-  if (!url || !secretKey || !secretKey.startsWith("sb_secret_") || !ipForwardingEnabled) {
+  if (!url || !secretKey || !secretKey.startsWith("sb_secret_")
+      || !rateLimitSecret || rateLimitSecret.length < 32 || !ipForwardingEnabled) {
     // Deployment must explicitly attest that Auth IP forwarding was enabled in the
     // project settings. Never silently fall back to a shared Edge Function egress IP
     // or a legacy service_role key for per-client rate limiting.
@@ -44,6 +46,27 @@ Deno.serve(async (request: Request) => {
   });
 
   try {
+    // Atomic shared rate limits prevent brute force across Edge Function instances.
+    // Only keyed HMAC digests are persisted; raw IP addresses and usernames are not.
+    const [ipKey, usernameKey] = await Promise.all([
+      hashRateLimitKey(rateLimitSecret, `ip:${clientIp}`),
+      hashRateLimitKey(rateLimitSecret, `username:${username.toLowerCase()}`),
+    ]);
+    const { data: rateLimit, error: rateLimitError } = await adminClient.rpc(
+      "consume_username_signin_attempt",
+      { p_ip_key: ipKey, p_username_key: usernameKey },
+    );
+    if (rateLimitError || !rateLimit || typeof rateLimit.allowed !== "boolean") {
+      console.error("Username sign-in rate limit check failed");
+      return respond(503, { error: "Username sign-in is temporarily unavailable" });
+    }
+    if (!rateLimit.allowed) {
+      const retryAfter = Math.max(1, Math.min(900, Number(rateLimit.retry_after_seconds) || 900));
+      return respond(429, { session: null, error: "RATE_LIMIT", isRateLimited: true }, {
+        "Retry-After": String(retryAfter),
+      });
+    }
+
     const escapedUsername = escapeLikeLiteral(username);
     const { data: matches, error: lookupError } = await adminClient
       .from("admins")
