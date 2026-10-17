@@ -48,7 +48,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
     if (request.method !== "POST") return respond(405, { error: "Method not allowed" });
 
     const url = deps.getEnv("SUPABASE_URL");
-    const secretKey = deps.getEnv("SUPABASE_SECRET_KEY");
+    const secretKey = deps.getEnv("AUTH_SUPABASE_SECRET_KEY") ?? deps.getEnv("SUPABASE_SECRET_KEY");
     const rateLimitSecret = deps.getEnv("USERNAME_SIGNIN_RATE_LIMIT_SECRET");
     const ipForwardingEnabled = deps.getEnv("AUTH_IP_FORWARDING_ENABLED") === "true";
     if (!url || !secretKey || !secretKey.startsWith("sb_secret_")
