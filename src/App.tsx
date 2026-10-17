@@ -115,6 +115,16 @@ export default function App() {
   // Authoritatively check auth, then gate application access on local store readiness.
   useEffect(() => {
     let isMounted = true;
+
+    // Public capability routes must not inspect an existing admin session or
+    // hydrate/pull the administrator's local and remote business data.
+    if (isPublicPortalPath(parseRoute(window.location.pathname).pathname)) {
+      setIsAuthenticated(false);
+      setUserSession(null);
+      setIsAuthChecking(false);
+      return () => { isMounted = false; };
+    }
+
     let authenticatedSession: UserSession | null = null;
     const initAuth = async () => {
       try {
