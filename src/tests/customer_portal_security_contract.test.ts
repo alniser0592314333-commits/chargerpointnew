@@ -109,9 +109,7 @@ describe('Isolated customer QR portal security contract', () => {
       expect(index).toBeGreaterThan(resolverStart);
       const callEnd = client.indexOf(');', index);
       const call = client.slice(index, callEnd + 2);
-      expect(call).toContain('undefined');
-      expect(call).toContain('false');
-      expect(call).toContain('true');
+      expect(call.replace(/\\s+/g, ' ')).toContain('undefined, true, false, true');
     }
 
 
