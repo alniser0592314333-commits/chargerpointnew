@@ -146,7 +146,11 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017200000_security_hardening_browser_table_privileges.sql
-      - name: Verify admin-bound RLS and browser TRUNCATE revocation
+      - name: Apply all-authenticated-policy and customer QR authorization hardening
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017210000_harden_all_authenticated_policies_and_customer_qr_admin_gate.sql
+      - name: Verify admin-bound RLS, browser TRUNCATE revocation, and QR admin gates
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_hardening_migration_runtime.test.sql
