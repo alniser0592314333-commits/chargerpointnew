@@ -35,8 +35,8 @@ export const getOrderPaymentViewState = (
   if (dueMinor <= 0) return customerHasPositiveCredit ? 'CREDIT_COVERED' : 'NOT_DUE';
   if (submission?.status === 'APPROVED') return 'APPROVED';
   if (submission?.status === 'REJECTED') return 'REJECTED';
-  // Positive account balance is customer credit, not a debt to collect through this QR.
-  if (customerHasPositiveCredit) return 'CREDIT_COVERED';
+  // The server-calculated due is already net of available positive customer credit.
+  // Any positive remainder is payable even when some customer credit remains.
   return 'UNPAID';
 };
 
@@ -138,6 +138,12 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             status: latestOrder.status,
             orderTotalMinor: latestOrder.order_total_minor,
             orderDueMinor: latestOrder.order_due_minor,
+            customerHasPositiveCredit: typeof latestOrder.customer_has_positive_credit === 'boolean'
+              ? latestOrder.customer_has_positive_credit
+              : current.customerHasPositiveCredit,
+            orderQrSubmissionLimitReached: typeof latestOrder.order_qr_submission_limit_reached === 'boolean'
+              ? latestOrder.order_qr_submission_limit_reached
+              : current.orderQrSubmissionLimitReached,
           } : current);
         }
         // Null can mean a temporary RPC failure; do not erase a previously confirmed state.
@@ -636,7 +642,9 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                         <div className="order-fully-paid-text">
                           <h3>{isAr ? 'تم قبول الدفع' : 'Payment accepted'}</h3>
                           <p>{data.customerHasPositiveCredit
-                            ? (isAr ? 'تم اعتماد الدفعة. سيُستخدم رصيدك الموجب أولاً عند احتساب المبلغ المستحق.' : 'Your payment was approved. Your positive credit is applied first when calculating what remains due.')
+                            ? (isAr
+                                ? `تم اعتماد الدفعة واحتساب رصيدك الموجب. المبلغ المتبقي عليك: ${formatCurrency(due ?? 0)}.`
+                                : `Your payment was approved and your positive credit was applied. Remaining amount due: ${formatCurrency(due ?? 0)}.`)
                             : (isAr
                                 ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
                                 : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`)}</p>
@@ -644,7 +652,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {(paymentViewState === 'CREDIT_COVERED' || (data.customerHasPositiveCredit && (paymentViewState === 'APPROVED' || paymentViewState === 'REJECTED'))) && (
+                    {paymentViewState === 'CREDIT_COVERED' && (
                       <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
                         <div className="order-fully-paid-text">
@@ -675,8 +683,8 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                           <h3>{isAr ? 'لم يتم قبول إشعار الدفع' : 'Payment notification was not accepted'}</h3>
                           <p>{data.customerHasPositiveCredit
                             ? (isAr
-                                ? 'لم يُعتمد هذا الإشعار كدفعة. رصيدك الموجب سيُستخدم أولاً، فلا ترسل دفعة جديدة الآن.'
-                                : 'This notification was not credited. Your positive credit is applied first, so do not send another payment now.')
+                                ? `لم يُعتمد إشعار الدفع. تم احتساب رصيدك الموجب، لكن ما زال عليك مبلغ متبقٍ: ${formatCurrency(due ?? 0)}. يمكنك إرسال إشعار جديد لهذا المبلغ.`
+                                : `The payment notification was not approved. Your positive credit was applied, but ${formatCurrency(due ?? 0)} remains due. You can submit a new notification for that remainder.`)
                             : (isAr
                                 ? 'لم يُسجَّل هذا الإشعار كدفعة. يمكنك مراجعة الإيصال وإرسال إشعار جديد.'
                                 : 'This notification was not credited as a payment. Review your receipt and submit a new notification.')}</p>
@@ -684,7 +692,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {orderQrSubmissionLimitReached && typeof due === 'number' && due > 0 && !data.customerHasPositiveCredit && submission?.status !== 'PENDING' && (
+                    {orderQrSubmissionLimitReached && typeof due === 'number' && due > 0 && submission?.status !== 'PENDING' && (
                       <div className="order-fully-paid-banner order-payment-notice is-rejected" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><CircleAlert size={22} /></div>
                         <div className="order-fully-paid-text">
@@ -696,7 +704,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && !orderQrSubmissionLimitReached && !data.customerHasPositiveCredit && (
+                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && !orderQrSubmissionLimitReached && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
@@ -705,7 +713,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && !data.customerHasPositiveCredit && (
+                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
