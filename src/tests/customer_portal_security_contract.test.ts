@@ -11,6 +11,8 @@ describe('Isolated customer QR portal security contract', () => {
   const pagePath = path.resolve(process.cwd(), 'src/components/pages/PublicCustomerPortalPage.tsx');
   const supabaseClientPath = path.resolve(process.cwd(), 'src/services/supabase/client.ts');
   const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
+  const publicOrderPath = path.resolve(process.cwd(), 'src/components/pages/PublicOrderPage.tsx');
+  const publicPaymentPath = path.resolve(process.cwd(), 'src/components/pages/PublicPaymentPage.tsx');
   const htmlPath = path.resolve(process.cwd(), 'index.html');
 
   it('resolves only active CUSTOMER capabilities and never grants direct table access', () => {
@@ -82,6 +84,21 @@ describe('Isolated customer QR portal security contract', () => {
       expect(resolver).not.toContain('initDbIfNeeded');
       expect(resolver).not.toContain('localDb');
     }
+  });
+
+  it('clears public order and payment data on offline transitions', () => {
+    const order = fs.readFileSync(publicOrderPath, 'utf8');
+    expect(order).toContain("window.addEventListener('offline', onOffline)");
+    expect(order).toContain('setData(null)');
+    expect(order).toContain('setSubmission(null)');
+    expect(order).toContain('requestId !== requestGeneration.current');
+    const payment = fs.readFileSync(publicPaymentPath, 'utf8');
+    expect(payment).toContain("window.addEventListener('offline', onOffline)");
+    expect(payment).toContain('setOrder(null)');
+    expect(payment).toContain('setCustomer(null)');
+    expect(payment).toContain('setSubmission(null)');
+    expect(payment).toContain("throw new Error('OFFLINE')");
+    expect(payment).toContain('submissionGeneration !== requestGeneration.current');
   });
 
   it('prevents QR bearer-token referrer leakage and search indexing', () => {
