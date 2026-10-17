@@ -365,6 +365,23 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/tests/public_qr_payment_migration_runtime.test.sql
 
+      - name: Create isolated database for customer QR resolution
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres customer_qr_resolution_test
+      - name: Prepare customer QR resolver drift fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_qr_resolution_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_qr_resolution_migration_fixture.sql
+      - name: Apply customer QR resolver migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_qr_resolution_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017193000_fix_customer_qr_resolution_contract.sql
+      - name: Verify customer QR resolution and public contract
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_qr_resolution_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_qr_resolution_migration_runtime.test.sql
+
   diagnose-main-test-baseline:
     name: Diagnose full-suite baseline on main
     runs-on: ubuntu-latest

@@ -26,6 +26,7 @@ export const CustomerQrPage: React.FC<CustomerQrPageProps> = ({ customerId, onBa
   const [data, setData] = useState<UICustomerQrCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  const [isServiceError, setIsServiceError] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -33,6 +34,7 @@ export const CustomerQrPage: React.FC<CustomerQrPageProps> = ({ customerId, onBa
     let active = true;
     setIsLoading(true);
     setIsError(false);
+    setIsServiceError(false);
 
     getCustomerQrCardData(customerId)
       .then((res) => {
@@ -48,6 +50,7 @@ export const CustomerQrPage: React.FC<CustomerQrPageProps> = ({ customerId, onBa
       .catch((err) => {
         if (active) {
           console.error('Failed to load customer QR data:', err);
+          setIsServiceError(true);
           setIsError(true);
           setIsLoading(false);
         }
@@ -173,7 +176,11 @@ export const CustomerQrPage: React.FC<CustomerQrPageProps> = ({ customerId, onBa
         <div className="py-12 px-4 text-center space-y-3 bg-red-50 dark:bg-[#360d13] border border-red-200 dark:border-[#421419] rounded-2xl">
           <AlertTriangle className="w-8 h-8 text-red-600 dark:text-[#e07a7a] mx-auto" />
           <p className="text-sm font-bold text-red-700 dark:text-[#e07a7a]">
-            {t('invalidOrExpiredQr') || 'رمز QR غير صالح أو منتهي الصلاحية'}
+            {isServiceError
+              ? (locale === 'en'
+                ? 'Customer QR could not be created because the central service is unavailable. Check the connection and try again.'
+                : 'تعذّر إنشاء رمز العميل لأن خدمة التخزين المركزي غير متاحة. افحص الاتصال وحاول مرة أخرى.')
+              : (t('invalidOrExpiredQr') || 'رمز QR غير صالح أو منتهي الصلاحية')}
           </p>
           <Button variant="outline" size="sm" onClick={handleBackClick}>
             {t('back')}

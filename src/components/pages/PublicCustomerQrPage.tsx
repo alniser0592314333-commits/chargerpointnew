@@ -33,11 +33,13 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
   const [data, setData] = useState<PublicCustomerQrData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
+  const [isServiceError, setIsServiceError] = useState(false);
 
   useEffect(() => {
     let active = true;
     setIsLoading(true);
     setIsError(false);
+    setIsServiceError(false);
 
     getPublicCustomerByToken(token)
       .then((res) => {
@@ -53,6 +55,7 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
       .catch((err) => {
         if (active) {
           console.error('Failed to load public customer data:', err);
+          setIsServiceError(true);
           setIsError(true);
           setIsLoading(false);
         }
@@ -116,12 +119,18 @@ export const PublicCustomerQrPage: React.FC<PublicCustomerQrPageProps> = ({ toke
               <AlertTriangle className="w-6 h-6" />
             </div>
             <h2 className="text-base font-bold text-gray-900 dark:text-[#daf1de]">
-              {locale === 'en' ? 'Customer Profile Not Found' : 'رمز العميل غير صالح أو غير موجود'}
+              {isServiceError
+                ? (locale === 'en' ? 'Customer Profile Temporarily Unavailable' : 'تعذّر التحقق من بيانات العميل')
+                : (locale === 'en' ? 'Customer Profile Not Found' : 'رمز العميل غير صالح أو غير موجود')}
             </h2>
             <p className="text-xs text-gray-500 dark:text-[#8eb698]">
-              {locale === 'en'
-                ? 'Please make sure you scanned the correct customer code.'
-                : 'تأكد من مسح الرمز الصحيح الخاص بحسابك.'}
+              {isServiceError
+                ? (locale === 'en'
+                  ? 'The customer QR service could not validate this link. Please try again when the connection is available.'
+                  : 'تعذّر الاتصال بخدمة التحقق من رمز العميل. جرّب مرة أخرى عند توفر الاتصال.')
+                : (locale === 'en'
+                  ? 'Please make sure you scanned the correct customer code.'
+                  : 'تأكد من مسح الرمز الصحيح الخاص بحسابك.')}
             </p>
           </div>
         ) : (

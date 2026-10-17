@@ -1,6 +1,25 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const customerQrRpcMocks = vi.hoisted(() => ({
+  getOrCreate: vi.fn(),
+  adopt: vi.fn(),
+  rotate: vi.fn(),
+  resolve: vi.fn(),
+}));
+
+vi.mock('../services/supabase/client', async () => {
+  const actual = await vi.importActual<typeof import('../services/supabase/client')>('../services/supabase/client');
+  return {
+    ...actual,
+    rpcGetOrCreateCustomerQr: customerQrRpcMocks.getOrCreate,
+    rpcAdoptLegacyCustomerQrToken: customerQrRpcMocks.adopt,
+    rpcRotateCustomerQr: customerQrRpcMocks.rotate,
+    rpcResolveCustomerQr: customerQrRpcMocks.resolve,
+  };
+});
 import { translations } from '../i18n/translations';
 import { localDb } from '../infrastructure/localDb/localDb';
+import { configureCustomerQrRpcMocks } from './helpers/customerQrRpcMocks';
 import { getCustomerQrCardData, resetStoreMemory, seedDemoOperationalData } from '../components/pages/dayOrdersStore';
 
 describe('Phase 6.6: General Settings Page & Global Preferences', () => {
@@ -10,6 +29,7 @@ describe('Phase 6.6: General Settings Page & Global Preferences', () => {
     await localDb.clear();
     resetStoreMemory();
     await seedDemoOperationalData();
+    configureCustomerQrRpcMocks(customerQrRpcMocks, localDb);
     mockStorage = {};
     if (typeof globalThis.localStorage === 'undefined') {
       (globalThis as any).localStorage = {

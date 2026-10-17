@@ -1,4 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const customerQrRpcMocks = vi.hoisted(() => ({
+  getOrCreate: vi.fn(),
+  adopt: vi.fn(),
+  rotate: vi.fn(),
+  resolve: vi.fn(),
+}));
+
+vi.mock('../services/supabase/client', async () => {
+  const actual = await vi.importActual<typeof import('../services/supabase/client')>('../services/supabase/client');
+  return {
+    ...actual,
+    rpcGetOrCreateCustomerQr: customerQrRpcMocks.getOrCreate,
+    rpcAdoptLegacyCustomerQrToken: customerQrRpcMocks.adopt,
+    rpcRotateCustomerQr: customerQrRpcMocks.rotate,
+    rpcResolveCustomerQr: customerQrRpcMocks.resolve,
+  };
+});
 import {
   getActiveQrDesign,
   setActiveQrDesign,
@@ -17,6 +35,7 @@ import {
 import { QRDesignConfig } from '../components/qr/types';
 import { downloadQrCard } from '../components/qr/downloadEngine';
 import { localDb } from '../infrastructure/localDb/localDb';
+import { configureCustomerQrRpcMocks } from './helpers/customerQrRpcMocks';
 
 describe('Phase 6.5.4B: QR Design Settings UX & Draft/Active Decoupling', () => {
   beforeEach(async () => {
@@ -24,6 +43,7 @@ describe('Phase 6.5.4B: QR Design Settings UX & Draft/Active Decoupling', () => 
     if (typeof localStorage !== 'undefined') localStorage.clear();
     resetStoreMemory();
     await seedDemoOperationalData();
+    configureCustomerQrRpcMocks(customerQrRpcMocks, localDb);
     resetActiveQrDesign('CUSTOMER');
     resetActiveQrDesign('ORDER');
   });

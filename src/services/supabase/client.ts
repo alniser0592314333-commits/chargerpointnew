@@ -1080,11 +1080,29 @@ export async function rpcResolveCustomerQr(
     { p_public_token: publicToken }
   );
 
-  if (error || !data || data.length === 0) {
+  if (error) {
+    // A failed RPC is a server/contract failure, not proof that the QR token is invalid.
+    // Preserve the failure so callers do not silently fall back to device-local identity.
+    throw new Error(`CUSTOMER_QR_RESOLUTION_FAILED: ${error}`);
+  }
+
+  if (data === null) {
+    throw new Error('CUSTOMER_QR_RESOLUTION_FAILED: empty RPC response');
+  }
+
+  if (!Array.isArray(data) || data.length === 0) {
     return null;
   }
 
   const row = data[0];
+  if (
+    !row ||
+    typeof row.customer_name !== 'string' ||
+    typeof row.customer_code !== 'string'
+  ) {
+    throw new Error('CUSTOMER_QR_RESOLUTION_FAILED: invalid server response contract');
+  }
+
   return {
     customerName: row.customer_name,
     customerCode: row.customer_code,
@@ -1133,14 +1151,41 @@ export async function rpcResolveQrPaymentSubmission(
  */
 export async function rpcGetOrCreateCustomerQr(
   customerId: string
-): Promise<string | null> {
+): Promise<string> {
   const { data, error } = await invokeSupabaseRpc<string>(
     'get_or_create_customer_qr',
     { p_customer_id: customerId }
   );
 
-  if (error || !data) {
-    return null;
+  if (error) {
+    throw new Error(`CUSTOMER_QR_CENTRAL_CREATION_FAILED: ${error}`);
+  }
+  if (typeof data !== 'string' || !/^[A-Za-z0-9_-]{24,64}$/.test(data)) {
+    throw new Error('CUSTOMER_QR_CENTRAL_CREATION_FAILED: invalid or empty server response');
+  }
+
+  return data;
+}
+
+/**
+ * Registers an existing device-local customer QR token with the central database
+ * when possible, preserving previously shared links. This RPC requires an
+ * authenticated admin session and is deliberately not listed among public RPCs.
+ */
+export async function rpcAdoptLegacyCustomerQrToken(
+  customerId: string,
+  publicToken: string
+): Promise<string> {
+  const { data, error } = await invokeSupabaseRpc<string>(
+    'adopt_customer_qr_token',
+    { p_customer_id: customerId, p_public_token: publicToken }
+  );
+
+  if (error) {
+    throw new Error(`CUSTOMER_QR_LEGACY_ADOPTION_FAILED: ${error}`);
+  }
+  if (typeof data !== 'string' || !/^[A-Za-z0-9_-]{24,64}$/.test(data)) {
+    throw new Error('CUSTOMER_QR_LEGACY_ADOPTION_FAILED: invalid server response');
   }
 
   return data;
@@ -1151,14 +1196,17 @@ export async function rpcGetOrCreateCustomerQr(
  */
 export async function rpcRotateCustomerQr(
   customerId: string
-): Promise<string | null> {
+): Promise<string> {
   const { data, error } = await invokeSupabaseRpc<string>(
     'rotate_customer_qr',
     { p_customer_id: customerId }
   );
 
-  if (error || !data) {
-    return null;
+  if (error) {
+    throw new Error(`CUSTOMER_QR_CENTRAL_ROTATION_FAILED: ${error}`);
+  }
+  if (typeof data !== 'string' || !/^[A-Za-z0-9_-]{24,64}$/.test(data)) {
+    throw new Error('CUSTOMER_QR_CENTRAL_ROTATION_FAILED: invalid or empty server response');
   }
 
   return data;
