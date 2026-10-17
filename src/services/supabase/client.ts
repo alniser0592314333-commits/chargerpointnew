@@ -1818,7 +1818,7 @@ export async function rpcFetchAdmins(): Promise<{ data: AdminRow[] | null; error
 }
 
 export async function rpcFetchAuditLogs(): Promise<{ data: AuditLog[] | null; error: string | null }> {
-  const { data, error } = await invokeSupabaseRestGet<AuditLog>('admin_audit_logs', 'select=*&order=created_at.desc');
+  const { data, error } = await invokeSupabaseRpc<AuditLog[]>('rpc_fetch_admin_audit_logs');
   return { data, error };
 }
 
