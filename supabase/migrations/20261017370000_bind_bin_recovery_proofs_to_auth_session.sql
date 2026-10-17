@@ -164,13 +164,6 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'Active admin profile not found');
   END IF;
 
-  IF v_bin_status <> 'LOCKED' AND v_failed_attempts < 3 THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'error', 'RECOVERY_NOT_PERMITTED: BIN recovery is only allowed when account is in LOCKED state'
-    );
-  END IF;
-
   v_proof_token_hash := encode(public.digest(trim(p_recovery_proof), 'sha256'), 'hex');
 
   SELECT p.id
@@ -189,6 +182,13 @@ BEGIN
     RETURN jsonb_build_object(
       'success', false,
       'error', 'INVALID_OR_EXPIRED_PROOF: Recovery proof is invalid, expired, or already used'
+    );
+  END IF;
+
+  IF v_bin_status <> 'LOCKED' AND v_failed_attempts < 3 THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'RECOVERY_NOT_PERMITTED: BIN recovery is only allowed when account is in LOCKED state'
     );
   END IF;
 
