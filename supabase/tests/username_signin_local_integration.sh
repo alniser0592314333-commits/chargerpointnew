@@ -79,7 +79,7 @@ fi
 cat > "$WORKDIR/supabase/functions/.env" <<ENV
 SUPABASE_SECRET_KEY=$SECRET_KEY
 USERNAME_SIGNIN_RATE_LIMIT_SECRET=$(openssl rand -hex 32)
-SUPABASE_AUTH_IP_FORWARDING_ENABLED=true
+AUTH_IP_FORWARDING_ENABLED=true
 ENV
 
 curl -fsS -X POST "$API_URL/auth/v1/signup" \
