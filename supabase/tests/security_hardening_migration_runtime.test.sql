@@ -61,6 +61,34 @@ BEGIN
 END
 $truncate_check$;
 
+DO $anon_table_acl$
+DECLARE
+  v_relation record;
+BEGIN
+  FOR v_relation IN
+    SELECT c.oid::regclass AS relation_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  LOOP
+    IF has_table_privilege('anon', v_relation.relation_name, 'SELECT')
+       OR has_table_privilege('anon', v_relation.relation_name, 'INSERT')
+       OR has_table_privilege('anon', v_relation.relation_name, 'UPDATE')
+       OR has_table_privilege('anon', v_relation.relation_name, 'DELETE')
+       OR has_table_privilege('anon', v_relation.relation_name, 'TRUNCATE')
+       OR has_table_privilege('anon', v_relation.relation_name, 'REFERENCES')
+       OR has_table_privilege('anon', v_relation.relation_name, 'TRIGGER') THEN
+      RAISE EXCEPTION 'anon retains an unnecessary table privilege on %', v_relation.relation_name;
+    END IF;
+  END LOOP;
+
+  IF has_sequence_privilege('anon', 'public.customers_id_seq', 'USAGE') THEN
+    RAISE EXCEPTION 'anon retains sequence USAGE on customers_id_seq';
+  END IF;
+END
+$anon_table_acl$;
+
 
 DO $qr_wrapper_privileges$
 BEGIN
