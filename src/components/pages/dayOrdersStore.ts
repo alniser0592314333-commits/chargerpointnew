@@ -5333,6 +5333,7 @@ const cacheCanonicalCustomerQrToken = async (
       ...existing,
       tokenHash: await computeTokenHash(publicToken),
       publicToken,
+      expiresAt: undefined,
       isActive: true,
     });
     return;
