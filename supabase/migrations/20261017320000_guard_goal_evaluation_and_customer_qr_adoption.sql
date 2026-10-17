@@ -151,4 +151,66 @@ $function$;
 REVOKE ALL ON FUNCTION public.pull_canonical_changes(bigint, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.pull_canonical_changes(bigint, integer) TO authenticated, service_role;
 
+-- The current client reads business data through guarded RPCs and IndexedDB, not
+-- direct PostgREST table queries. Remove legacy browser table/view grants and
+-- broad authenticated read policies so a valid session cannot bypass RPC-level
+-- permissions by querying the REST table endpoint directly.
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public
+  FROM PUBLIC, anon, authenticated;
+
+DO $drop_public_browser_read_policies$
+DECLARE
+  v_policy record;
+BEGIN
+  FOR v_policy IN
+    SELECT schemaname, tablename, policyname
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND cmd IN ('SELECT', 'ALL')
+  LOOP
+    EXECUTE format(
+      'DROP POLICY IF EXISTS %I ON %I.%I',
+      v_policy.policyname,
+      v_policy.schemaname,
+      v_policy.tablename
+    );
+  END LOOP;
+END;
+$drop_public_browser_read_policies$;
+
+-- Prevent future table/sequence grants from the migration-owner roles where
+-- the current database role is authorized to manage their defaults. Supabase
+-- may restrict changes to supabase_admin defaults; in that case this block
+-- deliberately skips that role instead of failing the entire migration.
+DO $revoke_future_browser_table_access$
+DECLARE
+  v_role name;
+  v_current_is_superuser boolean;
+BEGIN
+  SELECT rolsuper INTO v_current_is_superuser
+  FROM pg_roles
+  WHERE rolname = current_user;
+
+  FOR v_role IN
+    SELECT rolname
+    FROM pg_roles
+    WHERE rolname IN ('postgres', 'supabase_admin')
+      AND (
+        rolname = current_user
+        OR COALESCE(v_current_is_superuser, false)
+        OR pg_has_role(current_user, oid, 'MEMBER')
+      )
+  LOOP
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC, anon, authenticated',
+      v_role
+    );
+    EXECUTE format(
+      'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC, anon, authenticated',
+      v_role
+    );
+  END LOOP;
+END;
+$revoke_future_browser_table_access$;
+
 NOTIFY pgrst, 'reload schema';
