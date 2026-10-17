@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.117.2";
+import { readBoundedRequestBody } from "./requestBodyLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,10 +111,26 @@ async function uploadVerifiedReceipt(
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json(405, { error: "Method not allowed" });
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > 3 * 1024 * 1024) {
+  const maxRequestBytes = 3 * 1024 * 1024;
+  const contentLengthHeader = request.headers.get("content-length");
+  if (contentLengthHeader !== null) {
+    const contentLength = Number(contentLengthHeader);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+      return json(400, { error: "Invalid request body length" });
+    }
+    if (contentLength > maxRequestBytes) {
+      return json(413, { error: "The upload is too large. Please choose a smaller receipt image." });
+    }
+  }
+
+  // Content-Length is only an early-rejection hint; enforce the limit while
+  // consuming the actual stream so missing or dishonest headers cannot bypass it.
+  const boundedBody = await readBoundedRequestBody(request, maxRequestBytes);
+  if (boundedBody === null) {
     return json(413, { error: "The upload is too large. Please choose a smaller receipt image." });
   }
+  const formHeaders = new Headers(request.headers);
+  formHeaders.delete("content-length");
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -125,7 +142,12 @@ Deno.serve(async (request: Request) => {
 
   let uploadedPath: string | null = null;
   try {
-    const form = await request.formData();
+    const formRequest = new Request(request.url, {
+      method: "POST",
+      headers: formHeaders,
+      body: boundedBody,
+    });
+    const form = await formRequest.formData();
     const token = String(form.get("token") ?? "").trim();
     const method = String(form.get("payment_method") ?? "").trim().toUpperCase();
     const note = String(form.get("note") ?? "").trim().slice(0, 500);
