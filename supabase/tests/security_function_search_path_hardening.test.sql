@@ -37,7 +37,7 @@ BEGIN
      WHERE p.oid = to_regprocedure(v_signature);
 
     IF v_config IS NULL OR NOT EXISTS (
-      SELECT 1 FROM unnest(v_config) AS setting
+      SELECT 1 FROM unnest(v_config) AS config(setting)
       WHERE setting LIKE 'search_path=%'
     ) THEN
       RAISE EXCEPTION 'Function % does not have a fixed search_path', v_signature;
