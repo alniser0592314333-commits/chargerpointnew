@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  ArrowUpRight, CalendarClock, Check, CheckCircle2,
+  ArrowUpRight, BatteryCharging, CalendarClock, Check, CheckCircle2,
   CircleAlert, CircleHelp, Clock3, CreditCard, Globe,
-  Monitor, Moon, RefreshCw, Settings2,
+  Monitor, Moon, PackageCheck, RefreshCw, Settings2,
   Smartphone, Sparkles, Sun, UserRound, Zap, ShieldCheck, Wallet,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
@@ -28,13 +28,15 @@ export const getOrderPaymentViewState = (
   orderStatus: string | null | undefined
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
+  if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
   const status = String(orderStatus ?? '').toUpperCase();
   if (dueMinor <= 0 && ['DELIVERED', 'COMPLETED'].includes(status)) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
   if (dueMinor <= 0) return customerHasPositiveCredit ? 'CREDIT_COVERED' : 'NOT_DUE';
   if (submission?.status === 'APPROVED') return 'APPROVED';
   if (submission?.status === 'REJECTED') return 'REJECTED';
-  // orderDueMinor is the server-calculated remainder after applying available customer credit.
+  // Positive account balance is customer credit, not a debt to collect through this QR.
+  if (customerHasPositiveCredit) return 'CREDIT_COVERED';
   return 'UNPAID';
 };
 
@@ -136,12 +138,6 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             status: latestOrder.status,
             orderTotalMinor: latestOrder.order_total_minor,
             orderDueMinor: latestOrder.order_due_minor,
-            customerHasPositiveCredit: typeof latestOrder.customer_has_positive_credit === 'boolean'
-              ? latestOrder.customer_has_positive_credit
-              : current.customerHasPositiveCredit,
-            orderQrSubmissionLimitReached: typeof latestOrder.order_qr_submission_limit_reached === 'boolean'
-              ? latestOrder.order_qr_submission_limit_reached
-              : current.orderQrSubmissionLimitReached,
           } : current);
         }
         // Null can mean a temporary RPC failure; do not erase a previously confirmed state.
@@ -230,6 +226,69 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     });
   };
 
+  const itemOperationalLabel = (value?: string) => {
+    const key = (value || '').toUpperCase();
+    if (key === 'DELIVERED') return isAr ? 'تم التسليم' : 'Delivered';
+    if (key === 'CANCELLED' || key === 'CANCELED') return isAr ? 'ملغي' : 'Cancelled';
+    if (key === 'READY' || key === 'READY_FOR_PICKUP') return isAr ? 'جاهز للاستلام' : 'Ready';
+    if (key === 'CHARGING' || key === 'IN_PROGRESS' || key === 'PROCESSING') return isAr ? 'قيد الشحن' : 'Charging';
+    return value || (isAr ? 'قيد المعالجة' : 'In progress');
+  };
+
+  const itemPaymentLabel = (value?: string) => {
+    const key = (value || '').toUpperCase();
+    if (key === 'PAID') return isAr ? 'مدفوع' : 'Paid';
+    if (key === 'PARTIALLY_PAID' || key === 'PARTIAL') return isAr ? 'مدفوع جزئياً' : 'Part-paid';
+    if (key === 'UNPAID') return isAr ? 'غير مدفوع' : 'Unpaid';
+    return '';
+  };
+
+  const getOrderStatusConfig = (value?: string, dueMinor?: number) => {
+    const key = (value || '').toUpperCase();
+    const due = typeof dueMinor === 'number' ? dueMinor : 0;
+
+    if (['CHARGING', 'IN_PROGRESS', 'IN_PROGRESS_CHARGING', 'PROCESSING'].includes(key)) {
+      return {
+        label: isAr ? 'قيد الشحن' : 'Charging',
+        icon: BatteryCharging,
+        className: 'is-charging',
+      };
+    }
+    if (['READY', 'READY_FOR_PICKUP'].includes(key)) {
+      return {
+        label: isAr ? 'جاهز للاستلام' : 'Ready for pickup',
+        icon: CheckCircle2,
+        className: 'is-ready',
+      };
+    }
+    if (['DELIVERED', 'COMPLETED'].includes(key)) {
+      if (due > 0) {
+        return {
+          label: isAr ? 'تم التسليم (غير مدفوع)' : 'Delivered (Unpaid)',
+          icon: PackageCheck,
+          className: 'is-delivered-unpaid',
+        };
+      }
+      return {
+        label: isAr ? 'تم التسليم (مدفوع)' : 'Delivered & Paid',
+        icon: PackageCheck,
+        className: 'is-delivered-paid',
+      };
+    }
+    if (['CANCELLED', 'CANCELED'].includes(key)) {
+      return {
+        label: isAr ? 'ملغي' : 'Cancelled',
+        icon: CircleAlert,
+        className: 'is-cancelled',
+      };
+    }
+    return {
+      label: isAr ? 'قيد المعالجة' : 'In progress',
+      icon: Clock3,
+      className: 'is-pending',
+    };
+  };
+
   const total = data?.orderTotalMinor;
   const due = data?.orderDueMinor;
   const paid =
@@ -237,8 +296,10 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       ? total - due
       : undefined;
 
+  const statusConfig = getOrderStatusConfig(data?.status, due);
   const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status);
   const orderQrSubmissionLimitReached = data?.orderQrSubmissionLimitReached === true;
+  const StatusIcon = statusConfig.icon;
 
   return (
     <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page">
@@ -430,6 +491,10 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     <span className="order-hero-label">{isAr ? 'طلب رقم' : 'ORDER'}</span>
                     <h1 className="order-hero-number" dir="ltr">#{data.orderNumber}</h1>
                   </div>
+                  <div className={`order-status-badge ${statusConfig.className}`}>
+                    <StatusIcon size={15} />
+                    <span>{statusConfig.label}</span>
+                  </div>
                 </div>
 
                 {/* Customer & Timestamp row */}
@@ -489,9 +554,43 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                               )}
                             </span>
 
+                            {(item.quantity ?? 1) > 1 && (
+                              <span className="order-tag-inline">
+                                {isAr ? 'الكمية' : 'Qty'}: {item.quantity}
+                              </span>
+                            )}
+
+                            {item.charger_fee_exempt && (
+                              <span className="order-tag-inline is-exempt">
+                                {isAr ? 'إعفاء من الرسوم' : 'Fee waived'}
+                              </span>
+                            )}
+
+                            {(item.operational_status || item.status) && (
+                              <span className="order-tag-inline">
+                                {itemOperationalLabel(item.operational_status || item.status)}
+                              </span>
+                            )}
+
+                            {itemPaymentLabel(item.payment_status) && (
+                              <span
+                                className={`order-tag-inline ${
+                                  item.payment_status?.toUpperCase() === 'PAID'
+                                    ? 'is-paid'
+                                    : 'is-unpaid'
+                                }`}
+                              >
+                                {itemPaymentLabel(item.payment_status)}
+                              </span>
+                            )}
                           </div>
                         </div>
 
+                        <div className="order-device-price">
+                          {typeof item.total_price_minor === 'number'
+                            ? formatCurrency(item.total_price_minor)
+                            : '—'}
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -536,21 +635,23 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                         <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
                         <div className="order-fully-paid-text">
                           <h3>{isAr ? 'تم قبول الدفع' : 'Payment accepted'}</h3>
-                          <p>{isAr
-                            ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
-                            : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`}</p>
+                          <p>{data.customerHasPositiveCredit
+                            ? (isAr ? 'تم اعتماد الدفعة. سيُستخدم رصيدك الموجب أولاً عند احتساب المبلغ المستحق.' : 'Your payment was approved. Your positive credit is applied first when calculating what remains due.')
+                            : (isAr
+                                ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
+                                : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`)}</p>
                         </div>
                       </div>
                     )}
 
-                    {paymentViewState === 'CREDIT_COVERED' && (
+                    {(paymentViewState === 'CREDIT_COVERED' || (data.customerHasPositiveCredit && (paymentViewState === 'APPROVED' || paymentViewState === 'REJECTED'))) && (
                       <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
                         <div className="order-fully-paid-text">
-                          <h3>{isAr ? 'تم استخدام رصيدك لتغطية الطلب' : 'Your available credit covers this order'}</h3>
+                          <h3>{isAr ? 'رصيدك الموجب سيُستخدم للطلب' : 'Your positive balance will be applied to this order'}</h3>
                           <p>{isAr
-                            ? 'لا يوجد مبلغ متبقٍ للدفع حالياً.'
-                            : 'There is no remaining amount to pay right now.'}</p>
+                            ? 'لا ترسل دفعة الآن. سيُستخدم رصيدك أولاً لتغطية تكلفة الأجهزة المستحقة، وسيظهر خيار الدفع فقط إذا أصبح عليك مبلغ مستحق بعد تحديث الرصيد.'
+                            : 'Do not send a payment now. Your available credit is applied first when delivered devices are financially recognized. A payment option appears only if an amount remains due after the balance updates.'}</p>
                         </div>
                       </div>
                     )}
@@ -572,14 +673,18 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                         <div className="order-fully-paid-icon" aria-hidden="true"><CircleAlert size={22} /></div>
                         <div className="order-fully-paid-text">
                           <h3>{isAr ? 'لم يتم قبول إشعار الدفع' : 'Payment notification was not accepted'}</h3>
-                          <p>{isAr
-                            ? 'لم يُسجَّل هذا الإشعار كدفعة. يمكنك مراجعة الإيصال وإرسال إشعار جديد.'
-                            : 'This notification was not credited as a payment. Review your receipt and submit a new notification.'}</p>
+                          <p>{data.customerHasPositiveCredit
+                            ? (isAr
+                                ? 'لم يُعتمد هذا الإشعار كدفعة. رصيدك الموجب سيُستخدم أولاً، فلا ترسل دفعة جديدة الآن.'
+                                : 'This notification was not credited. Your positive credit is applied first, so do not send another payment now.')
+                            : (isAr
+                                ? 'لم يُسجَّل هذا الإشعار كدفعة. يمكنك مراجعة الإيصال وإرسال إشعار جديد.'
+                                : 'This notification was not credited as a payment. Review your receipt and submit a new notification.')}</p>
                         </div>
                       </div>
                     )}
 
-                    {orderQrSubmissionLimitReached && typeof due === 'number' && due > 0 && submission?.status !== 'PENDING' && (
+                    {orderQrSubmissionLimitReached && typeof due === 'number' && due > 0 && !data.customerHasPositiveCredit && submission?.status !== 'PENDING' && (
                       <div className="order-fully-paid-banner order-payment-notice is-rejected" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><CircleAlert size={22} /></div>
                         <div className="order-fully-paid-text">
@@ -591,20 +696,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {data.customerHasPositiveCredit && typeof due === 'number' && due > 0 &&
-                      (paymentViewState === 'UNPAID' || paymentViewState === 'APPROVED' || paymentViewState === 'REJECTED') && (
-                      <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
-                        <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
-                        <div className="order-fully-paid-text">
-                          <h3>{isAr ? 'سيُخصم رصيدك من قيمة الطلب' : 'Your available credit will be applied to the order'}</h3>
-                          <p>{isAr
-                            ? `المتبقي للدفع: ${formatCurrency(due)}.`
-                            : `Remaining to pay: ${formatCurrency(due)}.`}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && !orderQrSubmissionLimitReached && (
+                    {(paymentViewState === 'UNPAID' || paymentViewState === 'REJECTED') && !orderQrSubmissionLimitReached && !data.customerHasPositiveCredit && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
@@ -613,7 +705,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && (
+                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && !data.customerHasPositiveCredit && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
@@ -623,11 +715,25 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     )}
                   </>
                 ) : paymentViewState === 'PAID' ? (
-                  <div className="order-fully-paid-banner" role="status" aria-live="polite">
-                    <div className="order-fully-paid-text">
-                      <h3>{isAr ? 'شكراً لتعاملكم معنا' : 'Thank you for your business'}</h3>
+                  <>
+                    <div className="order-fully-paid-banner">
+                      <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
+                      <div className="order-fully-paid-text">
+                        <h3>{submission?.status === 'APPROVED'
+                          ? (isAr ? 'تم قبول الدفع وسداد الطلب بالكامل' : 'Payment accepted — order paid in full')
+                          : (isAr ? 'تم سداد الطلب بالكامل' : 'Order Paid in Full')}</h3>
+                        <p>{isAr ? 'شكراً لتعاملك مع نقطة الشحن' : 'Thank you for choosing Charging Point'}</p>
+                      </div>
                     </div>
-                  </div>
+
+                    <div className="order-price-showcase is-paid-complete">
+                      <div className="order-price-line" />
+                      <div className="order-price-value" dir="ltr">
+                        {typeof total === 'number' ? formatCurrency(total) : '—'}
+                      </div>
+                      <div className="order-price-line" />
+                    </div>
+                  </>
                 ) : (
                   <div className="order-fully-paid-banner order-payment-notice is-unavailable" role="status" aria-live="polite">
                     <div className="order-fully-paid-icon" aria-hidden="true"><CircleAlert size={22} /></div>

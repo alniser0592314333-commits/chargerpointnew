@@ -100,11 +100,11 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(undefined, null, false, 'DELIVERED')).toBe('UNAVAILABLE');
   });
 
-  it('allows Pay Now when credit does not cover the server-calculated remainder', () => {
-    expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('UNPAID');
+  it('suppresses Pay Now when the customer has positive credit', () => {
+    expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('CREDIT_COVERED');
   });
 
-  it('preserves approved status while a remainder remains, even when the customer has positive credit', () => {
+  it('preserves an approved payment status while positive credit still blocks another payment', () => {
     expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED')).toBe('APPROVED');
   });
 
@@ -112,27 +112,15 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(0, null, false, 'CHARGING')).toBe('NOT_DUE');
   });
 
-  it('shows a concise credit-covered notice for a charging order without calling it paid', () => {
+  it('shows the positive-credit notice for a charging order without calling it paid', () => {
     expect(getOrderPaymentViewState(0, null, true, 'CHARGING')).toBe('CREDIT_COVERED');
-  });
-
-  it('keeps paid confirmation concise and removes per-device status labels', async () => {
-    const { readFileSync } = await import('node:fs');
-    const source = readFileSync(new URL('../components/pages/PublicOrderPage.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('شكراً لتعاملكم معنا');
-    expect(source).not.toContain('تم قبول الدفع وسداد الطلب بالكامل');
-    expect(source).not.toContain('itemOperationalLabel');
-    expect(source).not.toContain('itemPaymentLabel');
-    expect(source).not.toContain('order-status-badge');
-    expect(source).not.toContain('Delivered & Paid');
-    expect(source).not.toContain('تم التسليم (مدفوع)');
   });
 
   it('shows a delivered order as paid when no recognized amount remains', () => {
     expect(getOrderPaymentViewState(0, null, true, 'DELIVERED')).toBe('PAID');
   });
 
-  it('uses the server-calculated remainder even if the separate positive-credit flag is unavailable', () => {
-    expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED')).toBe('UNPAID');
+  it('fails closed when customer balance is unavailable', () => {
+    expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED')).toBe('UNAVAILABLE');
   });
 });
