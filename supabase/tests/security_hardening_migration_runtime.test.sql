@@ -415,7 +415,15 @@ BEGIN
     CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
     WHERE d.defaclobjtype = 'f'
       AND n.nspname IN ('public', 'storage', 'graphql_public')
-      AND d.defaclrole IN (SELECT oid FROM pg_roles WHERE rolname IN ('postgres', 'supabase_admin'))
+      AND d.defaclrole IN (
+        SELECT oid FROM pg_roles r
+        WHERE r.rolname IN ('postgres', 'supabase_admin')
+          AND (
+            r.rolname = current_user
+            OR r.rolsuper
+            OR pg_has_role(current_user, r.oid, 'MEMBER')
+          )
+      )
       AND acl.grantee IN (
         0,
         (SELECT oid FROM pg_roles WHERE rolname = 'anon'),
@@ -482,7 +490,15 @@ BEGIN
     JOIN pg_namespace n ON n.oid = d.defaclnamespace
     CROSS JOIN LATERAL aclexplode(d.defaclacl) AS acl
     WHERE n.nspname = 'public'
-      AND d.defaclrole IN (SELECT oid FROM pg_roles WHERE rolname IN ('postgres', 'supabase_admin'))
+      AND d.defaclrole IN (
+        SELECT oid FROM pg_roles r
+        WHERE r.rolname IN ('postgres', 'supabase_admin')
+          AND (
+            r.rolname = current_user
+            OR r.rolsuper
+            OR pg_has_role(current_user, r.oid, 'MEMBER')
+          )
+      )
       AND d.defaclobjtype IN ('r', 'S')
       AND acl.grantee = (SELECT oid FROM pg_roles WHERE rolname = 'anon')
   ) THEN
