@@ -149,43 +149,14 @@ $function$;
 REVOKE ALL ON FUNCTION public.rotate_customer_qr(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.rotate_customer_qr(uuid) TO authenticated, service_role;
 
-CREATE OR REPLACE FUNCTION public.create_or_get_customer_qr_token(
-  p_customer_id uuid,
-  p_token_hash text
-)
-RETURNS TABLE(id uuid, token_hash character varying, created_at timestamp with time zone)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, pg_temp
-AS $function$
-BEGIN
-  PERFORM public._cp_assert_active_admin_permission('customers:edit');
+-- This legacy RPC has no callers in the current client or database function graph,
+-- and its implementation no longer matches the current qr_tokens constraints. Retire
+-- the exposed endpoint instead of preserving a broken/insecure alternate token path.
+REVOKE ALL ON FUNCTION public.create_or_get_customer_qr_token(uuid, text)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.create_or_get_customer_qr_token__session_guarded_impl(uuid, text)
+  FROM PUBLIC, anon, authenticated, service_role;
 
-  IF p_customer_id IS NULL OR p_token_hash IS NULL OR btrim(p_token_hash) = ''
-     OR NOT EXISTS (
-       SELECT 1
-       FROM public.customers AS c
-       WHERE c.id = p_customer_id
-         AND c.is_active IS TRUE
-         AND c.deleted_at IS NULL
-         AND c.status <> 'DELETED'
-     )
-  THEN
-    RAISE EXCEPTION 'Active customer and token hash are required'
-      USING ERRCODE = '22023';
-  END IF;
-
-  RETURN QUERY
-  SELECT *
-  FROM public.create_or_get_customer_qr_token__session_guarded_impl(
-    p_customer_id,
-    p_token_hash
-  );
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.create_or_get_customer_qr_token(uuid, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.create_or_get_customer_qr_token(uuid, text) TO authenticated, service_role;
 
 -- The existing customer QR creator was already admin-gated, but did not check
 -- the caller's customer-view permission. Preserve the RPC contract while enforcing it.
