@@ -34,7 +34,9 @@ CREATE POLICY authenticated_read ON public.customers
   FOR SELECT TO authenticated USING (true);
 CREATE POLICY authenticated_read ON public.financial_ledger
   FOR SELECT TO authenticated USING (true);
-CREATE POLICY authenticated_read ON public.customer_requests
+-- Deliberately use a nonstandard policy name to prove the follow-up migration
+-- hardens all authenticated-only policies, not just the legacy authenticated_read name.
+CREATE POLICY "Allow authenticated read of customer requests" ON public.customer_requests
   FOR SELECT TO authenticated USING (true);
 
 GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON public.customers TO anon, authenticated;
@@ -52,3 +54,12 @@ INSERT INTO public.account_sessions(session_id, user_id) VALUES
   ('11000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002');
 INSERT INTO public.admins(id, auth_user_id, is_active) VALUES
   ('12000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', true);
+
+
+-- Minimal existing function signatures for migration replacement in this isolated fixture.
+CREATE FUNCTION public.get_or_create_customer_qr(uuid)
+RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT NULL::text';
+CREATE FUNCTION public.get_or_create_customer_qr__session_guarded_impl(uuid)
+RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT NULL::text';
+CREATE FUNCTION public.adopt_customer_qr_token(uuid, text)
+RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT NULL::text';
