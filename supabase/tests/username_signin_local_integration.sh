@@ -152,6 +152,12 @@ if grep -q 'integration-admin@example.test' "$WORKDIR/wrong-password.json" "$WOR
   echo "Credential failure response disclosed the account email."
   exit 1
 fi
+if [[ "$(jq -cS . "$WORKDIR/wrong-password.json")" != "$(jq -cS . "$WORKDIR/unknown-user.json")" ]]; then
+  echo "Wrong-password and unknown-user responses are not identical."
+  cat "$WORKDIR/wrong-password.json"
+  cat "$WORKDIR/unknown-user.json"
+  exit 1
+fi
 
 # The successful attempt and one bad-password attempt already consumed two pair
 # attempts. Three more remain generic failures; the sixth attempt must be blocked
