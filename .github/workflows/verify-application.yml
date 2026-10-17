@@ -209,6 +209,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017145728_security_function_search_path_hardening.sql
+      - name: Verify history-aligned function search-path and legacy RPC closure
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/security_function_search_path_hardening.test.sql
       - name: Apply comprehensive privileged RPC authorization closure
         env:
           PGPASSWORD: postgres
