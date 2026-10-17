@@ -11,12 +11,12 @@ UPDATE auth.users
 SET encrypted_password = crypt('test-password', gen_salt('bf', 10))
 WHERE id = '11000000-0000-0000-0000-000000000002';
 
-UPDATE auth.sessions
-SET created_at = now(), not_after = NULL
-WHERE id IN (
-  '11000000-0000-0000-0000-000000000009',
-  '11000000-0000-0000-0000-000000000010'
-);
+INSERT INTO auth.sessions(id, user_id, created_at, not_after)
+VALUES
+  ('11000000-0000-0000-0000-000000000009', '11000000-0000-0000-0000-000000000002', now(), NULL),
+  ('11000000-0000-0000-0000-000000000010', '11000000-0000-0000-0000-000000000002', now(), NULL)
+ON CONFLICT (id) DO UPDATE
+SET user_id = EXCLUDED.user_id, created_at = now(), not_after = NULL;
 
 INSERT INTO auth.sessions(id, user_id, created_at, not_after)
 VALUES ('11000000-0000-0000-0000-000000000011',
