@@ -85,6 +85,10 @@ jobs:
         run: deno check --no-lock --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/index.ts
       - name: Test QR receipt path validation
         run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/receiptPathValidation_test.ts
+      - name: Type-check username sign-in Edge Function
+        run: deno check --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/index.ts
+      - name: Test username sign-in request validation
+        run: deno test --no-lock --node-modules-dir=none supabase/functions/sign-in-by-username/requestValidation_test.ts
       - name: Type-check and lint
         run: npm run lint
       - name: Build production bundle
@@ -175,6 +179,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017270000_remove_public_qr_payment_balance_disclosure.sql
+      - name: Disable public username-to-email lookup
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017280000_disable_public_username_email_lookup.sql
       - name: Verify admin-bound RLS, anonymous ACL revocation, QR/bootstrap authorization, and logo storage
         env:
           PGPASSWORD: postgres
