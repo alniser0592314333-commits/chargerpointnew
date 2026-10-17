@@ -374,3 +374,15 @@ BEGIN
   END IF;
 END
 $security_definer_search_path$;
+
+DO $username_email_lookup_acl$
+BEGIN
+  IF has_function_privilege('anon', 'public.get_email_by_username(text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.get_email_by_username(text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Browser roles can still execute username-to-email resolver';
+  END IF;
+  IF has_function_privilege('public', 'public.get_email_by_username(text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'PUBLIC can still execute username-to-email resolver';
+  END IF;
+END
+$username_email_lookup_acl$;
