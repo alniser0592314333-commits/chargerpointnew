@@ -159,6 +159,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const requestGeneration = useRef(0);
   const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -174,6 +175,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
   useEffect(() => {
     let active = true;
+    const requestId = ++requestGeneration.current;
     setLoading(true);
     setLoadError(false);
     setOrder(null);
@@ -189,15 +191,19 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
     void (async () => {
       try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          if (active && requestId === requestGeneration.current) setLoadError(true);
+          return;
+        }
         const orderData = await getPublicOrderByToken(token).catch(() => null);
-        if (!active) return;
+        if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
         let contextFound = false;
         if (orderData) {
           setOrder(orderData);
           contextFound = true;
         } else {
           const customerData = await getPublicCustomerByToken(token);
-          if (!active) return;
+          if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
           if (customerData) {
             setCustomer(customerData);
             contextFound = true;
@@ -208,19 +214,344 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
         if (contextFound) {
           const previousSubmission = await rpcResolveQrPaymentSubmission(token);
-          if (active && previousSubmission) {
+          if (active && requestId === requestGeneration.current && navigator.onLine && previousSubmission) {
             setSubmission(previousSubmission);
             setSuccess(true);
           }
         }
       } catch {
-        if (active) setLoadError(true);
+        if (active && requestId === requestGeneration.current) setLoadError(true);
       } finally {
-        if (active) setLoading(false);
+        if (active && requestId === requestGeneration.current) setLoading(false);
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      requestGeneration.current += 1;
+    };
   }, [token]);
+
+  useEffect(() => {
+    const onOffline = () => {
+      requestGeneration.current += 1;
+      setOrder(null);
+      setCustomer(null);
+      setSubmission(null);
+      setLoadError(true);
+      setLoading(false);
+      setSending(false);
+      setSuccess(false);
+    };
+    window.addEventListener('offline', onOffline);
+    return () => window.removeEventListener('offline', onOffline);
+  }, []);
+
+  useEffect(() => {
+    if (!receipt) {
+      setReceiptPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(receipt);
+    setReceiptPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [receipt]);
+
+  const isCustomerPayment = Boolean(customer && !order);
+  const amountDue = order ? (typeof order.orderDueMinor === 'number' ? order.orderDueMinor : null) : null;
+  const orderPaymentBlockReason = !order
+    ? ''
+    : typeof order.customerHasPositiveCredit !== 'boolean'
+      ? (isAr ? 'تعذّر التحقق من رصيد الحساب. حدّث الصفحة قبل إرسال أي دفعة.' : 'Could not verify the account balance. Refresh before sending a payment.')
+      : order.orderQrSubmissionLimitReached === true && amountDue !== null && amountDue > 0
+        ? (isAr ? 'تم استخدام إشعارات الدفع الثلاثة المسموح بها لهذا الطلب. تواصل مع نقطة الشحن لمتابعة المبلغ المتبقي.' : 'This order QR has used all three allowed payment notifications. Contact Charging Point to resolve the remaining amount.')
+        : amountDue === null || amountDue <= 0
+          ? (['DELIVERED', 'COMPLETED'].includes(String(order.status ?? '').toUpperCase())
+              ? (isAr ? 'لا يوجد مبلغ مستحق على هذا الطلب حالياً.' : 'There is no remaining amount due for this order.')
+              : (isAr ? 'الطلب ما زال قيد الشحن؛ لا يُطلب الدفع قبل تسجيل التسليم.' : 'This order is still charging. Payment is not due before delivery is recorded.'))
+          : '';
+  const orderPaymentAllowed = Boolean(order && !orderPaymentBlockReason);
+  const backHref = isCustomerPayment ? `/c/${token}` : `/o/${token}`;
+  const formatAmount = (amount: number) => formatCurrency(amount);
+
+  const copyNumber = async () => {
+    try {
+      await navigator.clipboard.writeText('0592369875');
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setValidationError(null);
+      setError(isAr ? 'تعذّر نسخ الرقم تلقائياً. يرجى نسخه يدوياً.' : 'Could not copy automatically. Please copy manually.');
+    }
+  };
+
+  const handleReceiptChange = (file?: File) => {
+    setError('');
+    setValidationError(null);
+    setSuccess(false);
+    if (!file) {
+      setReceipt(null);
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setError(isAr ? 'يرجى اختيار ملف صورة صالح (JPEG أو PNG أو WebP).' : 'Please choose a valid image file (JPEG, PNG, or WebP).');
+      return;
+    }
+    if (file.size > MAX_SOURCE_FILE_BYTES) {
+      setError(isAr ? 'حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 12 ميغابايت.' : 'File too large. Please select an image under 12 MB.');
+      return;
+    }
+    setReceipt(file);
+  };
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+0import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, FileImage,
+  Clock3, Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud,
+  X, Wallet, AlertCircle, RefreshCw,
+} from 'lucide-react';
+import { useI18n } from '../../i18n/i18nContext';
+import { useTheme } from '../../theme/themeContext';
+import {
+  getPublicCustomerByToken,
+  getPublicOrderByToken,
+  getItemLocalizedDeviceName,
+  PublicCustomerQrData,
+  PublicOrderQrData,
+} from './dayOrdersStore';
+import { config } from '../../config/env';
+import {
+  PublicQrPaymentSubmissionRpcResult,
+  rpcResolveQrPaymentSubmission,
+} from '../../services/supabase/client';
+
+type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE';
+
+interface PaymentMethodItem {
+  id: PaymentMethod;
+  ar: string;
+  en: string;
+  short: string;
+  descriptionAr: string;
+  descriptionEn: string;
+  badgeAr: string;
+  badgeEn: string;
+  markClass: string;
+  logoUrl: string;
+}
+
+const PAYMENT_METHODS: PaymentMethodItem[] = [
+  {
+    id: 'BANK_OF_PALESTINE',
+    ar: 'بنك فلسطين',
+    en: 'Bank of Palestine',
+    short: 'BOP',
+    descriptionAr: 'تحويل بنكي مباشر',
+    descriptionEn: 'Direct bank transfer',
+    badgeAr: 'حساب بنكي',
+    badgeEn: 'Bank Account',
+    markClass: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300',
+    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg',
+  },
+  {
+    id: 'JAWAL_PAY',
+    ar: 'جوال باي',
+    en: 'Jawwal Pay',
+    short: 'JWP',
+    descriptionAr: 'محفظة إلكترونية فورية',
+    descriptionEn: 'Instant digital wallet',
+    badgeAr: 'محفظة رقمية',
+    badgeEn: 'Digital Wallet',
+    markClass: 'bg-rose-50 text-rose-800 dark:bg-rose-950/70 dark:text-rose-300',
+    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/15/79/dc/1579dcea-3b6b-459a-3fb8-752262e39b6f/AppIcon-0-1x_U007emarketing-0-8-0-0-sRGB-85-220-0.png/512x512bb.jpg',
+  },
+  {
+    id: 'PALPAY',
+    ar: 'بال باي (محفظتي)',
+    en: 'PalPay (Mahfazati)',
+    short: 'PPY',
+    descriptionAr: 'محفظة بال باي الإلكترونية',
+    descriptionEn: 'PalPay mobile wallet',
+    badgeAr: 'محفظة رقمية',
+    badgeEn: 'Mobile Wallet',
+    markClass: 'bg-purple-50 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300',
+    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png',
+  },
+];
+
+const PaymentMethodLogo: React.FC<{ method: PaymentMethodItem }> = ({ method }) => {
+  const [failed, setFailed] = useState(false);
+  if (failed || !method.logoUrl) {
+    return (
+      <div className={`flex h-8 w-9 shrink-0 items-center justify-center rounded-full font-bold text-[10px] ${method.markClass}`}>
+        {method.short}
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-1.5 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-700">
+      <img
+        src={method.logoUrl}
+        alt={method.short}
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-contain"
+      />
+    </div>
+  );
+};
+
+const MAX_SOURCE_FILE_BYTES = 12 * 1024 * 1024;
+const MAX_COMPRESSED_BYTES = 2 * 1024 * 1024;
+
+async function compressReceipt(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) throw new Error('IMAGE_REQUIRED');
+  if (file.size > MAX_SOURCE_FILE_BYTES) throw new Error('SOURCE_TOO_LARGE');
+
+  const bitmap = await createImageBitmap(file);
+  try {
+    if (!bitmap.width || !bitmap.height) throw new Error('IMAGE_INVALID');
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('IMAGE_PROCESSING_UNAVAILABLE');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const toBlob = (type: string, quality: number) =>
+      new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('IMAGE_COMPRESSION_FAILED')), type, quality);
+      });
+
+    let output: Blob;
+    try {
+      output = await toBlob('image/webp', 0.82);
+      if (output.type !== 'image/webp') output = await toBlob('image/jpeg', 0.84);
+    } catch {
+      output = await toBlob('image/jpeg', 0.78);
+    }
+
+    if (output.size > MAX_COMPRESSED_BYTES) {
+      output = await toBlob('image/jpeg', 0.68);
+    }
+    if (output.size > MAX_COMPRESSED_BYTES) throw new Error('COMPRESSED_TOO_LARGE');
+
+    const extension = output.type === 'image/webp' ? 'webp' : 'jpg';
+    return new File([output], `payment-receipt.${extension}`, {
+      type: output.type,
+      lastModified: Date.now(),
+    });
+  } finally {
+    bitmap.close();
+  }
+}
+
+export interface PublicPaymentPageProps {
+  token: string;
+}
+
+export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) => {
+  const { locale, setLocale, formatCurrency, isRTL } = useI18n();
+  const { theme, resolvedTheme, toggleTheme } = useTheme();
+
+  const isAr = locale === 'ar';
+  const [order, setOrder] = useState<PublicOrderQrData | null>(null);
+  const [customer, setCustomer] = useState<PublicCustomerQrData | null>(null);
+  const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const requestGeneration = useRef(0);
+  const [method, setMethod] = useState<PaymentMethod | ''>('');
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [validationError, setValidationError] = useState<'method' | 'receipt' | null>(null);
+
+  const methodSectionRef = useRef<HTMLElement | null>(null);
+  const receiptSectionRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const requestId = ++requestGeneration.current;
+    setLoading(true);
+    setLoadError(false);
+    setOrder(null);
+    setCustomer(null);
+    setSubmission(null);
+    setSuccess(false);
+    setMethod('');
+    setReceipt(null);
+    setNote('');
+    setError('');
+    setValidationError(null);
+    setCopied(false);
+
+    void (async () => {
+      try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          if (active && requestId === requestGeneration.current) setLoadError(true);
+          return;
+        }
+        const orderData = await getPublicOrderByToken(token).catch(() => null);
+        if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
+        let contextFound = false;
+        if (orderData) {
+          setOrder(orderData);
+          contextFound = true;
+        } else {
+          const customerData = await getPublicCustomerByToken(token);
+          if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
+          if (customerData) {
+            setCustomer(customerData);
+            contextFound = true;
+          } else {
+            setLoadError(true);
+          }
+        }
+
+        if (contextFound) {
+          const previousSubmission = await rpcResolveQrPaymentSubmission(token);
+          if (active && requestId === requestGeneration.current && navigator.onLine && previousSubmission) {
+            setSubmission(previousSubmission);
+            setSuccess(true);
+          }
+        }
+      } catch {
+        if (active && requestId === requestGeneration.current) setLoadError(true);
+      } finally {
+        if (active && requestId === requestGeneration.current) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+      requestGeneration.current += 1;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    const onOffline = () => {
+      requestGeneration.current += 1;
+      setOrder(null);
+      setCustomer(null);
+      setSubmission(null);
+      setLoadError(true);
+      setLoading(false);
+      setSending(false);
+      setSuccess(false);
+    };
+    window.addEventListener('offline', onOffline);
+    return () => window.removeEventListener('offline', onOffline);
+  }, []);
 
   useEffect(() => {
     if (!receipt) {
@@ -283,6 +614,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
     event.preventDefault();
     setError('');
     setValidationError(null);
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setError(isAr ? 'الاتصال بالإنترنت غير متاح. أعد الاتصال قبل إرسال الإيصال.' : 'You are offline. Reconnect before submitting the receipt.');
+      return;
+    }
+    const submissionGeneration = requestGeneration.current;
 
     if (order && !orderPaymentAllowed) {
       setError(orderPaymentBlockReason);
@@ -320,6 +656,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       form.append('receipt', compressed, compressed.name);
 
       const endpoint = `${config.supabaseUrl.replace(/\/+$/, '')}/functions/v1/submit-qr-payment`;
+      if (!navigator.onLine || submissionGeneration !== requestGeneration.current) {
+        throw new Error('OFFLINE');
+      }
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -328,6 +667,9 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
         },
         body: form,
       });
+      if (!navigator.onLine || submissionGeneration !== requestGeneration.current) {
+        throw new Error('OFFLINE');
+      }
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.success !== true) {
         const message = String(result.error || '');
@@ -362,6 +704,10 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       });
     } catch (err: any) {
       const code = err?.message || '';
+      if (code === 'OFFLINE' || !navigator.onLine) {
+        setError(isAr ? 'انقطع الإنترنت قبل تأكيد الإرسال. تحقّق من سجل الإيصالات قبل إعادة المحاولة.' : 'Connection dropped before confirmation. Check receipt history before retrying.');
+        return;
+      }
       if (code === 'IMAGE_REQUIRED') {
         setError(isAr ? 'يرجى اختيار صورة إيصال صحيحة.' : 'Please choose a valid receipt image.');
       } else if (code === 'SOURCE_TOO_LARGE') {
