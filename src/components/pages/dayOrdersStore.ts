@@ -28,6 +28,7 @@ import {
   rpcResolveCustomerQr,
   rpcResolveOrderQr,
   rpcGetOrCreateCustomerQr,
+  rpcAdoptLegacyCustomerQrToken,
   rpcRotateCustomerQr,
   rpcGetOrCreateOrderQr,
   rpcVerifyAdminBin,
@@ -5318,6 +5319,22 @@ export const getOrCreateCustomerQrToken = async (customerId: string): Promise<st
 
     if (!getSupabaseStatus().isConfigured) {
       throw new Error('CUSTOMER_QR_REQUIRES_SUPABASE: Central QR storage is not configured.');
+    }
+
+    await ensureStoreHydrated();
+    await initDbIfNeeded();
+
+    // Preserve a previously shared local-only URL when it has not already been
+    // superseded centrally. The adoption RPC returns the existing central token
+    // if one already exists, so a current server identity is never overwritten.
+    const localTokens = await localDb.list<QrTokenEntity>('qr_tokens');
+    const existingLocal = localTokens.find(
+      (t) => t.targetId === customerId && t.tokenType === 'CUSTOMER' && t.isActive
+    );
+    const legacyPublicToken = existingLocal?.publicToken?.trim();
+
+    if (legacyPublicToken && /^[A-Za-z0-9_-]{24,64}$/.test(legacyPublicToken)) {
+      return await rpcAdoptLegacyCustomerQrToken(customerId, legacyPublicToken);
     }
 
     const centralToken = await rpcGetOrCreateCustomerQr(customerId);
