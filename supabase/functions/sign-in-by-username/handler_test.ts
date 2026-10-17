@@ -135,12 +135,16 @@ Deno.test("unknown username still reaches Auth with a dummy email and returns ge
   const body = await response.text();
   assertEquals(response.status, 401);
   assertEquals(calls.auth, 1);
-  assertEquals(calls.authBody?.email, "unknown-username@invalid.example");
+  const firstDummyEmail = String(calls.authBody?.email ?? "");
+  assertEquals(/^unknown-[0-9a-f-]{36}@invalid\\.example$/.test(firstDummyEmail), true);
   assertEquals(calls.authHeaders.get("Sb-Forwarded-For"), "203.0.113.8");
   assertEquals(calls.authHeaders.get("Sb-Forwarded-For") === "198.51.100.99", false);
   assertEquals(body.includes("private-admin@example.test"), false);
   assertEquals(body.includes("specific internal account-state detail"), false);
   assertStringIncludes(body, "Invalid login credentials");
+  await handler(request());
+  const secondDummyEmail = String(calls.authBody?.email ?? "");
+  assertEquals(firstDummyEmail === secondDummyEmail, false);
 });
 
 Deno.test("successful username sign-in returns the Auth session only after Auth succeeds", async () => {
