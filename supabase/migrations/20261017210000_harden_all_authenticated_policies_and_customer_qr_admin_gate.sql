@@ -46,7 +46,7 @@ SET search_path = public, pg_temp
 AS $function$
 BEGIN
   PERFORM public.assert_my_account_session_active();
-  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) <> 'service_role'
+  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) IS DISTINCT FROM 'service_role'
      AND public.is_active_admin_session() IS NOT TRUE THEN
     RAISE EXCEPTION 'Active administrator account required'
       USING ERRCODE = '42501';
@@ -72,7 +72,7 @@ DECLARE
   v_token text;
 BEGIN
   PERFORM public.assert_my_account_session_active();
-  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) <> 'service_role'
+  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) IS DISTINCT FROM 'service_role'
      AND public.is_active_admin_session() IS NOT TRUE THEN
     RAISE EXCEPTION 'Active administrator account required'
       USING ERRCODE = '42501';
