@@ -1080,11 +1080,29 @@ export async function rpcResolveCustomerQr(
     { p_public_token: publicToken }
   );
 
-  if (error || !data || data.length === 0) {
+  if (error) {
+    // A failed RPC is a server/contract failure, not proof that the QR token is invalid.
+    // Preserve the failure so callers do not silently fall back to device-local identity.
+    throw new Error(`CUSTOMER_QR_RESOLUTION_FAILED: ${error}`);
+  }
+
+  if (data === null) {
+    throw new Error('CUSTOMER_QR_RESOLUTION_FAILED: empty RPC response');
+  }
+
+  if (!Array.isArray(data) || data.length === 0) {
     return null;
   }
 
   const row = data[0];
+  if (
+    !row ||
+    typeof row.customer_name !== 'string' ||
+    typeof row.customer_code !== 'string'
+  ) {
+    throw new Error('CUSTOMER_QR_RESOLUTION_FAILED: invalid server response contract');
+  }
+
   return {
     customerName: row.customer_name,
     customerCode: row.customer_code,
