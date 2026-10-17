@@ -36,11 +36,12 @@ BEGIN
       FROM pg_proc p
      WHERE p.oid = to_regprocedure(v_signature);
 
-    IF v_config IS NULL OR NOT EXISTS (
-      SELECT 1 FROM unnest(v_config) AS config(setting)
-      WHERE setting LIKE 'search_path=%'
+    IF v_config IS NULL OR NOT (
+      v_config @> ARRAY['search_path=public, pg_temp']::text[]
     ) THEN
-      RAISE EXCEPTION 'Function % does not have a fixed search_path', v_signature;
+      RAISE EXCEPTION
+        'Function % does not have the expected search_path=public, pg_temp; found %',
+        v_signature, v_config;
     END IF;
   END LOOP;
 END;
