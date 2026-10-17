@@ -248,7 +248,7 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1 FROM public.get_effective_permissions('10000000-0000-0000-0000-000000000001')
-    WHERE permission = 'SUPER_ADMIN'
+    WHERE permission = 'admin:manage'
   ) THEN
     RAISE EXCEPTION 'admin:manage caller could not inspect target effective permissions';
   END IF;
