@@ -81,6 +81,8 @@ jobs:
           deno-version: v2.x
       - name: Type-check public QR payment Edge Function
         run: deno check --no-lock --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
+      - name: Test hard QR payment upload body limit
+        run: deno test --no-lock --node-modules-dir=none supabase/functions/submit-qr-payment/requestBodyLimit_test.ts
       - name: Type-check authorized QR receipt signer Edge Function
         run: deno check --no-lock --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/index.ts
       - name: Test QR receipt path validation
