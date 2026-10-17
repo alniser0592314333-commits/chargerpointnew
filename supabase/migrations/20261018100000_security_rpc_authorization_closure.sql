@@ -49,7 +49,16 @@ BEGIN
      AND NOT EXISTS (
        SELECT 1
        FROM public.get_effective_permissions__session_guarded_impl(v_admin_id) AS ep
-       WHERE ep.permission IN (p_required_permission, 'SUPER_ADMIN')
+       WHERE ep.permission = ANY (
+         CASE p_required_permission
+           WHEN 'orders:view' THEN ARRAY['orders:view', 'orders:read', 'SUPER_ADMIN']::text[]
+           WHEN 'customers:view' THEN ARRAY['customers:view', 'customers:read', 'SUPER_ADMIN']::text[]
+           WHEN 'customers:edit' THEN ARRAY['customers:edit', 'customers:write', 'SUPER_ADMIN']::text[]
+           WHEN 'finance:view' THEN ARRAY['finance:view', 'finances:read', 'SUPER_ADMIN']::text[]
+           WHEN 'customers:financial-view' THEN ARRAY['customers:financial-view', 'finance:view', 'finances:read', 'SUPER_ADMIN']::text[]
+           ELSE ARRAY[p_required_permission, 'SUPER_ADMIN']::text[]
+         END
+       )
      )
   THEN
     RAISE EXCEPTION 'Missing required permission: %', p_required_permission
@@ -245,7 +254,7 @@ BEGIN
      AND NOT EXISTS (
        SELECT 1
        FROM public.get_effective_permissions__session_guarded_impl(v_admin_id) AS ep
-       WHERE ep.permission IN ('customers:financial-view', 'finance:view', 'SUPER_ADMIN')
+       WHERE ep.permission IN ('customers:financial-view', 'finance:view', 'finances:read', 'SUPER_ADMIN')
      )
   THEN
     RAISE EXCEPTION 'Customer financial-view permission required'
