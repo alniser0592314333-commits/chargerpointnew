@@ -420,7 +420,7 @@ BEGIN
         WHERE r.rolname IN ('postgres', 'supabase_admin')
           AND (
             r.rolname = current_user
-            OR r.rolsuper
+            OR (SELECT self_role.rolsuper FROM pg_roles self_role WHERE self_role.rolname = current_user)
             OR pg_has_role(current_user, r.oid, 'MEMBER')
           )
       )
@@ -495,7 +495,7 @@ BEGIN
         WHERE r.rolname IN ('postgres', 'supabase_admin')
           AND (
             r.rolname = current_user
-            OR r.rolsuper
+            OR (SELECT self_role.rolsuper FROM pg_roles self_role WHERE self_role.rolname = current_user)
             OR pg_has_role(current_user, r.oid, 'MEMBER')
           )
       )
