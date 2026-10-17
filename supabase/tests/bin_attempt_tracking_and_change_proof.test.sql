@@ -30,6 +30,23 @@ UPDATE auth.users
 SET encrypted_password = crypt('test-password', gen_salt('bf', 10))
 WHERE id = '11000000-0000-0000-0000-000000000002';
 
+-- A second admin identity has its own live session to prove proof ownership is
+-- bound to both the Auth user and the exact session, not just a session string.
+INSERT INTO auth.users(id, email, email_confirmed_at)
+VALUES ('11000000-0000-0000-0000-000000000001', 'super@example.test', now())
+ON CONFLICT (id) DO UPDATE
+SET email = EXCLUDED.email, email_confirmed_at = EXCLUDED.email_confirmed_at;
+
+INSERT INTO auth.sessions(id, user_id, created_at, not_after)
+VALUES (
+  '11000000-0000-0000-0000-000000000011',
+  '11000000-0000-0000-0000-000000000001',
+  now(),
+  NULL
+)
+ON CONFLICT (id) DO UPDATE
+SET user_id = EXCLUDED.user_id, created_at = now(), not_after = NULL;
+
 INSERT INTO auth.sessions(id, user_id, created_at, not_after)
 VALUES (
   '11000000-0000-0000-0000-000000000009',
@@ -212,7 +229,21 @@ BEGIN
     RAISE EXCEPTION 'A different Auth session redeemed a BIN change proof: %', v_change;
   END IF;
 
-  -- Restore the issuing session and confirm the proof remains usable there.
+  -- A different authenticated admin with its own active session cannot redeem it.
+  PERFORM set_config('request.jwt.claim.sub', '11000000-0000-0000-0000-000000000001', true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    '{"role":"authenticated","sub":"11000000-0000-0000-0000-000000000001","session_id":"11000000-0000-0000-0000-000000000011"}',
+    true
+  );
+  v_change := public.change_admin_bin('5678', v_proof);
+  IF v_change->>'success' IS DISTINCT FROM 'false'
+     OR v_change->>'error' NOT LIKE 'INVALID_OR_EXPIRED_PROOF%' THEN
+    RAISE EXCEPTION 'A different Auth user redeemed a BIN change proof: %', v_change;
+  END IF;
+
+  -- Restore the issuing identity/session and confirm the proof remains usable there.
+  PERFORM set_config('request.jwt.claim.sub', '11000000-0000-0000-0000-000000000002', true);
   PERFORM set_config(
     'request.jwt.claims',
     '{"role":"authenticated","sub":"11000000-0000-0000-0000-000000000002","session_id":"11000000-0000-0000-0000-000000000009"}',
