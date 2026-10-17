@@ -275,6 +275,88 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/goal_qr_rpc_permission_guards.test.sql
+      - name: Prepare isolated BIN lockout and change-proof RPC contracts
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 <<'SQL'
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_hash text;
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_failed_attempts integer NOT NULL DEFAULT 0;
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_status text NOT NULL DEFAULT 'ACTIVE';
+          ALTER TABLE public.admins ADD COLUMN IF NOT EXISTS bin_locked_at timestamptz;
+          ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS encrypted_password text;
+          INSERT INTO auth.users(id, email, email_confirmed_at, encrypted_password)
+          VALUES (
+            '11000000-0000-0000-0000-000000000002',
+            'staff@example.test',
+            now(),
+            crypt('test-password', gen_salt('bf', 10))
+          )
+          ON CONFLICT (id) DO UPDATE SET encrypted_password = EXCLUDED.encrypted_password;
+          CREATE TABLE IF NOT EXISTS auth.sessions (
+            id uuid PRIMARY KEY,
+            user_id uuid NOT NULL,
+            created_at timestamptz NOT NULL DEFAULT now(),
+            not_after timestamptz
+          );
+          CREATE TABLE IF NOT EXISTS public.admin_bin_recovery_proofs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            admin_id uuid NOT NULL REFERENCES public.admins(id) ON DELETE CASCADE,
+            auth_user_id uuid NOT NULL,
+            proof_token_hash varchar(64) NOT NULL,
+            purpose varchar(50) NOT NULL DEFAULT 'BIN_RECOVERY',
+            issued_at timestamptz NOT NULL DEFAULT now(),
+            expires_at timestamptz NOT NULL DEFAULT (now() + interval '2 minutes'),
+            is_used boolean NOT NULL DEFAULT false,
+            used_at timestamptz
+          );
+          ALTER TABLE public.admin_bin_recovery_proofs ENABLE ROW LEVEL SECURITY;
+          REVOKE ALL ON TABLE public.admin_bin_recovery_proofs FROM PUBLIC, anon, authenticated;
+          CREATE TABLE IF NOT EXISTS public.admin_audit_logs (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            actor_admin_id uuid NOT NULL REFERENCES public.admins(id),
+            action varchar(100) NOT NULL,
+            target_admin_id uuid REFERENCES public.admins(id),
+            metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+            created_at timestamptz NOT NULL DEFAULT now()
+          );
+          CREATE FUNCTION public.verify_admin_bin__session_guarded_impl(text)
+            RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT false';
+          CREATE FUNCTION public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(text)
+            RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''success'', false, ''status'', ''ACTIVE'', ''is_locked'', false, ''remaining_attempts'', 3, ''failed_attempts'', 0)';
+          CREATE FUNCTION public.verify_admin_bin(text)
+            RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.verify_admin_bin__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.verify_admin_bin_with_attempt_tracking(text)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.verify_admin_bin_with_attempt_tracking__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.set_admin_bin__session_guarded_impl(text)
+            RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT jsonb_build_object(''success'', true)';
+          CREATE FUNCTION public.set_admin_bin(text)
+            RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.set_admin_bin__session_guarded_impl($1); END;';
+          CREATE FUNCTION public.set_admin_bin__session_guarded_impl(text, uuid)
+            RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'SELECT true';
+          CREATE FUNCTION public.set_admin_bin(text, uuid)
+            RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+            AS 'BEGIN PERFORM public.assert_my_account_session_active(); RETURN public.set_admin_bin__session_guarded_impl($1, $2); END;';
+          GRANT EXECUTE ON FUNCTION public.verify_admin_bin(text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.verify_admin_bin_with_attempt_tracking(text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.set_admin_bin(text) TO authenticated, service_role;
+          GRANT EXECUTE ON FUNCTION public.set_admin_bin(text, uuid) TO authenticated, service_role;
+          SQL
+      - name: Apply BIN lockout and proof-gated change migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017330000_restore_bin_lockout_and_secure_bin_change.sql
+      - name: Verify BIN attempt tracking and proof-gated changes
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/bin_attempt_tracking_and_change_proof.test.sql
 
       - name: Create isolated database for authoritative snapshot paging
         env:
