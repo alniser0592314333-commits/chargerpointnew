@@ -10,8 +10,8 @@ SET search_path = public, pg_temp
 AS $function$
 BEGIN
   -- Evaluation can update goal progress and create a financial BONUS ledger row.
-  -- Require the goal-view capability rather than relying on the UI to hide this RPC.
-  PERFORM public._cp_assert_active_admin_permission('goals:view');
+  -- Require the goal-management capability: this evaluator can mutate progress and award a financial bonus.
+  PERFORM public._cp_assert_active_admin_permission('goals:manage');
   RETURN public.evaluate_customer_active_goal__session_guarded_impl(p_customer_id);
 END;
 $function$;
