@@ -222,11 +222,25 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 -f supabase/tests/security_rpc_authorization_runtime.test.sql
 
-      - name: Prepare goal, customer QR, and sync permission-guard RPC contracts
+      - name: Prepare goal, customer QR, sync, and table-read permission contracts
         env:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d security_rpc_authorization_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $roles$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+              CREATE ROLE supabase_admin NOLOGIN;
+            END IF;
+          END
+          $roles$;
+          -- Recreate the legacy platform defaults that the new migration must close when manageable.
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL ON TABLES TO anon, authenticated;
+          ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+            GRANT ALL ON SEQUENCES TO anon, authenticated;
+          ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+          CREATE POLICY authenticated_read ON public.customers FOR SELECT TO authenticated USING (true);
           CREATE FUNCTION public.evaluate_customer_active_goal__session_guarded_impl(uuid)
             RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
             AS 'SELECT jsonb_build_object(''ok'', true, ''customer_id'', $1)';
