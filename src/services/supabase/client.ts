@@ -1157,8 +1157,11 @@ export async function rpcGetOrCreateCustomerQr(
     { p_customer_id: customerId }
   );
 
-  if (error || !data) {
-    return null;
+  if (error) {
+    throw new Error(`CUSTOMER_QR_CENTRAL_CREATION_FAILED: ${error}`);
+  }
+  if (typeof data !== 'string' || !/^[A-Za-z0-9_-]{24,64}$/.test(data)) {
+    throw new Error('CUSTOMER_QR_CENTRAL_CREATION_FAILED: invalid or empty server response');
   }
 
   return data;
@@ -1199,8 +1202,11 @@ export async function rpcRotateCustomerQr(
     { p_customer_id: customerId }
   );
 
-  if (error || !data) {
-    return null;
+  if (error) {
+    throw new Error(`CUSTOMER_QR_CENTRAL_ROTATION_FAILED: ${error}`);
+  }
+  if (typeof data !== 'string' || !/^[A-Za-z0-9_-]{24,64}$/.test(data)) {
+    throw new Error('CUSTOMER_QR_CENTRAL_ROTATION_FAILED: invalid or empty server response');
   }
 
   return data;
