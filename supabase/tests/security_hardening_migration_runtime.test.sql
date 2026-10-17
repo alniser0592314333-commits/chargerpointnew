@@ -286,3 +286,39 @@ BEGIN
   END LOOP;
 END
 $trigger_function_privileges$;
+
+
+-- SECURITY DEFINER functions exposed in public must not inherit a caller-controlled
+-- search_path. This mirrors the advisor finding that motivated the migration.
+DO $security_definer_search_path$
+DECLARE
+  v_missing record;
+BEGIN
+  SELECT p.oid::regprocedure AS signature
+  INTO v_missing
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.prosecdef
+    AND NOT EXISTS (
+      SELECT 1 FROM unnest(coalesce(p.proconfig, ARRAY[]::text[])) AS cfg
+      WHERE cfg LIKE 'search_path=%'
+    )
+  LIMIT 1;
+
+  IF FOUND THEN
+    RAISE EXCEPTION 'SECURITY DEFINER function % has no pinned search_path', v_missing.signature;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid = 'public.calculate_customer_authoritative_balance__session_guarded_impl(uuid)'::regprocedure
+      AND EXISTS (
+        SELECT 1 FROM unnest(coalesce(p.proconfig, ARRAY[]::text[])) AS cfg
+        WHERE cfg = 'search_path=public, pg_temp'
+      )
+  ) THEN
+    RAISE EXCEPTION 'Expected internal balance implementation to have search_path=public, pg_temp';
+  END IF;
+END
+$security_definer_search_path$;
