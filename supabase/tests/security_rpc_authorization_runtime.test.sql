@@ -6,6 +6,7 @@ BEGIN
   IF has_function_privilege('anon', 'public.get_or_create_order_qr(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.rotate_customer_qr(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.create_or_get_customer_qr_token(uuid,text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.create_or_get_customer_qr_token(uuid,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.calculate_customer_authoritative_balance(uuid)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.rpc_fetch_admins()', 'EXECUTE') THEN
     RAISE EXCEPTION 'A privileged application RPC remains callable by anon';
@@ -13,7 +14,6 @@ BEGIN
 
   IF NOT has_function_privilege('authenticated', 'public.get_or_create_order_qr(uuid)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.rotate_customer_qr(uuid)', 'EXECUTE')
-     OR NOT has_function_privilege('authenticated', 'public.create_or_get_customer_qr_token(uuid,text)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.calculate_customer_authoritative_balance(uuid)', 'EXECUTE')
      OR NOT has_function_privilege('authenticated', 'public.rpc_fetch_admins()', 'EXECUTE') THEN
     RAISE EXCEPTION 'An intended authenticated RPC contract was removed instead of guarded';
@@ -212,12 +212,9 @@ BEGIN
     RAISE EXCEPTION 'Permitted customer QR rotation contract changed';
   END IF;
 
-  SELECT count(*) INTO v_rows
-  FROM public.create_or_get_customer_qr_token(
-    '20000000-0000-0000-0000-000000000001',
-    repeat('b', 64)
-  );
-  IF v_rows <> 1 THEN RAISE EXCEPTION 'Permitted customer QR token creation contract changed'; END IF;
+  IF has_function_privilege('authenticated', 'public.create_or_get_customer_qr_token(uuid,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Retired legacy customer QR token RPC remains exposed';
+  END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM public.get_effective_permissions('10000000-0000-0000-0000-000000000002')
