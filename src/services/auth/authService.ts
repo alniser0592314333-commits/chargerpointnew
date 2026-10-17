@@ -159,6 +159,9 @@ interface PendingSuperAdminContext {
 
 let pendingSuperAdminContext: PendingSuperAdminContext | null = null;
 
+// Short-lived in-memory handoff only; never persist the re-auth token to browser storage.
+let pendingBinChangeSession: { proof: string; accessToken: string; expiresAt: number } | null = null;
+
 const getLocalStorage = () => {
   if (typeof localStorage !== "undefined") return localStorage;
   if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -204,15 +207,13 @@ export interface AuthService {
     success: boolean;
     error: string | null;
     token?: string;
-    authSessionToken?: string;
     remainingAttempts?: number;
     failedAttempts?: number;
     status?: string;
   }>;
   changeAdminBin(
     newBin: string,
-    verifiedToken?: string,
-    reauthSessionToken?: string
+    verifiedToken?: string
   ): Promise<{ success: boolean; error: string | null }>;
   bootstrapFirstSuperAdmin(payload: {
     username: string;
@@ -476,7 +477,6 @@ class DefaultAuthService implements AuthService {
     success: boolean;
     error: string | null;
     token?: string;
-    authSessionToken?: string;
     remainingAttempts?: number;
     failedAttempts?: number;
     status?: string;
@@ -530,12 +530,12 @@ class DefaultAuthService implements AuthService {
         };
       }
 
-      return {
-        success: true,
-        error: null,
-        token: proofRes.proofToken,
-        authSessionToken: signInRes.session.access_token,
+      pendingBinChangeSession = {
+        proof: proofRes.proofToken,
+        accessToken: signInRes.session.access_token,
+        expiresAt: Date.now() + Math.min(proofRes.expiresInSeconds || 120, 120) * 1000,
       };
+      return { success: true, error: null, token: proofRes.proofToken };
     }
     // Local / test mode fallback
     if (cleanPass === SUPER_ADMIN_TEST_ACCOUNT.pin || cleanPass === "123456" || cleanPass === "correct_password") {
@@ -546,8 +546,7 @@ class DefaultAuthService implements AuthService {
 
   async changeAdminBin(
     newBin: string,
-    verifiedToken?: string,
-    reauthSessionToken?: string
+    verifiedToken?: string
   ): Promise<{ success: boolean; error: string | null }> {
     const cleanBin = newBin.trim();
     if (!cleanBin || !/^\d{4,}$/.test(cleanBin)) {
@@ -558,13 +557,14 @@ class DefaultAuthService implements AuthService {
     }
     if (this.isSupabaseConfigured()) {
       const changeProof = verifiedToken || "";
-      // The proof is bound server-side to the exact re-authenticated Auth session.
-      // Never substitute the previously stored application session here.
-      const token = reauthSessionToken?.trim();
-      if (!token) {
+      // Use only the same temporary session that issued this proof. Do not fall back
+      // to the ordinary stored app session, which is not the re-authenticated session.
+      const pending = pendingBinChangeSession;
+      pendingBinChangeSession = null;
+      if (!pending || !changeProof || pending.proof !== changeProof || pending.expiresAt <= Date.now()) {
         return { success: false, error: "RECENT_REAUTH_REQUIRED: Re-authenticate before changing the BIN." };
       }
-      const res = await rpcSetAdminBin(cleanBin, changeProof, token);
+      const res = await rpcSetAdminBin(cleanBin, changeProof, pending.accessToken);
       if (!res.success) {
         return { success: false, error: res.error || "Failed to update security BIN" };
       }
