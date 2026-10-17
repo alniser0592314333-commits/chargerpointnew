@@ -1,12 +1,9 @@
 -- Restore a stable public customer-QR RPC contract.
 --
--- The deployed function drifted from the repository migration contract:
--- it returned SETOF public_customer_qr_result and selected customers.name
--- (varchar) into a text result column, which raises SQLSTATE 42804 for every
--- otherwise-valid customer token. Recreate the RPC with an explicit text/text
--- return contract consumed by the public QR page.
---
--- This is the existing public customer-profile path, not a new parallel path.
+-- The deployed function drifted from the repository's original QR migration:
+-- it returns a composite whose customer_name field is text, then selects
+-- customers.name (varchar), raising SQLSTATE 42804 for valid tokens.
+-- Recreate the existing RPC with a stable text/text return contract.
 
 DROP FUNCTION IF EXISTS public.public_resolve_customer_qr(text);
 
@@ -56,7 +53,6 @@ BEGIN
 END;
 $function$;
 
--- The resolver intentionally exposes only a customer's public name and code.
 REVOKE ALL ON FUNCTION public.public_resolve_customer_qr(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.public_resolve_customer_qr(text) TO anon, authenticated;
 
@@ -160,8 +156,8 @@ REVOKE ALL ON FUNCTION public.get_or_create_customer_qr(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_or_create_customer_qr(uuid) TO authenticated, service_role;
 
 -- Safely adopt an older local-only QR token when the central database has
--- no current token for this customer. This is used by the existing customer QR
--- creation flow to preserve old links where the original token is still local.
+-- no current token for this customer. The existing QR creation flow calls this
+-- before creating a new token, preserving previously shared URLs where possible.
 CREATE OR REPLACE FUNCTION public.adopt_customer_qr_token(
   p_customer_id uuid,
   p_public_token text
@@ -179,19 +175,7 @@ BEGIN
 
   IF p_customer_id IS NULL
      OR p_public_token IS NULL
-     OR p_public_token !~ '^[A-Za-z0-9_-]{24,64}
-DECLARE
-  v_result_type text;
-BEGIN
-  SELECT pg_get_function_result('public.public_resolve_customer_qr(text)'::regprocedure)
-    INTO v_result_type;
-
-  IF v_result_type <> 'TABLE(customer_name text, customer_code text)' THEN
-    RAISE EXCEPTION 'Unexpected public customer QR resolver contract: %', v_result_type;
-  END IF;
-END;
-$verification$;
- THEN
+     OR p_public_token !~ '^[A-Za-z0-9_-]{24,64}$' THEN
     RAISE EXCEPTION 'Invalid legacy customer QR identity';
   END IF;
 
@@ -208,7 +192,7 @@ $verification$;
 
   -- Serialize adoption/creation for this customer. Never replace a live
   -- central token: it may already be printed and shared.
-  PERFORM pg_advisory_xact_lock(hashtextextended(p_customer_id::text, 0));
+  PERFORM pg_advisory_xact_lock(hashtextextended('customer-qr:' || p_customer_id::text, 0));
 
   SELECT qt.public_token
     INTO v_existing_token
@@ -223,7 +207,6 @@ $verification$;
     RETURN v_existing_token;
   END IF;
 
-  -- Expired active identities must not remain active alongside the new one.
   UPDATE public.qr_tokens
   SET is_active = FALSE
   WHERE target_id = p_customer_id
