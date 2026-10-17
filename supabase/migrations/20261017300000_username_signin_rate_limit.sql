@@ -37,7 +37,7 @@ BEGIN
     RAISE EXCEPTION 'Invalid rate-limit key' USING ERRCODE = '22023';
   END IF;
 
-  -- Opportunistic retention bound: hashes are not kept beyond two days.
+  -- Opportunistic retention bound: inactive HMAC buckets are removed after 30 minutes.
   DELETE FROM public.username_signin_rate_limits
   WHERE updated_at < v_now - interval '30 minutes';
 
