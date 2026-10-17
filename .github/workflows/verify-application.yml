@@ -31,6 +31,12 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/customer_financial_history_grouping.test.ts src/tests/home_financial_activity_grouping.test.ts src/tests/customer_order_history_effective_overlays.test.ts
+      - name: Run customer QR portal security contract tests
+        env:
+          # Tests inspect source contracts only; never connect to Supabase.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/customer_portal_security_contract.test.ts
       - name: Run order-numbering safety tests
         env:
           # Test runs must never use the production Supabase project.
