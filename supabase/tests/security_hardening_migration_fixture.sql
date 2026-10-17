@@ -1,5 +1,6 @@
 -- Additional fixture for the security-hardening migration. Run after
 -- 20261014130000_account_session_management.sql in the isolated test database.
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_user_id uuid UNIQUE NOT NULL,
