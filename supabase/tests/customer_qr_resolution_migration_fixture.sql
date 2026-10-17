@@ -18,6 +18,17 @@ CREATE TABLE public.qr_tokens (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- The production migration's session guard is provided by the preceding
+-- account-session migration; this isolated fixture keeps its interface.
+CREATE FUNCTION public.assert_my_account_session_active()
+RETURNS void
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+  RETURN;
+END;
+$function$;
+
 CREATE FUNCTION public.derive_customer_code(p_customer_id uuid)
 RETURNS varchar
 LANGUAGE sql
