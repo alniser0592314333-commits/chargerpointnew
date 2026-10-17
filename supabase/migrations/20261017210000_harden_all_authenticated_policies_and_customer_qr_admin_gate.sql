@@ -64,13 +64,74 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
+DECLARE
+  v_existing_token text;
+  v_token text;
 BEGIN
   PERFORM public.assert_my_account_session_active();
   IF public.is_active_admin_session() IS NOT TRUE THEN
     RAISE EXCEPTION 'Active administrator account required'
       USING ERRCODE = '42501';
   END IF;
-  RETURN public.adopt_customer_qr_token__session_guarded_impl(p_customer_id, p_public_token);
+
+  IF p_customer_id IS NULL
+     OR p_public_token IS NULL
+     OR p_public_token !~ '^[A-Za-z0-9_-]{24,64}$' THEN
+    RAISE EXCEPTION 'Invalid legacy customer QR identity';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.customers AS c
+    WHERE c.id = p_customer_id
+      AND c.is_active = TRUE
+      AND c.deleted_at IS NULL
+      AND c.status <> 'DELETED'
+  ) THEN
+    RAISE EXCEPTION 'Active customer not found for legacy QR adoption';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('customer-qr:' || p_customer_id::text, 0));
+
+  SELECT qt.public_token INTO v_existing_token
+  FROM public.qr_tokens AS qt
+  WHERE qt.target_id = p_customer_id
+    AND qt.token_type = 'CUSTOMER'
+    AND qt.is_active = TRUE
+    AND (qt.expires_at IS NULL OR qt.expires_at > now())
+  LIMIT 1;
+
+  IF v_existing_token IS NOT NULL THEN
+    RETURN v_existing_token;
+  END IF;
+
+  UPDATE public.qr_tokens
+  SET is_active = FALSE
+  WHERE target_id = p_customer_id
+    AND token_type = 'CUSTOMER'
+    AND is_active = TRUE;
+
+  v_token := p_public_token;
+  IF EXISTS (SELECT 1 FROM public.qr_tokens AS qt WHERE qt.public_token = v_token) THEN
+    LOOP
+      v_token := replace(replace(replace(encode(gen_random_bytes(24), 'base64'), '+', '-'), '/', '_'), '=', '');
+      EXIT WHEN NOT EXISTS (SELECT 1 FROM public.qr_tokens AS qt WHERE qt.public_token = v_token);
+    END LOOP;
+  END IF;
+
+  INSERT INTO public.qr_tokens (
+    id, token_hash, public_token, token_type, target_id, is_active, expires_at, created_at
+  ) VALUES (
+    gen_random_uuid(),
+    encode(digest(v_token, 'sha256'), 'hex'),
+    v_token,
+    'CUSTOMER',
+    p_customer_id,
+    TRUE,
+    NULL,
+    now()
+  );
+
+  RETURN v_token;
 END;
 $function$;
 
