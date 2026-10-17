@@ -54,37 +54,31 @@ $bin_self_reset_rejected$;
 
 DO $bin_other_admin_reset_allowed$
 DECLARE
-  v_version_before integer;
-  v_version_after integer;
+  v_count integer;
 BEGIN
-  SELECT version INTO v_version_before
-  FROM public.admins
-  WHERE id = '10000000-0000-0000-0000-000000000002';
-
   PERFORM public.rpc_update_admin_bin(
     '10000000-0000-0000-0000-000000000002',
     '5678',
     '1234'
   );
-
-  SELECT version INTO v_version_after
-  FROM public.admins
-  WHERE id = '10000000-0000-0000-0000-000000000002';
-
-  IF v_version_after <= v_version_before THEN
+  SELECT count(*) INTO v_count
+  FROM public.rpc_fetch_admin_audit_logs()
+  WHERE action = 'ADMIN_BIN_RESET'
+    AND target_admin_id = '10000000-0000-0000-0000-000000000002';
+  IF v_count <> 1 THEN
     RAISE EXCEPTION 'Authorized Super Admin could not reset a different admin account';
   END IF;
 
-  v_version_before := v_version_after;
   PERFORM public.rpc_update_admin_password(
     '10000000-0000-0000-0000-000000000002',
     'new-password',
     '1234'
   );
-  SELECT version INTO v_version_after
-  FROM public.admins
-  WHERE id = '10000000-0000-0000-0000-000000000002';
-  IF v_version_after <= v_version_before THEN
+  SELECT count(*) INTO v_count
+  FROM public.rpc_fetch_admin_audit_logs()
+  WHERE action = 'ADMIN_PASSWORD_RESET'
+    AND target_admin_id = '10000000-0000-0000-0000-000000000002';
+  IF v_count <> 1 THEN
     RAISE EXCEPTION 'Authorized Super Admin could not reset a different admin password';
   END IF;
 END
