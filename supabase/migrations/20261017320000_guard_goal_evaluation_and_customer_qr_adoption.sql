@@ -1,6 +1,6 @@
--- Close two authenticated RPC paths that could mutate goal/QR state without
--- the application's corresponding permission. This is an RPC authorization-only
--- change: it does not alter rows, sync cursors, payload shape, or offline storage.
+-- Close authenticated RPC authorization gaps in goal evaluation, customer QR adoption,
+-- and full sync reads. This changes RPC authorization only: no business rows, sync
+-- cursors, payload shape, or local/offline storage are changed.
 
 CREATE OR REPLACE FUNCTION public.evaluate_customer_active_goal(p_customer_id uuid)
 RETURNS jsonb
