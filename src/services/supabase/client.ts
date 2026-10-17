@@ -224,11 +224,9 @@ export function parseSupabaseAuthCallbackFromUrl(): {
             userEmail = payload.email || '';
             userMeta = payload.user_metadata || {};
           } catch (e) {
-            console.warn('[AUTH_DEBUG] JWT parsing failed, skipping payload extraction', e);
           }
         }
       } catch (e) {
-        console.warn('[AUTH_DEBUG] JWT parsing structure error', e);
       }
 
       const session: SupabaseAuthSession = {
@@ -311,7 +309,6 @@ export async function supabaseRefreshToken(): Promise<{ session: SupabaseAuthSes
       });
 
       if (!res.ok) {
-        console.warn(`[AUTH_DEBUG] supabaseRefreshToken failed with status ${res.status}`);
         return null;
       }
 
@@ -330,7 +327,6 @@ export async function supabaseRefreshToken(): Promise<{ session: SupabaseAuthSes
       saveStoredSupabaseAuthSession(newSession);
       return newSession;
     } catch (err) {
-      console.warn('[AUTH_DEBUG] supabaseRefreshToken exception:', err);
       return null;
     } finally {
       refreshPromise = null;
@@ -363,7 +359,6 @@ export async function invokeSupabaseRpc<T>(
   isRetry: boolean = false
 ): Promise<{ data: T | null; error: string | null }> {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
-    console.warn('[AUTH_DEBUG] invokeSupabaseRpc: Supabase NOT configured');
     return { data: null, error: 'SUPABASE_NOT_CONFIGURED' };
   }
 
@@ -371,7 +366,6 @@ export async function invokeSupabaseRpc<T>(
   const isPublic = allowAnonymous || PUBLIC_RPCS.has(functionName);
 
   if (!token && !isPublic) {
-    console.warn(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}]: AUTH_TOKEN_MISSING`);
     return { data: null, error: `AUTH_TOKEN_MISSING: Authentication token required for RPC ${functionName}` };
   }
 
@@ -381,7 +375,6 @@ export async function invokeSupabaseRpc<T>(
     const bearer = token || config.supabaseAnonKey;
     const urlObj = new URL(cleanUrl);
 
-    console.info(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> Hostname: ${urlObj.hostname}, AnonKeyPresent: ${Boolean(config.supabaseAnonKey)}, IsPublic: ${isPublic}, BearerPresent: ${Boolean(bearer)}`);
 
     const hasPayload = payload !== undefined && payload !== null && Object.keys(payload).length > 0;
     const res = await fetch(endpoint, {
@@ -394,11 +387,9 @@ export async function invokeSupabaseRpc<T>(
       ...(hasPayload ? { body: JSON.stringify(payload) } : {}),
     });
 
-    console.info(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> HTTP Status: ${res.status} ${res.statusText}`);
 
     if (!res.ok) {
       const errText = await res.text();
-      console.warn(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> Error Response:`, errText);
 
       if (errText && (errText.includes('inactive or disabled') || errText.includes('ACCESS_DENIED_INACTIVE'))) {
         triggerSuspension();
@@ -413,10 +404,8 @@ export async function invokeSupabaseRpc<T>(
       );
 
       if (isExpired) {
-        console.info(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> JWT expired detected, attempting token refresh...`);
         const { session: refreshedSession } = await supabaseRefreshToken();
         if (refreshedSession?.access_token) {
-          console.info(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> Token refreshed successfully, retrying RPC call`);
           return invokeSupabaseRpc<T>(functionName, payload, refreshedSession.access_token, allowAnonymous, true);
         }
       }
@@ -425,7 +414,6 @@ export async function invokeSupabaseRpc<T>(
     }
 
     if (res.status === 204) {
-      console.info(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> HTTP 204 No Content`);
       return { data: null as unknown as T, error: null };
     }
 
@@ -437,10 +425,8 @@ export async function invokeSupabaseRpc<T>(
       data = null as unknown as T;
     }
 
-    console.info(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> Result:`, data === null ? 'NULL' : typeof data);
     return { data, error: null };
   } catch (err: any) {
-    console.warn(`[AUTH_DEBUG] invokeSupabaseRpc [${functionName}] -> Network/Fetch Exception:`, err?.message || err);
     return { data: null, error: err?.message || 'Network error invoking Supabase RPC' };
   }
 }
@@ -682,7 +668,6 @@ export async function supabaseSignInWithPassword(
         isInvalidCredentials = true;
       }
 
-      console.warn(`[AUTH_DEBUG] supabaseSignInWithPassword -> FAILED [${res.status}]: ${parsedDesc}`);
       return {
         session: null,
         error: parsedDesc,
@@ -694,7 +679,6 @@ export async function supabaseSignInWithPassword(
     }
 
     const session = (await res.json()) as SupabaseAuthSession;
-    console.info(`[AUTH_DEBUG] supabaseSignInWithPassword -> SUCCESS, userId: ${session.user?.id}`);
     setSupabaseAuthToken(session.access_token);
     if (persistSession) {
       saveStoredSupabaseAuthSession(session);
@@ -1002,23 +986,19 @@ export async function rpcResolveEmailByUsername(username: string): Promise<{
 }> {
   lastGetEmailError = null;
   const cleanUsername = username.trim();
-  console.info(`[AUTH_DEBUG] rpcResolveEmailByUsername called with username: "${cleanUsername}"`);
 
   const payload: Record<string, unknown> = {
     p_username: cleanUsername,
   };
   const { data, error } = await invokeSupabaseRpc<string>('get_email_by_username', payload);
   if (error) {
-    console.warn(`[AUTH_DEBUG] rpcResolveEmailByUsername -> error returned: ${error}`);
     lastGetEmailError = error;
     return { email: null, error };
   }
   if (!data) {
-    console.warn(`[AUTH_DEBUG] rpcResolveEmailByUsername -> data is NULL or empty`);
     return { email: null, error: null };
   }
   const email = typeof data === 'string' && data.trim() ? data.trim() : null;
-  console.info(`[AUTH_DEBUG] rpcResolveEmailByUsername -> resolved email successfully`);
   return { email, error: null };
 }
 
