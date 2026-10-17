@@ -797,6 +797,13 @@ class DefaultAuthService implements AuthService {
   }
 
   async getCurrentSession(forceRefresh = false): Promise<UserSession | null> {
+    // Never rehydrate a local/demo session in production when the authoritative
+    // Supabase Auth backend is unavailable or misconfigured.
+    if (config.env === "production" && !this.isSupabaseConfigured()) {
+      await this.logout();
+      return null;
+    }
+
     if (this.isSupabaseConfigured()) {
       // Validate that Supabase Auth token is active and valid
       const supabaseSession = await this.getSupabaseAuthSession();
