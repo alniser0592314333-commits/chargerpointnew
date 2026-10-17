@@ -251,3 +251,38 @@ BEGIN
 END
 $super_admin_logo_write$;
 RESET ROLE;
+
+
+-- Trigger-returning SECURITY DEFINER routines are internal implementation
+-- details, not RPCs. Their attached triggers still fire after execute is revoked.
+DO $trigger_function_privileges$
+DECLARE
+  v_function record;
+BEGIN
+  IF has_function_privilege('anon', 'public.protect_super_admin_account()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.protect_super_admin_account()', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.protect_super_admin_account()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Super Admin protection trigger function remains directly executable by an API role';
+  END IF;
+
+  IF has_function_privilege('anon', 'public.trg_change_capture()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.trg_change_capture()', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.trg_change_capture()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Canonical change-capture trigger function remains directly executable by an API role';
+  END IF;
+
+  FOR v_function IN
+    SELECT p.oid::regprocedure AS signature
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.prorettype = 'pg_catalog.trigger'::regtype
+  LOOP
+    IF has_function_privilege('anon', v_function.signature, 'EXECUTE')
+       OR has_function_privilege('authenticated', v_function.signature, 'EXECUTE')
+       OR has_function_privilege('service_role', v_function.signature, 'EXECUTE') THEN
+      RAISE EXCEPTION 'Trigger-only function % remains directly executable by an API role', v_function.signature;
+    END IF;
+  END LOOP;
+END
+$trigger_function_privileges$;
