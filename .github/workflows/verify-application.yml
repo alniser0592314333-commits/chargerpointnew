@@ -180,6 +180,14 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017250000_fix_remaining_security_definer_search_path.sql
+      - name: Pin pg_temp last for remaining public-only SECURITY DEFINER paths
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017400000_pin_public_only_definer_search_paths.sql
+      - name: Verify no public-only SECURITY DEFINER search paths remain
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/security_definer_search_path_closure.test.sql
       - name: Revoke unnecessary anonymous table and sequence privileges
         env:
           PGPASSWORD: postgres
