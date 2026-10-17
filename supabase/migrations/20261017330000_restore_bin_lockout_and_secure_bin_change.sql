@@ -163,8 +163,24 @@ DECLARE
   v_token text;
   v_token_hash text;
   v_expires_at timestamptz;
+  v_session_id uuid;
 BEGIN
   PERFORM public.assert_my_account_session_active();
+
+  v_session_id := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  IF v_session_id IS NULL OR NOT EXISTS (
+    SELECT 1
+    FROM auth.sessions AS s
+    WHERE s.id = v_session_id
+      AND s.user_id = auth.uid()
+      AND s.created_at >= now() - interval '2 minutes'
+      AND (s.not_after IS NULL OR s.not_after > now())
+  ) THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'RECENT_REAUTH_REQUIRED: Sign in again before changing the BIN'
+    );
+  END IF;
 
   v_bin_result := public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(p_current_bin);
   IF COALESCE((v_bin_result ->> 'success')::boolean, false) IS NOT TRUE THEN
