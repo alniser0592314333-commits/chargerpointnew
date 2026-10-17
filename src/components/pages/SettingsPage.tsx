@@ -137,6 +137,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
     setBinError(null);
     setUsernameInput("");
     setPasswordInput("");
+    setCurrentBinInput("");
     setNewBin("");
     setConfirmBin("");
     setBinChangeProof(undefined);
@@ -228,6 +229,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
       if (res.success) {
         setNewBin("");
         setConfirmBin("");
+        setCurrentBinInput("");
         setBinChangeProof(undefined);
         setBinStep("IDLE");
         setBinSuccess(
