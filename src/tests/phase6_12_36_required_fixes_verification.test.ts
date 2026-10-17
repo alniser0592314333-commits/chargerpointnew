@@ -182,11 +182,6 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
 
     // Username found but password incorrect
     vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
-      session: { access_token: "valid_username_auth_token", user: { id: "auth_usr_01", email: OWNER_EMAIL } },
-      error: null,
-      statusCode: 200,
-    });
-    vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
       session: null,
       error: "Invalid login credentials",
     });
@@ -197,11 +192,6 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
 
   it("G: Correct Username and Password resolves email and prompts for BIN", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
-      session: { access_token: "valid_username_auth_token", user: { id: "auth_usr_01", email: OWNER_EMAIL } },
-      error: null,
-      statusCode: 200,
-    });
     vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
       session: {
         access_token: "valid_jwt_token",
@@ -233,11 +223,6 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
 
   it("H: Incorrect BIN rejects access and does not enter system", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
-      session: { access_token: "valid_username_auth_token", user: { id: "auth_usr_01", email: OWNER_EMAIL } },
-      error: null,
-      statusCode: 200,
-    });
     vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
       session: {
         access_token: "valid_jwt_token",
@@ -273,11 +258,6 @@ describe("Phase 6.12.36: Required Fixes Security & Flow Verification Tests", () 
 
   it("I: Correct BIN enters system and establishes authoritative session", async () => {
     vi.spyOn(authService, "isSupabaseConfigured").mockReturnValue(true);
-    vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
-      session: { access_token: "valid_username_auth_token", user: { id: "auth_usr_01", email: OWNER_EMAIL } },
-      error: null,
-      statusCode: 200,
-    });
     vi.spyOn(supabaseClient, "supabaseSignInWithUsername").mockResolvedValue({
       session: {
         access_token: "valid_jwt_token",
