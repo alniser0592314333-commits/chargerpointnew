@@ -1,4 +1,5 @@
 -- Bind BIN-recovery proofs to the exact freshly re-authenticated Auth session.
+-- Existing recovery proofs with NULL auth_session_id are intentionally no longer redeemable.
 -- Lock the admin row before proof rows in both functions to serialize issuance/redeem
 -- and avoid lock-order inversion with the proof-gated self-service BIN-change path.
 CREATE OR REPLACE FUNCTION public.issue_bin_recovery_proof__session_guarded_impl(
