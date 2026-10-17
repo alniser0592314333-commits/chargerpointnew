@@ -5,5 +5,5 @@ Deno.serve(createUsernameSignInHandler({
   getEnv: (name) => Deno.env.get(name),
   createAdminClient: (url, secretKey) => createClient(url, secretKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-  }),
+  }) as any,
 }));
