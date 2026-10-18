@@ -40,7 +40,7 @@ export const getOrderPaymentViewState = (
   // Only order-specific allocations prove payment; an approved receipt or a
   // customer's ledger balance alone must never zero this order's due.
   if (dueMinor <= 0 && delivered && paidMinor > 0 &&
-      (typeof orderTotalMinor !== 'number' || paidMinor >= orderTotalMinor)) return 'PAID';
+      typeof orderTotalMinor === 'number' && orderTotalMinor > 0 && paidMinor >= orderTotalMinor) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
   if (dueMinor <= 0 && delivered && typeof orderTotalMinor === 'number' &&
       orderTotalMinor > 0 && paidMinor < orderTotalMinor) return 'UNAVAILABLE';
