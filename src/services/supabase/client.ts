@@ -1145,15 +1145,17 @@ export async function rpcResolveOrderQr(
  * Only safe status, amount, method, timestamps, and approved balance snapshots are returned.
  */
 export async function rpcResolveQrPaymentSubmission(
-  publicToken: string
+  publicToken: string,
+  customAuthToken?: string,
+  forceAnonymous = !customAuthToken
 ): Promise<PublicQrPaymentSubmissionRpcResult | null> {
   const { data, error } = await invokeSupabaseRpc<PublicQrPaymentSubmissionRpcResult>(
     'public_resolve_qr_payment_submission',
     { p_public_token: publicToken },
-    undefined,
+    customAuthToken,
     true,
     false,
-    true
+    forceAnonymous
   );
   if (error || !data || !['PENDING', 'APPROVED', 'REJECTED'].includes(data.status)) {
     return null;
