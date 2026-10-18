@@ -243,7 +243,11 @@ Deno.serve(async (request: Request) => {
       if (!link) return genericFailure();
 
       if (action === "register-session") {
-        if (!(await registerSession(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        const resolved = await resolveQr(input.token);
+        const provider = normalize(authenticated.user.app_metadata?.provider, 32);
+        if (!resolved || resolved.customer.id !== link.customer_id ||
+          !["google", "apple", "facebook"].includes(provider) || link.auth_provider !== provider ||
+          !(await registerSession(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         return respond(200, {
           ok: true, customer_name: link.customer.name,
           auth_provider: link.auth_provider,
