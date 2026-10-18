@@ -20,7 +20,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode; defaultTheme?:
   const [theme, setThemeState] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem('sys_theme');
-      if (saved === 'light' || saved === 'dark' || saved === 'system') return saved as Theme;
+      if (saved === 'light' || saved === 'dark') return saved as Theme;
+      if (saved === 'system') return defaultTheme;
     } catch (e) {
       console.warn('Failed to read theme from localStorage', e);
     }
