@@ -139,11 +139,15 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
     if (session) {
-      const registered = await callCustomerAccount<{ must_change_password?: boolean; auth_provider?: EntryStatus["auth_provider"]; terms_version?: string | null; session_expires_at?: string }>(
+      const registered = await callCustomerAccount<{ must_change_password?: boolean; auth_provider?: EntryStatus["auth_provider"]; terms_version?: string | null; session_expires_at?: string; customer_qr_token?: string | null }>(
         'verify-session', { token: accountToken }, session.access_token,
       );
       const registeredData = registered.data;
       if (registeredData && !registered.error) {
+        if (typeof registeredData.customer_qr_token === 'string' && registeredData.customer_qr_token.length >= 24) {
+          setPortalToken(registeredData.customer_qr_token);
+          try { localStorage.setItem(portalTokenCacheKey(accountToken), registeredData.customer_qr_token); } catch {}
+        }
         await saveSessionExpiry(accountToken, registeredData.session_expires_at);
         setEntry((current) => current ? { ...current, auth_provider: registeredData.auth_provider ?? current.auth_provider, terms_version: registeredData.terms_version ?? current.terms_version } : current);
         if (registeredData.must_change_password) setMode('force-change');
@@ -232,7 +236,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     if (!password) { setErrorMessage('INVALID_CREDENTIALS'); return; }
     setBusy(true); setError('');
     try {
-      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string }>(
+      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string; customer_qr_token?: string | null }>(
         'login', { token: accountToken, password },
       );
       const loginData = result.data;
@@ -241,6 +245,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         return;
       }
       const sessionError = await setCustomerSession(loginData.session);
+      if (typeof loginData.customer_qr_token === 'string' && loginData.customer_qr_token.length >= 24) {
+        setPortalToken(loginData.customer_qr_token);
+        try { localStorage.setItem(portalTokenCacheKey(accountToken), loginData.customer_qr_token); } catch {}
+      }
       await saveSessionExpiry(accountToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
