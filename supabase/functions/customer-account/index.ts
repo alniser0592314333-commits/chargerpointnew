@@ -68,7 +68,7 @@ Deno.serve(async (request: Request) => {
 
   async function linkForUser(userId: string) {
     const { data, error } = await admin.from("customer_account_links")
-      .select("customer_id,auth_user_id,login_email,auth_provider,account_status,must_change_password,email_verified")
+      .select("customer_id,auth_user_id,login_email,auth_provider,account_status,must_change_password,email_verified,terms_version")
       .eq("auth_user_id", userId).maybeSingle();
     if (error || !data) return null;
     const { data: customer, error: customerError } = await admin.from("customers")
@@ -148,7 +148,7 @@ Deno.serve(async (request: Request) => {
       const resolved = await resolveQr(input.token);
       if (!resolved) return genericFailure();
       const { data: link, error } = await admin.from("customer_account_links")
-        .select("account_status,must_change_password,email_verified,login_email,auth_provider")
+        .select("account_status,must_change_password,email_verified,login_email,auth_provider,terms_version")
         .eq("customer_id", resolved.customer.id).maybeSingle();
       if (error) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       if (link && link.account_status !== "ACTIVE") return genericFailure();
@@ -158,6 +158,7 @@ Deno.serve(async (request: Request) => {
         email_recovery_available: Boolean(link?.email_verified && link?.login_email &&
           !String(link.login_email).endsWith(".invalid")),
         auth_provider: link?.auth_provider ?? null,
+        terms_version: link?.terms_version ?? null,
       });
     }
 
@@ -223,7 +224,7 @@ Deno.serve(async (request: Request) => {
       if (!(await registerSession(link, signedIn.user.id, claims))) {
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       }
-      return respond(200, { ok: true, session: signedIn.session, must_change_password: link.must_change_password, session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims) });
+      return respond(200, { ok: true, session: signedIn.session, must_change_password: link.must_change_password, terms_version: link.terms_version, auth_provider: link.auth_provider, session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims) });
     }
 
     if (action === "activate-social") {
@@ -270,6 +271,7 @@ Deno.serve(async (request: Request) => {
         return respond(200, {
           ok: true, customer_name: link.customer.name,
           auth_provider: link.auth_provider,
+          terms_version: link.terms_version,
           must_change_password: link.must_change_password,
           session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
@@ -286,6 +288,23 @@ Deno.serve(async (request: Request) => {
           session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
         });
+      }
+
+      if (action === "accept-terms") {
+        const resolved = await resolveQr(input.token);
+        if (!resolved || resolved.customer.id !== link.customer_id || input.termsAccepted !== true ||
+          input.termsVersion !== TERMS_VERSION || !(await sessionIsActive(link, authenticated.user.id, authenticated.claims)) ||
+          link.must_change_password) return genericFailure();
+        const { error: termsError } = await admin.from("customer_account_links").update({
+          terms_version: TERMS_VERSION, terms_accepted_at: now.toISOString(), updated_at: now.toISOString(),
+        }).eq("customer_id", link.customer_id).eq("auth_user_id", authenticated.user.id);
+        if (termsError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        const { error: eventError } = await admin.from("customer_account_events").insert({
+          customer_id: link.customer_id, event_type: "TERMS_ACCEPTED",
+          payload: { terms_version: TERMS_VERSION },
+        });
+        if (eventError) return respond(503, { ok: false, error: "TERMS_ACCEPTED_AUDIT_PENDING" });
+        return respond(200, { ok: true, terms_version: TERMS_VERSION });
       }
 
       if (action === "logout") {
@@ -311,7 +330,7 @@ Deno.serve(async (request: Request) => {
         if (!(await registerSession(link, authenticated.user.id, authenticated.claims))) {
           return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         }
-        return respond(200, { ok: true, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
+        return respond(200, { ok: true, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims), terms_version: link.terms_version });
       }
 
       const resolved = await resolveQr(input.token);
