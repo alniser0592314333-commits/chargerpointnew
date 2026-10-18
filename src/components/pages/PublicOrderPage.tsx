@@ -11,7 +11,7 @@ import { AppLogo } from '../qr/AppLogo';
 import { getPublicOrderByToken, getItemLocalizedDeviceName, PublicOrderQrData } from './dayOrdersStore';
 import type { BackgroundState } from '../energy/EnergyCanvasBackground';
 import { CustomerAuthScene } from './CustomerAuthScene';
-import { rpcResolveOrderQr, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
+import { rpcResolveOrderQr, rpcResolveOrderQrCreditCoverage, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
 
 export interface PublicOrderPageProps {
   token: string;
@@ -26,14 +26,15 @@ export const getOrderPaymentViewState = (
   dueMinor: number | null | undefined,
   submission: Pick<PublicQrPaymentSubmissionRpcResult, 'status'> | null,
   customerHasPositiveCredit: boolean | null | undefined,
-  orderStatus: string | null | undefined
+  orderStatus: string | null | undefined,
+  customerCreditCoversOrder: boolean | null | undefined
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
   if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
   const status = String(orderStatus ?? '').toUpperCase();
   if (dueMinor <= 0 && ['DELIVERED', 'COMPLETED'].includes(status)) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
-  if (dueMinor <= 0) return customerHasPositiveCredit ? 'CREDIT_COVERED' : 'NOT_DUE';
+  if (dueMinor <= 0) return customerHasPositiveCredit && customerCreditCoversOrder === true ? 'CREDIT_COVERED' : 'NOT_DUE';
   if (submission?.status === 'APPROVED') return 'APPROVED';
   if (submission?.status === 'REJECTED') return 'REJECTED';
   // The server-calculated due is already net of available positive customer credit.
@@ -66,6 +67,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
   const [data, setData] = useState<PublicOrderQrData | null>(null);
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
+  const [customerCreditCoversOrder, setCustomerCreditCoversOrder] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -78,6 +80,30 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Only show a credit-covered message when the server confirms the current credit
+  // covers the full order total; a positive balance alone is not sufficient evidence.
+  useEffect(() => {
+    let active = true;
+    const status = String(data?.status ?? '').toUpperCase();
+    const needsCoverageCheck = Boolean(
+      online && data && data.customerHasPositiveCredit &&
+      typeof data.orderDueMinor === 'number' && data.orderDueMinor <= 0 &&
+      !['DELIVERED', 'COMPLETED'].includes(status)
+    );
+    if (!needsCoverageCheck) {
+      setCustomerCreditCoversOrder(false);
+      return () => { active = false; };
+    }
+    setCustomerCreditCoversOrder(null);
+    rpcResolveOrderQrCreditCoverage(token).then((covered) => {
+      if (active) setCustomerCreditCoversOrder(covered);
+    }).catch((err) => {
+      console.warn('Could not verify whether customer credit covers the full order:', err);
+      if (active) setCustomerCreditCoversOrder(false);
+    });
+    return () => { active = false; };
+  }, [token, online, data?.customerHasPositiveCredit, data?.orderDueMinor, data?.status, data?.orderTotalMinor]);
 
   // Update background state whenever live order data updates
   useEffect(() => {
@@ -354,7 +380,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       : undefined;
 
   const statusConfig = getOrderStatusConfig(data?.status, due);
-  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status);
+  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status, customerCreditCoversOrder);
   const orderQrSubmissionLimitReached = data?.orderQrSubmissionLimitReached === true;
   const StatusIcon = statusConfig.icon;
 
