@@ -335,7 +335,8 @@ Deno.serve(async (request: Request) => {
       }
 
       const resolved = await resolveQr(input.token);
-      if (!resolved || resolved.customer.id !== link.customer_id || link.must_change_password) return genericFailure();
+      if (!resolved || resolved.customer.id !== link.customer_id || link.must_change_password ||
+        link.terms_version !== TERMS_VERSION) return genericFailure();
       const { data: registered, error: sessionError } = await admin.from("customer_account_sessions")
         .select("session_id,expires_at,revoked_at").eq("customer_id", link.customer_id).eq("auth_user_id", authenticated.user.id).maybeSingle();
       const currentSessionId = normalize(authenticated.claims?.session_id, 64);
