@@ -207,6 +207,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const { data: response, error: requestError } = await callCustomerAccount<PortalActivity>(
       'customer-activity', { token },
     );
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setActivity(null);
+      setActivityError(true);
+      setActivityLoading(false);
+      return;
+    }
     if (requestError || !response || !Array.isArray(response.ledger) ||
         !Array.isArray(response.goal_requests) || !Array.isArray(response.events)) {
       setActivityError(true);
@@ -282,6 +288,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const onOffline = () => {
       requestGeneration.current += 1;
       setOnline(false);
+      setActivity(null);
+      setActivityError(true);
       const cached = readCachedPortalData(token);
       if (cached) { setData(cached); setError(null); }
       else { setData(null); setError('service'); }
