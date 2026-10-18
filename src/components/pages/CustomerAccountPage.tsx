@@ -170,7 +170,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         }
         await saveSessionExpiry(accountToken, registeredData.session_expires_at);
         setEntry((current) => current ? { ...current, auth_provider: registeredData.auth_provider ?? current.auth_provider, terms_version: registeredData.terms_version ?? current.terms_version } : current);
-        if (registeredData.must_change_password) setMode('force-change');
+        if (registeredData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
         else if (registeredData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
         else setMode('portal');
         return;
@@ -273,7 +273,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
-      if (loginData.must_change_password) setMode('force-change');
+      if (loginData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
       else setMode('portal');
     } finally { setBusy(false); }
@@ -325,13 +325,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   if (mode === 'portal') {
     return (
       <div className="relative">
-        <div className="mx-auto flex max-w-3xl justify-end gap-2 px-4 pt-3">
-          <button type="button" onClick={() => void logout()} className="rounded-xl border border-slate-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-gray-600 dark:bg-[#0a0f18] dark:text-slate-200">
-            {t('تسجيل الخروج', 'Sign out')}
-          </button>
-        </div>
+        
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
-        <PublicCustomerPortalPage token={portalToken} />
+        <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />
       </div>
     );
   }
