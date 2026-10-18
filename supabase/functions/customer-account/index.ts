@@ -14,6 +14,7 @@ const respond = (status: number, body: Json) =>
 const genericFailure = () => respond(401, { ok: false, error: "ACCOUNT_UNAVAILABLE_OR_INVALID" });
 const normalize = (value: unknown, max = 256) =>
   typeof value === "string" && value.length <= max ? value.trim() : "";
+const rawPassword = (value: unknown) => typeof value === "string" && value.length <= 128 ? value : "";
 const strongPassword = (value: string) => {
   if (value.length < 8 || value.length > 128) return false;
   const common = new Set(["password", "password123", "12345678", "qwerty123", "11111111", "123456789"]);
@@ -78,13 +79,33 @@ Deno.serve(async (request: Request) => {
 
   async function registerSession(link: any, userId: string, claims: Record<string, unknown> | null) {
     const sessionId = normalize(claims?.session_id, 64);
-    if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return false;
+    const issuedAt = Number(claims?.iat);
+    if (!/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isSafeInteger(issuedAt) || issuedAt <= 0) return false;
+    const { data: existing, error: existingError } = await admin.from("customer_account_sessions")
+      .select("session_id,auth_issued_at,expires_at,revoked_at")
+      .eq("customer_id", link.customer_id).maybeSingle();
+    if (existingError) return false;
+    if (existing && existing.session_id === sessionId) {
+      return existing.revoked_at == null && new Date(existing.expires_at).getTime() > Date.now();
+    }
+    // A stale, previously issued access token cannot reclaim the single-device slot.
+    // A newly authenticated session must have a strictly newer Auth-issued iat.
+    if (existing && issuedAt <= Number(existing.auth_issued_at)) return false;
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const { error } = await admin.from("customer_account_sessions").upsert({
       customer_id: link.customer_id, auth_user_id: userId, session_id: sessionId,
-      created_at: now.toISOString(), expires_at: expiresAt, revoked_at: null,
+      auth_issued_at: issuedAt, created_at: now.toISOString(), expires_at: expiresAt, revoked_at: null,
     }, { onConflict: "customer_id" });
     return !error;
+  }
+
+  async function sessionIsActive(link: any, userId: string, claims: Record<string, unknown> | null) {
+    const sessionId = normalize(claims?.session_id, 64);
+    const { data: registered, error } = await admin.from("customer_account_sessions")
+      .select("session_id,expires_at,revoked_at").eq("customer_id", link.customer_id)
+      .eq("auth_user_id", userId).maybeSingle();
+    return !error && Boolean(registered) && !registered.revoked_at &&
+      registered.session_id === sessionId && new Date(registered.expires_at).getTime() > Date.now();
   }
 
   async function requireAdmin() {
@@ -126,7 +147,7 @@ Deno.serve(async (request: Request) => {
 
     if (action === "activate-password") {
       const resolved = await resolveQr(input.token);
-      const password = normalize(input.password, 128);
+      const password = rawPassword(input.password);
       if (!resolved || !strongPassword(password) || input.confirmPassword !== password ||
         input.termsAccepted !== true || input.termsVersion !== TERMS_VERSION) return genericFailure();
       const { data: existing, error: existingError } = await admin.from("customer_account_links")
@@ -211,16 +232,14 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false });
     }
 
-    if (action === "register-session" || action === "portal-data" || action === "complete-password-change") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "complete-password-change" || action === "logout") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
       if (!link) return genericFailure();
 
       if (action === "register-session") {
-        if (!(await registerSession(link, authenticated.user.id, authenticated.claims))) {
-          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-        }
+        if (!(await registerSession(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         return respond(200, {
           ok: true, customer_name: link.customer.name,
           must_change_password: link.must_change_password,
@@ -228,7 +247,30 @@ Deno.serve(async (request: Request) => {
         });
       }
 
+      if (action === "verify-session") {
+        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        return respond(200, {
+          ok: true, customer_name: link.customer.name,
+          must_change_password: link.must_change_password,
+          email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
+        });
+      }
+
+      if (action === "logout") {
+        const { error } = await admin.from("customer_account_sessions").update({ revoked_at: now.toISOString() })
+          .eq("customer_id", link.customer_id).eq("auth_user_id", authenticated.user.id)
+          .eq("session_id", normalize(authenticated.claims?.session_id, 64));
+        return error ? respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" }) : respond(200, { ok: true });
+      }
+
       if (action === "complete-password-change") {
+        const methods = Array.isArray(authenticated.claims?.amr)
+          ? (authenticated.claims!.amr as unknown[]).map((item) =>
+              typeof item === "string" ? item : item && typeof item === "object" && "method" in item ? String((item as { method: unknown }).method) : "")
+          : [];
+        const recoverySession = methods.includes("recovery");
+        if (!recoverySession && !(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        if (recoverySession && !link.email_verified) return genericFailure();
         const { error: updateError } = await admin.from("customer_account_links").update({
           must_change_password: false, password_changed_at: now.toISOString(), updated_at: now.toISOString(),
         }).eq("customer_id", link.customer_id).eq("auth_user_id", authenticated.user.id);
@@ -318,7 +360,7 @@ Deno.serve(async (request: Request) => {
       const administrator = await requireAdmin();
       if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
       const requestId = normalize(input.requestId, 64);
-      const temporaryPassword = normalize(input.temporaryPassword, 128);
+      const temporaryPassword = rawPassword(input.temporaryPassword);
       if (!/^[0-9a-f-]{36}$/i.test(requestId) || !strongPassword(temporaryPassword)) {
         return respond(400, { ok: false, error: "INVALID_REQUEST" });
       }
