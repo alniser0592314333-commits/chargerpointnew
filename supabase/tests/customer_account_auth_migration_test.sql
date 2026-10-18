@@ -34,5 +34,51 @@ BEGIN
   IF NOT public.customer_account_consume_rate_limit('test-customer-123456', 'LOGIN', 3, 900, false) THEN
     RAISE EXCEPTION 'rate limiter did not permit an attempt after reset';
   END IF;
+
+  INSERT INTO public.customers (id, name, is_active, status)
+  VALUES ('11111111-1111-4111-8111-111111111111', 'Test Customer', true, 'ACTIVE');
+  INSERT INTO auth.users (id) VALUES ('22222222-2222-4222-8222-222222222222');
+  INSERT INTO public.customer_account_links (
+    customer_id, auth_user_id, login_email, auth_provider, account_status,
+    must_change_password, email_verified, terms_version, terms_accepted_at
+  ) VALUES (
+    '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
+    'test@accounts.example', 'password', 'ACTIVE', false, false, '2026-10-18-v1', statement_timestamp()
+  );
+  INSERT INTO public.customer_account_sessions (
+    customer_id, auth_user_id, session_id, auth_issued_at, expires_at
+  ) VALUES (
+    '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
+    '33333333-3333-4333-8333-333333333333', extract(epoch FROM statement_timestamp())::bigint,
+    statement_timestamp() + interval '7 days'
+  );
+  INSERT INTO public.qr_tokens (public_token, target_id, token_type, is_active)
+  VALUES ('customer-token-test-012345678901234567890', '11111111-1111-4111-8111-111111111111', 'CUSTOMER', true);
+  INSERT INTO public.qr_payment_submissions (
+    id, status, amount_minor, payment_method, created_at, updated_at, customer_id
+  ) VALUES (
+    '44444444-4444-4444-8444-444444444444', 'PENDING', 0, 'PALPAY',
+    statement_timestamp(), statement_timestamp(), '11111111-1111-4111-8111-111111111111'
+  );
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claims', '{}', true);
+  IF public.public_resolve_qr_payment_submission('customer-token-test-012345678901234567890') IS NOT NULL THEN
+    RAISE EXCEPTION 'anonymous customer QR payment status must be hidden';
+  END IF;
+
+  PERFORM set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+  PERFORM set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-4222-8222-222222222222","session_id":"33333333-3333-4333-8333-333333333333"}', true);
+  IF public.public_resolve_qr_payment_submission('customer-token-test-012345678901234567890') ->> 'status' <> 'PENDING' THEN
+    RAISE EXCEPTION 'active customer session should see its payment status';
+  END IF;
+
+  UPDATE public.customer_account_sessions SET revoked_at = statement_timestamp()
+  WHERE customer_id = '11111111-1111-4111-8111-111111111111';
+  IF public.public_resolve_qr_payment_submission('customer-token-test-012345678901234567890') IS NOT NULL THEN
+    RAISE EXCEPTION 'revoked customer session must not see payment status';
+  END IF;
+
 END;
 $test$;
