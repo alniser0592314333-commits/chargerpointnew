@@ -66,12 +66,12 @@ const money = (minor: number | null | undefined, locale: string) => {
 const portalCacheKey = (token: string) => 'cp_customer_portal_cache:' + token;
 export const hasCachedCustomerPortalData = (token: string): boolean => readCachedPortalData(token) !== null;
 export const clearCachedCustomerPortalData = (token: string): void => {
-  try { sessionStorage.removeItem(portalCacheKey(token)); } catch {}
+  try { localStorage.removeItem(portalCacheKey(token)); } catch {}
 };
 const readCachedPortalData = (token: string): PortalData | null => {
   if (typeof sessionStorage === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(portalCacheKey(token));
+    const raw = localStorage.getItem(portalCacheKey(token));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PortalData;
     return typeof parsed.customer_name === 'string' &&
@@ -137,7 +137,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       } else {
         const verifiedSnapshot: PortalData = { ...response, cached_at: new Date().toISOString() };
         setData(verifiedSnapshot);
-        try { sessionStorage.setItem(portalCacheKey(token), JSON.stringify(verifiedSnapshot)); } catch {}
+        try { localStorage.setItem(portalCacheKey(token), JSON.stringify(verifiedSnapshot)); } catch {}
       }
     } catch {
       if (requestId === requestGeneration.current) {
