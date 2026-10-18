@@ -138,7 +138,8 @@ Deno.serve(async (request: Request) => {
     const permissions = Array.isArray(profile.permissions) ? profile.permissions : [];
     const authorized = profile.role === "SUPER_ADMIN" ||
       permissions.includes("customers:edit") || permissions.includes("customers:write") ||
-      permissions.includes("admin:manage");
+      permissions.includes("customers:manage") || permissions.includes("customer_accounts:manage") ||
+      permissions.includes("customer_accounts:reset") || permissions.includes("admin:manage");
     if (!authorized) return null;
     return { adminId: typeof profile.admin_id === "string" ? profile.admin_id : null };
   }
