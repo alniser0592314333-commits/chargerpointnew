@@ -314,7 +314,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "request-goal" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
@@ -401,6 +401,60 @@ Deno.serve(async (request: Request) => {
       const currentSessionId = normalize(authenticated.claims?.session_id, 64);
       if (sessionError || !registered || registered.revoked_at ||
         registered.session_id !== currentSessionId || new Date(registered.expires_at).getTime() <= Date.now()) return genericFailure();
+
+      if (action === "request-goal") {
+        const { data: activeGoal, error: activeGoalError } = await admin.from("goals")
+          .select("id").eq("customer_id", link.customer_id).eq("status", "ACTIVE").limit(1).maybeSingle();
+        const { data: pendingRequest, error: pendingRequestError } = await admin.from("goal_requests")
+          .select("id").eq("customer_id", link.customer_id).eq("status", "PENDING").limit(1).maybeSingle();
+        if (activeGoalError || pendingRequestError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        if (activeGoal) return respond(409, { ok: false, error: "GOAL_ALREADY_ACTIVE" });
+        if (pendingRequest) return respond(200, { ok: true, already_pending: true, status: "PENDING" });
+
+        const requestId = crypto.randomUUID();
+        const { data: created, error: createError } = await admin.from("goal_requests").insert({
+          id: requestId,
+          customer_id: link.customer_id,
+          requested_target: null,
+          status: "PENDING",
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          version: 1,
+        }).select("id,status,created_at").single();
+        if (createError) {
+          if (createError.code === "23505") return respond(200, { ok: true, already_pending: true, status: "PENDING" });
+          console.error("Customer goal request could not be recorded");
+          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        }
+        return respond(200, { ok: true, already_pending: false, request: created });
+      }
+
+      if (action === "customer-activity") {
+        const [ledgerResult, goalRequestsResult, eventsResult] = await Promise.all([
+          admin.from("financial_ledger")
+            .select("id,event_type,amount_minor,created_at,reference_id,metadata")
+            .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(100),
+          admin.from("goal_requests")
+            .select("id,status,requested_target,created_at,reviewed_at,rejection_reason")
+            .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(20),
+          admin.from("customer_account_events")
+            .select("id,event_type,request_id,is_read,created_at,payload")
+            .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(50),
+        ]);
+        if (ledgerResult.error || goalRequestsResult.error || eventsResult.error) {
+          console.error("Customer activity could not be loaded");
+          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        }
+        const authTime = Number(authenticated.claims?.auth_time);
+        return respond(200, {
+          ok: true,
+          ledger: ledgerResult.data ?? [],
+          goal_requests: goalRequestsResult.data ?? [],
+          events: eventsResult.data ?? [],
+          last_login_at: Number.isFinite(authTime) && authTime > 0 ? new Date(authTime * 1000).toISOString() : null,
+        });
+      }
+
       const { data: qr, error: qrError } = await admin.from("qr_tokens")
         .select("public_token").eq("target_id", link.customer_id).eq("token_type", "CUSTOMER")
         .eq("is_active", true).limit(1).maybeSingle();
