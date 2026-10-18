@@ -61,7 +61,7 @@ export const computeBackgroundStateFromOrder = (order: PublicOrderQrData | null)
 
 export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const { locale, setLocale, formatCurrency, isRTL } = useI18n();
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const isAr = locale === 'ar';
 
   const [data, setData] = useState<PublicOrderQrData | null>(null);
