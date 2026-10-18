@@ -39,6 +39,7 @@ Deno.serve(async (request: Request) => {
   if (!url || !secret || !anonKey) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
 
   const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
+  const authClient = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
   const input = await request.json().catch(() => null) as (Json & { action?: string }) | null;
   if (!input || typeof input.action !== "string") return respond(400, { ok: false, error: "INVALID_REQUEST" });
   const action = input.action;
@@ -188,7 +189,7 @@ Deno.serve(async (request: Request) => {
         await admin.auth.admin.deleteUser(created.user.id);
         return respond(409, { ok: false, error: "ACCOUNT_ALREADY_ACTIVATED" });
       }
-      const { data: signedIn, error: signInError } = await admin.auth.signInWithPassword({ email: loginEmail, password });
+      const { data: signedIn, error: signInError } = await authClient.auth.signInWithPassword({ email: loginEmail, password });
       if (signInError || !signedIn.session) {
         await admin.from("customer_account_links").delete().eq("customer_id", resolved.customer.id);
         await admin.auth.admin.deleteUser(created.user.id);
@@ -213,7 +214,7 @@ Deno.serve(async (request: Request) => {
         .select("customer_id,auth_user_id,login_email,account_status,must_change_password,email_verified")
         .eq("customer_id", resolved.customer.id).maybeSingle();
       if (linkError || !link || link.account_status !== "ACTIVE") return genericFailure();
-      const { data: signedIn, error: signInError } = await admin.auth.signInWithPassword({
+      const { data: signedIn, error: signInError } = await authClient.auth.signInWithPassword({
         email: link.login_email, password,
       });
       if (signInError || !signedIn.session || signedIn.user?.id !== link.auth_user_id) return genericFailure();
@@ -349,9 +350,19 @@ Deno.serve(async (request: Request) => {
           return respond(200, { ok: true, message: "If a verified email is available, a reset link will be sent." });
         }
         const redirectTo = normalize(input.redirectTo, 512);
-        const safeRedirect = /^https:\/\/ais-(?:dev|pre)-ysj6qxp5jjdotuhhmuwlez-886408646256\.europe-west2\.run\.app\/c\/[A-Za-z0-9_-]+\?customer_recovery=1$/.test(redirectTo)
-          || /^http:\/\/localhost:3000\/c\/[A-Za-z0-9_-]+\?customer_recovery=1$/.test(redirectTo);
-        const allowedRedirect = safeRedirect ? redirectTo : undefined;
+        const expectedRedirectPath = "/c/" + resolved.token + "?customer_recovery=1";
+        const safeRedirect = /^https:\/\/ais-(?:dev|pre)-ysj6qxp5jjdotuhhmuwlez-886408646256\.europe-west2\.run\.app$/.test(new URL(redirectTo, "http://invalid.local").origin)
+          || new URL(redirectTo, "http://invalid.local").origin === "http://localhost:3000";
+        let allowedRedirect: string | undefined;
+        try {
+          const parsedRedirect = new URL(redirectTo);
+          const originAllowed = /^https:\/\/ais-(?:dev|pre)-ysj6qxp5jjdotuhhmuwlez-886408646256\.europe-west2\.run\.app$/.test(parsedRedirect.origin)
+            || parsedRedirect.origin === "http://localhost:3000";
+          if (originAllowed && parsedRedirect.pathname === "/c/" + resolved.token &&
+              parsedRedirect.search === "?customer_recovery=1" && parsedRedirect.hash === "") {
+            allowedRedirect = parsedRedirect.toString();
+          }
+        } catch { allowedRedirect = undefined; }
         const { error: mailError } = await admin.auth.resetPasswordForEmail(link.login_email, {
           ...(allowedRedirect ? { redirectTo: allowedRedirect } : {}),
         });
