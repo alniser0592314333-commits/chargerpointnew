@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, CalendarDays, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, Settings, ShieldCheck, Sun, Target, UserRound, Wallet, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, Wifi, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount } from '../../services/customer/customerAuth';
 import { AppLogo } from '../qr/AppLogo';
