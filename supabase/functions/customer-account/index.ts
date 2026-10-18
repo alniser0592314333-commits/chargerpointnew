@@ -383,11 +383,21 @@ Deno.serve(async (request: Request) => {
         }
         const redirectTo = normalize(input.redirectTo, 512);
         let allowedRedirect: string | undefined;
+        const configuredOrigins = (Deno.env.get("CUSTOMER_PORTAL_ORIGINS") || "")
+          .split(",").map((value) => value.trim()).filter(Boolean);
+        const allowedOrigins = new Set<string>();
+        for (const configuredOrigin of configuredOrigins) {
+          try {
+            const parsedOrigin = new URL(configuredOrigin);
+            if (parsedOrigin.origin === configuredOrigin && parsedOrigin.pathname === "/" &&
+                parsedOrigin.search === "" && parsedOrigin.hash === "") {
+              allowedOrigins.add(parsedOrigin.origin);
+            }
+          } catch { /* Invalid configured origins are ignored; recovery fails closed. */ }
+        }
         try {
           const parsedRedirect = new URL(redirectTo);
-          const originAllowed = /^https:\/\/ais-(?:dev|pre)-ysj6qxp5jjdotuhhmuwlez-886408646256\.europe-west2\.run\.app$/.test(parsedRedirect.origin)
-            || parsedRedirect.origin === "http://localhost:3000";
-          if (originAllowed && parsedRedirect.pathname === "/c/" + resolved.token &&
+          if (allowedOrigins.has(parsedRedirect.origin) && parsedRedirect.pathname === "/c/" + resolved.token &&
               parsedRedirect.search === "?customer_recovery=1" && parsedRedirect.hash === "") {
             allowedRedirect = parsedRedirect.toString();
           }
