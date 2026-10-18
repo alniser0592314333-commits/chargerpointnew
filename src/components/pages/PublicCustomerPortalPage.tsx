@@ -452,8 +452,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             <AppLogo size={40} variant="auto" className="shrink-0" />
             <div><p className="font-bold">{isAr ? 'نقطة الشحن' : 'Charging Point'}</p><p className="text-xs text-slate-500 dark:text-emerald-200/70">{isAr ? 'بوابة العميل' : 'Customer portal'}</p></div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={`flex items-center gap-1 px-2 py-1 text-xs ${online ? 'text-emerald-700 dark:text-emerald-200' : 'text-amber-800 dark:text-amber-200'}`}>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="cp-portal-header-control" aria-label={isAr ? 'تغيير اللغة إلى الإنجليزية' : 'Change language to Arabic'}>
+              <Globe className="h-4 w-4" /><span>{isAr ? 'English' : 'العربية'}</span>
+            </button>
+            <button type="button" onClick={toggleTheme} className="cp-portal-header-control cp-portal-header-control--icon" aria-label={isAr ? 'تغيير المظهر' : 'Change appearance'} title={isAr ? 'تغيير المظهر' : 'Change appearance'}>
+              {document.documentElement.classList.contains('dark') ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <span className={`flex items-center gap-1 px-1.5 py-1 text-[11px] ${online ? 'text-emerald-700 dark:text-emerald-200' : 'text-amber-800 dark:text-amber-200'}`}>
               {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}{online ? (isAr ? 'متصل' : 'Online') : (isAr ? 'غير متصل' : 'Offline')}
             </span>
           </div>
@@ -463,7 +469,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       <main className="relative z-10 mx-auto max-w-3xl space-y-4 px-4 py-5 pb-28 sm:py-8 sm:pb-28">
         {!online && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{isAr ? 'أنت غير متصل. نعرض آخر نسخة محفوظة وليست بيانات لحظية؛ قد لا تشمل آخر دفعة أو تعديل.' : 'You are offline. This is the last saved snapshot, not live data; recent payments or changes may be missing.'}{data?.cached_at ? <span className="mt-1 block text-xs">{isAr ? 'آخر تحقق: ' : 'Last verified: '}{safeDate(data.cached_at, locale)}</span> : null}</p></div>}
 
-        {loading ? <div className="space-y-3" aria-live="polite"><div className="h-28 animate-pulse rounded-2xl bg-slate-200 dark:bg-emerald-950" /><div className="h-36 animate-pulse rounded-2xl bg-slate-200 dark:bg-emerald-950" /><p className="text-center text-sm text-slate-500">{isAr ? 'جارٍ التحقق من رمز العميل وتحميل البيانات...' : 'Verifying customer QR and loading your data…'}</p></div> :
+        {loading ? <div className="space-y-3" aria-live="polite"><div className="h-28 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><div className="h-36 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><p className="text-center text-sm text-slate-500">{isAr ? 'جارٍ التحقق من رمز العميل وتحميل البيانات...' : 'Verifying customer QR and loading your data…'}</p></div> :
           error || !data ? <section role="alert" className="py-5 text-center">
             <AlertTriangle className="mx-auto mb-3 h-9 w-9 text-amber-600" />
             <h1 className="text-lg font-bold">{error === 'invalid' ? (isAr ? 'تعذّر التحقق من رمز العميل' : 'Customer QR could not be verified') : (isAr ? 'بيانات العميل غير متاحة حالياً' : 'Customer data is temporarily unavailable')}</h1>
