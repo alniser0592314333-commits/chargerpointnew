@@ -519,7 +519,7 @@ Deno.serve(async (request: Request) => {
           goal_requests: goalRequestsResult.data ?? [],
           events: eventsResult.data ?? [],
           session: sessionResult.data ? { created_at: sessionResult.data.created_at, expires_at: sessionResult.data.expires_at } : null,
-          last_login_at: Number.isFinite(authTime) && authTime > 0 ? new Date(authTime * 1000).toISOString() : null,
+          last_login_at: Number.isFinite(authTime) && authTime > 0 ? new Date(authTime * 1000).toISOString() : sessionResult.data?.created_at ?? null,
         });
       }
 
