@@ -139,7 +139,7 @@ CREATE OR REPLACE FUNCTION public.public_resolve_qr_payment_submission(p_public_
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_temp
+SET search_path = pg_catalog, public, pg_temp
 AS $function$
 DECLARE
   v_target_id uuid;
