@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, BatteryCharging, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
@@ -399,8 +399,6 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             </p>
           </div>
 
-
-
           <div className="mt-7 max-w-[500px]">
             {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3.5 text-sm leading-6 text-[#963f35] dark:border-[#7f1d1d] dark:bg-[#3f1d24] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}
             {message && <div role="status" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#c5dfce] bg-[#edf7ef] px-4 py-3.5 text-sm leading-6 text-[#2f6a4c] dark:border-[#36506d] dark:bg-[#1d2b3c] dark:text-[#bfdbfe]"><CheckCircle2 className="mt-1 h-4 w-4 shrink-0" />{message}</div>}
@@ -442,7 +440,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                   <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className={inputClass} placeholder={t('أعد كتابة كلمة السر', 'Enter the password again')} />
                 </label>
 
-                {showTerms && <label className="flex items-start gap-3 text-sm leading-6 text-[#61766a] dark:text-[#d1d5db]"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#347a66]" /><span>{t('أوافق على الشروط والأحكام وسياسة استخدام حساب العميل.', 'I accept the customer account terms and conditions.')}</span></label>}
+                {showTerms && <label className="flex items-start gap-3 text-sm leading-6 text-[#61766a] dark:text-[#d1d5db]"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#347a66]" /><span>{t('أوافق على الشروط والأحكام وسياسة الخصوصية.', 'I accept the customer account terms and conditions.')}</span></label>}
                 {mode === 'force-change' && <p className="rounded-2xl border border-[#e8d8ad] bg-[#fbf5e6] p-3.5 text-sm leading-6 text-[#7d622d] dark:border-[#6b5b35] dark:bg-[#3f3420] dark:text-[#fde68a]">{t('يجب تغيير كلمة السر المؤقتة قبل عرض بيانات الحساب.', 'You must change the temporary password before viewing account data.')}</p>}
                 <button disabled={busy} type="submit" className={primaryButtonClass}>
                   {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
