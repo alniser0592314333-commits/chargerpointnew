@@ -55,6 +55,8 @@ const passwordStrength = (value: string) => {
 };
 
 export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
+  const customerCodeFromQuery = new URLSearchParams(window.location.search).get('customerCode')?.trim() ?? '';
+  const accountToken = customerCodeFromQuery || token;
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
@@ -95,10 +97,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
       const { data: localSession } = await customerAuth.auth.getSession();
       let localBinding: { expiresAt?: number; sessionId?: string } | null = null;
-      try { localBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(token)) || 'null'); } catch {}
+      try { localBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(accountToken)) || 'null'); } catch {}
       const currentSessionId = localSession.session ? sessionIdFromAccessToken(localSession.session.access_token) : null;
       if (localSession.session && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
-          localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(token)) {
+          localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(accountToken)) {
         setMode('portal');
         setMessage(t('أنت غير متصل. هذه آخر نسخة محفوظة؛ الدفع وتغييرات الحساب متوقفة حتى عودة الإنترنت.', 'You are offline. This is the last saved copy; payments and account changes are disabled until you reconnect.'));
       } else {
@@ -107,7 +109,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       }
       return;
     }
-    const result = await callCustomerAccount<EntryStatus>('entry', { token });
+    const result = await callCustomerAccount<EntryStatus>('entry', { token: accountToken });
     if (!result.data || result.error || result.data.valid !== true) {
       setMode('unavailable');
       setErrorMessage(result.error || 'ACCOUNT_UNAVAILABLE_OR_INVALID');
@@ -125,11 +127,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     }
     if (session) {
       const registered = await callCustomerAccount<{ must_change_password?: boolean; auth_provider?: EntryStatus["auth_provider"]; terms_version?: string | null; session_expires_at?: string }>(
-        'verify-session', { token }, session.access_token,
+        'verify-session', { token: accountToken }, session.access_token,
       );
       const registeredData = registered.data;
       if (registeredData && !registered.error) {
-        await saveSessionExpiry(token, registeredData.session_expires_at);
+        await saveSessionExpiry(accountToken, registeredData.session_expires_at);
         setEntry((current) => current ? { ...current, auth_provider: registeredData.auth_provider ?? current.auth_provider, terms_version: registeredData.terms_version ?? current.terms_version } : current);
         if (registeredData.must_change_password) setMode('force-change');
         else if (registeredData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
@@ -145,7 +147,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setMode('unavailable');
       setError(t('تعذّر تحميل صفحة الحساب. تحقق من الاتصال ثم أعد المحاولة.', 'The account page could not load. Check your connection and try again.'));
     }
-  }, [token, t]);
+  }, [accountToken, t]);
 
   useEffect(() => {
     void loadEntry();
@@ -178,9 +180,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     try {
       const { error: updateError } = await customerAuth.auth.updateUser({ password });
       if (updateError) { setError(t('تعذّر تحديث كلمة السر. حاول مرة أخرى.', 'Could not update the password. Please try again.')); return; }
-      const completed = await callCustomerAccount<{ session_expires_at?: string; terms_version?: string }>('complete-password-change', { token });
+      const completed = await callCustomerAccount<{ session_expires_at?: string; terms_version?: string }>('complete-password-change', { token: accountToken });
       if (completed.error) { setErrorMessage(completed.error); return; }
-      await saveSessionExpiry(token, completed.data?.session_expires_at);
+      await saveSessionExpiry(accountToken, completed.data?.session_expires_at);
       setPassword(''); setConfirmPassword('');
       setMode('portal');
       setMessage(recoveryFlow
@@ -197,11 +199,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     setBusy(true); setError('');
     try {
       const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; session_expires_at?: string }>(
-        'activate-password', { token, password, confirmPassword, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION },
+        'activate-password', { token: accountToken, password, confirmPassword, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION },
       );
       if (result.error || !result.data?.session) { setErrorMessage(result.error || 'ACTIVATION_UNAVAILABLE'); return; }
       const sessionError = await setCustomerSession(result.data.session);
-      await saveSessionExpiry(token, result.data.session_expires_at);
+      await saveSessionExpiry(accountToken, result.data.session_expires_at);
       if (sessionError) { setError(t('تم إنشاء الحساب لكن تعذّر إكمال الدخول. ارجع وسجّل الدخول بكلمة السر.', 'Account created, but sign-in could not be completed. Return and sign in with your password.')); setMode('login'); return; }
       setPassword(''); setConfirmPassword(''); setMode('portal');
     } finally { setBusy(false); }
@@ -213,7 +215,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     setBusy(true); setError('');
     try {
       const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string }>(
-        'login', { token, password },
+        'login', { token: accountToken, password },
       );
       const loginData = result.data;
       if (result.error || !loginData?.session) {
@@ -221,7 +223,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         return;
       }
       const sessionError = await setCustomerSession(loginData.session);
-      await saveSessionExpiry(token, loginData.session_expires_at);
+      await saveSessionExpiry(accountToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
@@ -237,7 +239,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     setBusy(true); setError(''); setMessage('');
     try {
       const result = await callCustomerAccount<{ terms_version?: string }>('accept-terms', {
-        token, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION,
+        token: accountToken, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION,
       });
       if (result.error) { setErrorMessage(result.error); return; }
       setEntry((current) => current ? { ...current, terms_version: result.data?.terms_version ?? CUSTOMER_TERMS_VERSION } : current);
@@ -250,10 +252,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     setBusy(true); setError(''); setMessage('');
     try {
       const action = emailRecovery ? 'email-reset' : 'request-reset';
-      const redirectTo = new URL('/c/' + encodeURIComponent(token), window.location.origin);
+      const redirectTo = new URL('/c/' + encodeURIComponent(accountToken), window.location.origin);
       redirectTo.searchParams.set('customer_recovery', '1');
       const result = await callCustomerAccount(action, {
-        token, redirectTo: redirectTo.toString(),
+        token: accountToken, redirectTo: redirectTo.toString(),
       });
       if (result.error) { setErrorMessage(result.error); return; }
       setMessage(emailRecovery
@@ -266,8 +268,8 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const logout = async () => {
     await callCustomerAccount('logout').catch(() => undefined);
     await customerAuth.auth.signOut();
-    clearCachedCustomerPortalData(token);
-    localStorage.removeItem(sessionExpiryKey(token));
+    clearCachedCustomerPortalData(accountToken);
+    localStorage.removeItem(sessionExpiryKey(accountToken));
     setEntry((current) => current ? { ...current, activated: true } : current);
     setMode('login');
     setMessage(t('تم تسجيل الخروج.', 'You have signed out.'));
@@ -282,7 +284,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </button>
         </div>
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
-        <PublicCustomerPortalPage token={token} />
+        <PublicCustomerPortalPage token={accountToken} />
       </div>
     );
   }
