@@ -113,6 +113,15 @@ Deno.serve(async (request: Request) => {
     return Boolean(await activeSessionExpiresAt(link, userId, claims));
   }
 
+
+  async function rateLimit(customerId: string, actionName: string, maxAttempts: number, windowSeconds: number, reset = false) {
+    const { data, error } = await admin.rpc("customer_account_consume_rate_limit", {
+      p_rate_key: customerId, p_action: actionName, p_max_attempts: maxAttempts,
+      p_window_seconds: windowSeconds, p_reset: reset,
+    });
+    return !error && data === true;
+  }
+
   async function requireAdmin() {
     const authenticated = await userFromBearer();
     if (!authenticated) return null;
@@ -154,7 +163,8 @@ Deno.serve(async (request: Request) => {
     if (action === "activate-password") {
       const resolved = await resolveQr(input.token);
       const password = rawPassword(input.password);
-      if (!resolved || !strongPassword(password) || input.confirmPassword !== password ||
+      if (!resolved || !(await rateLimit(resolved.customer.id, "ACTIVATE", 5, 3600)) ||
+        !strongPassword(password) || input.confirmPassword !== password ||
         input.termsAccepted !== true || input.termsVersion !== TERMS_VERSION) return genericFailure();
       const { data: existing, error: existingError } = await admin.from("customer_account_links")
         .select("customer_id").eq("customer_id", resolved.customer.id).maybeSingle();
@@ -191,13 +201,14 @@ Deno.serve(async (request: Request) => {
         await admin.auth.admin.deleteUser(created.user.id);
         return respond(503, { ok: false, error: "ACTIVATION_UNAVAILABLE" });
       }
+      await rateLimit(resolved.customer.id, "ACTIVATE", 5, 3600, true);
       return respond(200, { ok: true, session: signedIn.session, session_expires_at: await activeSessionExpiresAt(link, created.user.id, claims) });
     }
 
     if (action === "login") {
       const resolved = await resolveQr(input.token);
       const password = rawPassword(input.password);
-      if (!resolved || !password) return genericFailure();
+      if (!resolved || !password || !(await rateLimit(resolved.customer.id, "LOGIN", 8, 900))) return genericFailure();
       const { data: link, error: linkError } = await admin.from("customer_account_links")
         .select("customer_id,auth_user_id,login_email,account_status,must_change_password,email_verified")
         .eq("customer_id", resolved.customer.id).maybeSingle();
@@ -206,6 +217,7 @@ Deno.serve(async (request: Request) => {
         email: link.login_email, password,
       });
       if (signInError || !signedIn.session || signedIn.user?.id !== link.auth_user_id) return genericFailure();
+      await rateLimit(resolved.customer.id, "LOGIN", 8, 900, true);
       const claims = decodeClaims(signedIn.session.access_token);
       if (!(await registerSession(link, signedIn.user.id, claims))) {
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
@@ -216,8 +228,8 @@ Deno.serve(async (request: Request) => {
     if (action === "activate-social") {
       const authenticated = await userFromBearer();
       const resolved = await resolveQr(input.token);
-      if (!authenticated || !resolved || input.termsAccepted !== true ||
-        input.termsVersion !== TERMS_VERSION || !authenticated.user.email) return genericFailure();
+      if (!authenticated || !resolved || !(await rateLimit(resolved.customer.id, "SOCIAL_ACTIVATE", 5, 3600)) ||
+        input.termsAccepted !== true || input.termsVersion !== TERMS_VERSION || !authenticated.user.email) return genericFailure();
       const { data: existing, error } = await admin.from("customer_account_links")
         .select("customer_id").eq("customer_id", resolved.customer.id).maybeSingle();
       if (error) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
@@ -238,6 +250,7 @@ Deno.serve(async (request: Request) => {
         await admin.from("customer_account_links").delete().eq("customer_id", resolved.customer.id);
         return respond(503, { ok: false, error: "ACTIVATION_UNAVAILABLE" });
       }
+      await rateLimit(resolved.customer.id, "SOCIAL_ACTIVATE", 5, 3600, true);
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
