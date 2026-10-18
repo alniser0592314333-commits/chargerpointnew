@@ -914,6 +914,18 @@ html.light .order-price-value {
 .order-integrated-pay-action {
   width: 100%;
 }
+.order-credit-options-action {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.order-credit-options-action > p {
+  margin: 0;
+  color: var(--order-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
 
 .order-pay-crystal-button {
   position: relative;
@@ -2144,6 +2156,18 @@ html.dark .order-mountain-auth__backdrop { opacity: .16; }
   box-shadow: var(--order-shadow-elevated);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+.order-mountain-auth .order-account-entry {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  text-decoration: none;
+}
+.order-mountain-auth .order-account-entry > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .order-mountain-auth .order-qr-main {
