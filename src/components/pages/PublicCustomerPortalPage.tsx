@@ -132,6 +132,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [activity, setActivity] = useState<PortalActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(false);
+  const [seenNotificationIds, setSeenNotificationIds] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem('cp_customer_notifications_seen:' + token) || '[]');
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    } catch { return []; }
+  });
   const [actionMessage, setActionMessage] = useState('');
   const [goalRequestBusy, setGoalRequestBusy] = useState(false);
   const [resetRequestBusy, setResetRequestBusy] = useState(false);
@@ -231,6 +237,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     }, 12000);
     return () => window.clearInterval(interval);
   }, [activeTab, online, load, loadActivity]);
+
+  const markNotificationsSeen = () => {
+    const ids = (activity?.events || []).map((event) => event.id);
+    setSeenNotificationIds(ids);
+    try { window.localStorage.setItem('cp_customer_notifications_seen:' + token, JSON.stringify(ids)); } catch {}
+  };
 
   const requestGoal = async () => {
     if (!online || goalRequestBusy) return;
@@ -522,7 +534,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
           </>}
       </main>
       <footer className="relative z-10 border-t border-slate-200/70 px-4 py-5 text-center text-xs text-slate-500 dark:border-emerald-950/70 dark:text-emerald-100/50">{isAr ? 'نقطة الشحن · بوابة العميل الآمنة' : 'Charging Point · Secure customer portal'}</footer>
-      {data && !loading && !error && <CustomerPortalNavigation activeTab={activeTab} onTabChange={setActiveTab} moreView={moreView} onMoreViewChange={setMoreView} notificationCount={activity?.events.filter((event) => !event.is_read).length ?? 0} isAr={isAr} />}
+      {data && !loading && !error && <CustomerPortalNavigation activeTab={activeTab} onTabChange={setActiveTab} moreView={moreView} onMoreViewChange={(view) => { setMoreView(view); if (view === 'notifications') markNotificationsSeen(); }} notificationCount={activity?.events.filter((event) => !seenNotificationIds.includes(event.id)).length ?? 0} isAr={isAr} />}
     </div>
   );
 };
