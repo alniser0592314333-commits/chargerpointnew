@@ -80,6 +80,7 @@ type PortalActivity = {
   ledger: PortalLedgerEntry[];
   goal_requests: PortalGoalRequest[];
   events: PortalCustomerEvent[];
+  session: { created_at: string; expires_at: string } | null;
   last_login_at: string | null;
 };
 type PortalEventRow = { id: string; created_at: string; title: string; detail: string };
@@ -222,6 +223,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         ledger: response.ledger,
         goal_requests: response.goal_requests,
         events: response.events,
+        session: response.session ?? null,
         last_login_at: response.last_login_at ?? null,
       });
       setActivityError(false);
@@ -517,7 +519,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
 
             {activeTab === 'more' && moreView === 'profile' && <section className="cp-portal-section">
               <p className="cp-portal-eyebrow">{isAr ? 'بياناتك الشخصية' : 'YOUR DETAILS'}</p><h1 className="cp-portal-heading">{isAr ? 'حسابي' : 'My account'}</h1>
-              <div className="cp-portal-profile"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div><div><span>{isAr ? 'رقم الحساب' : 'Account number'}</span><strong><bdi>{data.customer_code}</bdi></strong></div><div><span>{isAr ? 'آخر تسجيل دخول على هذا الجهاز' : 'Last sign-in on this device'}</span><strong>{activity?.last_login_at ? safeDate(activity.last_login_at, locale) : '—'}</strong></div></div>
+              <div className="cp-portal-profile"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div><div><span>{isAr ? 'رقم الحساب' : 'Account number'}</span><strong><bdi>{data.customer_code}</bdi></strong></div><div><span>{isAr ? 'آخر تسجيل دخول على هذا الجهاز' : 'Last sign-in on this device'}</span><strong>{activity?.last_login_at ? safeDate(activity.last_login_at, locale) : '—'}</strong></div><div><span>{isAr ? 'الجلسة الحالية · تنتهي في' : 'Current session · expires'}</span><strong>{activity?.session?.expires_at ? safeDate(activity.session.expires_at, locale) : '—'}</strong></div></div>
               <div className="cp-portal-subsection"><h2 className="font-bold">{isAr ? 'أمان الحساب' : 'Account security'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'إعادة تعيين كلمة المرور تحتاج موافقة الإدارة، وبعد الموافقة يجب اختيار كلمة مرور جديدة.' : 'Password reset requires administrator approval. After approval, you must set a new password.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || resetRequestBusy} onClick={() => void requestPasswordReset()}>{resetRequestBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'طلب إعادة تعيين كلمة المرور' : 'Request password reset'}</button></div>
             </section>}
 
@@ -536,7 +538,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <p className="cp-portal-eyebrow">{isAr ? 'تفضيلاتك' : 'PREFERENCES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإعدادات' : 'Settings'}</h1>
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={toggleTheme}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}</button></div>
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
-              <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div><div><span>{isAr ? 'آخر تسجيل دخول على هذا الجهاز' : 'Last sign-in on this device'}</span><strong>{activity?.last_login_at ? safeDate(activity.last_login_at, locale) : '—'}</strong></div></div>
+              <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div><div><span>{isAr ? 'آخر تسجيل دخول على هذا الجهاز' : 'Last sign-in on this device'}</span><strong>{activity?.last_login_at ? safeDate(activity.last_login_at, locale) : '—'}</strong></div><div><span>{isAr ? 'الجلسة الحالية · تنتهي في' : 'Current session · expires'}</span><strong>{activity?.session?.expires_at ? safeDate(activity.session.expires_at, locale) : '—'}</strong></div></div>
               <button type="button" className="cp-portal-signout" onClick={() => onLogout?.()} disabled={!onLogout}><UserRound size={17} />{isAr ? 'تسجيل الخروج' : 'Sign out'}</button>
             </section>}
 
