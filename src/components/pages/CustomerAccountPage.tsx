@@ -57,8 +57,10 @@ const passwordStrength = (value: string) => {
 };
 
 export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
-  const customerIdFromQuery = new URLSearchParams(window.location.search).get('customerId')?.trim() ?? '';
-  const accountToken = customerIdFromQuery || token;
+  const customerQuery = new URLSearchParams(window.location.search);
+  const customerIdFromQuery = customerQuery.get('customerId')?.trim() ?? '';
+  const orderQrToken = customerQuery.get('orderQrToken')?.trim() ?? '';
+  const [accountToken, setAccountToken] = useState(customerIdFromQuery || (orderQrToken ? '' : token));
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
@@ -97,6 +99,24 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setMode('loading');
       setError('');
       setMessage('');
+      if (orderQrToken && !accountToken) {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setMode('unavailable');
+          setError(t('يلزم الاتصال بالإنترنت لفتح حساب العميل من رمز الطلب.', 'Connect to the internet to open the customer account from this order QR.'));
+          return;
+        }
+        const resolved = await callCustomerAccount<{ customer_id?: string }>(
+          'resolve-order-customer-id', { token: orderQrToken },
+        );
+        if (resolved.error || !resolved.data?.customer_id) {
+          setMode('unavailable');
+          setError(t('الحساب غير متاح حاليًا. تأكد من رمز الطلب أو تواصل مع الإدارة.', 'The account is currently unavailable. Check the order QR or contact the administrator.'));
+          return;
+        }
+        initialized.current = false;
+        setAccountToken(resolved.data.customer_id);
+        return;
+      }
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
       const { data: localSession } = await customerAuth.auth.getSession();
       let localBinding: { expiresAt?: number; sessionId?: string } | null = null;
@@ -169,7 +189,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setMode('unavailable');
       setError(t('تعذّر تحميل صفحة الحساب. تحقق من الاتصال ثم أعد المحاولة.', 'The account page could not load. Check your connection and try again.'));
     }
-  }, [accountToken, t]);
+  }, [accountToken, orderQrToken, t]);
 
   useEffect(() => {
     void loadEntry();
