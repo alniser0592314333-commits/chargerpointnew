@@ -5,6 +5,10 @@ const migration = readFileSync(
   new URL('../../supabase/migrations/20261017190000_apply_customer_credit_to_order_qr_remainder.sql', import.meta.url),
   'utf8',
 );
+const latestOrderQrMigration = readFileSync(
+  new URL('../../supabase/migrations/20261018180000_fix_order_qr_partial_payment_status.sql', import.meta.url),
+  'utf8',
+);
 const edgeFunction = readFileSync(
   new URL('../../supabase/functions/submit-qr-payment/index.ts', import.meta.url),
   'utf8',
@@ -26,10 +30,12 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(migration).toContain("ELSE 'NOT_DUE'");
   });
 
-  it('applies available customer credit to the order remainder and permits payment of the uncovered amount', () => {
+  it('calculates order due from order-specific allocations, not the customer ledger balance', () => {
     expect(migration).toContain("'customer_has_positive_credit', (v_customer_balance_minor > 0)");
     expect(migration).toContain("'order_qr_submission_limit_reached', (v_order_qr_submission_count >= 3)");
-    expect(migration).toContain('v_due_minor := greatest(v_due_minor - greatest(v_customer_balance_minor, 0), 0);');
+    expect(latestOrderQrMigration).toContain("'order_paid_minor', v_paid_minor");
+    expect(latestOrderQrMigration).toContain('WHERE pal.order_item_id = oi.id');
+    expect(latestOrderQrMigration).not.toContain('v_due_minor := greatest(v_due_minor - greatest(v_customer_balance_minor, 0), 0);');
     expect(migration).not.toContain('IF v_customer_balance_minor > 0 THEN');
     expect(orderPage).toContain("'CREDIT_COVERED'");
     expect(orderPage).not.toContain("if (customerHasPositiveCredit) return 'CREDIT_COVERED'");
