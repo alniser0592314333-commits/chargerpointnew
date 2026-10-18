@@ -3,7 +3,7 @@ import { config } from '../../config/env';
 
 const customerStorageKey = 'chargerpoint_customer_auth_session';
 
-export const customerAuth = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+export const customerAuth = createClient(config.supabaseUrl || 'http://127.0.0.1:54321', config.supabaseAnonKey || 'missing-public-key', {
   auth: {
     storageKey: customerStorageKey,
     persistSession: true,
@@ -66,6 +66,7 @@ export async function startCustomerOAuth(
 ): Promise<string | null> {
   if (typeof window === 'undefined') return 'BROWSER_REQUIRED';
   const redirectTo = new URL('/c/' + encodeURIComponent(token), window.location.origin);
+  try { sessionStorage.setItem('cp_customer_oauth_mode:' + token, mode); } catch {}
   redirectTo.searchParams.set('customer_oauth', mode);
   const { error } = await customerAuth.auth.signInWithOAuth({
     provider,
