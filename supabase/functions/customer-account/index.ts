@@ -38,9 +38,12 @@ Deno.serve(async (request: Request) => {
   const secret = Deno.env.get("auth_supabase_secret_key") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
   if (!url || !secret || !anonKey) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+  const serviceUrl: string = url;
+  const serviceSecret: string = secret;
+  const publicApiKey: string = anonKey;
 
-  const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
-  const authClient = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const admin = createClient(serviceUrl, serviceSecret, { auth: { persistSession: false, autoRefreshToken: false } });
+  const authClient = createClient(serviceUrl, publicApiKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
   const declaredLength = Number(request.headers.get("content-length") || 0);
   if (declaredLength > 16384) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
   const bodyText = await request.text();
@@ -135,7 +138,7 @@ Deno.serve(async (request: Request) => {
     if (!authenticated) return null;
     const response = await fetch(url.replace(/\/+$/, "") + "/rest/v1/rpc/get_current_admin_profile", {
       method: "POST",
-      headers: { apikey: secret, Authorization: "Bearer " + bearer, "Content-Type": "application/json" },
+      headers: { apikey: serviceSecret, Authorization: "Bearer " + bearer, "Content-Type": "application/json" },
       body: "{}",
     });
     if (!response.ok) return null;
@@ -220,7 +223,7 @@ Deno.serve(async (request: Request) => {
       const password = rawPassword(input.password);
       if (!resolved || !password || !(await rateLimit(resolved.customer.id, "LOGIN", 8, 900))) return genericFailure();
       const { data: link, error: linkError } = await admin.from("customer_account_links")
-        .select("customer_id,auth_user_id,login_email,account_status,must_change_password,email_verified")
+        .select("customer_id,auth_user_id,login_email,account_status,must_change_password,email_verified,terms_version,auth_provider")
         .eq("customer_id", resolved.customer.id).maybeSingle();
       if (linkError || !link || link.account_status !== "ACTIVE") return genericFailure();
       const { data: signedIn, error: signInError } = await authClient.auth.signInWithPassword({
