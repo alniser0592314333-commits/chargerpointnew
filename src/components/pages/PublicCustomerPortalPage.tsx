@@ -375,9 +375,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const pendingReviewMinor = (data?.payment_submissions || [])
     .filter((submission) => submission.status.toUpperCase() === 'PENDING')
     .reduce((total, submission) => total + (submission.amount_minor ?? 0), 0);
-  const featuredOrder = data?.orders.find((order) =>
+  const sortedPortalOrders = [...(data?.orders || [])].sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  const featuredOrder = sortedPortalOrders.find((order) =>
     !['DELIVERED', 'delivered', 'CANCELLED', 'cancelled'].includes(order.status)
-  ) || data?.orders[0];
+  ) || sortedPortalOrders[0];
   const activeGoal = data?.goals.find((goal) => goal.status.toUpperCase() === 'ACTIVE');
   const pendingGoalRequest = activity?.goal_requests.find((request) => request.status.toUpperCase() === 'PENDING');
   const translateLedgerType = (type: string) => {
