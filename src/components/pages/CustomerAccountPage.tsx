@@ -92,8 +92,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
     if (session) {
+      const sessionAction = oauthMode === 'login' ? 'register-session' : 'verify-session';
       const registered = await callCustomerAccount<{ must_change_password?: boolean }>(
-        'register-session', {}, session.access_token,
+        sessionAction, {}, session.access_token,
       );
       if (registered.data && !registered.error) {
         if (typeof sessionStorage !== 'undefined') {
@@ -172,9 +173,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (!sessionData.session) { setErrorMessage('ACCOUNT_UNAVAILABLE_OR_INVALID'); return; }
       const { error: updateError } = await customerAuth.auth.updateUser({ password });
       if (updateError) { setError(t('تعذّر تعيين كلمة السر. حاول مرة أخرى.', 'Could not set the password. Please try again.')); return; }
+      const { data: updatedSession } = await customerAuth.auth.getSession();
+      if (!updatedSession.session) { setErrorMessage('ACCOUNT_UNAVAILABLE_OR_INVALID'); return; }
       const result = await callCustomerAccount('activate-social', {
         token, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION,
-      }, sessionData.session.access_token);
+      }, updatedSession.session.access_token);
       if (result.error) { setErrorMessage(result.error); return; }
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
@@ -231,6 +234,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const logout = async () => {
+    await callCustomerAccount('logout').catch(() => undefined);
     await customerAuth.auth.signOut();
     if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('cp_customer_terms:' + token);
     setEntry((current) => current ? { ...current, activated: true } : current);
@@ -294,8 +298,8 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           else if (mode === 'social-activation') void submitSocialActivation(event);
           else { event.preventDefault(); void finishPasswordChange(mode === 'recovery'); }
         }}>
-          <label className="block text-sm font-semibold">{mode === 'force-change' ? t('كلمة السر المؤقتة الحالية', 'Current temporary password') : mode === 'recovery' ? t('كلمة السر الجديدة', 'New password') : t('كلمة السر', 'Password')}
-            <div className="relative mt-1"><input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === 'force-change' ? 'current-password' : mode === 'recovery' ? 'new-password' : 'new-password'} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 pe-11 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15 dark:border-emerald-900 dark:bg-[#061f1c]" placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 end-2 grid place-items-center px-2 text-slate-500" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
+          <label className="block text-sm font-semibold">{t('كلمة السر الجديدة', 'New password')}
+            <div className="relative mt-1"><input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 pe-11 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15 dark:border-emerald-900 dark:bg-[#061f1c]" placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 end-2 grid place-items-center px-2 text-slate-500" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
           </label>
           <label className="block text-sm font-semibold">{t('تأكيد كلمة السر', 'Confirm password')}
             <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15 dark:border-emerald-900 dark:bg-[#061f1c]" />
