@@ -6,7 +6,7 @@ DECLARE
   v_order_id uuid := gen_random_uuid();
   v_item_id uuid := gen_random_uuid();
   v_payment_id uuid := gen_random_uuid();
-  v_token text := repeat('q', 32);
+  v_token text := 'partial-payment-' || replace(gen_random_uuid()::text, '-', '');
   v_result jsonb;
 BEGIN
   INSERT INTO public.customers (id, name, status, is_active)
