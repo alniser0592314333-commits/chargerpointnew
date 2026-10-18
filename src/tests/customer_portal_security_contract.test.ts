@@ -131,10 +131,15 @@ describe('Isolated customer QR portal security contract', () => {
     expect(accountAuth).toContain('resolved.customer.id !== link.customer_id');
     expect(accountAuth).toContain('activeSessionExpiresAt');
     expect(accountAuth).toContain('admin-set-status');
+    expect(accountAuth).toContain('customer_account_consume_rate_limit');
+    expect(accountAuth).toContain('REQUEST_TOO_LARGE');
+    expect(accountAuth).toContain('action === "accept-terms"');
     const accountMigration = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261018060000_customer_account_auth.sql'), 'utf8');
     expect(accountMigration).toContain('REVOKE ALL ON FUNCTION public.public_resolve_customer_portal(text) FROM PUBLIC, anon, authenticated');
     expect(accountMigration).toContain('GRANT EXECUTE ON FUNCTION public.public_resolve_customer_portal(text) TO service_role');
     expect(accountMigration).toContain('customer_account_one_pending_reset_idx');
+    expect(accountMigration).toContain('customer_account_consume_rate_limit');
+    expect(accountMigration).toContain("TERMS_ACCEPTED");
     expect(accountMigration).toContain('customer_account_sessions');
     const client = fs.readFileSync(supabaseClientPath, 'utf8');
     expect(client).toContain('forceAnonymous: boolean = false');
