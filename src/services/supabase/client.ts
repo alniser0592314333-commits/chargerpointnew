@@ -1141,6 +1141,25 @@ export async function rpcResolveOrderQr(
 }
 
 /**
+ * Confirms whether the customer's positive ledger balance can cover the entire order total.
+ * Returns null on RPC failure so the public UI never assumes coverage from a positive-balance flag alone.
+ */
+export async function rpcResolveOrderQrCreditCoverage(publicToken: string): Promise<boolean | null> {
+  const { data, error } = await invokeSupabaseRpc<boolean | boolean[]>(
+    'public_order_qr_credit_covers_order',
+    { p_public_token: publicToken },
+    undefined,
+    true,
+    false,
+    true
+  );
+  if (error || data === null || data === undefined) return null;
+  if (typeof data === 'boolean') return data;
+  if (Array.isArray(data) && data.length === 1 && typeof data[0] === 'boolean') return data[0];
+  return null;
+}
+
+/**
  * Resolves the latest payment notification associated with a public order/customer QR token.
  * Only safe status, amount, method, timestamps, and approved balance snapshots are returned.
  */
