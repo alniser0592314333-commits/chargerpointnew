@@ -40,7 +40,13 @@ Deno.serve(async (request: Request) => {
 
   const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
   const authClient = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-  const input = await request.json().catch(() => null) as (Json & { action?: string }) | null;
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (declaredLength > 16384) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const bodyText = await request.text();
+  if (new TextEncoder().encode(bodyText).byteLength > 16384) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  let input: (Json & { action?: string }) | null;
+  try { input = JSON.parse(bodyText) as (Json & { action?: string }) | null; }
+  catch { return respond(400, { ok: false, error: "INVALID_REQUEST" }); }
   if (!input || typeof input.action !== "string") return respond(400, { ok: false, error: "INVALID_REQUEST" });
   const action = input.action;
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
