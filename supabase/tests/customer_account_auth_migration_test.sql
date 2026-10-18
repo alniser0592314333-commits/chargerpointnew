@@ -60,11 +60,25 @@ BEGIN
     '44444444-4444-4444-8444-444444444444', 'PENDING', 0, 'PALPAY',
     statement_timestamp(), statement_timestamp(), '11111111-1111-4111-8111-111111111111'
   );
+  INSERT INTO public.orders (id, customer_id)
+  VALUES ('55555555-5555-4555-8555-555555555555', '11111111-1111-4111-8111-111111111111');
+  INSERT INTO public.qr_tokens (public_token, target_id, token_type, is_active)
+  VALUES ('order-token-test-012345678901234567890', '55555555-5555-4555-8555-555555555555', 'ORDER', true);
+  INSERT INTO public.qr_payment_submissions (
+    id, status, amount_minor, payment_method, created_at, updated_at, order_id, customer_id
+  ) VALUES (
+    '66666666-6666-4666-8666-666666666666', 'PENDING', 1000, 'PALPAY',
+    statement_timestamp(), statement_timestamp(), '55555555-5555-4555-8555-555555555555',
+    '11111111-1111-4111-8111-111111111111'
+  );
 
   PERFORM set_config('request.jwt.claim.sub', '', true);
   PERFORM set_config('request.jwt.claims', '{}', true);
   IF public.public_resolve_qr_payment_submission('customer-token-test-012345678901234567890') IS NOT NULL THEN
     RAISE EXCEPTION 'anonymous customer QR payment status must be hidden';
+  END IF;
+  IF public.public_resolve_qr_payment_submission('order-token-test-012345678901234567890') ->> 'status' <> 'PENDING' THEN
+    RAISE EXCEPTION 'public order QR payment status must remain available without customer account login';
   END IF;
 
   PERFORM set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
