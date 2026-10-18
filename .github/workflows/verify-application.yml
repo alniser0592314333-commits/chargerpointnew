@@ -152,6 +152,22 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/tests/account_session_migration_fixture.sql
+      - name: Create isolated database for customer account authentication
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres customer_account_auth_test
+      - name: Prepare customer account auth migration fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_account_auth_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_account_auth_migration_fixture.sql
+      - name: Apply customer account auth migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_account_auth_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261018060000_customer_account_auth.sql
+      - name: Verify customer account ACLs and atomic rate limiting
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d customer_account_auth_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_account_auth_migration_test.sql
       - name: Apply account session management migration in isolation
         env:
           PGPASSWORD: postgres
