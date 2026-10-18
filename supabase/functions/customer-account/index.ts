@@ -256,7 +256,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "complete-password-change" || action === "logout") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
@@ -284,6 +284,7 @@ Deno.serve(async (request: Request) => {
           !(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         return respond(200, {
           ok: true, customer_name: link.customer.name,
+          terms_version: link.terms_version,
           must_change_password: link.must_change_password,
           session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
