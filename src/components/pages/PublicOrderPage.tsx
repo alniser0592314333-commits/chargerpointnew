@@ -27,7 +27,7 @@ export const getOrderPaymentViewState = (
   submission: Pick<PublicQrPaymentSubmissionRpcResult, 'status'> | null,
   customerHasPositiveCredit: boolean | null | undefined,
   orderStatus: string | null | undefined,
-  customerCreditCoversOrder: boolean | null | undefined
+  customerCreditCoversOrder: boolean | null | undefined = false
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
   if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
