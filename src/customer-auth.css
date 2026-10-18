@@ -1,0 +1,182 @@
+/* Customer sign-in / password pages — mountain-and-moon look. Scoped to .cp-auth. */
+
+.cp-auth {
+  --cp-teal-900: #0a3a47;
+  --cp-teal-800: #0d4a5c;
+  --cp-teal-700: #11627a;
+  --cp-teal-500: #1a8a94;
+  --cp-orange: #e8743b;
+  --cp-ink: #12303a;
+  --cp-muted: #5d7782;
+  --cp-line: #cfdde0;
+  position: relative;
+  min-height: 100svh;
+  overflow-x: hidden;
+  isolation: isolate;
+  color: var(--cp-ink);
+  background: linear-gradient(160deg, #0b4a5a 0%, #0f6679 55%, #14808c 100%);
+  font-family: 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Noto Kufi Arabic', system-ui, -apple-system, sans-serif;
+}
+
+html.dark .cp-auth {
+  --cp-ink: #e8f4f5;
+  --cp-muted: #9bb8bf;
+  --cp-line: #29515c;
+  background: linear-gradient(160deg, #052631 0%, #08394a 55%, #0b4d5c 100%);
+}
+
+/* full-page backdrop scene (blurred, dimmed) */
+.cp-auth__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.55;
+  filter: saturate(1.05);
+}
+.cp-auth__backdrop svg { width: 100%; height: 100%; display: block; }
+html.dark .cp-auth__backdrop { opacity: 0.35; }
+
+/* white corner blobs like the reference */
+.cp-auth__blob {
+  position: absolute;
+  z-index: -1;
+  border-radius: 9999px;
+  background: #fff;
+  opacity: 0.96;
+}
+html.dark .cp-auth__blob { background: #0d3441; opacity: 0.9; }
+.cp-auth__blob--tl { width: 280px; height: 280px; inset-block-start: -150px; inset-inline-start: -110px; }
+.cp-auth__blob--br { width: 340px; height: 340px; inset-block-end: -190px; inset-inline-end: -120px; }
+/* the top blob would sit under the brand/controls on small screens */
+@media (max-width: 1180px) {
+  .cp-auth__blob--tl { display: none; }
+}
+@media (max-width: 640px) {
+  .cp-auth__blob--br { width: 220px; height: 220px; inset-block-end: -130px; inset-inline-end: -80px; }
+}
+
+/* the card */
+.cp-auth__card {
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  overflow: hidden;
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(3, 25, 33, 0.45), 0 0 0 6px rgba(255, 255, 255, 0.12);
+}
+html.dark .cp-auth__card { background: #0c2e3a; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 6px rgba(255, 255, 255, 0.05); }
+@media (min-width: 1024px) {
+  .cp-auth__card { grid-template-columns: 1.05fr 1fr; border-radius: 34px; min-height: 620px; padding: 14px; }
+}
+
+/* illustration panel */
+.cp-auth-art { position: relative; height: 190px; clip-path: url(#cp-auth-clip-mobile); background: #0c4b5b; }
+.cp-auth-art svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+@media (min-width: 1024px) {
+  .cp-auth-art { height: auto; min-height: 590px; clip-path: url(#cp-auth-clip-desktop); border-radius: 24px 0 0 24px; }
+  [dir='rtl'] .cp-auth-art { transform: scaleX(-1); }
+}
+
+/* form side */
+.cp-auth__form { display: flex; flex-direction: column; justify-content: center; padding: 22px 22px 28px; }
+@media (min-width: 640px) { .cp-auth__form { padding: 28px 44px 36px; } }
+@media (min-width: 1024px) { .cp-auth__form { padding: 36px 52px; } }
+
+.cp-auth__title {
+  text-align: center;
+  font-size: clamp(1.7rem, 3.2vw, 2.3rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--cp-teal-800);
+}
+html.dark .cp-auth__title { color: #e8f4f5; }
+.cp-auth__sub { margin-top: 6px; text-align: center; font-size: 0.875rem; line-height: 1.8; color: var(--cp-muted); }
+
+.cp-auth__label { display: block; font-size: 0.78rem; font-weight: 700; color: var(--cp-ink); }
+.cp-auth__input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  min-height: 46px;
+  padding: 10px 16px;
+  font-size: 15px;
+  color: var(--cp-ink);
+  background: #fff;
+  border: 1.5px solid var(--cp-line);
+  border-radius: 14px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cp-auth__input::placeholder { color: #93a9b0; }
+.cp-auth__input:focus { border-color: var(--cp-teal-500); box-shadow: 0 0 0 4px rgba(26, 138, 148, 0.18); }
+html.dark .cp-auth__input { background: #0a2832; }
+
+.cp-auth__btn {
+  display: flex;
+  width: 100%;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--cp-teal-800);
+  border: 0;
+  border-radius: 9999px;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(13, 74, 92, 0.28);
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.cp-auth__btn:hover:not(:disabled) { background: var(--cp-teal-700); transform: translateY(-1px); }
+.cp-auth__btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(26, 138, 148, 0.35); }
+.cp-auth__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+html.dark .cp-auth__btn { background: #1a8a94; }
+html.dark .cp-auth__btn:hover:not(:disabled) { background: #22a0aa; }
+
+.cp-auth__btn--ghost {
+  color: var(--cp-teal-800);
+  background: transparent;
+  border: 1.5px solid var(--cp-line);
+  box-shadow: none;
+}
+.cp-auth__btn--ghost:hover:not(:disabled) { background: rgba(26, 138, 148, 0.08); transform: none; }
+html.dark .cp-auth__btn--ghost { color: #e8f4f5; background: transparent; }
+
+.cp-auth__link { background: none; border: 0; cursor: pointer; font-weight: 700; color: var(--cp-orange); }
+.cp-auth__link:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+.cp-auth__chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: #eef7f7;
+  border: 1px solid #d3e8e9;
+}
+html.dark .cp-auth__chip { background: #0a2832; border-color: #29515c; }
+
+.cp-auth__divider { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--cp-muted); }
+.cp-auth__divider::before, .cp-auth__divider::after { content: ''; flex: 1; height: 1px; background: var(--cp-line); }
+
+.cp-auth__pill {
+  display: inline-grid;
+  place-items: center;
+  height: 40px;
+  min-width: 40px;
+  padding-inline: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 9999px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+.cp-auth__pill:hover { background: rgba(255, 255, 255, 0.24); }

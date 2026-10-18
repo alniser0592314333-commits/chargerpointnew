@@ -3,6 +3,8 @@ import { AlertTriangle, ArrowLeft, ArrowRight, BatteryCharging, CheckCircle2, Ey
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
+import { CustomerAuthScene, CustomerAuthClipDefs } from './CustomerAuthScene';
+import '../../customer-auth.css';
 import { PublicCustomerPortalPage, hasCachedCustomerPortalData, clearCachedCustomerPortalData } from './PublicCustomerPortalPage';
 import {
   callCustomerAccount, customerAuth, CUSTOMER_TERMS_VERSION, setCustomerSession,
@@ -308,248 +310,163 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     : mode === 'force-change' ? t('اختر كلمة سر لا يعرفها سواك قبل متابعة حسابك.', 'Set a password only you know before continuing to your account.')
     : t('وصول خاص لحسابك، بتجربة هادئة وواضحة.', 'Private access to your account, with a calm and clear experience.');
 
-  const stageLabel = mode === 'activate' ? t('01  /  إعداد الحساب', '01  /  ACCOUNT SETUP')
-    : mode === 'login' ? t('02  /  دخول آمن', '02  /  SECURE SIGN IN')
-    : mode === 'forgot' || mode === 'recovery' ? t('03  /  استعادة الوصول', '03  /  ACCOUNT RECOVERY')
-    : t('حساب العميل  /  نقطة الشحن', 'CUSTOMER ACCOUNT  /  CHARGING POINT');
-
-  const inputClass = 'mt-2 min-h-[54px] w-full rounded-2xl border border-[#d7e0e9] bg-white px-4 py-3 text-[15px] text-[#172335] outline-none transition placeholder:text-[#8b98a8] focus:border-[#d79b24] focus:ring-4 focus:ring-[#f5b942]/15 dark:border-[#334155] dark:bg-[#111925] dark:text-[#f1f5f9] dark:placeholder:text-[#8998ad] dark:focus:border-[#f5b942]';
-  const primaryButtonClass = 'group flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl bg-[#f0b638] px-5 py-3 text-[15px] font-bold text-[#111827] shadow-[0_12px_28px_rgba(245,185,66,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#ffd16a] focus:outline-none focus:ring-4 focus:ring-[#f5b942]/25 disabled:cursor-wait disabled:opacity-60 dark:bg-[#f5b942] dark:text-[#111827] dark:hover:bg-[#ffd16a]';
-
-  const visualBackground = resolvedTheme === 'dark'
-    ? mode === 'activate'
-      ? 'radial-gradient(ellipse at 78% 20%, rgba(245,185,66,.16), transparent 38%), radial-gradient(ellipse at 18% 88%, rgba(118,215,245,.09), transparent 42%), #080d15'
-      : mode === 'login'
-        ? 'radial-gradient(ellipse at 82% 18%, rgba(118,215,245,.16), transparent 40%), radial-gradient(ellipse at 16% 88%, rgba(245,185,66,.08), transparent 44%), #080d15'
-        : mode === 'force-change'
-          ? 'radial-gradient(ellipse at 75% 20%, rgba(245,185,66,.2), transparent 38%), #080d15'
-          : 'radial-gradient(ellipse at 82% 20%, rgba(118,215,245,.12), transparent 38%), #080d15'
+  const eyeToggle = (
+    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 end-2 my-auto grid h-9 w-9 place-items-center rounded-full text-[#5d7782] transition hover:bg-[#1a8a94]/10 dark:text-[#9bb8bf]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>
+      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+    </button>
+  );
+  const nextArrow = isAr ? <ArrowLeft className="h-4 w-4 transition group-hover:-translate-x-1" /> : <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />;
+  const strength = passwordStrength(password);
+  const strengthColor = strength <= 1 ? 'bg-[#d9534f]' : strength === 2 ? 'bg-[#e8a23b]' : strength === 3 ? 'bg-[#e8743b]' : 'bg-[#1a8a94]';
+  const subtitle = mode === 'login'
+    ? t('أدخل كلمة السر للوصول إلى طلباتك ورصيدك.', 'Enter your password to access your orders and balance.')
     : mode === 'activate'
-      ? 'radial-gradient(ellipse at 78% 20%, rgba(245,185,66,.24), transparent 38%), #15283a'
-      : mode === 'login'
-        ? 'radial-gradient(ellipse at 82% 18%, rgba(118,215,245,.2), transparent 40%), #15283a'
-        : 'radial-gradient(ellipse at 82% 18%, rgba(245,185,66,.16), transparent 40%), #15283a';
+      ? t('أنشئ كلمة سر قوية ووافق على الشروط لتفعيل حسابك لأول مرة.', 'Create a strong password and accept the terms to activate your account for the first time.')
+      : mode === 'forgot'
+        ? t('اختر الطريقة المناسبة لاستعادة كلمة السر. لن نكشف عن بيانات الحساب.', 'Choose a recovery method. We never reveal private account details.')
+        : mode === 'terms-update'
+          ? t('راجع الشروط المحدّثة قبل متابعة حسابك.', 'Review the updated terms before continuing.')
+          : mode === 'unavailable'
+            ? t('تحقق من الاتصال أو افتح رمز QR الصحيح ثم حاول مرة أخرى.', 'Check your connection or open the correct QR code, then try again.')
+            : t('أكمل الخطوة التالية لحماية حسابك ومتابعة طلباتك.', 'Complete the next step to protect your account and continue to your orders.');
 
   return (
-    <main dir={isAr ? 'rtl' : 'ltr'} className="min-h-[100svh] overflow-x-hidden bg-[#f5f7fa] text-[#172335] transition-colors dark:bg-[#070b12] dark:text-[#eef4ff]">
-      <header className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-12 lg:py-7">
+    <main dir={isAr ? 'rtl' : 'ltr'} className="cp-auth flex flex-col">
+      <CustomerAuthClipDefs />
+      <div aria-hidden="true" className="cp-auth__backdrop"><CustomerAuthScene uid="cp-bg" /></div>
+      <span aria-hidden="true" className="cp-auth__blob cp-auth__blob--tl" />
+      <span aria-hidden="true" className="cp-auth__blob cp-auth__blob--br" />
+
+      <header className="mx-auto flex w-full max-w-[1080px] items-center justify-between gap-4 px-4 py-4 sm:py-5">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#dce7df] bg-white shadow-sm dark:border-[#283548] dark:bg-[#0a0f18]">
-            <AppLogo size={34} variant="auto" />
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/95 shadow-md dark:bg-[#0c2e3a]">
+            <AppLogo size={30} variant="auto" />
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-[15px] font-extrabold tracking-tight">{t('نقطة الشحن', 'Charging Point')}</p>
-            <p className="mt-0.5 text-[11px] font-medium tracking-[0.12em] text-[#8290a3] dark:text-[#b5c4d7]">{t('بوابة حساب العميل', 'CUSTOMER ACCOUNT PORTAL')}</p>
+          <div className="min-w-0 text-white">
+            <p className="truncate text-[15px] font-extrabold">{t('نقطة الشحن', 'Charging Point')}</p>
+            <p className="mt-0.5 text-[11px] font-medium tracking-[0.12em] text-white/75">{t('بوابة حساب العميل', 'CUSTOMER ACCOUNT PORTAL')}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-full border border-[#d7e0e9] bg-white px-3.5 py-2 text-xs font-bold text-[#344256] transition hover:border-[#e0b44e] dark:border-[#283548] dark:bg-[#0a0f18] dark:text-[#dbe7f5]">{isAr ? 'English' : 'العربية'}</button>
-          <button type="button" onClick={toggleTheme} className="grid h-10 w-10 place-items-center rounded-full border border-[#d9e2dc] bg-white text-[#344256] transition hover:border-[#e0b44e] dark:border-[#283548] dark:bg-[#0a0f18] dark:text-[#dbe7f5]" aria-label={t('تغيير المظهر', 'Toggle appearance')}>{resolvedTheme === 'dark' ? <Sparkles className="h-4 w-4" /> : <span aria-hidden="true" className="text-lg leading-none">◐</span>}</button>
+          <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="cp-auth__pill">{isAr ? 'English' : 'العربية'}</button>
+          <button type="button" onClick={toggleTheme} className="cp-auth__pill !px-0" aria-label={t('تغيير المظهر', 'Toggle appearance')}>{resolvedTheme === 'dark' ? <Sparkles className="h-4 w-4" /> : <span aria-hidden="true" className="text-lg leading-none">◐</span>}</button>
         </div>
       </header>
 
-      <section dir="ltr" className="mx-auto grid w-full max-w-[1480px] grid-cols-1 overflow-hidden border-y border-[#dce4dc] bg-[#ffffff] shadow-[0_24px_90px_rgba(9,17,30,0.16)] dark:border-[#303b4b] dark:bg-[#0b1019] lg:min-h-[700px] lg:grid-cols-[1.03fr_0.97fr] lg:rounded-[32px] lg:border">
-        <aside dir={isAr ? 'rtl' : 'ltr'} className="relative isolate flex min-h-[280px] flex-col justify-between overflow-hidden bg-[#111d2b] px-6 py-7 text-[#f8fafc] dark:bg-[#080d15] dark:text-[#f8fafc] sm:min-h-[320px] sm:px-9 sm:py-9 lg:min-h-[700px] lg:px-12 lg:py-12 xl:px-16" style={{ background: visualBackground }}>
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute -end-28 -top-32 h-[390px] w-[390px] rounded-full border border-white/10" />
-            <div className="absolute -end-12 -top-16 h-[310px] w-[310px] rounded-full border border-white/10" />
-            <div className="absolute end-7 top-[-20px] h-[230px] w-[230px] rounded-full border border-white/10" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_78%_18%,rgba(118,215,245,0.16),transparent_42%),linear-gradient(145deg,transparent_35%,rgba(3,10,20,0.46)_100%)]" />
-            <svg viewBox="0 0 500 500" className="absolute -end-10 top-1 h-[265px] w-[265px] opacity-95 sm:h-[320px] sm:w-[320px] lg:end-[-24px] lg:top-12 lg:h-[430px] lg:w-[430px]" fill="none" role="img" aria-label={t('لوح شمسي وهاتف قيد الشحن', 'Solar panel and charging phone')}>
-              <defs>
-                <linearGradient id="solar-panel-fill" x1="96" y1="290" x2="330" y2="390" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#1D3448" />
-                  <stop offset="1" stopColor="#0B1420" />
-                </linearGradient>
-                <linearGradient id="phone-fill" x1="292" y1="150" x2="400" y2="330" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#26364A" />
-                  <stop offset="1" stopColor="#101722" />
-                </linearGradient>
-                <linearGradient id="sun-fill" x1="115" y1="60" x2="200" y2="145" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#FFE29A" />
-                  <stop offset="1" stopColor="#F5B942" />
-                </linearGradient>
-              </defs>
-              <circle cx="158" cy="125" r="70" fill="#F5B942" fillOpacity=".08" />
-              <circle cx="158" cy="125" r="48" stroke="#F5B942" strokeOpacity=".42" strokeWidth="1.5" />
-              <circle cx="158" cy="125" r="32" fill="url(#sun-fill)" />
-              <g stroke="#F5B942" strokeWidth="2" strokeLinecap="round" opacity=".85">
-                <path d="M158 70V57M158 193V180M103 125H90M226 125H213M119 86L109 76M207 174L197 164M197 86L207 76M109 174L119 164" />
-              </g>
-              <path d="M45 303L278 249L365 311L132 369L45 303Z" fill="url(#solar-panel-fill)" stroke="#76D7F5" strokeOpacity=".7" strokeWidth="1.5" />
-              <path d="M64 307L281 257M86 323L304 272M109 339L326 288M132 355L348 304" stroke="#76D7F5" strokeOpacity=".48" strokeWidth="1.2" />
-              <path d="M96 291L180 354M144 280L228 343M193 269L277 331M241 258L325 319" stroke="#76D7F5" strokeOpacity=".42" strokeWidth="1.2" />
-              <path d="M131 369L124 390M278 332L287 354" stroke="#94A3B8" strokeWidth="3" strokeLinecap="round" />
-              <path d="M116 393L297 348" stroke="#94A3B8" strokeOpacity=".7" strokeWidth="3" strokeLinecap="round" />
-              <path d="M300 143Q300 132 311 132H391Q402 132 402 143V314Q402 326 391 326H311Q300 326 300 314V143Z" fill="url(#phone-fill)" stroke="#CBD5E1" strokeOpacity=".82" strokeWidth="2" />
-              <path d="M311 157Q311 151 318 151H384Q391 151 391 158V293H311V157Z" fill="#0A1420" stroke="#76D7F5" strokeOpacity=".5" />
-              <rect x="342" y="139" width="18" height="3" rx="1.5" fill="#94A3B8" />
-              <rect x="327" y="181" width="48" height="24" rx="5" stroke="#F5B942" strokeWidth="2" />
-              <rect x="375" y="189" width="4" height="8" rx="1" fill="#F5B942" />
-              <rect x="332" y="186" width="12" height="14" rx="2" fill="#F5B942" />
-              <path d="M354 216L339 244H353L345 267L369 234H355L362 216H354Z" fill="#76D7F5" />
-              <path d="M280 190C258 210 257 238 273 257" stroke="#76D7F5" strokeWidth="2" strokeDasharray="4 7" strokeLinecap="round" />
-              <path d="M263 242L273 258L282 243" stroke="#76D7F5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="420" cy="102" r="4" fill="#76D7F5" />
-              <circle cx="74" cy="216" r="3" fill="#F5B942" />
-              <circle cx="414" cy="365" r="3" fill="#F5B942" />
-              <path d="M72 250C110 228 138 231 161 246" stroke="#F5B942" strokeOpacity=".5" strokeWidth="1.5" strokeDasharray="3 8" strokeLinecap="round" />
-              {mode === 'forgot' || mode === 'recovery' ? <g transform="translate(386 346)"><circle r="24" fill="#152638" stroke="#76D7F5" strokeWidth="1.5"/><path d="M-7 -2V-7A7 7 0 0 1 7 -7V-2M-10 -2H10V10H-10Z" stroke="#76D7F5" strokeWidth="2" strokeLinejoin="round"/></g> : mode === 'force-change' ? <g transform="translate(386 346)"><circle r="24" fill="#302719" stroke="#F5B942" strokeWidth="1.5"/><path d="M-8 0L-2 6L9 -7" stroke="#F5B942" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></g> : <g transform="translate(386 346)"><circle r="24" fill="#152638" stroke="#76D7F5" strokeWidth="1.5"/><path d="M-8 0H8M0 -8V8" stroke="#76D7F5" strokeWidth="2.5" strokeLinecap="round"/></g>}
-            </svg>
-            <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#111827]/65 to-transparent" />
-          </div>
-
-          <div className="relative z-10 flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] text-[#cbd5e1] sm:text-[11px]">
-            <span className="h-px w-7 bg-[#f5b942]" />
-            {t('مساحة عميل خاصة', 'YOUR PRIVATE CUSTOMER SPACE')}
-          </div>
-
-          <div className="relative z-10 mt-9 max-w-[520px] lg:mt-auto lg:mb-auto lg:pt-20">
-            <p className="mb-4 text-xs font-bold tracking-[0.16em] text-[#cbd5e1]">{stageLabel}</p>
-            <h2 className="max-w-[13ch] text-[clamp(2rem,4.2vw,4.2rem)] font-semibold leading-[1.13] tracking-[-0.045em]">{visualTitle}</h2>
-            <p className="mt-5 max-w-[39ch] text-sm leading-7 text-[#e2e8f0] sm:text-[15px]">{visualDescription}</p>
-          </div>
-
-          <div className="relative z-10 mt-8 flex items-end justify-between gap-4 border-t border-white/15 pt-5 lg:mt-12">
-            <div>
-              <p className="text-[10px] font-bold tracking-[0.18em] text-[#cbd5e1]">{t('خصوصية أولًا', 'PRIVACY FIRST')}</p>
-              <p className="mt-1.5 text-xs text-[#e2e8f0]">{t('لا نطلب منك مشاركة كلمة السر مع أحد.', 'Never share your password with anyone.')}</p>
-            </div>
-            <div className="hidden items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-3 py-2 text-[11px] text-[#e2e8f0] sm:flex">
-              <LockKeyhole className="h-3.5 w-3.5" />
-              {t('جلسة آمنة · 7 أيام', 'SECURE SESSION · 7 DAYS')}
+      <div className="flex flex-1 items-center px-4 pb-8 pt-2 sm:pb-12">
+        <section className="cp-auth__card">
+          <div className="relative">
+            <div className="cp-auth-art"><CustomerAuthScene uid="cp-card" /></div>
+            <div className="pointer-events-none absolute inset-x-0 top-[9%] z-[2] hidden px-10 text-white lg:block" style={{ textShadow: '0 2px 18px rgba(4,34,44,.6)' }}>
+              <h2 className="max-w-[14ch] text-[clamp(1.6rem,2.6vw,2.3rem)] font-extrabold leading-[1.2]">{visualTitle}</h2>
+              <p className="mt-2 max-w-[32ch] text-sm leading-7 text-white/90">{visualDescription}</p>
             </div>
           </div>
-        </aside>
 
-        <div dir={isAr ? 'rtl' : 'ltr'} className="flex min-w-0 flex-col justify-center px-5 py-8 sm:px-9 sm:py-10 lg:px-12 lg:py-14 xl:px-16">
-          <div className="mb-8 flex items-center gap-2 text-[11px] font-bold tracking-[0.15em] text-[#718096] dark:text-[#b5c4d7]">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-[#fff0c8] text-[#81560b] dark:bg-[#1d2939] dark:text-[#e5e7eb]"><LockKeyhole className="h-3.5 w-3.5" /></span>
-            {t('دخول خاص ومحمي', 'PRIVATE & PROTECTED ACCESS')}
-          </div>
+          <div className="cp-auth__form">
+            <div className="mx-auto w-full max-w-[400px]">
+              <h1 className="cp-auth__title">{title}</h1>
+              <p className="cp-auth__sub">{subtitle}</p>
 
-          <div className="max-w-[500px]">
-            <h1 className="text-[clamp(1.9rem,3vw,2.75rem)] font-semibold leading-tight tracking-[-0.04em] text-[#172335] dark:text-[#f8fafc]">{title}</h1>
-            <p className="mt-3 max-w-[42ch] text-sm leading-7 text-[#66758a] dark:text-[#b5c4d7]">
-              {mode === 'login'
-                ? t('أدخل كلمة السر للوصول إلى طلباتك ورصيدك.', 'Enter your password to access your orders and balance.')
-                : mode === 'activate'
-                  ? t('أنشئ كلمة سر قوية ووافق على الشروط لتفعيل حسابك لأول مرة.', 'Create a strong password and accept the terms to activate your account for the first time.')
-                  : mode === 'forgot'
-                    ? t('اختر الطريقة المناسبة لاستعادة كلمة السر. لن نكشف عن بيانات الحساب.', 'Choose a recovery method. We never reveal private account details.')
-                    : mode === 'terms-update'
-                      ? t('راجع الشروط المحدّثة قبل متابعة حسابك.', 'Review the updated terms before continuing.')
-                      : mode === 'unavailable'
-                        ? t('تحقق من الاتصال أو افتح رمز QR الصحيح ثم حاول مرة أخرى.', 'Check your connection or open the correct QR code, then try again.')
-                        : t('أكمل الخطوة التالية لحماية حسابك ومتابعة طلباتك.', 'Complete the next step to protect your account and continue to your orders.')}
-            </p>
-          </div>
+              {entry?.customer_name && (mode === 'activate' || mode === 'login') && (
+                <div className="cp-auth__chip mt-5">
+                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#e8743b] dark:bg-[#0c2e3a]"><BatteryCharging className="h-5 w-5" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold tracking-[0.1em] text-[#5d7782] dark:text-[#9bb8bf]">{t('الحساب المرتبط بهذا الرمز', 'ACCOUNT LINKED TO THIS QR')}</p>
+                    <p className="mt-0.5 truncate text-sm font-bold">{entry.customer_name}</p>
+                  </div>
+                  <CheckCircle2 className="ms-auto h-4 w-4 shrink-0 text-[#1a8a94]" />
+                </div>
+              )}
 
-          {entry?.customer_name && (mode === 'activate' || mode === 'login') && (
-            <div className="mt-6 flex items-center gap-3 rounded-2xl border border-[#e7dfca] bg-[#fff9ec] px-4 py-3.5 dark:border-[#283548] dark:bg-[#121a27]">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#d79b24] dark:bg-[#1d2939] dark:text-[#b5c4d7]"><BatteryCharging className="h-5 w-5" /></div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold tracking-[0.13em] text-[#82958a]">{t('الحساب المرتبط بهذا الرمز', 'ACCOUNT LINKED TO THIS QR')}</p>
-                <p className="mt-0.5 truncate text-sm font-bold text-[#172335] dark:text-[#e5f0ff]">{entry.customer_name}</p>
+              <div className="mt-6">
+                {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3 text-sm leading-6 text-[#963f35] dark:border-[#71313c] dark:bg-[#301b22] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}
+                {message && <div role="status" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#b9e0dd] bg-[#e9f7f6] px-4 py-3 text-sm leading-6 text-[#146069] dark:border-[#2b5267] dark:bg-[#142b38] dark:text-[#a8dff5]"><CheckCircle2 className="mt-1 h-4 w-4 shrink-0" />{message}</div>}
+
+                {mode === 'loading' ? (
+                  <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-[#5d7782] dark:text-[#9bb8bf]" role="status">
+                    <LoaderCircle className="h-7 w-7 animate-spin text-[#e8743b]" />
+                    {t('نتحقق من رابط الحساب بأمان…', 'Securely checking your account link…')}
+                  </div>
+                ) : mode === 'unavailable' ? (
+                  <button type="button" onClick={() => { initialized.current = false; void loadEntry(); }} className="cp-auth__btn group">
+                    {t('إعادة المحاولة', 'Try again')} {nextArrow}
+                  </button>
+                ) : mode === 'terms-update' ? (
+                  <form className="space-y-5" onSubmit={(event) => void submitTermsUpdate(event)}>
+                    <div className="cp-auth__chip text-sm leading-7">{t('راجع الشروط والأحكام وسياسة استخدام حساب العميل. الموافقة لا تغيّر أي بيانات مالية.', 'Review the customer account terms and usage policy. Accepting them does not change any financial records.')}</div>
+                    <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#1a8a94]" /><span>{t('أوافق على الشروط والأحكام المحدّثة.', 'I accept the updated terms and conditions.')}</span></label>
+                    <button disabled={busy || !termsAccepted} type="submit" className="cp-auth__btn"><ShieldCheck className="h-4 w-4" />{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
+                  </form>
+                ) : showPasswordForm ? (
+                  <form className="space-y-4" onSubmit={(event) => {
+                    if (mode === 'activate') void submitActivation(event);
+                    else { event.preventDefault(); void finishPasswordChange(mode === 'recovery'); }
+                  }}>
+                    <label className="cp-auth__label">{t('كلمة السر الجديدة', 'New password')}
+                      <div className="relative">
+                        <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className="cp-auth__input !pe-12" placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} />
+                        {eyeToggle}
+                      </div>
+                    </label>
+
+                    <div aria-live="polite" className="space-y-1.5">
+                      <div className="flex gap-1.5" aria-label={t('مؤشر قوة كلمة السر', 'Password strength meter')}>
+                        {[0, 1, 2, 3].map((level) => <span key={level} className={'h-1.5 flex-1 rounded-full transition-colors ' + (strength > level ? strengthColor : 'bg-[#dbe7e9] dark:bg-[#29515c]')} />)}
+                      </div>
+                      <p className="text-xs text-[#5d7782] dark:text-[#9bb8bf]">{password.length === 0 ? t('استخدم كلمة سر يصعب تخمينها', 'Choose a password that is hard to guess') : strength <= 1 ? t('ضعيفة — أضف تنوعًا أكثر', 'Weak — add more variety') : strength === 2 ? t('متوسطة', 'Fair') : strength === 3 ? t('جيدة', 'Good') : t('قوية', 'Strong')}</p>
+                    </div>
+
+                    <label className="cp-auth__label">{t('تأكيد كلمة السر', 'Confirm password')}
+                      <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className="cp-auth__input" placeholder={t('أعد كتابة كلمة السر', 'Enter the password again')} />
+                    </label>
+
+                    {showTerms && <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#1a8a94]" /><span>{t('أوافق على الشروط والأحكام وسياسة استخدام حساب العميل.', 'I accept the customer account terms and conditions.')}</span></label>}
+                    {mode === 'force-change' && <p className="rounded-2xl border border-[#f1d3b8] bg-[#fff4e8] p-3.5 text-sm leading-6 text-[#8a4a17] dark:border-[#75502e] dark:bg-[#302219] dark:text-[#ffd9b0]">{t('يجب تغيير كلمة السر المؤقتة قبل عرض بيانات الحساب.', 'You must change the temporary password before viewing account data.')}</p>}
+                    <button disabled={busy} type="submit" className="cp-auth__btn group">
+                      {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                      {busy ? t('جارٍ التحقق…', 'Please wait…') : mode === 'activate' ? t('إنشاء الحساب والدخول', 'Create account and sign in') : t('حفظ كلمة السر والمتابعة', 'Save password and continue')}
+                      {!busy && nextArrow}
+                    </button>
+                    {(mode === 'force-change' || mode === 'recovery') && <button type="button" onClick={() => void logout()} className="w-full py-2 text-sm font-semibold text-[#5d7782] transition hover:text-[#e8743b] dark:text-[#9bb8bf]">{t('تسجيل الخروج', 'Sign out')}</button>}
+                  </form>
+                ) : mode === 'login' ? (
+                  <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
+                    <label className="cp-auth__label">{t('كلمة السر', 'Password')}
+                      <div className="relative">
+                        <input required maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="cp-auth__input !pe-12" placeholder={t('أدخل كلمة السر الخاصة بك', 'Enter your password')} />
+                        {eyeToggle}
+                      </div>
+                    </label>
+                    <div className="flex justify-end text-xs">
+                      <button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="cp-auth__link">{t('نسيت كلمة السر؟', 'Forgot password?')}</button>
+                    </div>
+                    <button disabled={busy} type="submit" className="cp-auth__btn group">
+                      {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                      {busy ? t('جارٍ التحقق…', 'Checking…') : t('دخول إلى حسابي', 'Sign in to my account')}
+                      {!busy && nextArrow}
+                    </button>
+                  </form>
+                ) : mode === 'forgot' ? (
+                  <div className="space-y-3.5">
+                    <div className="cp-auth__chip mb-4 items-start">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#e8743b] dark:bg-[#0c2e3a]"><Mail className="h-5 w-5" /></div>
+                      <p className="text-sm leading-6">{t('إذا كان بريدك الإلكتروني موثّقًا، يمكنك طلب رابط استعادة آمن. وإلا يمكنك إرسال طلب للإدارة.', 'If you have a verified email, you can request a secure reset link. Otherwise, you can send a request to the administrator.')}</p>
+                    </div>
+                    {entry?.email_recovery_available && <button type="button" disabled={busy} onClick={() => void submitForgot(true)} className="cp-auth__btn"><Mail className="h-4 w-4" />{busy ? t('جارٍ الإرسال…', 'Sending…') : t('إرسال رابط استعادة آمن', 'Send a secure recovery link')}</button>}
+                    <button type="button" disabled={busy} onClick={() => void submitForgot(false)} className="cp-auth__btn cp-auth__btn--ghost"><ShieldCheck className="h-4 w-4" />{t('طلب إعادة التعيين من الإدارة', 'Request a reset from the administrator')}</button>
+                    <button type="button" onClick={() => { setError(''); setMessage(''); setMode('login'); }} className="mt-1 flex w-full items-center justify-center gap-2 py-2 text-sm font-semibold text-[#5d7782] transition hover:text-[#e8743b] dark:text-[#9bb8bf]">{isAr ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}{t('العودة لتسجيل الدخول', 'Back to sign in')}</button>
+                  </div>
+                ) : null}
               </div>
-              <CheckCircle2 className="ms-auto h-4 w-4 shrink-0 text-[#d79b24]" />
+
+              <div className="cp-auth__divider mt-7">
+                <span className="flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" />{t('جلسة محمية لمدة 7 أيام', 'Protected session · 7 days')}</span>
+              </div>
+              <p className="mt-3 text-center text-[11px] leading-5 text-[#5d7782] dark:text-[#9bb8bf]">{t('لا نحفظ كلمة السر على جهازنا · لا تشاركها مع أحد.', 'Your password is never stored by us · never share it with anyone.')}</p>
             </div>
-          )}
-
-          <div className="mt-7 max-w-[500px]">
-            {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3.5 text-sm leading-6 text-[#963f35] dark:border-[#71313c] dark:bg-[#301b22] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}
-            {message && <div role="status" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#c5dfce] bg-[#edf7ef] px-4 py-3.5 text-sm leading-6 text-[#2f6a4c] dark:border-[#2b5267] dark:bg-[#142b38] dark:text-[#a8dff5]"><CheckCircle2 className="mt-1 h-4 w-4 shrink-0" />{message}</div>}
-
-            {mode === 'loading' ? (
-              <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-[#718096] dark:text-[#b5c4d7]" role="status">
-                <LoaderCircle className="h-7 w-7 animate-spin text-[#d79b24]" />
-                {t('نتحقق من رابط الحساب بأمان…', 'Securely checking your account link…')}
-              </div>
-            ) : mode === 'unavailable' ? (
-              <button type="button" onClick={() => { initialized.current = false; void loadEntry(); }} className={primaryButtonClass}>
-                {t('إعادة المحاولة', 'Try again')} {isAr ? <ArrowLeft className="h-4 w-4 transition group-hover:-translate-x-1" /> : <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />}
-              </button>
-            ) : mode === 'terms-update' ? (
-              <form className="space-y-5" onSubmit={(event) => void submitTermsUpdate(event)}>
-                <div className="rounded-2xl border border-[#e7dfca] bg-[#fff9ec] p-4 text-sm leading-7 text-[#5e7568] dark:border-[#283548] dark:bg-[#121a27] dark:text-[#d1d5db]">{t('راجع الشروط والأحكام وسياسة استخدام حساب العميل. الموافقة لا تغيّر أي بيانات مالية.', 'Review the customer account terms and usage policy. Accepting them does not change any financial records.')}</div>
-                <label className="flex items-start gap-3 text-sm leading-6 text-[#59677a] dark:text-[#d1d5db]"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#d79b24]" /><span>{t('أوافق على الشروط والأحكام المحدّثة.', 'I accept the updated terms and conditions.')}</span></label>
-                <button disabled={busy || !termsAccepted} type="submit" className={primaryButtonClass}><ShieldCheck className="h-4 w-4" />{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
-              </form>
-            ) : showPasswordForm ? (
-              <form className="space-y-5" onSubmit={(event) => {
-                if (mode === 'activate') void submitActivation(event);
-                else { event.preventDefault(); void finishPasswordChange(mode === 'recovery'); }
-              }}>
-                <label className="block text-sm font-bold text-[#26364b] dark:text-[#e5e7eb]">{t('كلمة السر الجديدة', 'New password')}
-                  <div className="relative">
-                    <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-2 end-2 grid w-10 place-items-center rounded-xl text-[#718096] transition hover:bg-[#fff7e5] dark:text-[#b5c4d7] dark:hover:bg-[#263449]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
-                  </div>
-                </label>
-
-                <div aria-live="polite" className="space-y-2">
-                  <div className="flex gap-1.5" aria-label={t('مؤشر قوة كلمة السر', 'Password strength meter')}>
-                    {[0, 1, 2, 3].map((level) => <span key={level} className={'h-1.5 flex-1 rounded-full transition-colors ' + (passwordStrength(password) > level ? (passwordStrength(password) <= 1 ? 'bg-[#c45d51]' : passwordStrength(password) === 2 ? 'bg-[#c39a49]' : passwordStrength(password) === 3 ? 'bg-[#d6a43a]' : 'bg-[#62b8d5]') : 'bg-[#e2e9e2] dark:bg-[#4b5563]')} />)}
-                  </div>
-                  <p className="text-xs text-[#8290a3] dark:text-[#b5c4d7]">{password.length === 0 ? t('استخدم كلمة سر يصعب تخمينها', 'Choose a password that is hard to guess') : passwordStrength(password) <= 1 ? t('ضعيفة — أضف تنوعًا أكثر', 'Weak — add more variety') : passwordStrength(password) === 2 ? t('متوسطة', 'Fair') : passwordStrength(password) === 3 ? t('جيدة', 'Good') : t('قوية', 'Strong')}</p>
-                </div>
-
-                <label className="block text-sm font-bold text-[#26364b] dark:text-[#e5e7eb]">{t('تأكيد كلمة السر', 'Confirm password')}
-                  <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className={inputClass} placeholder={t('أعد كتابة كلمة السر', 'Enter the password again')} />
-                </label>
-
-                {showTerms && <label className="flex items-start gap-3 text-sm leading-6 text-[#59677a] dark:text-[#d1d5db]"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#d79b24]" /><span>{t('أوافق على الشروط والأحكام وسياسة استخدام حساب العميل.', 'I accept the customer account terms and conditions.')}</span></label>}
-                {mode === 'force-change' && <p className="rounded-2xl border border-[#e8d8ad] bg-[#fbf5e6] p-3.5 text-sm leading-6 text-[#7d622d] dark:border-[#75602e] dark:bg-[#302819] dark:text-[#ffe3a0]">{t('يجب تغيير كلمة السر المؤقتة قبل عرض بيانات الحساب.', 'You must change the temporary password before viewing account data.')}</p>}
-                <button disabled={busy} type="submit" className={primaryButtonClass}>
-                  {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                  {busy ? t('جارٍ التحقق…', 'Please wait…') : mode === 'activate' ? t('إنشاء الحساب والدخول', 'Create account and sign in') : t('حفظ كلمة السر والمتابعة', 'Save password and continue')}
-                  {!busy && (isAr ? <ArrowLeft className="h-4 w-4 transition group-hover:-translate-x-1" /> : <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />)}
-                </button>
-                {(mode === 'force-change' || mode === 'recovery') && <button type="button" onClick={() => void logout()} className="w-full py-2 text-sm font-semibold text-[#7b8d83] transition hover:text-[#9a6712] dark:text-[#b5c4d7]">{t('تسجيل الخروج', 'Sign out')}</button>}
-              </form>
-            ) : mode === 'login' ? (
-              <form className="space-y-5" onSubmit={(event) => void submitLogin(event)}>
-                <label className="block text-sm font-bold text-[#26364b] dark:text-[#e5e7eb]">{t('كلمة السر', 'Password')}
-                  <div className="relative">
-                    <input required maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className={inputClass} placeholder={t('أدخل كلمة السر الخاصة بك', 'Enter your password')} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-2 end-2 grid w-10 place-items-center rounded-xl text-[#718096] transition hover:bg-[#fff7e5] dark:text-[#b5c4d7] dark:hover:bg-[#263449]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
-                  </div>
-                </label>
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[#718096] dark:text-[#b5c4d7]">
-                  <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#d79b24]" />{t('تحقق آمن قبل عرض البيانات', 'Verified before showing data')}</span>
-                  <button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="font-bold text-[#b87913] underline-offset-4 hover:underline dark:text-[#a8dff5]">{t('نسيت كلمة السر؟', 'Forgot password?')}</button>
-                </div>
-                <button disabled={busy} type="submit" className={primaryButtonClass}>
-                  {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                  {busy ? t('جارٍ التحقق…', 'Checking…') : t('دخول إلى حسابي', 'Sign in to my account')}
-                  {!busy && (isAr ? <ArrowLeft className="h-4 w-4 transition group-hover:-translate-x-1" /> : <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />)}
-                </button>
-              </form>
-            ) : mode === 'forgot' ? (
-              <div className="space-y-3.5">
-                <div className="mb-5 rounded-2xl border border-[#e7dfca] bg-[#fff9ec] p-4 dark:border-[#283548] dark:bg-[#121a27]">
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#d79b24] dark:bg-[#1d2939] dark:text-[#b5c4d7]"><Mail className="h-5 w-5" /></div>
-                    <p className="text-sm leading-6 text-[#59677a] dark:text-[#d1d5db]">{t('إذا كان بريدك الإلكتروني موثّقًا، يمكنك طلب رابط استعادة آمن. وإلا يمكنك إرسال طلب للإدارة.', 'If you have a verified email, you can request a secure reset link. Otherwise, you can send a request to the administrator.')}</p>
-                  </div>
-                </div>
-                {entry?.email_recovery_available && <button type="button" disabled={busy} onClick={() => void submitForgot(true)} className={primaryButtonClass}><Mail className="h-4 w-4" />{busy ? t('جارٍ الإرسال…', 'Sending…') : t('إرسال رابط استعادة آمن', 'Send a secure recovery link')}</button>}
-                <button type="button" disabled={busy} onClick={() => void submitForgot(false)} className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl border border-[#d7e0e9] bg-transparent px-5 py-3 text-sm font-bold text-[#26364b] transition hover:bg-[#fff7e5] disabled:opacity-60 dark:border-[#4b5563] dark:text-[#e5e7eb] dark:hover:bg-[#263449]"><ShieldCheck className="h-4 w-4" />{t('طلب إعادة التعيين من الإدارة', 'Request a reset from the administrator')}</button>
-                <button type="button" onClick={() => { setError(''); setMessage(''); setMode('login'); }} className="mt-2 flex w-full items-center justify-center gap-2 py-3 text-sm font-semibold text-[#6d8478] transition hover:text-[#9a6712] dark:text-[#b5c4d7]">{isAr ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}{t('العودة لتسجيل الدخول', 'Back to sign in')}</button>
-              </div>
-            ) : null}
           </div>
-
-          <footer className="mt-9 flex flex-wrap items-center gap-2 border-t border-[#e2e9e2] pt-5 text-[11px] leading-5 text-[#91a198] dark:border-[#283548] dark:text-[#94a3b8]">
-            <ShieldCheck className="h-4 w-4 shrink-0 text-[#d79b24]" />
-            <span>{t('جلسة محمية لمدة 7 أيام · لا نحفظ كلمة السر على جهازنا.', 'Protected session for 7 days · Your password is never stored by us.')}</span>
-          </footer>
-        </div>
-      </section>
-
-      <div className="mx-auto flex max-w-[1480px] flex-wrap items-center justify-between gap-3 px-5 py-6 text-[10px] font-medium tracking-[0.08em] text-[#8a9a91] sm:px-8 lg:px-12">
-        <span>{t('نقطة الشحن · بوابة العميل', 'CHARGING POINT · CUSTOMER PORTAL')}</span>
-        <span>{t('وصول واضح. خصوصية محفوظة.', 'CLEAR ACCESS. PRIVACY RESPECTED.')}</span>
+        </section>
       </div>
     </main>
   );
