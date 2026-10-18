@@ -167,6 +167,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       ACCOUNT_REACTIVATED: ['أعاد المشرف تفعيل الحساب', 'Administrator reactivated the account'],
       ACCOUNT_CANCELLED: ['ألغى المشرف الحساب', 'Administrator cancelled the account'],
       TERMS_ACCEPTED: ['وافق العميل على الشروط المحدّثة', 'Customer accepted updated terms'],
+      GOAL_REQUESTED: ['طلب العميل إنشاء هدف جديد', 'Customer requested a new goal'],
     };
     return labels[event.event_type]?.[isAr ? 0 : 1] ?? event.event_type;
   };

@@ -16,15 +16,16 @@ const getSystemTheme = (): 'light' | 'dark' => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 };
 
-export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const ThemeProvider: React.FC<{ children: React.ReactNode; defaultTheme?: Theme }> = ({ children, defaultTheme = 'system' }) => {
   const [theme, setThemeState] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem('sys_theme');
-      if (saved === 'light' || saved === 'dark' || saved === 'system') return saved as Theme;
+      if (saved === 'light' || saved === 'dark') return saved as Theme;
+      if (saved === 'system') return defaultTheme;
     } catch (e) {
       console.warn('Failed to read theme from localStorage', e);
     }
-    return 'system';
+    return defaultTheme;
   });
 
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(() => {
