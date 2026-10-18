@@ -180,6 +180,22 @@ Deno.serve(async (request: Request) => {
   }
 
   try {
+    if (action === "resolve-order-customer-id") {
+      const orderToken = normalize(input.token, 128);
+      if (!orderToken || orderToken.length < 20 || !/^[A-Za-z0-9_-]+$/.test(orderToken)) return genericFailure();
+      const { data: qr, error: qrError } = await admin.from("qr_tokens")
+        .select("target_id,expires_at").eq("public_token", orderToken).eq("token_type", "ORDER")
+        .eq("is_active", true).maybeSingle();
+      if (qrError || !qr || (qr.expires_at && new Date(qr.expires_at).getTime() <= Date.now())) return genericFailure();
+      const { data: order, error: orderError } = await admin.from("orders")
+        .select("customer_id,deleted_at,cancelled_at").eq("id", qr.target_id).maybeSingle();
+      if (orderError || !order || order.deleted_at || order.cancelled_at || !order.customer_id) return genericFailure();
+      const { data: customer, error: customerError } = await admin.from("customers")
+        .select("id,is_active,status,deleted_at").eq("id", order.customer_id).maybeSingle();
+      if (customerError || !customer || customer.is_active !== true || customer.deleted_at || customer.status === "DELETED") return genericFailure();
+      return respond(200, { ok: true, customer_id: customer.id });
+    }
+
     if (action === "entry") {
       const resolved = await resolveQr(input.token);
       if (!resolved) return genericFailure();
