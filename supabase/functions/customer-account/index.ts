@@ -350,9 +350,6 @@ Deno.serve(async (request: Request) => {
           return respond(200, { ok: true, message: "If a verified email is available, a reset link will be sent." });
         }
         const redirectTo = normalize(input.redirectTo, 512);
-        const expectedRedirectPath = "/c/" + resolved.token + "?customer_recovery=1";
-        const safeRedirect = /^https:\/\/ais-(?:dev|pre)-ysj6qxp5jjdotuhhmuwlez-886408646256\.europe-west2\.run\.app$/.test(new URL(redirectTo, "http://invalid.local").origin)
-          || new URL(redirectTo, "http://invalid.local").origin === "http://localhost:3000";
         let allowedRedirect: string | undefined;
         try {
           const parsedRedirect = new URL(redirectTo);
@@ -363,6 +360,7 @@ Deno.serve(async (request: Request) => {
             allowedRedirect = parsedRedirect.toString();
           }
         } catch { allowedRedirect = undefined; }
+        if (!allowedRedirect) return respond(503, { ok: false, error: "EMAIL_RECOVERY_UNAVAILABLE" });
         const { error: mailError } = await admin.auth.resetPasswordForEmail(link.login_email, {
           ...(allowedRedirect ? { redirectTo: allowedRedirect } : {}),
         });
