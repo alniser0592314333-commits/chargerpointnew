@@ -457,13 +457,13 @@ Deno.serve(async (request: Request) => {
       if (action === "customer-activity") {
         const [ledgerResult, goalRequestsResult, eventsResult] = await Promise.all([
           admin.from("financial_ledger")
-            .select("id,event_type,amount_minor,created_at,reference_id,metadata")
+            .select("id,event_type,amount_minor,created_at")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(100),
           admin.from("goal_requests")
             .select("id,status,requested_target,created_at,reviewed_at,rejection_reason")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(20),
           admin.from("customer_account_events")
-            .select("id,event_type,request_id,is_read,created_at,payload")
+            .select("id,event_type,is_read,created_at")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(50),
         ]);
         if (ledgerResult.error || goalRequestsResult.error || eventsResult.error) {
