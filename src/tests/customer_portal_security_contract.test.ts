@@ -58,6 +58,10 @@ describe('Isolated customer QR portal security contract', () => {
     expect(app).toContain('<PublicOrderPage token={token} />');
     expect(app).not.toContain("pathname.startsWith('/o/')\n      const token = pathname.replace('/o/', '');\n      return <CustomerAccountPage");
     expect(app).not.toContain('<PublicCustomerQrPage token={token} />');
+    const customerQrBuilder = store.slice(store.indexOf('export const getCustomerQrCardData = async ('), store.indexOf('export interface PublicCustomerQrData'));
+    const orderQrBuilder = store.slice(store.indexOf('export const getOrderQrCardData = async ('), store.indexOf('export const getBusinessDay = async'));
+    expect(customerQrBuilder).toContain('`\u0024{origin}/c/\u0024{publicToken}`');
+    expect(orderQrBuilder).toContain('`\u0024{origin}/o/\u0024{publicToken}`');
   });
 
   it('skips admin session inspection and business-store bootstrap on public capability routes', () => {
