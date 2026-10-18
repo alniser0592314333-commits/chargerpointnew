@@ -11,7 +11,7 @@ import { AppLogo } from '../qr/AppLogo';
 import { getPublicOrderByToken, getItemLocalizedDeviceName, PublicOrderQrData } from './dayOrdersStore';
 import type { BackgroundState } from '../energy/EnergyCanvasBackground';
 import { CustomerAuthScene } from './CustomerAuthScene';
-import { rpcResolveOrderQr, rpcResolveOrderQrCreditCoverage, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
+import { rpcResolveOrderQr, rpcResolveOrderQrCreditCoverage, rpcResolveOrderQrCustomerId, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
 
 export interface PublicOrderPageProps {
   token: string;
@@ -68,6 +68,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const [data, setData] = useState<PublicOrderQrData | null>(null);
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
   const [customerCreditCoversOrder, setCustomerCreditCoversOrder] = useState<boolean | null>(null);
+  const [customerAccountId, setCustomerAccountId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -80,6 +81,18 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setCustomerAccountId(null);
+    if (!online || !token) return () => { active = false; };
+    rpcResolveOrderQrCustomerId(token).then((customerId) => {
+      if (active) setCustomerAccountId(customerId);
+    }).catch((err) => {
+      console.warn('Could not resolve the customer account entry for this order QR:', err);
+    });
+    return () => { active = false; };
+  }, [token, online]);
 
   // Only show a credit-covered message when the server confirms the current credit
   // covers the full order total; a positive balance alone is not sufficient evidence.
@@ -529,9 +542,9 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
                 <div className="order-dropdown-divider" />
 
-                {data?.customerCode && (
+                {customerAccountId && (
                   <a
-                    href={`/c/login?customerCode=${encodeURIComponent(data.customerCode)}`}
+                    href={`/c/login?customerId=${encodeURIComponent(customerAccountId)}`}
                     className="order-dropdown-item order-account-entry"
                     role="menuitem"
                     onClick={() => setIsMenuOpen(false)}
