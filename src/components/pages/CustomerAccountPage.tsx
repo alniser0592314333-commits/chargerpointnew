@@ -501,4 +501,3 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     </main>
   );
 };
-};
