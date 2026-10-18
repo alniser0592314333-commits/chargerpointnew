@@ -63,6 +63,10 @@ const money = (minor: number | null | undefined, locale: string) => {
 };
 
 const portalCacheKey = (token: string) => 'cp_customer_portal_cache:' + token;
+export const hasCachedCustomerPortalData = (token: string): boolean => readCachedPortalData(token) !== null;
+export const clearCachedCustomerPortalData = (token: string): void => {
+  try { sessionStorage.removeItem(portalCacheKey(token)); } catch {}
+};
 const readCachedPortalData = (token: string): PortalData | null => {
   if (typeof sessionStorage === 'undefined') return null;
   try {
