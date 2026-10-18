@@ -360,7 +360,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
 
   return (
-    <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal relative isolate min-h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#071b1b] dark:text-slate-100">
+    <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal relative isolate min-h-screen bg-slate-50 text-slate-900 dark:bg-[#071b1b] dark:text-slate-100">
       <EnergyCanvasBackground state="charging" theme={resolvedTheme} className="opacity-35" />
       <header className="relative z-10 sticky top-0 border-b border-slate-200/80 bg-white/80 backdrop-blur dark:border-emerald-950/80 dark:bg-[#082622]/80">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
@@ -506,7 +506,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             </section>}
 
             <p className="cp-portal-footnote"><CheckCircle2 size={15} />{isAr ? 'عرض معلومات الحساب فقط؛ اعتماد الدفعات وتحديد الأهداف من صلاحيات الإدارة.' : 'Account information only; payment approval and goal assignment remain administrator-controlled.'}</p>
-          </>
+          </>}
       </main>
       <footer className="relative z-10 border-t border-slate-200/70 px-4 py-5 text-center text-xs text-slate-500 dark:border-emerald-950/70 dark:text-emerald-100/50">{isAr ? 'نقطة الشحن · بوابة العميل الآمنة' : 'Charging Point · Secure customer portal'}</footer>
       {data && !loading && !error && <CustomerPortalNavigation activeTab={activeTab} onTabChange={setActiveTab} moreView={moreView} onMoreViewChange={setMoreView} notificationCount={activity?.events.filter((event) => !event.is_read).length ?? 0} isAr={isAr} />}
