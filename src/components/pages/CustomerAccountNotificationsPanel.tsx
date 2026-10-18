@@ -21,7 +21,15 @@ type AccountEvent = {
   created_at: string;
   customers?: { name?: string } | Array<{ name?: string }> | null;
 };
-type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[] };
+type CustomerAccount = {
+  customer_id: string;
+  account_status: 'ACTIVE' | 'FROZEN' | 'CANCELLED' | string;
+  auth_provider: string;
+  must_change_password: boolean;
+  created_at: string;
+  customers?: { name?: string } | Array<{ name?: string }> | null;
+};
+type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[] };
 
 const customerName = (value: ResetRequest['customers'] | AccountEvent['customers']) =>
   Array.isArray(value) ? value[0]?.name ?? '' : value?.name ?? '';
@@ -37,6 +45,8 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const isAr = locale === 'ar';
   const [requests, setRequests] = useState<ResetRequest[]>([]);
   const [events, setEvents] = useState<AccountEvent[]>([]);
+  const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
+  const [pendingStatus, setPendingStatus] = useState<{ customerId: string; status: 'ACTIVE' | 'FROZEN'; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -59,6 +69,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       if (result.error || !result.data) throw new Error(result.error || 'SERVICE_UNAVAILABLE');
       setRequests(Array.isArray(result.data.requests) ? result.data.requests : []);
       setEvents(Array.isArray(result.data.events) ? result.data.events : []);
+      setAccounts(Array.isArray(result.data.accounts) ? result.data.accounts : []);
     } catch {
       setError(t('تعذّر تحميل إشعارات حسابات العملاء. تحقق من الصلاحيات والاتصال.', 'Could not load customer account notifications. Check permissions and connectivity.'));
     } finally { setLoading(false); }
@@ -112,6 +123,26 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
     } finally { setBusy(false); }
   };
 
+  const changeAccountStatus = async () => {
+    if (!pendingStatus || busy) return;
+    const token = getSupabaseAuthToken();
+    if (!token) { setError(t('انتهت جلسة المشرف. سجّل الدخول مجددًا.', 'The administrator session has expired. Sign in again.')); return; }
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const result = await callCustomerAccount('admin-set-status', {
+        customerId: pendingStatus.customerId, status: pendingStatus.status,
+      }, token);
+      if (result.error) throw new Error(result.error);
+      setMessage(pendingStatus.status === 'FROZEN'
+        ? t('تم تجميد الحساب وإلغاء جلساته.', 'The account is frozen and its sessions have been revoked.')
+        : t('تم تفعيل الحساب. يجب على العميل تسجيل الدخول مجددًا.', 'The account is active again. The customer must sign in again.'));
+      setPendingStatus(null);
+      await load(true);
+    } catch {
+      setError(t('تعذّر تأكيد تغيير حالة الحساب. حدّث القائمة وتحقق من الحالة.', 'Could not confirm the account status change. Refresh and verify the current state.'));
+    } finally { setBusy(false); }
+  };
+
   const markRead = async (event: AccountEvent) => {
     if (event.is_read || busy) return;
     const token = getSupabaseAuthToken();
@@ -132,6 +163,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       TEMP_PASSWORD_ISSUED: ['أصدر المشرف كلمة سر مؤقتة', 'Administrator issued a temporary password'],
       PASSWORD_CHANGED: ['غيّر العميل كلمة السر', 'Customer changed password'],
       EMAIL_RESET_SENT: ['أُرسل رابط استعادة إلى البريد', 'Email recovery link sent'],
+      ACCOUNT_FROZEN: ['جمّد المشرف الحساب وألغى الجلسات', 'Administrator froze the account and revoked sessions'],
+      ACCOUNT_REACTIVATED: ['أعاد المشرف تفعيل الحساب', 'Administrator reactivated the account'],
+      ACCOUNT_CANCELLED: ['ألغى المشرف الحساب', 'Administrator cancelled the account'],
     };
     return labels[event.event_type]?.[isAr ? 0 : 1] ?? event.event_type;
   };
@@ -178,6 +212,27 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
           <button type="button" onClick={() => setIssued(null)} className="text-xs font-semibold underline">{t('إخفاء كلمة السر بعد حفظها', 'Hide password after saving it')}</button>
         </div>
       )}
+
+      <div className="space-y-2">
+        <h3 className="font-bold">{t('حالة حسابات العملاء', 'Customer account status')} <span className="text-sm font-normal text-gray-500">({accounts.length})</span></h3>
+        {loading ? <p className="py-4 text-sm text-gray-500">{t('جارٍ التحميل…', 'Loading…')}</p>
+          : accounts.length === 0 ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('لا توجد حسابات مفعّلة بعد.', 'No activated customer accounts yet.')}</p>
+          : accounts.map((account) => {
+            const name = customerName(account.customers) || account.customer_id;
+            return <article key={account.customer_id} className="space-y-3 rounded-xl border border-gray-200 p-3 dark:border-[#244746]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><p className="font-semibold">{name}</p><p className="mt-1 text-xs text-gray-500">{t('طريقة الدخول: ', 'Sign-in method: ')}{account.auth_provider} · {t('الحالة: ', 'Status: ')}{account.account_status === 'ACTIVE' ? t('فعّال', 'Active') : account.account_status === 'FROZEN' ? t('مجمّد', 'Frozen') : t('ملغى', 'Cancelled')}{account.must_change_password ? ' · ' + t('بانتظار تغيير كلمة السر', 'Password change required') : ''}</p></div>
+                {account.account_status === 'ACTIVE' && <button type="button" disabled={busy} onClick={() => setPendingStatus({ customerId: account.customer_id, status: 'FROZEN', name })} className="rounded-xl border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 dark:border-rose-900 dark:text-rose-200">{t('تجميد الحساب', 'Freeze account')}</button>}
+                {account.account_status === 'FROZEN' && <button type="button" disabled={busy} onClick={() => setPendingStatus({ customerId: account.customer_id, status: 'ACTIVE', name })} className="rounded-xl border border-emerald-300 px-3 py-2 text-xs font-bold text-emerald-800 dark:border-emerald-900 dark:text-emerald-200">{t('إعادة التفعيل', 'Reactivate account')}</button>}
+              </div>
+              {pendingStatus?.customerId === account.customer_id && <div role="alertdialog" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/25 dark:text-amber-100">
+                <p className="font-semibold">{pendingStatus.status === 'FROZEN' ? t('تجميد حساب ', 'Freeze account for ') : t('إعادة تفعيل حساب ', 'Reactivate account for ')}{pendingStatus.name}؟</p>
+                <p className="mt-1 text-xs">{pendingStatus.status === 'FROZEN' ? t('سيُمنع الدخول وتُلغى الجلسة المسجلة على الجهاز.', 'Sign-in will be blocked and the registered device session will be revoked.') : t('سيُسمح بتسجيل الدخول مجددًا، لكن لن تُستعاد الجلسات السابقة.', 'Sign-in will be allowed again, but previous sessions will not be restored.')}</p>
+                <div className="mt-3 flex gap-2"><button type="button" disabled={busy} onClick={() => setPendingStatus(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold dark:border-[#315653]">{t('إلغاء', 'Cancel')}</button><button type="button" disabled={busy} onClick={() => void changeAccountStatus()} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{busy ? t('جارٍ التنفيذ…', 'Working…') : t('تأكيد', 'Confirm')}</button></div>
+              </div>}
+            </article>;
+          })}
+      </div>
 
       <div className="space-y-2">
         <h3 className="font-bold">{t('طلبات إعادة التعيين المعلّقة', 'Pending reset requests')} <span className="text-sm font-normal text-gray-500">({requests.length})</span></h3>
