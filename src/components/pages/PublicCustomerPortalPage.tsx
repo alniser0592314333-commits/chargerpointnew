@@ -235,6 +235,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
 
   useEffect(() => {
     if (!online || activeTab !== 'goals') return;
+    void load(true);
+    void loadActivity();
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
         void load(true);
