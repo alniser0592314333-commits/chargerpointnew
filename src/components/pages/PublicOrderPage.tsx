@@ -372,7 +372,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             className="order-brand"
             aria-label={isAr ? 'الصفحة التعريفية' : 'About page'}
           >
-            <AppLogo size={36} variant="auto" />
+            <AppLogo size={36} variant="dark" />
             <span className="order-brand__text">
               <strong>{isAr ? 'نقطة الشحن' : 'Charging Point'}</strong>
               <span>{isAr ? 'متابعة الطلب' : 'Order Tracking'}</span>
@@ -702,15 +702,21 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     )}
 
                     {paymentViewState === 'CREDIT_COVERED' && (
-                      <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
-                        <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
-                        <div className="order-fully-paid-text">
-                          <h3>{isAr ? 'رصيدك الموجب سيُستخدم للطلب' : 'Your positive balance will be applied to this order'}</h3>
-                          <p>{isAr
-                            ? 'لا ترسل دفعة الآن. سيُستخدم رصيدك أولاً لتغطية تكلفة الأجهزة المستحقة، وسيظهر خيار الدفع فقط إذا أصبح عليك مبلغ مستحق بعد تحديث الرصيد.'
-                            : 'Do not send a payment now. Your available credit is applied first when delivered devices are financially recognized. A payment option appears only if an amount remains due after the balance updates.'}</p>
+                      <>
+                        <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
+                          <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
+                          <div className="order-fully-paid-text">
+                            <h3>{isAr ? 'سيتم تغطية هذا الطلب من رصيدك' : 'This order will be covered by your balance'}</h3>
+                          </div>
                         </div>
-                      </div>
+                        <div className="order-integrated-pay-action order-credit-options-action">
+                          <p>{isAr ? 'هل ترغب بالاطلاع على خيارات الدفع؟' : 'Would you like to view the payment options?'}</p>
+                          <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
+                            <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
+                            <span className="order-pay-btn-label">{isAr ? 'عرض خيارات الدفع' : 'View Payment Options'}</span>
+                          </a>
+                        </div>
+                      </>
                     )}
 
                     {paymentViewState === 'NOT_DUE' && (
@@ -812,8 +818,8 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                   <Sparkles size={19} />
                 </div>
                 <div className="order-about-text">
-                  <strong>{isAr ? 'تعرّف على النقاط وخدمات الدفع' : 'Explore Charging Points & Services'}</strong>
-                  <span>{isAr ? 'اكتشف سرعة الشحن ومواقع الصناديق الذكية' : 'Discover smart locker locations & features'}</span>
+                  <strong>{isAr ? 'تابع الجديد من نقطة الشحن' : 'See What’s New at Charging Point'}</strong>
+                  <span>{isAr ? 'تعرّف على الأحداث والعروض وأيام الشحن المجانية عند توفرها.' : 'Check for events, offers and free-charging days when available.'}</span>
                 </div>
                 <ArrowUpRight size={17} className="order-about-arrow" />
               </a>
@@ -824,17 +830,18 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
               <aside className="order-qr-visual" aria-label={isAr ? 'معلومات عن خدمة الشحن' : 'Charging service information'}>
                 <div className="order-qr-visual-art" aria-hidden="true">
                   <CustomerAuthScene uid="order-qr-page-hero" />
-                  <div className="order-qr-visual-copy">
+                </div>
+                <div className="order-qr-visual-copy">
                     <p className="order-qr-visual-eyebrow">{isAr ? 'كل التفاصيل بمكان واحد' : 'YOUR ORDER, AT A GLANCE'}</p>
                     <h2>{isAr ? 'تابع طلبك بكل سهولة' : 'Your charging order, made simple'}</h2>
                     <p>{isAr
                       ? 'تفاصيل الأجهزة وحالة الشحن والمبلغ المستحق ظاهرة بوضوح، حتى تتابع طلبك من أي جهاز.'
                       : 'See your registered devices, charging status and balance clearly, all in one place from any device.'}</p>
                     <div className="order-qr-visual-points">
+                      <span><Smartphone size={15} />{isAr ? 'تفاصيل الأجهزة' : 'Device details'}</span>
                       <span><CheckCircle2 size={15} />{isAr ? 'تحديث حالة الطلب' : 'Order status at a glance'}</span>
-                      <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Clear order details'}</span>
+                      <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Secure details'}</span>
                     </div>
-                  </div>
                 </div>
               </aside>
             </div>
