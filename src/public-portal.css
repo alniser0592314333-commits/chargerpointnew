@@ -2201,11 +2201,14 @@ html.dark .order-mountain-auth__backdrop { opacity: .16; }
 .order-mountain-auth .order-qr-visual-copy {
   position: relative;
   z-index: 1;
+  width: 100%;
+  min-width: 0;
   margin-top: auto;
   padding: 70px 22px 22px;
   color: #fff;
   background: linear-gradient(180deg, transparent 0%, rgba(4,34,44,.3) 22%, rgba(4,34,44,.9) 100%);
   text-align: start;
+  overflow-wrap: anywhere;
 }
 .order-mountain-auth .order-qr-visual-eyebrow {
   margin: 0 0 8px;
@@ -2222,13 +2225,15 @@ html.dark .order-mountain-auth__backdrop { opacity: .16; }
   font-weight: 850;
   letter-spacing: -.025em;
   line-height: 1.2;
+  text-wrap: balance;
 }
 .order-mountain-auth .order-qr-visual-copy > p:not(.order-qr-visual-eyebrow) {
   max-width: 46ch;
   margin: 9px 0 0;
   color: rgba(255,255,255,.9);
   font-size: 12px;
-  line-height: 1.8;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 .order-mountain-auth .order-qr-visual-points {
   display: flex;
@@ -2238,6 +2243,7 @@ html.dark .order-mountain-auth__backdrop { opacity: .16; }
   color: rgba(255,255,255,.94);
   font-size: 11px;
   font-weight: 700;
+  min-width: 0;
 }
 .order-mountain-auth .order-qr-visual-points span {
   display: inline-flex;
