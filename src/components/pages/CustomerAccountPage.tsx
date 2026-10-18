@@ -14,6 +14,7 @@ type EntryStatus = {
   customer_name?: string;
   email_recovery_available?: boolean;
   auth_provider?: "password" | "google" | "apple" | "facebook" | null;
+  terms_version?: string | null;
 };
 const sessionExpiryKey = (token: string) => 'cp_customer_session_expires_at:' + token;
 const saveSessionExpiry = (token: string, value: unknown) => {
@@ -23,7 +24,7 @@ const saveSessionExpiry = (token: string, value: unknown) => {
   try { sessionStorage.setItem(sessionExpiryKey(token), String(time)); } catch {}
 };
 
-type Mode = 'loading' | 'unavailable' | 'activate' | 'social-activation' | 'login' | 'forgot' | 'portal' | 'force-change' | 'recovery';
+type Mode = 'loading' | 'unavailable' | 'activate' | 'social-activation' | 'login' | 'forgot' | 'portal' | 'force-change' | 'recovery' | 'terms-update';
 
 const commonPassword = (value: string) =>
   value.length >= 8 && value.length <= 128 &&
@@ -118,7 +119,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     }
     if (session) {
       const sessionAction = oauthMode === 'login' ? 'register-session' : 'verify-session';
-      const registered = await callCustomerAccount<{ must_change_password?: boolean; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string }>(
+      const registered = await callCustomerAccount<{ must_change_password?: boolean; auth_provider?: EntryStatus["auth_provider"]; terms_version?: string | null; session_expires_at?: string }>(
         sessionAction, { token }, session.access_token,
       );
       if (registered.data && !registered.error) {
@@ -127,8 +128,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
           sessionStorage.removeItem('cp_customer_terms:' + token);
         }
-        setEntry((current) => current ? { ...current, auth_provider: registered.data.auth_provider ?? current.auth_provider } : current);
-        setMode(registered.data.must_change_password ? 'force-change' : 'portal');
+        setEntry((current) => current ? { ...current, auth_provider: registered.data.auth_provider ?? current.auth_provider, terms_version: registered.data.terms_version ?? current.terms_version } : current);
+        if (registered.data.must_change_password) setMode('force-change');
+        else if (registered.data.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
+        else setMode('portal');
         return;
       }
       await customerAuth.auth.signOut();
@@ -172,7 +175,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     try {
       const { error: updateError } = await customerAuth.auth.updateUser({ password });
       if (updateError) { setError(t('تعذّر تحديث كلمة السر. حاول مرة أخرى.', 'Could not update the password. Please try again.')); return; }
-      const completed = await callCustomerAccount<{ session_expires_at?: string }>('complete-password-change', { token });
+      const completed = await callCustomerAccount<{ session_expires_at?: string; terms_version?: string }>('complete-password-change', { token });
       if (completed.error) { setErrorMessage(completed.error); return; }
       saveSessionExpiry(token, completed.data?.session_expires_at);
       setPassword(''); setConfirmPassword('');
@@ -236,7 +239,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     if (!password) { setErrorMessage('INVALID_CREDENTIALS'); return; }
     setBusy(true); setError('');
     try {
-      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; session_expires_at?: string }>(
+      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string }>(
         'login', { token, password },
       );
       if (result.error || !result.data?.session) {
@@ -247,7 +250,25 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       saveSessionExpiry(token, result.data.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
-      setMode(result.data.must_change_password ? 'force-change' : 'portal');
+      setEntry((current) => current ? { ...current, terms_version: result.data.terms_version ?? current.terms_version, auth_provider: result.data.auth_provider ?? current.auth_provider } : current);
+      if (result.data.must_change_password) setMode('force-change');
+      else if (result.data.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
+      else setMode('portal');
+    } finally { setBusy(false); }
+  };
+
+  const submitTermsUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!termsAccepted) { setErrorMessage('TERMS_REQUIRED'); return; }
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const result = await callCustomerAccount<{ terms_version?: string }>('accept-terms', {
+        token, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION,
+      });
+      if (result.error) { setErrorMessage(result.error); return; }
+      setEntry((current) => current ? { ...current, terms_version: result.data?.terms_version ?? CUSTOMER_TERMS_VERSION } : current);
+      setMode('portal');
+      setMessage(t('تم تحديث موافقتك على الشروط. يمكنك متابعة حسابك.', 'Your updated terms acceptance is saved. You can continue to your account.'));
     } finally { setBusy(false); }
   };
 
@@ -313,6 +334,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     : mode === 'forgot' ? t('استعادة كلمة السر', 'Recover your password')
     : mode === 'force-change' ? t('تغيير كلمة السر المؤقتة', 'Change temporary password')
     : mode === 'recovery' ? t('تعيين كلمة سر جديدة', 'Set a new password')
+    : mode === 'terms-update' ? t('مراجعة الشروط المحدّثة', 'Review updated terms')
     : mode === 'unavailable' ? t('الحساب غير متاح حاليًا', 'Account unavailable')
     : t('بوابة العميل', 'Customer portal');
 
@@ -334,6 +356,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           ? t('أدخل كلمة السر للدخول إلى طلباتك ورصيدك.', 'Enter your password to access your orders and balance.')
           : showTerms ? t('أنشئ كلمة سر خاصة بك ووافق على الشروط قبل تفعيل الحساب.', 'Create your password and accept the terms to activate your account.')
           : mode === 'forgot' ? t('اختر طريقة استعادة كلمة السر.', 'Choose a password recovery method.')
+          : mode === 'terms-update' ? t('تم تحديث الشروط والأحكام. يجب الموافقة عليها قبل متابعة الحساب.', 'The terms have changed. Accept the updated terms before continuing.')
           : t('حسابك محمي. لن نعرض بياناتك إلا بعد التحقق من الدخول.', 'Your account is protected. Your data is shown only after authentication.')}</p></div></div>
 
         {entry?.customer_name && (mode === 'activate' || mode === 'login') && <p className="mb-4 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:bg-[#0b302b] dark:text-emerald-100/80">{t('الحساب المرتبط بهذا الرمز', 'Account associated with this QR')}: <strong>{entry.customer_name}</strong></p>}
@@ -342,6 +365,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
         {mode === 'loading' ? <div className="flex justify-center py-8"><LoaderCircle className="h-7 w-7 animate-spin text-emerald-700" /></div>
         : mode === 'unavailable' ? <button type="button" onClick={() => { initialized.current = false; void loadEntry(); }} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{t('إعادة المحاولة', 'Try again')}</button>
+        : mode === 'terms-update' ? <form className="space-y-4" onSubmit={(event) => void submitTermsUpdate(event)}>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 dark:border-emerald-900 dark:bg-[#0b302b]">{t('راجع الشروط والأحكام وسياسة استخدام حساب العميل. لا تتغير بياناتك المالية بمجرد الموافقة.', 'Review the customer account terms and usage policy. Accepting them does not change your financial records.')}</div>
+          <label className="flex items-start gap-2 text-sm leading-6 text-slate-600 dark:text-emerald-100/75"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-700" /><span>{t('أوافق على الشروط والأحكام المحدّثة.', 'I accept the updated terms and conditions.')}</span></label>
+          <button disabled={busy || !termsAccepted} type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-60"><ShieldCheck className="h-4 w-4" />{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
+        </form>
         : showPasswordForm ? <form className="space-y-4" onSubmit={(event) => {
           if (mode === 'activate') void submitActivation(event);
           else if (mode === 'social-activation') void submitSocialActivation(event);
