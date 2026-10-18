@@ -17,8 +17,8 @@ const normalize = (value: unknown, max = 256) =>
 const rawPassword = (value: unknown) => typeof value === "string" && value.length <= 128 ? value : "";
 const strongPassword = (value: string) => {
   if (value.length < 8 || value.length > 128) return false;
-  const common = new Set(["password", "password123", "12345678", "qwerty123", "11111111", "123456789"]);
-  return !common.has(value.toLowerCase()) && !/^(.)(\1){7,}$/.test(value);
+  const common = new Set(["password", "password123", "12345678", "qwerty123", "11111111", "123456789", "1234567890", "qwertyuiop", "abc12345", "letmein123", "iloveyou", "admin123", "welcome1", "monkey123", "dragon123"]);
+  return !common.has(value.trim().toLowerCase()) && !/^(.)(\\1){7,}$/.test(value);
 };
 const decodeClaims = (jwt: string): Record<string, unknown> | null => {
   try {
