@@ -122,15 +122,16 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       const registered = await callCustomerAccount<{ must_change_password?: boolean; auth_provider?: EntryStatus["auth_provider"]; terms_version?: string | null; session_expires_at?: string }>(
         sessionAction, { token }, session.access_token,
       );
-      if (registered.data && !registered.error) {
-        saveSessionExpiry(token, registered.data.session_expires_at);
+      const registeredData = registered.data;
+      if (registeredData && !registered.error) {
+        saveSessionExpiry(token, registeredData.session_expires_at);
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
           sessionStorage.removeItem('cp_customer_terms:' + token);
         }
-        setEntry((current) => current ? { ...current, auth_provider: registered.data.auth_provider ?? current.auth_provider, terms_version: registered.data.terms_version ?? current.terms_version } : current);
-        if (registered.data.must_change_password) setMode('force-change');
-        else if (registered.data.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
+        setEntry((current) => current ? { ...current, auth_provider: registeredData.auth_provider ?? current.auth_provider, terms_version: registeredData.terms_version ?? current.terms_version } : current);
+        if (registeredData.must_change_password) setMode('force-change');
+        else if (registeredData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
         else setMode('portal');
         return;
       }
@@ -242,17 +243,18 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string }>(
         'login', { token, password },
       );
-      if (result.error || !result.data?.session) {
+      const loginData = result.data;
+      if (result.error || !loginData?.session) {
         setErrorMessage(result.error === 'NETWORK_UNAVAILABLE' ? result.error : 'INVALID_CREDENTIALS');
         return;
       }
-      const sessionError = await setCustomerSession(result.data.session);
-      saveSessionExpiry(token, result.data.session_expires_at);
+      const sessionError = await setCustomerSession(loginData.session);
+      saveSessionExpiry(token, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
-      setEntry((current) => current ? { ...current, terms_version: result.data.terms_version ?? current.terms_version, auth_provider: result.data.auth_provider ?? current.auth_provider } : current);
-      if (result.data.must_change_password) setMode('force-change');
-      else if (result.data.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
+      setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
+      if (loginData.must_change_password) setMode('force-change');
+      else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
       else setMode('portal');
     } finally { setBusy(false); }
   };
