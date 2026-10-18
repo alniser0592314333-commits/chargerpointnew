@@ -57,8 +57,8 @@ const passwordStrength = (value: string) => {
 };
 
 export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
-  const customerCodeFromQuery = new URLSearchParams(window.location.search).get('customerCode')?.trim() ?? '';
-  const accountToken = customerCodeFromQuery || token;
+  const customerIdFromQuery = new URLSearchParams(window.location.search).get('customerId')?.trim() ?? '';
+  const accountToken = customerIdFromQuery || token;
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
@@ -158,7 +158,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       await customerAuth.auth.signOut();
       setErrorMessage('ACCOUNT_UNAVAILABLE_OR_INVALID');
     }
-      if (customerCodeFromQuery && !status.activated) {
+      if (customerIdFromQuery && !status.activated) {
       setMode('unavailable');
       setError(t('لإنشاء الحساب لأول مرة، استخدم رمز QR الخاص بحساب العميل.', 'For first-time account setup, scan your customer account QR.'));
       return;
@@ -448,9 +448,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                   </form>
                 ) : mode === 'login' ? (
                   <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
-                    {customerCodeFromQuery && (
+                    {customerIdFromQuery && (
                       <label className="cp-auth__label">{t('اسم المستخدم / رقم العميل', 'Username / Customer ID')}
-                        <input value={customerCodeFromQuery} readOnly autoComplete="username" className="cp-auth__input" aria-label={t('اسم المستخدم / رقم العميل', 'Username / Customer ID')} />
+                        <input value={customerIdFromQuery} readOnly autoComplete="username" className="cp-auth__input" aria-label={t('اسم المستخدم / رقم العميل', 'Username / Customer ID')} />
                       </label>
                     )}
                     <label className="cp-auth__label">{t('كلمة السر', 'Password')}
