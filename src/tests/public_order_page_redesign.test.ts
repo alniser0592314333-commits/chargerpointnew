@@ -105,7 +105,7 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(150, null, true, 'DELIVERED', 0, 150)).toBe('UNPAID');
   });
 
-  it('preserves an approved payment status when positive credit only partially covers the order', () => {
+  it('keeps an approved receipt separate from this order's allocation when no amount is allocated here', () => {
     expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED', 0, 150)).toBe('APPROVED');
   });
 
