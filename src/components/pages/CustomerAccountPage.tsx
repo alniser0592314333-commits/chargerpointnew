@@ -13,6 +13,7 @@ type EntryStatus = {
   activated: boolean;
   customer_name?: string;
   email_recovery_available?: boolean;
+  auth_provider?: "password" | "google" | "apple" | "facebook" | null;
 };
 type Mode = 'loading' | 'unavailable' | 'activate' | 'social-activation' | 'login' | 'forgot' | 'portal' | 'force-change' | 'recovery';
 
@@ -93,14 +94,15 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     }
     if (session) {
       const sessionAction = oauthMode === 'login' ? 'register-session' : 'verify-session';
-      const registered = await callCustomerAccount<{ must_change_password?: boolean }>(
-        sessionAction, {}, session.access_token,
+      const registered = await callCustomerAccount<{ must_change_password?: boolean; auth_provider?: EntryStatus["auth_provider"] }>(
+        sessionAction, { token }, session.access_token,
       );
       if (registered.data && !registered.error) {
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
           sessionStorage.removeItem('cp_customer_terms:' + token);
         }
+        setEntry((current) => current ? { ...current, auth_provider: registered.data.auth_provider ?? current.auth_provider } : current);
         setMode(registered.data.must_change_password ? 'force-change' : 'portal');
         return;
       }
@@ -316,7 +318,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           <button disabled={busy} type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}{t('دخول إلى حسابي', 'Sign in to my account')}</button>
           <button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="w-full py-2 text-sm font-semibold text-emerald-800 underline underline-offset-4 dark:text-emerald-200">{t('نسيت كلمة السر؟', 'Forgot password?')}</button>
           <div className="relative py-2"><div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-200 dark:border-emerald-900" /></div><span className="relative mx-auto block w-fit bg-white px-3 text-xs text-slate-500 dark:bg-[#082622]">{t('أو الدخول بواسطة', 'Or continue with')}</span></div>
-          <div className="grid gap-2">{providers.map((provider) => <button key={provider.id} type="button" onClick={() => void beginOAuth(provider.id, 'login')} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:border-emerald-900 dark:hover:bg-emerald-950/40">{provider.icon}{provider.label}</button>)}</div>
+          <div className="grid gap-2">{providers.filter((provider) => entry?.auth_provider === provider.id).map((provider) => <button key={provider.id} type="button" onClick={() => void beginOAuth(provider.id, 'login')} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:border-emerald-900 dark:hover:bg-emerald-950/40">{provider.icon}{provider.label}</button>)}</div>
         </form>
         : mode === 'forgot' ? <div className="space-y-3">
           {entry?.email_recovery_available && <button type="button" disabled={busy} onClick={() => void submitForgot(true)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:opacity-60"><Mail className="h-4 w-4" />{t('إرسال رابط آمن إلى بريدي', 'Send a secure reset link to my email')}</button>}
