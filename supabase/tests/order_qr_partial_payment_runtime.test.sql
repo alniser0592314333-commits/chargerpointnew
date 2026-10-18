@@ -41,8 +41,8 @@ BEGIN
   INSERT INTO public.financial_ledger (event_type, amount_minor, customer_id)
   VALUES ('REGRESSION_CREDIT_FIXTURE', 10000, v_customer_id);
 
-  SELECT resolved INTO v_result
-  FROM public.public_resolve_order_qr(v_token) AS resolved;
+  SELECT result_json INTO v_result
+  FROM public.public_resolve_order_qr(v_token) AS resolver(result_json);
 
   IF (v_result->>'order_due_minor')::bigint <> 3000 THEN
     RAISE EXCEPTION 'Expected order due 3000 from its own allocations, got %', v_result->>'order_due_minor';
