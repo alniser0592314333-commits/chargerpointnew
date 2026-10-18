@@ -26,7 +26,7 @@ import { CustomerDetailPage } from './components/pages/CustomerDetailPage';
 import { CustomerQrDesignPage } from './components/pages/CustomerQrDesignPage';
 import { CustomerQrPage } from './components/pages/CustomerQrPage';
 import { OrderQrPage } from './components/pages/OrderQrPage';
-import { PublicCustomerPortalPage } from './components/pages/PublicCustomerPortalPage';
+import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
@@ -380,11 +380,11 @@ export default function App() {
     }
     if (pathname.startsWith('/c/')) {
       const token = pathname.replace('/c/', '');
-      return <PublicCustomerPortalPage token={token} />;
+      return <CustomerAccountPage token={token} />;
     }
     if (pathname.startsWith('/public/qr/customer/')) {
       const token = pathname.replace('/public/qr/customer/', '');
-      return <PublicCustomerPortalPage token={token} />;
+      return <CustomerAccountPage token={token} />;
     }
     if (pathname.startsWith('/pay/')) {
       const token = pathname.replace('/pay/', '');
