@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Globe, History, Moon, RefreshCw, ShieldCheck, Sun, Wallet, Wifi, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { invokeSupabaseRpc } from '../../services/supabase/client';
+import { callCustomerAccount } from '../../services/customer/customerAuth';
 import { AppLogo } from '../qr/AppLogo';
 import { EnergyCanvasBackground } from '../energy/EnergyCanvasBackground';
 import { useTheme } from '../../theme/themeContext';
@@ -62,11 +62,28 @@ const money = (minor: number | null | undefined, locale: string) => {
   return new Intl.NumberFormat(locale === 'ar' ? 'ar-PS' : 'en-GB', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(minor / 100);
 };
 
+const portalCacheKey = (token: string) => 'cp_customer_portal_cache:' + token;
+const readCachedPortalData = (token: string): PortalData | null => {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(portalCacheKey(token));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PortalData;
+    return typeof parsed.customer_name === 'string' &&
+      typeof parsed.customer_code === 'string' &&
+      typeof parsed.balance_minor === 'number' &&
+      Array.isArray(parsed.orders) &&
+      Array.isArray(parsed.payment_submissions) &&
+      Array.isArray(parsed.goals) ? parsed : null;
+  } catch { return null; }
+};
+
+
 export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> = ({ token }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
-  const [data, setData] = useState<PortalData | null>(null);
+  const [data, setData] = useState<PortalData | null>(() => readCachedPortalData(token));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -79,21 +96,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     setError(null);
     // Never show a cached/local financial snapshot as if it were current.
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setData(null);
-      setError('service');
+      const cached = readCachedPortalData(token);
+      if (cached) { setData(cached); setError(null); }
+      else { setData(null); setError('service'); }
       setLoading(false);
       setRefreshing(false);
       return;
     }
     try {
-      const { data: response, error: rpcError } = await invokeSupabaseRpc<PortalData>(
-        'public_resolve_customer_portal',
-        { p_public_token: token },
-        undefined,
-        true,
-        false,
-        true
+      const { data: responseResult, error: rpcError } = await callCustomerAccount<{ data: PortalData }>(
+        'portal-data',
+        { token }
       );
+      const response = responseResult?.data ?? null;
       // Ignore stale requests and never restore financial data after connectivity drops.
       if (requestId !== requestGeneration.current) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -116,6 +131,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         setError('service');
       } else {
         setData(response);
+        try { sessionStorage.setItem(portalCacheKey(token), JSON.stringify(response)); } catch {}
       }
     } catch {
       if (requestId === requestGeneration.current) {
@@ -136,8 +152,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const onOffline = () => {
       requestGeneration.current += 1;
       setOnline(false);
-      setData(null);
-      setError('service');
+      const cached = readCachedPortalData(token);
+      if (cached) { setData(cached); setError(null); }
+      else { setData(null); setError('service'); }
       setLoading(false);
       setRefreshing(false);
     };
@@ -233,7 +250,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <div className="mt-4 flex flex-wrap items-center gap-4 text-sm font-semibold"><span>{isAr ? 'بنك فلسطين' : 'Bank of Palestine'}</span><span>{isAr ? 'جوال باي' : 'Jawwal Pay'}</span><span>{isAr ? 'بال باي' : 'PalPay'}</span></div>
             </section>
 
-            <a href={`/pay/${encodeURIComponent(token)}`} className="flex min-h-12 items-center justify-center gap-2 py-4 font-bold text-emerald-800 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-300"><CreditCard className="h-5 w-5" />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>
+            {online && <a href={`/pay/${encodeURIComponent(token)}`} className="flex min-h-12 items-center justify-center gap-2 py-4 font-bold text-emerald-800 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-300"><CreditCard className="h-5 w-5" />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
 
             {data.goals.length > 0 && <section className="py-4 border-b border-slate-200/70 dark:border-emerald-950/70">
               <h2 className="mb-4 text-lg font-bold">{isAr ? 'الأهداف والمكافآت' : 'Goals and rewards'}</h2>
