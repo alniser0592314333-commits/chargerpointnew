@@ -372,8 +372,11 @@ Deno.serve(async (request: Request) => {
       const { data: events, error: eventError } = await admin.from("customer_account_events")
         .select("id,customer_id,event_type,request_id,is_read,created_at,customers(name)")
         .order("created_at", { ascending: false }).limit(50);
-      if (requestError || eventError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [] });
+      const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
+        .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name)")
+        .order("created_at", { ascending: false }).limit(200);
+      if (requestError || eventError || accountsError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [], accounts: accounts ?? [] });
     }
 
     if (action === "admin-reset") {
@@ -412,6 +415,38 @@ Deno.serve(async (request: Request) => {
         customer_id: claimed.customer_id, event_type: "TEMP_PASSWORD_ISSUED", request_id: requestId,
       });
       return respond(200, { ok: true });
+    }
+
+    if (action === "admin-set-status") {
+      const administrator = await requireAdmin();
+      if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
+      const customerId = normalize(input.customerId, 64);
+      const nextStatus = normalize(input.status, 16);
+      if (!/^[0-9a-f-]{36}$/i.test(customerId) || !["ACTIVE", "FROZEN", "CANCELLED"].includes(nextStatus)) {
+        return respond(400, { ok: false, error: "INVALID_REQUEST" });
+      }
+      const { data: account, error: accountError } = await admin.from("customer_account_links")
+        .select("customer_id,account_status").eq("customer_id", customerId).maybeSingle();
+      if (accountError || !account) return genericFailure();
+      const { error: updateError } = await admin.from("customer_account_links")
+        .update({ account_status: nextStatus, updated_at: now.toISOString() }).eq("customer_id", customerId);
+      if (updateError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      if (nextStatus !== "ACTIVE") {
+        const { error: revokeError } = await admin.from("customer_account_sessions")
+          .update({ revoked_at: now.toISOString() }).eq("customer_id", customerId).is("revoked_at", null);
+        if (revokeError) {
+          // The frozen account status itself blocks every subsequent server-side read.
+          console.error("Customer session revocation needs reconciliation");
+          return respond(503, { ok: false, error: "STATUS_APPLIED_SESSION_REVOCATION_PENDING" });
+        }
+      }
+      const eventType = nextStatus === "FROZEN" ? "ACCOUNT_FROZEN" : nextStatus === "CANCELLED" ? "ACCOUNT_CANCELLED" : "ACCOUNT_REACTIVATED";
+      const { error: eventError } = await admin.from("customer_account_events").insert({
+        customer_id: customerId, event_type: eventType,
+        payload: { previous_status: account.account_status, next_status: nextStatus },
+      });
+      if (eventError) return respond(503, { ok: false, error: "STATUS_APPLIED_AUDIT_PENDING" });
+      return respond(200, { ok: true, account_status: nextStatus });
     }
 
     if (action === "admin-mark-event-read") {
