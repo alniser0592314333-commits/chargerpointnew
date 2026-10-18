@@ -3,7 +3,7 @@ import { useI18n } from '../../i18n/i18nContext';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import './first-visit-welcome.css';
 
-const SEEN_KEY = 'cp_customer_welcome_intro_seen_v1';
+const SEEN_KEY = 'cp_customer_welcome_intro_seen_v2';
 type IntroStage = 'assembling' | 'welcome' | 'exiting';
 
 const hasSeenIntro = () => {
@@ -48,18 +48,18 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
     setStage(reducedMotion ? 'welcome' : 'assembling');
 
     if (reducedMotion) {
-      welcomeTimer = window.setTimeout(() => setStage('exiting'), 1450);
+      welcomeTimer = window.setTimeout(() => setStage('exiting'), 6000);
       finishTimer = window.setTimeout(() => {
         rememberIntro();
         setVisible(false);
-      }, 1750);
+      }, 6300);
     } else {
       welcomeTimer = window.setTimeout(() => setStage('welcome'), 2100);
-      exitTimer = window.setTimeout(() => setStage('exiting'), 3800);
+      exitTimer = window.setTimeout(() => setStage('exiting'), 8700);
       finishTimer = window.setTimeout(() => {
         rememberIntro();
         setVisible(false);
-      }, 5000);
+      }, 10000);
     }
 
     return () => {
