@@ -316,6 +316,20 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const inputClass = 'mt-2 min-h-[54px] w-full rounded-2xl border border-[#d7e0e9] bg-white px-4 py-3 text-[15px] text-[#172335] outline-none transition placeholder:text-[#8b98a8] focus:border-[#d79b24] focus:ring-4 focus:ring-[#f5b942]/15 dark:border-[#334155] dark:bg-[#111925] dark:text-[#f1f5f9] dark:placeholder:text-[#8998ad] dark:focus:border-[#f5b942]';
   const primaryButtonClass = 'group flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl bg-[#f0b638] px-5 py-3 text-[15px] font-bold text-[#111827] shadow-[0_12px_28px_rgba(245,185,66,0.18)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#ffd16a] focus:outline-none focus:ring-4 focus:ring-[#f5b942]/25 disabled:cursor-wait disabled:opacity-60 dark:bg-[#f5b942] dark:text-[#111827] dark:hover:bg-[#ffd16a]';
 
+  const visualBackground = resolvedTheme === 'dark'
+    ? mode === 'activate'
+      ? 'radial-gradient(ellipse at 78% 20%, rgba(245,185,66,.16), transparent 38%), radial-gradient(ellipse at 18% 88%, rgba(118,215,245,.09), transparent 42%), #080d15'
+      : mode === 'login'
+        ? 'radial-gradient(ellipse at 82% 18%, rgba(118,215,245,.16), transparent 40%), radial-gradient(ellipse at 16% 88%, rgba(245,185,66,.08), transparent 44%), #080d15'
+        : mode === 'force-change'
+          ? 'radial-gradient(ellipse at 75% 20%, rgba(245,185,66,.2), transparent 38%), #080d15'
+          : 'radial-gradient(ellipse at 82% 20%, rgba(118,215,245,.12), transparent 38%), #080d15'
+    : mode === 'activate'
+      ? 'radial-gradient(ellipse at 78% 20%, rgba(245,185,66,.24), transparent 38%), #15283a'
+      : mode === 'login'
+        ? 'radial-gradient(ellipse at 82% 18%, rgba(118,215,245,.2), transparent 40%), #15283a'
+        : 'radial-gradient(ellipse at 82% 18%, rgba(245,185,66,.16), transparent 40%), #15283a';
+
   return (
     <main dir={isAr ? 'rtl' : 'ltr'} className="min-h-[100svh] overflow-x-hidden bg-[#f5f7fa] text-[#172335] transition-colors dark:bg-[#070b12] dark:text-[#eef4ff]">
       <header className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-12 lg:py-7">
@@ -335,7 +349,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       </header>
 
       <section dir="ltr" className="mx-auto grid w-full max-w-[1480px] grid-cols-1 overflow-hidden border-y border-[#dce4dc] bg-[#ffffff] shadow-[0_24px_90px_rgba(9,17,30,0.16)] dark:border-[#303b4b] dark:bg-[#0b1019] lg:min-h-[700px] lg:grid-cols-[1.03fr_0.97fr] lg:rounded-[32px] lg:border">
-        <aside dir={isAr ? 'rtl' : 'ltr'} className="relative isolate flex min-h-[280px] flex-col justify-between overflow-hidden bg-[#111d2b] px-6 py-7 text-[#f8fafc] dark:bg-[#080d15] dark:text-[#f8fafc] sm:min-h-[320px] sm:px-9 sm:py-9 lg:min-h-[700px] lg:px-12 lg:py-12 xl:px-16" style={{ background: resolvedTheme === 'dark' ? (mode === 'activate' ? 'radial-gradient(ellipse at 78% 20%, rgba(245,185,66,.16), transparent 38%), radial-gradient(ellipse at 18% 88%, rgba(118,215,245,.09), transparent 42%), #080d15' : mode === 'login' ? 'radial-gradient(ellipse at 82% 18%, rgba(118,215,245,.16), transparent 40%), radial-gradient(ellipse at 16% 88%, rgba(245,185,66,.08), transparent 44%), #080d15' : mode === 'force-change' ? 'radial-gradient(ellipse at 75% 20%, rgba(245,185,66,.2), transparent 38%), #080d15' : 'radial-gradient(ellipse at 82% 20%, rgba(118,215,245,.12), transparent 38%), #080d15') : (mode === 'activate' ? 'radial-gradient(ellipse at 78% 20%, rgba(245,185,66,.24), transparent 38%), #15283a' : mode === 'login' ? 'radial-gradient(ellipse at 82% 18%, rgba(118,215,245,.2), transparent 40%), #15283a' : 'radial-gradient(ellipse at 82% 18%, rgba(245,185,66,.16), transparent 40%), #15283a') }}">
+        <aside dir={isAr ? 'rtl' : 'ltr'} className="relative isolate flex min-h-[280px] flex-col justify-between overflow-hidden bg-[#111d2b] px-6 py-7 text-[#f8fafc] dark:bg-[#080d15] dark:text-[#f8fafc] sm:min-h-[320px] sm:px-9 sm:py-9 lg:min-h-[700px] lg:px-12 lg:py-12 xl:px-16" style={{ background: visualBackground }}>
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
             <div className="absolute -end-28 -top-32 h-[390px] w-[390px] rounded-full border border-white/10" />
             <div className="absolute -end-12 -top-16 h-[310px] w-[310px] rounded-full border border-white/10" />
