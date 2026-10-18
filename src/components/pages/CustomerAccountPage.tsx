@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, BatteryCharging, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
@@ -289,8 +289,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
   const showTerms = mode === 'activate';
   const showPasswordForm = mode === 'activate' || mode === 'force-change' || mode === 'recovery';
-  const title = mode === 'activate' ? t('ابدأ حسابك الخاص', 'Create your account')
-    : mode === 'login' ? t('أهلًا بعودتك', 'Welcome back')
+  const title = mode === 'activate' || mode === 'login'
+    ? (entry?.customer_name
+      ? t('أهلاً بعودتك، ', 'Welcome back, ') + entry.customer_name
+      : t('أهلاً بعودتك', 'Welcome back'))
     : mode === 'forgot' ? t('لنستعد الوصول معًا', 'Let’s restore your access')
     : mode === 'force-change' ? t('اختر كلمة سر جديدة', 'Choose a new password')
     : mode === 'recovery' ? t('أمّن حسابك من جديد', 'Secure your account again')
@@ -317,11 +319,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   );
   const nextArrow = isAr ? <ArrowLeft className="h-4 w-4 transition group-hover:-translate-x-1" /> : <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />;
   const strength = passwordStrength(password);
-  const strengthColor = strength <= 1 ? 'bg-[#d9534f]' : strength === 2 ? 'bg-[#e8a23b]' : strength === 3 ? 'bg-[#e8743b]' : 'bg-[#1a8a94]';
-  const subtitle = mode === 'login'
-    ? t('أدخل كلمة السر للوصول إلى طلباتك ورصيدك.', 'Enter your password to access your orders and balance.')
-    : mode === 'activate'
-      ? t('أنشئ كلمة سر قوية ووافق على الشروط لتفعيل حسابك لأول مرة.', 'Create a strong password and accept the terms to activate your account for the first time.')
+  const strengthPercent = Math.round((strength / 4) * 100);
+  const strengthColor = password.length === 0 ? 'text-[#8a9a92] dark:text-[#9bb8bf]' : strength <= 1 ? 'text-[#c45d51]' : strength === 2 ? 'text-[#c39a49]' : strength === 3 ? 'text-[#82a85f]' : 'text-[#398567]';
+  const subtitle = mode === 'login' || mode === 'activate'
+    ? t('أدخل بيانات حسابك للمتابعة بأمان.', 'Enter your account details to continue securely.')
       : mode === 'forgot'
         ? t('اختر الطريقة المناسبة لاستعادة كلمة السر. لن نكشف عن بيانات الحساب.', 'Choose a recovery method. We never reveal private account details.')
         : mode === 'terms-update'
@@ -344,7 +345,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </div>
           <div className="min-w-0 text-white">
             <p className="truncate text-[15px] font-extrabold">{t('نقطة الشحن', 'Charging Point')}</p>
-            <p className="mt-0.5 text-[11px] font-medium tracking-[0.12em] text-white/75">{t('بوابة حساب العميل', 'CUSTOMER ACCOUNT PORTAL')}</p>
+            <p className="mt-0.5 text-[11px] font-medium tracking-[0.12em] text-white/75">{t('حسابك وخدمات الشحن', 'YOUR ACCOUNT & CHARGING SERVICES')}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -367,17 +368,6 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             <div className="mx-auto w-full max-w-[400px]">
               <h1 className="cp-auth__title">{title}</h1>
               <p className="cp-auth__sub">{subtitle}</p>
-
-              {entry?.customer_name && (mode === 'activate' || mode === 'login') && (
-                <div className="cp-auth__chip mt-5">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#e8743b] dark:bg-[#0c2e3a]"><BatteryCharging className="h-5 w-5" /></div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold tracking-[0.1em] text-[#5d7782] dark:text-[#9bb8bf]">{t('الحساب المرتبط بهذا الرمز', 'ACCOUNT LINKED TO THIS QR')}</p>
-                    <p className="mt-0.5 truncate text-sm font-bold">{entry.customer_name}</p>
-                  </div>
-                  <CheckCircle2 className="ms-auto h-4 w-4 shrink-0 text-[#1a8a94]" />
-                </div>
-              )}
 
               <div className="mt-6">
                 {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3 text-sm leading-6 text-[#963f35] dark:border-[#71313c] dark:bg-[#301b22] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}
@@ -403,25 +393,22 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                     if (mode === 'activate') void submitActivation(event);
                     else { event.preventDefault(); void finishPasswordChange(mode === 'recovery'); }
                   }}>
-                    <label className="cp-auth__label">{t('كلمة السر الجديدة', 'New password')}
+                    <label className="cp-auth__label">{t('كلمة المرور الجديدة', 'New password')}
                       <div className="relative">
                         <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className="cp-auth__input !pe-12" placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} />
                         {eyeToggle}
                       </div>
                     </label>
 
-                    <div aria-live="polite" className="space-y-1.5">
-                      <div className="flex gap-1.5" aria-label={t('مؤشر قوة كلمة السر', 'Password strength meter')}>
-                        {[0, 1, 2, 3].map((level) => <span key={level} className={'h-1.5 flex-1 rounded-full transition-colors ' + (strength > level ? strengthColor : 'bg-[#dbe7e9] dark:bg-[#29515c]')} />)}
-                      </div>
-                      <p className="text-xs text-[#5d7782] dark:text-[#9bb8bf]">{password.length === 0 ? t('استخدم كلمة سر يصعب تخمينها', 'Choose a password that is hard to guess') : strength <= 1 ? t('ضعيفة — أضف تنوعًا أكثر', 'Weak — add more variety') : strength === 2 ? t('متوسطة', 'Fair') : strength === 3 ? t('جيدة', 'Good') : t('قوية', 'Strong')}</p>
+                    <div aria-live="polite" className="text-end text-sm font-semibold tabular-nums">
+                      <span className={strengthColor}>{strengthPercent}%</span>
                     </div>
 
-                    <label className="cp-auth__label">{t('تأكيد كلمة السر', 'Confirm password')}
+                    <label className="cp-auth__label">{t('تأكيد كلمة المرور', 'Confirm password')}
                       <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className="cp-auth__input" placeholder={t('أعد كتابة كلمة السر', 'Enter the password again')} />
                     </label>
 
-                    {showTerms && <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#1a8a94]" /><span>{t('أوافق على الشروط والأحكام وسياسة استخدام حساب العميل.', 'I accept the customer account terms and conditions.')}</span></label>}
+                    {showTerms && <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#1a8a94]" /><span>{t('أوافق على الشروط والأحكام وسياسة الخصوصية.', 'I agree to the terms, conditions, and privacy policy.')}</span></label>}
                     {mode === 'force-change' && <p className="rounded-2xl border border-[#f1d3b8] bg-[#fff4e8] p-3.5 text-sm leading-6 text-[#8a4a17] dark:border-[#75502e] dark:bg-[#302219] dark:text-[#ffd9b0]">{t('يجب تغيير كلمة السر المؤقتة قبل عرض بيانات الحساب.', 'You must change the temporary password before viewing account data.')}</p>}
                     <button disabled={busy} type="submit" className="cp-auth__btn group">
                       {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
@@ -463,7 +450,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
               <div className="cp-auth__divider mt-7">
                 <span className="flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" />{t('جلسة محمية لمدة 7 أيام', 'Protected session · 7 days')}</span>
               </div>
-              <p className="mt-3 text-center text-[11px] leading-5 text-[#5d7782] dark:text-[#9bb8bf]">{t('لا نحفظ كلمة السر على جهازنا · لا تشاركها مع أحد.', 'Your password is never stored by us · never share it with anyone.')}</p>
+              <p className="mt-3 text-center text-[11px] leading-5 text-[#5d7782] dark:text-[#9bb8bf]">{t('تبقى مسجلاً للدخول على هذا الجهاز لمدة تصل إلى 7 أيام. احرص على حماية كلمة المرور، وتجنب حفظها على الأجهزة المشتركة.', 'Stay signed in on this device for up to 7 days. Protect your password and avoid saving it on shared devices.')}</p>
             </div>
           </div>
         </section>
