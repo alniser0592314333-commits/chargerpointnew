@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, Wifi, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { callCustomerAccount } from '../../services/customer/customerAuth';
+import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
 import { AppLogo } from '../qr/AppLogo';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import { EnergyCanvasBackground } from '../energy/EnergyCanvasBackground';
@@ -142,6 +142,10 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [actionMessage, setActionMessage] = useState('');
   const [goalRequestBusy, setGoalRequestBusy] = useState(false);
   const [resetRequestBusy, setResetRequestBusy] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordChangeBusy, setPasswordChangeBusy] = useState(false);
   const requestGeneration = useRef(0);
 
   const load = useCallback(async (manual = false) => {
@@ -272,6 +276,42 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       await loadActivity();
     }
     setGoalRequestBusy(false);
+  };
+
+  const changePortalPassword = async () => {
+    if (!online || passwordChangeBusy) return;
+    const common = new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']);
+    if (newPassword.length < 8 || newPassword.length > 128 || common.has(newPassword.trim().toLowerCase()) || /^(.)\\1{7,}$/.test(newPassword)) {
+      setActionMessage(isAr ? 'استخدم كلمة مرور من 8 أحرف على الأقل، وتجنب كلمات المرور الشائعة.' : 'Use at least 8 characters and avoid common passwords.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setActionMessage(isAr ? 'كلمتا المرور غير متطابقتين.' : 'The passwords do not match.');
+      return;
+    }
+    setPasswordChangeBusy(true);
+    setActionMessage('');
+    try {
+      const { error: updateError } = await customerAuth.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        setActionMessage(isAr ? 'تعذّر تغيير كلمة المرور. تحقق من الاتصال وحاول مجددًا.' : 'Password could not be changed. Check your connection and try again.');
+        return;
+      }
+      const { error: completionError } = await callCustomerAccount('complete-password-change', { token });
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setShowPasswordChange(false);
+      if (completionError) {
+        setActionMessage(isAr ? 'تم تحديث كلمة المرور، لكن تعذّر تأكيد الجلسة. سجّل الخروج ثم الدخول مجددًا.' : 'The password was updated, but the session could not be confirmed. Sign out and sign in again.');
+      } else {
+        setActionMessage(isAr ? 'تم تغيير كلمة المرور بنجاح.' : 'Your password was changed successfully.');
+        await loadActivity();
+      }
+    } catch {
+      setActionMessage(isAr ? 'تعذّر إكمال تغيير كلمة المرور. حاول مرة أخرى.' : 'Could not complete the password change. Please try again.');
+    } finally {
+      setPasswordChangeBusy(false);
+    }
   };
 
   const requestPasswordReset = async () => {
@@ -544,6 +584,18 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <p className="cp-portal-eyebrow">{isAr ? 'تفضيلاتك' : 'PREFERENCES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإعدادات' : 'Settings'}</h1>
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={toggleTheme}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}</button></div>
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
+              <div className="cp-portal-subsection">
+                <h2 className="font-bold">{isAr ? 'تغيير كلمة المرور' : 'Change password'}</h2>
+                {!showPasswordChange ? <button type="button" className="cp-portal-secondary-button" disabled={!online} onClick={() => { setActionMessage(''); setShowPasswordChange(true); }}><KeyRound size={17} />{isAr ? 'تغيير كلمة المرور' : 'Change password'}</button>
+                : <form className="cp-portal-password-form" onSubmit={(event) => { event.preventDefault(); void changePortalPassword(); }}>
+                  <label className="cp-portal-password-label">{isAr ? 'كلمة المرور الجديدة' : 'New password'}</label>
+                  <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="cp-portal-password-input" />
+                  <label className="cp-portal-password-label">{isAr ? 'تأكيد كلمة المرور' : 'Confirm password'}</label>
+                  <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} className="cp-portal-password-input" />
+                  <p className="text-xs cp-portal-muted">{isAr ? '8 أحرف على الأقل، وتجنّب كلمات المرور الشائعة.' : 'At least 8 characters; avoid common passwords.'}</p>
+                  <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || passwordChangeBusy}>{passwordChangeBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'حفظ كلمة المرور' : 'Save password'}</button><button type="button" className="cp-portal-secondary-button" disabled={passwordChangeBusy} onClick={() => { setShowPasswordChange(false); setNewPassword(''); setConfirmNewPassword(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
+                </form>}
+              </div>
               <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div><div><span>{isAr ? 'آخر تسجيل دخول على هذا الجهاز' : 'Last sign-in on this device'}</span><strong>{activity?.last_login_at ? safeDate(activity.last_login_at, locale) : '—'}</strong></div><div><span>{isAr ? 'الجلسة الحالية · تنتهي في' : 'Current session · expires'}</span><strong>{activity?.session?.expires_at ? safeDate(activity.session.expires_at, locale) : '—'}</strong></div></div>
               <button type="button" className="cp-portal-signout" onClick={() => onLogout?.()} disabled={!onLogout}><UserRound size={17} />{isAr ? 'تسجيل الخروج' : 'Sign out'}</button>
             </section>}
