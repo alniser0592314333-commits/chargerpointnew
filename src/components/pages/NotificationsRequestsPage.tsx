@@ -6,6 +6,7 @@ import {
 import { useI18n } from '../../i18n/i18nContext';
 import { invokeSupabaseRpc, getSupabaseAuthToken, supabaseRefreshToken } from '../../services/supabase/client';
 import { config } from '../../config/env';
+import { CustomerAccountNotificationsPanel } from './CustomerAccountNotificationsPanel';
 
 type PaymentMethod = 'JAWAL_PAY' | 'PALPAY' | 'BANK_OF_PALESTINE' | string;
 
@@ -214,6 +215,8 @@ export const NotificationsRequestsPage: React.FC = () => {
           <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />{isAr ? 'تحديث القائمة' : 'Refresh list'}
         </button>
       </div>
+
+      <CustomerAccountNotificationsPanel />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1c4140] dark:bg-[#0a2423]">
