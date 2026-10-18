@@ -51,6 +51,7 @@ describe('Public Order Page Energy Redesign & State Machine', () => {
       itemsCount: 1,
       orderTotalMinor: 4000,
       orderDueMinor: 0,
+      orderPaidMinor: 4000,
       token: 'tok-789',
     };
 
@@ -120,7 +121,7 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(0, null, true, 'CHARGING', 0)).toBe('NOT_DUE');
   });
 
-  it('shows a delivered order as paid when no recognized amount remains', () => {
+  it('does not mark a delivered order fully paid when no payment is allocated to it', () => {
     expect(getOrderPaymentViewState(0, null, true, 'DELIVERED', 0)).toBe('NOT_DUE');
   });
 
@@ -137,6 +138,21 @@ describe('Public order QR payment status presentation', () => {
 
   it('shows partial payment when some amount is allocated to this order, regardless of customer balance', () => {
     expect(getOrderPaymentViewState(1200, { status: 'APPROVED' }, true, 'DELIVERED', 300)).toBe('PARTIALLY_PAID');
+  });
+
+  it('uses a partial-payment background when a delivered order has both paid and due amounts', () => {
+    expect(computeBackgroundStateFromOrder({
+      orderId: 'test-partial',
+      orderNumber: 105,
+      customerName: 'Test Customer',
+      status: 'DELIVERED',
+      createdAt: '2026-10-18T12:00:00Z',
+      itemsCount: 1,
+      orderTotalMinor: 5000,
+      orderPaidMinor: 2000,
+      orderDueMinor: 3000,
+      token: 'tok-partial',
+    })).toBe('delivered-unpaid');
   });
 
 });
