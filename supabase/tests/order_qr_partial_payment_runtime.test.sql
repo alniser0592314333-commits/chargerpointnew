@@ -56,8 +56,8 @@ BEGIN
     payment_id, order_item_id, order_id, allocated_amount_minor
   ) VALUES (v_payment_id, v_item_id, v_order_id, 3000);
 
-  SELECT resolved INTO v_result
-  FROM public.public_resolve_order_qr(v_token) AS resolved;
+  SELECT result_json INTO v_result
+  FROM public.public_resolve_order_qr(v_token) AS resolver(result_json);
 
   IF (v_result->>'order_due_minor')::bigint <> 0
      OR (v_result->>'order_paid_minor')::bigint <> 5000 THEN
