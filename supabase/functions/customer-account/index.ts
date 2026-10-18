@@ -412,7 +412,7 @@ Deno.serve(async (request: Request) => {
         const ensureGoalRequestEvent = async (requestId: string) => {
           const { data: existingEvent, error: eventLookupError } = await admin.from("customer_account_events")
             .select("id").eq("customer_id", link.customer_id).eq("event_type", "GOAL_REQUESTED")
-            .eq("request_id", requestId).limit(1).maybeSingle();
+            .contains("payload", { goal_request_id: requestId }).limit(1).maybeSingle();
           if (eventLookupError) {
             console.error("Goal request notification lookup failed");
             return;
@@ -421,7 +421,6 @@ Deno.serve(async (request: Request) => {
           const { error: eventInsertError } = await admin.from("customer_account_events").insert({
             customer_id: link.customer_id,
             event_type: "GOAL_REQUESTED",
-            request_id: requestId,
             payload: { goal_request_id: requestId },
           });
           if (eventInsertError) console.error("Goal request notification could not be recorded");
