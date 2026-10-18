@@ -132,6 +132,110 @@ $function$;
 REVOKE ALL ON FUNCTION public.customer_account_consume_rate_limit(text, text, integer, integer, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.customer_account_consume_rate_limit(text, text, integer, integer, boolean) TO service_role;
 
+
+-- Preserve public order-QR status checks, but customer-QR status requires the
+-- matching active customer account session and current terms acceptance.
+CREATE OR REPLACE FUNCTION public.public_resolve_qr_payment_submission(p_public_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_target_id uuid;
+  v_token_type text;
+  v_result jsonb;
+  v_session_id uuid;
+BEGIN
+  IF p_public_token IS NULL OR length(p_public_token) < 20 OR length(p_public_token) > 128 THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT qt.target_id, qt.token_type INTO v_target_id, v_token_type
+  FROM public.qr_tokens qt
+  WHERE qt.public_token = p_public_token
+    AND qt.token_type IN ('ORDER', 'CUSTOMER')
+    AND qt.is_active IS TRUE
+    AND (qt.expires_at IS NULL OR qt.expires_at > statement_timestamp())
+  LIMIT 1;
+
+  IF v_target_id IS NULL OR v_token_type IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_token_type = 'ORDER' THEN
+    SELECT jsonb_build_object(
+      'status', s.status,
+      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE NULL END,
+      'payment_method', s.payment_method,
+      'created_at', s.created_at,
+      'reviewed_at', s.reviewed_at
+    ) INTO v_result
+    FROM public.qr_payment_submissions s
+    JOIN public.orders o ON o.id = s.order_id
+    JOIN public.customers c ON c.id = s.customer_id
+    LEFT JOIN public.payments p ON p.id = s.payment_id
+    WHERE s.order_id = v_target_id
+      AND o.deleted_at IS NULL
+      AND o.cancelled_at IS NULL
+      AND c.deleted_at IS NULL
+      AND c.is_active IS TRUE
+      AND c.status <> 'DELETED'
+    ORDER BY s.created_at DESC, s.updated_at DESC, s.id DESC
+    LIMIT 1;
+  ELSE
+    IF auth.uid() IS NULL THEN RETURN NULL; END IF;
+    BEGIN
+      v_session_id := NULLIF(auth.jwt() ->> 'session_id', '')::uuid;
+    EXCEPTION WHEN invalid_text_representation THEN
+      RETURN NULL;
+    END;
+    IF v_session_id IS NULL OR NOT EXISTS (
+      SELECT 1
+      FROM public.customer_account_links l
+      JOIN public.customer_account_sessions cs
+        ON cs.customer_id = l.customer_id AND cs.auth_user_id = l.auth_user_id
+      JOIN public.customers c ON c.id = l.customer_id
+      WHERE l.customer_id = v_target_id
+        AND l.auth_user_id = auth.uid()
+        AND l.account_status = 'ACTIVE'
+        AND l.must_change_password IS FALSE
+        AND l.terms_version = '2026-10-18-v1'
+        AND cs.session_id = v_session_id
+        AND cs.revoked_at IS NULL
+        AND cs.expires_at > statement_timestamp()
+        AND c.deleted_at IS NULL
+        AND c.is_active IS TRUE
+        AND c.status <> 'DELETED'
+    ) THEN
+      RETURN NULL;
+    END IF;
+
+    SELECT jsonb_build_object(
+      'status', s.status,
+      'amount_minor', CASE WHEN s.status = 'APPROVED' THEN coalesce(p.amount_minor, s.amount_minor) ELSE NULL END,
+      'payment_method', s.payment_method,
+      'created_at', s.created_at,
+      'reviewed_at', s.reviewed_at
+    ) INTO v_result
+    FROM public.qr_payment_submissions s
+    JOIN public.customers c ON c.id = s.customer_id
+    LEFT JOIN public.payments p ON p.id = s.payment_id
+    WHERE s.customer_id = v_target_id
+      AND c.deleted_at IS NULL
+      AND c.is_active IS TRUE
+      AND c.status <> 'DELETED'
+    ORDER BY s.created_at DESC, s.updated_at DESC, s.id DESC
+    LIMIT 1;
+  END IF;
+
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.public_resolve_qr_payment_submission(text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.public_resolve_qr_payment_submission(text) TO anon, authenticated, service_role;
+
 -- The old QR projection disclosed financial history to anyone holding the QR.
 -- From this release forward, only the server-side customer-account function may
 -- invoke it after verifying the customer's authenticated user and active session.
