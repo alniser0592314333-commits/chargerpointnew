@@ -20,14 +20,15 @@ export interface PublicOrderPageProps {
 /**
  * Derives the public payment action from the canonical balance and QR-specific submission state.
  */
-export type OrderPaymentViewState = 'PAID' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNPAID' | 'CREDIT_COVERED' | 'NOT_DUE' | 'UNAVAILABLE';
+export type OrderPaymentViewState = 'PAID' | 'PENDING' | 'APPROVED' | 'PARTIALLY_PAID' | 'REJECTED' | 'UNPAID' | 'CREDIT_COVERED' | 'NOT_DUE' | 'UNAVAILABLE';
 
 export const getOrderPaymentViewState = (
   dueMinor: number | null | undefined,
   submission: Pick<PublicQrPaymentSubmissionRpcResult, 'status'> | null,
   customerHasPositiveCredit: boolean | null | undefined,
   orderStatus: string | null | undefined,
-  customerCreditCoversOrder: boolean | null | undefined = false
+  customerCreditCoversOrder: boolean | null | undefined = false,
+  orderTotalMinor?: number | null
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
   if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
@@ -35,6 +36,11 @@ export const getOrderPaymentViewState = (
   if (dueMinor <= 0 && ['DELIVERED', 'COMPLETED'].includes(status)) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
   if (dueMinor <= 0) return customerHasPositiveCredit && customerCreditCoversOrder === true ? 'CREDIT_COVERED' : 'NOT_DUE';
+  // An approved receipt is not proof that the order is fully paid. The server's
+  // outstanding amount is authoritative; classify a remaining balance separately.
+  if (typeof orderTotalMinor === 'number' && Number.isFinite(orderTotalMinor) && orderTotalMinor > dueMinor) {
+    return 'PARTIALLY_PAID';
+  }
   if (submission?.status === 'APPROVED') return 'APPROVED';
   if (submission?.status === 'REJECTED') return 'REJECTED';
   // The server-calculated due is already net of available positive customer credit.
@@ -393,7 +399,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       : undefined;
 
   const statusConfig = getOrderStatusConfig(data?.status, due);
-  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status, customerCreditCoversOrder);
+  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status, customerCreditCoversOrder, total);
   const orderQrSubmissionLimitReached = data?.orderQrSubmissionLimitReached === true;
   const StatusIcon = statusConfig.icon;
 
@@ -717,6 +723,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                 {paymentViewState === 'UNPAID' ||
                 paymentViewState === 'PENDING' ||
                 paymentViewState === 'APPROVED' ||
+                paymentViewState === 'PARTIALLY_PAID' ||
                 paymentViewState === 'REJECTED' ||
                 paymentViewState === 'CREDIT_COVERED' ||
                 paymentViewState === 'NOT_DUE' ? (
@@ -753,6 +760,18 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                             : (isAr
                                 ? `تم اعتماد الدفعة لهذا الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.`
                                 : `Your payment was approved for this order. Remaining balance: ${formatCurrency(due ?? 0)}.`)}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {paymentViewState === 'PARTIALLY_PAID' && (
+                      <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
+                        <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
+                        <div className="order-fully-paid-text">
+                          <h3>{isAr ? 'الطلب مدفوع جزئياً' : 'Order Partially Paid'}</h3>
+                          <p>{submission?.status === 'APPROVED'
+                            ? (isAr ? `تم قبول الدفعة، لكن بقي ${formatCurrency(due ?? 0)} مستحقاً على هذا الطلب.` : `Payment accepted, but ${formatCurrency(due ?? 0)} remains due on this order.`)
+                            : (isAr ? `تم سداد جزء من قيمة الطلب. المبلغ المتبقي: ${formatCurrency(due ?? 0)}.` : `Part of this order has been paid. Remaining balance: ${formatCurrency(due ?? 0)}.`)}</p>
                         </div>
                       </div>
                     )}
@@ -824,11 +843,11 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       </div>
                     )}
 
-                    {paymentViewState === 'APPROVED' && !orderQrSubmissionLimitReached && (
+                    {(paymentViewState === 'APPROVED' || paymentViewState === 'PARTIALLY_PAID') && !orderQrSubmissionLimitReached && (
                       <div className="order-integrated-pay-action">
                         <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
                           <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
-                          <span className="order-pay-btn-label">{isAr ? 'سداد المتبقي' : 'Pay Remaining Balance'}</span>
+                          <span className="order-pay-btn-label">{paymentViewState === 'PARTIALLY_PAID' ? (isAr ? 'استكمال الدفع' : 'Complete Payment') : (isAr ? 'سداد المتبقي' : 'Pay Remaining Balance')}</span>
                         </a>
                       </div>
                     )}
