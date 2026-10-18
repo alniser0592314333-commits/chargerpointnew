@@ -1818,3 +1818,195 @@ html.light .order-public-qr-page .order-payment-notice.is-unavailable .order-ful
   background: rgba(225, 29, 72, 0.09);
   border-color: rgba(225, 29, 72, 0.25);
 }
+
+
+/* Public order QR: align the customer-facing visual identity with LoginPage. */
+.order-public-qr-page {
+  --order-bg: #061f1c;
+  --order-text: #daf1de;
+  --order-text-secondary: #80a89a;
+  --order-muted: #5e8674;
+  --order-line: #14423b;
+  --order-line-strong: rgba(128, 168, 154, 0.34);
+  --order-glass: #0a2e28;
+  --order-glass-card: #0b2924;
+  --order-glass-elevated: #0b2924;
+  --order-glass-border: #14423b;
+  --order-chip: rgba(128, 168, 154, 0.08);
+  --order-chip-hover: #0a2e28;
+  --order-specular: none;
+  --order-shadow: 0 20px 48px rgba(0, 0, 0, 0.22);
+  --order-shadow-elevated: 0 24px 56px rgba(0, 0, 0, 0.3);
+  --order-green: #34d399;
+  --order-green-glow: rgba(16, 185, 129, 0.16);
+  background-color: var(--order-bg) !important;
+  font-family: Inter, "Noto Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+html.light .order-public-qr-page {
+  --order-bg: #f9fafb;
+  --order-text: #111827;
+  --order-text-secondary: #6b7280;
+  --order-muted: #9ca3af;
+  --order-line: #e5e7eb;
+  --order-line-strong: #d1d5db;
+  --order-glass: #ffffff;
+  --order-glass-card: #ffffff;
+  --order-glass-elevated: #ffffff;
+  --order-glass-border: #e5e7eb;
+  --order-chip: #f9fafb;
+  --order-chip-hover: #f3f4f6;
+  --order-specular: none;
+  --order-shadow: 0 20px 48px rgba(17, 24, 39, 0.08);
+  --order-shadow-elevated: 0 24px 56px rgba(17, 24, 39, 0.14);
+  --order-green: #059669;
+  --order-green-glow: rgba(5, 150, 105, 0.12);
+  background-color: var(--order-bg) !important;
+}
+
+/* Keep the existing energy animation as a quiet accent, not a competing visual. */
+.order-public-qr-page > canvas {
+  opacity: 0.2;
+}
+
+html.light .order-public-qr-page > canvas {
+  opacity: 0.08;
+}
+
+/* Login-style compact header and centered content instead of a separate desktop identity. */
+.order-qr-header {
+  position: relative;
+  border-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.order-qr-header__inner {
+  width: min(100% - 32px, 448px);
+  min-height: 64px;
+  gap: 10px;
+}
+
+.order-brand {
+  gap: 9px;
+}
+
+.order-brand__text strong {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.order-brand__text span {
+  font-size: 11px;
+  color: var(--order-text-secondary);
+}
+
+.order-icon-button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 9px;
+  border-color: var(--order-line);
+  color: var(--order-text-secondary);
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.order-icon-button:hover:not(:disabled),
+.order-icon-button--active {
+  color: var(--order-text);
+  border-color: var(--order-line-strong);
+  background: var(--order-chip-hover);
+  transform: none;
+}
+
+.order-settings-dropdown {
+  border-color: var(--order-glass-border);
+  border-radius: 16px;
+  background: var(--order-glass-elevated);
+  box-shadow: var(--order-shadow-elevated);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.order-qr-main,
+.order-public-qr-page .order-qr-main {
+  width: min(100% - 32px, 560px);
+  margin-inline: auto;
+  padding: 12px 0 32px;
+}
+
+.order-public-qr-page .order-qr-content-layout {
+  display: block !important;
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+.order-public-qr-page .order-qr-primary-content {
+  width: 100%;
+  min-width: 0;
+}
+
+.order-public-qr-page .order-qr-visual {
+  display: none !important;
+}
+
+/* Match the solid, calm rounded card used by the login screen. */
+.order-crystal-card,
+html.light .order-crystal-card,
+.order-crystal-card.state-charging,
+.order-crystal-card.state-charged,
+.order-crystal-card.state-delivered-paid,
+.order-crystal-card.state-delivered-unpaid,
+html.light .order-crystal-card.state-charging,
+html.light .order-crystal-card.state-charged,
+html.light .order-crystal-card.state-delivered-paid,
+html.light .order-crystal-card.state-delivered-unpaid {
+  border: 1px solid var(--order-line);
+  border-radius: 16px;
+  background: var(--order-glass-card);
+  box-shadow: var(--order-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.order-crystal-card {
+  padding: 24px;
+}
+
+.order-crystal-divider {
+  background: var(--order-line);
+}
+
+.order-qr-footer {
+  color: var(--order-muted);
+  border-color: transparent;
+  font-size: 11px;
+  padding: 8px 16px 20px;
+}
+
+@media (max-width: 640px) {
+  .order-qr-header__inner {
+    width: calc(100% - 24px);
+    min-height: 60px;
+    gap: 8px;
+  }
+
+  .order-qr-main,
+  .order-public-qr-page .order-qr-main {
+    width: calc(100% - 24px);
+    padding-top: 8px;
+    padding-bottom: 24px;
+  }
+
+  .order-crystal-card {
+    padding: 20px 16px;
+    border-radius: 16px;
+  }
+}
