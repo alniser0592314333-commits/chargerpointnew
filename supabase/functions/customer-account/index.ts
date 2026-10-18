@@ -409,24 +409,28 @@ Deno.serve(async (request: Request) => {
           .select("id").eq("customer_id", link.customer_id).eq("status", "PENDING").limit(1).maybeSingle();
         if (activeGoalError || pendingRequestError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         if (activeGoal) return respond(409, { ok: false, error: "GOAL_ALREADY_ACTIVE" });
-        const ensureGoalRequestEvent = async (requestId: string) => {
+        const ensureGoalRequestEvent = async (requestId: string): Promise<boolean> => {
           const { data: existingEvent, error: eventLookupError } = await admin.from("customer_account_events")
             .select("id").eq("customer_id", link.customer_id).eq("event_type", "GOAL_REQUESTED")
             .contains("payload", { goal_request_id: requestId }).limit(1).maybeSingle();
           if (eventLookupError) {
             console.error("Goal request notification lookup failed");
-            return;
+            return false;
           }
-          if (existingEvent) return;
+          if (existingEvent) return true;
           const { error: eventInsertError } = await admin.from("customer_account_events").insert({
             customer_id: link.customer_id,
             event_type: "GOAL_REQUESTED",
             payload: { goal_request_id: requestId },
           });
-          if (eventInsertError) console.error("Goal request notification could not be recorded");
+          if (eventInsertError) {
+            console.error("Goal request notification could not be recorded");
+            return false;
+          }
+          return true;
         };
         if (pendingRequest) {
-          await ensureGoalRequestEvent(pendingRequest.id);
+          if (!(await ensureGoalRequestEvent(pendingRequest.id))) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
           return respond(200, { ok: true, already_pending: true, status: "PENDING" });
         }
 
@@ -444,13 +448,13 @@ Deno.serve(async (request: Request) => {
           if (createError.code === "23505") {
             const { data: duplicateRequest } = await admin.from("goal_requests")
               .select("id").eq("customer_id", link.customer_id).eq("status", "PENDING").limit(1).maybeSingle();
-            if (duplicateRequest) await ensureGoalRequestEvent(duplicateRequest.id);
+            if (!duplicateRequest || !(await ensureGoalRequestEvent(duplicateRequest.id))) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
             return respond(200, { ok: true, already_pending: true, status: "PENDING" });
           }
           console.error("Customer goal request could not be recorded");
           return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         }
-        await ensureGoalRequestEvent(created.id);
+        if (!(await ensureGoalRequestEvent(created.id))) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         return respond(200, { ok: true, already_pending: false, request: created });
       }
 
