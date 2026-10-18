@@ -67,7 +67,7 @@ Deno.serve(async (request: Request) => {
 
   async function linkForUser(userId: string) {
     const { data, error } = await admin.from("customer_account_links")
-      .select("customer_id,auth_user_id,login_email,account_status,must_change_password,email_verified")
+      .select("customer_id,auth_user_id,login_email,auth_provider,account_status,must_change_password,email_verified")
       .eq("auth_user_id", userId).maybeSingle();
     if (error || !data) return null;
     const { data: customer, error: customerError } = await admin.from("customers")
@@ -133,7 +133,7 @@ Deno.serve(async (request: Request) => {
       const resolved = await resolveQr(input.token);
       if (!resolved) return genericFailure();
       const { data: link, error } = await admin.from("customer_account_links")
-        .select("account_status,must_change_password,email_verified,login_email")
+        .select("account_status,must_change_password,email_verified,login_email,auth_provider")
         .eq("customer_id", resolved.customer.id).maybeSingle();
       if (error) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       if (link && link.account_status !== "ACTIVE") return genericFailure();
@@ -142,6 +142,7 @@ Deno.serve(async (request: Request) => {
         customer_name: resolved.customer.name,
         email_recovery_available: Boolean(link?.email_verified && link?.login_email &&
           !String(link.login_email).endsWith(".invalid")),
+        auth_provider: link?.auth_provider ?? null,
       });
     }
 
@@ -165,7 +166,7 @@ Deno.serve(async (request: Request) => {
       }
       const { error: linkError } = await admin.from("customer_account_links").insert({
         customer_id: resolved.customer.id, auth_user_id: created.user.id, login_email: loginEmail,
-        account_status: "ACTIVE", must_change_password: false, email_verified: false,
+        account_status: "ACTIVE", auth_provider: "password", must_change_password: false, email_verified: false,
         terms_version: TERMS_VERSION, terms_accepted_at: now.toISOString(), password_changed_at: now.toISOString(),
       });
       if (linkError) {
@@ -190,7 +191,7 @@ Deno.serve(async (request: Request) => {
 
     if (action === "login") {
       const resolved = await resolveQr(input.token);
-      const password = normalize(input.password, 128);
+      const password = rawPassword(input.password);
       if (!resolved || !password) return genericFailure();
       const { data: link, error: linkError } = await admin.from("customer_account_links")
         .select("customer_id,auth_user_id,login_email,account_status,must_change_password,email_verified")
@@ -218,7 +219,10 @@ Deno.serve(async (request: Request) => {
       if (existing) return respond(409, { ok: false, error: "ACCOUNT_ALREADY_ACTIVATED" });
       const { error: linkError } = await admin.from("customer_account_links").insert({
         customer_id: resolved.customer.id, auth_user_id: authenticated.user.id,
-        login_email: authenticated.user.email.toLowerCase(), account_status: "ACTIVE",
+        login_email: authenticated.user.email.toLowerCase(),
+        auth_provider: ["google", "apple", "facebook"].includes(String(authenticated.user.app_metadata?.provider))
+          ? String(authenticated.user.app_metadata?.provider) : "password",
+        account_status: "ACTIVE",
         must_change_password: false, email_verified: Boolean(authenticated.user.email_confirmed_at),
         terms_version: TERMS_VERSION, terms_accepted_at: now.toISOString(), password_changed_at: now.toISOString(),
       });
@@ -242,13 +246,16 @@ Deno.serve(async (request: Request) => {
         if (!(await registerSession(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         return respond(200, {
           ok: true, customer_name: link.customer.name,
+          auth_provider: link.auth_provider,
           must_change_password: link.must_change_password,
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
         });
       }
 
       if (action === "verify-session") {
-        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        const resolved = await resolveQr(input.token);
+        if (!resolved || resolved.customer.id !== link.customer_id ||
+          !(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         return respond(200, {
           ok: true, customer_name: link.customer.name,
           must_change_password: link.must_change_password,
