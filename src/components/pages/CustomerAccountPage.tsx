@@ -341,6 +341,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           <label className="block text-sm font-semibold">{t('كلمة السر الجديدة', 'New password')}
             <div className="relative mt-1"><input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 pe-11 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15 dark:border-emerald-900 dark:bg-[#061f1c]" placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 end-2 grid place-items-center px-2 text-slate-500" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
           </label>
+          <div aria-live="polite" className="space-y-1.5">
+            <div className="flex gap-1" aria-label={t('مؤشر قوة كلمة السر', 'Password strength meter')}>
+              {[0, 1, 2, 3].map((level) => <span key={level} className={`h-1.5 flex-1 rounded-full ${passwordStrength(password) > level ? (passwordStrength(password) <= 1 ? 'bg-rose-500' : passwordStrength(password) === 2 ? 'bg-amber-500' : passwordStrength(password) === 3 ? 'bg-lime-600' : 'bg-emerald-600') : 'bg-slate-200 dark:bg-emerald-950'}`} />)}
+            </div>
+            <p className="text-xs text-slate-500 dark:text-emerald-100/60">{password.length === 0 ? t('قوة كلمة السر', 'Password strength') : passwordStrength(password) <= 1 ? t('ضعيفة', 'Weak') : passwordStrength(password) === 2 ? t('متوسطة', 'Fair') : passwordStrength(password) === 3 ? t('جيدة', 'Good') : t('قوية', 'Strong')}</p>
+          </div>
           <label className="block text-sm font-semibold">{t('تأكيد كلمة السر', 'Confirm password')}
             <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15 dark:border-emerald-900 dark:bg-[#061f1c]" />
           </label>
