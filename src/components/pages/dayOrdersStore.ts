@@ -5471,47 +5471,20 @@ export const getPublicCustomerByToken = async (
     return null;
   }
 
-  if (!isBrowserOffline()) {
-    if (!getSupabaseStatus().isConfigured) {
-      throw new Error('CUSTOMER_QR_SUPABASE_NOT_CONFIGURED: Cannot resolve a public customer QR without the central service.');
-    }
-
-    const supabaseResult = await rpcResolveCustomerQr(publicToken);
-    if (!supabaseResult) return null;
-
-    return {
-      customerName: supabaseResult.customerName,
-      customerCode: supabaseResult.customerCode,
-      token: publicToken,
-    };
+  // Public capability routes are online-only: never hydrate or read the admin's local business store.
+  if (isBrowserOffline()) return null;
+  if (!getSupabaseStatus().isConfigured) {
+    throw new Error('CUSTOMER_QR_SUPABASE_NOT_CONFIGURED: Cannot resolve a public customer QR without the central service.');
   }
 
-  // Offline-only fallback: this can resolve only on a device that already holds the token.
-  await ensureStoreHydrated();
-  await initDbIfNeeded();
+  const supabaseResult = await rpcResolveCustomerQr(publicToken);
+  if (!supabaseResult) return null;
 
-  const allTokens = await localDb.list<QrTokenEntity>('qr_tokens');
-  const localRecord =
-    (await localDb.get<QrTokenEntity>('qr_tokens', publicToken)) ||
-    allTokens.find(
-      (t) => (t.publicToken === publicToken || t.tokenHash === publicToken) && t.isActive
-    );
-
-  if (localRecord && localRecord.isActive && localRecord.tokenType === 'CUSTOMER') {
-    const customer =
-      customersMap.get(localRecord.targetId) ||
-      (await localDb.get<CustomerEntity>('customers', localRecord.targetId));
-
-    if (customer && customer.isActive) {
-      return {
-        customerName: customer.name,
-        customerCode: getCustomerCode(customer),
-        token: publicToken,
-      };
-    }
-  }
-
-  return null;
+  return {
+    customerName: supabaseResult.customerName,
+    customerCode: supabaseResult.customerCode,
+    token: publicToken,
+  };
 };
 
 export interface PublicOrderQrData {
@@ -5558,132 +5531,66 @@ export interface PublicOrderQrData {
 export const getPublicOrderByToken = async (
   publicToken: string
 ): Promise<PublicOrderQrData | null> => {
-  await ensureStoreHydrated();
-  await initDbIfNeeded();
-
   if (!publicToken || typeof publicToken !== 'string') {
     return null;
   }
 
-  // 1. Central Database Lookup via Supabase RPC (when online)
-  try {
-    const supabaseResult = await rpcResolveOrderQr(publicToken);
-    if (supabaseResult) {
-      return {
-        orderId: supabaseResult.order_id,
-        orderNumber: supabaseResult.order_number,
-        customerName: supabaseResult.customer_name,
-        customerCode: supabaseResult.customer_code,
-        status: supabaseResult.status,
-        createdAt: supabaseResult.created_at,
-        itemsCount: supabaseResult.items_count,
-        orderTotalMinor: supabaseResult.order_total_minor,
-        orderDueMinor: supabaseResult.order_due_minor,
-        customerHasPositiveCredit: typeof supabaseResult.customer_has_positive_credit === 'boolean' ? supabaseResult.customer_has_positive_credit : undefined,
-        orderQrSubmissionLimitReached: typeof supabaseResult.order_qr_submission_limit_reached === 'boolean' ? supabaseResult.order_qr_submission_limit_reached : undefined,
-        items: supabaseResult.items?.map((it) => {
-          const dev = it.device_type_id ? devicesMap.get(it.device_type_id) : undefined;
-          const foundBySnapshot = !dev
-            ? Array.from(devicesMap.values()).find(
-                (d) => d.name === it.name || d.nameAr === it.name
-              )
-            : undefined;
-          const activeDev = dev || foundBySnapshot;
-
-          const resolvedNameEn =
-            it.name_en ||
-            activeDev?.nameEn ||
-            (it.device_type_id ? UI_DEVICE_LOCALIZATIONS[it.device_type_id]?.en : undefined) ||
-            UI_DEVICE_NAME_MAP[it.name]?.en;
-
-          const resolvedNameAr =
-            it.name_ar ||
-            activeDev?.nameAr ||
-            activeDev?.name ||
-            (it.device_type_id ? UI_DEVICE_LOCALIZATIONS[it.device_type_id]?.ar : undefined) ||
-            UI_DEVICE_NAME_MAP[it.name]?.ar ||
-            it.name;
-
-          return {
-            ...it,
-            name_ar: resolvedNameAr,
-            name_en: resolvedNameEn,
-            device_type_id: it.device_type_id || activeDev?.id,
-          };
-        }),
-        token: publicToken,
-      };
-    }
-  } catch (err) {
-    console.warn('Supabase public order lookup deferred, querying localDb:', err);
+  // Public QR links never bootstrap, inspect, or fall back to administrator-local business data.
+  // They fail closed while offline instead of displaying a stale local snapshot as current.
+  if (isBrowserOffline()) return null;
+  if (!getSupabaseStatus().isConfigured) {
+    throw new Error('ORDER_QR_SUPABASE_NOT_CONFIGURED: Cannot resolve a public order QR without the central service.');
   }
 
-  // 2. Offline / Foundation Persistence Lookup via localDb & in-memory maps
-  const allTokens = await localDb.list<QrTokenEntity>('qr_tokens');
-  const localRecord =
-    (await localDb.get<QrTokenEntity>('qr_tokens', publicToken)) ||
-    allTokens.find(
-      (t) => (t.publicToken === publicToken || t.tokenHash === publicToken) && t.isActive
-    );
+  const supabaseResult = await rpcResolveOrderQr(publicToken);
+  if (!supabaseResult) return null;
 
-  if (localRecord && localRecord.isActive && localRecord.tokenType === 'ORDER') {
-    const order =
-      ordersMap.get(localRecord.targetId) ||
-      (await localDb.get<OrderEntity>('orders', localRecord.targetId));
+  return {
+    orderId: supabaseResult.order_id,
+    orderNumber: supabaseResult.order_number,
+    customerName: supabaseResult.customer_name,
+    customerCode: supabaseResult.customer_code,
+    status: supabaseResult.status,
+    createdAt: supabaseResult.created_at,
+    itemsCount: supabaseResult.items_count,
+    orderTotalMinor: supabaseResult.order_total_minor,
+    orderDueMinor: supabaseResult.order_due_minor,
+    customerHasPositiveCredit: typeof supabaseResult.customer_has_positive_credit === 'boolean'
+      ? supabaseResult.customer_has_positive_credit : undefined,
+    orderQrSubmissionLimitReached: typeof supabaseResult.order_qr_submission_limit_reached === 'boolean'
+      ? supabaseResult.order_qr_submission_limit_reached : undefined,
+    items: supabaseResult.items?.map((it) => {
+      const dev = it.device_type_id ? devicesMap.get(it.device_type_id) : undefined;
+      const foundBySnapshot = !dev
+        ? Array.from(devicesMap.values()).find(
+            (d) => d.name === it.name || d.nameAr === it.name
+          )
+        : undefined;
+      const activeDev = dev || foundBySnapshot;
 
-    if (order && !order.deletedAt) {
-      const customer =
-        customersMap.get(order.customerId) ||
-        (await localDb.get<CustomerEntity>('customers', order.customerId));
+      const resolvedNameEn =
+        it.name_en ||
+        activeDev?.nameEn ||
+        (it.device_type_id ? UI_DEVICE_LOCALIZATIONS[it.device_type_id]?.en : undefined) ||
+        UI_DEVICE_NAME_MAP[it.name]?.en;
 
-      const customerName = customer ? customer.name : 'عميل';
-      let orderItems = Array.from(itemsMap.values()).filter(
-        (i) => i.orderId === order.id && !i.deletedAt
-      );
-      if (orderItems.length === 0) {
-        const allDbItems =
-          (await localDb.list<OrderItemEntity>('orderItems').catch(() => [])) ||
-          (await localDb.list<OrderItemEntity>('order_items').catch(() => [])) ||
-          [];
-        orderItems = allDbItems.filter((i) => i.orderId === order.id && !i.deletedAt);
-      }
+      const resolvedNameAr =
+        it.name_ar ||
+        activeDev?.nameAr ||
+        activeDev?.name ||
+        (it.device_type_id ? UI_DEVICE_LOCALIZATIONS[it.device_type_id]?.ar : undefined) ||
+        UI_DEVICE_NAME_MAP[it.name]?.ar ||
+        it.name;
 
       return {
-        orderId: order.id,
-        orderNumber: order.displayNumber,
-        customerName,
-        status: order.status,
-        createdAt: order.createdAt,
-        itemsCount: orderItems.length,
-        items: orderItems.map((item: OrderItemEntity) => {
-          const dt = devicesMap.get(item.deviceTypeId);
-          const resolvedNameEn =
-            dt?.nameEn ||
-            UI_DEVICE_LOCALIZATIONS[item.deviceTypeId]?.en ||
-            (item.deviceNameSnapshot ? UI_DEVICE_NAME_MAP[item.deviceNameSnapshot]?.en : undefined);
-          const resolvedNameAr =
-            dt?.nameAr ||
-            dt?.name ||
-            UI_DEVICE_LOCALIZATIONS[item.deviceTypeId]?.ar ||
-            (item.deviceNameSnapshot ? UI_DEVICE_NAME_MAP[item.deviceNameSnapshot]?.ar : undefined) ||
-            item.deviceNameSnapshot ||
-            'جهاز';
-
-          return {
-            name: item.deviceNameSnapshot || dt?.name || 'جهاز',
-            name_ar: resolvedNameAr,
-            name_en: resolvedNameEn,
-            device_type_id: item.deviceTypeId,
-            status: item.status,
-            has_charger: item.hasCharger,
-          };
-        }),
-        token: publicToken,
+        ...it,
+        name_ar: resolvedNameAr,
+        name_en: resolvedNameEn,
+        device_type_id: it.device_type_id || activeDev?.id,
       };
-    }
-  }
-
-  return null;
+    }),
+    token: publicToken,
+  };
 };
 
 export interface UIRecentFinancialActivityItem {

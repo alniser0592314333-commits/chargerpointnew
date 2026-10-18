@@ -26,7 +26,7 @@ import { CustomerDetailPage } from './components/pages/CustomerDetailPage';
 import { CustomerQrDesignPage } from './components/pages/CustomerQrDesignPage';
 import { CustomerQrPage } from './components/pages/CustomerQrPage';
 import { OrderQrPage } from './components/pages/OrderQrPage';
-import { PublicCustomerQrPage } from './components/pages/PublicCustomerQrPage';
+import { PublicCustomerPortalPage } from './components/pages/PublicCustomerPortalPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
@@ -115,6 +115,16 @@ export default function App() {
   // Authoritatively check auth, then gate application access on local store readiness.
   useEffect(() => {
     let isMounted = true;
+
+    // Public capability routes must not inspect an existing admin session or
+    // hydrate/pull the administrator's local and remote business data.
+    if (isPublicPortalPath(parseRoute(window.location.pathname).pathname)) {
+      setIsAuthenticated(false);
+      setUserSession(null);
+      setIsAuthChecking(false);
+      return () => { isMounted = false; };
+    }
+
     let authenticatedSession: UserSession | null = null;
     const initAuth = async () => {
       try {
@@ -370,11 +380,11 @@ export default function App() {
     }
     if (pathname.startsWith('/c/')) {
       const token = pathname.replace('/c/', '');
-      return <PublicCustomerQrPage token={token} />;
+      return <PublicCustomerPortalPage token={token} />;
     }
     if (pathname.startsWith('/public/qr/customer/')) {
       const token = pathname.replace('/public/qr/customer/', '');
-      return <PublicCustomerQrPage token={token} />;
+      return <PublicCustomerPortalPage token={token} />;
     }
     if (pathname.startsWith('/pay/')) {
       const token = pathname.replace('/pay/', '');
