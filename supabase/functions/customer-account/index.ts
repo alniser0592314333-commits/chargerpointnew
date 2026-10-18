@@ -72,14 +72,14 @@ Deno.serve(async (request: Request) => {
         .select("id,name,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
       if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
         customer.status === "DELETED") return null;
-      return { token, customer };
+      return { token, customer, isQrToken: true };
     }
 
     const { data: customer, error: customerError } = await admin.from("customers")
       .select("id,name,is_active,status,deleted_at").eq("customer_code", token).maybeSingle();
     if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
       customer.status === "DELETED") return null;
-    return { token, customer };
+    return { token, customer, isQrToken: false };
   }
 
   async function userFromBearer() {
@@ -175,9 +175,13 @@ Deno.serve(async (request: Request) => {
         .eq("customer_id", resolved.customer.id).maybeSingle();
       if (error) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       if (link && link.account_status !== "ACTIVE") return genericFailure();
+      const { data: customerQr } = await admin.from("qr_tokens")
+        .select("public_token").eq("target_id", resolved.customer.id).eq("token_type", "CUSTOMER")
+        .eq("is_active", true).maybeSingle();
       return respond(200, {
         ok: true, valid: true, activated: Boolean(link),
         customer_name: resolved.customer.name,
+        customer_qr_token: typeof customerQr?.public_token === "string" ? customerQr.public_token : null,
         email_recovery_available: Boolean(link?.email_verified && link?.login_email &&
           !String(link.login_email).endsWith(".invalid")),
         auth_provider: link?.auth_provider ?? null,
@@ -188,7 +192,7 @@ Deno.serve(async (request: Request) => {
     if (action === "activate-password") {
       const resolved = await resolveQr(input.token);
       const password = rawPassword(input.password);
-      if (!resolved || !(await rateLimit(resolved.customer.id, "ACTIVATE", 5, 3600)) ||
+      if (!resolved || !resolved.isQrToken || !(await rateLimit(resolved.customer.id, "ACTIVATE", 5, 3600)) ||
         !strongPassword(password) || input.confirmPassword !== password ||
         input.termsAccepted !== true || input.termsVersion !== TERMS_VERSION) return genericFailure();
       const { data: existing, error: existingError } = await admin.from("customer_account_links")
