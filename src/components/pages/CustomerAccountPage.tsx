@@ -279,7 +279,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             {t('تسجيل الخروج', 'Sign out')}
           </button>
         </div>
-        {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-emerald-700 dark:text-slate-200">{message}</p>}
+        {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
         <PublicCustomerPortalPage token={token} />
       </div>
     );
