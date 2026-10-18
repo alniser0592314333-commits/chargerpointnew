@@ -287,8 +287,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
   const showTerms = mode === 'activate';
   const showPasswordForm = mode === 'activate' || mode === 'force-change' || mode === 'recovery';
-  const title = mode === 'activate' ? t('ابدأ حسابك الخاص', 'Create your account')
-    : mode === 'login' ? t('أهلًا بعودتك', 'Welcome back')
+  const title = mode === 'activate' || mode === 'login'
+    ? (entry?.customer_name
+      ? t('أهلاً بعودتك، ', 'Welcome back, ') + entry.customer_name
+      : t('أهلاً بعودتك', 'Welcome back'))
     : mode === 'forgot' ? t('لنستعد الوصول معًا', 'Let’s restore your access')
     : mode === 'force-change' ? t('اختر كلمة سر جديدة', 'Choose a new password')
     : mode === 'recovery' ? t('أمّن حسابك من جديد', 'Secure your account again')
@@ -325,7 +327,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </div>
           <div className="min-w-0">
             <p className="truncate text-[15px] font-extrabold tracking-tight">{t('نقطة الشحن', 'Charging Point')}</p>
-            <p className="mt-0.5 text-[11px] font-medium tracking-[0.12em] text-[#7c9187] dark:text-[#cbd5e1]">{t('بوابة حساب العميل', 'CUSTOMER ACCOUNT PORTAL')}</p>
+            <p className="mt-0.5 text-[11px] font-medium tracking-[0.12em] text-[#7c9187] dark:text-[#cbd5e1]">{t('حسابك وخدمات الشحن', 'YOUR ACCOUNT & CHARGING SERVICES')}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -385,10 +387,8 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           <div className="max-w-[500px]">
             <h1 className="text-[clamp(1.9rem,3vw,2.75rem)] font-semibold leading-tight tracking-[-0.04em] text-[#17382f] dark:text-[#f3f4f6]">{title}</h1>
             <p className="mt-3 max-w-[42ch] text-sm leading-7 text-[#72867b] dark:text-[#cbd5e1]">
-              {mode === 'login'
-                ? t('أدخل كلمة السر للوصول إلى طلباتك ورصيدك.', 'Enter your password to access your orders and balance.')
-                : mode === 'activate'
-                  ? t('أنشئ كلمة سر قوية ووافق على الشروط لتفعيل حسابك لأول مرة.', 'Create a strong password and accept the terms to activate your account for the first time.')
+              {mode === 'login' || mode === 'activate'
+                ? t('أدخل بيانات حسابك للمتابعة بأمان.', 'Enter your account details to continue securely.')
                   : mode === 'forgot'
                     ? t('اختر الطريقة المناسبة لاستعادة كلمة السر. لن نكشف عن بيانات الحساب.', 'Choose a recovery method. We never reveal private account details.')
                     : mode === 'terms-update'
@@ -399,16 +399,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             </p>
           </div>
 
-          {entry?.customer_name && (mode === 'activate' || mode === 'login') && (
-            <div className="mt-6 flex items-center gap-3 rounded-2xl border border-[#dce7de] bg-[#f1f5ef] px-4 py-3.5 dark:border-[#374151] dark:bg-[#1f2937]">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#3a715a] dark:bg-[#374151] dark:text-[#cbd5e1]"><BatteryCharging className="h-5 w-5" /></div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold tracking-[0.13em] text-[#82958a]">{t('الحساب المرتبط بهذا الرمز', 'ACCOUNT LINKED TO THIS QR')}</p>
-                <p className="mt-0.5 truncate text-sm font-bold text-[#244b3c] dark:text-[#d8ebde]">{entry.customer_name}</p>
-              </div>
-              <CheckCircle2 className="ms-auto h-4 w-4 shrink-0 text-[#5a9878]" />
-            </div>
-          )}
+
 
           <div className="mt-7 max-w-[500px]">
             {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3.5 text-sm leading-6 text-[#963f35] dark:border-[#7f1d1d] dark:bg-[#3f1d24] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}
@@ -434,21 +425,20 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                 if (mode === 'activate') void submitActivation(event);
                 else { event.preventDefault(); void finishPasswordChange(mode === 'recovery'); }
               }}>
-                <label className="block text-sm font-bold text-[#345748] dark:text-[#e5e7eb]">{t('كلمة السر الجديدة', 'New password')}
+                <label className="block text-sm font-bold text-[#345748] dark:text-[#e5e7eb]">{t('كلمة المرور الجديدة', 'New password')}
                   <div className="relative">
                     <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-2 end-2 grid w-10 place-items-center rounded-xl text-[#789084] transition hover:bg-[#edf3ee] dark:text-[#cbd5e1] dark:hover:bg-[#14362d]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                   </div>
                 </label>
 
-                <div aria-live="polite" className="space-y-2">
-                  <div className="flex gap-1.5" aria-label={t('مؤشر قوة كلمة السر', 'Password strength meter')}>
-                    {[0, 1, 2, 3].map((level) => <span key={level} className={'h-1.5 flex-1 rounded-full transition-colors ' + (passwordStrength(password) > level ? (passwordStrength(password) <= 1 ? 'bg-[#c45d51]' : passwordStrength(password) === 2 ? 'bg-[#c39a49]' : passwordStrength(password) === 3 ? 'bg-[#82a85f]' : 'bg-[#398567]') : 'bg-[#e2e9e2] dark:bg-[#4b5563]')} />)}
-                  </div>
-                  <p className="text-xs text-[#7c9187] dark:text-[#cbd5e1]">{password.length === 0 ? t('استخدم كلمة سر يصعب تخمينها', 'Choose a password that is hard to guess') : passwordStrength(password) <= 1 ? t('ضعيفة — أضف تنوعًا أكثر', 'Weak — add more variety') : passwordStrength(password) === 2 ? t('متوسطة', 'Fair') : passwordStrength(password) === 3 ? t('جيدة', 'Good') : t('قوية', 'Strong')}</p>
+                <div aria-live="polite" className="min-h-5 text-end text-sm font-semibold">
+                  <span className={password.length === 0 ? 'text-[#9ca3af]' : strength <= 1 ? 'text-[#c45d51]' : strength === 2 ? 'text-[#c39a49]' : strength === 3 ? 'text-[#82a85f]' : 'text-[#398567]'}>
+                    {Math.round((strength / 4) * 100)}%
+                  </span>
                 </div>
 
-                <label className="block text-sm font-bold text-[#345748] dark:text-[#e5e7eb]">{t('تأكيد كلمة السر', 'Confirm password')}
+                <label className="block text-sm font-bold text-[#345748] dark:text-[#e5e7eb]">{t('تأكيد كلمة المرور', 'Confirm password')}
                   <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className={inputClass} placeholder={t('أعد كتابة كلمة السر', 'Enter the password again')} />
                 </label>
 
@@ -496,13 +486,13 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
           <footer className="mt-9 flex flex-wrap items-center gap-2 border-t border-[#e2e9e2] pt-5 text-[11px] leading-5 text-[#91a198] dark:border-[#374151] dark:text-[#9ca3af]">
             <ShieldCheck className="h-4 w-4 shrink-0 text-[#5b987b]" />
-            <span>{t('جلسة محمية لمدة 7 أيام · لا نحفظ كلمة السر على جهازنا.', 'Protected session for 7 days · Your password is never stored by us.')}</span>
+            <span>{t('تبقى مسجلاً للدخول على هذا الجهاز لمدة تصل إلى 7 أيام. احرص على حماية كلمة المرور، وتجنب حفظها على الأجهزة المشتركة.', 'Stay signed in on this device for up to 7 days. Protect your password and avoid saving it on shared devices.')}</span>
           </footer>
         </div>
       </section>
 
       <div className="mx-auto flex max-w-[1480px] flex-wrap items-center justify-between gap-3 px-5 py-6 text-[10px] font-medium tracking-[0.08em] text-[#8a9a91] sm:px-8 lg:px-12">
-        <span>{t('نقطة الشحن · بوابة العميل', 'CHARGING POINT · CUSTOMER PORTAL')}</span>
+        <span>{t('نقطة الشحن · حسابك وخدمات الشحن', 'CHARGING POINT · YOUR ACCOUNT & CHARGING SERVICES')}</span>
         <span>{t('وصول واضح. خصوصية محفوظة.', 'CLEAR ACCESS. PRIVACY RESPECTED.')}</span>
       </div>
     </main>
