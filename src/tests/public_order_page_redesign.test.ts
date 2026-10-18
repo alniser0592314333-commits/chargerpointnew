@@ -105,7 +105,7 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(150, null, true, 'DELIVERED', 0, 150)).toBe('UNPAID');
   });
 
-  it('keeps an approved receipt separate from this order's allocation when no amount is allocated here', () => {
+  it('keeps an approved receipt separate from the order allocation when no amount is allocated here', () => {
     expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED', 0, 150)).toBe('APPROVED');
   });
 
