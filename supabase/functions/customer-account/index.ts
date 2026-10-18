@@ -267,7 +267,8 @@ Deno.serve(async (request: Request) => {
     if (action === "activate-social") {
       const authenticated = await userFromBearer();
       const resolved = await resolveQr(input.token);
-      if (!authenticated || !resolved || !(await rateLimit(resolved.customer.id, "SOCIAL_ACTIVATE", 5, 3600)) ||
+      if (!authenticated || !resolved || !resolved.isQrToken ||
+        !(await rateLimit(resolved.customer.id, "SOCIAL_ACTIVATE", 5, 3600)) ||
         input.termsAccepted !== true || input.termsVersion !== TERMS_VERSION || !authenticated.user.email) return genericFailure();
       const { data: existing, error } = await admin.from("customer_account_links")
         .select("customer_id").eq("customer_id", resolved.customer.id).maybeSingle();
