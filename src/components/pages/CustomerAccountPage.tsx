@@ -14,11 +14,13 @@ type EntryStatus = {
   valid: boolean;
   activated: boolean;
   customer_name?: string;
+  customer_qr_token?: string | null;
   email_recovery_available?: boolean;
   auth_provider?: "password" | "google" | "apple" | "facebook" | null;
   terms_version?: string | null;
 };
 const sessionExpiryKey = (token: string) => 'cp_customer_session_binding:' + token;
+const portalTokenCacheKey = (token: string) => 'cp_customer_portal_token:' + token;
 const sessionIdFromAccessToken = (accessToken: string): string | null => {
   try {
     const payload = accessToken.split('.')[1];
@@ -62,6 +64,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const isAr = locale === 'ar';
   const [mode, setMode] = useState<Mode>('loading');
   const [entry, setEntry] = useState<EntryStatus | null>(null);
+  const [portalToken, setPortalToken] = useState(token);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -97,10 +100,15 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
       const { data: localSession } = await customerAuth.auth.getSession();
       let localBinding: { expiresAt?: number; sessionId?: string } | null = null;
-      try { localBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(accountToken)) || 'null'); } catch {}
+      let cachedPortalToken = accountToken;
+      try {
+        localBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(accountToken)) || 'null');
+        cachedPortalToken = localStorage.getItem(portalTokenCacheKey(accountToken)) || accountToken;
+      } catch {}
       const currentSessionId = localSession.session ? sessionIdFromAccessToken(localSession.session.access_token) : null;
       if (localSession.session && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
-          localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(accountToken)) {
+          localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(cachedPortalToken)) {
+        setPortalToken(cachedPortalToken);
         setMode('portal');
         setMessage(t('أنت غير متصل. هذه آخر نسخة محفوظة؛ الدفع وتغييرات الحساب متوقفة حتى عودة الإنترنت.', 'You are offline. This is the last saved copy; payments and account changes are disabled until you reconnect.'));
       } else {
@@ -117,6 +125,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     }
     const status = result.data as EntryStatus;
     setEntry(status);
+    const resolvedPortalToken = typeof status.customer_qr_token === 'string' && status.customer_qr_token.length >= 24
+      ? status.customer_qr_token
+      : accountToken;
+    setPortalToken(resolvedPortalToken);
+    try { localStorage.setItem(portalTokenCacheKey(accountToken), resolvedPortalToken); } catch {}
     const recovery = new URLSearchParams(window.location.search).get('customer_recovery') === '1';
     const { data: sessionResult } = await customerAuth.auth.getSession();
     const session = sessionResult.session;
@@ -274,6 +287,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     await callCustomerAccount('logout').catch(() => undefined);
     await customerAuth.auth.signOut();
     clearCachedCustomerPortalData(accountToken);
+    clearCachedCustomerPortalData(portalToken);
     localStorage.removeItem(sessionExpiryKey(accountToken));
     setEntry((current) => current ? { ...current, activated: true } : current);
     setMode('login');
@@ -289,7 +303,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </button>
         </div>
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
-        <PublicCustomerPortalPage token={accountToken} />
+        <PublicCustomerPortalPage token={portalToken} />
       </div>
     );
   }
