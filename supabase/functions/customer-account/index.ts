@@ -99,13 +99,18 @@ Deno.serve(async (request: Request) => {
     return !error;
   }
 
-  async function sessionIsActive(link: any, userId: string, claims: Record<string, unknown> | null) {
+  async function activeSessionExpiresAt(link: any, userId: string, claims: Record<string, unknown> | null): Promise<string | null> {
     const sessionId = normalize(claims?.session_id, 64);
     const { data: registered, error } = await admin.from("customer_account_sessions")
       .select("session_id,expires_at,revoked_at").eq("customer_id", link.customer_id)
       .eq("auth_user_id", userId).maybeSingle();
-    return !error && Boolean(registered) && !registered.revoked_at &&
-      registered.session_id === sessionId && new Date(registered.expires_at).getTime() > Date.now();
+    if (error || !registered || registered.revoked_at || registered.session_id !== sessionId ||
+      new Date(registered.expires_at).getTime() <= Date.now()) return null;
+    return registered.expires_at;
+  }
+
+  async function sessionIsActive(link: any, userId: string, claims: Record<string, unknown> | null) {
+    return Boolean(await activeSessionExpiresAt(link, userId, claims));
   }
 
   async function requireAdmin() {
@@ -186,7 +191,7 @@ Deno.serve(async (request: Request) => {
         await admin.auth.admin.deleteUser(created.user.id);
         return respond(503, { ok: false, error: "ACTIVATION_UNAVAILABLE" });
       }
-      return respond(200, { ok: true, session: signedIn.session });
+      return respond(200, { ok: true, session: signedIn.session, session_expires_at: await activeSessionExpiresAt(link, created.user.id, claims) });
     }
 
     if (action === "login") {
@@ -205,7 +210,7 @@ Deno.serve(async (request: Request) => {
       if (!(await registerSession(link, signedIn.user.id, claims))) {
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       }
-      return respond(200, { ok: true, session: signedIn.session, must_change_password: link.must_change_password });
+      return respond(200, { ok: true, session: signedIn.session, must_change_password: link.must_change_password, session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims) });
     }
 
     if (action === "activate-social") {
@@ -233,7 +238,7 @@ Deno.serve(async (request: Request) => {
         await admin.from("customer_account_links").delete().eq("customer_id", resolved.customer.id);
         return respond(503, { ok: false, error: "ACTIVATION_UNAVAILABLE" });
       }
-      return respond(200, { ok: true, must_change_password: false });
+      return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
     if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "complete-password-change" || action === "logout") {
@@ -252,6 +257,7 @@ Deno.serve(async (request: Request) => {
           ok: true, customer_name: link.customer.name,
           auth_provider: link.auth_provider,
           must_change_password: link.must_change_password,
+          session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
         });
       }
@@ -263,6 +269,7 @@ Deno.serve(async (request: Request) => {
         return respond(200, {
           ok: true, customer_name: link.customer.name,
           must_change_password: link.must_change_password,
+          session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
         });
       }
@@ -290,7 +297,7 @@ Deno.serve(async (request: Request) => {
         if (!(await registerSession(link, authenticated.user.id, authenticated.claims))) {
           return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         }
-        return respond(200, { ok: true });
+        return respond(200, { ok: true, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
       }
 
       const resolved = await resolveQr(input.token);
