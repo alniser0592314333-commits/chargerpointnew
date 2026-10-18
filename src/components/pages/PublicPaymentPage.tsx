@@ -204,26 +204,26 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           setOrder(orderData);
           contextFound = true;
         } else {
-          const { data: customerSessionData } = await customerAuth.auth.getSession();
-          if (!customerSessionData.session) {
-            window.location.replace(`/c/${encodeURIComponent(token)}`);
-            return;
-          }
-          const customerSession = await callCustomerAccount<{
-            must_change_password?: boolean;
-            terms_version?: string | null;
-            session_expires_at?: string;
-          }>('verify-session', { token }, customerSessionData.session.access_token);
-          if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
-          if (customerSession.error || !customerSession.data ||
-              customerSession.data.must_change_password ||
-              customerSession.data.terms_version !== CUSTOMER_TERMS_VERSION) {
-            window.location.replace(`/c/${encodeURIComponent(token)}`);
-            return;
-          }
           const customerData = await getPublicCustomerByToken(token);
           if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
           if (customerData) {
+            const { data: customerSessionData } = await customerAuth.auth.getSession();
+            if (!customerSessionData.session) {
+              window.location.replace(`/c/${encodeURIComponent(token)}`);
+              return;
+            }
+            const customerSession = await callCustomerAccount<{
+              must_change_password?: boolean;
+              terms_version?: string | null;
+              session_expires_at?: string;
+            }>('verify-session', { token }, customerSessionData.session.access_token);
+            if (!active || requestId !== requestGeneration.current || !navigator.onLine) return;
+            if (customerSession.error || !customerSession.data ||
+                customerSession.data.must_change_password ||
+                customerSession.data.terms_version !== CUSTOMER_TERMS_VERSION) {
+              window.location.replace(`/c/${encodeURIComponent(token)}`);
+              return;
+            }
             setCustomer(customerData);
             contextFound = true;
           } else {
