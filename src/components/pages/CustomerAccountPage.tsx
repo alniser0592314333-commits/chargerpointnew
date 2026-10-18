@@ -41,13 +41,13 @@ type Mode = 'loading' | 'unavailable' | 'activate' | 'social-activation' | 'logi
 const commonPassword = (value: string) =>
   value.length >= 8 && value.length <= 128 &&
   !new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']).has(value.trim().toLowerCase()) &&
-  !/^(.)(\\1){7,}$/.test(value);
+  !/^(.)(\1){7,}$/.test(value);
 const passwordStrength = (value: string) => {
   if (!value) return 0;
   let score = 0;
   if (value.length >= 8) score++;
   if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score++;
-  if (/\\d/.test(value)) score++;
+  if (/\d/.test(value)) score++;
   if (/[^A-Za-z0-9]/.test(value)) score++;
   return score;
 };
