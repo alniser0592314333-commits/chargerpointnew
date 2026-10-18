@@ -34,6 +34,8 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(migration).toContain("'customer_has_positive_credit', (v_customer_balance_minor > 0)");
     expect(migration).toContain("'order_qr_submission_limit_reached', (v_order_qr_submission_count >= 3)");
     expect(latestOrderQrMigration).toContain("'order_paid_minor', v_paid_minor");
+    expect(latestOrderQrMigration).toContain("THEN 'PARTIALLY_PAID'");
+    expect(latestOrderQrMigration).not.toContain('THEN oi.payment_status');
     expect(latestOrderQrMigration).toContain('WHERE pal.order_item_id = oi.id');
     expect(latestOrderQrMigration).not.toContain('v_due_minor := greatest(v_due_minor - greatest(v_customer_balance_minor, 0), 0);');
     expect(migration).not.toContain('IF v_customer_balance_minor > 0 THEN');
