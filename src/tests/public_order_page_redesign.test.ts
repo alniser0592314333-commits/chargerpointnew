@@ -77,54 +77,66 @@ describe('Public Order Page Energy Redesign & State Machine', () => {
 
 describe('Public order QR payment status presentation', () => {
   it('shows Pay Now only when there is a confirmed outstanding balance and no QR submission', () => {
-    expect(getOrderPaymentViewState(2500, null, false, 'DELIVERED')).toBe('UNPAID');
+    expect(getOrderPaymentViewState(2500, null, false, 'DELIVERED', 0)).toBe('UNPAID');
   });
 
   it('replaces Pay Now with a review state while this order QR submission is pending', () => {
-    expect(getOrderPaymentViewState(2500, { status: 'PENDING' }, false, 'DELIVERED')).toBe('PENDING');
+    expect(getOrderPaymentViewState(2500, { status: 'PENDING' }, false, 'DELIVERED', 0)).toBe('PENDING');
   });
 
-  it('shows accepted state after approval while a partial balance remains', () => {
-    expect(getOrderPaymentViewState(1200, { status: 'APPROVED' }, false, 'DELIVERED')).toBe('APPROVED');
+  it('shows partially paid when this order has allocated payments and a remainder', () => {
+    expect(getOrderPaymentViewState(1200, { status: 'APPROVED' }, false, 'DELIVERED', 300)).toBe('PARTIALLY_PAID');
   });
 
   it('allows a new payment attempt after a rejected notification', () => {
-    expect(getOrderPaymentViewState(2500, { status: 'REJECTED' }, false, 'DELIVERED')).toBe('REJECTED');
+    expect(getOrderPaymentViewState(2500, { status: 'REJECTED' }, false, 'DELIVERED', 0)).toBe('REJECTED');
   });
 
   it('treats the canonical zero balance as paid even if an older notification is pending', () => {
-    expect(getOrderPaymentViewState(0, { status: 'PENDING' }, false, 'DELIVERED')).toBe('PAID');
+    expect(getOrderPaymentViewState(0, { status: 'PENDING' }, false, 'DELIVERED', 100)).toBe('PAID');
   });
 
   it('does not claim that an order is paid when its balance is unavailable', () => {
-    expect(getOrderPaymentViewState(undefined, null, false, 'DELIVERED')).toBe('UNAVAILABLE');
+    expect(getOrderPaymentViewState(undefined, null, false, 'DELIVERED', 0)).toBe('UNAVAILABLE');
   });
 
   it('shows Pay Now when positive customer credit does not cover the full order remainder', () => {
-    expect(getOrderPaymentViewState(150, null, true, 'DELIVERED')).toBe('UNPAID');
+    expect(getOrderPaymentViewState(150, null, true, 'DELIVERED', 0)).toBe('UNPAID');
   });
 
   it('preserves an approved payment status when positive credit only partially covers the order', () => {
-    expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED')).toBe('APPROVED');
+    expect(getOrderPaymentViewState(150, { status: 'APPROVED' }, true, 'DELIVERED', 0)).toBe('APPROVED');
   });
 
   it('does not call a charging order paid before its charge is recognized', () => {
-    expect(getOrderPaymentViewState(0, null, false, 'CHARGING')).toBe('NOT_DUE');
+    expect(getOrderPaymentViewState(0, null, false, 'CHARGING', 0)).toBe('NOT_DUE');
   });
 
-  it('shows the positive-credit notice only when the server confirms credit covers the full order', () => {
-    expect(getOrderPaymentViewState(0, null, true, 'CHARGING', true)).toBe('CREDIT_COVERED');
+  it('does not treat positive customer credit as a payment allocation', () => {
+    expect(getOrderPaymentViewState(0, null, true, 'CHARGING', 0)).toBe('NOT_DUE');
   });
 
   it('does not claim full coverage from a positive-balance flag alone', () => {
-    expect(getOrderPaymentViewState(0, null, true, 'CHARGING', false)).toBe('NOT_DUE');
+    expect(getOrderPaymentViewState(0, null, true, 'CHARGING', 0)).toBe('NOT_DUE');
   });
 
   it('shows a delivered order as paid when no recognized amount remains', () => {
-    expect(getOrderPaymentViewState(0, null, true, 'DELIVERED')).toBe('PAID');
+    expect(getOrderPaymentViewState(0, null, true, 'DELIVERED', 0)).toBe('NOT_DUE');
   });
 
   it('fails closed when customer balance is unavailable', () => {
-    expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED')).toBe('UNAVAILABLE');
+    expect(getOrderPaymentViewState(150, null, undefined, 'DELIVERED', 0)).toBe('UNAVAILABLE');
   });
+  it('does not mark a delivered order paid from an approved notification alone', () => {
+    expect(getOrderPaymentViewState(1200, { status: 'APPROVED' }, true, 'DELIVERED', 0)).toBe('APPROVED');
+  });
+
+  it('marks an order paid only when its own allocated amount leaves no due', () => {
+    expect(getOrderPaymentViewState(0, { status: 'APPROVED' }, true, 'DELIVERED', 1200)).toBe('PAID');
+  });
+
+  it('shows partial payment when some amount is allocated to this order, regardless of customer balance', () => {
+    expect(getOrderPaymentViewState(1200, { status: 'APPROVED' }, true, 'DELIVERED', 300)).toBe('PARTIALLY_PAID');
+  });
+
 });
