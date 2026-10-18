@@ -8,9 +8,12 @@ type IntroStage = 'assembling' | 'welcome' | 'exiting';
 
 const hasSeenIntro = () => {
   try {
-    return window.localStorage.getItem(SEEN_KEY) === '1';
+    if (window.localStorage.getItem(SEEN_KEY) === '1') return true;
+  } catch {}
+  try {
+    return window.sessionStorage.getItem(SEEN_KEY) === '1';
   } catch {
-    try { return window.sessionStorage.getItem(SEEN_KEY) === '1'; } catch { return false; }
+    return false;
   }
 };
 
@@ -73,8 +76,8 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
       className="cp-welcome-intro"
       data-stage={stage}
       dir={isRTL ? 'rtl' : 'ltr'}
-      role="presentation"
-      aria-hidden="true"
+      role="status"
+      aria-live="polite"
     >
       <div className="cp-welcome-intro__scene">
         <CustomerAuthScene uid="cp-first-visit-welcome" className="cp-welcome-intro__art" />
