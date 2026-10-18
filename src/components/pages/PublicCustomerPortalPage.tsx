@@ -249,7 +249,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   }, [activeTab, online, load, loadActivity]);
 
   const markNotificationsSeen = () => {
-    const ids = (activity?.events || []).map((event) => event.id);
+    const ids = eventRows.map((event) => event.id);
     setSeenNotificationIds(ids);
     try { window.localStorage.setItem('cp_customer_notifications_seen:' + token, JSON.stringify(ids)); } catch {}
   };
@@ -386,6 +386,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       created_at: request.created_at,
       title: isAr ? 'طلب إنشاء هدف' : 'Goal creation request',
       detail: statusLabel(request.status),
+    })),
+    ...(activity?.ledger || []).map((entry) => ({
+      id: 'ledger-' + entry.id,
+      created_at: entry.created_at,
+      title: translateLedgerType(entry.event_type),
+      detail: money(entry.amount_minor, locale),
     })),
     ...(activity?.events || []).map((event) => ({
       id: 'account-event-' + event.id,
@@ -546,7 +552,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
           </>}
       </main>
       <footer className="relative z-10 border-t border-slate-200/70 px-4 py-5 text-center text-xs text-slate-500 dark:border-emerald-950/70 dark:text-emerald-100/50">{isAr ? 'نقطة الشحن · بوابة العميل الآمنة' : 'Charging Point · Secure customer portal'}</footer>
-      {data && !loading && !error && <CustomerPortalNavigation activeTab={activeTab} onTabChange={setActiveTab} moreView={moreView} onMoreViewChange={(view) => { setMoreView(view); if (view === 'notifications') markNotificationsSeen(); }} notificationCount={activity?.events.filter((event) => !seenNotificationIds.includes(event.id)).length ?? 0} isAr={isAr} />}
+      {data && !loading && !error && <CustomerPortalNavigation activeTab={activeTab} onTabChange={setActiveTab} moreView={moreView} onMoreViewChange={(view) => { setMoreView(view); if (view === 'notifications') markNotificationsSeen(); }} notificationCount={eventRows.filter((event) => !seenNotificationIds.includes(event.id)).length} isAr={isAr} />}
     </div>
   );
 };
