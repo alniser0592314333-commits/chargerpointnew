@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { CUSTOMER_ACCOUNT_TERMS_VERSION } from "../_shared/customerAccountTerms.ts";
 
-const TERMS_VERSION = "2026-10-18-v1";
+const TERMS_VERSION = CUSTOMER_ACCOUNT_TERMS_VERSION;
 const SESSION_DAYS = 7;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
