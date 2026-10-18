@@ -85,6 +85,29 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const requestGeneration = useRef(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showAccountHint, setShowAccountHint] = useState(false);
+
+  // Show the customer-account hint once per browser/device, after a valid order QR loads.
+  useEffect(() => {
+    if (loading || error || !data) return;
+    try {
+      if (window.localStorage.getItem('cp_order_qr_account_hint_seen_v1') !== '1') {
+        setShowAccountHint(true);
+      }
+    } catch {
+      // Keep the guidance usable if browser storage is unavailable.
+      setShowAccountHint(true);
+    }
+  }, [data, loading, error, token]);
+
+  const dismissAccountHint = () => {
+    try {
+      window.localStorage.setItem('cp_order_qr_account_hint_seen_v1', '1');
+    } catch {
+      // Dismiss for the current visit even when persistent storage is blocked.
+    }
+    setShowAccountHint(false);
+  };
 
   // Background state controller with unified setter:
   // setBackgroundState('charging' | 'charged' | 'delivered-paid' | 'delivered-unpaid')
@@ -854,6 +877,41 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
           </>
         )}
       </main>
+
+      {showAccountHint && !loading && !error && data && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 px-5 py-6 backdrop-blur-sm"
+          role="presentation"
+        >
+          <section
+            dir={isRTL ? 'rtl' : 'ltr'}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-account-hint-title"
+            className="w-full max-w-sm rounded-3xl border border-white/15 bg-white p-6 text-center shadow-2xl dark:border-white/10 dark:bg-[#101c27]"
+          >
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 dark:bg-teal-400/10 dark:text-teal-300">
+              <UserRound size={26} aria-hidden="true" />
+            </div>
+            <h2 id="order-account-hint-title" className="text-lg font-extrabold text-slate-900 dark:text-white">
+              {isAr ? 'الدخول إلى حسابك' : 'Access your customer account'}
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">
+              {isAr
+                ? 'يمكنك الدخول إلى حسابك ومتابعة طلبات الشحن ورصيدك من قائمة الخيارات (⋮) أعلى الصفحة، ثم اختيار «تسجيل دخول حساب العميل».'
+                : 'You can access your account and follow your charging orders and balance from the options menu (⋮) at the top of the page, then choose “Customer Account Sign In”.'}
+            </p>
+            <button
+              type="button"
+              autoFocus
+              onClick={dismissAccountHint}
+              className="mt-6 w-full rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:bg-teal-600 dark:hover:bg-teal-500 dark:focus:ring-offset-[#101c27]"
+            >
+              {isAr ? 'حسنًا' : 'OK'}
+            </button>
+          </section>
+        </div>
+      )}
 
       {/* Minimal Footer */}
       <footer className="order-qr-footer">
