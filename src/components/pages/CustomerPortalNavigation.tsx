@@ -32,7 +32,6 @@ export const CustomerPortalNavigation: React.FC<Props & { isAr: boolean }> = ({
   activeTab, onTabChange, moreView, onMoreViewChange, notificationCount = 0, isAr,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const activeIndex = Math.max(0, items.findIndex((item) => item.id === activeTab));
 
   return (
     <>
@@ -56,12 +55,10 @@ export const CustomerPortalNavigation: React.FC<Props & { isAr: boolean }> = ({
       )}
       <nav className="cp-portal-dock" aria-label={isAr ? 'التنقل في حساب العميل' : 'Customer account navigation'} dir={isAr ? 'rtl' : 'ltr'}>
         <div className="cp-portal-dock__track">
-          {items.map(({ id, labelAr, labelEn, Icon }, index) => {
-            const offset = ((index - activeIndex + items.length + 2) % items.length) - 2;
+          {items.map(({ id, labelAr, labelEn, Icon }) => {
             const selected = activeTab === id;
             return (
               <button key={id} type="button" className={`cp-portal-dock__item ${selected ? 'is-active' : ''}`}
-                style={{ left: `calc(50% + ${offset * 58 * (isAr ? -1 : 1)}px)` }}
                 aria-current={selected ? 'page' : undefined}
                 aria-label={isAr ? labelAr : labelEn}
                 onClick={() => {
@@ -69,7 +66,7 @@ export const CustomerPortalNavigation: React.FC<Props & { isAr: boolean }> = ({
                   if (id === 'more') setMenuOpen((open) => !open);
                   else setMenuOpen(false);
                 }}>
-                <span className="cp-portal-dock__orb"><Icon size={selected ? 23 : 21} strokeWidth={selected ? 2.1 : 1.7} /></span>
+                <span className="cp-portal-dock__orb"><Icon size={20} strokeWidth={selected ? 2 : 1.8} /></span>
                 <span className="cp-portal-dock__label">{isAr ? labelAr : labelEn}</span>
                 {id === 'more' && notificationCount > 0 && <span className="cp-portal-dock__dot" aria-label={isAr ? 'إشعارات جديدة' : 'New notifications'} />}
               </button>
