@@ -434,18 +434,17 @@ html.dark .cp-customer-portal .cp-portal-primary-button:hover:not(:disabled) { b
 .cp-customer-portal .cp-portal-retry .cp-portal-secondary-button { margin-top: 0; }
 .cp-customer-portal .cp-portal-order {
   position: relative;
-  border: 1px solid var(--cp-line);
-  border-inline-start: 4px solid var(--cp-accent);
-  border-radius: 14px;
-  background: var(--cp-surface);
-  box-shadow: var(--cp-shadow);
-  padding: 16px;
+  border: 0;
+  border-bottom: 1px solid var(--cp-line);
+  border-inline-start: 3px solid var(--cp-accent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 16px 12px;
 }
-.cp-customer-portal .cp-portal-order + .cp-portal-order { margin-top: 14px; }
-.cp-customer-portal .cp-portal-order:nth-child(even) {
-  border-inline-start-color: var(--cp-warm);
-  background: var(--cp-surface-strong);
-}
+.cp-customer-portal .cp-portal-order:first-child { border-top: 1px solid var(--cp-line); }
+.cp-customer-portal .cp-portal-order + .cp-portal-order { margin-top: 0; }
+.cp-customer-portal .cp-portal-order:nth-child(even) { border-inline-start-color: var(--cp-warm); }
 .cp-customer-portal .cp-portal-order h2 {
   display: inline-flex;
   align-items: center;
