@@ -314,7 +314,9 @@ Deno.serve(async (request: Request) => {
           return respond(200, { ok: true, message: "If a verified email is available, a reset link will be sent." });
         }
         const redirectTo = normalize(input.redirectTo, 512);
-        const allowedRedirect = redirectTo.startsWith(new URL(request.url).origin + "/c/") ? redirectTo : undefined;
+        const safeRedirect = /^https:\/\/ais-(?:dev|pre)-ysj6qxp5jjdotuhhmuwlez-886408646256\.europe-west2\.run\.app\/c\/[A-Za-z0-9_-]+\?customer_recovery=1$/.test(redirectTo)
+          || /^http:\/\/localhost:3000\/c\/[A-Za-z0-9_-]+\?customer_recovery=1$/.test(redirectTo);
+        const allowedRedirect = safeRedirect ? redirectTo : undefined;
         const { error: mailError } = await admin.auth.resetPasswordForEmail(link.login_email, {
           ...(allowedRedirect ? { redirectTo: allowedRedirect } : {}),
         });
