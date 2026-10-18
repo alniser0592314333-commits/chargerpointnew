@@ -682,6 +682,19 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/tests/public_qr_payment_migration_runtime.test.sql
 
+      - name: Prepare order QR partial payment resolver fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/tests/order_qr_partial_payment_fixture.sql
+      - name: Apply order QR partial payment status migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261018180000_fix_order_qr_partial_payment_status.sql
+      - name: Verify order QR due and paid totals use order-specific allocations
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d public_qr_payment_test -v ON_ERROR_STOP=1 -f supabase/tests/order_qr_partial_payment_runtime.test.sql
+
       - name: Create isolated database for customer QR resolution
         env:
           PGPASSWORD: postgres
