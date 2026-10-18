@@ -37,8 +37,9 @@ describe('QR payment eligibility and receipt storage integrity', () => {
     expect(latestOrderQrMigration).toContain('WHERE pal.order_item_id = oi.id');
     expect(latestOrderQrMigration).not.toContain('v_due_minor := greatest(v_due_minor - greatest(v_customer_balance_minor, 0), 0);');
     expect(migration).not.toContain('IF v_customer_balance_minor > 0 THEN');
-    expect(orderPage).toContain("'CREDIT_COVERED'");
-    expect(orderPage).not.toContain("if (customerHasPositiveCredit) return 'CREDIT_COVERED'");
+    expect(orderPage).toContain("'PARTIALLY_PAID'");
+    expect(orderPage).not.toContain("'CREDIT_COVERED'");
+    expect(orderPage).toContain('استكمال الدفع');
     expect(paymentPage).toContain('orderPaymentAllowed');
     expect(edgeFunction).not.toContain('if (resolvedOrder.customer_has_positive_credit)');
   });
