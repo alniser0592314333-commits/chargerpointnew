@@ -83,8 +83,17 @@ BEGIN
         'status', oi.status,
         'operational_status', oi.operational_status,
         'payment_status', CASE
-          WHEN oi.financial_status = 'RECOGNIZED' AND oi.financially_recognized_at IS NOT NULL
-          THEN oi.payment_status
+          WHEN oi.financial_status = 'RECOGNIZED'
+            AND oi.financially_recognized_at IS NOT NULL
+            AND coalesce(pa.paid_minor, 0) >= oi.final_charge_snapshot_minor
+          THEN 'PAID'
+          WHEN oi.financial_status = 'RECOGNIZED'
+            AND oi.financially_recognized_at IS NOT NULL
+            AND coalesce(pa.paid_minor, 0) > 0
+          THEN 'PARTIALLY_PAID'
+          WHEN oi.financial_status = 'RECOGNIZED'
+            AND oi.financially_recognized_at IS NOT NULL
+          THEN 'UNPAID'
           ELSE 'NOT_DUE'
         END,
         'has_charger', oi.has_charger,
