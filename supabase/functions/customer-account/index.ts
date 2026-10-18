@@ -393,7 +393,7 @@ Deno.serve(async (request: Request) => {
           }
         } catch { allowedRedirect = undefined; }
         if (!allowedRedirect) return respond(503, { ok: false, error: "EMAIL_RECOVERY_UNAVAILABLE" });
-        const { error: mailError } = await admin.auth.resetPasswordForEmail(link.login_email, {
+        const { error: mailError } = await authClient.auth.resetPasswordForEmail(link.login_email, {
           ...(allowedRedirect ? { redirectTo: allowedRedirect } : {}),
         });
         if (mailError) {
@@ -455,10 +455,23 @@ Deno.serve(async (request: Request) => {
         await admin.from("customer_account_reset_requests").update({ status: "REJECTED", processed_at: now.toISOString(), processed_by: administrator.adminId }).eq("id", requestId);
         return respond(409, { ok: false, error: "ACCOUNT_UNAVAILABLE" });
       }
-      await admin.from("customer_account_links").update({ must_change_password: true, updated_at: now.toISOString() })
+      const { error: requireChangeError } = await admin.from("customer_account_links")
+        .update({ must_change_password: true, updated_at: now.toISOString() })
         .eq("customer_id", claimed.customer_id);
-      await admin.from("customer_account_sessions").update({ revoked_at: now.toISOString() })
-        .eq("customer_id", claimed.customer_id);
+      if (requireChangeError) {
+        await admin.from("customer_account_reset_requests").update({ status: "PENDING" })
+          .eq("id", requestId).eq("status", "PROCESSING");
+        return respond(503, { ok: false, error: "PASSWORD_RESET_FAILED" });
+      }
+      const { error: revokeError } = await admin.from("customer_account_sessions")
+        .update({ revoked_at: now.toISOString() }).eq("customer_id", claimed.customer_id).is("revoked_at", null);
+      if (revokeError) {
+        await admin.from("customer_account_links").update({ must_change_password: false, updated_at: now.toISOString() })
+          .eq("customer_id", claimed.customer_id);
+        await admin.from("customer_account_reset_requests").update({ status: "PENDING" })
+          .eq("id", requestId).eq("status", "PROCESSING");
+        return respond(503, { ok: false, error: "PASSWORD_RESET_FAILED" });
+      }
       const { error: passwordError } = await admin.auth.admin.updateUserById(link.auth_user_id, { password: temporaryPassword });
       if (passwordError) {
         await admin.from("customer_account_links").update({ must_change_password: false, updated_at: now.toISOString() }).eq("customer_id", claimed.customer_id);
