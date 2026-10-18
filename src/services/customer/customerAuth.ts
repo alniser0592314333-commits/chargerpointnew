@@ -26,8 +26,11 @@ export async function callCustomerAccount<T = Record<string, unknown>>(
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
     return { data: null, error: 'SUPABASE_NOT_CONFIGURED' };
   }
-  const { data: sessionData } = await customerAuth.auth.getSession();
-  const accessToken = explicitAccessToken || sessionData.session?.access_token || config.supabaseAnonKey;
+  let accessToken = explicitAccessToken;
+  if (!accessToken) {
+    const { data: sessionData } = await customerAuth.auth.getSession();
+    accessToken = sessionData.session?.access_token || config.supabaseAnonKey;
+  }
   try {
     const response = await fetch(config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/customer-account', {
       method: 'POST',
