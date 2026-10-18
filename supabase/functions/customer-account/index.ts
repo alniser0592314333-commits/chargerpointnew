@@ -459,7 +459,7 @@ Deno.serve(async (request: Request) => {
       }
 
       if (action === "customer-activity") {
-        const [ledgerResult, goalRequestsResult, eventsResult, sessionResult] = await Promise.all([
+        const [ledgerResult, goalRequestsResult, eventsResult, sessionResult, ordersResult] = await Promise.all([
           admin.from("financial_ledger")
             .select("id,event_type,amount_minor,created_at")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(100),
@@ -473,15 +473,49 @@ Deno.serve(async (request: Request) => {
             .select("created_at,expires_at").eq("customer_id", link.customer_id)
             .eq("auth_user_id", authenticated.user.id).eq("session_id", currentSessionId)
             .is("revoked_at", null).maybeSingle(),
+          admin.from("orders").select("id,display_number,created_at")
+            .eq("customer_id", link.customer_id).is("deleted_at", null)
+            .order("created_at", { ascending: false }).limit(100),
         ]);
-        if (ledgerResult.error || goalRequestsResult.error || eventsResult.error || sessionResult.error) {
+        if (ledgerResult.error || goalRequestsResult.error || eventsResult.error || sessionResult.error || ordersResult.error) {
           console.error("Customer activity could not be loaded");
           return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         }
+
+        // Discounts are stored as immutable order-item snapshots, not as ledger event rows.
+        // Project only recognized, non-deleted items belonging to this customer's orders.
+        const customerOrders = ordersResult.data ?? [];
+        let discountEntries: Array<{ id: string; event_type: string; amount_minor: number; created_at: string; reference_id: string | null; metadata: Record<string, unknown> }> = [];
+        if (customerOrders.length) {
+          const { data: items, error: itemsError } = await admin.from("order_items")
+            .select("id,order_id,discount_snapshot_minor,created_at,financially_recognized_at")
+            .in("order_id", customerOrders.map((order: { id: string }) => order.id))
+            .is("deleted_at", null)
+            .gt("discount_snapshot_minor", 0)
+            .not("financially_recognized_at", "is", null)
+            .order("created_at", { ascending: false }).limit(100);
+          if (itemsError) {
+            console.error("Customer discount history could not be loaded");
+            return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+          }
+          const orderNumbers = new Map(customerOrders.map((order: { id: string; display_number: number }) => [order.id, order.display_number]));
+          discountEntries = (items ?? []).map((item: { id: string; order_id: string; discount_snapshot_minor: number; created_at: string }) => ({
+            id: "discount-" + item.id,
+            event_type: "DISCOUNT",
+            amount_minor: Number(item.discount_snapshot_minor),
+            created_at: item.created_at,
+            reference_id: item.order_id,
+            metadata: { order_number: orderNumbers.get(item.order_id) ?? null },
+          }));
+        }
+
+        const ledger = [...(ledgerResult.data ?? []), ...discountEntries]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 150);
         const authTime = Number(authenticated.claims?.auth_time);
         return respond(200, {
           ok: true,
-          ledger: ledgerResult.data ?? [],
+          ledger,
           goal_requests: goalRequestsResult.data ?? [],
           events: eventsResult.data ?? [],
           session: sessionResult.data ? { created_at: sessionResult.data.created_at, expires_at: sessionResult.data.expires_at } : null,
