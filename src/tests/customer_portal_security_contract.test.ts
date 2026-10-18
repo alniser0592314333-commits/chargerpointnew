@@ -148,7 +148,6 @@ describe('Isolated customer QR portal security contract', () => {
     for (const publicRpc of [
       "'public_resolve_customer_qr'",
       "'public_resolve_order_qr'",
-      "'public_resolve_qr_payment_submission'",
     ]) {
       const resolverStart = client.indexOf('export async function rpcResolveCustomerQr');
       const index = client.indexOf(publicRpc, resolverStart);
@@ -159,6 +158,19 @@ describe('Isolated customer QR portal security contract', () => {
     }
 
 
+    const paymentStatusStart = client.indexOf('export async function rpcResolveQrPaymentSubmission');
+    const paymentStatusEnd = client.indexOf('export async function rpcGetOrCreateCustomerQr', paymentStatusStart);
+    const paymentStatusCall = client.slice(paymentStatusStart, paymentStatusEnd);
+    expect(paymentStatusCall).toContain('customAuthToken');
+    expect(paymentStatusCall).toContain('forceAnonymous = !customAuthToken');
+    const paymentPage = fs.readFileSync(publicPaymentPath, 'utf8');
+    expect(paymentPage).toContain("'verify-session'");
+    expect(paymentPage).toContain('customerSessionData.session.access_token');
+    expect(paymentPage).toContain('Authorization: `Bearer ${bearer}`');
+    const paymentEdge = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/submit-qr-payment/index.ts'), 'utf8');
+    expect(paymentEdge).toContain('Customer QR payment must use the same authenticated customer session');
+    expect(paymentEdge).toContain('accountLink.terms_version !== CUSTOMER_ACCOUNT_TERMS_VERSION');
+    expect(paymentEdge).toContain('targetKind = "ORDER"');
     expect(page).toContain('setData(null)');
     expect(page).toContain('navigator.onLine');
     expect(page).toContain('requestGeneration.current += 1');
