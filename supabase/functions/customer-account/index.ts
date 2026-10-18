@@ -455,7 +455,7 @@ Deno.serve(async (request: Request) => {
       }
 
       if (action === "customer-activity") {
-        const [ledgerResult, goalRequestsResult, eventsResult] = await Promise.all([
+        const [ledgerResult, goalRequestsResult, eventsResult, sessionResult] = await Promise.all([
           admin.from("financial_ledger")
             .select("id,event_type,amount_minor,created_at")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(100),
@@ -465,8 +465,12 @@ Deno.serve(async (request: Request) => {
           admin.from("customer_account_events")
             .select("id,event_type,is_read,created_at")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(50),
+          admin.from("customer_account_sessions")
+            .select("created_at,expires_at").eq("customer_id", link.customer_id)
+            .eq("auth_user_id", authenticated.user.id).eq("session_id", currentSessionId)
+            .is("revoked_at", null).maybeSingle(),
         ]);
-        if (ledgerResult.error || goalRequestsResult.error || eventsResult.error) {
+        if (ledgerResult.error || goalRequestsResult.error || eventsResult.error || sessionResult.error) {
           console.error("Customer activity could not be loaded");
           return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         }
@@ -476,6 +480,7 @@ Deno.serve(async (request: Request) => {
           ledger: ledgerResult.data ?? [],
           goal_requests: goalRequestsResult.data ?? [],
           events: eventsResult.data ?? [],
+          session: sessionResult.data ? { created_at: sessionResult.data.created_at, expires_at: sessionResult.data.expires_at } : null,
           last_login_at: Number.isFinite(authTime) && authTime > 0 ? new Date(authTime * 1000).toISOString() : null,
         });
       }
