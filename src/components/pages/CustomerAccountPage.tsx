@@ -330,7 +330,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-full border border-[#d7e0e9] bg-white px-3.5 py-2 text-xs font-bold text-[#344256] transition hover:border-[#e0b44e] dark:border-[#283548] dark:bg-[#0a0f18] dark:text-[#dbe7f5]">{isAr ? 'English' : 'العربية'}</button>
-          <button type="button" onClick={toggleTheme} className="grid h-10 w-10 place-items-center rounded-full border border-[#d9e2dc] bg-white text-[#355c4e] transition hover:border-[#8bb4a0] dark:border-[#283548] dark:bg-[#0a0f18] dark:text-[#dbe7f5]" aria-label={t('تغيير المظهر', 'Toggle appearance')}>{resolvedTheme === 'dark' ? <Sparkles className="h-4 w-4" /> : <span aria-hidden="true" className="text-lg leading-none">◐</span>}</button>
+          <button type="button" onClick={toggleTheme} className="grid h-10 w-10 place-items-center rounded-full border border-[#d9e2dc] bg-white text-[#344256] transition hover:border-[#e0b44e] dark:border-[#283548] dark:bg-[#0a0f18] dark:text-[#dbe7f5]" aria-label={t('تغيير المظهر', 'Toggle appearance')}>{resolvedTheme === 'dark' ? <Sparkles className="h-4 w-4" /> : <span aria-hidden="true" className="text-lg leading-none">◐</span>}</button>
         </div>
       </header>
 
@@ -340,7 +340,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             <div className="absolute -end-28 -top-32 h-[390px] w-[390px] rounded-full border border-white/10" />
             <div className="absolute -end-12 -top-16 h-[310px] w-[310px] rounded-full border border-white/10" />
             <div className="absolute end-7 top-[-20px] h-[230px] w-[230px] rounded-full border border-white/10" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_78%_18%,rgba(118,215,245,0.16),transparent_42%),linear-gradient(145deg,transparent_35%,rgba(3,22,18,0.34)_100%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_78%_18%,rgba(118,215,245,0.16),transparent_42%),linear-gradient(145deg,transparent_35%,rgba(3,10,20,0.46)_100%)]" />
             <svg viewBox="0 0 500 500" className="absolute -end-10 top-1 h-[265px] w-[265px] opacity-95 sm:h-[320px] sm:w-[320px] lg:end-[-24px] lg:top-12 lg:h-[430px] lg:w-[430px]" fill="none" role="img" aria-label={t('لوح شمسي وهاتف قيد الشحن', 'Solar panel and charging phone')}>
               <defs>
                 <linearGradient id="solar-panel-fill" x1="96" y1="290" x2="330" y2="390" gradientUnits="userSpaceOnUse">
@@ -415,7 +415,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </div>
 
           <div className="max-w-[500px]">
-            <h1 className="text-[clamp(1.9rem,3vw,2.75rem)] font-semibold leading-tight tracking-[-0.04em] text-[#17382f] dark:text-[#f8fafc]">{title}</h1>
+            <h1 className="text-[clamp(1.9rem,3vw,2.75rem)] font-semibold leading-tight tracking-[-0.04em] text-[#172335] dark:text-[#f8fafc]">{title}</h1>
             <p className="mt-3 max-w-[42ch] text-sm leading-7 text-[#66758a] dark:text-[#b5c4d7]">
               {mode === 'login'
                 ? t('أدخل كلمة السر للوصول إلى طلباتك ورصيدك.', 'Enter your password to access your orders and balance.')
@@ -438,7 +438,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                 <p className="text-[10px] font-bold tracking-[0.13em] text-[#82958a]">{t('الحساب المرتبط بهذا الرمز', 'ACCOUNT LINKED TO THIS QR')}</p>
                 <p className="mt-0.5 truncate text-sm font-bold text-[#172335] dark:text-[#e5f0ff]">{entry.customer_name}</p>
               </div>
-              <CheckCircle2 className="ms-auto h-4 w-4 shrink-0 text-[#5a9878]" />
+              <CheckCircle2 className="ms-auto h-4 w-4 shrink-0 text-[#d79b24]" />
             </div>
           )}
 
@@ -447,7 +447,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             {message && <div role="status" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#c5dfce] bg-[#edf7ef] px-4 py-3.5 text-sm leading-6 text-[#2f6a4c] dark:border-[#2b5267] dark:bg-[#142b38] dark:text-[#a8dff5]"><CheckCircle2 className="mt-1 h-4 w-4 shrink-0" />{message}</div>}
 
             {mode === 'loading' ? (
-              <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-[#789084] dark:text-[#b5c4d7]" role="status">
+              <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-[#718096] dark:text-[#b5c4d7]" role="status">
                 <LoaderCircle className="h-7 w-7 animate-spin text-[#d79b24]" />
                 {t('نتحقق من رابط الحساب بأمان…', 'Securely checking your account link…')}
               </div>
@@ -469,22 +469,22 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                 <label className="block text-sm font-bold text-[#26364b] dark:text-[#e5e7eb]">{t('كلمة السر الجديدة', 'New password')}
                   <div className="relative">
                     <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" className={inputClass} placeholder={t('8 أحرف على الأقل', 'At least 8 characters')} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-2 end-2 grid w-10 place-items-center rounded-xl text-[#789084] transition hover:bg-[#edf3ee] dark:text-[#b5c4d7] dark:hover:bg-[#263449]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-2 end-2 grid w-10 place-items-center rounded-xl text-[#718096] transition hover:bg-[#fff7e5] dark:text-[#b5c4d7] dark:hover:bg-[#263449]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                   </div>
                 </label>
 
                 <div aria-live="polite" className="space-y-2">
                   <div className="flex gap-1.5" aria-label={t('مؤشر قوة كلمة السر', 'Password strength meter')}>
-                    {[0, 1, 2, 3].map((level) => <span key={level} className={'h-1.5 flex-1 rounded-full transition-colors ' + (passwordStrength(password) > level ? (passwordStrength(password) <= 1 ? 'bg-[#c45d51]' : passwordStrength(password) === 2 ? 'bg-[#c39a49]' : passwordStrength(password) === 3 ? 'bg-[#82a85f]' : 'bg-[#398567]') : 'bg-[#e2e9e2] dark:bg-[#4b5563]')} />)}
+                    {[0, 1, 2, 3].map((level) => <span key={level} className={'h-1.5 flex-1 rounded-full transition-colors ' + (passwordStrength(password) > level ? (passwordStrength(password) <= 1 ? 'bg-[#c45d51]' : passwordStrength(password) === 2 ? 'bg-[#c39a49]' : passwordStrength(password) === 3 ? 'bg-[#d6a43a]' : 'bg-[#62b8d5]') : 'bg-[#e2e9e2] dark:bg-[#4b5563]')} />)}
                   </div>
-                  <p className="text-xs text-[#7c9187] dark:text-[#b5c4d7]">{password.length === 0 ? t('استخدم كلمة سر يصعب تخمينها', 'Choose a password that is hard to guess') : passwordStrength(password) <= 1 ? t('ضعيفة — أضف تنوعًا أكثر', 'Weak — add more variety') : passwordStrength(password) === 2 ? t('متوسطة', 'Fair') : passwordStrength(password) === 3 ? t('جيدة', 'Good') : t('قوية', 'Strong')}</p>
+                  <p className="text-xs text-[#8290a3] dark:text-[#b5c4d7]">{password.length === 0 ? t('استخدم كلمة سر يصعب تخمينها', 'Choose a password that is hard to guess') : passwordStrength(password) <= 1 ? t('ضعيفة — أضف تنوعًا أكثر', 'Weak — add more variety') : passwordStrength(password) === 2 ? t('متوسطة', 'Fair') : passwordStrength(password) === 3 ? t('جيدة', 'Good') : t('قوية', 'Strong')}</p>
                 </div>
 
-                <label className="block text-sm font-bold text-[#345748] dark:text-[#e5e7eb]">{t('تأكيد كلمة السر', 'Confirm password')}
+                <label className="block text-sm font-bold text-[#26364b] dark:text-[#e5e7eb]">{t('تأكيد كلمة السر', 'Confirm password')}
                   <input required minLength={8} maxLength={128} type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" className={inputClass} placeholder={t('أعد كتابة كلمة السر', 'Enter the password again')} />
                 </label>
 
-                {showTerms && <label className="flex items-start gap-3 text-sm leading-6 text-[#61766a] dark:text-[#d1d5db]"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#347a66]" /><span>{t('أوافق على الشروط والأحكام وسياسة استخدام حساب العميل.', 'I accept the customer account terms and conditions.')}</span></label>}
+                {showTerms && <label className="flex items-start gap-3 text-sm leading-6 text-[#59677a] dark:text-[#d1d5db]"><input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#d79b24]" /><span>{t('أوافق على الشروط والأحكام وسياسة استخدام حساب العميل.', 'I accept the customer account terms and conditions.')}</span></label>}
                 {mode === 'force-change' && <p className="rounded-2xl border border-[#e8d8ad] bg-[#fbf5e6] p-3.5 text-sm leading-6 text-[#7d622d] dark:border-[#75602e] dark:bg-[#302819] dark:text-[#ffe3a0]">{t('يجب تغيير كلمة السر المؤقتة قبل عرض بيانات الحساب.', 'You must change the temporary password before viewing account data.')}</p>}
                 <button disabled={busy} type="submit" className={primaryButtonClass}>
                   {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
@@ -495,13 +495,13 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
               </form>
             ) : mode === 'login' ? (
               <form className="space-y-5" onSubmit={(event) => void submitLogin(event)}>
-                <label className="block text-sm font-bold text-[#345748] dark:text-[#e5e7eb]">{t('كلمة السر', 'Password')}
+                <label className="block text-sm font-bold text-[#26364b] dark:text-[#e5e7eb]">{t('كلمة السر', 'Password')}
                   <div className="relative">
                     <input required maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className={inputClass} placeholder={t('أدخل كلمة السر الخاصة بك', 'Enter your password')} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-2 end-2 grid w-10 place-items-center rounded-xl text-[#789084] transition hover:bg-[#edf3ee] dark:text-[#b5c4d7] dark:hover:bg-[#263449]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-2 end-2 grid w-10 place-items-center rounded-xl text-[#718096] transition hover:bg-[#fff7e5] dark:text-[#b5c4d7] dark:hover:bg-[#263449]" aria-label={showPassword ? t('إخفاء كلمة السر', 'Hide password') : t('إظهار كلمة السر', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
                   </div>
                 </label>
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[#789084] dark:text-[#b5c4d7]">
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[#718096] dark:text-[#b5c4d7]">
                   <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[#d79b24]" />{t('تحقق آمن قبل عرض البيانات', 'Verified before showing data')}</span>
                   <button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="font-bold text-[#b87913] underline-offset-4 hover:underline dark:text-[#a8dff5]">{t('نسيت كلمة السر؟', 'Forgot password?')}</button>
                 </div>
@@ -515,12 +515,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
               <div className="space-y-3.5">
                 <div className="mb-5 rounded-2xl border border-[#e7dfca] bg-[#fff9ec] p-4 dark:border-[#283548] dark:bg-[#121a27]">
                   <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#3a715a] dark:bg-[#1d2939] dark:text-[#b5c4d7]"><Mail className="h-5 w-5" /></div>
-                    <p className="text-sm leading-6 text-[#61766a] dark:text-[#d1d5db]">{t('إذا كان بريدك الإلكتروني موثّقًا، يمكنك طلب رابط استعادة آمن. وإلا يمكنك إرسال طلب للإدارة.', 'If you have a verified email, you can request a secure reset link. Otherwise, you can send a request to the administrator.')}</p>
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-[#d79b24] dark:bg-[#1d2939] dark:text-[#b5c4d7]"><Mail className="h-5 w-5" /></div>
+                    <p className="text-sm leading-6 text-[#59677a] dark:text-[#d1d5db]">{t('إذا كان بريدك الإلكتروني موثّقًا، يمكنك طلب رابط استعادة آمن. وإلا يمكنك إرسال طلب للإدارة.', 'If you have a verified email, you can request a secure reset link. Otherwise, you can send a request to the administrator.')}</p>
                   </div>
                 </div>
                 {entry?.email_recovery_available && <button type="button" disabled={busy} onClick={() => void submitForgot(true)} className={primaryButtonClass}><Mail className="h-4 w-4" />{busy ? t('جارٍ الإرسال…', 'Sending…') : t('إرسال رابط استعادة آمن', 'Send a secure recovery link')}</button>}
-                <button type="button" disabled={busy} onClick={() => void submitForgot(false)} className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl border border-[#d7e0e9] bg-transparent px-5 py-3 text-sm font-bold text-[#345748] transition hover:bg-[#fff7e5] disabled:opacity-60 dark:border-[#4b5563] dark:text-[#e5e7eb] dark:hover:bg-[#263449]"><ShieldCheck className="h-4 w-4" />{t('طلب إعادة التعيين من الإدارة', 'Request a reset from the administrator')}</button>
+                <button type="button" disabled={busy} onClick={() => void submitForgot(false)} className="flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl border border-[#d7e0e9] bg-transparent px-5 py-3 text-sm font-bold text-[#26364b] transition hover:bg-[#fff7e5] disabled:opacity-60 dark:border-[#4b5563] dark:text-[#e5e7eb] dark:hover:bg-[#263449]"><ShieldCheck className="h-4 w-4" />{t('طلب إعادة التعيين من الإدارة', 'Request a reset from the administrator')}</button>
                 <button type="button" onClick={() => { setError(''); setMessage(''); setMode('login'); }} className="mt-2 flex w-full items-center justify-center gap-2 py-3 text-sm font-semibold text-[#6d8478] transition hover:text-[#9a6712] dark:text-[#b5c4d7]">{isAr ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}{t('العودة لتسجيل الدخول', 'Back to sign in')}</button>
               </div>
             ) : null}
