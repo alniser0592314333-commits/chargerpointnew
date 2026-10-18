@@ -47,13 +47,24 @@ describe('Isolated customer QR portal security contract', () => {
     expect(sql).not.toContain("'admin_id'");
   });
 
-  it('routes both established customer QR URL formats to the isolated portal', () => {
+  it('routes customer QR URLs to account auth and preserves distinct order QR URLs', () => {
     const app = fs.readFileSync(appPath, 'utf8');
-    expect(app).toContain("import { PublicCustomerPortalPage } from './components/pages/PublicCustomerPortalPage'");
+    const store = fs.readFileSync(storePath, 'utf8');
+    expect(app).toContain("import { CustomerAccountPage } from './components/pages/CustomerAccountPage'");
     expect(app).toContain("pathname.startsWith('/c/')");
     expect(app).toContain("pathname.startsWith('/public/qr/customer/')");
-    expect(app).toContain('<PublicCustomerPortalPage token={token} />');
+    expect(app).toContain('<CustomerAccountPage token={token} />');
+    expect(app).toContain("pathname.startsWith('/o/')");
+    expect(app).toContain("pathname.startsWith('/public/qr/order/')");
+    expect(app).toContain('<PublicOrderPage token={token} />');
+    expect(app).not.toContain("pathname.startsWith('/o/')\n      const token = pathname.replace('/o/', '');\n      return <CustomerAccountPage");
     expect(app).not.toContain('<PublicCustomerQrPage token={token} />');
+    const customerQrStart = store.indexOf('export const getCustomerQrCardData = async (');
+    const customerQrBuilder = store.slice(customerQrStart, customerQrStart + 2500);
+    const orderQrStart = store.indexOf('export const getOrderQrCardData = async (');
+    const orderQrBuilder = store.slice(orderQrStart, store.indexOf('export const getBusinessDay = async', orderQrStart));
+    expect(customerQrBuilder).toContain('`\u0024{origin}/c/\u0024{publicToken}`');
+    expect(orderQrBuilder).toContain('`\u0024{origin}/o/\u0024{publicToken}`');
   });
 
   it('skips admin session inspection and business-store bootstrap on public capability routes', () => {
@@ -114,9 +125,24 @@ describe('Isolated customer QR portal security contract', () => {
 
   it('uses only the scoped RPC, suppresses financial data offline, and does not expose admin controls', () => {
     const page = fs.readFileSync(pagePath, 'utf8');
-    expect(page).toContain("'public_resolve_customer_portal'");
-    expect(page).toContain("p_public_token: token");
-    expect(page).toContain('false,\n        true\n      );');
+    expect(page).toContain("'portal-data'");
+    expect(page).toContain("callCustomerAccount<{ data: PortalData }>");
+    expect(page).not.toContain("'public_resolve_customer_portal'");
+    const accountAuth = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/customer-account/index.ts'), 'utf8');
+    expect(accountAuth).toContain('.eq("token_type", "CUSTOMER")');
+    expect(accountAuth).toContain('resolved.customer.id !== link.customer_id');
+    expect(accountAuth).toContain('activeSessionExpiresAt');
+    expect(accountAuth).toContain('admin-set-status');
+    expect(accountAuth).toContain('customer_account_consume_rate_limit');
+    expect(accountAuth).toContain('REQUEST_TOO_LARGE');
+    expect(accountAuth).toContain('action === "accept-terms"');
+    const accountMigration = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261018060000_customer_account_auth.sql'), 'utf8');
+    expect(accountMigration).toContain('REVOKE ALL ON FUNCTION public.public_resolve_customer_portal(text) FROM PUBLIC, anon, authenticated');
+    expect(accountMigration).toContain('GRANT EXECUTE ON FUNCTION public.public_resolve_customer_portal(text) TO service_role');
+    expect(accountMigration).toContain('customer_account_one_pending_reset_idx');
+    expect(accountMigration).toContain('customer_account_consume_rate_limit');
+    expect(accountMigration).toContain("TERMS_ACCEPTED");
+    expect(accountMigration).toContain('customer_account_sessions');
     const client = fs.readFileSync(supabaseClientPath, 'utf8');
     expect(client).toContain('forceAnonymous: boolean = false');
     expect(client).toContain('forceAnonymous ? null : resolveAuthBearerToken(customAuthToken)');
@@ -124,7 +150,6 @@ describe('Isolated customer QR portal security contract', () => {
     for (const publicRpc of [
       "'public_resolve_customer_qr'",
       "'public_resolve_order_qr'",
-      "'public_resolve_qr_payment_submission'",
     ]) {
       const resolverStart = client.indexOf('export async function rpcResolveCustomerQr');
       const index = client.indexOf(publicRpc, resolverStart);
@@ -135,6 +160,19 @@ describe('Isolated customer QR portal security contract', () => {
     }
 
 
+    const paymentStatusStart = client.indexOf('export async function rpcResolveQrPaymentSubmission');
+    const paymentStatusEnd = client.indexOf('export async function rpcGetOrCreateCustomerQr', paymentStatusStart);
+    const paymentStatusCall = client.slice(paymentStatusStart, paymentStatusEnd);
+    expect(paymentStatusCall).toContain('customAuthToken');
+    expect(paymentStatusCall).toContain('forceAnonymous = !customAuthToken');
+    const paymentPage = fs.readFileSync(publicPaymentPath, 'utf8');
+    expect(paymentPage).toContain("'verify-session'");
+    expect(paymentPage).toContain('customerSessionData.session.access_token');
+    expect(paymentPage).toContain('Authorization: `Bearer ${bearer}`');
+    const paymentEdge = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/submit-qr-payment/index.ts'), 'utf8');
+    expect(paymentEdge).toContain('Customer QR payment must use the same authenticated customer session');
+    expect(paymentEdge).toContain('accountLink.terms_version !== CUSTOMER_ACCOUNT_TERMS_VERSION');
+    expect(paymentEdge).toContain('targetKind = "ORDER"');
     expect(page).toContain('setData(null)');
     expect(page).toContain('navigator.onLine');
     expect(page).toContain('requestGeneration.current += 1');

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Globe, History, Moon, RefreshCw, ShieldCheck, Sun, Wallet, Wifi, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { invokeSupabaseRpc } from '../../services/supabase/client';
+import { callCustomerAccount } from '../../services/customer/customerAuth';
 import { AppLogo } from '../qr/AppLogo';
 import { EnergyCanvasBackground } from '../energy/EnergyCanvasBackground';
 import { useTheme } from '../../theme/themeContext';
@@ -47,6 +47,7 @@ type PortalData = {
   orders: PortalOrder[];
   payment_submissions: PortalSubmission[];
   goals: PortalGoal[];
+  cached_at?: string;
 };
 
 export interface PublicCustomerPortalPageProps { token: string }
@@ -62,11 +63,32 @@ const money = (minor: number | null | undefined, locale: string) => {
   return new Intl.NumberFormat(locale === 'ar' ? 'ar-PS' : 'en-GB', { style: 'currency', currency: 'ILS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(minor / 100);
 };
 
+const portalCacheKey = (token: string) => 'cp_customer_portal_cache:' + token;
+export const hasCachedCustomerPortalData = (token: string): boolean => readCachedPortalData(token) !== null;
+export const clearCachedCustomerPortalData = (token: string): void => {
+  try { localStorage.removeItem(portalCacheKey(token)); } catch {}
+};
+const readCachedPortalData = (token: string): PortalData | null => {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(portalCacheKey(token));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PortalData;
+    return typeof parsed.customer_name === 'string' &&
+      typeof parsed.customer_code === 'string' &&
+      typeof parsed.balance_minor === 'number' &&
+      Array.isArray(parsed.orders) &&
+      Array.isArray(parsed.payment_submissions) &&
+      Array.isArray(parsed.goals) ? parsed : null;
+  } catch { return null; }
+};
+
+
 export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> = ({ token }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
-  const [data, setData] = useState<PortalData | null>(null);
+  const [data, setData] = useState<PortalData | null>(() => readCachedPortalData(token));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -79,21 +101,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     setError(null);
     // Never show a cached/local financial snapshot as if it were current.
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setData(null);
-      setError('service');
+      const cached = readCachedPortalData(token);
+      if (cached) { setData(cached); setError(null); }
+      else { setData(null); setError('service'); }
       setLoading(false);
       setRefreshing(false);
       return;
     }
     try {
-      const { data: response, error: rpcError } = await invokeSupabaseRpc<PortalData>(
-        'public_resolve_customer_portal',
-        { p_public_token: token },
-        undefined,
-        true,
-        false,
-        true
+      const { data: responseResult, error: rpcError } = await callCustomerAccount<{ data: PortalData }>(
+        'portal-data',
+        { token }
       );
+      const response = responseResult?.data ?? null;
       // Ignore stale requests and never restore financial data after connectivity drops.
       if (requestId !== requestGeneration.current) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -115,7 +135,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         setData(null);
         setError('service');
       } else {
-        setData(response);
+        const verifiedSnapshot: PortalData = { ...response, cached_at: new Date().toISOString() };
+        setData(verifiedSnapshot);
+        try { localStorage.setItem(portalCacheKey(token), JSON.stringify(verifiedSnapshot)); } catch {}
       }
     } catch {
       if (requestId === requestGeneration.current) {
@@ -136,8 +158,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const onOffline = () => {
       requestGeneration.current += 1;
       setOnline(false);
-      setData(null);
-      setError('service');
+      const cached = readCachedPortalData(token);
+      if (cached) { setData(cached); setError(null); }
+      else { setData(null); setError('service'); }
       setLoading(false);
       setRefreshing(false);
     };
@@ -194,7 +217,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       </header>
 
       <main className="relative z-10 mx-auto max-w-3xl space-y-4 px-4 py-5 sm:py-8">
-        {!online && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{isAr ? 'انقطع الإنترنت. أخفينا البيانات المالية حتى لا تظهر معلومات قديمة على أنها محدثة. أعد الاتصال ثم حدّث الصفحة.' : 'You are offline. Financial data is hidden so an old balance is never shown as current. Reconnect and refresh.'}</p></div>}
+        {!online && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{isAr ? 'أنت غير متصل. نعرض آخر نسخة محفوظة وليست بيانات لحظية؛ قد لا تشمل آخر دفعة أو تعديل.' : 'You are offline. This is the last saved snapshot, not live data; recent payments or changes may be missing.'}{data?.cached_at ? <span className="mt-1 block text-xs">{isAr ? 'آخر تحقق: ' : 'Last verified: '}{safeDate(data.cached_at, locale)}</span> : null}</p></div>}
 
         {loading ? <div className="space-y-3" aria-live="polite"><div className="h-28 animate-pulse rounded-2xl bg-slate-200 dark:bg-emerald-950" /><div className="h-36 animate-pulse rounded-2xl bg-slate-200 dark:bg-emerald-950" /><p className="text-center text-sm text-slate-500">{isAr ? 'جارٍ التحقق من رمز العميل وتحميل البيانات...' : 'Verifying customer QR and loading your data…'}</p></div> :
           error || !data ? <section role="alert" className="py-5 text-center">
@@ -233,7 +256,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <div className="mt-4 flex flex-wrap items-center gap-4 text-sm font-semibold"><span>{isAr ? 'بنك فلسطين' : 'Bank of Palestine'}</span><span>{isAr ? 'جوال باي' : 'Jawwal Pay'}</span><span>{isAr ? 'بال باي' : 'PalPay'}</span></div>
             </section>
 
-            <a href={`/pay/${encodeURIComponent(token)}`} className="flex min-h-12 items-center justify-center gap-2 py-4 font-bold text-emerald-800 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-300"><CreditCard className="h-5 w-5" />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>
+            {online && <a href={`/pay/${encodeURIComponent(token)}`} className="flex min-h-12 items-center justify-center gap-2 py-4 font-bold text-emerald-800 underline underline-offset-4 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:text-emerald-300"><CreditCard className="h-5 w-5" />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
 
             {data.goals.length > 0 && <section className="py-4 border-b border-slate-200/70 dark:border-emerald-950/70">
               <h2 className="mb-4 text-lg font-bold">{isAr ? 'الأهداف والمكافآت' : 'Goals and rewards'}</h2>

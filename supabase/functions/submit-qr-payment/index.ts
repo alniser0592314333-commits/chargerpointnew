@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.117.2";
 import { readBoundedRequestBody } from "./requestBodyLimit.ts";
+import { CUSTOMER_ACCOUNT_TERMS_VERSION } from "../_shared/customerAccountTerms.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +13,15 @@ const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
 
 const allowedMethods = new Set(["JAWAL_PAY", "PALPAY", "BANK_OF_PALESTINE"]);
+
+const decodeJwtClaims = (token: string): Record<string, unknown> | null => {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const normalized = part.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")));
+  } catch { return null; }
+};
 
 function inspectImage(bytes: Uint8Array): { mime: string; extension: string } | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
@@ -232,6 +242,33 @@ Deno.serve(async (request: Request) => {
         return json(404, { error: "This customer QR is invalid or has expired" });
       }
       customerId = String(customerRecord.id);
+
+      // Customer QR payment must use the same authenticated customer session as the account portal.
+      // Order QR payments remain on the existing public-capability flow.
+      const customerBearer = request.headers.get("authorization")?.replace(/^Bearer\\s+/i, "").trim() || "";
+      if (!customerBearer) return json(401, { error: "Customer sign-in is required to submit a payment notification." });
+      const { data: authResult, error: authError } = await supabase.auth.getUser(customerBearer);
+      const claims = decodeJwtClaims(customerBearer);
+      const sessionId = typeof claims?.session_id === "string" ? claims.session_id : "";
+      if (authError || !authResult.user || !/^[0-9a-f-]{36}$/i.test(sessionId)) {
+        return json(401, { error: "Customer sign-in is required to submit a payment notification." });
+      }
+      const { data: accountLink, error: accountLinkError } = await supabase.from("customer_account_links")
+        .select("customer_id,auth_user_id,account_status,must_change_password,terms_version")
+        .eq("customer_id", customerId).eq("auth_user_id", authResult.user.id).maybeSingle();
+      const { data: activeSession, error: activeSessionError } = await supabase.from("customer_account_sessions")
+        .select("session_id,expires_at,revoked_at")
+        .eq("customer_id", customerId).eq("auth_user_id", authResult.user.id).maybeSingle();
+      if (accountLinkError || activeSessionError) {
+        console.error("Customer payment session verification failed", accountLinkError?.message, activeSessionError?.message);
+        return json(503, { error: "Could not verify the customer session. Please retry." });
+      }
+      if (!accountLink || accountLink.account_status !== "ACTIVE" || accountLink.must_change_password ||
+          accountLink.terms_version !== CUSTOMER_ACCOUNT_TERMS_VERSION || !activeSession ||
+          activeSession.revoked_at || activeSession.session_id !== sessionId ||
+          new Date(activeSession.expires_at).getTime() <= Date.now()) {
+        return json(401, { error: "Customer sign-in is required to submit a payment notification." });
+      }
       targetId = customerId;
       targetKind = "CUSTOMER";
       // The receipt is only a review request. The authorized reviewer enters the verified amount at approval.
