@@ -173,10 +173,6 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (completed.error) { setErrorMessage(completed.error); return; }
       await saveSessionExpiry(token, completed.data?.session_expires_at);
       setPassword(''); setConfirmPassword('');
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
-        sessionStorage.removeItem('cp_customer_terms:' + token);
-      }
       setMode('portal');
       setMessage(recoveryFlow
         ? t('تم تغيير كلمة السر بنجاح.', 'Password changed successfully.')
