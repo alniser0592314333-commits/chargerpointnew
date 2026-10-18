@@ -47,8 +47,9 @@ describe('Isolated customer QR portal security contract', () => {
     expect(sql).not.toContain("'admin_id'");
   });
 
-  it('routes both established customer QR URL formats to the isolated portal', () => {
+  it('routes customer QR URLs to account auth and preserves distinct order QR URLs', () => {
     const app = fs.readFileSync(appPath, 'utf8');
+    const store = fs.readFileSync(storePath, 'utf8');
     expect(app).toContain("import { CustomerAccountPage } from './components/pages/CustomerAccountPage'");
     expect(app).toContain("pathname.startsWith('/c/')");
     expect(app).toContain("pathname.startsWith('/public/qr/customer/')");
