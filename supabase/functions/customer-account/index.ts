@@ -136,7 +136,7 @@ Deno.serve(async (request: Request) => {
   async function requireAdmin() {
     const authenticated = await userFromBearer();
     if (!authenticated) return null;
-    const response = await fetch(url.replace(/\/+$/, "") + "/rest/v1/rpc/get_current_admin_profile", {
+    const response = await fetch(serviceUrl.replace(/\/+$/, "") + "/rest/v1/rpc/get_current_admin_profile", {
       method: "POST",
       headers: { apikey: serviceSecret, Authorization: "Bearer " + bearer, "Content-Type": "application/json" },
       body: "{}",
