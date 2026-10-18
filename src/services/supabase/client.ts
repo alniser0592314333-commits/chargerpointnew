@@ -1141,6 +1141,45 @@ export async function rpcResolveOrderQr(
 }
 
 /**
+ * Confirms whether the customer's positive ledger balance can cover the entire order total.
+ * Returns null on RPC failure so the public UI never assumes coverage from a positive-balance flag alone.
+ */
+export async function rpcResolveOrderQrCreditCoverage(publicToken: string): Promise<boolean | null> {
+  const { data, error } = await invokeSupabaseRpc<boolean | boolean[]>(
+    'public_order_qr_credit_covers_order',
+    { p_public_token: publicToken },
+    undefined,
+    true,
+    false,
+    true
+  );
+  if (error || data === null || data === undefined) return null;
+  if (typeof data === 'boolean') return data;
+  if (Array.isArray(data) && data.length === 1 && typeof data[0] === 'boolean') return data[0];
+  return null;
+}
+
+/**
+ * Resolve an order QR to its customer's stable internal identifier for the password-protected account entry.
+ * The identifier alone does not grant access to account data.
+ */
+export async function rpcResolveOrderQrCustomerId(publicToken: string): Promise<string | null> {
+  const { data, error } = await invokeSupabaseRpc<string | string[]>(
+    'public_resolve_order_customer_id',
+    { p_public_token: publicToken },
+    undefined,
+    true,
+    false,
+    true
+  );
+  if (error || data === null || data === undefined) return null;
+  if (typeof data === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data)) return data;
+  if (Array.isArray(data) && data.length === 1 && typeof data[0] === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data[0])) return data[0];
+  return null;
+}
+
+/**
  * Resolves the latest payment notification associated with a public order/customer QR token.
  * Only safe status, amount, method, timestamps, and approved balance snapshots are returned.
  */

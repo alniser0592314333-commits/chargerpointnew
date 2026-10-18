@@ -112,8 +112,12 @@ describe('Public order QR payment status presentation', () => {
     expect(getOrderPaymentViewState(0, null, false, 'CHARGING')).toBe('NOT_DUE');
   });
 
-  it('shows the positive-credit notice for a charging order without calling it paid', () => {
-    expect(getOrderPaymentViewState(0, null, true, 'CHARGING')).toBe('CREDIT_COVERED');
+  it('shows the positive-credit notice only when the server confirms credit covers the full order', () => {
+    expect(getOrderPaymentViewState(0, null, true, 'CHARGING', true)).toBe('CREDIT_COVERED');
+  });
+
+  it('does not claim full coverage from a positive-balance flag alone', () => {
+    expect(getOrderPaymentViewState(0, null, true, 'CHARGING', false)).toBe('NOT_DUE');
   });
 
   it('shows a delivered order as paid when no recognized amount remains', () => {

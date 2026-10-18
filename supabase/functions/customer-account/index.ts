@@ -58,16 +58,41 @@ Deno.serve(async (request: Request) => {
 
   async function resolveQr(rawToken: unknown) {
     const token = normalize(rawToken, 64);
-    if (token.length < 24 || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
-    const { data: qr, error: qrError } = await admin.from("qr_tokens")
-      .select("target_id,expires_at").eq("public_token", token).eq("token_type", "CUSTOMER")
+    if (!token || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
+
+    // Customer UUIDs are login identifiers, not QR capabilities. They can only
+    // identify the account; password/session checks remain mandatory.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+      const { data: customer, error: customerError } = await admin.from("customers")
+        .select("id,name,is_active,status,deleted_at").eq("id", token).maybeSingle();
+      if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
+        customer.status === "DELETED") return null;
+      return { token, customer, isQrToken: false };
+    }
+
+    // Only opaque public customer QR capabilities may authorize first-time activation.
+    if (token.length >= 24) {
+      const { data: qr, error: qrError } = await admin.from("qr_tokens")
+        .select("target_id,expires_at").eq("public_token", token).eq("token_type", "CUSTOMER")
+        .eq("is_active", true).maybeSingle();
+      if (qrError || !qr || (qr.expires_at && new Date(qr.expires_at).getTime() <= Date.now())) return null;
+      const { data: customer, error: customerError } = await admin.from("customers")
+        .select("id,name,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
+      if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
+        customer.status === "DELETED") return null;
+      return { token, customer, isQrToken: true };
+    }
+
+    return null;
+  }
+
+  async function getCustomerQrToken(customerId: string): Promise<string | null> {
+    const { data } = await admin.from("qr_tokens")
+      .select("public_token").eq("target_id", customerId).eq("token_type", "CUSTOMER")
       .eq("is_active", true).maybeSingle();
-    if (qrError || !qr || (qr.expires_at && new Date(qr.expires_at).getTime() <= Date.now())) return null;
-    const { data: customer, error: customerError } = await admin.from("customers")
-      .select("id,name,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
-    if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
-      customer.status === "DELETED") return null;
-    return { token, customer };
+    return typeof data?.public_token === "string" && data.public_token.length >= 24
+      ? data.public_token
+      : null;
   }
 
   async function userFromBearer() {
@@ -176,7 +201,7 @@ Deno.serve(async (request: Request) => {
     if (action === "activate-password") {
       const resolved = await resolveQr(input.token);
       const password = rawPassword(input.password);
-      if (!resolved || !(await rateLimit(resolved.customer.id, "ACTIVATE", 5, 3600)) ||
+      if (!resolved || !resolved.isQrToken || !(await rateLimit(resolved.customer.id, "ACTIVATE", 5, 3600)) ||
         !strongPassword(password) || input.confirmPassword !== password ||
         input.termsAccepted !== true || input.termsVersion !== TERMS_VERSION) return genericFailure();
       const { data: existing, error: existingError } = await admin.from("customer_account_links")
@@ -235,13 +260,19 @@ Deno.serve(async (request: Request) => {
       if (!(await registerSession(link, signedIn.user.id, claims))) {
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       }
-      return respond(200, { ok: true, session: signedIn.session, must_change_password: link.must_change_password, terms_version: link.terms_version, auth_provider: link.auth_provider, session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims) });
+      return respond(200, {
+        ok: true, session: signedIn.session, must_change_password: link.must_change_password,
+        terms_version: link.terms_version, auth_provider: link.auth_provider,
+        customer_qr_token: await getCustomerQrToken(resolved.customer.id),
+        session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims),
+      });
     }
 
     if (action === "activate-social") {
       const authenticated = await userFromBearer();
       const resolved = await resolveQr(input.token);
-      if (!authenticated || !resolved || !(await rateLimit(resolved.customer.id, "SOCIAL_ACTIVATE", 5, 3600)) ||
+      if (!authenticated || !resolved || !resolved.isQrToken ||
+        !(await rateLimit(resolved.customer.id, "SOCIAL_ACTIVATE", 5, 3600)) ||
         input.termsAccepted !== true || input.termsVersion !== TERMS_VERSION || !authenticated.user.email) return genericFailure();
       const { data: existing, error } = await admin.from("customer_account_links")
         .select("customer_id").eq("customer_id", resolved.customer.id).maybeSingle();
@@ -297,6 +328,7 @@ Deno.serve(async (request: Request) => {
           ok: true, customer_name: link.customer.name,
           terms_version: link.terms_version,
           must_change_password: link.must_change_password,
+          customer_qr_token: await getCustomerQrToken(link.customer_id),
           session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
         });

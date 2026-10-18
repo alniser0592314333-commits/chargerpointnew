@@ -11,7 +11,7 @@ import { AppLogo } from '../qr/AppLogo';
 import { getPublicOrderByToken, getItemLocalizedDeviceName, PublicOrderQrData } from './dayOrdersStore';
 import type { BackgroundState } from '../energy/EnergyCanvasBackground';
 import { CustomerAuthScene } from './CustomerAuthScene';
-import { rpcResolveOrderQr, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
+import { rpcResolveOrderQr, rpcResolveOrderQrCreditCoverage, rpcResolveOrderQrCustomerId, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
 
 export interface PublicOrderPageProps {
   token: string;
@@ -26,14 +26,15 @@ export const getOrderPaymentViewState = (
   dueMinor: number | null | undefined,
   submission: Pick<PublicQrPaymentSubmissionRpcResult, 'status'> | null,
   customerHasPositiveCredit: boolean | null | undefined,
-  orderStatus: string | null | undefined
+  orderStatus: string | null | undefined,
+  customerCreditCoversOrder: boolean | null | undefined = false
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
   if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
   const status = String(orderStatus ?? '').toUpperCase();
   if (dueMinor <= 0 && ['DELIVERED', 'COMPLETED'].includes(status)) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
-  if (dueMinor <= 0) return customerHasPositiveCredit ? 'CREDIT_COVERED' : 'NOT_DUE';
+  if (dueMinor <= 0) return customerHasPositiveCredit && customerCreditCoversOrder === true ? 'CREDIT_COVERED' : 'NOT_DUE';
   if (submission?.status === 'APPROVED') return 'APPROVED';
   if (submission?.status === 'REJECTED') return 'REJECTED';
   // The server-calculated due is already net of available positive customer credit.
@@ -66,6 +67,8 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
   const [data, setData] = useState<PublicOrderQrData | null>(null);
   const [submission, setSubmission] = useState<PublicQrPaymentSubmissionRpcResult | null>(null);
+  const [customerCreditCoversOrder, setCustomerCreditCoversOrder] = useState<boolean | null>(null);
+  const [customerAccountId, setCustomerAccountId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -78,6 +81,42 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setCustomerAccountId(null);
+    if (!online || !token) return () => { active = false; };
+    rpcResolveOrderQrCustomerId(token).then((customerId) => {
+      if (active) setCustomerAccountId(customerId);
+    }).catch((err) => {
+      console.warn('Could not resolve the customer account entry for this order QR:', err);
+    });
+    return () => { active = false; };
+  }, [token, online]);
+
+  // Only show a credit-covered message when the server confirms the current credit
+  // covers the full order total; a positive balance alone is not sufficient evidence.
+  useEffect(() => {
+    let active = true;
+    const status = String(data?.status ?? '').toUpperCase();
+    const needsCoverageCheck = Boolean(
+      online && data && data.customerHasPositiveCredit &&
+      typeof data.orderDueMinor === 'number' && data.orderDueMinor <= 0 &&
+      !['DELIVERED', 'COMPLETED'].includes(status)
+    );
+    if (!needsCoverageCheck) {
+      setCustomerCreditCoversOrder(false);
+      return () => { active = false; };
+    }
+    setCustomerCreditCoversOrder(null);
+    rpcResolveOrderQrCreditCoverage(token).then((covered) => {
+      if (active) setCustomerCreditCoversOrder(covered);
+    }).catch((err) => {
+      console.warn('Could not verify whether customer credit covers the full order:', err);
+      if (active) setCustomerCreditCoversOrder(false);
+    });
+    return () => { active = false; };
+  }, [token, online, data?.customerHasPositiveCredit, data?.orderDueMinor, data?.status, data?.orderTotalMinor]);
 
   // Update background state whenever live order data updates
   useEffect(() => {
@@ -354,7 +393,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       : undefined;
 
   const statusConfig = getOrderStatusConfig(data?.status, due);
-  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status);
+  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status, customerCreditCoversOrder);
   const orderQrSubmissionLimitReached = data?.orderQrSubmissionLimitReached === true;
   const StatusIcon = statusConfig.icon;
 
@@ -372,7 +411,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             className="order-brand"
             aria-label={isAr ? 'الصفحة التعريفية' : 'About page'}
           >
-            <AppLogo size={36} variant="auto" />
+            <AppLogo size={36} variant="dark" />
             <span className="order-brand__text">
               <strong>{isAr ? 'نقطة الشحن' : 'Charging Point'}</strong>
               <span>{isAr ? 'متابعة الطلب' : 'Order Tracking'}</span>
@@ -500,6 +539,23 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     </button>
                   </div>
                 </div>
+
+                <div className="order-dropdown-divider" />
+
+                {customerAccountId && (
+                  <a
+                    href={`/c/login?customerId=${encodeURIComponent(customerAccountId)}`}
+                    className="order-dropdown-item order-account-entry"
+                    role="menuitem"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <div>
+                      <UserRound size={15} />
+                      <span>{isAr ? 'حساب العميل' : 'Customer Account'}</span>
+                    </div>
+                    <ArrowUpRight size={14} aria-hidden="true" />
+                  </a>
+                )}
               </div>
             )}
           </div>
@@ -702,15 +758,21 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     )}
 
                     {paymentViewState === 'CREDIT_COVERED' && (
-                      <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
-                        <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
-                        <div className="order-fully-paid-text">
-                          <h3>{isAr ? 'رصيدك الموجب سيُستخدم للطلب' : 'Your positive balance will be applied to this order'}</h3>
-                          <p>{isAr
-                            ? 'لا ترسل دفعة الآن. سيُستخدم رصيدك أولاً لتغطية تكلفة الأجهزة المستحقة، وسيظهر خيار الدفع فقط إذا أصبح عليك مبلغ مستحق بعد تحديث الرصيد.'
-                            : 'Do not send a payment now. Your available credit is applied first when delivered devices are financially recognized. A payment option appears only if an amount remains due after the balance updates.'}</p>
+                      <>
+                        <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
+                          <div className="order-fully-paid-icon" aria-hidden="true"><Wallet size={22} /></div>
+                          <div className="order-fully-paid-text">
+                            <h3>{isAr ? 'سيتم تغطية هذا الطلب من رصيدك' : 'This order will be covered by your balance'}</h3>
+                          </div>
                         </div>
-                      </div>
+                        <div className="order-integrated-pay-action order-credit-options-action">
+                          <p>{isAr ? 'هل ترغب بالاطلاع على خيارات الدفع؟' : 'Would you like to view the payment options?'}</p>
+                          <a href={`/pay/${encodeURIComponent(token)}`} className="order-pay-crystal-button">
+                            <CreditCard size={18} className="order-pay-btn-icon" aria-hidden="true" />
+                            <span className="order-pay-btn-label">{isAr ? 'عرض خيارات الدفع' : 'View Payment Options'}</span>
+                          </a>
+                        </div>
+                      </>
                     )}
 
                     {paymentViewState === 'NOT_DUE' && (
@@ -812,8 +874,8 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                   <Sparkles size={19} />
                 </div>
                 <div className="order-about-text">
-                  <strong>{isAr ? 'تعرّف على النقاط وخدمات الدفع' : 'Explore Charging Points & Services'}</strong>
-                  <span>{isAr ? 'اكتشف سرعة الشحن ومواقع الصناديق الذكية' : 'Discover smart locker locations & features'}</span>
+                  <strong>{isAr ? 'تابع الجديد من نقطة الشحن' : 'See What’s New at Charging Point'}</strong>
+                  <span>{isAr ? 'تعرّف على الأحداث والعروض وأيام الشحن المجانية عند توفرها.' : 'Check for events, offers and free-charging days when available.'}</span>
                 </div>
                 <ArrowUpRight size={17} className="order-about-arrow" />
               </a>
@@ -824,17 +886,18 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
               <aside className="order-qr-visual" aria-label={isAr ? 'معلومات عن خدمة الشحن' : 'Charging service information'}>
                 <div className="order-qr-visual-art" aria-hidden="true">
                   <CustomerAuthScene uid="order-qr-page-hero" />
-                  <div className="order-qr-visual-copy">
+                </div>
+                <div className="order-qr-visual-copy">
                     <p className="order-qr-visual-eyebrow">{isAr ? 'كل التفاصيل بمكان واحد' : 'YOUR ORDER, AT A GLANCE'}</p>
                     <h2>{isAr ? 'تابع طلبك بكل سهولة' : 'Your charging order, made simple'}</h2>
                     <p>{isAr
                       ? 'تفاصيل الأجهزة وحالة الشحن والمبلغ المستحق ظاهرة بوضوح، حتى تتابع طلبك من أي جهاز.'
                       : 'See your registered devices, charging status and balance clearly, all in one place from any device.'}</p>
                     <div className="order-qr-visual-points">
+                      <span><Smartphone size={15} />{isAr ? 'تفاصيل الأجهزة' : 'Device details'}</span>
                       <span><CheckCircle2 size={15} />{isAr ? 'تحديث حالة الطلب' : 'Order status at a glance'}</span>
-                      <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Clear order details'}</span>
+                      <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Secure details'}</span>
                     </div>
-                  </div>
                 </div>
               </aside>
             </div>
