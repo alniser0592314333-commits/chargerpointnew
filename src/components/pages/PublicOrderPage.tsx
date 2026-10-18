@@ -709,26 +709,10 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                       <div className="order-fully-paid-banner order-payment-notice is-approved" role="status" aria-live="polite">
                         <div className="order-fully-paid-icon" aria-hidden="true"><CheckCircle2 size={22} /></div>
                         <div className="order-fully-paid-text">
-                          <h3>{isAr ? 'تم قبول الدفع' : 'Payment accepted'}</h3>
-                          <p>{data.customerHasPositiveCredit
-                            ? (isAr
-                                ? `تم اعتماد الدفعة واحتساب رصيدك الموجب. المبلغ المتبقي عليك: ${formatCurrency(due ?? 0)}.`
-                                : `Your payment was approved and your positive credit was applied. Remaining amount due: ${formatCurrency(due ?? 0)}.`)
-                            : (isAr
-                                ? `تم اعتماد إشعار الدفع، لكن ما زال على هذا الطلب مبلغ مستحق قدره ${formatCurrency(due ?? 0)}.`
-                                : `Your payment notification was approved. This order still has ${formatCurrency(due ?? 0)}.`)}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {paymentViewState === 'NOT_DUE' && (
-                      <div className="order-fully-paid-banner order-payment-notice is-pending" role="status" aria-live="polite">
-                        <div className="order-fully-paid-icon" aria-hidden="true"><Clock3 size={22} /></div>
-                        <div className="order-fully-paid-text">
-                          <h3>{isAr ? 'لا يوجد مبلغ مستحق قبل التسليم' : 'No payment is due before delivery'}</h3>
+                          <h3>{isAr ? 'تم قبول إشعار الدفع' : 'Payment notification approved'}</h3>
                           <p>{isAr
-                            ? 'الأجهزة التي ما زالت قيد الشحن لا تُحتسب كمبلغ مستحق للدفع. حدّث رمز QR بعد التسليم لمعرفة المبلغ الفعلي.'
-                            : 'Devices still charging are not treated as payable charges. Refresh this QR after delivery to see the actual amount due.'}</p>
+                            ? `تم اعتماد الإشعار، لكن هذا لا يعني أن هذا الطلب سُدّد بالكامل. المبلغ المتبقي على الطلب: ${formatCurrency(due ?? 0)}.`
+                            : `The notification was approved, but that does not mean this order is fully paid. Remaining amount due on this order: ${formatCurrency(due ?? 0)}.`}</p>
                         </div>
                       </div>
                     )}
