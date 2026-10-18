@@ -142,6 +142,20 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     return () => window.removeEventListener('online', onOnline);
   }, [loadEntry]);
 
+  useEffect(() => {
+    const revalidateWhenVisible = () => {
+      if (document.visibilityState !== 'visible' || (mode !== 'portal' && mode !== 'force-change')) return;
+      initialized.current = false;
+      void loadEntry();
+    };
+    window.addEventListener('focus', revalidateWhenVisible);
+    document.addEventListener('visibilitychange', revalidateWhenVisible);
+    return () => {
+      window.removeEventListener('focus', revalidateWhenVisible);
+      document.removeEventListener('visibilitychange', revalidateWhenVisible);
+    };
+  }, [loadEntry, mode]);
+
   const finishPasswordChange = async (recoveryFlow = false) => {
     if (!commonPassword(password)) { setErrorMessage('PASSWORD_REQUIREMENTS'); return; }
     if (password !== confirmPassword) { setErrorMessage('PASSWORD_MISMATCH'); return; }
