@@ -9,7 +9,8 @@ import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
 import { getPublicOrderByToken, getItemLocalizedDeviceName, PublicOrderQrData } from './dayOrdersStore';
-import { EnergyCanvasBackground, BackgroundState } from '../energy/EnergyCanvasBackground';
+import type { BackgroundState } from '../energy/EnergyCanvasBackground';
+import { CustomerAuthScene } from './CustomerAuthScene';
 import { rpcResolveOrderQr, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
 
 export interface PublicOrderPageProps {
@@ -60,7 +61,7 @@ export const computeBackgroundStateFromOrder = (order: PublicOrderQrData | null)
 
 export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const { locale, setLocale, formatCurrency, isRTL } = useI18n();
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const isAr = locale === 'ar';
 
   const [data, setData] = useState<PublicOrderQrData | null>(null);
@@ -358,12 +359,10 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const StatusIcon = statusConfig.icon;
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page">
-      {/* Living Energy Canvas Engine */}
-      <EnergyCanvasBackground
-        state={backgroundState}
-        theme={resolvedTheme}
-      />
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page order-mountain-auth">
+      <div className="order-mountain-auth__backdrop" aria-hidden="true">
+        <CustomerAuthScene uid="order-qr-page-background" />
+      </div>
 
       {/* Header & Settings Bar (Without extra reload button) */}
       <header className="order-qr-header">
@@ -824,59 +823,18 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
               {/* Desktop-only supporting visual; order details and payment actions remain unchanged. */}
               <aside className="order-qr-visual" aria-label={isAr ? 'معلومات عن خدمة الشحن' : 'Charging service information'}>
                 <div className="order-qr-visual-art" aria-hidden="true">
-                  <svg viewBox="0 0 520 440" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                      <linearGradient id="orderVisualPhone" x1="154" y1="68" x2="334" y2="352" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#38BDF8" />
-                        <stop offset="1" stopColor="#10B981" />
-                      </linearGradient>
-                      <linearGradient id="orderVisualScreen" x1="187" y1="110" x2="311" y2="315" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#0F2E3A" />
-                        <stop offset="1" stopColor="#0A4B43" />
-                      </linearGradient>
-                      <radialGradient id="orderVisualGlow" cx="0" cy="0" r="1" gradientTransform="matrix(0 170 -190 0 260 215)" gradientUnits="userSpaceOnUse">
-                        <stop stopColor="#10B981" stopOpacity=".26" />
-                        <stop offset="1" stopColor="#10B981" stopOpacity="0" />
-                      </radialGradient>
-                    </defs>
-                    <ellipse cx="260" cy="220" rx="205" ry="190" fill="url(#orderVisualGlow)" />
-                    <circle cx="260" cy="220" r="145" stroke="currentColor" strokeOpacity=".09" strokeWidth="1.5" strokeDasharray="5 10" />
-                    <circle cx="260" cy="220" r="112" stroke="#10B981" strokeOpacity=".25" strokeWidth="1.5" />
-                    <g transform="rotate(-8 260 220)">
-                      <rect x="157" y="57" width="206" height="326" rx="36" fill="url(#orderVisualPhone)" fillOpacity=".13" stroke="url(#orderVisualPhone)" strokeWidth="3" />
-                      <rect x="171" y="76" width="178" height="288" rx="25" fill="url(#orderVisualScreen)" stroke="currentColor" strokeOpacity=".18" />
-                      <rect x="222" y="88" width="76" height="7" rx="3.5" fill="currentColor" fillOpacity=".35" />
-                      <rect x="198" y="122" width="124" height="124" rx="20" fill="#F0FDFA" fillOpacity=".97" />
-                      <path d="M219 145h17v17h-17zM240 145h8v8h-8zM256 145h17v17h-17zM282 145h19v19h-19zM219 166h8v8h-8zM235 166h18v18h-18zM260 169h10v10h-10zM279 174h9v9h-9zM219 187h18v18h-18zM244 190h8v8h-8zM260 187h17v17h-17zM285 195h16v16h-16zM224 215h8v8h-8zM242 211h14v14h-14zM264 215h8v8h-8zM281 215h20v8h-20z" fill="#0F766E" />
-                      <path d="m266 257-25 42h22l-8 26 34-46h-22l9-22Z" fill="#34D399" />
-                      <rect x="204" y="339" width="110" height="5" rx="2.5" fill="currentColor" fillOpacity=".25" />
-                    </g>
-                    <g>
-                      <rect x="38" y="111" width="112" height="70" rx="18" fill="currentColor" fillOpacity=".045" stroke="currentColor" strokeOpacity=".12" />
-                      <circle cx="61" cy="136" r="7" fill="#10B981" />
-                      <path d="m57.5 136 2.4 2.4 4.6-5" stroke="#052E2B" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                      <rect x="76" y="130" width="55" height="5" rx="2.5" fill="currentColor" fillOpacity=".45" />
-                      <rect x="57" y="151" width="73" height="5" rx="2.5" fill="currentColor" fillOpacity=".16" />
-                      <rect x="357" y="267" width="126" height="76" rx="19" fill="currentColor" fillOpacity=".045" stroke="currentColor" strokeOpacity=".12" />
-                      <rect x="375" y="286" width="27" height="27" rx="9" fill="#10B981" fillOpacity=".18" />
-                      <path d="M389 291v17m-5-5h10" stroke="#10B981" strokeWidth="2" strokeLinecap="round" />
-                      <rect x="411" y="289" width="51" height="5" rx="2.5" fill="currentColor" fillOpacity=".4" />
-                      <rect x="411" y="302" width="39" height="5" rx="2.5" fill="currentColor" fillOpacity=".16" />
-                      <rect x="389" y="314" width="73" height="5" rx="2.5" fill="#10B981" fillOpacity=".55" />
-                    </g>
-                    <circle cx="395" cy="103" r="5" fill="#38BDF8" />
-                    <circle cx="115" cy="285" r="4" fill="#10B981" />
-                    <path d="M85 225c18 12 27 22 32 39M378 159c19 9 29 20 37 36" stroke="#10B981" strokeOpacity=".5" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 8" />
-                  </svg>
-                </div>
-                <p className="order-qr-visual-eyebrow">{isAr ? 'كل التفاصيل بمكان واحد' : 'YOUR ORDER, AT A GLANCE'}</p>
-                <h2>{isAr ? 'تابع طلبك بكل سهولة' : 'Your charging order, made simple'}</h2>
-                <p>{isAr
-                  ? 'تفاصيل الأجهزة وحالة الشحن والمبلغ المستحق ظاهرة بوضوح، حتى تتابع طلبك من أي جهاز.'
-                  : 'See your registered devices, charging status and balance clearly, all in one place from any device.'}</p>
-                <div className="order-qr-visual-points">
-                  <span><CheckCircle2 size={15} />{isAr ? 'تحديث حالة الطلب' : 'Order status at a glance'}</span>
-                  <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Secure order details'}</span>
+                  <CustomerAuthScene uid="order-qr-page-hero" />
+                  <div className="order-qr-visual-copy">
+                    <p className="order-qr-visual-eyebrow">{isAr ? 'كل التفاصيل بمكان واحد' : 'YOUR ORDER, AT A GLANCE'}</p>
+                    <h2>{isAr ? 'تابع طلبك بكل سهولة' : 'Your charging order, made simple'}</h2>
+                    <p>{isAr
+                      ? 'تفاصيل الأجهزة وحالة الشحن والمبلغ المستحق ظاهرة بوضوح، حتى تتابع طلبك من أي جهاز.'
+                      : 'See your registered devices, charging status and balance clearly, all in one place from any device.'}</p>
+                    <div className="order-qr-visual-points">
+                      <span><CheckCircle2 size={15} />{isAr ? 'تحديث حالة الطلب' : 'Order status at a glance'}</span>
+                      <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Clear order details'}</span>
+                    </div>
+                  </div>
                 </div>
               </aside>
             </div>
