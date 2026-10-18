@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS public.customer_account_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id uuid NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   event_type text NOT NULL
-    CHECK (event_type IN ('RESET_REQUESTED', 'TEMP_PASSWORD_ISSUED', 'PASSWORD_CHANGED', 'EMAIL_RESET_SENT', 'ACCOUNT_FROZEN', 'ACCOUNT_REACTIVATED', 'ACCOUNT_CANCELLED')),
+    CHECK (event_type IN ('RESET_REQUESTED', 'TEMP_PASSWORD_ISSUED', 'PASSWORD_CHANGED', 'EMAIL_RESET_SENT', 'ACCOUNT_FROZEN', 'ACCOUNT_REACTIVATED', 'ACCOUNT_CANCELLED', 'TERMS_ACCEPTED')),
   request_id uuid REFERENCES public.customer_account_reset_requests(id) ON DELETE SET NULL,
   payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   is_read boolean NOT NULL DEFAULT false,
