@@ -1,0 +1,79 @@
+-- Customer account authentication boundary.
+-- This migration is committed to the feature branch only; it is not applied to production.
+CREATE TABLE IF NOT EXISTS public.customer_account_links (
+  customer_id uuid PRIMARY KEY REFERENCES public.customers(id) ON DELETE CASCADE,
+  auth_user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  login_email text NOT NULL UNIQUE,
+  account_status text NOT NULL DEFAULT 'ACTIVE'
+    CHECK (account_status IN ('ACTIVE', 'FROZEN', 'CANCELLED')),
+  must_change_password boolean NOT NULL DEFAULT false,
+  email_verified boolean NOT NULL DEFAULT false,
+  terms_version text NOT NULL,
+  terms_accepted_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  password_changed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT statement_timestamp()
+);
+
+-- One current device/session per customer. A newer successful login replaces the
+-- session id here; all customer data reads must check this registry on the server.
+CREATE TABLE IF NOT EXISTS public.customer_account_sessions (
+  customer_id uuid PRIMARY KEY REFERENCES public.customer_account_links(customer_id) ON DELETE CASCADE,
+  auth_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS customer_account_sessions_auth_user_idx
+  ON public.customer_account_sessions(auth_user_id);
+
+CREATE TABLE IF NOT EXISTS public.customer_account_reset_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'PENDING'
+    CHECK (status IN ('PENDING', 'PROCESSING', 'APPROVED', 'REJECTED', 'EXPIRED')),
+  requested_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  expires_at timestamptz NOT NULL DEFAULT (statement_timestamp() + interval '2 hours'),
+  processed_at timestamptz,
+  processed_by uuid REFERENCES public.admins(id),
+  created_at timestamptz NOT NULL DEFAULT statement_timestamp()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS customer_account_one_pending_reset_idx
+  ON public.customer_account_reset_requests(customer_id)
+  WHERE status IN ('PENDING', 'PROCESSING');
+
+CREATE TABLE IF NOT EXISTS public.customer_account_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+  event_type text NOT NULL
+    CHECK (event_type IN ('RESET_REQUESTED', 'TEMP_PASSWORD_ISSUED', 'PASSWORD_CHANGED', 'EMAIL_RESET_SENT')),
+  request_id uuid REFERENCES public.customer_account_reset_requests(id) ON DELETE SET NULL,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_read boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  read_at timestamptz,
+  read_by uuid REFERENCES public.admins(id)
+);
+CREATE INDEX IF NOT EXISTS customer_account_events_admin_inbox_idx
+  ON public.customer_account_events(is_read, created_at DESC);
+
+ALTER TABLE public.customer_account_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_account_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_account_reset_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_account_events ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE public.customer_account_links FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.customer_account_sessions FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.customer_account_reset_requests FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.customer_account_events FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.customer_account_links TO service_role;
+GRANT ALL ON TABLE public.customer_account_sessions TO service_role;
+GRANT ALL ON TABLE public.customer_account_reset_requests TO service_role;
+GRANT ALL ON TABLE public.customer_account_events TO service_role;
+
+-- The old QR projection disclosed financial history to anyone holding the QR.
+-- From this release forward, only the server-side customer-account function may
+-- invoke it after verifying the customer's authenticated user and active session.
+REVOKE ALL ON FUNCTION public.public_resolve_customer_portal(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.public_resolve_customer_portal(text) TO service_role;
