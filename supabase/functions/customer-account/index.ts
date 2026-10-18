@@ -82,6 +82,15 @@ Deno.serve(async (request: Request) => {
     return { token, customer, isQrToken: false };
   }
 
+  async function getCustomerQrToken(customerId: string): Promise<string | null> {
+    const { data } = await admin.from("qr_tokens")
+      .select("public_token").eq("target_id", customerId).eq("token_type", "CUSTOMER")
+      .eq("is_active", true).maybeSingle();
+    return typeof data?.public_token === "string" && data.public_token.length >= 24
+      ? data.public_token
+      : null;
+  }
+
   async function userFromBearer() {
     if (!bearer || bearer === anonKey) return null;
     const { data, error } = await admin.auth.getUser(bearer);
@@ -175,13 +184,9 @@ Deno.serve(async (request: Request) => {
         .eq("customer_id", resolved.customer.id).maybeSingle();
       if (error) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       if (link && link.account_status !== "ACTIVE") return genericFailure();
-      const { data: customerQr } = await admin.from("qr_tokens")
-        .select("public_token").eq("target_id", resolved.customer.id).eq("token_type", "CUSTOMER")
-        .eq("is_active", true).maybeSingle();
       return respond(200, {
         ok: true, valid: true, activated: Boolean(link),
         customer_name: resolved.customer.name,
-        customer_qr_token: typeof customerQr?.public_token === "string" ? customerQr.public_token : null,
         email_recovery_available: Boolean(link?.email_verified && link?.login_email &&
           !String(link.login_email).endsWith(".invalid")),
         auth_provider: link?.auth_provider ?? null,
@@ -251,7 +256,12 @@ Deno.serve(async (request: Request) => {
       if (!(await registerSession(link, signedIn.user.id, claims))) {
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       }
-      return respond(200, { ok: true, session: signedIn.session, must_change_password: link.must_change_password, terms_version: link.terms_version, auth_provider: link.auth_provider, session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims) });
+      return respond(200, {
+        ok: true, session: signedIn.session, must_change_password: link.must_change_password,
+        terms_version: link.terms_version, auth_provider: link.auth_provider,
+        customer_qr_token: await getCustomerQrToken(resolved.customer.id),
+        session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims),
+      });
     }
 
     if (action === "activate-social") {
@@ -313,6 +323,7 @@ Deno.serve(async (request: Request) => {
           ok: true, customer_name: link.customer.name,
           terms_version: link.terms_version,
           must_change_password: link.must_change_password,
+          customer_qr_token: await getCustomerQrToken(link.customer_id),
           session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
         });
