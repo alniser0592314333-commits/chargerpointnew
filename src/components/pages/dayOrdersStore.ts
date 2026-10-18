@@ -5497,6 +5497,7 @@ export interface PublicOrderQrData {
   itemsCount: number;
   orderTotalMinor?: number;
   orderDueMinor?: number;
+  orderPaidMinor?: number;
   customerHasPositiveCredit?: boolean;
   orderQrSubmissionLimitReached?: boolean;
   items?: Array<{
@@ -5555,6 +5556,7 @@ export const getPublicOrderByToken = async (
     itemsCount: supabaseResult.items_count,
     orderTotalMinor: supabaseResult.order_total_minor,
     orderDueMinor: supabaseResult.order_due_minor,
+    orderPaidMinor: supabaseResult.order_paid_minor,
     customerHasPositiveCredit: typeof supabaseResult.customer_has_positive_credit === 'boolean'
       ? supabaseResult.customer_has_positive_credit : undefined,
     orderQrSubmissionLimitReached: typeof supabaseResult.order_qr_submission_limit_reached === 'boolean'
