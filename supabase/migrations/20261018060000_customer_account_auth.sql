@@ -119,8 +119,8 @@ BEGIN
       ELSE current_rate.attempts + 1
     END,
     window_started_at = CASE
-      WHEN p_reset OR public.customer_account_rate_limits.window_started_at <= v_now - make_interval(secs => p_window_seconds) THEN v_now
-      ELSE public.customer_account_rate_limits.window_started_at
+      WHEN p_reset OR current_rate.window_started_at <= v_now - make_interval(secs => p_window_seconds) THEN v_now
+      ELSE current_rate.window_started_at
     END,
     updated_at = v_now
   RETURNING attempts INTO v_attempts;
