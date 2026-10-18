@@ -104,18 +104,19 @@ DECLARE
   v_now timestamptz := clock_timestamp();
 BEGIN
   IF p_rate_key IS NULL OR length(p_rate_key) < 8 OR length(p_rate_key) > 128
-     OR p_action NOT IN ('LOGIN', 'ACTIVATE', 'RESET_REQUEST', 'EMAIL_RESET', 'SOCIAL_ACTIVATE')
-     OR p_max_attempts < 1 OR p_window_seconds < 1 OR p_window_seconds > 86400 THEN
+     OR p_action IS NULL OR p_action NOT IN ('LOGIN', 'ACTIVATE', 'RESET_REQUEST', 'EMAIL_RESET', 'SOCIAL_ACTIVATE')
+     OR p_max_attempts IS NULL OR p_max_attempts < 1
+     OR p_window_seconds IS NULL OR p_window_seconds < 1 OR p_window_seconds > 86400 THEN
     RETURN false;
   END IF;
 
-  INSERT INTO public.customer_account_rate_limits (rate_key, action, attempts, window_started_at, updated_at)
+  INSERT INTO public.customer_account_rate_limits AS current_rate (rate_key, action, attempts, window_started_at, updated_at)
   VALUES (p_rate_key, p_action, CASE WHEN p_reset THEN 0 ELSE 1 END, v_now, v_now)
   ON CONFLICT (rate_key, action) DO UPDATE SET
     attempts = CASE
       WHEN p_reset THEN 0
-      WHEN public.customer_account_rate_limits.window_started_at <= v_now - make_interval(secs => p_window_seconds) THEN 1
-      ELSE public.customer_account_rate_limits.attempts + 1
+      WHEN current_rate.window_started_at <= v_now - make_interval(secs => p_window_seconds) THEN 1
+      ELSE current_rate.attempts + 1
     END,
     window_started_at = CASE
       WHEN p_reset OR public.customer_account_rate_limits.window_started_at <= v_now - make_interval(secs => p_window_seconds) THEN v_now
