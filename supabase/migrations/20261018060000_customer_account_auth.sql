@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS public.customer_account_links (
   customer_id uuid PRIMARY KEY REFERENCES public.customers(id) ON DELETE CASCADE,
   auth_user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   login_email text NOT NULL UNIQUE,
+  auth_provider text NOT NULL DEFAULT 'password' CHECK (auth_provider IN ('password', 'google', 'apple', 'facebook')),
   account_status text NOT NULL DEFAULT 'ACTIVE'
     CHECK (account_status IN ('ACTIVE', 'FROZEN', 'CANCELLED')),
   must_change_password boolean NOT NULL DEFAULT false,
