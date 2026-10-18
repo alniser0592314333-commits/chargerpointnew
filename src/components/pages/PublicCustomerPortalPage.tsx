@@ -172,14 +172,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     };
     return map[status]?.[isAr ? 0 : 1] ?? status;
   };
-  const paymentMethodLabel = (method: string) => {
-    const methods: Record<string, string> = {
-      BANK_OF_PALESTINE: isAr ? 'بنك فلسطين' : 'Bank of Palestine',
-      JAWAL_PAY: isAr ? 'جوال باي' : 'Jawwal Pay',
-      PALPAY: isAr ? 'بال باي' : 'PalPay',
-    };
-    return methods[method] ?? method;
-  };
+
 
   return (
     <div dir={isAr ? 'rtl' : 'ltr'} className="relative isolate min-h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#071b1b] dark:text-slate-100">
@@ -215,7 +208,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 <div><p className="text-sm text-slate-500 dark:text-emerald-200/70">{isAr ? 'أهلاً بك' : 'Welcome'}</p><h1 className="mt-1 text-2xl font-extrabold">{data.customer_name}</h1><p className="mt-1 text-sm text-slate-500 dark:text-emerald-200/70">{isAr ? 'رمز العميل' : 'Customer code'}: <bdi className="font-mono font-bold">{data.customer_code}</bdi></p></div>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"><ShieldCheck className="h-4 w-4" />{isAr ? 'بوابة خاصة عبر QR' : 'Private QR portal'}</span>
               </div>
-              <div className="mt-5 rounded-xl bg-slate-50 p-4 dark:bg-[#0c312b]">
+              <div className="mt-5 border-y border-slate-200/70 py-4 dark:border-emerald-950/70">
                 <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-emerald-100/75"><Wallet className="h-5 w-5" />{balanceLabel}</div>
                 <p className={`mt-2 text-3xl font-extrabold tabular-nums ${data.balance_minor < 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'}`}>{money(Math.abs(data.balance_minor), locale)}</p>
                 <p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/60">{isAr ? 'الرصيد من السجل المالي المعتمد على الخادم' : 'Balance from the server-authoritative financial ledger'}</p>
@@ -224,7 +217,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
 
             <section className="py-4 border-b border-slate-200/70 dark:border-emerald-950/70">
               <div className="mb-4 flex items-center gap-2"><History className="h-5 w-5 text-emerald-700 dark:text-emerald-300" /><h2 className="text-lg font-bold">{isAr ? 'سجل الطلبات' : 'Order history'}</h2></div>
-              {data.orders.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-[#0c312b]">{isAr ? 'لا توجد طلبات مسجلة.' : 'No orders found.'}</p> : <div className="space-y-3">{data.orders.map((order) => <article key={`${order.order_number}-${order.created_at}`} className="py-4 border-b border-slate-200/70 dark:border-emerald-950/70">
+              {data.orders.length === 0 ? <p className="py-4 text-sm text-slate-500">{isAr ? 'لا توجد طلبات مسجلة.' : 'No orders found.'}</p> : <div className="space-y-3">{data.orders.map((order) => <article key={`${order.order_number}-${order.created_at}`} className="py-4 border-b border-slate-200/70 dark:border-emerald-950/70">
                 <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-bold">{isAr ? 'طلب رقم' : 'Order'} #{order.order_number}</h3><p className="mt-1 text-xs text-slate-500 dark:text-emerald-100/60">{safeDate(order.created_at, locale)}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold dark:bg-emerald-950">{statusLabel(order.status)}</span></div>
                 <div className="mt-3 grid grid-cols-2 gap-3"><div><p className="text-xs text-slate-500">{isAr ? 'الإجمالي' : 'Total'}</p><p className="mt-1 font-bold tabular-nums">{money(order.total_minor, locale)}</p></div><div><p className="text-xs text-slate-500">{isAr ? 'المتبقي على الطلب' : 'Order due'}</p><p className="mt-1 font-bold tabular-nums">{money(order.due_minor, locale)}</p></div></div>
                 <div className="mt-3 space-y-2">{order.items.map((item, index) => <div key={index} className="flex items-start justify-between gap-3 border-t border-slate-100 pt-2 text-sm dark:border-emerald-950"><div className="min-w-0"><p className="font-medium">{isAr ? item.device_name_ar : item.device_name_en}</p><p className="mt-0.5 text-xs text-slate-500">{item.has_charger ? (isAr ? 'مع شاحن' : 'With charger') : (isAr ? 'بدون شاحن' : 'No charger')} · {statusLabel(item.status)} · {statusLabel(item.payment_status)}</p></div><span className="shrink-0 font-semibold tabular-nums">{money(item.total_minor, locale)}</span></div>)}</div>
