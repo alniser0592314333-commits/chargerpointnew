@@ -49,10 +49,14 @@ describe('Isolated customer QR portal security contract', () => {
 
   it('routes both established customer QR URL formats to the isolated portal', () => {
     const app = fs.readFileSync(appPath, 'utf8');
-    expect(app).toContain("import { PublicCustomerPortalPage } from './components/pages/PublicCustomerPortalPage'");
+    expect(app).toContain("import { CustomerAccountPage } from './components/pages/CustomerAccountPage'");
     expect(app).toContain("pathname.startsWith('/c/')");
     expect(app).toContain("pathname.startsWith('/public/qr/customer/')");
-    expect(app).toContain('<PublicCustomerPortalPage token={token} />');
+    expect(app).toContain('<CustomerAccountPage token={token} />');
+    expect(app).toContain("pathname.startsWith('/o/')");
+    expect(app).toContain("pathname.startsWith('/public/qr/order/')");
+    expect(app).toContain('<PublicOrderPage token={token} />');
+    expect(app).not.toContain("pathname.startsWith('/o/')\n      const token = pathname.replace('/o/', '');\n      return <CustomerAccountPage");
     expect(app).not.toContain('<PublicCustomerQrPage token={token} />');
   });
 
@@ -114,9 +118,19 @@ describe('Isolated customer QR portal security contract', () => {
 
   it('uses only the scoped RPC, suppresses financial data offline, and does not expose admin controls', () => {
     const page = fs.readFileSync(pagePath, 'utf8');
-    expect(page).toContain("'public_resolve_customer_portal'");
-    expect(page).toContain("p_public_token: token");
-    expect(page).toContain('false,\n        true\n      );');
+    expect(page).toContain("'portal-data'");
+    expect(page).toContain("callCustomerAccount<{ data: PortalData }>");
+    expect(page).not.toContain("'public_resolve_customer_portal'");
+    const accountAuth = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/customer-account/index.ts'), 'utf8');
+    expect(accountAuth).toContain('.eq("token_type", "CUSTOMER")');
+    expect(accountAuth).toContain('resolved.customer.id !== link.customer_id');
+    expect(accountAuth).toContain('activeSessionExpiresAt');
+    expect(accountAuth).toContain('admin-set-status');
+    const accountMigration = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261018060000_customer_account_auth.sql'), 'utf8');
+    expect(accountMigration).toContain('REVOKE ALL ON FUNCTION public.public_resolve_customer_portal(text) FROM PUBLIC, anon, authenticated');
+    expect(accountMigration).toContain('GRANT EXECUTE ON FUNCTION public.public_resolve_customer_portal(text) TO service_role');
+    expect(accountMigration).toContain('customer_account_one_pending_reset_idx');
+    expect(accountMigration).toContain('customer_account_sessions');
     const client = fs.readFileSync(supabaseClientPath, 'utf8');
     expect(client).toContain('forceAnonymous: boolean = false');
     expect(client).toContain('forceAnonymous ? null : resolveAuthBearerToken(customAuthToken)');
