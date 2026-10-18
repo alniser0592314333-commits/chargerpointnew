@@ -16,12 +16,24 @@ type EntryStatus = {
   auth_provider?: "password" | "google" | "apple" | "facebook" | null;
   terms_version?: string | null;
 };
-const sessionExpiryKey = (token: string) => 'cp_customer_session_expires_at:' + token;
-const saveSessionExpiry = (token: string, value: unknown) => {
+const sessionExpiryKey = (token: string) => 'cp_customer_session_binding:' + token;
+const sessionIdFromAccessToken = (accessToken: string): string | null => {
+  try {
+    const payload = accessToken.split('.')[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+    return typeof claims.session_id === 'string' ? claims.session_id : null;
+  } catch { return null; }
+};
+const saveSessionExpiry = async (token: string, value: unknown) => {
   if (typeof value !== 'string') return;
   const time = new Date(value).getTime();
   if (!Number.isFinite(time) || time <= Date.now()) return;
-  try { sessionStorage.setItem(sessionExpiryKey(token), String(time)); } catch {}
+  const { data } = await customerAuth.auth.getSession();
+  const sessionId = data.session ? sessionIdFromAccessToken(data.session.access_token) : null;
+  if (!sessionId) return;
+  try { localStorage.setItem(sessionExpiryKey(token), JSON.stringify({ expiresAt: time, sessionId })); } catch {}
 };
 
 type Mode = 'loading' | 'unavailable' | 'activate' | 'social-activation' | 'login' | 'forgot' | 'portal' | 'force-change' | 'recovery' | 'terms-update';
@@ -78,8 +90,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     setError('');
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       const { data: localSession } = await customerAuth.auth.getSession();
-      const localExpiry = Number(sessionStorage.getItem(sessionExpiryKey(token)) || 0);
-      if (localSession.session && localExpiry > Date.now() && hasCachedCustomerPortalData(token)) {
+      let localBinding: { expiresAt?: number; sessionId?: string } | null = null;
+      try { localBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(token)) || 'null'); } catch {}
+      const currentSessionId = localSession.session ? sessionIdFromAccessToken(localSession.session.access_token) : null;
+      if (localSession.session && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
+          localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(token)) {
         setMode('portal');
         setMessage(t('أنت غير متصل. هذه آخر نسخة محفوظة؛ الدفع وتغييرات الحساب متوقفة حتى عودة الإنترنت.', 'You are offline. This is the last saved copy; payments and account changes are disabled until you reconnect.'));
       } else {
@@ -124,7 +139,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       );
       const registeredData = registered.data;
       if (registeredData && !registered.error) {
-        saveSessionExpiry(token, registeredData.session_expires_at);
+        await saveSessionExpiry(token, registeredData.session_expires_at);
         if (typeof sessionStorage !== 'undefined') {
           sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
           sessionStorage.removeItem('cp_customer_terms:' + token);
@@ -178,7 +193,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (updateError) { setError(t('تعذّر تحديث كلمة السر. حاول مرة أخرى.', 'Could not update the password. Please try again.')); return; }
       const completed = await callCustomerAccount<{ session_expires_at?: string; terms_version?: string }>('complete-password-change', { token });
       if (completed.error) { setErrorMessage(completed.error); return; }
-      saveSessionExpiry(token, completed.data?.session_expires_at);
+      await saveSessionExpiry(token, completed.data?.session_expires_at);
       setPassword(''); setConfirmPassword('');
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
@@ -203,7 +218,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       );
       if (result.error || !result.data?.session) { setErrorMessage(result.error || 'ACTIVATION_UNAVAILABLE'); return; }
       const sessionError = await setCustomerSession(result.data.session);
-      saveSessionExpiry(token, result.data.session_expires_at);
+      await saveSessionExpiry(token, result.data.session_expires_at);
       if (sessionError) { setError(t('تم إنشاء الحساب لكن تعذّر إكمال الدخول. ارجع وسجّل الدخول بكلمة السر.', 'Account created, but sign-in could not be completed. Return and sign in with your password.')); setMode('login'); return; }
       setPassword(''); setConfirmPassword(''); setMode('portal');
     } finally { setBusy(false); }
@@ -226,7 +241,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         token, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION,
       }, updatedSession.session.access_token);
       if (result.error) { setErrorMessage(result.error); return; }
-      saveSessionExpiry(token, result.data?.session_expires_at);
+      await saveSessionExpiry(token, result.data?.session_expires_at);
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem('cp_customer_oauth_mode:' + token);
         sessionStorage.removeItem('cp_customer_terms:' + token);
@@ -249,7 +264,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         return;
       }
       const sessionError = await setCustomerSession(loginData.session);
-      saveSessionExpiry(token, loginData.session_expires_at);
+      await saveSessionExpiry(token, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
@@ -307,7 +322,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     clearCachedCustomerPortalData(token);
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('cp_customer_terms:' + token);
-      sessionStorage.removeItem(sessionExpiryKey(token));
+      localStorage.removeItem(sessionExpiryKey(token));
     }
     setEntry((current) => current ? { ...current, activated: true } : current);
     setMode('login');
