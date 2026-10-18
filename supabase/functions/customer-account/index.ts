@@ -60,9 +60,17 @@ Deno.serve(async (request: Request) => {
     const token = normalize(rawToken, 64);
     if (!token || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
 
-    // A long opaque value is a customer QR capability. Short identifiers are
-    // treated only as customer codes and still require the normal password/session
-    // checks in each account action.
+    // Customer UUIDs are login identifiers, not QR capabilities. They can only
+    // identify the account; password/session checks remain mandatory.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+      const { data: customer, error: customerError } = await admin.from("customers")
+        .select("id,name,is_active,status,deleted_at").eq("id", token).maybeSingle();
+      if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
+        customer.status === "DELETED") return null;
+      return { token, customer, isQrToken: false };
+    }
+
+    // Only opaque public customer QR capabilities may authorize first-time activation.
     if (token.length >= 24) {
       const { data: qr, error: qrError } = await admin.from("qr_tokens")
         .select("target_id,expires_at").eq("public_token", token).eq("token_type", "CUSTOMER")
@@ -75,11 +83,7 @@ Deno.serve(async (request: Request) => {
       return { token, customer, isQrToken: true };
     }
 
-    const { data: customer, error: customerError } = await admin.from("customers")
-      .select("id,name,is_active,status,deleted_at").eq("customer_code", token).maybeSingle();
-    if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
-      customer.status === "DELETED") return null;
-    return { token, customer, isQrToken: false };
+    return null;
   }
 
   async function getCustomerQrToken(customerId: string): Promise<string | null> {
