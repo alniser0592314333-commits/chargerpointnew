@@ -334,6 +334,10 @@ Deno.serve(async (request: Request) => {
     if (action === "request-reset" || action === "email-reset") {
       const resolved = await resolveQr(input.token);
       if (!resolved) return respond(200, { ok: true, message: "If the account is eligible, the request has been recorded." });
+      const limitAction = action === "email-reset" ? "EMAIL_RESET" : "RESET_REQUEST";
+      if (!(await rateLimit(resolved.customer.id, limitAction, 3, 3600))) {
+        return respond(200, { ok: true, message: "If the account is eligible, the request has been recorded." });
+      }
       const { data: link, error } = await admin.from("customer_account_links")
         .select("customer_id,login_email,email_verified,account_status")
         .eq("customer_id", resolved.customer.id).maybeSingle();
