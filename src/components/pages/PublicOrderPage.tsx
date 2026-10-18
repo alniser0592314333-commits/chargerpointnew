@@ -18,7 +18,7 @@ export interface PublicOrderPageProps {
 }
 
 /**
- * Derives the public payment action from the canonical balance and QR-specific submission state.
+ * Derives the public payment action from this order's allocated payments and QR submission state.
  */
 export type OrderPaymentViewState = 'PAID' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'PARTIALLY_PAID' | 'UNPAID' | 'NOT_DUE' | 'UNAVAILABLE';
 
@@ -27,7 +27,8 @@ export const getOrderPaymentViewState = (
   submission: Pick<PublicQrPaymentSubmissionRpcResult, 'status'> | null,
   customerHasPositiveCredit: boolean | null | undefined,
   orderStatus: string | null | undefined,
-  paidMinor: number | null | undefined
+  paidMinor: number | null | undefined,
+  orderTotalMinor?: number | null
 ): OrderPaymentViewState => {
   if (typeof dueMinor !== 'number' || !Number.isFinite(dueMinor)) return 'UNAVAILABLE';
   if (typeof customerHasPositiveCredit !== 'boolean') return 'UNAVAILABLE';
@@ -38,8 +39,11 @@ export const getOrderPaymentViewState = (
 
   // Only order-specific allocations prove payment; an approved receipt or a
   // customer's ledger balance alone must never zero this order's due.
-  if (dueMinor <= 0 && delivered && paidMinor > 0) return 'PAID';
+  if (dueMinor <= 0 && delivered && paidMinor > 0 &&
+      (typeof orderTotalMinor !== 'number' || paidMinor >= orderTotalMinor)) return 'PAID';
   if (submission?.status === 'PENDING') return 'PENDING';
+  if (dueMinor <= 0 && delivered && typeof orderTotalMinor === 'number' &&
+      orderTotalMinor > 0 && paidMinor < orderTotalMinor) return 'UNAVAILABLE';
   if (dueMinor <= 0) return 'NOT_DUE';
   if (submission?.status === 'REJECTED') return 'REJECTED';
   if (paidMinor > 0) return 'PARTIALLY_PAID';
@@ -59,7 +63,7 @@ export const computeBackgroundStateFromOrder = (order: PublicOrderQrData | null)
 
   if (status === 'DELIVERED' || status === 'COMPLETED') {
     // A zero due without an order-specific allocation is not proof of payment.
-    return due > 0 || (total > 0 && paid <= 0) ? 'delivered-unpaid' : 'delivered-paid';
+    return due > 0 || (total > 0 && paid < total) ? 'delivered-unpaid' : 'delivered-paid';
   }
   if (status === 'READY' || status === 'READY_FOR_PICKUP') {
     return 'charged';
@@ -323,10 +327,11 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
     return '';
   };
 
-  const getOrderStatusConfig = (value?: string, dueMinor?: number, paidMinor?: number) => {
+  const getOrderStatusConfig = (value?: string, dueMinor?: number, paidMinor?: number, totalMinor?: number) => {
     const key = (value || '').toUpperCase();
     const due = typeof dueMinor === 'number' ? dueMinor : 0;
     const paidForOrder = typeof paidMinor === 'number' ? paidMinor : 0;
+    const totalForOrder = typeof totalMinor === 'number' ? totalMinor : 0;
 
     if (['CHARGING', 'IN_PROGRESS', 'IN_PROGRESS_CHARGING', 'PROCESSING'].includes(key)) {
       return { label: isAr ? 'قيد الشحن' : 'Charging', icon: BatteryCharging, className: 'is-charging' };
@@ -341,8 +346,11 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       if (due > 0) {
         return { label: isAr ? 'تم التسليم (غير مدفوع)' : 'Delivered (Unpaid)', icon: PackageCheck, className: 'is-delivered-unpaid' };
       }
-      if (paidForOrder > 0) {
+      if (paidForOrder > 0 && paidForOrder >= totalForOrder) {
         return { label: isAr ? 'تم التسليم (مدفوع بالكامل)' : 'Delivered & Paid', icon: PackageCheck, className: 'is-delivered-paid' };
+      }
+      if (totalForOrder > 0) {
+        return { label: isAr ? 'تم التسليم (غير مكتمل السداد)' : 'Delivered (Payment Incomplete)', icon: PackageCheck, className: 'is-delivered-unpaid' };
       }
       return { label: isAr ? 'تم التسليم' : 'Delivered', icon: PackageCheck, className: 'is-ready' };
     }
@@ -356,8 +364,8 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const due = data?.orderDueMinor;
   const paid = typeof data?.orderPaidMinor === 'number' ? data.orderPaidMinor : undefined;
 
-  const statusConfig = getOrderStatusConfig(data?.status, due, paid);
-  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status, paid);
+  const statusConfig = getOrderStatusConfig(data?.status, due, paid, total);
+  const paymentViewState = getOrderPaymentViewState(due, submission, data?.customerHasPositiveCredit, data?.status, paid, total);
   const orderQrSubmissionLimitReached = data?.orderQrSubmissionLimitReached === true;
   const StatusIcon = statusConfig.icon;
 
