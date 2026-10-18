@@ -16,6 +16,8 @@
 
 .cp-welcome-intro[data-stage="exiting"] {
   background: #061c24;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .cp-welcome-intro__scene {
@@ -40,7 +42,7 @@
 
 .cp-welcome-intro[data-stage="assembling"] .cp-welcome-intro__art > :not(defs) {
   animation: cp-welcome-gather 1.65s cubic-bezier(.18,.78,.2,1) both;
-  animation-delay: calc(var(--piece-order, 0) * 42ms);
+  animation-delay: calc(var(--piece-order, 0) * 22ms);
 }
 
 .cp-welcome-intro[data-stage="welcome"] .cp-welcome-intro__art > :not(defs) {
