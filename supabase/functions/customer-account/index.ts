@@ -382,7 +382,7 @@ Deno.serve(async (request: Request) => {
       const administrator = await requireAdmin();
       if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
       await admin.from("customer_account_reset_requests").update({ status: "EXPIRED" })
-        .eq("status", "PENDING").lt("expires_at", now.toISOString());
+        .in("status", ["PENDING", "PROCESSING"]).lt("expires_at", now.toISOString());
       const { data: requests, error: requestError } = await admin.from("customer_account_reset_requests")
         .select("id,customer_id,status,requested_at,expires_at,customers(name)")
         .eq("status", "PENDING").gt("expires_at", now.toISOString()).order("requested_at", { ascending: true });
