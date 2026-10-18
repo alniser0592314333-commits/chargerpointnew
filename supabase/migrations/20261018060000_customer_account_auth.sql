@@ -74,6 +74,63 @@ GRANT ALL ON TABLE public.customer_account_sessions TO service_role;
 GRANT ALL ON TABLE public.customer_account_reset_requests TO service_role;
 GRANT ALL ON TABLE public.customer_account_events TO service_role;
 
+
+-- Server-side per-customer throttling for password and recovery actions.
+CREATE TABLE IF NOT EXISTS public.customer_account_rate_limits (
+  rate_key text NOT NULL,
+  action text NOT NULL CHECK (action IN ('LOGIN', 'ACTIVATE', 'RESET_REQUEST', 'EMAIL_RESET', 'SOCIAL_ACTIVATE')),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  window_started_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  PRIMARY KEY (rate_key, action)
+);
+ALTER TABLE public.customer_account_rate_limits ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.customer_account_rate_limits FROM PUBLIC, anon, authenticated;
+GRANT ALL ON TABLE public.customer_account_rate_limits TO service_role;
+
+CREATE OR REPLACE FUNCTION public.customer_account_consume_rate_limit(
+  p_rate_key text,
+  p_action text,
+  p_max_attempts integer,
+  p_window_seconds integer,
+  p_reset boolean DEFAULT false
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $function$
+DECLARE
+  v_attempts integer;
+  v_now timestamptz := clock_timestamp();
+BEGIN
+  IF p_rate_key IS NULL OR length(p_rate_key) < 8 OR length(p_rate_key) > 128
+     OR p_action NOT IN ('LOGIN', 'ACTIVATE', 'RESET_REQUEST', 'EMAIL_RESET', 'SOCIAL_ACTIVATE')
+     OR p_max_attempts < 1 OR p_window_seconds < 1 OR p_window_seconds > 86400 THEN
+    RETURN false;
+  END IF;
+
+  INSERT INTO public.customer_account_rate_limits (rate_key, action, attempts, window_started_at, updated_at)
+  VALUES (p_rate_key, p_action, CASE WHEN p_reset THEN 0 ELSE 1 END, v_now, v_now)
+  ON CONFLICT (rate_key, action) DO UPDATE SET
+    attempts = CASE
+      WHEN p_reset THEN 0
+      WHEN public.customer_account_rate_limits.window_started_at <= v_now - make_interval(secs => p_window_seconds) THEN 1
+      ELSE public.customer_account_rate_limits.attempts + 1
+    END,
+    window_started_at = CASE
+      WHEN p_reset OR public.customer_account_rate_limits.window_started_at <= v_now - make_interval(secs => p_window_seconds) THEN v_now
+      ELSE public.customer_account_rate_limits.window_started_at
+    END,
+    updated_at = v_now
+  RETURNING attempts INTO v_attempts;
+
+  RETURN p_reset OR v_attempts <= p_max_attempts;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.customer_account_consume_rate_limit(text, text, integer, integer, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.customer_account_consume_rate_limit(text, text, integer, integer, boolean) TO service_role;
+
 -- The old QR projection disclosed financial history to anyone holding the QR.
 -- From this release forward, only the server-side customer-account function may
 -- invoke it after verifying the customer's authenticated user and active session.
