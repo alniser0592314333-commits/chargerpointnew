@@ -54,9 +54,12 @@ export const computeBackgroundStateFromOrder = (order: PublicOrderQrData | null)
   if (!order) return 'charging';
   const status = (order.status || '').toUpperCase();
   const due = typeof order.orderDueMinor === 'number' ? order.orderDueMinor : 0;
+  const paid = typeof order.orderPaidMinor === 'number' ? order.orderPaidMinor : 0;
+  const total = typeof order.orderTotalMinor === 'number' ? order.orderTotalMinor : 0;
 
   if (status === 'DELIVERED' || status === 'COMPLETED') {
-    return due > 0 ? 'delivered-unpaid' : 'delivered-paid';
+    // A zero due without an order-specific allocation is not proof of payment.
+    return due > 0 || (total > 0 && paid <= 0) ? 'delivered-unpaid' : 'delivered-paid';
   }
   if (status === 'READY' || status === 'READY_FOR_PICKUP') {
     return 'charged';
