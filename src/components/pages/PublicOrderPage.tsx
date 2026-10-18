@@ -542,20 +542,20 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
 
                 <div className="order-dropdown-divider" />
 
-                {customerAccountId && (
-                  <a
-                    href={`/c/login?customerId=${encodeURIComponent(customerAccountId)}`}
-                    className="order-dropdown-item order-account-entry"
-                    role="menuitem"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <div>
-                      <UserRound size={15} />
-                      <span>{isAr ? 'حساب العميل' : 'Customer Account'}</span>
-                    </div>
-                    <ArrowUpRight size={14} aria-hidden="true" />
-                  </a>
-                )}
+                <a
+                  href={customerAccountId
+                    ? `/c/login?customerId=${encodeURIComponent(customerAccountId)}`
+                    : `/c/login?orderQrToken=${encodeURIComponent(token)}`}
+                  className="order-dropdown-item order-account-entry"
+                  role="menuitem"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <div>
+                    <UserRound size={15} />
+                    <span>{isAr ? 'تسجيل دخول حساب العميل' : 'Customer Account Sign In'}</span>
+                  </div>
+                  <ArrowUpRight size={14} aria-hidden="true" />
+                </a>
               </div>
             )}
           </div>
