@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public.customer_account_sessions (
   customer_id uuid PRIMARY KEY REFERENCES public.customer_account_links(customer_id) ON DELETE CASCADE,
   auth_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   session_id uuid NOT NULL,
+  auth_issued_at bigint NOT NULL,
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   expires_at timestamptz NOT NULL,
   revoked_at timestamptz
