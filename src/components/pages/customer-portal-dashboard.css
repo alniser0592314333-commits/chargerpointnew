@@ -1,3 +1,18 @@
+.cp-customer-portal { position: relative; isolation: isolate; overflow-x: clip; }
+.cp-customer-portal .cp-portal-moon-scene {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  inset-inline: 0;
+  height: min(680px, 76vh);
+  overflow: hidden;
+  opacity: .13;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, black 0%, black 44%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 44%, transparent 100%);
+}
+.cp-customer-portal .cp-portal-moon-scene svg { display: block; width: 100%; height: 100%; }
+.cp-customer-portal > header, .cp-customer-portal > main, .cp-customer-portal > footer { position: relative; z-index: 10; }
 .cp-customer-portal {
   --cp-surface: rgba(255, 254, 250, .88);
   --cp-surface-strong: #fffefa;
