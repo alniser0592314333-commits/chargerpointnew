@@ -413,7 +413,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
             </span>
           </a>
 
-          <div className="order-qr-controls">
+          <div className="order-qr-controls relative">
             {/* Menu / Settings Button */}
             <button
               ref={menuButtonRef}
@@ -879,38 +879,24 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
       </main>
 
       {showAccountHint && !loading && !error && data && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 px-5 py-6 backdrop-blur-sm"
-          role="presentation"
+        <button
+          type="button"
+          dir={isRTL ? 'rtl' : 'ltr'}
+          onClick={dismissAccountHint}
+          aria-label={isAr ? 'إخفاء إرشادات حساب العميل' : 'Dismiss customer account tip'}
+          className="absolute right-0 top-full z-[100] mt-3 block w-[min(320px,calc(100vw-32px))] rounded-xl border border-amber-200/90 bg-[#fff4d8] px-4 py-3 text-start text-sm leading-6 text-amber-950 shadow-lg shadow-slate-950/15 transition hover:bg-[#ffefc5] focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-amber-300/25 dark:bg-[#3b3020] dark:text-amber-50 dark:hover:bg-[#493a25]"
+          style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, zIndex: 100, width: 'min(320px, calc(100vw - 32px))' }}
         >
-          <section
-            dir={isRTL ? 'rtl' : 'ltr'}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="order-account-hint-title"
-            className="w-full max-w-sm rounded-3xl border border-white/15 bg-white p-6 text-center shadow-2xl dark:border-white/10 dark:bg-[#101c27]"
-          >
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 dark:bg-teal-400/10 dark:text-teal-300">
-              <UserRound size={26} aria-hidden="true" />
-            </div>
-            <h2 id="order-account-hint-title" className="text-lg font-extrabold text-slate-900 dark:text-white">
-              {isAr ? 'الدخول إلى حسابك' : 'Access your customer account'}
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">
-              {isAr
-                ? 'يمكنك الدخول إلى حسابك ومتابعة طلبات الشحن ورصيدك من قائمة الخيارات (⋮) أعلى الصفحة، ثم اختيار «تسجيل دخول حساب العميل».'
-                : 'You can access your account and follow your charging orders and balance from the options menu (⋮) at the top of the page, then choose “Customer Account Sign In”.'}
-            </p>
-            <button
-              type="button"
-              autoFocus
-              onClick={dismissAccountHint}
-              className="mt-6 w-full rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:bg-teal-600 dark:hover:bg-teal-500 dark:focus:ring-offset-[#101c27]"
-            >
-              {isAr ? 'حسنًا' : 'OK'}
-            </button>
-          </section>
-        </div>
+          <span
+            aria-hidden="true"
+            className="absolute -top-[6px] right-8 h-3 w-3 rotate-45 border-l border-t border-amber-200/90 bg-[#fff4d8] dark:border-amber-300/25 dark:bg-[#3b3020]"
+          />
+          <span className="relative block">
+            {isAr
+              ? 'للدخول إلى حسابك ومتابعة طلبات الشحن ورصيدك، افتح هذه القائمة واختر «تسجيل دخول حساب العميل».'
+              : 'To access your account and track your orders and balance, open this menu and choose “Customer Account Sign In”.'}
+          </span>
+        </button>
       )}
 
       {/* Minimal Footer */}
