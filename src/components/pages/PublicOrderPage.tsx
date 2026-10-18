@@ -9,7 +9,8 @@ import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
 import { getPublicOrderByToken, getItemLocalizedDeviceName, PublicOrderQrData } from './dayOrdersStore';
-import { EnergyCanvasBackground, BackgroundState } from '../energy/EnergyCanvasBackground';
+import type { BackgroundState } from '../energy/EnergyCanvasBackground';
+import { CustomerAuthScene } from './CustomerAuthScene';
 import { rpcResolveOrderQr, rpcResolveQrPaymentSubmission, type PublicQrPaymentSubmissionRpcResult } from '../../services/supabase/client';
 
 export interface PublicOrderPageProps {
@@ -358,12 +359,10 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
   const StatusIcon = statusConfig.icon;
 
   return (
-    <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page">
-      {/* Living Energy Canvas Engine */}
-      <EnergyCanvasBackground
-        state={backgroundState}
-        theme={resolvedTheme}
-      />
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="order-public-qr-page order-mountain-auth">
+      <div className="order-mountain-auth__backdrop" aria-hidden="true">
+        <CustomerAuthScene uid="order-qr-page-background" />
+      </div>
 
       {/* Header & Settings Bar (Without extra reload button) */}
       <header className="order-qr-header">
@@ -824,6 +823,21 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
               {/* Desktop-only supporting visual; order details and payment actions remain unchanged. */}
               <aside className="order-qr-visual" aria-label={isAr ? 'معلومات عن خدمة الشحن' : 'Charging service information'}>
                 <div className="order-qr-visual-art" aria-hidden="true">
+                  <CustomerAuthScene uid="order-qr-page-hero" />
+                  <div className="order-qr-visual-copy">
+                    <p className="order-qr-visual-eyebrow">{isAr ? 'كل التفاصيل بمكان واحد' : 'YOUR ORDER, AT A GLANCE'}</p>
+                    <h2>{isAr ? 'تابع طلبك بكل سهولة' : 'Your charging order, made simple'}</h2>
+                    <p>{isAr
+                      ? 'تفاصيل الأجهزة وحالة الشحن والمبلغ المستحق ظاهرة بوضوح، حتى تتابع طلبك من أي جهاز.'
+                      : 'See your registered devices, charging status and balance clearly, all in one place from any device.'}</p>
+                    <div className="order-qr-visual-points">
+                      <span><CheckCircle2 size={15} />{isAr ? 'تحديث حالة الطلب' : 'Order status at a glance'}</span>
+                      <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Clear order details'}</span>
+                    </div>
+                  </div>
+                </div>
+                {/* Decorative phone illustration replaced by the same mountain-and-moon scene used on customer sign-in. */}
+                <div className="order-qr-visual-art__legacy" aria-hidden="true" hidden>
                   <svg viewBox="0 0 520 440" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <defs>
                       <linearGradient id="orderVisualPhone" x1="154" y1="68" x2="334" y2="352" gradientUnits="userSpaceOnUse">
@@ -868,15 +882,6 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                     <circle cx="115" cy="285" r="4" fill="#10B981" />
                     <path d="M85 225c18 12 27 22 32 39M378 159c19 9 29 20 37 36" stroke="#10B981" strokeOpacity=".5" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 8" />
                   </svg>
-                </div>
-                <p className="order-qr-visual-eyebrow">{isAr ? 'كل التفاصيل بمكان واحد' : 'YOUR ORDER, AT A GLANCE'}</p>
-                <h2>{isAr ? 'تابع طلبك بكل سهولة' : 'Your charging order, made simple'}</h2>
-                <p>{isAr
-                  ? 'تفاصيل الأجهزة وحالة الشحن والمبلغ المستحق ظاهرة بوضوح، حتى تتابع طلبك من أي جهاز.'
-                  : 'See your registered devices, charging status and balance clearly, all in one place from any device.'}</p>
-                <div className="order-qr-visual-points">
-                  <span><CheckCircle2 size={15} />{isAr ? 'تحديث حالة الطلب' : 'Order status at a glance'}</span>
-                  <span><ShieldCheck size={15} />{isAr ? 'عرض آمن للتفاصيل' : 'Secure order details'}</span>
                 </div>
               </aside>
             </div>
