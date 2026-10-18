@@ -141,7 +141,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       await customerAuth.auth.signOut();
       setErrorMessage('ACCOUNT_UNAVAILABLE_OR_INVALID');
     }
-      setMode(status.activated ? 'login' : 'activate');
+      if (customerCodeFromQuery && !status.activated) {
+      setMode('unavailable');
+      setError(t('لإنشاء الحساب لأول مرة، استخدم رمز QR الخاص بحساب العميل.', 'For first-time account setup, scan your customer account QR.'));
+      return;
+    }
+    setMode(status.activated ? 'login' : 'activate');
     } catch (loadError) {
       console.error('Customer account entry failed to initialize.', loadError);
       setMode('unavailable');
@@ -421,6 +426,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                   </form>
                 ) : mode === 'login' ? (
                   <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
+                    {customerCodeFromQuery && (
+                      <label className="cp-auth__label">{t('اسم المستخدم / رقم العميل', 'Username / Customer ID')}
+                        <input value={customerCodeFromQuery} readOnly autoComplete="username" className="cp-auth__input" aria-label={t('اسم المستخدم / رقم العميل', 'Username / Customer ID')} />
+                      </label>
+                    )}
                     <label className="cp-auth__label">{t('كلمة السر', 'Password')}
                       <div className="relative">
                         <input required maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="cp-auth__input !pe-12" placeholder={t('أدخل كلمة السر الخاصة بك', 'Enter your password')} />
