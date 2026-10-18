@@ -86,21 +86,21 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type-check public QR payment Edge Function
-        run: deno check --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
       - name: Test hard QR payment upload body limit
-        run: deno test --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/submit-qr-payment/requestBodyLimit_test.ts
+        run: deno test --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/submit-qr-payment/requestBodyLimit_test.ts
       - name: Type-check authorized QR receipt signer Edge Function
-        run: deno check --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/index.ts
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/index.ts
       - name: Test QR receipt path validation
-        run: deno test --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/receiptPathValidation_test.ts
+        run: deno test --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-qr-payment-receipt/receiptPathValidation_test.ts
       - name: Type-check username sign-in Edge Function
-        run: deno check --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/sign-in-by-username/index.ts
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-in-by-username/index.ts
       - name: Type-check customer account authentication Edge Function
-        run: deno check --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/customer-account/index.ts
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/customer-account/index.ts
       - name: Test username sign-in request validation
-        run: deno test --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/sign-in-by-username/requestValidation_test.ts
+        run: deno test --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-in-by-username/requestValidation_test.ts
       - name: Test username sign-in request-to-Auth boundary
-        run: deno test --no-lock --minimum-dependency-age 1h --node-modules-dir=none supabase/functions/sign-in-by-username/handler_test.ts
+        run: deno test --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-in-by-username/handler_test.ts
       - name: Type-check and lint
         run: npm run lint
       - name: Run BIN lockout and proof-gated change client regressions
