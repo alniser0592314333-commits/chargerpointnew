@@ -5,6 +5,7 @@ import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import { FirstVisitWelcomeIntro } from './components/pages/FirstVisitWelcomeIntro';
 import './public-portal.css';
 
 const publicRoutes = [
@@ -32,6 +33,7 @@ const PublicNotFound: React.FC = () => (
 const PublicPortalApp: React.FC = () => {
   const pathname = window.location.pathname;
   let content: React.ReactNode = <PublicNotFound />;
+  let welcomeEnabled = pathname === '/public/about';
 
   if (pathname === '/public/about') {
     content = <PublicAboutPage />;
@@ -41,14 +43,19 @@ const PublicPortalApp: React.FC = () => {
       const rawToken = pathname.slice(route.prefix.length).split('/')[0];
       try {
         const token = decodeURIComponent(rawToken);
-        content = token && !token.includes('..') ? route.render(token) : <PublicNotFound />;
+        if (token && !token.includes('..')) {
+          content = route.render(token);
+          welcomeEnabled = true;
+        } else {
+          content = <PublicNotFound />;
+        }
       } catch {
         content = <PublicNotFound />;
       }
     }
   }
 
-  return <I18nProvider>{content}</I18nProvider>;
+  return <I18nProvider><FirstVisitWelcomeIntro enabled={welcomeEnabled} />{content}</I18nProvider>;
 };
 
 export default PublicPortalApp;
