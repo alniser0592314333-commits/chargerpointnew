@@ -120,7 +120,7 @@ const readCachedPortalData = (token: string): PortalData | null => {
 
 export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> = ({ token, onLogout }) => {
   const { locale, setLocale } = useI18n();
-  const { toggleTheme } = useTheme();
+  const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
   const [data, setData] = useState<PortalData | null>(() => readCachedPortalData(token));
   const [loading, setLoading] = useState(true);
@@ -457,7 +457,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <Globe className="h-4 w-4" /><span>{isAr ? 'English' : 'العربية'}</span>
             </button>
             <button type="button" onClick={toggleTheme} className="cp-portal-header-control cp-portal-header-control--icon" aria-label={isAr ? 'تغيير المظهر' : 'Change appearance'} title={isAr ? 'تغيير المظهر' : 'Change appearance'}>
-              {document.documentElement.classList.contains('dark') ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
             <span className={`flex items-center gap-1 px-1.5 py-1 text-[11px] ${online ? 'text-emerald-700 dark:text-emerald-200' : 'text-amber-800 dark:text-amber-200'}`}>
               {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}{online ? (isAr ? 'متصل' : 'Online') : (isAr ? 'غير متصل' : 'Offline')}
