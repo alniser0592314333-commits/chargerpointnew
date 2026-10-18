@@ -692,7 +692,7 @@ jobs:
       - name: Apply customer portal read model migration in isolation
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017410000_public_customer_portal_read_model.sql
+        run: psql -h localhost -U postgres -d customer_portal_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261018042125_public_customer_portal_read_model.sql
       - name: Verify customer portal isolation, financial projection, and QR capability checks
         env:
           PGPASSWORD: postgres
