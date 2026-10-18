@@ -9,7 +9,7 @@ import { FirstVisitWelcomeIntro } from './components/pages/FirstVisitWelcomeIntr
 import './public-portal.css';
 
 const publicRoutes = [
-  { prefix: '/public/qr/customer/', render: (token: string) => <ThemeProvider><CustomerAccountPage token={token} /></ThemeProvider> },
+  { prefix: '/public/qr/customer/', render: (token: string) => <ThemeProvider defaultTheme="dark"><CustomerAccountPage token={token} /></ThemeProvider> },
   { prefix: '/public/qr/order/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
   { prefix: '/public/order/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
   { prefix: '/c/', render: (token: string) => <ThemeProvider><CustomerAccountPage token={token} /></ThemeProvider> },
