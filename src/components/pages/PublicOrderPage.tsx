@@ -553,6 +553,26 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
                 </a>
               </div>
             )}
+        {showAccountHint && !loading && !error && data && (
+          <button
+            type="button"
+            dir={isRTL ? 'rtl' : 'ltr'}
+            onClick={dismissAccountHint}
+            aria-label={isAr ? 'إخفاء إرشادات حساب العميل' : 'Dismiss customer account tip'}
+            className="absolute top-full z-[100] mt-3 block w-[min(320px,calc(100vw-32px))] [inset-inline-end:0] rounded-xl border border-amber-200/90 bg-[#fff4d8] px-4 py-3 text-start text-sm leading-6 text-amber-950 shadow-lg shadow-slate-950/15 transition hover:bg-[#ffefc5] focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-amber-300/25 dark:bg-[#3b3020] dark:text-amber-50 dark:hover:bg-[#493a25]"
+            style={{ position: 'absolute', top: 'calc(100% + 10px)', insetInlineEnd: 0, zIndex: 100, width: 'min(320px, calc(100vw - 32px))' }}
+          >
+            <span
+              aria-hidden="true"
+              className="absolute -top-[6px] [inset-inline-end:3rem] h-3 w-3 rotate-45 border-l border-t border-amber-200/90 bg-[#fff4d8] dark:border-amber-300/25 dark:bg-[#3b3020]"
+            />
+            <span className="relative block">
+              {isAr
+                ? 'للدخول إلى حسابك ومتابعة طلبات الشحن ورصيدك، افتح هذه القائمة واختر «تسجيل دخول حساب العميل».'
+                : 'To access your account and track your orders and balance, open this menu and choose “Customer Account Sign In”.'}
+            </span>
+          </button>
+        )}
           </div>
         </div>
       </header>
@@ -878,26 +898,7 @@ export const PublicOrderPage: React.FC<PublicOrderPageProps> = ({ token }) => {
         )}
       </main>
 
-      {showAccountHint && !loading && !error && data && (
-        <button
-          type="button"
-          dir={isRTL ? 'rtl' : 'ltr'}
-          onClick={dismissAccountHint}
-          aria-label={isAr ? 'إخفاء إرشادات حساب العميل' : 'Dismiss customer account tip'}
-          className="absolute right-0 top-full z-[100] mt-3 block w-[min(320px,calc(100vw-32px))] rounded-xl border border-amber-200/90 bg-[#fff4d8] px-4 py-3 text-start text-sm leading-6 text-amber-950 shadow-lg shadow-slate-950/15 transition hover:bg-[#ffefc5] focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-amber-300/25 dark:bg-[#3b3020] dark:text-amber-50 dark:hover:bg-[#493a25]"
-          style={{ position: 'absolute', top: 'calc(100% + 10px)', right: 0, zIndex: 100, width: 'min(320px, calc(100vw - 32px))' }}
-        >
-          <span
-            aria-hidden="true"
-            className="absolute -top-[6px] right-8 h-3 w-3 rotate-45 border-l border-t border-amber-200/90 bg-[#fff4d8] dark:border-amber-300/25 dark:bg-[#3b3020]"
-          />
-          <span className="relative block">
-            {isAr
-              ? 'للدخول إلى حسابك ومتابعة طلبات الشحن ورصيدك، افتح هذه القائمة واختر «تسجيل دخول حساب العميل».'
-              : 'To access your account and track your orders and balance, open this menu and choose “Customer Account Sign In”.'}
-          </span>
-        </button>
-      )}
+
 
       {/* Minimal Footer */}
       <footer className="order-qr-footer">
