@@ -81,6 +81,13 @@ jobs:
           VITE_SUPABASE_ANON_KEY: test-anon-key
         run: npx vitest run src/tests/phase6_16_online_create_day_pipeline.test.ts
 
+      - name: Run public order QR partial payment regressions
+        env:
+          # All tests are local source/unit contracts; never connect to production.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/public_order_page_redesign.test.ts src/tests/qr_payment_balance_and_receipt_integrity.test.ts
+
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
         with:
