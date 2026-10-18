@@ -3,6 +3,7 @@ import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount } from '../../services/customer/customerAuth';
 import { AppLogo } from '../qr/AppLogo';
+import { CustomerAuthScene } from './CustomerAuthScene';
 import { EnergyCanvasBackground } from '../energy/EnergyCanvasBackground';
 import { useTheme } from '../../theme/themeContext';
 import { CustomerPortalNavigation, CustomerPortalMoreView, CustomerPortalTab } from './CustomerPortalNavigation';
@@ -220,6 +221,17 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     if (data && online) void loadActivity();
   }, [data?.customer_code, online, loadActivity]);
 
+  useEffect(() => {
+    if (!online || activeTab !== 'goals') return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void load(true);
+        void loadActivity();
+      }
+    }, 12000);
+    return () => window.clearInterval(interval);
+  }, [activeTab, online, load, loadActivity]);
+
   const requestGoal = async () => {
     if (!online || goalRequestBusy) return;
     setGoalRequestBusy(true);
@@ -362,6 +374,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   return (
     <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal relative isolate min-h-screen bg-slate-50 text-slate-900 dark:bg-[#071b1b] dark:text-slate-100">
       <EnergyCanvasBackground state="charging" theme={resolvedTheme} className="opacity-35" />
+      <div aria-hidden="true" className="cp-portal-moon-scene"><CustomerAuthScene uid="cp-customer-portal-scene" /></div>
       <header className="relative z-10 sticky top-0 border-b border-slate-200/80 bg-white/80 backdrop-blur dark:border-emerald-950/80 dark:bg-[#082622]/80">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
