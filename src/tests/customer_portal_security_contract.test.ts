@@ -5,7 +5,7 @@ import path from 'path';
 describe('Isolated customer QR portal security contract', () => {
   const migrationPath = path.resolve(
     process.cwd(),
-    'supabase/migrations/20261017410000_public_customer_portal_read_model.sql'
+    'supabase/migrations/20261018042125_public_customer_portal_read_model.sql'
   );
   const appPath = path.resolve(process.cwd(), 'src/App.tsx');
   const pagePath = path.resolve(process.cwd(), 'src/components/pages/PublicCustomerPortalPage.tsx');
