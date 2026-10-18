@@ -54,12 +54,12 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
         setVisible(false);
       }, 1750);
     } else {
-      welcomeTimer = window.setTimeout(() => setStage('welcome'), 1900);
-      exitTimer = window.setTimeout(() => setStage('exiting'), 3650);
+      welcomeTimer = window.setTimeout(() => setStage('welcome'), 2100);
+      exitTimer = window.setTimeout(() => setStage('exiting'), 3800);
       finishTimer = window.setTimeout(() => {
         rememberIntro();
         setVisible(false);
-      }, 4850);
+      }, 5000);
     }
 
     return () => {
