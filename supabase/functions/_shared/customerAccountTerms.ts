@@ -1,0 +1,1 @@
+export const CUSTOMER_ACCOUNT_TERMS_VERSION = "2026-10-18-v1";
