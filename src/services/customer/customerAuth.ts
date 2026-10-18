@@ -62,23 +62,4 @@ export async function setCustomerSession(session: {
   return error ? error.message : data.session ? null : 'CUSTOMER_SESSION_UNAVAILABLE';
 }
 
-export async function startCustomerOAuth(
-  provider: 'google' | 'apple' | 'facebook',
-  token: string,
-  mode: 'login' | 'activate',
-): Promise<string | null> {
-  if (typeof window === 'undefined') return 'BROWSER_REQUIRED';
-  const redirectTo = new URL('/c/' + encodeURIComponent(token), window.location.origin);
-  try { sessionStorage.setItem('cp_customer_oauth_mode:' + token, mode); } catch {}
-  redirectTo.searchParams.set('customer_oauth', mode);
-  const { error } = await customerAuth.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo: redirectTo.toString(),
-      queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
-    },
-  });
-  return error?.message ?? null;
-}
-
 export const CUSTOMER_TERMS_VERSION = '2026-10-18-v1';
