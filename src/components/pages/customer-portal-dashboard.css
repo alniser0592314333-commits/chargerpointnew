@@ -355,3 +355,22 @@ html.light .cp-customer-portal { --cp-page-bg: #f7f6f2; }
   .cp-customer-portal .cp-portal-feedback,
   .cp-customer-portal .cp-portal-progress span { animation: none !important; transition: none !important; }
 }
+.cp-customer-portal .cp-portal-password-form { display: grid; gap: 10px; margin-top: 14px; }
+.cp-customer-portal .cp-portal-password-label { color: var(--cp-muted); font-size: 12px; font-weight: 750; }
+.cp-customer-portal .cp-portal-password-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 13px;
+  border: 1px solid var(--cp-line);
+  border-radius: 14px;
+  outline: none;
+  color: var(--cp-text);
+  background: var(--cp-surface);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+.cp-customer-portal .cp-portal-password-input:focus {
+  border-color: var(--cp-accent);
+  box-shadow: 0 0 0 3px var(--cp-accent-soft);
+}
