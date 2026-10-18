@@ -275,11 +275,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     return (
       <div className="relative">
         <div className="mx-auto flex max-w-3xl justify-end gap-2 px-4 pt-3">
-          <button type="button" onClick={() => void logout()} className="rounded-xl border border-slate-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-emerald-900 dark:bg-[#0a2423] dark:text-emerald-100">
+          <button type="button" onClick={() => void logout()} className="rounded-xl border border-slate-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-gray-600 dark:bg-[#202a38] dark:text-slate-200">
             {t('تسجيل الخروج', 'Sign out')}
           </button>
         </div>
-        {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-emerald-700 dark:text-emerald-200">{message}</p>}
+        {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-emerald-700 dark:text-slate-200">{message}</p>}
         <PublicCustomerPortalPage token={token} />
       </div>
     );
@@ -317,7 +317,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const primaryButtonClass = 'group flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl bg-[#214f43] px-5 py-3 text-[15px] font-bold text-white shadow-[0_12px_28px_rgba(24,70,56,0.16)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#173e34] focus:outline-none focus:ring-4 focus:ring-[#4d9278]/25 disabled:cursor-wait disabled:opacity-60 dark:bg-[#cbd5e1] dark:text-[#111827] dark:hover:bg-[#e2e8f0]';
 
   return (
-    <main dir={isAr ? 'rtl' : 'ltr'} className="min-h-[100svh] overflow-x-hidden bg-[#f2f3ee] text-[#17382f] transition-colors dark:bg-[#061916] dark:text-[#e4f0e9]">
+    <main dir={isAr ? 'rtl' : 'ltr'} className="min-h-[100svh] overflow-x-hidden bg-[#f2f3ee] text-[#17382f] transition-colors dark:bg-[#111827] dark:text-[#e4f0e9]">
       <header className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 py-5 sm:px-8 lg:px-12 lg:py-7">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#dce7df] bg-white shadow-sm dark:border-[#374151] dark:bg-[#202a38]">
