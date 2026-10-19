@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { config } from '../../config/env';
 
-type PriceItem = { name_ar:string; name_en:string; price_minor:number; charger_fee_applicable:boolean; sort_order:number };
+type PriceItem = { name_ar:string; name_en:string; price_minor:number|null; charger_fee_applicable:boolean; sort_order:number };
 type Hours = { is_active:boolean; open_time:string|null; close_time:string|null; next_open_time:string|null; next_close_time:string|null };
 type LandingData = { hours:Hours; devices:PriceItem[]; charger_fee_minor:number; brand?:{app_name?:string;white_logo_url?:string|null;dark_logo_url?:string|null} };
 
@@ -35,7 +35,7 @@ const copy = {
 } as const;
 
 const money=(minor:number,locale:string)=>new Intl.NumberFormat(locale==='ar'?'ar':'en',{style:'currency',currency:'ILS',minimumFractionDigits:minor%100?2:0,maximumFractionDigits:2}).format(minor/100);
-const minimum=(items:PriceItem[],pattern:RegExp)=>{const values=items.filter(x=>pattern.test(`${x.name_ar} ${x.name_en}`)).map(x=>Number(x.price_minor)).filter(Number.isFinite);return values.length?Math.min(...values):null;};
+const minimum=(items:PriceItem[],pattern:RegExp)=>{const values=items.filter(x=>pattern.test(`${x.name_ar} ${x.name_en}`)&&x.price_minor!==null&&x.price_minor!==undefined&&Number.isFinite(Number(x.price_minor))&&Number(x.price_minor)>=0).map(x=>Number(x.price_minor));return values.length?Math.min(...values):null;};
 const qrPath=(raw:string)=>{try{const u=new URL(raw,window.location.origin);if(!['http:','https:'].includes(u.protocol))return null;const prefixes=['/c/','/o/','/pay/','/public/qr/customer/','/public/qr/order/','/public/order/'];return prefixes.some(p=>u.pathname.startsWith(p))?u.pathname+u.search+u.hash:null;}catch{return null;}};
 
 export const PublicLandingPage:React.FC=()=>{
