@@ -580,7 +580,7 @@ export default function App() {
 
     switch (pathname) {
       case '/app/settings/public-page': {
-        const canManagePublicPage = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\\s+/g, '_') === 'SUPER_ADMIN') || Boolean(userSession?.permissions?.includes('settings:manage'));
+        const canManagePublicPage = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN') || Boolean(userSession?.permissions?.includes('settings:manage'));
         if (!userSession || !canManagePublicPage) return <UnauthorizedPage />;
         return <PublicLandingSettingsPage onBack={() => navigate('/app/settings')} />;
       }
