@@ -107,10 +107,18 @@ jobs:
           SET ROLE authenticated;
           SELECT set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000002',false);
           SELECT public.update_public_landing_settings('{"is_active":true,"open_time":"08:00","close_time":"22:00","next_open_time":"09:00","next_close_time":"21:00"}'::jsonb);
-          SELECT public.update_public_landing_settings('{"is_active":false,"open_time":"","close_time":"","next_open_time":"","next_close_time":""}'::jsonb);
           RESET ROLE;
-          DO $$
+          DO $
           BEGIN
             IF (SELECT value_json->>'is_active' FROM public.system_settings WHERE key='public_landing_hours') <> 'true' THEN RAISE EXCEPTION 'Admin settings were not persisted'; END IF;
-          END $$;
+          END $;
+          SET ROLE authenticated;
+          SELECT public.update_public_landing_settings('{"is_active":false,"open_time":"","close_time":"","next_open_time":"","next_close_time":""}'::jsonb);
+          RESET ROLE;
+          DO $
+          BEGIN
+            IF (SELECT value_json->>'is_active' FROM public.system_settings WHERE key='public_landing_hours') <> 'false'
+              OR (SELECT value_json->>'open_time' FROM public.system_settings WHERE key='public_landing_hours') IS NOT NULL
+            THEN RAISE EXCEPTION 'Unset hours must save as null while inactive status is persisted'; END IF;
+          END $;
           SQL
