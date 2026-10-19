@@ -318,3 +318,45 @@ html.dark .public-payment-page .payment-portal-main button[type="submit"] { colo
   .public-payment-page .payment-portal-main .grid-cols-3 { gap: 8px; }
   .public-payment-page .payment-portal-main .grid-cols-3 > button { min-height: 108px; border-radius: 17px !important; }
 }
+
+/* Payment-method cards: the provider artwork fills the complete tile. */
+.payment-portal-breadcrumb {
+  margin-top: 30px !important;
+  margin-bottom: 22px !important;
+}
+.payment-method-image-tile {
+  min-height: 118px !important;
+  padding: 0 !important;
+  border-radius: 16px !important;
+  background: var(--payment-surface) !important;
+  isolation: isolate;
+}
+.payment-method-image-tile .payment-method-tile-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: inherit;
+  transition: transform .18s ease;
+}
+.payment-method-image-tile:hover .payment-method-tile-image {
+  transform: scale(1.025);
+}
+.payment-method-image-tile[aria-pressed="true"] {
+  border-width: 2px !important;
+  border-color: var(--payment-accent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--payment-accent) 20%, transparent) !important;
+}
+@media (max-width: 640px) {
+  .payment-portal-breadcrumb {
+    margin-top: 25px !important;
+    margin-bottom: 18px !important;
+  }
+  .payment-method-image-tile {
+    min-height: 104px !important;
+    border-radius: 13px !important;
+  }
+}
