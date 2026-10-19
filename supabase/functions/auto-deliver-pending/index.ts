@@ -82,7 +82,7 @@ Deno.serve(async (request: Request) => {
     const commandId = commandUuid(await sha256(
       "chargerpoint:auto-delivery:v1:" + item.id + ":" + item.version
     ));
-    const { error: rpcError } = await db.rpc("execute_canonical_sync_command", {
+    const { data: rpcData, error: rpcError } = await db.rpc("execute_canonical_sync_command", {
       p_command_id: commandId,
       p_command_type: "DELIVER_ORDER_ITEM",
       p_payload: payload,
@@ -90,10 +90,11 @@ Deno.serve(async (request: Request) => {
       p_device_id: "server-auto-delivery",
       p_actor_id: null,
     });
-    if (rpcError) {
+    if (rpcError || rpcData?.success !== true) {
       failed++;
-      failures.push({ item_id: item.id, code: rpcError.code ?? "DELIVERY_FAILED" });
-      console.error("Auto-delivery item failed", item.id, rpcError.code ?? "unknown");
+      const failureCode = rpcError?.code ?? (typeof rpcData?.error === "string" ? rpcData.error : "DELIVERY_NOT_CONFIRMED");
+      failures.push({ item_id: item.id, code: failureCode });
+      console.error("Auto-delivery item failed", item.id, failureCode);
     } else {
       delivered++;
     }
