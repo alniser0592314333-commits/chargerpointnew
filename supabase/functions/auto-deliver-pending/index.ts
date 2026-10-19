@@ -82,7 +82,7 @@ Deno.serve(async (request: Request) => {
     if (error) {
       console.error("Auto-delivery candidate query failed", error.code ?? "unknown");
       return reply(503, {
-        ok: false, error: "CANDIDATES_UNAVAILABLE", local_time, considered, delivered, failed,
+        ok: false, error: "CANDIDATES_UNAVAILABLE", local_time: localTime, considered, delivered, failed,
       });
     }
     if (!items?.length) {
