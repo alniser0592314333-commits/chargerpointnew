@@ -634,3 +634,86 @@ html.dark .public-payment-page .payment-portal-main button[type="submit"] { colo
 @media (prefers-reduced-motion: reduce) {
   .payment-method-choice-logo { transition: none; }
 }
+
+
+/* Final compact selector sizing: show the complete artwork without an inset or frame. */
+.payment-method-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-items: center;
+  gap: 10px;
+}
+.public-payment-page .payment-portal-main .payment-method-choice,
+.public-payment-page .payment-portal-main .payment-method-choice.is-selected {
+  width: 100%;
+  max-width: 104px;
+  gap: 6px;
+}
+.payment-method-choice-logo {
+  width: 64px;
+  height: 64px;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 64px;
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 12px;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.payment-method-choice-logo .payment-method-logo,
+.payment-method-choice-logo .payment-method-logo.is-fallback {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0 !important;
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none !important;
+}
+.payment-method-choice-logo .payment-method-logo img {
+  width: 100%;
+  height: 100%;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: inherit;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+}
+.payment-method-choice-label {
+  min-height: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 750;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+.payment-method-choice.is-selected .payment-method-choice-logo {
+  box-shadow: none !important;
+}
+.payment-method-choice-check {
+  inset-block-start: 2px;
+  inset-inline-end: calc(50% - 36px);
+  width: 21px;
+  height: 21px;
+  border: 1.5px solid #fff;
+}
+@media (max-width: 640px) {
+  .payment-method-options { gap: 6px; }
+  .public-payment-page .payment-portal-main .payment-method-choice,
+  .public-payment-page .payment-portal-main .payment-method-choice.is-selected {
+    max-width: 92px;
+  }
+  .payment-method-choice-logo {
+    width: 58px;
+    height: 58px;
+    flex-basis: 58px;
+    border-radius: 10px;
+  }
+  .payment-method-choice-label { font-size: 10px; }
+  .payment-method-choice-check {
+    inset-block-start: 2px;
+    inset-inline-end: calc(50% - 33px);
+    width: 19px;
+    height: 19px;
+  }
+}
