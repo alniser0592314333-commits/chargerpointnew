@@ -33,4 +33,4 @@ jobs:
           grep -q "autoDelivery" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "IF v_definition IS NULL OR position(v_old in v_definition) = 0" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "cron.schedule" supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql
-          ! grep -q "cron:" .github/workflows/server-auto-delivery.yml
+          ! grep -Eq "^[[:space:]]*schedule:" .github/workflows/server-auto-delivery.yml
