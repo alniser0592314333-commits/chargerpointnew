@@ -29,6 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -q "request.jwt.claim.role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "p.proname = 'execute_canonical_sync_command_unlocked'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "p_command_type = 'DELIVER_ORDER_ITEM'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "autoDelivery" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "TO service_role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
