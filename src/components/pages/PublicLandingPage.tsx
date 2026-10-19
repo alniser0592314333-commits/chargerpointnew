@@ -7,7 +7,7 @@ import { config } from '../config/env';
 
 type PriceItem = { name_ar:string; name_en:string; price_minor:number; charger_fee_applicable:boolean; sort_order:number };
 type Hours = { is_active:boolean; open_time:string|null; close_time:string|null; next_open_time:string|null; next_close_time:string|null };
-type LandingData = { hours:Hours; devices:PriceItem[]; charger_fee_minor:number };
+type LandingData = { hours:Hours; devices:PriceItem[]; charger_fee_minor:number; brand?:{app_name?:string;white_logo_url?:string|null;dark_logo_url?:string|null} };
 
 const copy = {
  ar:{
@@ -56,7 +56,7 @@ export const PublicLandingPage:React.FC=()=>{
  const prices=data?.devices||[];const small=minimum(prices,/phone|هاتف|tablet|جهاز لوحي|shaver|ماكينة|radio|راديو|speaker|سماعة/i);const batteries=minimum(prices,/battery|بطارية/i);const large=minimum(prices,/laptop|لابتوب|power bank|باور بانك/i);const hours=data?.hours;
  const dark=resolvedTheme==='dark';
  return <div dir={isRTL?'rtl':'ltr'} className="public-landing">
-  <header className="landing-header"><a href="/" className="landing-brand"><span className="landing-brand-mark"><Zap size={19} fill="currentColor"/></span><span><strong>{isAr?'نقطة الشحن':'Charging Point'}</strong><small>{isAr?'طاقة موثوقة، وتفاصيل واضحة':'Reliable energy, clear details'}</small></span></a>
+  <header className="landing-header"><a href="/" className="landing-brand"><span className="landing-brand-mark">{(dark?data?.brand?.dark_logo_url:data?.brand?.white_logo_url)?<img src={(dark?data?.brand?.dark_logo_url:data?.brand?.white_logo_url) as string} alt="" />:<Zap size={19} fill="currentColor"/>}</span><span><strong>{isAr?'نقطة الشحن':'Charging Point'}</strong><small>{isAr?'طاقة موثوقة، وتفاصيل واضحة':'Reliable energy, clear details'}</small></span></a>
    <nav className="landing-desktop-nav"><a href="#service">{t.service}</a><a href="#prices">{t.prices}</a><a href="#hours">{t.today}</a></nav>
    <div className="landing-header-actions"><button className="landing-primary-mini" onClick={()=>setScanner(true)}><ScanLine size={16}/>{t.track}</button><button className="landing-menu-trigger" onClick={()=>setMenu(true)} aria-label={t.menu}><Menu size={21}/></button></div>
   </header>
