@@ -90,7 +90,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 <<'SQL'
           DO $test$
           BEGIN
-            IF position('request.jwt.claim.role' in pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure)) = 0
+            IF position('auth.role()' in pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure)) = 0
                OR NOT has_function_privilege('service_role', 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)', 'EXECUTE') THEN
               RAISE EXCEPTION 'Guarded dispatcher migration verification failed';
             END IF;
@@ -155,7 +155,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "request.jwt.claim.role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "auth.role()" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "p.proname = 'execute_canonical_sync_command_unlocked'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "p_command_type = 'DELIVER_ORDER_ITEM'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "autoDelivery" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
