@@ -1,0 +1,261 @@
+/* Complete Charging Point payment portal redesign — static mountain/moon identity. */
+.public-payment-page {
+  --payment-sky: #f7faf9;
+  --payment-surface: #ffffff;
+  --payment-surface-soft: #eef6f5;
+  --payment-ink: #12303a;
+  --payment-muted: #5d7782;
+  --payment-line: #d5e2e5;
+  --payment-accent: #147d86;
+  --payment-accent-strong: #0d6671;
+  --payment-warm: #e8743b;
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  min-height: 100vh;
+  color: var(--payment-ink);
+  background: var(--payment-sky) !important;
+}
+html.dark .public-payment-page {
+  --payment-sky: #082b36;
+  --payment-surface: #0c2e3a;
+  --payment-surface-soft: #103845;
+  --payment-ink: #e8f4f5;
+  --payment-muted: #a6c0c6;
+  --payment-line: #29515c;
+  --payment-accent: #4ab6bd;
+  --payment-accent-strong: #75cdd0;
+  --payment-warm: #f19a68;
+  background: var(--payment-sky) !important;
+}
+.public-payment-page::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto;
+  height: 460px;
+  pointer-events: none;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--payment-surface) 92%, transparent), transparent);
+}
+.public-payment-page > header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--payment-surface) !important;
+  border-color: var(--payment-line) !important;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--payment-ink) 5%, transparent);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.payment-portal-header-inner {
+  max-width: 1180px !important;
+  min-height: 66px;
+  padding-block: 11px !important;
+}
+.payment-portal-header-actions { gap: 8px !important; }
+.payment-portal-header-actions > a,
+.payment-portal-header-actions > button {
+  min-height: 42px !important;
+  border-radius: 999px !important;
+  border-color: var(--payment-line) !important;
+  background: var(--payment-surface) !important;
+  color: var(--payment-ink) !important;
+  box-shadow: none !important;
+}
+.payment-portal-header-actions > a {
+  padding-inline: 15px !important;
+  background: var(--payment-accent-strong) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+html.dark .payment-portal-header-actions > a { color: #062c35 !important; }
+.payment-portal-header-actions > button { width: 42px; padding: 0 !important; }
+.payment-portal-header-actions > button:last-child { width: auto; padding-inline: 14px !important; }
+.payment-identity-hero {
+  position: relative;
+  min-height: 275px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 35px 24px 24px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--payment-line);
+}
+.payment-mountain-scene {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 -1px;
+  height: 100%;
+  color: #4c8991;
+  opacity: .32;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 70%, transparent 100%);
+}
+html.dark .payment-mountain-scene { color: #70bdc2; opacity: .22; }
+.payment-mountain-scene svg { width: 100%; height: 100%; display: block; }
+.payment-identity-copy { position: relative; z-index: 1; max-width: 650px; }
+.payment-identity-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 23px;
+  color: var(--payment-ink);
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: -.02em;
+}
+.payment-identity-brand > div { flex: 0 0 auto; }
+.payment-identity-eyebrow {
+  margin: 0 0 7px;
+  color: var(--payment-accent);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .16em;
+}
+.payment-identity-copy h1 {
+  margin: 0;
+  font-size: clamp(27px, 4vw, 42px);
+  line-height: 1.15;
+  letter-spacing: -.045em;
+  font-weight: 900;
+  color: var(--payment-ink);
+}
+.payment-identity-subtitle {
+  max-width: 560px;
+  margin-top: 12px;
+  color: var(--payment-muted);
+  font-size: 14px;
+  line-height: 1.9;
+}
+.payment-identity-seal {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  border: 1px solid var(--payment-line);
+  border-radius: 999px;
+  padding: 11px 15px;
+  color: var(--payment-accent);
+  background: color-mix(in srgb, var(--payment-surface) 88%, transparent);
+  font-size: 11px;
+  font-weight: 800;
+}
+.payment-identity-seal svg { width: 17px; height: 17px; }
+.payment-portal-main {
+  position: relative;
+  z-index: 1;
+  max-width: 1180px !important;
+  padding: 28px 24px 52px !important;
+}
+.payment-portal-breadcrumb {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 20px !important;
+}
+.payment-portal-heading {
+  border: 1px solid var(--payment-line) !important;
+  border-radius: 999px !important;
+  background: var(--payment-surface) !important;
+  color: var(--payment-accent) !important;
+  padding: 8px 13px !important;
+  font-size: 11px !important;
+}
+.public-payment-page .payment-portal-main > div:not(.payment-portal-breadcrumb) {
+  color: var(--payment-ink);
+}
+.public-payment-page .payment-portal-main .rounded-3xl,
+.public-payment-page .payment-portal-main .rounded-\[2rem\] {
+  border-radius: 25px !important;
+  border-color: var(--payment-line) !important;
+  background: var(--payment-surface) !important;
+  box-shadow: 0 12px 34px rgba(6, 42, 53, .07) !important;
+  backdrop-filter: none !important;
+}
+html.dark .public-payment-page .payment-portal-main .rounded-3xl,
+html.dark .public-payment-page .payment-portal-main .rounded-\[2rem\] {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .12) !important;
+}
+.public-payment-page .payment-portal-main h1,
+.public-payment-page .payment-portal-main h2,
+.public-payment-page .payment-portal-main h3 { color: var(--payment-ink); }
+.public-payment-page .payment-portal-main p { line-height: 1.75; }
+.public-payment-page .payment-portal-main .text-slate-900,
+.public-payment-page .payment-portal-main .text-slate-800,
+.public-payment-page .payment-portal-main .text-slate-700 { color: var(--payment-ink) !important; }
+.public-payment-page .payment-portal-main .text-slate-600,
+.public-payment-page .payment-portal-main .text-slate-500,
+.public-payment-page .payment-portal-main .text-slate-400 { color: var(--payment-muted) !important; }
+.public-payment-page .payment-portal-main .border-slate-200,
+.public-payment-page .payment-portal-main .border-slate-200\/70,
+.public-payment-page .payment-portal-main .border-slate-200\/80,
+.public-payment-page .payment-portal-main .border-white\/80 { border-color: var(--payment-line) !important; }
+.public-payment-page .payment-portal-main .bg-white,
+.public-payment-page .payment-portal-main .bg-white\/90,
+.public-payment-page .payment-portal-main .bg-white\/85,
+.public-payment-page .payment-portal-main .bg-white\/80 { background: var(--payment-surface) !important; }
+.public-payment-page .payment-portal-main .bg-slate-50,
+.public-payment-page .payment-portal-main .bg-slate-50\/90,
+.public-payment-page .payment-portal-main .bg-slate-50\/80,
+.public-payment-page .payment-portal-main .bg-slate-50\/70 { background: var(--payment-surface-soft) !important; }
+.public-payment-page .payment-portal-main button { transition: border-color .16s ease, background-color .16s ease, transform .16s ease; }
+.public-payment-page .payment-portal-main button:focus-visible,
+.public-payment-page a:focus-visible { outline: 2px solid var(--payment-accent); outline-offset: 3px; }
+.public-payment-page .payment-portal-main .bg-emerald-600,
+.public-payment-page .payment-portal-main button[type="submit"] {
+  background: var(--payment-accent-strong) !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+}
+html.dark .public-payment-page .payment-portal-main .bg-emerald-600,
+html.dark .public-payment-page .payment-portal-main button[type="submit"] { color: #062c35 !important; }
+.public-payment-page .payment-portal-main .payment-method,
+.public-payment-page .payment-portal-main [aria-pressed="true"] { border-color: var(--payment-accent) !important; }
+.public-payment-page .payment-portal-visual { display: none !important; }
+.public-payment-page .payment-pending-visual { display: none !important; }
+.public-payment-page footer {
+  position: relative;
+  z-index: 1;
+  margin-top: 0 !important;
+  padding: 23px 16px calc(23px + env(safe-area-inset-bottom)) !important;
+  border-color: var(--payment-line) !important;
+  color: var(--payment-muted) !important;
+  background: var(--payment-surface) !important;
+}
+@media (min-width: 900px) {
+  .payment-portal-main .payment-form-layout,
+  .payment-portal-main .payment-status-layout,
+  .payment-portal-main .payment-pending-layout { max-width: 100%; }
+}
+@media (max-width: 640px) {
+  .payment-portal-header-inner { gap: 7px !important; padding-inline: 12px !important; }
+  .payment-portal-header-actions { gap: 6px !important; }
+  .payment-portal-header-actions > a { min-height: 38px !important; padding-inline: 11px !important; gap: 5px !important; }
+  .payment-portal-header-actions > a span { font-size: 10px; }
+  .payment-portal-header-actions > button { width: 38px; min-height: 38px !important; height: 38px !important; }
+  .payment-portal-header-actions > button:last-child { padding-inline: 10px !important; }
+  .payment-identity-hero { min-height: 265px; align-items: flex-start; padding: 28px 18px 25px; }
+  .payment-identity-copy { max-width: 100%; }
+  .payment-identity-brand { margin-bottom: 21px; }
+  .payment-identity-copy h1 { font-size: clamp(27px, 8vw, 35px); }
+  .payment-identity-subtitle { max-width: 100%; font-size: 13px; }
+  .payment-identity-seal { display: none; }
+  .payment-mountain-scene { height: 100%; opacity: .22; }
+  .payment-portal-main { padding: 22px 16px 38px !important; }
+  .payment-portal-breadcrumb { justify-content: flex-start; }
+  .public-payment-page .payment-portal-main .grid-cols-3 { gap: 9px; }
+  .public-payment-page .payment-portal-main button[type="submit"] { min-height: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-payment-page *, .public-payment-page *::before, .public-payment-page *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
