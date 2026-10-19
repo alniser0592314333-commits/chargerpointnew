@@ -465,6 +465,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         </p>
       </div>
 
+      {!activeSettingsSection && hasPermission("settings:manage") && (
+        <button type="button" onClick={() => onNavigate?.("/app/settings/public-page")} className="w-full flex items-center gap-3 rounded-xl border border-gray-200 dark:border-[#14423b] px-4 py-3 text-start hover:bg-gray-50 dark:hover:bg-[#0c312b]">
+          <span className="w-9 h-9 flex items-center justify-center rounded-lg bg-emerald-50 dark:bg-[#0c312b] text-emerald-700 dark:text-[#8eb698]"><Globe className="w-4 h-4" /></span>
+          <span className="flex-1"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "الصفحة العامة وساعات العمل" : "Public page & operating hours"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "التحكم بحالة النشاط وأوقات العمل للزوار" : "Manage visitor-facing activity and opening hours"}</span></span>
+          {isRTL ? <ChevronLeft className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </button>
+      )}
+
       {/* Main settings menu and selected section content */}
       <div className="space-y-6">
         {!activeSettingsSection && (
