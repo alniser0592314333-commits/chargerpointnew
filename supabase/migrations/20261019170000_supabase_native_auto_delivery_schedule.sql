@@ -12,16 +12,14 @@ DO $schedule$
 DECLARE
   v_job_id bigint;
 BEGIN
-  -- pg_cron unschedule is keyed by job_id; do not pass the job name.
-  SELECT jobid INTO v_job_id
-  FROM cron.job
-  WHERE jobname = 'chargerpoint-server-auto-delivery'
-  ORDER BY jobid DESC
-  LIMIT 1;
-
-  IF v_job_id IS NOT NULL THEN
+  -- pg_cron unschedule is keyed by job_id; remove every duplicate by name.
+  FOR v_job_id IN
+    SELECT jobid
+    FROM cron.job
+    WHERE jobname = 'chargerpoint-server-auto-delivery'
+  LOOP
     PERFORM cron.unschedule(v_job_id);
-  END IF;
+  END LOOP;
 
   PERFORM cron.schedule(
     'chargerpoint-server-auto-delivery',
