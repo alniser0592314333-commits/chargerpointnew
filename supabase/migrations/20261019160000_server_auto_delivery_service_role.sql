@@ -21,17 +21,15 @@ DECLARE
         RAISE EXCEPTION 'Forbidden: Admin account is inactive or disabled'
             USING ERRCODE = 'P0001';
     END IF;$old$;
-  v_new text := $new$    IF auth.uid() IS NULL THEN
-        IF COALESCE(current_setting('request.jwt.claim.role', true), '') = 'service_role'
-           AND p_command_type = 'DELIVER_ORDER_ITEM'
-           AND COALESCE((p_payload->>'autoDelivery')::boolean, false) THEN
-            v_actor_id := NULL;
-            v_admin_role := 'SUPER_ADMIN';
-            v_is_active := TRUE;
-        ELSE
-            RAISE EXCEPTION 'Authentication required: caller must be signed in via Supabase Auth'
-                USING ERRCODE = 'P0001';
-        END IF;
+  v_new text := $new$    IF COALESCE(current_setting('request.jwt.claim.role', true), '') = 'service_role'
+       AND p_command_type = 'DELIVER_ORDER_ITEM'
+       AND COALESCE((p_payload->>'autoDelivery')::boolean, false) THEN
+        v_actor_id := NULL;
+        v_admin_role := 'SUPER_ADMIN';
+        v_is_active := TRUE;
+    ELSIF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Authentication required: caller must be signed in via Supabase Auth'
+            USING ERRCODE = 'P0001';
     ELSE
         v_actor_id := auth.uid();
         SELECT id, role, is_active INTO v_actor_id, v_admin_role, v_is_active
