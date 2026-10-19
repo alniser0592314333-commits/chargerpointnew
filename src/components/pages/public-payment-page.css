@@ -259,3 +259,62 @@ html.dark .public-payment-page .payment-portal-main button[type="submit"] { colo
     scroll-behavior: auto !important;
   }
 }
+
+
+/* Follow-up polish: compact brand in header, no duplicate logo in the mountain hero. */
+.payment-header-brand {
+  text-decoration: none;
+  min-height: 42px;
+  color: var(--payment-ink) !important;
+}
+.payment-header-brand > div {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+}
+.payment-header-brand-name { white-space: nowrap; }
+.payment-identity-hero {
+  min-height: 225px;
+  padding-top: 26px;
+  padding-bottom: 24px;
+}
+.payment-identity-copy { max-width: 760px; }
+.payment-identity-eyebrow { margin-bottom: 8px; }
+.payment-identity-copy h1 { margin-top: 0; }
+.payment-identity-subtitle { margin-bottom: 0; }
+.payment-portal-main { padding-top: 20px !important; }
+.payment-portal-breadcrumb { margin-bottom: 24px !important; }
+.payment-method-logo {
+  display: block;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #fff;
+}
+.payment-method-logo img { display: block; border-radius: 50%; }
+.public-payment-page .payment-portal-main [aria-pressed="true"] {
+  border-width: 2px !important;
+  box-shadow: 0 4px 16px rgba(13, 102, 113, .09) !important;
+}
+@media (max-width: 640px) {
+  .payment-portal-header-inner { min-height: 60px; }
+  .payment-header-brand { gap: 7px; }
+  .payment-header-brand > div { width: 32px; height: 32px; }
+  .payment-header-brand-name { font-size: 12px !important; }
+  .payment-portal-header-actions { gap: 5px !important; }
+  .payment-portal-header-back { min-height: 36px !important; padding-inline: 8px !important; gap: 4px !important; }
+  .payment-portal-header-back span { max-width: 100px; font-size: 10px; white-space: normal; line-height: 1.25; }
+  .payment-portal-header-actions > button { width: 36px; min-height: 36px !important; height: 36px !important; }
+  .payment-portal-header-actions > button:last-child { padding-inline: 8px !important; }
+  .payment-portal-header-actions > button:last-child span { font-size: 10px; }
+  .payment-identity-hero { min-height: 220px; padding: 25px 18px 23px; }
+  .payment-identity-brand { display: none; }
+  .payment-identity-seal { display: none; }
+  .payment-portal-main { padding-top: 18px !important; }
+  .payment-portal-breadcrumb { margin-bottom: 21px !important; }
+  .payment-method-logo { width: 52px; height: 52px; flex-basis: 52px; }
+  .public-payment-page .payment-portal-main .grid-cols-3 { gap: 8px; }
+  .public-payment-page .payment-portal-main .grid-cols-3 > button { min-height: 108px; border-radius: 17px !important; }
+}
