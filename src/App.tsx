@@ -30,6 +30,7 @@ import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import { PublicLandingSettingsPage } from './components/pages/PublicLandingSettingsPage';
 import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
@@ -578,6 +579,11 @@ export default function App() {
     }
 
     switch (pathname) {
+      case '/app/settings/public-page': {
+        const canManagePublicPage = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\\s+/g, '_') === 'SUPER_ADMIN') || Boolean(userSession?.permissions?.includes('settings:manage'));
+        if (!userSession || !canManagePublicPage) return <UnauthorizedPage />;
+        return <PublicLandingSettingsPage onBack={() => navigate('/app/settings')} />;
+      }
       case '/app':
         return (
           <HomePage
