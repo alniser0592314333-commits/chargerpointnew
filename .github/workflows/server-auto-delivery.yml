@@ -17,6 +17,25 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -24,6 +43,51 @@ jobs:
           deno-version: v2.x
       - name: Type-check server function
         run: deno check --node-modules-dir=auto supabase/functions/auto-deliver-pending/index.ts
+      - name: Exercise service-role migration against isolated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE service_role;
+          CREATE SCHEMA auth;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $ SELECT NULL::uuid $;
+          CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command_unlocked(
+            p_command_id uuid, p_command_type text, p_payload jsonb,
+            p_payload_hash text, p_device_id text, p_actor_id uuid
+          ) RETURNS jsonb LANGUAGE plpgsql AS $function$
+          DECLARE
+            v_actor_id uuid := NULL;
+            v_admin_role text := NULL;
+            v_is_active boolean := TRUE;
+          BEGIN
+              IF auth.uid() IS NULL THEN
+                  RAISE EXCEPTION 'Authentication required: caller must be signed in via Supabase Auth'
+                      USING ERRCODE = 'P0001';
+              END IF;
+
+              v_actor_id := auth.uid();
+              SELECT id, role, is_active INTO v_actor_id, v_admin_role, v_is_active
+              FROM public.admins WHERE auth_user_id = auth.uid() LIMIT 1;
+
+              IF v_actor_id IS NULL THEN
+                  RAISE EXCEPTION 'Unauthorized: Caller is not a registered admin profile'
+                      USING ERRCODE = 'P0001';
+              END IF;
+
+              IF v_is_active IS NOT TRUE THEN
+                  RAISE EXCEPTION 'Forbidden: Admin account is inactive or disabled'
+                      USING ERRCODE = 'P0001';
+              END IF;
+              RETURN '{}'::jsonb;
+          END;
+          $function$;
+          CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(
+            p_command_id uuid, p_command_type text, p_payload jsonb,
+            p_payload_hash text, p_device_id text, p_actor_id uuid
+          ) RETURNS jsonb LANGUAGE sql AS $ SELECT '{}'::jsonb $;
+          SQL
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          psql -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN position('request.jwt.claim.role' in pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure)) > 0 AND has_function_privilege('service_role', 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)', 'EXECUTE') THEN 'PASS: guarded dispatcher migration' ELSE (1/0)::text END;"
       - name: Verify guarded service-role path
         shell: bash
         run: |
