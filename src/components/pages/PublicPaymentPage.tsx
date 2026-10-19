@@ -770,7 +770,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                   <h2 className="text-xs font-bold text-slate-700 dark:text-slate-200">{isAr ? 'وسيلة الدفع' : 'Payment method'}</h2>
                   <span className="text-[10px] text-slate-400">{isAr ? 'مطلوب' : 'Required'}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="payment-method-options" role="group" aria-label={isAr ? 'اختر وسيلة التحويل' : 'Choose a transfer method'}>
                   {PAYMENT_METHODS.map((item) => {
                     const selected = method === item.id;
                     return (
@@ -782,22 +782,20 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                           setError('');
                           setValidationError(null);
                         }}
-                        aria-label={`${isAr ? item.ar : item.en} (${item.short})`}
+                        aria-label={isAr ? item.ar : item.en}
                         aria-pressed={selected}
-                        className={`payment-method-image-tile relative flex min-h-[124px] min-w-0 items-center justify-center overflow-hidden rounded-2xl border p-0 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#101e21] ${selected
-                          ? 'border-teal-600 bg-teal-50 shadow-sm dark:border-teal-400 dark:bg-teal-950/50'
-                          : 'border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50/60 dark:border-white/15 dark:bg-white/[0.03] dark:hover:border-teal-700 dark:hover:bg-teal-950/30'
-                        }`}
+                        className={`payment-method-card payment-method-card-${item.id.toLowerCase()} ${selected ? 'is-selected' : ''}`}
                       >
-                        <img
-                          src={item.logoUrl}
-                          alt=""
-                          aria-hidden="true"
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                          className="payment-method-tile-image"
-                        />
-                        {selected && <span className="absolute end-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md dark:bg-emerald-500" aria-hidden="true"><Check className="h-3.5 w-3.5" /></span>}
+                        <span className="payment-method-card-logo" aria-hidden="true">
+                          <PaymentMethodLogo method={item} />
+                        </span>
+                        <span className="payment-method-card-copy">
+                          <span className="payment-method-card-name">{isAr ? item.ar : item.en}</span>
+                          <span className="payment-method-card-description">{isAr ? item.descriptionAr : item.descriptionEn}</span>
+                        </span>
+                        <span className="payment-method-card-choice" aria-hidden="true">
+                          {selected ? <Check className="h-4 w-4" /> : null}
+                        </span>
                       </button>
                     );
                   })}
