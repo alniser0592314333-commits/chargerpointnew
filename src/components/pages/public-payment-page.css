@@ -737,3 +737,21 @@ html.dark .public-payment-page .payment-portal-main button[type="submit"] { colo
 .payment-method-choice-logo .payment-method-logo.bg-purple-50 {
   background: transparent !important;
 }
+
+
+/* Payment logo polish: avoid a pink-to-purple flash, prioritize remote marks, and crop app-icon wordmarks. */
+.payment-method-choice-logo-palpay {
+  background: #532b83 !important;
+}
+.payment-method-choice-logo-jawal_pay {
+  background: #fff !important;
+}
+.payment-method-choice-logo-palpay .payment-method-logo img,
+.payment-method-choice-logo-jawal_pay .payment-method-logo img {
+  transform: scale(1.42) translateY(9%);
+  transform-origin: center;
+}
+.payment-method-choice-logo-palpay .payment-method-logo,
+.payment-method-choice-logo-jawal_pay .payment-method-logo {
+  background: inherit !important;
+}
