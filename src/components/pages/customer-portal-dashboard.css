@@ -495,3 +495,79 @@ html.dark .cp-customer-portal .cp-portal-primary-button:hover:not(:disabled) { b
 @media (prefers-reduced-motion: reduce) {
   .cp-customer-portal.cp-portal-enter { animation: none !important; }
 }
+
+
+/* Customer balance card: quiet moonlit mountain atmosphere with continuous, subtle mist. */
+.cp-customer-portal .cp-portal-balance {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: rgba(151, 190, 202, 0.22);
+  background:
+    linear-gradient(145deg, rgba(8, 22, 34, 0.96), rgba(13, 37, 51, 0.94) 58%, rgba(21, 49, 62, 0.96)) !important;
+  color: #f4fbff;
+  box-shadow: 0 18px 42px rgba(3, 14, 24, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.cp-customer-portal .cp-portal-balance::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.9;
+  background:
+    radial-gradient(circle at 79% 25%, rgba(230, 244, 249, 0.88) 0 1.4%, rgba(205, 229, 239, 0.22) 1.8%, transparent 9%),
+    linear-gradient(153deg, transparent 0 46%, rgba(29, 62, 78, 0.94) 46.3% 100%),
+    linear-gradient(25deg, transparent 0 53%, rgba(19, 48, 65, 0.98) 53.3% 100%),
+    linear-gradient(160deg, transparent 0 62%, rgba(8, 28, 43, 0.98) 62.3% 100%);
+}
+
+.cp-customer-portal .cp-portal-balance::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 22% -35% -10%;
+  pointer-events: none;
+  opacity: 0.36;
+  background:
+    radial-gradient(ellipse at 30% 48%, rgba(177, 211, 222, 0.3), transparent 36%),
+    radial-gradient(ellipse at 68% 62%, rgba(151, 194, 208, 0.24), transparent 42%),
+    linear-gradient(100deg, transparent 20%, rgba(193, 222, 230, 0.12) 48%, transparent 72%);
+  filter: blur(10px);
+  transform: translate3d(-3%, 0, 0);
+  animation: cp-balance-mist-drift 18s ease-in-out infinite alternate;
+}
+
+.cp-customer-portal .cp-portal-balance > * {
+  position: relative;
+  z-index: 1;
+}
+
+.cp-customer-portal .cp-portal-balance .cp-portal-muted,
+.cp-customer-portal .cp-portal-balance .cp-portal-eyebrow {
+  color: rgba(225, 239, 245, 0.78) !important;
+}
+
+.cp-customer-portal .cp-portal-balance__amount {
+  color: #ffffff;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.24);
+}
+
+.cp-customer-portal .cp-portal-balance__actions {
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes cp-balance-mist-drift {
+  from { transform: translate3d(-3%, 0, 0) scale(1); opacity: 0.28; }
+  to { transform: translate3d(3%, -2%, 0) scale(1.04); opacity: 0.42; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-customer-portal .cp-portal-balance::after {
+    animation: none;
+  }
+}
