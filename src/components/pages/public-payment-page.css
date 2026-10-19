@@ -738,10 +738,3 @@ html.dark .public-payment-page .payment-portal-main button[type="submit"] { colo
   background: transparent !important;
 }
 
-
-/* Wallet app marks: crop embedded provider wordmarks while keeping the icon artwork centered. */
-.payment-method-choice-logo-jawal_pay .payment-method-logo img,
-.payment-method-choice-logo-palpay .payment-method-logo img {
-  transform: scale(1.34);
-  transform-origin: center;
-}
