@@ -30,7 +30,7 @@ Deno.serve(async (request: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceKey) return reply(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
 
-  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\\s+/i, "").trim();
   if (token.length !== serviceKey.length) return reply(401, { ok: false, error: "UNAUTHORIZED" });
   let mismatch = 0;
   for (let i = 0; i < token.length; i++) mismatch |= token.charCodeAt(i) ^ serviceKey.charCodeAt(i);
@@ -48,65 +48,94 @@ Deno.serve(async (request: Request) => {
   if (settingError) return reply(503, { ok: false, error: "SETTINGS_UNAVAILABLE" });
   const generation = Number(setting?.value_number ?? 1);
 
-  const { data: items, error } = await db.from("order_items")
-    .select("id,order_id,version,orders!inner(id,deleted_at,cancelled_at,customers!inner(status,is_active,deleted_at))")
-    .eq("operational_status", "CHARGING")
-    .eq("financial_status", "UNRECOGNIZED")
-    .is("deleted_at", null)
-    .is("cancelled_at", null)
-    .is("orders.deleted_at", null)
-    .is("orders.cancelled_at", null)
-    .neq("orders.status", "cancelled")
-    .neq("orders.status", "CANCELLED")
-    .eq("orders.customers.is_active", true)
-    .is("orders.customers.deleted_at", null)
-    .neq("orders.customers.status", "DELETED")
-    .order("created_at", { ascending: true })
-    .limit(500);
-  if (error) {
-    console.error("Auto-delivery candidate query failed", error.code ?? "unknown");
-    return reply(503, { ok: false, error: "CANDIDATES_UNAVAILABLE" });
-  }
-
   let delivered = 0;
   let failed = 0;
+  let considered = 0;
+  let cursorId: string | null = null;
+  let exhausted = false;
   const failures: Array<{ item_id: string; code: string }> = [];
-  for (const item of items ?? []) {
-    const payload = {
-      itemId: item.id,
-      expectedVersion: item.version,
-      autoDelivery: true,
-      resetGeneration: generation,
-    };
-    const payloadHash = await sha256(JSON.stringify(payload));
-    const commandId = commandUuid(await sha256(
-      "chargerpoint:auto-delivery:v1:" + item.id + ":" + item.version
-    ));
-    const { data: rpcData, error: rpcError } = await db.rpc("execute_canonical_sync_command", {
-      p_command_id: commandId,
-      p_command_type: "DELIVER_ORDER_ITEM",
-      p_payload: payload,
-      p_payload_hash: payloadHash,
-      p_device_id: "server-auto-delivery",
-      p_actor_id: null,
-    });
-    if (rpcError || rpcData?.success !== true) {
-      failed++;
-      const failureCode = rpcError?.code ?? (typeof rpcData?.error === "string" ? rpcData.error : "DELIVERY_NOT_CONFIRMED");
-      failures.push({ item_id: item.id, code: failureCode });
-      console.error("Auto-delivery item failed", item.id, failureCode);
-    } else {
-      delivered++;
+  const startedAt = Date.now();
+  const maxRuntimeMs = 40_000;
+  const maxDeliveredPerRun = 500;
+
+  // Keyset pagination means a repeatedly failing older item cannot block later items.
+  // The cursor advances by UUID, so rows disappearing after successful delivery do not skip rows.
+  while (!exhausted && delivered < maxDeliveredPerRun && Date.now() - startedAt < maxRuntimeMs) {
+    let query = db.from("order_items")
+      .select("id,order_id,version,orders!inner(id,deleted_at,cancelled_at,status,customers!inner(status,is_active,deleted_at))")
+      .eq("operational_status", "CHARGING")
+      .eq("financial_status", "UNRECOGNIZED")
+      .is("deleted_at", null)
+      .is("cancelled_at", null)
+      .is("orders.deleted_at", null)
+      .is("orders.cancelled_at", null)
+      .neq("orders.status", "cancelled")
+      .neq("orders.status", "CANCELLED")
+      .eq("orders.customers.is_active", true)
+      .is("orders.customers.deleted_at", null)
+      .neq("orders.customers.status", "DELETED")
+      .order("id", { ascending: true })
+      .limit(100);
+    if (cursorId) query = query.gt("id", cursorId);
+
+    const { data: items, error } = await query;
+    if (error) {
+      console.error("Auto-delivery candidate query failed", error.code ?? "unknown");
+      return reply(503, {
+        ok: false, error: "CANDIDATES_UNAVAILABLE", local_time, considered, delivered, failed,
+      });
     }
+    if (!items?.length) {
+      exhausted = true;
+      break;
+    }
+
+    for (const item of items) {
+      cursorId = item.id;
+      considered++;
+      if (Date.now() - startedAt >= maxRuntimeMs || delivered >= maxDeliveredPerRun) break;
+
+      const payload = {
+        itemId: item.id,
+        expectedVersion: item.version,
+        autoDelivery: true,
+        resetGeneration: generation,
+      };
+      const payloadHash = await sha256(JSON.stringify(payload));
+      const commandId = commandUuid(await sha256(
+        "chargerpoint:auto-delivery:v1:" + item.id + ":" + item.version
+      ));
+      const { data: rpcData, error: rpcError } = await db.rpc("execute_canonical_sync_command", {
+        p_command_id: commandId,
+        p_command_type: "DELIVER_ORDER_ITEM",
+        p_payload: payload,
+        p_payload_hash: payloadHash,
+        p_device_id: "server-auto-delivery",
+        p_actor_id: null,
+      });
+      if (rpcError || rpcData?.success !== true) {
+        failed++;
+        const failureCode = rpcError?.code ??
+          (typeof rpcData?.error === "string" ? rpcData.error : "DELIVERY_NOT_CONFIRMED");
+        if (failures.length < 25) failures.push({ item_id: item.id, code: failureCode });
+        console.error("Auto-delivery item failed", item.id, failureCode);
+      } else {
+        delivered++;
+      }
+    }
+    if (items.length < 100) exhausted = true;
   }
 
+  const timeBudgetReached = Date.now() - startedAt >= maxRuntimeMs;
   return reply(failed ? 500 : 200, {
-    ok: failed === 0,
+    ok: failed === 0 && !timeBudgetReached,
     local_time: localTime,
-    considered: items?.length ?? 0,
+    considered,
     delivered,
     failed,
-    failures: failures.slice(0, 25),
-    truncated_failures: Math.max(0, failures.length - 25),
+    exhausted,
+    time_budget_reached: timeBudgetReached,
+    failures,
+    truncated_failures: Math.max(0, failed - failures.length),
   });
 });
