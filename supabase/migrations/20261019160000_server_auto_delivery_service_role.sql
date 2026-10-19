@@ -21,7 +21,7 @@ DECLARE
         RAISE EXCEPTION 'Forbidden: Admin account is inactive or disabled'
             USING ERRCODE = 'P0001';
     END IF;$old$;
-  v_new text := $new$    IF COALESCE(current_setting('request.jwt.claim.role', true), '') = 'service_role'
+  v_new text := $new$    IF COALESCE(auth.role(), '') = 'service_role'
        AND p_command_type = 'DELIVER_ORDER_ITEM'
        AND COALESCE((p_payload->>'autoDelivery')::boolean, false) THEN
         v_actor_id := NULL;
