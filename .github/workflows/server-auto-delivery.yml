@@ -1,16 +1,47 @@
 name: Server auto-delivery
 on:
+  pull_request:
+    paths:
+      - "supabase/functions/auto-deliver-pending/**"
+      - "supabase/migrations/*server_auto_delivery*"
+      - ".github/workflows/server-auto-delivery.yml"
+  push:
+    branches: ["main", "feature/server-auto-delivery-5pm-2026-10-19"]
+    paths:
+      - "supabase/functions/auto-deliver-pending/**"
+      - "supabase/migrations/*server_auto_delivery*"
+      - ".github/workflows/server-auto-delivery.yml"
   schedule:
-    # Reconcile every 30 minutes; the server function enforces Palestine local time.
+    # Reconcile every 30 minutes; the function enforces Palestine local time.
     - cron: "0,30 14-22 * * *"
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: server-auto-delivery
+  group: server-auto-delivery-${{ github.event_name }}
   cancel-in-progress: false
 jobs:
+  verify:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check server function
+        run: deno check supabase/functions/auto-deliver-pending/index.ts
+      - name: Verify migration has guarded service-role path
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "request.jwt.claim.role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "p_command_type = 'DELIVER_ORDER_ITEM'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "autoDelivery" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "IF v_definition IS NULL OR position(v_old in v_definition) = 0" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
   deliver:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
