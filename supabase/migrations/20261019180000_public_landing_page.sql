@@ -50,6 +50,9 @@ BEGIN
   IF jsonb_typeof(p_settings)<>'object'
     OR jsonb_typeof(p_settings->'is_active') IS DISTINCT FROM 'boolean'
     OR (COALESCE(p_settings->>'open_time','') <> '' AND (p_settings->>'open_time') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+    OR (COALESCE(p_settings->>'close_time','') <> '' AND (p_settings->>'close_time') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+    OR (COALESCE(p_settings->>'next_open_time','') <> '' AND (p_settings->>'next_open_time') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
+    OR (COALESCE(p_settings->>'next_close_time','') <> '' AND (p_settings->>'next_close_time') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$')
   THEN RAISE EXCEPTION 'INVALID_PUBLIC_LANDING_SETTINGS'; END IF;
   v_settings := jsonb_build_object(
     'is_active',(p_settings->>'is_active')::boolean,
