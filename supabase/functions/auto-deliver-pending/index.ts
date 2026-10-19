@@ -56,6 +56,8 @@ Deno.serve(async (request: Request) => {
     .is("cancelled_at", null)
     .is("orders.deleted_at", null)
     .is("orders.cancelled_at", null)
+    .neq("orders.status", "cancelled")
+    .neq("orders.status", "CANCELLED")
     .eq("orders.customers.is_active", true)
     .is("orders.customers.deleted_at", null)
     .neq("orders.customers.status", "DELETED")
