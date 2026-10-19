@@ -48,7 +48,7 @@ const PAYMENT_METHODS: PaymentMethodItem[] = [
     badgeAr: 'حساب بنكي',
     badgeEn: 'Bank Account',
     markClass: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300',
-    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/news/9sJP6saDV32QxvHqVHnTxo74fVXnHdPcCBzT2okA.jpg',
+    logoUrl: 'https://pbs.twimg.com/profile_images/2038876714260942848/3PeiSPOk_400x400.jpg',
   },
   {
     id: 'JAWAL_PAY',
@@ -72,7 +72,7 @@ const PAYMENT_METHODS: PaymentMethodItem[] = [
     badgeAr: 'محفظة رقمية',
     badgeEn: 'Mobile Wallet',
     markClass: 'bg-purple-50 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300',
-    logoUrl: 'https://bopwebsitestorage.blob.core.windows.net/assets/uploads/l9IcwMLAVdCnG7anhRZRTisqSbNCcsYK1NV4LwZM.png',
+    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/06/03/0d/06030d87-7852-a3b9-4a68-19b05b54ab08/AppIcon-0-0-1x_U007emarketing-0-6-0-0-85-220.jpeg/512x512bb.jpg',
   },
 ];
 
