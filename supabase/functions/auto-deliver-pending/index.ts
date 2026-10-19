@@ -107,7 +107,7 @@ Deno.serve(async (request: Request) => {
       };
       const payloadHash = await sha256(JSON.stringify(payload));
       const commandId = commandUuid(await sha256(
-        "chargerpoint:auto-delivery:v1:" + item.id + ":" + item.version
+        "chargerpoint:auto-delivery:v1:" + generation + ":" + item.id + ":" + item.version
       ));
       const { data: rpcData, error: rpcError } = await db.rpc("execute_canonical_sync_command", {
         p_command_id: commandId,
