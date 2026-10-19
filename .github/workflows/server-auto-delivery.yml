@@ -1,4 +1,4 @@
-name: Server auto-delivery
+name: Verify server auto-delivery
 on:
   pull_request:
     paths:
@@ -11,18 +11,10 @@ on:
       - "supabase/functions/auto-deliver-pending/**"
       - "supabase/migrations/*server_auto_delivery*"
       - ".github/workflows/server-auto-delivery.yml"
-  schedule:
-    # Reconcile every 30 minutes; the function enforces Palestine local time.
-    - cron: "0,30 14-22 * * *"
-  workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: server-auto-delivery-${{ github.event_name }}
-  cancel-in-progress: false
 jobs:
   verify:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,7 +24,7 @@ jobs:
           deno-version: v2.x
       - name: Type-check server function
         run: deno check --node-modules-dir=auto supabase/functions/auto-deliver-pending/index.ts
-      - name: Verify migration has guarded service-role path
+      - name: Verify guarded service-role path
         shell: bash
         run: |
           set -euo pipefail
@@ -40,22 +32,5 @@ jobs:
           grep -q "p_command_type = 'DELIVER_ORDER_ITEM'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "autoDelivery" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "IF v_definition IS NULL OR position(v_old in v_definition) = 0" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
-  deliver:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Run server-side delivery reconciliation
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$SUPABASE_URL" || { echo "Missing repository secret SUPABASE_URL"; exit 1; }
-          test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "Missing repository secret SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
-          curl --silent --show-error --fail-with-body --request POST \
-            --header "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-            --header "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
-            --header "Content-Type: application/json" --data '{}' \
-            "${SUPABASE_URL%/}/functions/v1/auto-deliver-pending"
+          grep -q "cron.schedule" supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql
+          ! grep -q "schedule:" .github/workflows/server-auto-delivery.yml
