@@ -30,7 +30,7 @@ Deno.serve(async (request: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceKey) return reply(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
 
-  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\\s+/i, "").trim();
+  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (token.length !== serviceKey.length) return reply(401, { ok: false, error: "UNAUTHORIZED" });
   let mismatch = 0;
   for (let i = 0; i < token.length; i++) mismatch |= token.charCodeAt(i) ^ serviceKey.charCodeAt(i);
