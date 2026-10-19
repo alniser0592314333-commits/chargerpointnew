@@ -519,7 +519,6 @@ html.dark .cp-customer-portal .cp-portal-primary-button:hover:not(:disabled) { b
   pointer-events: none;
   opacity: 0.9;
   background:
-    radial-gradient(circle at 79% 25%, rgba(230, 244, 249, 0.88) 0 1.4%, rgba(205, 229, 239, 0.22) 1.8%, transparent 9%),
     linear-gradient(153deg, transparent 0 46%, rgba(29, 62, 78, 0.94) 46.3% 100%),
     linear-gradient(25deg, transparent 0 53%, rgba(19, 48, 65, 0.98) 53.3% 100%),
     linear-gradient(160deg, transparent 0 62%, rgba(8, 28, 43, 0.98) 62.3% 100%);
