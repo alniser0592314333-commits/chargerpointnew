@@ -59,7 +59,7 @@ const PublicPortalApp: React.FC = () => {
     }
   }
 
-  return <I18nProvider><FirstVisitWelcomeIntro enabled={welcomeEnabled} />{content}</I18nProvider>;
+  return <ThemeProvider><I18nProvider><FirstVisitWelcomeIntro enabled={welcomeEnabled} />{content}</I18nProvider></ThemeProvider>;
 };
 
 export default PublicPortalApp;
