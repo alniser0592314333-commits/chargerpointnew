@@ -90,10 +90,14 @@ Deno.serve(async (request: Request) => {
       break;
     }
 
+    let stoppedEarly = false;
     for (const item of items) {
+      if (Date.now() - startedAt >= maxRuntimeMs || delivered >= maxDeliveredPerRun) {
+        stoppedEarly = true;
+        break;
+      }
       cursorId = item.id;
       considered++;
-      if (Date.now() - startedAt >= maxRuntimeMs || delivered >= maxDeliveredPerRun) break;
 
       const payload = {
         itemId: item.id,
@@ -123,6 +127,7 @@ Deno.serve(async (request: Request) => {
         delivered++;
       }
     }
+    if (stoppedEarly) break;
     if (items.length < 100) exhausted = true;
   }
 
