@@ -80,20 +80,20 @@ const PaymentMethodLogo: React.FC<{ method: PaymentMethodItem }> = ({ method }) 
   const [failed, setFailed] = useState(false);
   if (failed || !method.logoUrl) {
     return (
-      <div className={`flex h-8 w-9 shrink-0 items-center justify-center rounded-full font-bold text-[10px] ${method.markClass}`}>
+      <div className={`flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-xs ${method.markClass}`}>
         {method.short}
       </div>
     );
   }
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-1.5 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-700">
+    <div className="payment-method-logo">
       <img
         src={method.logoUrl}
         alt={method.short}
         loading="lazy"
         referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
-        className="h-full w-full object-contain"
+        className="h-full w-full rounded-full object-cover"
       />
     </div>
   );
