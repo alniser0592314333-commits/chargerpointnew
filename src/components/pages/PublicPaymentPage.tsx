@@ -784,14 +784,20 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                         }}
                         aria-label={`${isAr ? item.ar : item.en} (${item.short})`}
                         aria-pressed={selected}
-                        className={`relative flex min-h-[124px] min-w-0 flex-col items-center justify-center gap-2.5 rounded-2xl border px-2 py-4 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#101e21] ${selected
+                        className={`payment-method-image-tile relative flex min-h-[124px] min-w-0 items-center justify-center overflow-hidden rounded-2xl border p-0 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#101e21] ${selected
                           ? 'border-teal-600 bg-teal-50 shadow-sm dark:border-teal-400 dark:bg-teal-950/50'
                           : 'border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50/60 dark:border-white/15 dark:bg-white/[0.03] dark:hover:border-teal-700 dark:hover:bg-teal-950/30'
                         }`}
                       >
-                        <PaymentMethodLogo method={item} />
-                        <span className="text-[11px] font-extrabold tracking-wide text-slate-800 dark:text-slate-100">{item.short}</span>
-                        {selected && <span className="absolute end-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white dark:bg-emerald-500" aria-hidden="true"><Check className="h-3 w-3" /></span>}
+                        <img
+                          src={item.logoUrl}
+                          alt=""
+                          aria-hidden="true"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          className="payment-method-tile-image"
+                        />
+                        {selected && <span className="absolute end-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-md dark:bg-emerald-500" aria-hidden="true"><Check className="h-3.5 w-3.5" /></span>}
                       </button>
                     );
                   })}
