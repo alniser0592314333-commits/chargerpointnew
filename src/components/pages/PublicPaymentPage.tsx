@@ -770,6 +770,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 <div className="payment-method-options" role="group" aria-label={isAr ? 'اختر وسيلة التحويل' : 'Choose a transfer method'}>
                   {PAYMENT_METHODS.map((item) => {
                     const selected = method === item.id;
+                    const methodLabel = isAr ? item.ar : item.short === 'BOP' ? 'B.O.P' : item.short;
                     return (
                       <button
                         key={item.id}
@@ -779,20 +780,19 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                           setError('');
                           setValidationError(null);
                         }}
-                        aria-label={isAr ? item.ar : item.en}
+                        aria-label={isAr ? item.ar : methodLabel}
                         aria-pressed={selected}
-                        className={`payment-method-card payment-method-card-${item.id.toLowerCase()} ${selected ? 'is-selected' : ''}`}
+                        className={`payment-method-choice ${selected ? 'is-selected' : ''}`}
                       >
-                        <span className="payment-method-card-logo" aria-hidden="true">
+                        <span className="payment-method-choice-logo" aria-hidden="true">
                           <PaymentMethodLogo method={item} />
                         </span>
-                        <span className="payment-method-card-copy">
-                          <span className="payment-method-card-name">{isAr ? item.ar : item.en}</span>
-                          <span className="payment-method-card-description">{isAr ? item.descriptionAr : item.descriptionEn}</span>
-                        </span>
-                        <span className="payment-method-card-choice" aria-hidden="true">
-                          {selected ? <Check className="h-4 w-4" /> : null}
-                        </span>
+                        {selected && (
+                          <span className="payment-method-choice-check" aria-hidden="true">
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                        <span className="payment-method-choice-label">{methodLabel}</span>
                       </button>
                     );
                   })}
