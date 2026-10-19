@@ -78,24 +78,21 @@ const PAYMENT_METHODS: PaymentMethodItem[] = [
 
 const PaymentMethodLogo: React.FC<{ method: PaymentMethodItem }> = ({ method }) => {
   const [failed, setFailed] = useState(false);
-  if (failed || !method.logoUrl) {
-    return (
-      <div className={`flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-xs ${method.markClass}`}>
-        {method.short}
-      </div>
-    );
-  }
   return (
-    <div className="payment-method-logo">
-      <img
-        src={method.logoUrl}
-        alt={method.short}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
-        className="h-full w-full rounded-full object-cover"
-      />
-    </div>
+    <span className={`payment-method-logo ${failed || !method.logoUrl ? 'is-fallback' : ''} ${method.markClass}`}>
+      {failed || !method.logoUrl ? (
+        <span className="payment-method-logo-fallback">{method.short}</span>
+      ) : (
+        <img
+          src={method.logoUrl}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
   );
 };
 
