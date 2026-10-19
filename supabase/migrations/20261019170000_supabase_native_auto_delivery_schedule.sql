@@ -1,4 +1,6 @@
 -- Supabase-native scheduler for server-side automatic delivery.
+-- Run every 30 minutes in UTC; the function enforces 17:00 Asia/Gaza locally,
+-- avoiding fixed-UTC schedule drift when Palestine changes daylight-saving time.
 -- Before applying this migration, add these two secrets in Supabase Vault:
 --   chargerpoint_supabase_url
 --   chargerpoint_auto_delivery_service_role_key
@@ -14,7 +16,7 @@ BEGIN
 
   PERFORM cron.schedule(
     'chargerpoint-server-auto-delivery',
-    '0,30 14-22 * * *',
+    '*/30 * * * *',
     $job$
       WITH config AS (
         SELECT
