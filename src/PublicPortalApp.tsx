@@ -40,7 +40,7 @@ const PublicPortalApp: React.FC = () => {
   if (pathname === '/') {
     content = <PublicLandingPage />;
   } else if (pathname === '/public/about') {
-    content = <PublicAboutPage />;
+    content = <PublicLandingPage />;
   } else {
     const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
     if (route) {
