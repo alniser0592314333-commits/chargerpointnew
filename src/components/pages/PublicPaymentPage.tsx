@@ -72,7 +72,7 @@ const PAYMENT_METHODS: PaymentMethodItem[] = [
     badgeAr: 'محفظة رقمية',
     badgeEn: 'Mobile Wallet',
     markClass: 'bg-purple-50 text-purple-800 dark:bg-purple-950/70 dark:text-purple-300',
-    logoUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/06/03/0d/06030d87-7852-a3b9-4a68-19b05b54ab08/AppIcon-0-0-1x_U007emarketing-0-6-0-0-85-220.jpeg/512x512bb.jpg',
+    logoUrl: 'https://images.crunchbase.com/image/upload/c_pad%2Cf_auto%2Cq_auto%3Aeco%2Cdpr_1/igy4ngcye8yidpo7jlau?ik-sanitizeSvg=true',
   },
 ];
 
