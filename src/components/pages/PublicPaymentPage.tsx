@@ -64,7 +64,7 @@ const PAYMENT_METHODS: PaymentMethodItem[] = [
   },
   {
     id: 'PALPAY',
-    ar: 'بال باي (محفظتي)',
+    ar: 'بال باي',
     en: 'PalPay (Mahfazati)',
     short: 'PPY',
     descriptionAr: 'محفظة بال باي الإلكترونية',
