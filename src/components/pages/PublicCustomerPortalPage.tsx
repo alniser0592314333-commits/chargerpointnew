@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
 import { AppLogo } from '../qr/AppLogo';
@@ -451,7 +451,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   return (
     <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal cp-portal-enter relative isolate min-h-screen text-slate-900 dark:text-slate-100">
       <div aria-hidden="true" className="cp-portal-moon-scene"><CustomerAuthScene uid="cp-customer-portal-scene" /></div>
-      <header className="relative z-10 sticky top-0 border-b border-slate-200/80 bg-white/80 backdrop-blur dark:border-emerald-950/80 dark:bg-[#082622]/80">
+      <header className="cp-portal-sticky-header relative z-20 sticky top-0 border-b border-slate-200 dark:border-emerald-950">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <AppLogo size={40} variant="auto" className="shrink-0" />
@@ -464,9 +464,6 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             <button type="button" onClick={toggleTheme} className="cp-portal-header-control cp-portal-header-control--icon" aria-label={isAr ? 'تغيير المظهر' : 'Change appearance'} title={isAr ? 'تغيير المظهر' : 'Change appearance'}>
               {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
-            <span className={`flex items-center gap-1 px-1.5 py-1 text-[11px] ${online ? 'text-emerald-700 dark:text-emerald-200' : 'text-amber-800 dark:text-amber-200'}`}>
-              {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}{online ? (isAr ? 'متصل' : 'Online') : (isAr ? 'غير متصل' : 'Offline')}
-            </span>
           </div>
         </div>
       </header>
@@ -569,7 +566,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 {activeGoal.bonus_recorded && activeGoal.bonus_minor !== null && <p className="mt-3 font-bold">{isAr ? 'المكافأة المثبتة' : 'Recorded reward'} · {money(activeGoal.bonus_minor, locale)}</p>}
               </div> : pendingGoalRequest ? <div className="cp-portal-request-state"><span className="cp-portal-request-state__icon"><History size={20} /></span><div><p className="font-bold">{isAr ? 'طلب إنشاء الهدف قيد المراجعة' : 'Goal request awaiting review'}</p><p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الإدارة ستحدد تفاصيل الهدف عند الموافقة.' : 'The administrator will determine the goal details after approval.'}</p><p className="mt-2 text-xs cp-portal-muted">{safeDate(pendingGoalRequest.created_at, locale)}</p></div></div>
               : activityLoading ? <p className="cp-portal-empty">{isAr ? 'جارٍ التحقق من حالة الأهداف…' : 'Checking goal status…'}</p>
-              : activityError || !activity ? <div className="cp-portal-retry"><p className="cp-portal-empty">{isAr ? 'تعذّر التحقق من حالة الهدف حاليًا.' : 'Goal status is temporarily unavailable.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => { void load(); void loadActivity(); }}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button></div>
+              : activityError || !activity ? <div className="cp-portal-goal-empty"><span className="cp-portal-goal-empty__icon"><Target size={28} /></span><h2 className="mt-3 text-lg font-bold">{isAr ? 'تعذّر تحميل حالة الهدف' : 'Goal status unavailable'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تقدر تعيد المحاولة أو ترسل طلب إنشاء هدف للإدارة. ستتحقق الخدمة من وجود هدف فعّال قبل تسجيل الطلب.' : 'Retry, or request a goal from the administrator. The service checks for an existing active goal before recording the request.'}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => { void load(); void loadActivity(); }}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button><button type="button" className="cp-portal-primary-button" disabled={!online || goalRequestBusy} onClick={() => void requestGoal()}>{goalRequestBusy ? <RefreshCw className="animate-spin" size={17} /> : <Target size={17} />}{isAr ? 'طلب إنشاء هدف' : 'Request a goal'}</button></div></div>
               : <div className="cp-portal-goal-empty"><span className="cp-portal-goal-empty__icon"><Target size={28} /></span><h2 className="mt-3 text-lg font-bold">{isAr ? 'ما عندك هدف حاليًا' : 'No active goal yet'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تقدر ترسل طلبًا للإدارة، وهي تتولى تحديد تفاصيل الهدف واعتماده.' : 'You can request a goal; the administrator decides its details and approval.'}</p><button type="button" className="cp-portal-primary-button" disabled={!online || goalRequestBusy} onClick={() => void requestGoal()}>{goalRequestBusy ? <RefreshCw className="animate-spin" size={17} /> : <Target size={17} />}{isAr ? 'طلب إنشاء هدف' : 'Request a goal'}</button></div>}
               {data.goals.filter((goal) => goal.status.toUpperCase() !== 'ACTIVE').length > 0 && <div className="cp-portal-subsection"><h2 className="font-bold">{isAr ? 'الأهداف السابقة' : 'Previous goals'}</h2>{data.goals.filter((goal) => goal.status.toUpperCase() !== 'ACTIVE').map((goal,index)=><div key={index} className="cp-portal-history-row"><span>{statusLabel(goal.status)} · {goal.current_progress}/{goal.target_quantity}</span><span>{goal.bonus_recorded && goal.bonus_minor !== null ? money(goal.bonus_minor, locale) : '—'}</span></div>)}</div>}
             </section>}
