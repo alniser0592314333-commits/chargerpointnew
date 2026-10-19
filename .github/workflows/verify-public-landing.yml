@@ -1,0 +1,115 @@
+name: Verify public landing migration
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches:
+      - feat/public-mountain-landing-2026-10-19
+permissions:
+  contents: read
+jobs:
+  verify-public-landing-migration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: landing_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d landing_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare isolated minimal schema and fixture
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d landing_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role; END IF;
+          END $$;
+          CREATE SCHEMA auth;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $$;
+          CREATE TABLE public.system_settings (
+            key text PRIMARY KEY, value_type varchar(32), value_string text, value_number bigint,
+            value_boolean boolean, value_json jsonb, description text, updated_at timestamptz, updated_by uuid
+          );
+          CREATE TABLE public.device_types (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(255), name_ar varchar(255),
+            name_en varchar(255), base_price_minor integer, charger_fee_enabled boolean,
+            charger_fee_applicable boolean, is_active boolean, sort_order integer, deleted_at timestamptz,
+            status varchar(32)
+          );
+          CREATE TABLE public.global_app_identity (
+            id text PRIMARY KEY, app_name text, white_logo_url text, dark_logo_url text,
+            version integer, updated_at timestamptz, updated_by uuid, created_at timestamptz,
+            singleton boolean
+          );
+          CREATE TABLE public.roles (id uuid PRIMARY KEY, name varchar(100));
+          CREATE TABLE public.admins (
+            id uuid PRIMARY KEY, auth_user_id uuid, role_id uuid, role text, permissions text[],
+            is_active boolean, disabled_at timestamptz
+          );
+          CREATE TABLE public.role_permissions (role varchar(100), permission varchar(100));
+          CREATE TABLE public.admin_custom_permissions (admin_id uuid, permission varchar(100), is_grant boolean);
+          CREATE FUNCTION public.is_active_admin_session() RETURNS boolean LANGUAGE sql STABLE AS $$
+            SELECT auth.uid() IS NOT NULL
+          $$;
+          INSERT INTO public.system_settings(key,value_type,value_number) VALUES ('default_charger_fee_minor','number',50);
+          INSERT INTO public.device_types(name,name_ar,name_en,base_price_minor,charger_fee_enabled,charger_fee_applicable,is_active,sort_order,status)
+          VALUES ('Phone','هاتف','Phone',125,true,true,true,1,'ACTIVE'),
+                 ('Hidden','مخفي','Hidden',999,false,false,false,2,'INACTIVE');
+          INSERT INTO public.global_app_identity(id,app_name,white_logo_url,dark_logo_url,singleton)
+          VALUES ('main','Charging Point','https://example.test/logo-light.png','https://example.test/logo-dark.png',true);
+          SQL
+      - name: Apply the actual public landing migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d landing_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261019180000_public_landing_page.sql
+      - name: Verify public projection is minimal, current, and read-only
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d landing_test -v ON_ERROR_STOP=1 <<'SQL'
+          SET ROLE anon;
+          DO $$
+          DECLARE v jsonb;
+          BEGIN
+            v := public.public_landing_content();
+            IF jsonb_array_length(v->'devices') <> 1 THEN RAISE EXCEPTION 'Expected only active device prices'; END IF;
+            IF (v->>'charger_fee_minor')::integer <> 50 THEN RAISE EXCEPTION 'Charger fee was not returned'; END IF;
+            IF v->'hours'->>'is_active' <> 'false' THEN RAISE EXCEPTION 'Unconfigured hours must default inactive'; END IF;
+            IF v->'brand'->>'white_logo_url' <> 'https://example.test/logo-light.png' THEN RAISE EXCEPTION 'Public logo projection missing'; END IF;
+            IF has_table_privilege('anon','public.device_types','SELECT') THEN RAISE EXCEPTION 'Anonymous role must not read the table directly'; END IF;
+            IF has_function_privilege('anon','public.update_public_landing_settings(jsonb)','EXECUTE') THEN RAISE EXCEPTION 'Anonymous role must not update public settings'; END IF;
+          END $$;
+          RESET ROLE;
+          SQL
+      - name: Verify an authorized active admin can save hours
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d landing_test -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO public.admins(id,auth_user_id,role,permissions,is_active)
+          VALUES ('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002','SUPER_ADMIN',ARRAY[]::text[],true);
+          SET ROLE authenticated;
+          SELECT set_config('request.jwt.claim.sub','20000000-0000-4000-8000-000000000002',true);
+          SELECT public.update_public_landing_settings('{"is_active":true,"open_time":"08:00","close_time":"22:00","next_open_time":"09:00","next_close_time":"21:00"}'::jsonb);
+          RESET ROLE;
+          DO $$
+          BEGIN
+            IF (SELECT value_json->>'is_active' FROM public.system_settings WHERE key='public_landing_hours') <> 'true' THEN RAISE EXCEPTION 'Admin settings were not persisted'; END IF;
+          END $$;
+          SQL
