@@ -1,0 +1,167 @@
+name: Verify server auto-delivery
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/auto-deliver-pending/**"
+      - "supabase/migrations/*server_auto_delivery*"
+      - ".github/workflows/server-auto-delivery.yml"
+  push:
+    branches: ["main", "feature/server-auto-delivery-5pm-2026-10-19"]
+    paths:
+      - "supabase/functions/auto-deliver-pending/**"
+      - "supabase/migrations/*server_auto_delivery*"
+      - ".github/workflows/server-auto-delivery.yml"
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check server function
+        run: deno check --node-modules-dir=auto supabase/functions/auto-deliver-pending/index.ts
+      - name: Exercise service-role migration against isolated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE service_role;
+          CREATE SCHEMA auth;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $uid$ SELECT NULL::uuid $uid$;
+          CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command_unlocked(
+            p_command_id uuid, p_command_type text, p_payload jsonb,
+            p_payload_hash text, p_device_id text, p_actor_id uuid
+          ) RETURNS jsonb LANGUAGE plpgsql AS $function$
+          DECLARE
+            v_actor_id uuid := NULL;
+            v_admin_role text := NULL;
+            v_is_active boolean := TRUE;
+          BEGIN
+              IF auth.uid() IS NULL THEN
+                  RAISE EXCEPTION 'Authentication required: caller must be signed in via Supabase Auth'
+                      USING ERRCODE = 'P0001';
+              END IF;
+
+              v_actor_id := auth.uid();
+              SELECT id, role, is_active INTO v_actor_id, v_admin_role, v_is_active
+              FROM public.admins WHERE auth_user_id = auth.uid() LIMIT 1;
+
+              IF v_actor_id IS NULL THEN
+                  RAISE EXCEPTION 'Unauthorized: Caller is not a registered admin profile'
+                      USING ERRCODE = 'P0001';
+              END IF;
+
+              IF v_is_active IS NOT TRUE THEN
+                  RAISE EXCEPTION 'Forbidden: Admin account is inactive or disabled'
+                      USING ERRCODE = 'P0001';
+              END IF;
+              RETURN '{}'::jsonb;
+          END;
+          $function$;
+          CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(
+            p_command_id uuid, p_command_type text, p_payload jsonb,
+            p_payload_hash text, p_device_id text, p_actor_id uuid
+          ) RETURNS jsonb LANGUAGE sql AS $wrap$ SELECT '{}'::jsonb $wrap$;
+          SQL
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $test$
+          BEGIN
+            IF position('request.jwt.claim.role' in pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure)) = 0
+               OR NOT has_function_privilege('service_role', 'public.execute_canonical_sync_command(uuid,text,jsonb,text,text,uuid)', 'EXECUTE') THEN
+              RAISE EXCEPTION 'Guarded dispatcher migration verification failed';
+            END IF;
+            RAISE NOTICE 'PASS: guarded dispatcher migration';
+          END
+          $test$;
+          SQL
+      - name: Exercise scheduler migration with isolated cron and Vault fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE SCHEMA cron;
+          CREATE TABLE cron.job (
+            jobid bigserial PRIMARY KEY,
+            jobname text NOT NULL,
+            schedule text NOT NULL,
+            command text NOT NULL
+          );
+          CREATE FUNCTION cron.unschedule(job_id bigint) RETURNS boolean
+          LANGUAGE plpgsql AS $unschedule$
+          BEGIN
+            DELETE FROM cron.job WHERE jobid = job_id;
+            RETURN FOUND;
+          END
+          $unschedule$;
+          CREATE FUNCTION cron.schedule(job_name text, schedule_text text, command_text text)
+          RETURNS bigint LANGUAGE plpgsql AS $schedule$
+          DECLARE new_job_id bigint;
+          BEGIN
+            INSERT INTO cron.job(jobname, schedule, command)
+            VALUES (job_name, schedule_text, command_text)
+            RETURNING jobid INTO new_job_id;
+            RETURN new_job_id;
+          END
+          $schedule$;
+          CREATE SCHEMA vault;
+          CREATE TABLE vault.decrypted_secrets(name text, decrypted_secret text);
+          INSERT INTO vault.decrypted_secrets VALUES
+            ('chargerpoint_supabase_url', 'https://example.supabase.co'),
+            ('chargerpoint_auto_delivery_service_role_key', 'test-only-secret');
+          CREATE SCHEMA net;
+          CREATE FUNCTION net.http_post(url text, headers jsonb, body jsonb, timeout_milliseconds integer)
+          RETURNS bigint LANGUAGE sql AS $http$ SELECT 1::bigint $http$;
+          INSERT INTO cron.job(jobname, schedule, command)
+          VALUES ('chargerpoint-server-auto-delivery', '* * * * *', 'old job 1'),
+                 ('chargerpoint-server-auto-delivery', '* * * * *', 'old job 2');
+          SQL
+          sed '/^CREATE EXTENSION IF NOT EXISTS pg_cron;$/d; /^CREATE EXTENSION IF NOT EXISTS pg_net;$/d' supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql | psql -v ON_ERROR_STOP=1
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          DO $test$
+          BEGIN
+            IF (SELECT count(*) FROM cron.job WHERE jobname = 'chargerpoint-server-auto-delivery') <> 1
+               OR (SELECT schedule FROM cron.job WHERE jobname = 'chargerpoint-server-auto-delivery') <> '*/30 * * * *' THEN
+              RAISE EXCEPTION 'Scheduler migration verification failed';
+            END IF;
+            RAISE NOTICE 'PASS: scheduler migration removes duplicates and installs one 30-minute job';
+          END
+          $test$;
+          SQL
+      - name: Verify guarded service-role path
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "request.jwt.claim.role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "p.proname = 'execute_canonical_sync_command_unlocked'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "p_command_type = 'DELIVER_ORDER_ITEM'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "autoDelivery" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "TO service_role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "IF v_definition IS NULL OR position(v_old in v_definition) = 0" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "cron.schedule" supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql
+          grep -q "cron.unschedule(v_job_id)" supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql
+          grep -q '"chargerpoint:auto-delivery:v1:" + generation + ":" + item.id + ":" + item.version' supabase/functions/auto-deliver-pending/index.ts
+          ! grep -Eq "^[[:space:]]*schedule:" .github/workflows/server-auto-delivery.yml
