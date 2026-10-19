@@ -30,11 +30,20 @@ Deno.serve(async (request: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!url || !serviceKey) return reply(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
 
-  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (token.length !== serviceKey.length) return reply(401, { ok: false, error: "UNAUTHORIZED" });
-  let mismatch = 0;
-  for (let i = 0; i < token.length; i++) mismatch |= token.charCodeAt(i) ^ serviceKey.charCodeAt(i);
-  if (mismatch !== 0) return reply(401, { ok: false, error: "UNAUTHORIZED" });
+  // Supabase's gateway verifies the JWT because verify_jwt=true. Check the verified
+  // token's service_role claim rather than string equality with an environment key,
+  // which may differ when projects rotate between legacy and newer API key formats.
+  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\\s+/i, "").trim();
+  const parts = token.split(".");
+  if (parts.length !== 3) return reply(401, { ok: false, error: "UNAUTHORIZED" });
+  let claims: { role?: string };
+  try {
+    const encoded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    claims = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, "=")));
+  } catch {
+    return reply(401, { ok: false, error: "UNAUTHORIZED" });
+  }
+  if (claims.role !== "service_role") return reply(403, { ok: false, error: "FORBIDDEN" });
 
   const localTime = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Gaza", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
