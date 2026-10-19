@@ -87,9 +87,7 @@ const PaymentMethodLogo: React.FC<{ method: PaymentMethodItem }> = ({ method }) 
           src={method.logoUrl}
           alt=""
           aria-hidden="true"
-          loading="eager"
-          fetchPriority="high"
-          decoding="async"
+          loading="lazy"
           referrerPolicy="no-referrer"
           onError={() => setFailed(true)}
         />
@@ -786,7 +784,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                         aria-pressed={selected}
                         className={`payment-method-choice ${selected ? 'is-selected' : ''}`}
                       >
-                        <span className={`payment-method-choice-logo payment-method-choice-logo-${method.id.toLowerCase()}`} aria-hidden="true">
+                        <span className="payment-method-choice-logo" aria-hidden="true">
                           <PaymentMethodLogo method={item} />
                         </span>
                         {selected && (
