@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import './public-payment-page.css';
+import { AppLogo } from '../qr/AppLogo';
 import {
   ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, FileImage,
   Clock3, Globe, LockKeyhole, Moon, ShieldCheck, Sun, UploadCloud,
@@ -480,23 +482,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
       {/* 1. Header Bar */}
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#071113]/70">
         <div className="payment-portal-header-inner mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
-          <a
-            href="/public/about"
-            className="payment-portal-brand group flex items-center gap-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            aria-label={isAr ? "نقطة الشحن - الصفحة التعريفية" : "Charging Point - About"}
-          >
-            <span className="payment-portal-brand-mark flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm transition group-hover:bg-emerald-700 dark:bg-emerald-500 dark:group-hover:bg-emerald-600" aria-hidden="true">
-              <svg viewBox="0 0 40 40" fill="none" className="h-7 w-7" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="5" width="19" height="30" rx="5" stroke="currentColor" strokeWidth="2.2"/><rect x="13" y="10" width="9" height="15" rx="2" fill="currentColor" fillOpacity=".2"/><path d="M24 17h4a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-1" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="m19 13-4 7h4l-2 5 6-8h-4l1-4Z" fill="currentColor"/></svg>
-            </span>
-            <div className="flex flex-col text-start">
-              <strong className="text-sm font-black tracking-tight text-slate-900 dark:text-slate-50">
-                {isAr ? 'نقطة الشحن' : 'Charging Point'}
-              </strong>
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                {isAr ? 'خدمة الدفع والتحويل' : 'Payment & Transfer Service'}
-              </span>
-            </div>
-          </a>
+
 
           {/* Back navigation and settings stay opposite the brand in both locales. */}
           <div className="payment-portal-header-actions flex items-center gap-2">
@@ -533,22 +519,30 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
 
       {/* 2. Main Container */}
       <main className="payment-portal-main mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-9 lg:py-12">
-        {/* Navigation Breadcrumb */}
-        <div className="payment-portal-breadcrumb mb-6 flex flex-wrap items-center justify-between gap-3">
-          <a
-            href={backHref}
-            className="inline-flex items-center gap-2 text-xs font-bold text-emerald-700 transition hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
-          >
-            {isRTL ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
-            <span>
-              {isCustomerPayment
-                ? (isAr ? 'العودة إلى حساب الزبون' : 'Back to Customer Account')
-                : (isAr ? 'العودة إلى تفاصيل الطلب' : 'Back to Order Details')}
-            </span>
-          </a>
-
-          <div className="payment-portal-heading inline-flex items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-3 py-1 text-[11px] font-bold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-            <ShieldCheck className="h-3.5 w-3.5" />
+        <section className="payment-identity-hero" aria-label={isAr ? 'هوية نقطة الشحن' : 'Charging Point identity'}>
+          <div className="payment-mountain-scene" aria-hidden="true">
+            <svg viewBox="0 0 1440 360" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="1110" cy="90" r="34" fill="currentColor" opacity=".9"/>
+              <circle cx="1123" cy="78" r="32" fill="var(--payment-sky)" />
+              <g fill="currentColor">
+                <path d="M0 310 170 148 285 242 430 105 630 290 780 174 950 306 1105 170 1275 290 1390 205 1440 250V360H0Z" opacity=".13"/>
+                <path d="M0 340 185 220 310 285 500 170 685 320 845 210 1020 315 1190 215 1360 305 1440 260V360H0Z" opacity=".22"/>
+                <path d="M0 360 0 330 170 275 290 312 455 250 590 330 760 270 915 332 1090 265 1260 320 1440 285V360Z" opacity=".34"/>
+              </g>
+              <path d="M430 105 393 148 430 135 455 153 430 105Z M1105 170 1073 208 1105 197 1130 215 1105 170Z" fill="var(--payment-sky)" opacity=".8"/>
+            </svg>
+          </div>
+          <div className="payment-identity-copy">
+            <div className="payment-identity-brand"><AppLogo size={44} /><span>{isAr ? 'نقطة الشحن' : 'Charging Point'}</span></div>
+            <p className="payment-identity-eyebrow">{isAr ? 'بوابة الدفع الآمنة' : 'SECURE PAYMENT PORTAL'}</p>
+            <h1>{isCustomerPayment ? (isAr ? 'إشعار الدفع' : 'Payment notification') : (isAr ? 'دفع طلب الشحن' : 'Pay for charging order')}</h1>
+            <p className="payment-identity-subtitle">{isAr ? 'اختَر وسيلة التحويل، وأرفق الإيصال، وسنراجع الإشعار قبل اعتماد المبلغ.' : 'Choose a transfer method and attach your receipt. We review every notification before crediting a payment.'}</p>
+          </div>
+          <div className="payment-identity-seal"><ShieldCheck aria-hidden="true" /><span>{isAr ? 'مراجعة قبل الاعتماد' : 'Reviewed before approval'}</span></div>
+        </section>
+        <div className="payment-portal-breadcrumb">
+          <div className="payment-portal-heading inline-flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4" />
             <span>{isAr ? 'تحويل بنكي ومحافظ رقمية' : 'Bank & Digital Wallets'}</span>
           </div>
         </div>
