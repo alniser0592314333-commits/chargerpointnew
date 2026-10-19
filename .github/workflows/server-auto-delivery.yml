@@ -31,6 +31,7 @@ jobs:
           grep -q "request.jwt.claim.role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "p_command_type = 'DELIVER_ORDER_ITEM'" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "autoDelivery" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
+          grep -q "TO service_role" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "IF v_definition IS NULL OR position(v_old in v_definition) = 0" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "cron.schedule" supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql
           ! grep -Eq "^[[:space:]]*schedule:" .github/workflows/server-auto-delivery.yml
