@@ -717,3 +717,23 @@ html.dark .public-payment-page .payment-portal-main button[type="submit"] { colo
     height: 19px;
   }
 }
+
+
+/* Official payment-provider app marks: edge-to-edge color, no white inset or frame. */
+.payment-method-choice-logo {
+  background: #a91b72 !important;
+}
+.payment-method-choice-logo .payment-method-logo,
+.payment-method-choice-logo .payment-method-logo.is-fallback {
+  background: transparent !important;
+}
+.payment-method-choice-logo .payment-method-logo img {
+  object-fit: cover !important;
+  object-position: center !important;
+  background: transparent !important;
+}
+.payment-method-choice-logo .payment-method-logo.bg-emerald-50,
+.payment-method-choice-logo .payment-method-logo.bg-rose-50,
+.payment-method-choice-logo .payment-method-logo.bg-purple-50 {
+  background: transparent !important;
+}
