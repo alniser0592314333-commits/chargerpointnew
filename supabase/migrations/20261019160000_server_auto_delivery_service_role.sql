@@ -55,3 +55,7 @@ BEGIN
 END
 $migration$;
 NOTIFY pgrst, 'reload schema';
+-- The canonical RPC is intentionally not granted to anon/PUBLIC; explicitly allow
+-- the trusted Edge Function's service_role to invoke the guarded dispatcher.
+GRANT EXECUTE ON FUNCTION public.execute_canonical_sync_command(UUID, TEXT, JSONB, TEXT, TEXT, UUID) TO service_role;
+
