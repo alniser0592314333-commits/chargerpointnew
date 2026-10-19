@@ -33,7 +33,7 @@ Deno.serve(async (request: Request) => {
   // Supabase's gateway verifies the JWT because verify_jwt=true. Check the verified
   // token's service_role claim rather than string equality with an environment key,
   // which may differ when projects rotate between legacy and newer API key formats.
-  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\\s+/i, "").trim();
+  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const parts = token.split(".");
   if (parts.length !== 3) return reply(401, { ok: false, error: "UNAUTHORIZED" });
   let claims: { role?: string };
