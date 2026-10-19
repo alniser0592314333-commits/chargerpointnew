@@ -5,6 +5,8 @@ import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import { PublicLandingPage } from './components/pages/PublicLandingPage';
+import './public-landing.css';
 import { FirstVisitWelcomeIntro } from './components/pages/FirstVisitWelcomeIntro';
 import './public-portal.css';
 
@@ -35,7 +37,9 @@ const PublicPortalApp: React.FC = () => {
   let content: React.ReactNode = <PublicNotFound />;
   let welcomeEnabled = pathname === '/public/about';
 
-  if (pathname === '/public/about') {
+  if (pathname === '/') {
+    content = <PublicLandingPage />;
+  } else if (pathname === '/public/about') {
     content = <PublicAboutPage />;
   } else {
     const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
