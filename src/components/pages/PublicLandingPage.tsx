@@ -40,7 +40,7 @@ const qrPath=(raw:string)=>{try{const u=new URL(raw,window.location.origin);if(!
 
 export const PublicLandingPage:React.FC=()=>{
  const {locale,setLocale,isRTL}=useI18n(); const {resolvedTheme,setTheme}=useTheme(); const isAr=locale==='ar'; const t=copy[isAr?'ar':'en'];
- const reduceMotion=useReducedMotion(); const {scrollYProgress}=useScroll();
+ const reduceMotion=useReducedMotion(); const heroRef=useRef<HTMLElement|null>(null); const {scrollYProgress}=useScroll({target:heroRef,offset:['start start','end start']});
  const moonY=useTransform(scrollYProgress,[0,.35],[0,reduceMotion?0:100]); const backY=useTransform(scrollYProgress,[0,1],[0,reduceMotion?0:120]); const midY=useTransform(scrollYProgress,[0,1],[0,reduceMotion?0:-65]);
  const [data,setData]=useState<LandingData|null>(null);const [loading,setLoading]=useState(true);const [failed,setFailed]=useState(false);
  const [menu,setMenu]=useState(false);const [scanner,setScanner]=useState(false);const [cameraActive,setCameraActive]=useState(false);const [cameraError,setCameraError]=useState('');const [showCustomerEntry,setShowCustomerEntry]=useState(false);const [customerId,setCustomerId]=useState('');
@@ -61,7 +61,7 @@ export const PublicLandingPage:React.FC=()=>{
    <div className="landing-header-actions"><button className="landing-primary-mini" onClick={()=>setScanner(true)}><ScanLine size={16}/>{t.track}</button><button className="landing-menu-trigger" onClick={()=>setMenu(true)} aria-label={t.menu}><Menu size={21}/></button></div>
   </header>
   <main>
-   <section className="landing-hero">
+   <section ref={heroRef} className="landing-hero">
     <div className="landing-sky" aria-hidden="true"><div className="landing-stars"/><motion.div className="landing-moon" style={{y:moonY}}/><motion.svg className="landing-ridge ridge-back" viewBox="0 0 1440 540" preserveAspectRatio="none" style={{y:backY}}><path d="M0 410 130 310 215 345 360 180 465 286 590 220 735 350 850 240 960 315 1110 145 1230 285 1340 220 1440 315V540H0Z"/></motion.svg><motion.svg className="landing-ridge ridge-mid" viewBox="0 0 1440 540" preserveAspectRatio="none" style={{y:midY}}><path d="M0 450 120 370 245 405 355 285 485 390 610 300 750 415 890 310 1020 385 1155 275 1290 400 1440 320V540H0Z"/></motion.svg><svg className="landing-ridge ridge-front" viewBox="0 0 1440 540" preserveAspectRatio="none"><path d="M0 485 155 425 275 460 410 355 535 450 680 380 815 455 945 350 1080 435 1210 360 1335 445 1440 400V540H0Z"/></svg><div className="landing-horizon"/></div>
     <div className="landing-hero-copy"><p className="landing-eyebrow"><span/>{t.eyebrow}</p><h1>{t.h1}<br/><em>{t.h2}</em></h1><p className="landing-intro">{t.intro}</p><div className="landing-hero-actions"><button className="landing-primary" onClick={()=>setScanner(true)}><QrCode size={19}/>{t.track}<ArrowLeft size={16}/></button><a className="landing-secondary" href="#prices">{t.prices}<ArrowDown size={16}/></a></div><p className="landing-trust"><ShieldCheck size={16}/>{isAr?'متابعة واضحة · أسعار فعلية · مراجعة مالية منظّمة':'Clear tracking · Live prices · Structured payment review'}</p></div>
     <div className="landing-scroll-cue"><span/>{isAr?'اسحب لاكتشاف الخدمة':'Scroll to explore'}<ChevronDown size={15}/></div>
