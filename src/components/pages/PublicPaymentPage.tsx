@@ -784,7 +784,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                         aria-pressed={selected}
                         className={`payment-method-choice ${selected ? 'is-selected' : ''}`}
                       >
-                        <span className="payment-method-choice-logo" aria-hidden="true">
+                        <span className={`payment-method-choice-logo payment-method-choice-logo-${item.id.toLowerCase()}`} aria-hidden="true">
                           <PaymentMethodLogo method={item} />
                         </span>
                         {selected && (
