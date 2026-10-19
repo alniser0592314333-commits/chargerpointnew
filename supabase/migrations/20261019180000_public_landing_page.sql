@@ -38,13 +38,14 @@ BEGIN
   WHERE a.auth_user_id=auth.uid() AND a.is_active IS TRUE AND a.disabled_at IS NULL LIMIT 1;
   IF v_admin_id IS NULL OR (
     upper(replace(v_role,' ','_')) <> 'SUPER_ADMIN'
-    AND NOT ('settings:manage'=ANY(v_permissions))
-    AND NOT EXISTS (
-      SELECT 1 FROM public.role_permissions rp
-      WHERE rp.role=v_role AND rp.permission='settings:manage'
+    AND NOT (
+      (
+        'settings:manage'=ANY(v_permissions)
+        OR EXISTS (SELECT 1 FROM public.role_permissions rp WHERE rp.role=v_role AND rp.permission='settings:manage')
+        OR EXISTS (SELECT 1 FROM public.admin_custom_permissions cp WHERE cp.admin_id=v_admin_id AND cp.permission='settings:manage' AND cp.is_grant IS TRUE)
+      )
       AND NOT EXISTS (SELECT 1 FROM public.admin_custom_permissions cp WHERE cp.admin_id=v_admin_id AND cp.permission='settings:manage' AND cp.is_grant IS FALSE)
     )
-    AND NOT EXISTS (SELECT 1 FROM public.admin_custom_permissions cp WHERE cp.admin_id=v_admin_id AND cp.permission='settings:manage' AND cp.is_grant IS TRUE)
   ) THEN RAISE EXCEPTION 'ACCESS_DENIED'; END IF;
   IF jsonb_typeof(p_settings)<>'object'
     OR jsonb_typeof(p_settings->'is_active')<>'boolean'
