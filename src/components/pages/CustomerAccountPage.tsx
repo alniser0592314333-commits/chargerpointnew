@@ -273,6 +273,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       await saveSessionExpiry(accountToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
+      setMessage('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
       if (loginData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
@@ -319,8 +320,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     clearCachedCustomerPortalData(portalToken);
     localStorage.removeItem(sessionExpiryKey(accountToken));
     setEntry((current) => current ? { ...current, activated: true } : current);
+    setError('');
+    setMessage('');
     setMode('login');
-    setMessage(t('تم تسجيل الخروج.', 'You have signed out.'));
   };
 
   if (mode === 'portal') {
