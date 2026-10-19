@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
-import { ArrowDown, ArrowLeft, BatteryCharging, CheckCircle2, ChevronDown, Clock3, Globe2, Menu, Moon, QrCode, ScanLine, ShieldCheck, Smartphone, Sun, X, Zap } from 'lucide-react';
+import { ArrowDown, ArrowLeft, BatteryCharging, ChevronDown, Clock3, Globe2, Menu, Moon, QrCode, ScanLine, ShieldCheck, Smartphone, Sun, X, Zap } from 'lucide-react';
 import { useI18n } from '../i18n/i18nContext';
 import { useTheme } from '../theme/themeContext';
 import { config } from '../config/env';
@@ -39,7 +39,7 @@ const minimum=(items:PriceItem[],pattern:RegExp)=>{const values=items.filter(x=>
 const qrPath=(raw:string)=>{try{const u=new URL(raw,window.location.origin);if(!['http:','https:'].includes(u.protocol))return null;const prefixes=['/c/','/o/','/pay/','/public/qr/customer/','/public/qr/order/','/public/order/'];return prefixes.some(p=>u.pathname.startsWith(p))?u.pathname+u.search+u.hash:null;}catch{return null;}};
 
 export const PublicLandingPage:React.FC=()=>{
- const {locale,setLocale,isRTL}=useI18n(); const {theme,resolvedTheme,setTheme}=useTheme(); const isAr=locale==='ar'; const t=copy[isAr?'ar':'en'];
+ const {locale,setLocale,isRTL}=useI18n(); const {resolvedTheme,setTheme}=useTheme(); const isAr=locale==='ar'; const t=copy[isAr?'ar':'en'];
  const reduceMotion=useReducedMotion(); const {scrollYProgress}=useScroll();
  const moonY=useTransform(scrollYProgress,[0,.35],[0,reduceMotion?0:100]); const backY=useTransform(scrollYProgress,[0,1],[0,reduceMotion?0:120]); const midY=useTransform(scrollYProgress,[0,1],[0,reduceMotion?0:-65]);
  const [data,setData]=useState<LandingData|null>(null);const [loading,setLoading]=useState(true);const [failed,setFailed]=useState(false);
