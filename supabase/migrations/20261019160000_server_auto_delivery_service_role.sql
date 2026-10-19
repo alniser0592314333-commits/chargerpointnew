@@ -46,7 +46,7 @@ DECLARE
 BEGIN
   SELECT pg_get_functiondef(p.oid) INTO v_definition
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'public' AND p.proname = 'execute_canonical_sync_command'
+  WHERE n.nspname = 'public' AND p.proname = 'execute_canonical_sync_command_unlocked'
     AND pg_get_function_identity_arguments(p.oid) LIKE 'p_command_id uuid, p_command_type text, p_payload jsonb%';
   IF v_definition IS NULL OR position(v_old in v_definition) = 0 THEN
     RAISE EXCEPTION 'Canonical command authentication block did not match; refusing unsafe migration';
