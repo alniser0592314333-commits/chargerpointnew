@@ -9,9 +9,18 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
 DO $schedule$
+DECLARE
+  v_job_id bigint;
 BEGIN
-  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'chargerpoint-server-auto-delivery') THEN
-    PERFORM cron.unschedule('chargerpoint-server-auto-delivery');
+  -- pg_cron unschedule is keyed by job_id; do not pass the job name.
+  SELECT jobid INTO v_job_id
+  FROM cron.job
+  WHERE jobname = 'chargerpoint-server-auto-delivery'
+  ORDER BY jobid DESC
+  LIMIT 1;
+
+  IF v_job_id IS NOT NULL THEN
+    PERFORM cron.unschedule(v_job_id);
   END IF;
 
   PERFORM cron.schedule(
