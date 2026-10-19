@@ -8,6 +8,9 @@ import { useTheme } from '../../theme/themeContext';
 import { CustomerPortalNavigation, CustomerPortalMoreView, CustomerPortalTab } from './CustomerPortalNavigation';
 import './customer-portal-dashboard.css';
 
+const ReceiptTextFallback = () => <CreditCard size={17} aria-hidden="true" />;
+const CalendarDaysFallback = () => <History size={18} aria-hidden="true" />;
+
 type PortalOrderItem = {
   device_name_ar: string;
   device_name_en: string;
@@ -205,23 +208,22 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   }, [token]);
 
   const loadActivity = useCallback(async () => {
-    if (!online) return;
+    if (!online || typeof navigator !== 'undefined' && !navigator.onLine) return;
     setActivityLoading(true);
     setActivityError(false);
-    const { data: response, error: requestError } = await callCustomerAccount<PortalActivity>(
-      'customer-activity', { token },
-    );
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setActivity(null);
-      setActivityError(true);
-      setActivityLoading(false);
-      return;
-    }
-    if (requestError || !response || !Array.isArray(response.ledger) ||
-        !Array.isArray(response.goal_requests) || !Array.isArray(response.events)) {
-      setActivityError(true);
-      setActivity(null);
-    } else {
+    try {
+      const { data: response, error: requestError } = await callCustomerAccount<PortalActivity>(
+        'customer-activity', { token },
+      );
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setActivityError(true);
+        return;
+      }
+      if (requestError || !response || !Array.isArray(response.ledger) ||
+          !Array.isArray(response.goal_requests) || !Array.isArray(response.events)) {
+        setActivityError(true);
+        return;
+      }
       setActivity({
         ledger: response.ledger,
         goal_requests: response.goal_requests,
@@ -230,8 +232,11 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         last_login_at: response.last_login_at ?? null,
       });
       setActivityError(false);
+    } catch {
+      setActivityError(true);
+    } finally {
+      setActivityLoading(false);
     }
-    setActivityLoading(false);
   }, [token, online]);
 
   useEffect(() => {
@@ -444,7 +449,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
 
   return (
-    <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal relative isolate min-h-screen text-slate-900 dark:text-slate-100">
+    <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal cp-portal-enter relative isolate min-h-screen text-slate-900 dark:text-slate-100">
       <div aria-hidden="true" className="cp-portal-moon-scene"><CustomerAuthScene uid="cp-customer-portal-scene" /></div>
       <header className="relative z-10 sticky top-0 border-b border-slate-200/80 bg-white/80 backdrop-blur dark:border-emerald-950/80 dark:bg-[#082622]/80">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
@@ -482,21 +487,20 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <section className="cp-portal-section">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="cp-portal-eyebrow">{isAr ? 'مساحتك الخاصة' : 'YOUR PRIVATE SPACE'}</p>
                     <h1 className="mt-1 text-2xl font-extrabold tracking-tight">{isAr ? 'أهلًا بعودتك، ' : 'Welcome back, '}{data.customer_name}</h1>
                     <p className="mt-1 text-sm cp-portal-muted">{isAr ? 'رقم الحساب' : 'Account'} · <bdi className="font-mono font-bold">{data.customer_code}</bdi></p>
                   </div>
                   <span className="cp-portal-status"><ShieldCheck size={15} />{isAr ? 'حسابك الخاص' : 'Private account'}</span>
                 </div>
                 <div className="cp-portal-balance">
-                  <p className="cp-portal-eyebrow">{isAr ? 'ملخص حسابك' : 'ACCOUNT SUMMARY'}</p>
                   <p className="mt-2 text-sm cp-portal-muted">{balanceLabel}</p>
                   <p className="cp-portal-balance__amount">{money(Math.abs(data.balance_minor), locale)}</p>
-                  <p className="mt-1 text-xs cp-portal-muted">{isAr ? 'الرصيد من السجل المالي المعتمد' : 'From the approved financial ledger'}</p>
-                  <div className="cp-portal-balance__details">
-                    <div><span>{isAr ? 'المستحق عليك' : 'Amount due'}</span><strong>{money(data.balance_minor < 0 ? Math.abs(data.balance_minor) : 0, locale)}</strong></div>
-                    <div><span>{isAr ? 'الرصيد الدائن' : 'Available credit'}</span><strong>{money(data.balance_minor > 0 ? data.balance_minor : 0, locale)}</strong></div>
-                    <div><span>{isAr ? 'قيد المراجعة' : 'Under review'}</span><strong>{money(pendingReviewMinor, locale)}</strong></div>
+                  <div className="cp-portal-balance__actions">
+                    {data.balance_minor < 0 && online
+                      ? <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={17} />{isAr ? 'إرسال دفعة' : 'Make a payment'}</a>
+                      : <button type="button" className="cp-portal-secondary-button" onClick={() => setActiveTab('finance')}><ReceiptTextFallback />{isAr ? 'تفقد إيصالاتك' : 'View payment receipts'}</button>}
+                    {(pendingReviewMinor > 0 || data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING')) &&
+                      <button type="button" className="cp-portal-text-link" onClick={() => setActiveTab('finance')}>{isAr ? 'دفعة قيد المراجعة' : 'Payment under review'}</button>}
                   </div>
                 </div>
                 <div className="cp-portal-subsection">
@@ -542,9 +546,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 <div className="cp-portal-subsection">
                   <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{isAr ? 'الحركات المالية' : 'Financial movements'}</h2><span className="text-xs cp-portal-muted">{activity?.ledger.length ?? 0}</span></div>
                   {activityLoading && !activity ? <p className="cp-portal-empty">{isAr ? 'جارٍ تحميل الحركات المالية…' : 'Loading financial movements…'}</p>
-                    : activityError || !activity ? <p className="cp-portal-empty">{isAr ? 'تعذّر تحميل كشف الحساب. حاول تحديث الصفحة عند توفر الاتصال.' : 'The statement could not be loaded. Refresh when connected.'}</p>
+                    : activityError || !activity ? <div className="cp-portal-retry"><p className="cp-portal-empty">{isAr ? 'تعذّر تحميل الحركات المالية حاليًا.' : 'Financial movements are temporarily unavailable.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => void loadActivity()}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button></div>
                     : activity.ledger.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد حركات مالية مسجلة.' : 'No financial movements found.'}</p>
-                    : <div className="cp-portal-timeline">{activity.ledger.map((entry) => <div key={entry.id} className="cp-portal-timeline__row cp-portal-finance-row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{translateLedgerType(entry.event_type)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(entry.created_at, locale)}</p></div><strong className="shrink-0">{money(entry.amount_minor, locale)}</strong></div>)}</div>}
+                    : <div className="cp-portal-timeline">{activity.ledger.map((entry) => <div key={entry.id} className="cp-portal-timeline__row cp-portal-finance-row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{translateLedgerType(entry.event_type)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(entry.created_at, locale)}{typeof entry.metadata?.order_number === 'number' ? ' · ' + (isAr ? 'طلب رقم ' : 'Order #') + entry.metadata.order_number : ''}</p></div><strong className="shrink-0">{entry.event_type === 'DISCOUNT' ? '−' + money(Math.abs(entry.amount_minor), locale) : money(entry.amount_minor, locale)}</strong></div>)}</div>}
                 </div>
               </section>
               <section className="cp-portal-section">
@@ -565,7 +569,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 {activeGoal.bonus_recorded && activeGoal.bonus_minor !== null && <p className="mt-3 font-bold">{isAr ? 'المكافأة المثبتة' : 'Recorded reward'} · {money(activeGoal.bonus_minor, locale)}</p>}
               </div> : pendingGoalRequest ? <div className="cp-portal-request-state"><span className="cp-portal-request-state__icon"><History size={20} /></span><div><p className="font-bold">{isAr ? 'طلب إنشاء الهدف قيد المراجعة' : 'Goal request awaiting review'}</p><p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الإدارة ستحدد تفاصيل الهدف عند الموافقة.' : 'The administrator will determine the goal details after approval.'}</p><p className="mt-2 text-xs cp-portal-muted">{safeDate(pendingGoalRequest.created_at, locale)}</p></div></div>
               : activityLoading ? <p className="cp-portal-empty">{isAr ? 'جارٍ التحقق من حالة الأهداف…' : 'Checking goal status…'}</p>
-              : activityError || !activity ? <p className="cp-portal-empty">{isAr ? 'تعذّر التحقق من حالة الهدف. أعد المحاولة عند توفر الاتصال.' : 'Goal status is unavailable. Try again when connected.'}</p>
+              : activityError || !activity ? <div className="cp-portal-retry"><p className="cp-portal-empty">{isAr ? 'تعذّر التحقق من حالة الهدف حاليًا.' : 'Goal status is temporarily unavailable.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => { void load(); void loadActivity(); }}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button></div>
               : <div className="cp-portal-goal-empty"><span className="cp-portal-goal-empty__icon"><Target size={28} /></span><h2 className="mt-3 text-lg font-bold">{isAr ? 'ما عندك هدف حاليًا' : 'No active goal yet'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تقدر ترسل طلبًا للإدارة، وهي تتولى تحديد تفاصيل الهدف واعتماده.' : 'You can request a goal; the administrator decides its details and approval.'}</p><button type="button" className="cp-portal-primary-button" disabled={!online || goalRequestBusy} onClick={() => void requestGoal()}>{goalRequestBusy ? <RefreshCw className="animate-spin" size={17} /> : <Target size={17} />}{isAr ? 'طلب إنشاء هدف' : 'Request a goal'}</button></div>}
               {data.goals.filter((goal) => goal.status.toUpperCase() !== 'ACTIVE').length > 0 && <div className="cp-portal-subsection"><h2 className="font-bold">{isAr ? 'الأهداف السابقة' : 'Previous goals'}</h2>{data.goals.filter((goal) => goal.status.toUpperCase() !== 'ACTIVE').map((goal,index)=><div key={index} className="cp-portal-history-row"><span>{statusLabel(goal.status)} · {goal.current_progress}/{goal.target_quantity}</span><span>{goal.bonus_recorded && goal.bonus_minor !== null ? money(goal.bonus_minor, locale) : '—'}</span></div>)}</div>}
             </section>}
@@ -577,8 +581,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             </section>}
 
             {activeTab === 'more' && moreView === 'events' && <section className="cp-portal-section">
-              <p className="cp-portal-eyebrow">{isAr ? 'سجل النشاط' : 'ACTIVITY HISTORY'}</p><h1 className="cp-portal-heading">{isAr ? 'الأحداث' : 'Events'}</h1>
-              {eventRows.length ? <div className="cp-portal-timeline">{eventRows.map((event)=><div key={event.id} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail} · {safeDate(event.created_at, locale)}</p></div></div>)}</div> : <p className="cp-portal-empty">{activityLoading ? (isAr ? 'جارٍ تحميل الأحداث…' : 'Loading events…') : (isAr ? 'لا توجد أحداث مسجلة.' : 'No events recorded.')}</p>}
+              <p className="cp-portal-eyebrow">{isAr ? 'قريبًا' : 'COMING SOON'}</p><h1 className="cp-portal-heading">{isAr ? 'الأحداث' : 'Events'}</h1>
+              <div className="cp-portal-notice"><CalendarDaysFallback /><div><p className="font-bold">{isAr ? 'هذه الصفحة قيد التطوير' : 'This page is under development'}</p><p className="mt-1 text-sm cp-portal-muted">{isAr ? 'نعمل على تجهيز قسم الأحداث، وسيظهر هنا عند اكتماله.' : 'We are preparing the events section. It will appear here when ready.'}</p></div></div>
             </section>}
 
             {activeTab === 'more' && moreView === 'notifications' && <section className="cp-portal-section">
@@ -603,7 +607,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                   <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || passwordChangeBusy}>{passwordChangeBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'حفظ كلمة المرور' : 'Save password'}</button><button type="button" className="cp-portal-secondary-button" disabled={passwordChangeBusy} onClick={() => { setShowPasswordChange(false); setNewPassword(''); setConfirmNewPassword(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
                 </form>}
               </div>
-              <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div><div><span>{isAr ? 'آخر تسجيل دخول على هذا الجهاز' : 'Last sign-in on this device'}</span><strong>{activity?.last_login_at ? safeDate(activity.last_login_at, locale) : '—'}</strong></div><div><span>{isAr ? 'الجلسة الحالية · تنتهي في' : 'Current session · expires'}</span><strong>{activity?.session?.expires_at ? safeDate(activity.session.expires_at, locale) : '—'}</strong></div></div>
+              <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div></div>
               <button type="button" className="cp-portal-signout" onClick={() => onLogout?.()} disabled={!onLogout}><UserRound size={17} />{isAr ? 'تسجيل الخروج' : 'Sign out'}</button>
             </section>}
 

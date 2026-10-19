@@ -403,3 +403,89 @@ html.dark .cp-customer-portal .cp-portal-primary-button:hover:not(:disabled) { b
   .cp-customer-portal .cp-portal-header-control { min-height: 34px; padding-inline: 8px; font-size: 10px; }
   .cp-customer-portal .cp-portal-header-control--icon { width: 34px; padding: 0; }
 }
+
+
+/* Smooth entrance from sign-in to the authenticated customer portal (no background motion). */
+.cp-customer-portal.cp-portal-enter {
+  animation: cp-portal-enter 320ms cubic-bezier(.2, .75, .25, 1) both;
+}
+@keyframes cp-portal-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.cp-customer-portal .cp-portal-balance__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.cp-customer-portal .cp-portal-balance__actions .cp-portal-primary-link,
+.cp-customer-portal .cp-portal-balance__actions .cp-portal-secondary-button {
+  margin-top: 0;
+}
+.cp-customer-portal .cp-portal-retry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cp-customer-portal .cp-portal-retry .cp-portal-secondary-button { margin-top: 0; }
+.cp-customer-portal .cp-portal-order {
+  position: relative;
+  border: 0;
+  border-bottom: 1px solid var(--cp-line);
+  border-inline-start: 3px solid var(--cp-accent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 16px 12px;
+}
+.cp-customer-portal .cp-portal-order:first-child { border-top: 1px solid var(--cp-line); }
+.cp-customer-portal .cp-portal-order + .cp-portal-order { margin-top: 0; }
+.cp-customer-portal .cp-portal-order:nth-child(even) { border-inline-start-color: var(--cp-warm); }
+.cp-customer-portal .cp-portal-order h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: var(--cp-accent-soft);
+  color: var(--cp-text);
+  font-variant-numeric: tabular-nums;
+}
+.cp-customer-portal .cp-portal-order__totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 0;
+  border-block: 1px solid var(--cp-line);
+}
+.cp-customer-portal .cp-portal-order__totals > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cp-customer-portal .cp-portal-order__totals > div + div {
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--cp-line);
+}
+.cp-customer-portal .cp-portal-order__totals span {
+  color: var(--cp-muted);
+  font-size: 11px;
+}
+.cp-customer-portal .cp-portal-order__totals strong {
+  color: var(--cp-text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.cp-customer-portal .cp-portal-device-row {
+  padding-block: 10px;
+  border-bottom: 1px solid var(--cp-line);
+}
+.cp-customer-portal .cp-portal-device-row:last-child { border-bottom: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .cp-customer-portal.cp-portal-enter { animation: none !important; }
+}
