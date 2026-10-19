@@ -360,3 +360,161 @@ html.dark .public-payment-page .payment-portal-main button[type="submit"] { colo
     border-radius: 13px !important;
   }
 }
+
+
+/* Rebuilt payment-method selector: branded choices with a clear selected state. */
+.payment-method-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.public-payment-page .payment-portal-main .payment-method-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 156px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 12px 15px !important;
+  overflow: hidden;
+  border: 1px solid var(--payment-line) !important;
+  border-radius: 19px !important;
+  background: var(--payment-surface) !important;
+  color: var(--payment-ink) !important;
+  text-align: center;
+  box-shadow: 0 3px 12px rgba(6, 42, 53, .035) !important;
+  transform: translateY(0);
+}
+.public-payment-page .payment-portal-main .payment-method-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--payment-method-brand, var(--payment-accent));
+  opacity: .9;
+}
+.payment-method-card-bank_of_palestine { --payment-method-brand: #087c55; }
+.payment-method-card-jawal_pay { --payment-method-brand: #d83448; }
+.payment-method-card-palpay { --payment-method-brand: #6939a6; }
+.public-payment-page .payment-portal-main .payment-method-card:hover {
+  border-color: color-mix(in srgb, var(--payment-method-brand, var(--payment-accent)) 52%, var(--payment-line)) !important;
+  box-shadow: 0 8px 20px rgba(6, 42, 53, .08) !important;
+  transform: translateY(-2px);
+}
+.public-payment-page .payment-portal-main .payment-method-card.is-selected {
+  border: 2px solid var(--payment-method-brand, var(--payment-accent)) !important;
+  padding: 17px 11px 14px !important;
+  background: color-mix(in srgb, var(--payment-method-brand, var(--payment-accent)) 6%, var(--payment-surface)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--payment-method-brand, var(--payment-accent)) 12%, transparent), 0 8px 20px rgba(6, 42, 53, .06) !important;
+}
+.payment-method-card-logo {
+  display: flex;
+  width: 68px;
+  height: 60px;
+  flex: 0 0 60px;
+  align-items: center;
+  justify-content: center;
+}
+.payment-method-logo {
+  display: flex;
+  width: 68px;
+  height: 60px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid #e7edf0;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(14, 36, 44, .06);
+}
+.payment-method-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.payment-method-logo.is-fallback {
+  border-color: color-mix(in srgb, var(--payment-method-brand, var(--payment-accent)) 25%, #e7edf0);
+  background: color-mix(in srgb, var(--payment-method-brand, var(--payment-accent)) 8%, #fff);
+}
+.payment-method-logo-fallback {
+  color: var(--payment-method-brand, var(--payment-accent));
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -.04em;
+}
+.payment-method-card-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.payment-method-card-name {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--payment-ink);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+.payment-method-card-description {
+  display: block;
+  color: var(--payment-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.payment-method-card-choice {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+  display: flex;
+  width: 21px;
+  height: 21px;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--payment-line);
+  border-radius: 50%;
+  background: var(--payment-surface);
+  color: #fff;
+}
+.payment-method-card.is-selected .payment-method-card-choice {
+  border-color: var(--payment-method-brand, var(--payment-accent));
+  background: var(--payment-method-brand, var(--payment-accent));
+}
+.payment-method-card:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--payment-accent) 55%, transparent) !important;
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .payment-method-options { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .public-payment-page .payment-portal-main .payment-method-card,
+  .public-payment-page .payment-portal-main .payment-method-card.is-selected {
+    min-height: 84px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 13px;
+    padding: 12px 14px !important;
+    border-radius: 16px !important;
+    text-align: start;
+  }
+  .payment-method-card-logo,
+  .payment-method-logo {
+    width: 58px;
+    height: 52px;
+    flex-basis: 52px;
+  }
+  .payment-method-card-copy { align-items: flex-start; flex: 1; gap: 3px; }
+  .payment-method-card-name { font-size: 13px; }
+  .payment-method-card-description { font-size: 10px; }
+  .payment-method-card-choice { inset-block-start: 50%; inset-inline-end: 13px; transform: translateY(-50%); }
+  .payment-method-card-copy { padding-inline-end: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-payment-page .payment-portal-main .payment-method-card { transform: none !important; }
+}
