@@ -19,6 +19,7 @@ BEGIN
   RETURN jsonb_build_object(
     'hours', COALESCE(v_hours, jsonb_build_object('is_active',false,'open_time',null,'close_time',null,'next_open_time',null,'next_close_time',null)),
     'devices', v_devices,
+    'brand', COALESCE((SELECT jsonb_build_object('app_name', app_name, 'white_logo_url', white_logo_url, 'dark_logo_url', dark_logo_url) FROM public.global_app_identity WHERE singleton IS TRUE LIMIT 1), '{}'::jsonb),
     'charger_fee_minor', COALESCE((SELECT value_number FROM public.system_settings WHERE key='default_charger_fee_minor' LIMIT 1),50)
   );
 END $$;
