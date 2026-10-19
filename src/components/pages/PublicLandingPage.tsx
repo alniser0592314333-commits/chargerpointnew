@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { ArrowDown, ArrowLeft, BatteryCharging, ChevronDown, Clock3, Globe2, Menu, Moon, QrCode, ScanLine, ShieldCheck, Smartphone, Sun, X, Zap } from 'lucide-react';
-import { useI18n } from '../i18n/i18nContext';
-import { useTheme } from '../theme/themeContext';
-import { config } from '../config/env';
+import { useI18n } from '../../i18n/i18nContext';
+import { useTheme } from '../../theme/themeContext';
+import { config } from '../../config/env';
 
 type PriceItem = { name_ar:string; name_en:string; price_minor:number; charger_fee_applicable:boolean; sort_order:number };
 type Hours = { is_active:boolean; open_time:string|null; close_time:string|null; next_open_time:string|null; next_close_time:string|null };
