@@ -31,7 +31,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type-check server function
-        run: deno check supabase/functions/auto-deliver-pending/index.ts
+        run: deno check --node-modules-dir=auto supabase/functions/auto-deliver-pending/index.ts
       - name: Verify migration has guarded service-role path
         shell: bash
         run: |
