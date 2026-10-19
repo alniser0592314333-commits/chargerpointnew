@@ -36,4 +36,5 @@ jobs:
           grep -q "IF v_definition IS NULL OR position(v_old in v_definition) = 0" supabase/migrations/20261019160000_server_auto_delivery_service_role.sql
           grep -q "cron.schedule" supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql
           grep -q "cron.unschedule(v_job_id)" supabase/migrations/20261019170000_supabase_native_auto_delivery_schedule.sql
+          grep -q '"chargerpoint:auto-delivery:v1:" + generation + ":" + item.id + ":" + item.version' supabase/functions/auto-deliver-pending/index.ts
           ! grep -Eq "^[[:space:]]*schedule:" .github/workflows/server-auto-delivery.yml
