@@ -1,17 +1,21 @@
 {
-  "name": "react-example",
+  "name": "chargerpointnew",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "build:web": "vite build",
+    "build:customer": "vite build --mode customer --outDir dist/customer",
+    "build:admin": "vite build --mode admin --outDir dist/admin",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@capacitor/core": "^7.4.3",
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.117.2",
     "@tailwindcss/vite": "^4.3.3",
@@ -30,6 +34,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/qrcode": "^1.5.6",
