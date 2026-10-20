@@ -122,6 +122,9 @@ export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHo
     const payload = await response.json();
     const raw = payload?.config;
     if (!raw || typeof raw !== 'object') throw new Error('BUSINESS_HOURS_INVALID_RESPONSE');
+    // Until an administrator saves a shared value, preserve this browser's existing
+    // local configuration so the first rollout does not silently replace it with defaults.
+    if (payload?.exists === false) return getBusinessHoursConfig();
 
     const shared: BusinessHoursConfig = {
       ...DEFAULT_BUSINESS_HOURS,
