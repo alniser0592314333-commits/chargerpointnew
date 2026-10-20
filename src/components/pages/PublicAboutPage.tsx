@@ -52,6 +52,7 @@ export const PublicAboutPage: React.FC = () => {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isAppDownloadToastOpen, setIsAppDownloadToastOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [activeFaqIndex, setActiveFaqIndex] = useState<number | null>(0);
 
   // Business Hours & Live Status State: local settings are used only while offline.
@@ -558,6 +559,27 @@ export const PublicAboutPage: React.FC = () => {
                     </span>
                   </button>
                 )}
+
+                {/* Contact Us: keep contact choices accessible from the More menu. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDrawerOpen(false);
+                    setIsContactModalOpen(true);
+                  }}
+                  className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <MessageCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    <div>
+                      <span className="block">{isAr ? 'تواصل معنا' : 'Contact Us'}</span>
+                      <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
+                        {isAr ? 'واتساب أو اتصال مباشر' : 'WhatsApp or direct call'}
+                      </span>
+                    </div>
+                  </div>
+                  {isRTL ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </button>
 
               </div>
 
@@ -1241,6 +1263,59 @@ export const PublicAboutPage: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      {/* Contact Us dialog: offers the same WhatsApp and phone actions as the homepage. */}
+      {isContactModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="contact-dialog-title"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+          onClick={() => setIsContactModalOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-3xl bg-white dark:bg-[#0d2a29] text-gray-900 dark:text-white p-6 shadow-2xl border border-gray-200 dark:border-white/10 space-y-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h3 id="contact-dialog-title" className="text-lg font-extrabold">
+                  {isAr ? 'تواصل معنا' : 'Contact Us'}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-[#a4cac2]">
+                  {isAr ? 'اختر طريقة التواصل المناسبة لك' : 'Choose how you would like to contact us'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsContactModalOpen(false)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-white/15"
+                aria-label={isAr ? 'إغلاق' : 'Close'}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <a
+              href="https://wa.me/970592369875"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setIsContactModalOpen(false)}
+              className="w-full flex items-center justify-center gap-3 rounded-xl bg-emerald-600 px-5 py-3.5 text-sm font-bold text-white shadow-md hover:bg-emerald-700 transition-colors"
+            >
+              <MessageCircle className="h-5 w-5" />
+              <span>{isAr ? 'التواصل عبر واتساب' : 'Contact via WhatsApp'}</span>
+            </a>
+            <a
+              href="tel:+970592369875"
+              onClick={() => setIsContactModalOpen(false)}
+              className="w-full flex items-center justify-center gap-3 rounded-xl bg-gray-100 dark:bg-white/10 px-5 py-3.5 text-sm font-bold text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-white/15 transition-colors"
+            >
+              <Phone className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <span>{isAr ? 'اتصال مباشر' : 'Direct Call'}</span>
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* QR Scanner Modal (Camera & File upload) */}
       <QrScannerModal
