@@ -181,7 +181,7 @@ export async function initializeNativePushNotificationListeners(variant: AppVari
  * has established a valid session. The server independently validates the session,
  * derives the recipient identity, and never trusts a client-supplied user/customer ID.
  */
-export async function startNativePushNotifications(
+async function startNativePushNotificationsInternal(
   variant: AppVariant,
   tokenProvider: TokenProvider,
   locale: string,
@@ -220,6 +220,23 @@ export async function startNativePushNotifications(
   } finally {
     registrationInFlight = false;
   }
+}
+
+/**
+ * Coalesce concurrent startup calls (including React Strict Mode effect replay).
+ * A shared promise prevents parallel permission prompts and duplicate native registration.
+ */
+let startPromise: Promise<void> | null = null;
+
+export function startNativePushNotifications(
+  variant: AppVariant,
+  tokenProvider: TokenProvider,
+  locale: string,
+): Promise<void> {
+  if (startPromise) return startPromise;
+  startPromise = startNativePushNotificationsInternal(variant, tokenProvider, locale)
+    .finally(() => { startPromise = null; });
+  return startPromise;
 }
 
 /** Remove the server-side binding before/while an authenticated user signs out. */
