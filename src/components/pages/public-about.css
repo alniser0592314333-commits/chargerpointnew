@@ -497,3 +497,34 @@ html.dark .charger-fee-banner {
     animation: none !important;
   }
 }
+
+/* Mobile scroll-performance guard:
+   Keep the same parallax transforms and moon glow, but avoid live backdrop
+   sampling across a moving viewport on mobile GPUs. The near-opaque colors
+   retain the existing glass appearance with no backdrop blur required. */
+@media (max-width: 768px) {
+  .about-page-container .about-header {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgba(255, 255, 255, 0.96);
+  }
+
+  html.dark .about-page-container .about-header {
+    background-color: rgba(6, 25, 24, 0.96);
+  }
+
+  .about-page-container .about-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgba(255, 255, 255, 0.96);
+  }
+
+  html.dark .about-page-container .about-card {
+    background-color: rgba(10, 36, 35, 0.94);
+  }
+
+  .about-page-container .parallax-layer-moon {
+    will-change: transform;
+  }
+}
+
