@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -176,6 +177,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           try { localStorage.setItem(portalTokenCacheKey(accountToken), registeredData.customer_qr_token); } catch {}
         }
         await saveSessionExpiry(accountToken, registeredData.session_expires_at);
+        const rememberedToken = typeof registeredData.customer_qr_token === 'string' && registeredData.customer_qr_token.length >= 24
+          ? registeredData.customer_qr_token
+          : accountToken;
+        try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
+        if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, registeredData.session_expires_at);
         setEntry((current) => current ? { ...current, auth_provider: registeredData.auth_provider ?? current.auth_provider, terms_version: registeredData.terms_version ?? current.terms_version } : current);
         if (registeredData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
         else if (registeredData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
@@ -292,6 +298,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       }
       await saveSessionExpiry(loginToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
+      const rememberedToken = typeof loginData.customer_qr_token === 'string' && loginData.customer_qr_token.length >= 24
+        ? loginData.customer_qr_token
+        : loginToken;
+      try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
+      if (rememberedToken !== loginToken) await saveSessionExpiry(rememberedToken, loginData.session_expires_at);
       setPassword('');
       setMessage('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
@@ -339,9 +350,17 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     clearCachedCustomerPortalData(accountToken);
     clearCachedCustomerPortalData(portalToken);
     localStorage.removeItem(sessionExpiryKey(accountToken));
+    try {
+      const remembered = localStorage.getItem('last_customer_token');
+      if (remembered === accountToken || remembered === portalToken) localStorage.removeItem('last_customer_token');
+    } catch {}
     setEntry((current) => current ? { ...current, activated: true } : current);
     setError('');
     setMessage('');
+    if (Capacitor.isNativePlatform()) {
+      window.location.replace('/public/about');
+      return;
+    }
     setMode('login');
   };
 
