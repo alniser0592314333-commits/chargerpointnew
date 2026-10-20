@@ -93,6 +93,8 @@ AS $function$
 DECLARE
   v_url text;
   v_secret text;
+  v_pg_net_schema text;
+  v_request_id bigint;
 BEGIN
   SELECT decrypted_secret INTO v_url
   FROM vault.decrypted_secrets
@@ -109,21 +111,37 @@ BEGIN
     RETURN;
   END IF;
 
-  PERFORM net.http_post(
-    url := v_url,
-    headers := jsonb_build_object(
+  -- pg_net is already installed in some Supabase projects under public,
+  -- while newer setups may place it in net. Resolve the extension's actual
+  -- schema rather than assuming the CREATE EXTENSION IF NOT EXISTS clause moved it.
+  SELECT n.nspname INTO v_pg_net_schema
+  FROM pg_catalog.pg_extension e
+  JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
+  WHERE e.extname = 'pg_net';
+
+  IF COALESCE(v_pg_net_schema, '') = '' THEN
+    RETURN;
+  END IF;
+
+  EXECUTE format(
+    'SELECT %I.http_post(url := $1, headers := $2, body := $3, timeout_milliseconds := $4)',
+    v_pg_net_schema
+  )
+  INTO v_request_id
+  USING
+    v_url,
+    jsonb_build_object(
       'Content-Type', 'application/json',
       'x-push-dispatch-secret', v_secret
     ),
-    body := jsonb_build_object(
+    jsonb_build_object(
       'action', 'dispatch',
       'source', p_source,
       'recordId', p_record_id::text,
       'operation', p_operation,
       'newStatus', p_new_status
     ),
-    timeout_milliseconds := 1500
-  );
+    1500;
 EXCEPTION WHEN OTHERS THEN
   RAISE WARNING 'Native push enqueue failed for %.%: %', p_source, p_record_id, SQLSTATE;
 END;
