@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Clock, CheckCircle2, AlertCircle, Save, Sparkles, Power } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import {
@@ -23,10 +23,68 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [savedError, setSavedError] = useState(false);
 
+  // Serialize toggle autosaves and form saves so older requests cannot overwrite newer settings.
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const hasUserEditedRef = useRef(false);
+
+  const persistConfig = (updates: Partial<BusinessHoursConfig>) => {
+    const task = saveQueueRef.current.then(async () => {
+      const result = await saveBusinessHoursConfigAndSync(updates);
+      setConfig(result.config);
+      if (result.synced) {
+        setSavedSuccess(true);
+        setSavedError(false);
+        window.setTimeout(() => setSavedSuccess(false), 3500);
+      } else {
+        setSavedSuccess(false);
+        setSavedError(true);
+      }
+      return result;
+    });
+    saveQueueRef.current = task.then(() => undefined, () => undefined);
+    return task;
+  };
+
+  const handleActiveToggle = (nextActive: boolean) => {
+    hasUserEditedRef.current = true;
+    setIsActive(nextActive);
+    setSavedSuccess(false);
+    setSavedError(false);
+    // The public status toggle is an immediate shared setting, not a draft waiting for Save.
+    void persistConfig({
+      isActive: nextActive,
+      todayOpenTime,
+      todayCloseTime,
+      tomorrowOpenTime,
+      tomorrowCloseTime,
+    }).catch(() => setSavedError(true));
+  };
+
+  type HoursField = 'todayOpenTime' | 'todayCloseTime' | 'tomorrowOpenTime' | 'tomorrowCloseTime';
+
+  const handleTimeChange = (field: HoursField, value: string) => {
+    hasUserEditedRef.current = true;
+    if (field === 'todayOpenTime') setTodayOpenTime(value);
+    if (field === 'todayCloseTime') setTodayCloseTime(value);
+    if (field === 'tomorrowOpenTime') setTomorrowOpenTime(value);
+    if (field === 'tomorrowCloseTime') setTomorrowCloseTime(value);
+    setSavedSuccess(false);
+    setSavedError(false);
+    // Every committed time-field change is shared immediately; the form button remains
+    // available to explicitly re-save the complete configuration.
+    void persistConfig({
+      isActive,
+      todayOpenTime: field === 'todayOpenTime' ? value : todayOpenTime,
+      todayCloseTime: field === 'todayCloseTime' ? value : todayCloseTime,
+      tomorrowOpenTime: field === 'tomorrowOpenTime' ? value : tomorrowOpenTime,
+      tomorrowCloseTime: field === 'tomorrowCloseTime' ? value : tomorrowCloseTime,
+    }).catch(() => setSavedError(true));
+  };
+
   useEffect(() => {
     let mounted = true;
     const applyConfig = (current: BusinessHoursConfig) => {
-      if (!mounted) return;
+      if (!mounted || hasUserEditedRef.current) return;
       setConfig(current);
       setIsActive(current.isActive);
       setTodayOpenTime(current.todayOpenTime || '08:00');
@@ -43,18 +101,15 @@ export const BusinessHoursSettingsCard: React.FC = () => {
     e.preventDefault();
     setSavedSuccess(false);
     setSavedError(false);
-    const result = await saveBusinessHoursConfigAndSync({
-      isActive,
-      todayOpenTime,
-      todayCloseTime,
-      tomorrowOpenTime,
-      tomorrowCloseTime,
-    });
-    setConfig(result.config);
-    if (result.synced) {
-      setSavedSuccess(true);
-      window.setTimeout(() => setSavedSuccess(false), 3500);
-    } else {
+    try {
+      await persistConfig({
+        isActive,
+        todayOpenTime,
+        todayCloseTime,
+        tomorrowOpenTime,
+        tomorrowCloseTime,
+      });
+    } catch {
       setSavedError(true);
     }
   };
@@ -112,7 +167,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
             <input
               type="checkbox"
               checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
+              onChange={(e) => handleActiveToggle(e.target.checked)}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-gray-300 peer-focus:outline-hidden rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-600"></div>
@@ -136,7 +191,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={todayOpenTime}
-                  onChange={(e) => setTodayOpenTime(e.target.value)}
+                  onChange={(e) => handleTimeChange('todayOpenTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -149,7 +204,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={todayCloseTime}
-                  onChange={(e) => setTodayCloseTime(e.target.value)}
+                  onChange={(e) => handleTimeChange('todayCloseTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -172,7 +227,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={tomorrowOpenTime}
-                  onChange={(e) => setTomorrowOpenTime(e.target.value)}
+                  onChange={(e) => handleTimeChange('tomorrowOpenTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -185,7 +240,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={tomorrowCloseTime}
-                  onChange={(e) => setTomorrowCloseTime(e.target.value)}
+                  onChange={(e) => handleTimeChange('tomorrowCloseTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -206,7 +261,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
           {savedSuccess ? (
             <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold animate-fade-in">
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isAr ? 'تم حفظ أوقات العمل ومزامنتها مع الصفحة العامة.' : 'Operating hours saved and synced to the public page.'}</span>
+              <span>{isAr ? 'تم حفظ الإعدادات ومزامنتها مع الصفحة العامة.' : 'Settings saved and synced to the public page.'}</span>
             </div>
           ) : savedError ? (
             <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 font-semibold" role="status">
