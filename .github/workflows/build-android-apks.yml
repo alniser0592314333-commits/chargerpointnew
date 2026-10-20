@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'vite.config.ts'
       - 'src/main.tsx'
+      - 'src/App.tsx'
       - 'src/PublicPortalApp.tsx'
       - 'capacitor.*.config.ts'
       - '.github/workflows/build-android-apks.yml'
