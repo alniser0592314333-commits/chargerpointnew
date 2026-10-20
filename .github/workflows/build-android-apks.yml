@@ -125,6 +125,7 @@ jobs:
           <resources><color name="cp_icon_background">#082b32</color></resources>
           ''')
 
+          # Keep the customer launcher label concise in both Android locales.
           base_name = "Charging Point" if variant == "customer" else "Charging Point Admin"
           arabic_name = "نقطة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
           strings_file = values / "strings.xml"
