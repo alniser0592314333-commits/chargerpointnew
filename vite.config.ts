@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
-      VitePWA({
+      ...(appVariant === 'web' ? [VitePWA({
         registerType: 'autoUpdate',
         // The deployed web application is served from the origin root.
         // Keep the service worker and manifest aligned with the existing web entry point.
@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => {
           enabled: true,
           type: 'module',
         },
-      }),
+      })] : []),
     ],
     define: {
       // Compile-time constant allows Rollup to remove the other app's entry
