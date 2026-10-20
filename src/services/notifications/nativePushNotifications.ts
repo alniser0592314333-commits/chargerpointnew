@@ -168,6 +168,16 @@ export async function startNativePushNotifications(
       ? permission
       : await PushNotifications.requestPermissions();
     if (receivePermission.receive !== 'granted') return;
+    if (Capacitor.getPlatform() === 'android') {
+      await PushNotifications.createChannel({
+        id: 'charging-point-events',
+        name: 'Charging Point updates',
+        description: 'Important account and payment updates',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+      }).catch(() => undefined);
+    }
     await PushNotifications.register();
     // Re-register the previously issued FCM token after an auth/session refresh.
     if (latestPushToken) await persistLatestToken(latestPushToken);
