@@ -20,7 +20,63 @@ permissions:
   contents: read
 
 jobs:
+  verify-native-notifications:
+    name: Verify notification integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.x
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck application and native notification integration
+        run: npm run lint
+
+      - name: Run application regression tests
+        run: npm test
+
+      - name: Typecheck native push Edge Function
+        run: deno check supabase/functions/native-push/index.ts
+
+      - name: Parse migration SQL and assert canonical trigger coverage
+        run: |
+          python3 -m pip install --disable-pip-version-check pglast
+          python3 - <<'PY'
+          from pathlib import Path
+          from pglast import parse_sql
+
+          migration = Path("supabase/migrations/20261020200000_native_push_notifications.sql").read_text()
+          parse_sql(migration)
+          required = [
+              "native_push_qr_payment_submission",
+              "native_push_customer_account_event",
+              "native_push_goal_request_reviewed",
+              "native_push_device_is_current",
+              "claim_native_push_delivery",
+              "'GOAL_REQUESTED'::text",
+          ]
+          for marker in required:
+              if migration.count(marker) < 1:
+                  raise SystemExit(f"Required migration behavior missing: {marker}")
+          for trigger in ("native_push_qr_payment_submission", "native_push_customer_account_event", "native_push_goal_request_reviewed"):
+              if migration.count("CREATE TRIGGER " + trigger) != 1:
+                  raise SystemExit(f"Expected exactly one canonical trigger: {trigger}")
+          print("Migration SQL parsed; canonical event triggers and idempotency/session guards are present.")
+          PY
+
   build-apk:
+    needs: verify-native-notifications
     name: Build ${{ matrix.variant }} APK
     runs-on: ubuntu-latest
     strategy:
