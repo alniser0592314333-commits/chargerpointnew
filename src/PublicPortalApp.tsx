@@ -105,7 +105,7 @@ const PublicPortalApp: React.FC = () => {
   // A payment page opened from the customer account is part of the same account
   // flow. Returning from payment must not replay the intro; leaving for the public
   // home page resets the flow so the next account entry gets a fresh 4-second intro.
-  const customerFlowActive = useRef(isCustomerAccountPath(pathname));
+  const customerFlowActive = useRef(isCustomerAccountPath(pathname) || customerAccountReturnPathForPayment(pathname) !== null);
 
   // The native APK should reopen the last signed-in customer's portal after a full
   // process restart. Keep the website's public landing-page behavior unchanged.
