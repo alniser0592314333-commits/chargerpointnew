@@ -31,6 +31,7 @@ import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
 import { QrScannerModal } from '../qr/QrScannerModal';
 import {
+  DEFAULT_BUSINESS_HOURS,
   getBusinessHoursConfig,
   refreshBusinessHoursConfigFromServer,
   computeOperationalStatus,
@@ -52,10 +53,15 @@ export const PublicAboutPage: React.FC = () => {
   const [isAppDownloadToastOpen, setIsAppDownloadToastOpen] = useState(false);
   const [activeFaqIndex, setActiveFaqIndex] = useState<number | null>(0);
 
-  // Business Hours & Live Status State
-  const [hoursConfig, setHoursConfig] = useState<BusinessHoursConfig>(getBusinessHoursConfig);
+  // Business Hours & Live Status State: local settings are used only while offline.
+  const getInitialHoursConfig = () =>
+    typeof navigator !== 'undefined' && navigator.onLine === false
+      ? getBusinessHoursConfig()
+      : DEFAULT_BUSINESS_HOURS;
+  const [hoursConfig, setHoursConfig] = useState<BusinessHoursConfig>(getInitialHoursConfig);
+  const hoursConfigRef = useRef(hoursConfig);
   const [operationalStatus, setOperationalStatus] = useState<OperationalStatusDetail>(() =>
-    computeOperationalStatus(getBusinessHoursConfig())
+    computeOperationalStatus(getInitialHoursConfig())
   );
 
   // Real Database Device Types State
@@ -75,20 +81,24 @@ export const PublicAboutPage: React.FC = () => {
       prefersReducedMotionRef.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
 
-    const updateStatus = () => {
-      const cfg = getBusinessHoursConfig();
+    const applyHoursConfig = (cfg: BusinessHoursConfig) => {
+      hoursConfigRef.current = cfg;
       setHoursConfig(cfg);
       setOperationalStatus(computeOperationalStatus(cfg));
+    };
+
+    const updateStatus = () => {
+      const cfg = typeof navigator !== 'undefined' && navigator.onLine === false
+        ? getBusinessHoursConfig()
+        : hoursConfigRef.current;
+      applyHoursConfig(cfg);
     };
 
     updateStatus();
 
     // Hydrate from the shared server configuration; local storage is only the offline cache.
     const refreshSharedStatus = () => {
-      void refreshBusinessHoursConfigFromServer().then((cfg) => {
-        setHoursConfig(cfg);
-        setOperationalStatus(computeOperationalStatus(cfg));
-      });
+      void refreshBusinessHoursConfigFromServer().then(applyHoursConfig);
     };
     refreshSharedStatus();
 
@@ -96,8 +106,9 @@ export const PublicAboutPage: React.FC = () => {
     const intervalId = window.setInterval(updateStatus, 30000);
     const sharedIntervalId = window.setInterval(refreshSharedStatus, 60000);
     const unsubscribe = subscribeBusinessHours((updatedCfg) => {
-      setHoursConfig(updatedCfg);
-      setOperationalStatus(computeOperationalStatus(updatedCfg));
+      // Ignore per-origin local edits while online; the server poll is authoritative.
+      if (typeof navigator === 'undefined' || navigator.onLine !== false) return;
+      applyHoursConfig(updatedCfg);
     });
 
     // Re-read persisted settings when returning to the tab/page as well as on clock ticks.
