@@ -290,22 +290,36 @@ Deno.serve(async (request: Request) => {
   } else {
     const { data: goalRequest, error } = await admin.from("goal_requests")
       .select("id,customer_id,status,updated_at").eq("id", recordId).maybeSingle();
-    if (error || !goalRequest || operation !== "UPDATE" ||
-        !["APPROVED", "REJECTED"].includes(String(goalRequest.status)) ||
-        (eventStatus && eventStatus !== String(goalRequest.status))) {
+    if (error || !goalRequest || (eventStatus && eventStatus !== String(goalRequest.status))) {
       return json(200, { ok: true, skipped: true });
     }
-    eventKey += ":" + String(goalRequest.status);
-    titleAr = goalRequest.status === "APPROVED" ? "تمت الموافقة على طلب الهدف" : "تم رفض طلب الهدف";
-    titleEn = goalRequest.status === "APPROVED" ? "Goal request approved" : "Goal request rejected";
-    bodyAr = goalRequest.status === "APPROVED" ? "وافقت الإدارة على طلب إنشاء الهدف." : "لم تتم الموافقة على طلب إنشاء الهدف.";
-    bodyEn = goalRequest.status === "APPROVED" ? "The administrator approved your goal request." : "The administrator did not approve your goal request.";
-    targetPath = "/public/about";
-    const { data, error: recipientError } = await admin.from("native_push_devices")
-      .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
-      .eq("app_variant", "customer").eq("customer_id", goalRequest.customer_id).is("disabled_at", null);
-    if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-    recipients = data ?? [];
+    if (operation === "INSERT" && goalRequest.status === "PENDING") {
+      eventKey += ":PENDING";
+      titleAr = "طلب هدف جديد";
+      titleEn = "New goal request";
+      bodyAr = "أرسل أحد العملاء طلب إنشاء هدف جديد بانتظار المراجعة.";
+      bodyEn = "A customer submitted a new goal request for review.";
+      targetPath = "/app/goals";
+      const { data, error: recipientError } = await admin.from("native_push_devices")
+        .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+        .eq("app_variant", "admin").is("disabled_at", null);
+      if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      recipients = data ?? [];
+    } else if (operation === "UPDATE" && ["APPROVED", "REJECTED"].includes(String(goalRequest.status))) {
+      eventKey += ":" + String(goalRequest.status);
+      titleAr = goalRequest.status === "APPROVED" ? "تمت الموافقة على طلب الهدف" : "تم رفض طلب الهدف";
+      titleEn = goalRequest.status === "APPROVED" ? "Goal request approved" : "Goal request rejected";
+      bodyAr = goalRequest.status === "APPROVED" ? "وافقت الإدارة على طلب إنشاء الهدف." : "لم تتم الموافقة على طلب إنشاء الهدف.";
+      bodyEn = goalRequest.status === "APPROVED" ? "The administrator approved your goal request." : "The administrator did not approve your goal request.";
+      targetPath = "/public/about";
+      const { data, error: recipientError } = await admin.from("native_push_devices")
+        .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+        .eq("app_variant", "customer").eq("customer_id", goalRequest.customer_id).is("disabled_at", null);
+      if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      recipients = data ?? [];
+    } else {
+      return json(200, { ok: true, skipped: true });
+    }
   }
 
   if (!recipients.length && targetPath === "/app/notifications") {
