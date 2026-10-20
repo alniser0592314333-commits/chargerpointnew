@@ -252,6 +252,7 @@ export default function App() {
         try {
           const sessionActive = await isCurrentAccountSessionActive();
           if (!sessionActive) {
+            await stopNativePushNotifications();
             await authService.logout();
             setIsAuthenticated(false);
             setUserSession(null);
@@ -297,6 +298,7 @@ export default function App() {
           try {
             const sessionActive = await isCurrentAccountSessionActive();
             if (!sessionActive) {
+              await stopNativePushNotifications();
               await authService.logout();
               setIsAuthenticated(false);
               setUserSession(null);
@@ -662,6 +664,7 @@ export default function App() {
         return <NotificationsRequestsPage />;
       case '/app/settings':
         return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async () => {
+          await stopNativePushNotifications();
           await authService.logout();
           setIsAuthenticated(false);
           setUserSession(null);
@@ -726,6 +729,7 @@ export default function App() {
                   type="button"
                   variant="primary"
                   onClick={async () => {
+                    await stopNativePushNotifications();
                     await authService.logout();
                     setIsAuthenticated(false);
                     setUserSession(null);
