@@ -31,11 +31,7 @@ Configure these Supabase Edge Function secrets for `native-push`:
 - `FCM_CLIENT_EMAIL`
 - `FCM_PRIVATE_KEY` (the service-account PEM private key; keep it only in Supabase secrets)
 
-Store the exact function URL in Vault under `native_push_function_url`, for example:
-
-`https://ydhcyamtgioyrxfarkwk.supabase.co/functions/v1/native-push`
-
-The migration generates the dispatch credential inside Vault. The database trigger sends only a small event reference and that credential; the Edge Function validates it through a verifier callable only with the service-role key, re-reads the authoritative row, derives recipients server-side, and sends generic messages without receipt paths, amounts, balances, passwords, or customer QR tokens.
+The migration automatically stores the exact function URL in Vault under `native_push_function_url` and generates the dispatch credential there. The database trigger sends only a small event reference and that credential; the Edge Function validates it through a verifier callable only with the service-role key, re-reads the authoritative row, derives recipients server-side, and sends generic messages without receipt paths, amounts, balances, passwords, or customer QR tokens.
 
 ## Rollout safety
 
