@@ -56,7 +56,8 @@ jobs:
 
       - name: Configure Firebase Cloud Messaging for native push
         env:
-          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON_CUSTOMER_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_CUSTOMER_BASE64 }}
+          GOOGLE_SERVICES_JSON_ADMIN_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_ADMIN_BASE64 }}
         run: |
           python3 - <<'PY'
           import base64
@@ -65,18 +66,18 @@ jobs:
           from pathlib import Path
           import re
 
-          encoded = os.environ.get("GOOGLE_SERVICES_JSON_BASE64", "").strip()
-          if not encoded:
-              print("::warning::GOOGLE_SERVICES_JSON_BASE64 is not configured; APK builds, but FCM delivery will not work until Firebase configuration is added.")
-              raise SystemExit(0)
-
           variant = "${{ matrix.variant }}"
+          secret_name = "GOOGLE_SERVICES_JSON_CUSTOMER_BASE64" if variant == "customer" else "GOOGLE_SERVICES_JSON_ADMIN_BASE64"
+          encoded = os.environ.get(secret_name, "").strip()
+          if not encoded:
+              print(f"::warning::{secret_name} is not configured; APK builds, but FCM delivery will not work until Firebase configuration is added.")
+              raise SystemExit(0)
           expected_package = "com.chargerpointnew." + variant
           try:
               firebase = base64.b64decode(encoded, validate=True)
               parsed = json.loads(firebase)
           except Exception as exc:
-              raise SystemExit("GOOGLE_SERVICES_JSON_BASE64 is not valid base64-encoded Firebase JSON") from exc
+              raise SystemExit("Firebase JSON secret is not valid base64-encoded data") from exc
           clients = parsed.get("client", [])
           packages = [item.get("client_info", {}).get("android_client_info", {}).get("package_name") for item in clients]
           if expected_package not in packages:
