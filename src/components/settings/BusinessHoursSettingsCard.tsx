@@ -3,7 +3,8 @@ import { Clock, CheckCircle2, AlertCircle, Save, Sparkles, Power } from 'lucide-
 import { useI18n } from '../../i18n/i18nContext';
 import {
   getBusinessHoursConfig,
-  saveBusinessHoursConfig,
+  saveBusinessHoursConfigAndSync,
+  refreshBusinessHoursConfigFromServer,
   computeOperationalStatus,
   BusinessHoursConfig,
 } from '../../services/businessHoursService';
@@ -20,31 +21,42 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   const [tomorrowCloseTime, setTomorrowCloseTime] = useState<string>(config.tomorrowCloseTime || '22:00');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [savedError, setSavedError] = useState(false);
 
   useEffect(() => {
-    const current = getBusinessHoursConfig();
-    setConfig(current);
-    setIsActive(current.isActive);
-    setTodayOpenTime(current.todayOpenTime || '08:00');
-    setTodayCloseTime(current.todayCloseTime || '22:00');
-    setTomorrowOpenTime(current.tomorrowOpenTime || '08:00');
-    setTomorrowCloseTime(current.tomorrowCloseTime || '22:00');
+    let mounted = true;
+    const applyConfig = (current: BusinessHoursConfig) => {
+      if (!mounted) return;
+      setConfig(current);
+      setIsActive(current.isActive);
+      setTodayOpenTime(current.todayOpenTime || '08:00');
+      setTodayCloseTime(current.todayCloseTime || '22:00');
+      setTomorrowOpenTime(current.tomorrowOpenTime || '08:00');
+      setTomorrowCloseTime(current.tomorrowCloseTime || '22:00');
+    };
+    applyConfig(getBusinessHoursConfig());
+    refreshBusinessHoursConfigFromServer().then(applyConfig).catch(() => {});
+    return () => { mounted = false; };
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = saveBusinessHoursConfig({
+    setSavedSuccess(false);
+    setSavedError(false);
+    const result = await saveBusinessHoursConfigAndSync({
       isActive,
       todayOpenTime,
       todayCloseTime,
       tomorrowOpenTime,
       tomorrowCloseTime,
     });
-    setConfig(updated);
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-    }, 3500);
+    setConfig(result.config);
+    if (result.synced) {
+      setSavedSuccess(true);
+      window.setTimeout(() => setSavedSuccess(false), 3500);
+    } else {
+      setSavedError(true);
+    }
   };
 
   const previewStatus = computeOperationalStatus({
@@ -194,7 +206,12 @@ export const BusinessHoursSettingsCard: React.FC = () => {
           {savedSuccess ? (
             <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold animate-fade-in">
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isAr ? 'تم حفظ أوقات العمل وحالة النقطة بنجاح!' : 'Operating hours saved successfully!'}</span>
+              <span>{isAr ? 'تم حفظ أوقات العمل ومزامنتها مع الصفحة العامة.' : 'Operating hours saved and synced to the public page.'}</span>
+            </div>
+          ) : savedError ? (
+            <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 font-semibold" role="status">
+              <AlertCircle className="w-4 h-4" />
+              <span>{isAr ? 'حُفظت محليًا فقط؛ لم تتزامن مع الصفحة العامة. تحقق من الاتصال والصلاحيات ثم أعد الحفظ.' : 'Saved locally only; not synced to the public page. Check connection and permissions, then save again.'}</span>
             </div>
           ) : <div />}
 
