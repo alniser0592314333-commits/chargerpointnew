@@ -5,7 +5,6 @@ import './index.css';
 const root = createRoot(document.getElementById('root')!);
 const pathname = window.location.pathname;
 const isPublicPortalRoute =
-  pathname === '/' ||
   pathname === '/public/about' ||
   pathname.startsWith('/c/') ||
   pathname.startsWith('/o/') ||
@@ -18,9 +17,9 @@ const isPublicPortalRoute =
 // its auth/session bootstrap, PWA capture, or authenticated shell on customer pages.
 if (isPublicPortalRoute) {
   // Replace the admin application's browser identity with a customer-facing one.
-  document.title = pathname === '/' ? 'نقطة الشحن | Charging Point' : 'نقطة الشحن | بوابة العميل';
+  document.title = 'نقطة الشحن | بوابة العميل';
   const description = document.querySelector('meta[name="description"]');
-  description?.setAttribute('content', pathname === '/' ? 'نقطة الشحن — خدمة شحن منظّمة، أسعار واضحة، ومتابعة طلبات عبر QR.' : 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
+  description?.setAttribute('content', 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8f6f1');
   document.querySelector('link[rel="manifest"]')?.remove();
   document.querySelector('link[rel="apple-touch-icon"]')?.remove();

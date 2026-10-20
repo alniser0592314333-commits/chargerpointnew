@@ -1,0 +1,499 @@
+/**
+ * Public About Page Styles & Parallax Atmosphere
+ * Identity: Charging Point ("نقطة الشحن")
+ * Theme: Twin Mountains, Glowing Moon, Atmospheric Sky (Dawn -> Deep Night)
+ */
+
+/* =========================================================================
+   1. ROOT VARIABLES & THEME TOKENS
+   ========================================================================= */
+
+:root {
+  --about-sky-top: #0a3d46;
+  --about-sky-mid: #105967;
+  --about-sky-bot: #197a87;
+  --about-moon-glow: rgba(255, 217, 160, 0.6);
+  --about-moon-color: #ffd28f;
+  --about-card-bg: rgba(255, 255, 255, 0.92);
+  --about-card-border: rgba(15, 118, 110, 0.12);
+  --about-card-text: #133331;
+  --about-card-sub: #4b6b66;
+  --about-header-bg: rgba(255, 255, 255, 0.85);
+  --about-header-border: rgba(15, 118, 110, 0.12);
+  --about-badge-bg: #edf7f5;
+  --about-badge-text: #0f766e;
+}
+
+html.dark {
+  --about-sky-top: #031417;
+  --about-sky-mid: #062329;
+  --about-sky-bot: #0a343c;
+  --about-moon-glow: rgba(255, 190, 90, 0.45);
+  --about-moon-color: #fca742;
+  --about-card-bg: rgba(10, 36, 35, 0.85);
+  --about-card-border: rgba(142, 216, 204, 0.14);
+  --about-card-text: #e7f5f2;
+  --about-card-sub: #93b5ae;
+  --about-header-bg: rgba(6, 25, 24, 0.85);
+  --about-header-border: rgba(255, 255, 255, 0.08);
+  --about-badge-bg: rgba(15, 118, 110, 0.25);
+  --about-badge-text: #6ee7b7;
+}
+
+/* =========================================================================
+   2. ATMOSPHERIC SKY & PARALLAX WRAPPER
+   ========================================================================= */
+
+.about-page-container {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: var(--about-sky-top);
+  color: var(--about-card-text);
+  transition: background-color 0.4s ease, color 0.3s ease;
+  font-family: inherit;
+}
+
+/* Dynamic background sky gradient driven by scroll */
+.about-sky-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.5s ease;
+}
+
+.about-sky-night {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 15%, #176370 0%, #0c3c47 45%, #051c22 90%);
+}
+
+html.dark .about-sky-night {
+  background: radial-gradient(circle at 50% 15%, #0f3f47 0%, #07262d 50%, #020e11 95%);
+}
+
+/* Starfield with subtle twinkling */
+.about-starfield {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1.5px 1.5px at 15% 20%, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1.2px 1.2px at 45% 12%, #ffeec7, rgba(0,0,0,0)),
+    radial-gradient(1.5px 1.5px at 75% 25%, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 30% 35%, #def7f2, rgba(0,0,0,0)),
+    radial-gradient(1.5px 1.5px at 85% 15%, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1.2px 1.2px at 60% 40%, #ffd494, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 10% 45%, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1.8px 1.8px at 90% 42%, #ffeec7, rgba(0,0,0,0));
+  background-repeat: repeat;
+  background-size: 550px 550px;
+  opacity: 0.6;
+}
+
+/* =========================================================================
+   3. PARALLAX MOUNTAINS & MOON HERO SCENERY
+   ========================================================================= */
+
+.parallax-hero-stage {
+  position: relative;
+  width: 100%;
+  height: 92vh;
+  min-height: 580px;
+  max-height: 860px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 1;
+}
+
+/* The Moon */
+.parallax-layer-moon {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  transform: translate(-50%, var(--moon-y, 0px)) scale(var(--moon-scale, 1));
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff1d6 0%, #fbb462 60%, #e27d32 100%);
+  box-shadow:
+    0 0 60px 20px var(--about-moon-glow),
+    0 0 120px 50px rgba(251, 180, 98, 0.25);
+  pointer-events: none;
+  z-index: 2;
+  will-change: transform, box-shadow;
+  transition: box-shadow 0.3s ease;
+}
+
+/* Moon Crater Details */
+.parallax-moon-crater-1 {
+  position: absolute;
+  top: 28%;
+  left: 30%;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(184, 88, 31, 0.22);
+}
+
+.parallax-moon-crater-2 {
+  position: absolute;
+  top: 55%;
+  left: 52%;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(184, 88, 31, 0.2);
+}
+
+.parallax-moon-crater-3 {
+  position: absolute;
+  top: 42%;
+  left: 68%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(184, 88, 31, 0.18);
+}
+
+/* Distant Ridge Layer */
+.parallax-layer-ridges {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 46%;
+  transform: translate3d(0, var(--ridge-y, 0px), 0);
+  pointer-events: none;
+  z-index: 3;
+  will-change: transform;
+}
+
+/* Main Peaks Layer (The Twin Peaks) */
+.parallax-layer-peaks {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60%;
+  transform: translate3d(0, var(--peak-y, 0px), 0);
+  pointer-events: none;
+  z-index: 4;
+  will-change: transform;
+}
+
+/* Warm Foothills Layer */
+.parallax-layer-foothills {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 34%;
+  transform: translate3d(0, var(--hill-y, 0px), 0);
+  pointer-events: none;
+  z-index: 5;
+  will-change: transform;
+}
+
+/* Front Pines Layer */
+.parallax-layer-pines {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 18%;
+  transform: translate3d(0, var(--pine-y, 0px), 0);
+  pointer-events: none;
+  z-index: 6;
+  will-change: transform;
+}
+
+/* Gentle mist separator at bottom of hero */
+.parallax-hero-mist {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 140px;
+  background: linear-gradient(to top, var(--about-sky-top) 10%, transparent 100%);
+  pointer-events: none;
+  z-index: 7;
+}
+
+/* =========================================================================
+   4. FIXED HEADER & DRAWER NAVIGATION
+   ========================================================================= */
+
+.about-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  background-color: var(--about-header-bg);
+  border-bottom: 1px solid var(--about-header-border);
+  transition: all 0.3s ease;
+}
+
+.about-header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .about-header-inner {
+    padding: 0.85rem 1.5rem;
+  }
+}
+
+/* Prominent "تفقّد طلباتك" CTA Button */
+.header-track-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+  border-radius: 9999px;
+  box-shadow: 0 4px 14px rgba(15, 118, 110, 0.35);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.header-track-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(15, 118, 110, 0.5);
+  background: linear-gradient(135deg, #13887f 0%, #0f766e 100%);
+}
+
+.header-track-btn:active {
+  transform: translateY(0);
+}
+
+/* Hamburger Menu Button */
+.header-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.85rem;
+  background-color: rgba(15, 118, 110, 0.08);
+  color: var(--about-card-text);
+  border: 1px solid var(--about-card-border);
+  transition: all 0.2s ease;
+}
+
+.header-menu-btn:hover {
+  background-color: rgba(15, 118, 110, 0.15);
+  transform: scale(1.04);
+}
+
+/* Drawer Backdrop */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 50;
+  animation: fadeIn 0.25s ease-out;
+}
+
+/* Slide Drawer Panel */
+.drawer-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 85vw;
+  background-color: #ffffff;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.3);
+  z-index: 51;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.dark .drawer-panel {
+  background-color: #082221;
+  color: #e7f5f2;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+  border-inline-start: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* RTL / LTR Drawer Alignment */
+[dir="rtl"] .drawer-panel {
+  left: auto;
+  right: 0;
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[dir="ltr"] .drawer-panel {
+  right: auto;
+  left: 0;
+  animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* =========================================================================
+   5. GLOWING OPERATIONAL STATUS BADGES
+   ========================================================================= */
+
+.status-dot-pulse-green {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 10px #10b981, 0 0 20px rgba(16, 185, 129, 0.4);
+}
+
+.status-dot-pulse-green::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid #10b981;
+  animation: pulseGreen 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+.status-dot-pulse-red {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  box-shadow: 0 0 10px #ef4444, 0 0 20px rgba(239, 68, 68, 0.4);
+}
+
+.status-dot-pulse-red::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid #ef4444;
+  animation: pulseRed 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+}
+
+@keyframes pulseGreen {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes pulseRed {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* =========================================================================
+   6. CARDS & SECTIONS STYLING
+   ========================================================================= */
+
+.about-card {
+  background-color: var(--about-card-bg);
+  border: 1px solid var(--about-card-border);
+  border-radius: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+html.dark .about-card {
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
+}
+
+.about-card:hover {
+  border-color: rgba(15, 118, 110, 0.3);
+}
+
+/* Charger fee highlight box */
+.charger-fee-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.08) 100%);
+  border: 1.5px dashed rgba(245, 158, 11, 0.4);
+  border-radius: 1.25rem;
+}
+
+html.dark .charger-fee-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.08) 100%);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+/* Laser scan animation for QR modal */
+@keyframes scanLaser {
+  0% { top: 0%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+.animate-scan {
+  animation: scanLaser 2.2s infinite ease-in-out;
+}
+
+/* =========================================================================
+   7. PREFERS-REDUCED-MOTION
+   ========================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .parallax-layer-moon,
+  .parallax-layer-ridges,
+  .parallax-layer-peaks,
+  .parallax-layer-foothills,
+  .parallax-layer-pines {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .status-dot-pulse-green::after,
+  .status-dot-pulse-red::after,
+  .animate-scan {
+    animation: none !important;
+  }
+}
