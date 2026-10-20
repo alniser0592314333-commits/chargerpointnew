@@ -173,11 +173,11 @@ AS $function$
      AND a.auth_user_id = s.user_id
      AND a.is_active = true
     WHERE d.id = p_device_id
-      AND NOT EXISTS (
+      AND EXISTS (
         SELECT 1 FROM public.account_sessions admin_session
         WHERE admin_session.session_id = s.id
           AND admin_session.user_id = s.user_id
-          AND admin_session.revoked_at IS NOT NULL
+          AND admin_session.revoked_at IS NULL
       )
       AND d.app_variant = 'admin'
       AND d.disabled_at IS NULL
