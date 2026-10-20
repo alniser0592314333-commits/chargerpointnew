@@ -267,7 +267,7 @@ Deno.serve(async (request: Request) => {
       };
       const message = messages[eventType];
       if (!message) return json(200, { ok: true, skipped: true });
-      allowRevokedCustomerNotice = ["ACCOUNT_FROZEN", "ACCOUNT_CANCELLED", "ACCOUNT_REACTIVATED"].includes(eventType);
+      allowRevokedCustomerNotice = ["TEMP_PASSWORD_ISSUED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_CANCELLED", "ACCOUNT_REACTIVATED"].includes(eventType);
       titleAr = message[0]; titleEn = message[1]; bodyAr = message[2]; bodyEn = message[3];
       targetPath = "/public/about";
       const { data, error: recipientError } = await admin.from("native_push_devices")
@@ -345,7 +345,7 @@ Deno.serve(async (request: Request) => {
       await admin.from("native_push_delivery_attempts").update({
         status: "FAILED", error_code: code, updated_at: new Date().toISOString(),
       }).eq("event_key", eventKey).eq("device_id", recipient.device_id);
-      if (status === 404 || code === "UNREGISTERED" || code === "INVALID_ARGUMENT") {
+      if (status === 404 || code === "UNREGISTERED") {
         await admin.from("native_push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceRowId);
       }
       failed += 1;
