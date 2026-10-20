@@ -102,6 +102,19 @@ describe('native push notification integration', () => {
     }));
   });
 
+  it('coalesces concurrent startup calls under React Strict Mode effect replay', async () => {
+    vi.resetModules();
+    const service = await import('../services/nativePushNotifications');
+
+    await Promise.all([
+      service.startNativePushNotifications('admin', () => 'valid-access-token', 'en'),
+      service.startNativePushNotifications('admin', () => 'valid-access-token', 'en'),
+    ]);
+
+    expect(mocks.PushNotifications.register).toHaveBeenCalledTimes(1);
+    expect(mocks.PushNotifications.addListener).toHaveBeenCalledTimes(5);
+  });
+
   it('unregisters on logout and cannot re-register from a late token callback', async () => {
     vi.resetModules();
     const service = await import('../services/nativePushNotifications');
