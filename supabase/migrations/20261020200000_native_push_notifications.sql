@@ -193,7 +193,7 @@ AS $function$
      AND l.auth_user_id = d.principal_id
     JOIN public.customers c
       ON c.id = l.customer_id
-     AND c.is_active = true
+     AND (p_allow_account_status_notice IS TRUE OR c.is_active = true)
      AND c.deleted_at IS NULL
      AND c.status <> 'DELETED'
     WHERE d.id = p_device_id
