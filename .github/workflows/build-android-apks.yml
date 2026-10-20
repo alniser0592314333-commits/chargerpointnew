@@ -77,7 +77,7 @@ jobs:
 
       - name: Apply official mountain-and-moon launcher icon and localized app name
         run: |
-          python3 -m pip install --disable-pip-version-check cairosvg
+          python3 -m pip install --break-system-packages --disable-pip-version-check cairosvg
           python3 - <<'PY'
           from pathlib import Path
           import os
