@@ -168,6 +168,30 @@ CREATE TRIGGER native_push_customer_account_event
 AFTER INSERT ON public.customer_account_events
 FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_customer_event();
 
+CREATE OR REPLACE FUNCTION public.trigger_native_push_for_goal_request()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+BEGIN
+  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+  END IF;
+  PERFORM public.enqueue_native_push_event(
+    'goal_requests', NEW.id, TG_OP, NEW.status::text
+  );
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.trigger_native_push_for_goal_request() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS native_push_goal_request_reviewed ON public.goal_requests;
+CREATE TRIGGER native_push_goal_request_reviewed
+AFTER UPDATE OF status ON public.goal_requests
+FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_goal_request();
+
 COMMENT ON TABLE public.native_push_devices IS
   'FCM device bindings for authenticated admin/customer installations; no notification content is stored here.';
 COMMENT ON TABLE public.native_push_delivery_attempts IS
