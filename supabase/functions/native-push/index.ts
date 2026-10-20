@@ -348,10 +348,9 @@ Deno.serve(async (request: Request) => {
       failed += 1;
       continue;
     }
-    if (deviceIsCurrent !== true) {
-      await admin.from("native_push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceRowId);
-      continue;
-    }
+    // An expired/revoked app session should suppress this delivery, not permanently
+    // disable the FCM token: account recovery/reactivation notices may still qualify.
+    if (deviceIsCurrent !== true) continue;
     const { data: claimed, error: claimError } = await admin.rpc("claim_native_push_delivery", {
       p_event_key: eventKey,
       p_device_id: recipient.device_id,
