@@ -48,10 +48,10 @@ jobs:
         run: npm run build:${{ matrix.variant }}
 
       - name: Generate native Android project
-        run: npx cap add android --config capacitor.${{ matrix.variant }}.config.ts
+        run: CP_APP_VARIANT=${{ matrix.variant }} npx cap add android
 
       - name: Sync Capacitor assets
-        run: npx cap sync android --config capacitor.${{ matrix.variant }}.config.ts
+        run: CP_APP_VARIANT=${{ matrix.variant }} npx cap sync android
 
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug
