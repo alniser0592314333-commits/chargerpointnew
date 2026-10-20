@@ -302,7 +302,10 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
 BEGIN
-  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
+  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'INSERT' AND NEW.status <> 'PENDING' THEN
     RETURN NEW;
   END IF;
   PERFORM public.enqueue_native_push_event(
@@ -328,7 +331,7 @@ FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_customer_event();
 
 DROP TRIGGER IF EXISTS native_push_goal_request_reviewed ON public.goal_requests;
 CREATE TRIGGER native_push_goal_request_reviewed
-AFTER UPDATE OF status ON public.goal_requests
+AFTER INSERT OR UPDATE OF status ON public.goal_requests
 FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_goal_request();
 
 COMMENT ON TABLE public.native_push_devices IS
