@@ -171,7 +171,7 @@ Deno.serve(async (request: Request) => {
     const now = new Date().toISOString();
     // Rebind only after the caller's active server-side session has been verified.
     const { error: removeError } = await admin.from("native_push_devices").delete()
-      .eq("device_id", device).eq("app_variant", variant);
+      .eq("device_id", device).eq("app_variant", variant).eq("principal_id", principalId);
     if (removeError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
     const { error: upsertError } = await admin.from("native_push_devices").upsert({
       device_id: device,
