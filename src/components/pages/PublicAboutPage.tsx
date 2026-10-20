@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   Zap,
   QrCode,
@@ -536,8 +537,10 @@ export const PublicAboutPage: React.FC = () => {
                   <ArrowUpRight className="h-4 w-4 text-gray-400" />
                 </a>
 
-                {/* 3. Temporary Download App Button */}
-                <button
+                {/* The native APK is already installed; keep the PWA install option on the website only. */}
+                {!Capacitor.isNativePlatform() && (
+                  <>
+
                   type="button"
                   onClick={() => setIsAppDownloadToastOpen(true)}
                   className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
@@ -555,6 +558,8 @@ export const PublicAboutPage: React.FC = () => {
                     {isAr ? 'قريباً' : 'Soon'}
                   </span>
                 </button>
+                  </>
+                )}
               </div>
 
               <hr className="border-gray-200 dark:border-white/10" />
