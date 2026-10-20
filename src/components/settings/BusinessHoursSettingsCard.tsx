@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Clock, CheckCircle2, AlertCircle, Save, Sparkles, Power } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import {
@@ -23,6 +23,41 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [savedError, setSavedError] = useState(false);
 
+  // Serialize toggle autosaves and form saves so older requests cannot overwrite newer settings.
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+
+  const persistConfig = (updates: Partial<BusinessHoursConfig>) => {
+    const task = saveQueueRef.current.then(async () => {
+      const result = await saveBusinessHoursConfigAndSync(updates);
+      setConfig(result.config);
+      if (result.synced) {
+        setSavedSuccess(true);
+        setSavedError(false);
+        window.setTimeout(() => setSavedSuccess(false), 3500);
+      } else {
+        setSavedSuccess(false);
+        setSavedError(true);
+      }
+      return result;
+    });
+    saveQueueRef.current = task.then(() => undefined, () => undefined);
+    return task;
+  };
+
+  const handleActiveToggle = (nextActive: boolean) => {
+    setIsActive(nextActive);
+    setSavedSuccess(false);
+    setSavedError(false);
+    // The public status toggle is an immediate shared setting, not a draft waiting for Save.
+    void persistConfig({
+      isActive: nextActive,
+      todayOpenTime,
+      todayCloseTime,
+      tomorrowOpenTime,
+      tomorrowCloseTime,
+    }).catch(() => setSavedError(true));
+  };
+
   useEffect(() => {
     let mounted = true;
     const applyConfig = (current: BusinessHoursConfig) => {
@@ -43,18 +78,15 @@ export const BusinessHoursSettingsCard: React.FC = () => {
     e.preventDefault();
     setSavedSuccess(false);
     setSavedError(false);
-    const result = await saveBusinessHoursConfigAndSync({
-      isActive,
-      todayOpenTime,
-      todayCloseTime,
-      tomorrowOpenTime,
-      tomorrowCloseTime,
-    });
-    setConfig(result.config);
-    if (result.synced) {
-      setSavedSuccess(true);
-      window.setTimeout(() => setSavedSuccess(false), 3500);
-    } else {
+    try {
+      await persistConfig({
+        isActive,
+        todayOpenTime,
+        todayCloseTime,
+        tomorrowOpenTime,
+        tomorrowCloseTime,
+      });
+    } catch {
       setSavedError(true);
     }
   };
@@ -112,7 +144,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
             <input
               type="checkbox"
               checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
+              onChange={(e) => handleActiveToggle(e.target.checked)}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-gray-300 peer-focus:outline-hidden rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-600"></div>
@@ -206,7 +238,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
           {savedSuccess ? (
             <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold animate-fade-in">
               <CheckCircle2 className="w-4 h-4" />
-              <span>{isAr ? 'تم حفظ أوقات العمل ومزامنتها مع الصفحة العامة.' : 'Operating hours saved and synced to the public page.'}</span>
+              <span>{isAr ? 'تم حفظ الإعدادات ومزامنتها مع الصفحة العامة.' : 'Settings saved and synced to the public page.'}</span>
             </div>
           ) : savedError ? (
             <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 font-semibold" role="status">
