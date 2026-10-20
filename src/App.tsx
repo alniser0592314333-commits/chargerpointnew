@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { ThemeProvider } from './theme/themeContext';
 import { I18nProvider } from './i18n/i18nContext';
 import { ToastProvider } from './components/ui/Toast';
@@ -81,6 +82,34 @@ function isPublicPortalPath(pathname: string): boolean {
     pathname.startsWith('/public/qr/customer/') ||
     pathname.startsWith('/public/qr/order/')
   );
+}
+
+
+function scrollActiveViewToTop(): boolean {
+  const root = document.scrollingElement as HTMLElement | null;
+  if (window.scrollY > 1 || (root?.scrollTop ?? 0) > 1) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return true;
+  }
+
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((element) => {
+    if (element.scrollTop <= 1 || element.scrollHeight <= element.clientHeight + 8) return false;
+    const overflowY = window.getComputedStyle(element).overflowY;
+    if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+  });
+  if (candidates.length === 0) return false;
+
+  const depth = (element: HTMLElement) => {
+    let value = 0;
+    let parent: HTMLElement | null = element;
+    while (parent) { value += 1; parent = parent.parentElement; }
+    return value;
+  };
+  const deepest = candidates.reduce((best, element) => depth(element) > depth(best) ? element : best);
+  deepest.scrollTo({ top: 0, behavior: 'smooth' });
+  return true;
 }
 
 export default function App() {
@@ -289,51 +318,46 @@ export default function App() {
     navigate(fallbackPath, true);
   };
 
-  // One app-wide edge-swipe handler keeps back behavior consistent across pages.
-  // Replace the current history entry so prior edited records cannot reappear.
+  // One semantic Back handler serves Android's native button and edge swipes.
+  // A scrollable page returns to its top before the route hierarchy moves.
   useEffect(() => {
-    let startX = 0;
-    let startY = 0;
-    let startedAtEdge = false;
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) {
-        startedAtEdge = false;
-        return;
-      }
-      startX = event.touches[0].clientX;
-      startY = event.touches[0].clientY;
-      const width = window.innerWidth;
-      startedAtEdge = startX <= 32 || startX >= width - 32;
-    };
-
-    const handleTouchEnd = (event: TouchEvent) => {
-      if (!startedAtEdge || event.changedTouches.length !== 1) {
-        startedAtEdge = false;
-        return;
-      }
-      startedAtEdge = false;
-      const endX = event.changedTouches[0].clientX;
-      const endY = event.changedTouches[0].clientY;
-      const deltaX = endX - startX;
-      const deltaY = Math.abs(endY - startY);
-      if (Math.abs(deltaX) < 60 || deltaY > 80) return;
-      // Let the currently mounted page consume Back first (for example, closing
-      // an open Settings section). Only navigate to a route parent if no page
-      // handled the request.
+    const handleBack = () => {
       const backEvent = new Event('app:logical-back', { cancelable: true });
       window.dispatchEvent(backEvent);
       if (backEvent.defaultPrevented) return;
+      if (scrollActiveViewToTop()) return;
 
       const parentPath = resolveLogicalBackPath(currentPath);
       if (parentPath) navigate(parentPath, true);
+      // At /app (or /login), deliberately remain in the app rather than exit
+      // because of a stale WebView history entry.
+    };
+
+    let startX = 0;
+    let startY = 0;
+    let startedAtEdge = false;
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) { startedAtEdge = false; return; }
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      startedAtEdge = startX <= 32 || startX >= window.innerWidth - 32;
+    };
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (!startedAtEdge || event.changedTouches.length !== 1) { startedAtEdge = false; return; }
+      startedAtEdge = false;
+      const deltaX = event.changedTouches[0].clientX - startX;
+      const deltaY = Math.abs(event.changedTouches[0].clientY - startY);
+      if (Math.abs(deltaX) < 60 || deltaY > 80) return;
+      handleBack();
     };
 
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    const nativeBackListener = CapacitorApp.addListener('backButton', handleBack);
     return () => {
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchend', handleTouchEnd);
+      void nativeBackListener.then((listener) => listener.remove()).catch(() => undefined);
     };
   }, [currentPath]);
 
@@ -353,6 +377,12 @@ export default function App() {
       window.dispatchEvent(backEvent);
 
       if (backEvent.defaultPrevented) {
+        window.history.replaceState({ path: activePath }, '', activePath);
+        setCurrentPathState(activePath);
+        return;
+      }
+
+      if (scrollActiveViewToTop()) {
         window.history.replaceState({ path: activePath }, '', activePath);
         setCurrentPathState(activePath);
         return;
