@@ -226,14 +226,18 @@ export async function startNativePushNotifications(
 export async function stopNativePushNotifications(): Promise<void> {
   if (!Capacitor.isNativePlatform() || !currentVariant) return;
   const bearer = await getAccessToken().catch(() => null) || lastAuthorizedToken;
+  const token = latestPushToken ?? undefined;
+
+  // Stop token callbacks from re-registering the device while logout is in flight.
+  currentTokenProvider = null;
+  latestPushToken = null;
+  lastAuthorizedToken = null;
+
   if (bearer) {
     try {
-      await callEndpoint('unregister', bearer, latestPushToken ?? undefined);
+      await callEndpoint('unregister', bearer, token);
     } catch (error) {
       console.warn('Could not unregister native push device.', error);
     }
   }
-  latestPushToken = null;
-  lastAuthorizedToken = null;
-  currentTokenProvider = null;
 }
