@@ -42,4 +42,4 @@ The migration generates the dispatch credential inside Vault. The database trigg
 - Apply the accompanying migration only after review and explicit approval.
 - Deploy `native-push` with `verify_jwt = false` only because the function independently verifies the Vault-generated dispatch secret for database-trigger dispatch and validates Supabase Auth plus active admin/customer sessions for registration/unregistration.
 - No migration or Edge Function deployment is performed by this branch.
-- Without Firebase configuration, the APK build intentionally continues with a warning, but actual FCM registration/delivery is unavailable.
+- Without the two Firebase JSON secrets, the APK workflow emits a warning and builds an APK without working FCM delivery. Configure both secrets before treating the APK as notification-ready.
