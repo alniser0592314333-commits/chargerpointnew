@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
+import { startNativePushNotifications, stopNativePushNotifications } from '../../services/nativePushNotifications';
 import { AppLogo } from '../qr/AppLogo';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import { useTheme } from '../../theme/themeContext';
@@ -125,6 +126,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
+
+  useEffect(() => {
+    void startNativePushNotifications(
+      'customer',
+      async () => (await customerAuth.auth.getSession()).data.session?.access_token ?? null,
+      locale,
+    );
+  }, [locale, token]);
+
+  const handleSignOut = async () => {
+    await stopNativePushNotifications();
+    onLogout?.();
+  };
   const [data, setData] = useState<PortalData | null>(() => readCachedPortalData(token));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
@@ -605,7 +619,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 </form>}
               </div>
               <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div></div>
-              <button type="button" className="cp-portal-signout" onClick={() => onLogout?.()} disabled={!onLogout}><UserRound size={17} />{isAr ? 'تسجيل الخروج' : 'Sign out'}</button>
+              <button type="button" className="cp-portal-signout" onClick={() => { void handleSignOut(); }} disabled={!onLogout}><UserRound size={17} />{isAr ? 'تسجيل الخروج' : 'Sign out'}</button>
             </section>}
 
             <p className="cp-portal-footnote"><CheckCircle2 size={15} />{isAr ? 'عرض معلومات الحساب فقط؛ اعتماد الدفعات وتحديد الأهداف من صلاحيات الإدارة.' : 'Account information only; payment approval and goal assignment remain administrator-controlled.'}</p>
