@@ -196,7 +196,7 @@ Deno.serve(async (request: Request) => {
   const operation = normalize(input.operation, 16);
   const eventStatus = normalize(input.newStatus, 64);
   if (!/^[0-9a-f-]{36}$/i.test(recordId) ||
-      !["qr_payment_submissions", "customer_account_events"].includes(source) ||
+      !["qr_payment_submissions", "customer_account_events", "goal_requests"].includes(source) ||
       !["INSERT", "UPDATE"].includes(operation)) return json(400, { ok: false, error: "INVALID_EVENT" });
 
   let recipients: Array<Record<string, unknown>> = [];
@@ -232,7 +232,7 @@ Deno.serve(async (request: Request) => {
     } else {
       return json(200, { ok: true, skipped: true });
     }
-  } else {
+  } else if (source === "customer_account_events") {
     const { data: event, error } = await admin.from("customer_account_events")
       .select("id,customer_id,event_type,created_at,is_read").eq("id", recordId).maybeSingle();
     if (error || !event || (eventStatus && eventStatus !== String(event.event_type))) return json(200, { ok: true, skipped: true });
@@ -268,6 +268,25 @@ Deno.serve(async (request: Request) => {
       if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       recipients = data ?? [];
     }
+  } else {
+    const { data: goalRequest, error } = await admin.from("goal_requests")
+      .select("id,customer_id,status,updated_at").eq("id", recordId).maybeSingle();
+    if (error || !goalRequest || operation !== "UPDATE" ||
+        !["APPROVED", "REJECTED"].includes(String(goalRequest.status)) ||
+        (eventStatus && eventStatus !== String(goalRequest.status))) {
+      return json(200, { ok: true, skipped: true });
+    }
+    eventKey += ":" + String(goalRequest.status);
+    titleAr = goalRequest.status === "APPROVED" ? "تمت الموافقة على طلب الهدف" : "تم رفض طلب الهدف";
+    titleEn = goalRequest.status === "APPROVED" ? "Goal request approved" : "Goal request rejected";
+    bodyAr = goalRequest.status === "APPROVED" ? "وافقت الإدارة على طلب إنشاء الهدف." : "لم تتم الموافقة على طلب إنشاء الهدف.";
+    bodyEn = goalRequest.status === "APPROVED" ? "The administrator approved your goal request." : "The administrator did not approve your goal request.";
+    targetPath = "/public/about";
+    const { data, error: recipientError } = await admin.from("native_push_devices")
+      .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+      .eq("app_variant", "customer").eq("customer_id", goalRequest.customer_id).is("disabled_at", null);
+    if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    recipients = data ?? [];
   }
 
   if (!recipients.length && targetPath === "/app/notifications") {
