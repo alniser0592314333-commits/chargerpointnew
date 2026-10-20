@@ -108,6 +108,27 @@ export const getSupabaseAuthToken = (): string | null => {
   return resolveAuthBearerToken();
 };
 
+/** Return a non-expired Auth token, refreshing the persisted session when needed. */
+export async function getFreshSupabaseAuthToken(): Promise<{ token: string | null; reason: string | null }> {
+  const token = resolveAuthBearerToken();
+  const expiresSoon = (value: string): boolean => {
+    try {
+      const encoded = value.split('.')[1];
+      if (!encoded) return true;
+      const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+      return typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now() + 60_000;
+    } catch {
+      return true;
+    }
+  };
+  if (token && !expiresSoon(token)) return { token, reason: null };
+  const refreshed = await supabaseRefreshToken();
+  if (refreshed.session?.access_token) return { token: refreshed.session.access_token, reason: null };
+  if (!token && refreshed.error === 'NO_REFRESH_TOKEN') return { token: null, reason: 'NO_TOKEN' };
+  return { token: null, reason: refreshed.error === 'NO_REFRESH_TOKEN' ? 'TOKEN_EXPIRED_NO_REFRESH' : 'AUTH_REFRESH_FAILED' };
+}
+
 export interface SupabaseAuthSession {
   access_token: string;
   token_type?: string;

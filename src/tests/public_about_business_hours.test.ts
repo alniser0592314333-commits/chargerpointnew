@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterEach, vi } from 'vitest';
 import {
   computeOperationalStatus,
   getBusinessHoursConfig,
   formatTimeDisplay,
   getLocalDateString,
+  saveBusinessHoursConfigAndSync,
   BusinessHoursConfig,
 } from '../services/businessHoursService';
+import { setSupabaseAuthToken } from '../services/supabase/client';
 
 describe('Business Hours & Operational Status Service', () => {
   const storageMap = new Map<string, string>();
@@ -21,6 +23,31 @@ describe('Business Hours & Operational Status Service', () => {
 
   beforeEach(() => {
     storageMap.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reports NO_TOKEN and does not send a POST when no admin session exists', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    storageMap.delete('supabase_auth_session');
+    setSupabaseAuthToken(null);
+    const result = await saveBusinessHoursConfigAndSync({ todayOpenTime: '09:00' });
+    expect(result.synced).toBe(false);
+    expect(result.syncError).toBe('NO_TOKEN');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports OFFLINE and does not send a POST when offline', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('navigator', { onLine: false });
+    const result = await saveBusinessHoursConfigAndSync({ todayOpenTime: '09:00' });
+    expect(result.synced).toBe(false);
+    expect(result.syncError).toBe('OFFLINE');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('formats time cleanly in 12-hour format for Arabic and English', () => {
