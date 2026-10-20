@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
     tomorrowOpenTime: incoming.tomorrowOpenTime,
     tomorrowCloseTime: incoming.tomorrowCloseTime,
     chargerFeeMinor: Number.isSafeInteger(existing?.value_json?.chargerFeeMinor)
-      ? existing.value_json.chargerFeeMinor
+      ? existing?.value_json?.chargerFeeMinor ?? 50
       : 50,
     lastUpdated: new Date().toISOString(),
   };
