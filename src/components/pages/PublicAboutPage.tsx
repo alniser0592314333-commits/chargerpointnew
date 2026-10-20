@@ -398,7 +398,11 @@ export const PublicAboutPage: React.FC = () => {
           {/* Right Header Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Live Indicator Pill in Header */}
-            <div className="hidden md:inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-gray-800 dark:text-[#d2ede7]">
+            <div className={`hidden md:inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold text-gray-800 dark:text-[#d2ede7] ${
+              operationalStatus.isOpen
+                ? 'bg-emerald-500/10 border border-emerald-500/20'
+                : 'bg-rose-500/10 border border-rose-500/20'
+            }`}>
               <span
                 className={
                   operationalStatus.isOpen ? 'status-dot-pulse-green' : 'status-dot-pulse-red'
