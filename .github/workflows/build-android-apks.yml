@@ -67,6 +67,7 @@ jobs:
               "native_push_qr_payment_submission",
               "native_push_customer_account_event",
               "native_push_goal_request_reviewed",
+              "native_push_goal_request_created",
               "native_push_device_is_current",
               "claim_native_push_delivery",
               "native_push_function_url",
@@ -74,7 +75,7 @@ jobs:
           for marker in required:
               if migration.count(marker) < 1:
                   raise SystemExit(f"Required migration behavior missing: {marker}")
-          for trigger in ("native_push_qr_payment_submission", "native_push_customer_account_event", "native_push_goal_request_reviewed"):
+          for trigger in ("native_push_qr_payment_submission", "native_push_customer_account_event", "native_push_goal_request_reviewed", "native_push_goal_request_created"):
               if migration.count("CREATE TRIGGER " + trigger) != 1:
                   raise SystemExit(f"Expected exactly one canonical trigger: {trigger}")
           print("Migration SQL parsed; canonical event triggers and idempotency/session guards are present.")
