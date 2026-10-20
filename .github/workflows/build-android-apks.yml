@@ -54,6 +54,51 @@ jobs:
       - name: Generate native Android project
         run: npx cap add android
 
+      - name: Configure Firebase Cloud Messaging for native push
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: \${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          import re
+
+          encoded = os.environ.get("GOOGLE_SERVICES_JSON_BASE64", "").strip()
+          if not encoded:
+              print("::warning::GOOGLE_SERVICES_JSON_BASE64 is not configured; APK builds, but FCM delivery will not work until Firebase configuration is added.")
+              raise SystemExit(0)
+
+          variant = "\${{ matrix.variant }}"
+          expected_package = "com.chargerpointnew." + variant
+          try:
+              firebase = base64.b64decode(encoded, validate=True)
+              parsed = json.loads(firebase)
+          except Exception as exc:
+              raise SystemExit("GOOGLE_SERVICES_JSON_BASE64 is not valid base64-encoded Firebase JSON") from exc
+          clients = parsed.get("client", [])
+          packages = [item.get("client_info", {}).get("android_client_info", {}).get("package_name") for item in clients]
+          if expected_package not in packages:
+              raise SystemExit(f"Firebase config does not contain expected Android package {expected_package}")
+
+          app_file = Path("android/app/google-services.json")
+          app_file.write_bytes(firebase)
+          root_gradle = Path("android/build.gradle")
+          root = root_gradle.read_text()
+          if "com.google.gms:google-services" not in root:
+              match = re.search(r"dependencies\s*\{", root)
+              if not match:
+                  raise SystemExit("Could not locate root Gradle dependencies for Google Services plugin")
+              root = root[:match.end()] + "\n        classpath 'com.google.gms:google-services:4.4.2'" + root[match.end():]
+              root_gradle.write_text(root)
+          app_gradle = Path("android/app/build.gradle")
+          app = app_gradle.read_text()
+          if "com.google.gms.google-services" not in app:
+              app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
+          print("Firebase Cloud Messaging configured for " + variant)
+          PY
+
       - name: Declare Android camera permission for QR scanning
         run: |
           python3 - <<'PY'
@@ -62,6 +107,8 @@ jobs:
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           content = manifest.read_text()
+          if "android.permission.POST_NOTIFICATIONS" not in content:
+              content = content.replace("<application", '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\\n    <application', 1)
           if "android.permission.CAMERA" not in content:
               content, count = re.subn(
                   r"(?m)^([ \t]*)<application\b",
