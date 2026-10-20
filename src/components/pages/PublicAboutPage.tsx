@@ -539,27 +539,26 @@ export const PublicAboutPage: React.FC = () => {
 
                 {/* The native APK is already installed; keep the PWA install option on the website only. */}
                 {!Capacitor.isNativePlatform() && (
-                  <>
-
-                  type="button"
-                  onClick={() => setIsAppDownloadToastOpen(true)}
-                  className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                    <div>
-                      <span className="block">{isAr ? 'تنزيل التطبيق' : 'Download App'}</span>
-                      <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                        {isAr ? 'تثبيت سريع على الشاشة الرئيسية' : 'Quick add to home screen'}
-                      </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAppDownloadToastOpen(true)}
+                    className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                      <div>
+                        <span className="block">{isAr ? 'تنزيل التطبيق' : 'Download App'}</span>
+                        <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
+                          {isAr ? 'تثبيت سريع على الشاشة الرئيسية' : 'Quick add to home screen'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                    {isAr ? 'قريباً' : 'Soon'}
-                  </span>
-                </button>
-                  </>
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                      {isAr ? 'قريباً' : 'Soon'}
+                    </span>
+                  </button>
                 )}
+
               </div>
 
               <hr className="border-gray-200 dark:border-white/10" />
