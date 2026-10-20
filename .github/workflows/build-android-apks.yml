@@ -64,17 +64,16 @@ jobs:
           content = manifest.read_text()
           if "android.permission.CAMERA" not in content:
               content, count = re.subn(
-                  r"(?m)^([ \\t]*)<application\\b",
-                  '    <uses-permission android:name="android.permission.CAMERA" />\\n'
-                  '    <uses-feature android:name="android.hardware.camera.any" android:required="false" />\\n'
-                  r"\\1<application",
+                  r"(?m)^([ \t]*)<application\b",
+                  '    <uses-permission android:name="android.permission.CAMERA" />\n'
+                  '    <uses-feature android:name="android.hardware.camera.any" android:required="false" />\n'
+                  r"\1<application",
                   content,
                   count=1,
               )
               if count != 1:
                   raise SystemExit("Could not safely add CAMERA permission to AndroidManifest.xml")
               manifest.write_text(content)
-          PY
 
       - name: Sync Capacitor assets
         run: npx cap sync android
