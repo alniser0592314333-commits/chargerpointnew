@@ -366,6 +366,7 @@ export const PublicAboutPage: React.FC = () => {
           {/* Brand Logo & Name */}
           <a
             href="/public/about"
+            onClick={(event) => event.preventDefault()}
             className="flex items-center gap-3 group focus:outline-hidden"
             aria-label={isAr ? 'نقطة الشحن - الصفحة الرئيسية' : 'Charging Point - Home'}
           >

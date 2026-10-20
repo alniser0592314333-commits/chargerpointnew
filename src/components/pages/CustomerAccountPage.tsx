@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
@@ -61,7 +61,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const customerQuery = new URLSearchParams(window.location.search);
   const customerIdFromQuery = customerQuery.get('customerId')?.trim() ?? '';
   const orderQrToken = customerQuery.get('orderQrToken')?.trim() ?? '';
-  const [accountToken, setAccountToken] = useState(customerIdFromQuery || (orderQrToken ? '' : token));
+  const directEntry = token === 'portal' && !customerIdFromQuery && !orderQrToken;
+  const [username, setUsername] = useState('');
+  const [accountToken, setAccountToken] = useState(customerIdFromQuery || (orderQrToken || directEntry ? '' : token));
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
@@ -100,6 +102,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setMode('loading');
       setError('');
       setMessage('');
+      if (directEntry && !accountToken) {
+        setMode('login');
+        return;
+      }
       if (orderQrToken && !accountToken) {
         if (typeof navigator !== 'undefined' && !navigator.onLine) {
           setMode('unavailable');
@@ -190,7 +196,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setMode('unavailable');
       setError(t('تعذّر تحميل صفحة الحساب. تحقق من الاتصال ثم أعد المحاولة.', 'The account page could not load. Check your connection and try again.'));
     }
-  }, [accountToken, orderQrToken, t]);
+  }, [accountToken, directEntry, orderQrToken, t]);
 
   useEffect(() => {
     void loadEntry();
@@ -254,11 +260,24 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
   const submitLogin = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!password) { setErrorMessage('INVALID_CREDENTIALS'); return; }
+    const loginToken = directEntry ? username.trim() : accountToken;
+    if (!loginToken || !password) { setErrorMessage('INVALID_CREDENTIALS'); return; }
     setBusy(true); setError('');
     try {
+      if (directEntry) {
+        const entryResult = await callCustomerAccount<EntryStatus>('entry', { token: loginToken });
+        if (entryResult.error || !entryResult.data?.valid) {
+          setErrorMessage(entryResult.error === 'NETWORK_UNAVAILABLE' ? entryResult.error : 'INVALID_CREDENTIALS');
+          return;
+        }
+        if (!entryResult.data.activated) {
+          setError(t('لإنشاء الحساب لأول مرة، استخدم رمز QR الخاص بحساب العميل.', 'For first-time account setup, scan your customer account QR.'));
+          return;
+        }
+        setEntry(entryResult.data);
+      }
       const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string; customer_qr_token?: string | null }>(
-        'login', { token: accountToken, password },
+        'login', { token: loginToken, password },
       );
       const loginData = result.data;
       if (result.error || !loginData?.session) {
@@ -266,11 +285,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         return;
       }
       const sessionError = await setCustomerSession(loginData.session);
+      if (directEntry) setAccountToken(loginToken);
       if (typeof loginData.customer_qr_token === 'string' && loginData.customer_qr_token.length >= 24) {
         setPortalToken(loginData.customer_qr_token);
-        try { localStorage.setItem(portalTokenCacheKey(accountToken), loginData.customer_qr_token); } catch {}
+        try { localStorage.setItem(portalTokenCacheKey(loginToken), loginData.customer_qr_token); } catch {}
       }
-      await saveSessionExpiry(accountToken, loginData.session_expires_at);
+      await saveSessionExpiry(loginToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
       setPassword('');
       setMessage('');
@@ -398,7 +418,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="cp-auth__pill">{isAr ? 'English' : 'العربية'}</button>
-          <button type="button" onClick={toggleTheme} className="cp-auth__pill !px-0" aria-label={t('تغيير المظهر', 'Toggle appearance')}>{resolvedTheme === 'dark' ? <Sparkles className="h-4 w-4" /> : <span aria-hidden="true" className="text-lg leading-none">◐</span>}</button>
+          <button type="button" onClick={toggleTheme} className="cp-auth__pill !px-0" aria-label={t('تغيير المظهر', 'Toggle appearance')}>{resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
         </div>
       </header>
 
@@ -431,9 +451,16 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                     {t('نتحقق من رابط الحساب بأمان…', 'Securely checking your account link…')}
                   </div>
                 ) : mode === 'unavailable' ? (
-                  <button type="button" onClick={() => { initialized.current = false; void loadEntry(); }} className="cp-auth__btn group">
-                    {t('إعادة المحاولة', 'Try again')} {nextArrow}
-                  </button>
+                  <div className="space-y-3">
+                    <button type="button" onClick={() => { initialized.current = false; void loadEntry(); }} className="cp-auth__btn group">
+                      {t('إعادة المحاولة', 'Try again')} {nextArrow}
+                    </button>
+                    {!customerIdFromQuery && !orderQrToken && token !== 'portal' && (
+                      <button type="button" onClick={() => window.location.assign('/c/portal')} className="w-full rounded-xl border border-[#b9d9d8] px-4 py-3 text-sm font-bold text-[#146069] transition hover:bg-[#e9f7f6] dark:border-[#2b5267] dark:text-[#a8dff5] dark:hover:bg-[#142b38]">
+                        {t('الدخول باسم المستخدم وكلمة المرور', 'Sign in with username and password')}
+                      </button>
+                    )}
+                  </div>
                 ) : mode === 'terms-update' ? (
                   <form className="space-y-5" onSubmit={(event) => void submitTermsUpdate(event)}>
                     <div className="cp-auth__chip text-sm leading-7">{t('راجع الشروط والأحكام وسياسة استخدام حساب العميل. الموافقة لا تغيّر أي بيانات مالية.', 'Review the customer account terms and usage policy. Accepting them does not change any financial records.')}</div>
@@ -471,9 +498,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                   </form>
                 ) : mode === 'login' ? (
                   <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
-                    {customerIdFromQuery && (
+                    {(customerIdFromQuery || directEntry) && (
                       <label className="cp-auth__label">{t('اسم المستخدم / رقم العميل', 'Username / Customer ID')}
-                        <input value={customerIdFromQuery} readOnly autoComplete="username" className="cp-auth__input" aria-label={t('اسم المستخدم / رقم العميل', 'Username / Customer ID')} />
+                        <input value={directEntry ? username : customerIdFromQuery} onChange={directEntry ? (event) => setUsername(event.target.value) : undefined} readOnly={!directEntry} required={directEntry} maxLength={128} autoComplete="username" className="cp-auth__input" aria-label={t('اسم المستخدم / رقم العميل', 'Username / Customer ID')} placeholder={t('أدخل اسم المستخدم أو رقم العميل', 'Enter username or customer ID')} />
                       </label>
                     )}
                     <label className="cp-auth__label">{t('كلمة السر', 'Password')}
