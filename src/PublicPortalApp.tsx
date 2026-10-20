@@ -36,6 +36,41 @@ function scrollPublicViewToTop(): boolean {
 }
 
 const isCustomerAccountPath = (path: string) => path.startsWith('/c/') || path.startsWith('/public/qr/customer/');
+const NATIVE_LAST_ROUTE_KEY = 'cp_customer_native_last_route_v1';
+const NATIVE_SESSION_KEY = 'cp_customer_native_session_active_v1';
+
+function getNativeInitialIntroEnabled(path: string): boolean {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const sessionActive = window.sessionStorage.getItem(NATIVE_SESSION_KEY) === '1';
+    const previousPath = window.sessionStorage.getItem(NATIVE_LAST_ROUTE_KEY) || '';
+    const isAccount = isCustomerAccountPath(path);
+    const previousWasPayment = previousPath.startsWith('/pay/');
+    const previousWasAccount = isCustomerAccountPath(previousPath);
+    const shouldShow = !sessionActive || (
+      isAccount && !previousWasPayment && !previousWasAccount
+    );
+    window.sessionStorage.setItem(NATIVE_SESSION_KEY, '1');
+    window.sessionStorage.setItem(NATIVE_LAST_ROUTE_KEY, path);
+    return shouldShow;
+  } catch {
+    // If session storage is unavailable, preserve the safe launch intro fallback.
+    return true;
+  }
+}
+
+function customerAccountReturnPathForPayment(path: string): string | null {
+  if (!path.startsWith('/pay/')) return null;
+  const token = path.slice('/pay/'.length).split('/')[0];
+  if (!token) return null;
+  try {
+    const rememberedToken = window.localStorage.getItem('last_customer_token')?.trim() || '';
+    if (rememberedToken && decodeURIComponent(token) === rememberedToken) {
+      return '/c/' + encodeURIComponent(rememberedToken);
+    }
+  } catch {}
+  return null;
+}
 
 const publicRoutes = [
   { prefix: '/public/qr/customer/', render: (token: string) => <ThemeProvider defaultTheme="dark"><CustomerAccountPage token={token} /></ThemeProvider> },
@@ -63,6 +98,7 @@ const PublicPortalApp: React.FC = () => {
   const initialPath = useRef(window.location.pathname);
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const pathname = currentPath.split(/[?#]/, 1)[0];
+  const nativeInitialIntro = useRef(getNativeInitialIntroEnabled(pathname));
   const [introKey, setIntroKey] = useState(0);
   const previousPath = useRef(pathname);
   // A payment page opened from the customer account is part of the same account
@@ -114,13 +150,22 @@ const PublicPortalApp: React.FC = () => {
   }, [pathname]);
 
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      window.sessionStorage.setItem(NATIVE_SESSION_KEY, '1');
+      window.sessionStorage.setItem(NATIVE_LAST_ROUTE_KEY, pathname);
+    } catch {}
+  }, [pathname]);
+
+  useEffect(() => {
     const handleBack = () => {
       if (scrollPublicViewToTop()) return;
       // The public portal has one landing page. Detail QR/payment routes return
       // to that landing page; at the landing page Back never exits the app.
       if (pathname !== '/public/about') {
-        window.history.replaceState({ path: '/public/about' }, '', '/public/about');
-        setCurrentPath('/public/about');
+        const backTarget = customerAccountReturnPathForPayment(pathname) || '/public/about';
+        window.history.replaceState({ path: backTarget }, '', backTarget);
+        setCurrentPath(backTarget);
       }
     };
 
@@ -147,8 +192,9 @@ const PublicPortalApp: React.FC = () => {
         return;
       }
       if (pathname !== '/public/about') {
-        window.history.replaceState({ path: '/public/about' }, '', '/public/about');
-        setCurrentPath('/public/about');
+        const backTarget = customerAccountReturnPathForPayment(pathname) || '/public/about';
+        window.history.replaceState({ path: backTarget }, '', backTarget);
+        setCurrentPath(backTarget);
         return;
       }
       window.history.replaceState({ path: pathname }, '', pathname);
@@ -167,7 +213,7 @@ const PublicPortalApp: React.FC = () => {
   let content: React.ReactNode = <PublicNotFound />;
   // Preserve the website's existing one-time intro behavior. In the native customer APK,
   // show the intro on every app entry, including QR deep links.
-  let welcomeEnabled = Capacitor.isNativePlatform() || (initialPath.current === '/public/about' && pathname === '/public/about');
+  let welcomeEnabled = Capacitor.isNativePlatform() ? nativeInitialIntro.current : (initialPath.current === '/public/about' && pathname === '/public/about');
 
   if (pathname === '/public/about') {
     content = <ThemeProvider><PublicAboutPage /></ThemeProvider>;
