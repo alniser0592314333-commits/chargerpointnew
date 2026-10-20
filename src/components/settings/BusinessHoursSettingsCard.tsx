@@ -25,6 +25,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
 
   // Serialize toggle autosaves and form saves so older requests cannot overwrite newer settings.
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const hasUserEditedRef = useRef(false);
 
   const persistConfig = (updates: Partial<BusinessHoursConfig>) => {
     const task = saveQueueRef.current.then(async () => {
@@ -45,6 +46,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   };
 
   const handleActiveToggle = (nextActive: boolean) => {
+    hasUserEditedRef.current = true;
     setIsActive(nextActive);
     setSavedSuccess(false);
     setSavedError(false);
@@ -61,7 +63,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   useEffect(() => {
     let mounted = true;
     const applyConfig = (current: BusinessHoursConfig) => {
-      if (!mounted) return;
+      if (!mounted || hasUserEditedRef.current) return;
       setConfig(current);
       setIsActive(current.isActive);
       setTodayOpenTime(current.todayOpenTime || '08:00');
@@ -168,7 +170,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={todayOpenTime}
-                  onChange={(e) => setTodayOpenTime(e.target.value)}
+                  onChange={(e) => { hasUserEditedRef.current = true; setTodayOpenTime(e.target.value); }}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -181,7 +183,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={todayCloseTime}
-                  onChange={(e) => setTodayCloseTime(e.target.value)}
+                  onChange={(e) => { hasUserEditedRef.current = true; setTodayCloseTime(e.target.value); }}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -204,7 +206,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={tomorrowOpenTime}
-                  onChange={(e) => setTomorrowOpenTime(e.target.value)}
+                  onChange={(e) => { hasUserEditedRef.current = true; setTomorrowOpenTime(e.target.value); }}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -217,7 +219,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={tomorrowCloseTime}
-                  onChange={(e) => setTomorrowCloseTime(e.target.value)}
+                  onChange={(e) => { hasUserEditedRef.current = true; setTomorrowCloseTime(e.target.value); }}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
