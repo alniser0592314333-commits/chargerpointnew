@@ -84,7 +84,7 @@ jobs:
           import re
           import cairosvg
 
-          variant = "\${{ matrix.variant }}"
+          variant = "${{ matrix.variant }}"
           res = Path("android/app/src/main/res")
           full_icon = Path("public/icon.svg")
           foreground_icon = Path("public/charging-point-foreground.svg")
