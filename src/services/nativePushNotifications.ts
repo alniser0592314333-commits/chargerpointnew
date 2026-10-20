@@ -7,7 +7,7 @@ type AppVariant = 'admin' | 'customer';
 type TokenProvider = () => string | null | Promise<string | null>;
 
 const buildVariant = import.meta.env.VITE_APP_VARIANT;
-const nativePushEnabled = import.meta.env.VITE_NATIVE_PUSH_ENABLED !== 'false';
+const nativePushEnabled = import.meta.env.VITE_NATIVE_PUSH_ENABLED === 'true';
 let currentVariant: AppVariant | null = buildVariant === 'admin' || buildVariant === 'customer' ? buildVariant : null;
 let currentTokenProvider: TokenProvider | null = null;
 let currentLocale = 'ar';
