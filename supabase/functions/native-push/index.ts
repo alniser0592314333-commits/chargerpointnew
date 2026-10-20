@@ -192,9 +192,15 @@ Deno.serve(async (request: Request) => {
   }
 
   if (action !== "dispatch") return json(400, { ok: false, error: "UNKNOWN_ACTION" });
-  const expectedSecret = Deno.env.get("PUSH_DISPATCH_SECRET") || "";
   const suppliedSecret = request.headers.get("x-push-dispatch-secret") || "";
-  if (!expectedSecret || !constantTimeEqual(suppliedSecret, expectedSecret)) {
+  if (!suppliedSecret || suppliedSecret.length > 256) {
+    return json(401, { ok: false, error: "UNAUTHORIZED" });
+  }
+  const { data: secretValid, error: secretCheckError } = await admin.rpc(
+    "verify_native_push_dispatch_secret",
+    { p_secret: suppliedSecret },
+  );
+  if (secretCheckError || secretValid !== true) {
     return json(401, { ok: false, error: "UNAUTHORIZED" });
   }
   const source = normalize(input.source, 64);
