@@ -18,8 +18,17 @@ let registrationInFlight = false;
 
 const endpoint = () => config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/native-push';
 
-const deviceId = (): string => {
-  const key = 'cp_native_push_device_id';
+const deviceId = (bearer: string, variant: AppVariant): string => {
+  // Device identifiers are scoped per authenticated identity. They are not secrets
+  // or authorization credentials; the server independently verifies the session.
+  let subject = 'unknown';
+  try {
+    const payload = bearer.split('.')[1];
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+    if (typeof claims.sub === 'string' && claims.sub) subject = claims.sub;
+  } catch {}
+  const key = 'cp_native_push_device_id:' + variant + ':' + subject;
   try {
     const existing = localStorage.getItem(key);
     if (existing && /^[0-9a-f-]{36}$/i.test(existing)) return existing;
@@ -53,7 +62,7 @@ const callEndpoint = async (action: 'register' | 'unregister', bearer: string, t
     },
     body: JSON.stringify({
       action,
-      deviceId: deviceId(),
+      deviceId: deviceId(bearer, currentVariant ?? 'customer'),
       appVariant: currentVariant,
       platform: Capacitor.getPlatform(),
       locale: currentLocale,
