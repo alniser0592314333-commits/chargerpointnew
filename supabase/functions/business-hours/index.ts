@@ -72,7 +72,16 @@ Deno.serve(async (req: Request) => {
     if (!data?.value_json || typeof data.value_json !== "object") {
       return response({ config: defaults(), exists: false });
     }
-    return response({ config: { ...defaults(), ...data.value_json }, exists: true });
+    const today = dateInBusinessTimezone();
+    const shared = { ...defaults(), ...data.value_json } as HoursConfig;
+    // Preserve the app's established midnight rollover rule using the business timezone.
+    if (typeof shared.todayDate === "string" && shared.todayDate < today) {
+      shared.todayOpenTime = shared.tomorrowOpenTime || "08:00";
+      shared.todayCloseTime = shared.tomorrowCloseTime || "22:00";
+      shared.todayDate = today;
+      shared.lastUpdated = new Date().toISOString();
+    }
+    return response({ config: shared, exists: true });
   }
 
   const bearer = req.headers.get("Authorization") || "";
