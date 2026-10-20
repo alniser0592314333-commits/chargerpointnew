@@ -172,11 +172,13 @@ AS $function$
       ON a.id = d.principal_id
      AND a.auth_user_id = s.user_id
      AND a.is_active = true
-    JOIN public.account_sessions admin_session
-      ON admin_session.session_id = s.id
-     AND admin_session.user_id = s.user_id
-     AND admin_session.revoked_at IS NULL
     WHERE d.id = p_device_id
+      AND NOT EXISTS (
+        SELECT 1 FROM public.account_sessions admin_session
+        WHERE admin_session.session_id = s.id
+          AND admin_session.user_id = s.user_id
+          AND admin_session.revoked_at IS NOT NULL
+      )
       AND d.app_variant = 'admin'
       AND d.disabled_at IS NULL
 
