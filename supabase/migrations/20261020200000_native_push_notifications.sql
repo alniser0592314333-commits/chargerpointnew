@@ -1,8 +1,7 @@
 -- Native Android push delivery reuses the existing payment/account event records.
 -- This is device-registration and delivery-idempotency metadata, not a parallel inbox.
--- Required secrets: Vault native_push_function_url and native_push_dispatch_secret.
--- The URL must target /functions/v1/native-push; the dispatch secret must match the
--- Edge Function secret PUSH_DISPATCH_SECRET. Missing Vault values never block business writes.
+-- The migration creates the Vault endpoint and dispatch secret automatically.
+-- Missing Vault values never block authoritative business writes.
 
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA net;
 
