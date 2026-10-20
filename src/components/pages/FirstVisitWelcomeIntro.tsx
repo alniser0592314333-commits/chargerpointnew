@@ -39,8 +39,9 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
       return;
     }
 
-    // The public website keeps its original one-time intro. Native customer APK
-    // plays the intro at every entry: 5 seconds on the first launch, then 2.2s.
+    // The public website keeps its original one-time intro. The native customer APK
+    // keeps the original full intro on first launch, then shows a 4-second intro
+    // on every later launch.
     let nativeFirstLaunch = false;
     if (isNative) {
       try {
@@ -56,8 +57,8 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
     let welcomeTimer = 0;
     let exitTimer = 0;
     let finishTimer = 0;
-    const totalDuration = isNative ? (nativeFirstLaunch ? 5000 : 2200) : 10000;
-    const assemblingDuration = isNative ? (nativeFirstLaunch ? 1500 : 650) : 2100;
+    const totalDuration = isNative ? (nativeFirstLaunch ? 10000 : 4000) : 10000;
+    const assemblingDuration = isNative ? (nativeFirstLaunch ? 2100 : 650) : 2100;
     const exitDuration = isNative ? (nativeFirstLaunch ? 900 : 600) : 900;
     const exitAt = Math.max(assemblingDuration + 250, totalDuration - exitDuration);
 
