@@ -41,6 +41,7 @@ vi.mock('../config/env', () => ({
 
 describe('native push notification integration', () => {
   beforeEach(() => {
+    vi.stubEnv('VITE_NATIVE_PUSH_ENABLED', 'true');
     vi.clearAllMocks();
     mocks.listeners.clear();
     mocks.native = true;
