@@ -451,9 +451,16 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                     {t('نتحقق من رابط الحساب بأمان…', 'Securely checking your account link…')}
                   </div>
                 ) : mode === 'unavailable' ? (
-                  <button type="button" onClick={() => { initialized.current = false; void loadEntry(); }} className="cp-auth__btn group">
-                    {t('إعادة المحاولة', 'Try again')} {nextArrow}
-                  </button>
+                  <div className="space-y-3">
+                    <button type="button" onClick={() => { initialized.current = false; void loadEntry(); }} className="cp-auth__btn group">
+                      {t('إعادة المحاولة', 'Try again')} {nextArrow}
+                    </button>
+                    {!customerIdFromQuery && !orderQrToken && token !== 'portal' && (
+                      <button type="button" onClick={() => window.location.assign('/c/portal')} className="w-full rounded-xl border border-[#b9d9d8] px-4 py-3 text-sm font-bold text-[#146069] transition hover:bg-[#e9f7f6] dark:border-[#2b5267] dark:text-[#a8dff5] dark:hover:bg-[#142b38]">
+                        {t('الدخول باسم المستخدم وكلمة المرور', 'Sign in with username and password')}
+                      </button>
+                    )}
+                  </div>
                 ) : mode === 'terms-update' ? (
                   <form className="space-y-5" onSubmit={(event) => void submitTermsUpdate(event)}>
                     <div className="cp-auth__chip text-sm leading-7">{t('راجع الشروط والأحكام وسياسة استخدام حساب العميل. الموافقة لا تغيّر أي بيانات مالية.', 'Review the customer account terms and usage policy. Accepting them does not change any financial records.')}</div>
