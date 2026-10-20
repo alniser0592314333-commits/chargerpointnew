@@ -6,6 +6,25 @@
 
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA net;
 
+-- The existing customer goal-request workflow emits GOAL_REQUESTED into the
+-- canonical customer-account event feed. Permit that event type at the database
+-- boundary so the same event can drive the existing inbox and native push.
+ALTER TABLE public.customer_account_events
+  DROP CONSTRAINT IF EXISTS customer_account_events_event_type_check;
+ALTER TABLE public.customer_account_events
+  ADD CONSTRAINT customer_account_events_event_type_check
+  CHECK (event_type = ANY (ARRAY[
+    'RESET_REQUESTED'::text,
+    'TEMP_PASSWORD_ISSUED'::text,
+    'PASSWORD_CHANGED'::text,
+    'EMAIL_RESET_SENT'::text,
+    'ACCOUNT_FROZEN'::text,
+    'ACCOUNT_REACTIVATED'::text,
+    'ACCOUNT_CANCELLED'::text,
+    'TERMS_ACCEPTED'::text,
+    'GOAL_REQUESTED'::text
+  ]));
+
 CREATE TABLE IF NOT EXISTS public.native_push_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   device_id uuid NOT NULL,
