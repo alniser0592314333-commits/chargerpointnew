@@ -108,9 +108,9 @@ const PublicPortalApp: React.FC = () => {
       return;
     }
 
-    // Returning to the public landing page ends the account flow. Other public
-    // pages also count as leaving the account, so a later entry is a new visit.
-    customerFlowActive.current = false;
+    // Only returning to the public home page ends the account flow. Other
+    // routes opened from the account (payment/order details) remain part of it.
+    if (pathname === '/public/about') customerFlowActive.current = false;
   }, [pathname]);
 
   useEffect(() => {
