@@ -2,10 +2,14 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 
 type Json = Record<string, unknown>;
 type Variant = "admin" | "customer";
-const json = (status: number, body: Json) => new Response(JSON.stringify(body), {
-  status,
-  headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-});
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-push-dispatch-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json",
+  "Cache-Control": "no-store",
+};
+const json = (status: number, body: Json) => new Response(JSON.stringify(body), { status, headers: corsHeaders });
 const normalize = (value: unknown, max = 256) =>
   typeof value === "string" && value.length <= max ? value.trim() : "";
 const decodeClaims = (token: string): Record<string, unknown> | null => {
@@ -87,7 +91,7 @@ async function sendFcm(token: string, projectId: string, title: string, body: st
 }
 
 Deno.serve(async (request: Request) => {
-  if (request.method === "OPTIONS") return new Response("ok");
+  if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json(405, { ok: false, error: "METHOD_NOT_ALLOWED" });
 
   const url = Deno.env.get("SUPABASE_URL");
@@ -190,6 +194,7 @@ Deno.serve(async (request: Request) => {
   const source = normalize(input.source, 64);
   const recordId = normalize(input.recordId, 64);
   const operation = normalize(input.operation, 16);
+  const eventStatus = normalize(input.newStatus, 64);
   if (!/^[0-9a-f-]{36}$/i.test(recordId) ||
       !["qr_payment_submissions", "customer_account_events"].includes(source) ||
       !["INSERT", "UPDATE"].includes(operation)) return json(400, { ok: false, error: "INVALID_EVENT" });
@@ -205,7 +210,7 @@ Deno.serve(async (request: Request) => {
   if (source === "qr_payment_submissions") {
     const { data: submission, error } = await admin.from("qr_payment_submissions")
       .select("id,customer_id,status,created_at").eq("id", recordId).maybeSingle();
-    if (error || !submission) return json(200, { ok: true, skipped: true });
+    if (error || !submission || (eventStatus && eventStatus !== String(submission.status))) return json(200, { ok: true, skipped: true });
     if (operation === "INSERT" && submission.status === "PENDING") {
       titleAr = "إشعار دفع جديد";
       titleEn = "New payment notification";
@@ -230,7 +235,7 @@ Deno.serve(async (request: Request) => {
   } else {
     const { data: event, error } = await admin.from("customer_account_events")
       .select("id,customer_id,event_type,created_at,is_read").eq("id", recordId).maybeSingle();
-    if (error || !event) return json(200, { ok: true, skipped: true });
+    if (error || !event || (eventStatus && eventStatus !== String(event.event_type))) return json(200, { ok: true, skipped: true });
     const eventType = String(event.event_type || "");
     eventKey += ":" + eventType;
     if (eventType === "RESET_REQUESTED" || eventType === "GOAL_REQUESTED") {
@@ -282,8 +287,9 @@ Deno.serve(async (request: Request) => {
     const locale = recipient.locale === "en" ? "en" : "ar";
     if (!deviceRowId || !token) continue;
     const { data: existing } = await admin.from("native_push_delivery_attempts")
-      .select("status,attempt_count").eq("event_key", eventKey).eq("device_id", recipient.device_id).maybeSingle();
-    if (existing?.status === "SENT" || existing?.status === "SENDING") continue;
+      .select("status,attempt_count,updated_at").eq("event_key", eventKey).eq("device_id", recipient.device_id).maybeSingle();
+    if (existing?.status === "SENT") continue;
+    if (existing?.status === "SENDING" && Date.now() - new Date(String(existing.updated_at)).getTime() < 120_000) continue;
     const nextAttempt = Number(existing?.attempt_count ?? 0) + 1;
     if (nextAttempt > 3) continue;
     const { error: claimError } = await admin.from("native_push_delivery_attempts").upsert({
