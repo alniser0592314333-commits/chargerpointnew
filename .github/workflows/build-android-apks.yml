@@ -12,6 +12,11 @@ on:
       - 'src/main.tsx'
       - 'src/App.tsx'
       - 'src/PublicPortalApp.tsx'
+      - 'src/services/nativePushNotifications.ts'
+      - 'src/tests/native_push_notifications.test.ts'
+      - 'supabase/config.toml'
+      - 'supabase/functions/native-push/**'
+      - 'supabase/migrations/*native_push_notifications.sql'
       - 'capacitor.*.config.json'
       - '.gitignore'
       - '.github/workflows/build-android-apks.yml'
@@ -64,7 +69,7 @@ jobs:
               "native_push_goal_request_reviewed",
               "native_push_device_is_current",
               "claim_native_push_delivery",
-              "'GOAL_REQUESTED'::text",
+              "native_push_function_url",
           ]
           for marker in required:
               if migration.count(marker) < 1:
@@ -176,7 +181,7 @@ jobs:
               )
               if count != 1:
                   raise SystemExit("Could not safely add CAMERA permission to AndroidManifest.xml")
-              manifest.write_text(content)
+          manifest.write_text(content)
 
       - name: Apply official mountain-and-moon launcher icon and localized app name
         run: |
