@@ -189,6 +189,44 @@ $function$;
 REVOKE ALL ON FUNCTION public.native_push_device_is_current(uuid, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.native_push_device_is_current(uuid, boolean) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.claim_native_push_delivery(
+  p_event_key text,
+  p_device_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+DECLARE
+  v_claimed boolean := false;
+BEGIN
+  INSERT INTO public.native_push_delivery_attempts (
+    event_key, device_id, status, attempt_count, updated_at
+  )
+  VALUES (p_event_key, p_device_id, 'SENDING', 1, now())
+  ON CONFLICT (event_key, device_id) DO UPDATE
+    SET status = 'SENDING',
+        attempt_count = public.native_push_delivery_attempts.attempt_count + 1,
+        error_code = NULL,
+        updated_at = now()
+    WHERE public.native_push_delivery_attempts.attempt_count < 3
+      AND (
+        public.native_push_delivery_attempts.status = 'FAILED'
+        OR (
+          public.native_push_delivery_attempts.status = 'SENDING'
+          AND public.native_push_delivery_attempts.updated_at < now() - interval '2 minutes'
+        )
+      )
+  RETURNING true INTO v_claimed;
+
+  RETURN COALESCE(v_claimed, false);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.claim_native_push_delivery(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_native_push_delivery(text, uuid) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.trigger_native_push_for_qr_payment()
 RETURNS trigger
 LANGUAGE plpgsql
