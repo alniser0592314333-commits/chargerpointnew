@@ -71,23 +71,35 @@ const PublicPortalApp: React.FC = () => {
       }
     };
 
+    let startX = 0;
+    let startY = 0;
+    let startedAtEdge = false;
     const nativeBackListener = CapacitorApp.addListener('backButton', handleBack);
     const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) return;
-      const x = event.touches[0].clientX;
-      (window as any).__cpPublicBackStart = { x, y: event.touches[0].clientY, edge: x <= 32 || x >= window.innerWidth - 32 };
+      if (event.touches.length !== 1) { startedAtEdge = false; return; }
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      startedAtEdge = startX <= 32 || startX >= window.innerWidth - 32;
     };
     const handleTouchEnd = (event: TouchEvent) => {
-      const start = (window as any).__cpPublicBackStart as { x: number; y: number; edge: boolean } | undefined;
-      (window as any).__cpPublicBackStart = undefined;
-      if (!start?.edge || event.changedTouches.length !== 1) return;
-      const dx = event.changedTouches[0].clientX - start.x;
-      const dy = Math.abs(event.changedTouches[0].clientY - start.y);
+      if (!startedAtEdge || event.changedTouches.length !== 1) { startedAtEdge = false; return; }
+      startedAtEdge = false;
+      const dx = event.changedTouches[0].clientX - startX;
+      const dy = Math.abs(event.changedTouches[0].clientY - startY);
       if (Math.abs(dx) >= 60 && dy <= 80) handleBack();
     };
     const handlePopState = () => {
-      handleBack();
+      if (scrollPublicViewToTop()) {
+        window.history.replaceState({ path: pathname }, '', pathname);
+        return;
+      }
+      if (pathname !== '/public/about') {
+        window.history.replaceState({ path: '/public/about' }, '', '/public/about');
+        setCurrentPath('/public/about');
+        return;
+      }
       window.history.replaceState({ path: pathname }, '', pathname);
+      setCurrentPath(pathname);
     };
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
@@ -112,7 +124,6 @@ const PublicPortalApp: React.FC = () => {
         const token = decodeURIComponent(rawToken);
         if (token && !token.includes('..')) {
           content = route.render(token);
-          welcomeEnabled = true;
         } else {
           content = <PublicNotFound />;
         }
