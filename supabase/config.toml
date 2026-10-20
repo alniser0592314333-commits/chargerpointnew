@@ -39,3 +39,6 @@ verify_jwt = false
 
 [functions.customer-account]
 verify_jwt = false
+
+[functions.business-hours]
+verify_jwt = false

@@ -104,6 +104,8 @@ jobs:
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-in-by-username/index.ts
       - name: Type-check customer account authentication Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/customer-account/index.ts
+      - name: Type-check shared business-hours Edge Function
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/business-hours/index.ts
       - name: Test username sign-in request validation
         run: deno test --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-in-by-username/requestValidation_test.ts
       - name: Test username sign-in request-to-Auth boundary

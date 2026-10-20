@@ -1,3 +1,6 @@
+import { config as appConfig } from '../config/env';
+import { getSupabaseAuthToken } from './supabase/client';
+
 /**
  * Business Hours & Operational Status Service
  *
@@ -88,6 +91,104 @@ export const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
 /**
  * Reads settings from storage and performs daily rollover if date has shifted.
  */
+
+const SERVER_CONFIG_KEY = 'business_hours_config';
+
+function getBusinessHoursEndpoint(): string | null {
+  if (!appConfig.supabaseUrl || !appConfig.supabaseAnonKey) return null;
+  return `${appConfig.supabaseUrl.replace(/\/+$/, '')}/functions/v1/business-hours`;
+}
+
+/**
+ * Pull the canonical business-hours configuration shared by all browsers.
+ * Local storage remains a fallback/cache for offline viewing only.
+ */
+export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHoursConfig> {
+  const endpoint = getBusinessHoursEndpoint();
+  if (!endpoint || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    return getBusinessHoursConfig();
+  }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        apikey: appConfig.supabaseAnonKey,
+        Authorization: `Bearer ${appConfig.supabaseAnonKey}`,
+      },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`BUSINESS_HOURS_READ_FAILED:${response.status}`);
+    const payload = await response.json();
+    const raw = payload?.config;
+    if (!raw || typeof raw !== 'object') throw new Error('BUSINESS_HOURS_INVALID_RESPONSE');
+    // Until an administrator saves a shared value, preserve this browser's existing
+    // local configuration so the first rollout does not silently replace it with defaults.
+    if (payload?.exists === false) return getBusinessHoursConfig();
+
+    const shared: BusinessHoursConfig = {
+      ...DEFAULT_BUSINESS_HOURS,
+      ...raw,
+      todayOpenTime: typeof raw.todayOpenTime === 'string' ? raw.todayOpenTime : DEFAULT_BUSINESS_HOURS.todayOpenTime,
+      todayCloseTime: typeof raw.todayCloseTime === 'string' ? raw.todayCloseTime : DEFAULT_BUSINESS_HOURS.todayCloseTime,
+      tomorrowOpenTime: typeof raw.tomorrowOpenTime === 'string' ? raw.tomorrowOpenTime : DEFAULT_BUSINESS_HOURS.tomorrowOpenTime,
+      tomorrowCloseTime: typeof raw.tomorrowCloseTime === 'string' ? raw.tomorrowCloseTime : DEFAULT_BUSINESS_HOURS.tomorrowCloseTime,
+      isActive: typeof raw.isActive === 'boolean' ? raw.isActive : DEFAULT_BUSINESS_HOURS.isActive,
+    };
+
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(shared)); } catch {}
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: shared }));
+    }
+    return shared;
+  } catch (error) {
+    console.warn('Unable to refresh shared business hours; using cached copy:', error);
+    return getBusinessHoursConfig();
+  }
+}
+
+/**
+ * Saves locally first for offline continuity, then persists to the shared server.
+ * The caller must not report a public/shared save unless synced is true.
+ */
+export async function saveBusinessHoursConfigAndSync(
+  updates: Partial<BusinessHoursConfig>
+): Promise<{ config: BusinessHoursConfig; synced: boolean }> {
+  const local = saveBusinessHoursConfig(updates);
+  const endpoint = getBusinessHoursEndpoint();
+  const token = getSupabaseAuthToken();
+
+  if (!endpoint || !token || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    return { config: local, synced: false };
+  }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        apikey: appConfig.supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ config: local }),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`BUSINESS_HOURS_SAVE_FAILED:${response.status}:${detail}`);
+    }
+    const payload = await response.json();
+    const shared = { ...local, ...(payload?.config || {}) } as BusinessHoursConfig;
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(shared)); } catch {}
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: shared }));
+    }
+    return { config: shared, synced: true };
+  } catch (error) {
+    console.error('Business hours remain local because server sync failed:', error);
+    return { config: local, synced: false };
+  }
+}
+
 export function getBusinessHoursConfig(): BusinessHoursConfig {
   const todayStr = getLocalDateString();
   let config: BusinessHoursConfig = { ...DEFAULT_BUSINESS_HOURS };

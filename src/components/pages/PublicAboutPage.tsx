@@ -32,6 +32,7 @@ import { AppLogo } from '../qr/AppLogo';
 import { QrScannerModal } from '../qr/QrScannerModal';
 import {
   getBusinessHoursConfig,
+  refreshBusinessHoursConfigFromServer,
   computeOperationalStatus,
   subscribeBusinessHours,
   BusinessHoursConfig,
@@ -82,23 +83,34 @@ export const PublicAboutPage: React.FC = () => {
 
     updateStatus();
 
-    // Recompute every 30 seconds for live countdown
+    // Hydrate from the shared server configuration; local storage is only the offline cache.
+    const refreshSharedStatus = () => {
+      void refreshBusinessHoursConfigFromServer().then((cfg) => {
+        setHoursConfig(cfg);
+        setOperationalStatus(computeOperationalStatus(cfg));
+      });
+    };
+    refreshSharedStatus();
+
+    // Keep countdown local; poll shared settings less frequently for changes from other devices.
     const intervalId = window.setInterval(updateStatus, 30000);
+    const sharedIntervalId = window.setInterval(refreshSharedStatus, 60000);
     const unsubscribe = subscribeBusinessHours((updatedCfg) => {
       setHoursConfig(updatedCfg);
       setOperationalStatus(computeOperationalStatus(updatedCfg));
     });
 
     // Re-read persisted settings when returning to the tab/page as well as on clock ticks.
-    const refreshFromStorage = () => updateStatus();
+    const refreshFromStorage = () => refreshSharedStatus();
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshFromStorage();
+      if (document.visibilityState === 'visible') refreshSharedStatus();
     };
     window.addEventListener('focus', refreshFromStorage);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.clearInterval(intervalId);
+      window.clearInterval(sharedIntervalId);
       window.removeEventListener('focus', refreshFromStorage);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubscribe();
