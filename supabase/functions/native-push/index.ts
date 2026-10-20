@@ -342,7 +342,13 @@ Deno.serve(async (request: Request) => {
       p_device_id: deviceRowId,
       p_allow_account_status_notice: allowRevokedCustomerNotice,
     });
-    if (deviceCheckError || deviceIsCurrent !== true) {
+    if (deviceCheckError) {
+      // A transient verifier/database error is not proof that the session was revoked.
+      // Keep the binding and let a later event retry rather than disabling valid devices.
+      failed += 1;
+      continue;
+    }
+    if (deviceIsCurrent !== true) {
       await admin.from("native_push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceRowId);
       continue;
     }
