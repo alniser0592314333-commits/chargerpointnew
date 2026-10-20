@@ -293,7 +293,19 @@ Deno.serve(async (request: Request) => {
     if (error || !goalRequest || (eventStatus && eventStatus !== String(goalRequest.status))) {
       return json(200, { ok: true, skipped: true });
     }
-    if (operation === "UPDATE" && ["APPROVED", "REJECTED"].includes(String(goalRequest.status))) {
+    if (operation === "INSERT" && goalRequest.status === "PENDING") {
+      eventKey += ":PENDING";
+      titleAr = "طلب هدف جديد";
+      titleEn = "New goal request";
+      bodyAr = "أرسل أحد العملاء طلب إنشاء هدف جديد بانتظار المراجعة.";
+      bodyEn = "A customer submitted a new goal request for review.";
+      targetPath = "/app/goals";
+      const { data, error: recipientError } = await admin.from("native_push_devices")
+        .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+        .eq("app_variant", "admin").is("disabled_at", null);
+      if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      recipients = data ?? [];
+    } else if (operation === "UPDATE" && ["APPROVED", "REJECTED"].includes(String(goalRequest.status))) {
       eventKey += ":" + String(goalRequest.status);
       titleAr = goalRequest.status === "APPROVED" ? "تمت الموافقة على طلب الهدف" : "تم رفض طلب الهدف";
       titleEn = goalRequest.status === "APPROVED" ? "Goal request approved" : "Goal request rejected";
