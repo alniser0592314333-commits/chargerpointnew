@@ -321,17 +321,12 @@ Deno.serve(async (request: Request) => {
       await admin.from("native_push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceRowId);
       continue;
     }
-    const { data: existing } = await admin.from("native_push_delivery_attempts")
-      .select("status,attempt_count,updated_at").eq("event_key", eventKey).eq("device_id", recipient.device_id).maybeSingle();
-    if (existing?.status === "SENT") continue;
-    if (existing?.status === "SENDING" && Date.now() - new Date(String(existing.updated_at)).getTime() < 120_000) continue;
-    const nextAttempt = Number(existing?.attempt_count ?? 0) + 1;
-    if (nextAttempt > 3) continue;
-    const { error: claimError } = await admin.from("native_push_delivery_attempts").upsert({
-      event_key: eventKey, device_id: recipient.device_id, status: "SENDING",
-      attempt_count: nextAttempt, updated_at: new Date().toISOString(),
-    }, { onConflict: "event_key,device_id" });
+    const { data: claimed, error: claimError } = await admin.rpc("claim_native_push_delivery", {
+      p_event_key: eventKey,
+      p_device_id: recipient.device_id,
+    });
     if (claimError) { failed += 1; continue; }
+    if (claimed !== true) continue;
     try {
       await sendFcm(token, projectId, locale === "en" ? titleEn : titleAr,
         locale === "en" ? bodyEn : bodyAr, eventKey, targetPath);
