@@ -127,6 +127,7 @@ Deno.serve(async (request: Request) => {
     }
     const claims = decodeClaims(bearer);
     const sessionId = normalize(claims?.session_id, 64);
+    if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return json(403, { ok: false, error: "ACTIVE_SESSION_REQUIRED" });
     let principalId = "";
     let customerId: string | null = null;
 
@@ -149,6 +150,11 @@ Deno.serve(async (request: Request) => {
         .eq("auth_user_id", user.id).maybeSingle();
       if (sessionError || !session || session.revoked_at || session.session_id !== sessionId ||
           new Date(session.expires_at).getTime() <= Date.now()) {
+        return json(403, { ok: false, error: "ACTIVE_CUSTOMER_SESSION_REQUIRED" });
+      }
+      const { data: customer, error: customerError } = await admin.from("customers")
+        .select("id,is_active,status,deleted_at").eq("id", link.customer_id).maybeSingle();
+      if (customerError || !customer || customer.is_active !== true || customer.deleted_at || customer.status === "DELETED") {
         return json(403, { ok: false, error: "ACTIVE_CUSTOMER_SESSION_REQUIRED" });
       }
       principalId = user.id;
@@ -206,6 +212,7 @@ Deno.serve(async (request: Request) => {
   let bodyEn = "";
   let targetPath = "/app/notifications";
   let eventKey = source + ":" + recordId;
+  let allowRevokedCustomerNotice = false;
 
   if (source === "qr_payment_submissions") {
     const { data: submission, error } = await admin.from("qr_payment_submissions")
@@ -260,6 +267,7 @@ Deno.serve(async (request: Request) => {
       };
       const message = messages[eventType];
       if (!message) return json(200, { ok: true, skipped: true });
+      allowRevokedCustomerNotice = ["ACCOUNT_FROZEN", "ACCOUNT_CANCELLED", "ACCOUNT_REACTIVATED"].includes(eventType);
       titleAr = message[0]; titleEn = message[1]; bodyAr = message[2]; bodyEn = message[3];
       targetPath = "/public/about";
       const { data, error: recipientError } = await admin.from("native_push_devices")
@@ -305,6 +313,14 @@ Deno.serve(async (request: Request) => {
     const token = String(recipient.token ?? "");
     const locale = recipient.locale === "en" ? "en" : "ar";
     if (!deviceRowId || !token) continue;
+    const { data: deviceIsCurrent, error: deviceCheckError } = await admin.rpc("native_push_device_is_current", {
+      p_device_id: deviceRowId,
+      p_allow_account_status_notice: allowRevokedCustomerNotice,
+    });
+    if (deviceCheckError || deviceIsCurrent !== true) {
+      await admin.from("native_push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceRowId);
+      continue;
+    }
     const { data: existing } = await admin.from("native_push_delivery_attempts")
       .select("status,attempt_count,updated_at").eq("event_key", eventKey).eq("device_id", recipient.device_id).maybeSingle();
     if (existing?.status === "SENT") continue;
