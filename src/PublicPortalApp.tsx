@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { I18nProvider } from './i18n/i18nContext';
 import { ThemeProvider } from './theme/themeContext';
@@ -57,6 +57,7 @@ const PublicNotFound: React.FC = () => (
  * application router, authenticated layout, sidebar, or admin navigation.
  */
 const PublicPortalApp: React.FC = () => {
+  const initialPath = useRef(window.location.pathname);
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const pathname = currentPath.split(/[?#]/, 1)[0];
 
@@ -112,7 +113,7 @@ const PublicPortalApp: React.FC = () => {
     };
   }, [pathname]);
   let content: React.ReactNode = <PublicNotFound />;
-  let welcomeEnabled = pathname === '/public/about';
+  let welcomeEnabled = initialPath.current === '/public/about' && pathname === '/public/about';
 
   if (pathname === '/public/about') {
     content = <ThemeProvider><PublicAboutPage /></ThemeProvider>;
