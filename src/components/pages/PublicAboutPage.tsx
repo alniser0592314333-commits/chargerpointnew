@@ -117,12 +117,14 @@ export const PublicAboutPage: React.FC = () => {
       if (document.visibilityState === 'visible') refreshSharedStatus();
     };
     window.addEventListener('focus', refreshFromStorage);
+    window.addEventListener('online', refreshSharedStatus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.clearInterval(intervalId);
       window.clearInterval(sharedIntervalId);
       window.removeEventListener('focus', refreshFromStorage);
+      window.removeEventListener('online', refreshSharedStatus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubscribe();
     };
