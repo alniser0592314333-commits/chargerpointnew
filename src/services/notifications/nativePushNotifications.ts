@@ -6,10 +6,11 @@ import { config } from '../config/env';
 type AppVariant = 'admin' | 'customer';
 type TokenProvider = () => string | null | Promise<string | null>;
 
-let currentVariant: AppVariant | null = null;
+const buildVariant = import.meta.env.VITE_APP_VARIANT;
+let currentVariant: AppVariant | null = buildVariant === 'admin' || buildVariant === 'customer' ? buildVariant : null;
 let currentTokenProvider: TokenProvider | null = null;
 let currentLocale = 'ar';
-let currentNavigationTarget = '/app/notifications';
+let currentNavigationTarget = currentVariant === 'customer' ? '/public/about' : '/app/notifications';
 let latestPushToken: string | null = null;
 let lastAuthorizedToken: string | null = null;
 let listenersReady: Promise<void> | null = null;
@@ -140,6 +141,19 @@ async function ensureListeners() {
     throw error;
   });
   return listenersReady;
+}
+
+/** Attach tap listeners at app startup, before authentication restoration finishes. */
+export async function initializeNativePushNotificationListeners(variant: AppVariant, locale: string): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  currentVariant = variant;
+  currentNavigationTarget = notificationTarget(variant);
+  currentLocale = locale === 'en' ? 'en' : 'ar';
+  try {
+    await ensureListeners();
+  } catch (error) {
+    console.warn('Native notification listeners could not be initialized.', error);
+  }
 }
 
 /**
