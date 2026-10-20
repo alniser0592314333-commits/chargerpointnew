@@ -62,6 +62,20 @@ const PublicPortalApp: React.FC = () => {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const pathname = currentPath.split(/[?#]/, 1)[0];
 
+  // The native APK should reopen the last signed-in customer's portal after a full
+  // process restart. Keep the website's public landing-page behavior unchanged.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || pathname !== '/public/about') return;
+    let savedToken = '';
+    try { savedToken = window.localStorage.getItem('last_customer_token')?.trim() || ''; } catch {}
+    if (!savedToken || savedToken.length > 512) return;
+    const nextPath = '/c/' + encodeURIComponent(savedToken);
+    window.history.replaceState({ path: nextPath }, '', nextPath);
+    setCurrentPath(nextPath);
+  // Run only for the initial native landing route.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const handleBack = () => {
       if (scrollPublicViewToTop()) return;
