@@ -3,7 +3,7 @@
 -- The migration creates the Vault endpoint and dispatch secret automatically.
 -- Missing Vault values never block authoritative business writes.
 
-CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA net;
+CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- Generate the dispatch credential inside Vault instead of asking operators to
 -- copy a secret between database and Edge Function settings.
