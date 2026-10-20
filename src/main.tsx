@@ -4,6 +4,7 @@ import './index.css';
 
 const root = createRoot(document.getElementById('root')!);
 const pathname = window.location.pathname;
+const appVariant = import.meta.env.VITE_APP_VARIANT;
 const isPublicPortalRoute =
   pathname === '/public/about' ||
   pathname.startsWith('/c/') ||
@@ -13,10 +14,7 @@ const isPublicPortalRoute =
   pathname.startsWith('/public/qr/customer/') ||
   pathname.startsWith('/public/qr/order/');
 
-// Public QR links use a separate entry module. Do not initialize the admin app,
-// its auth/session bootstrap, PWA capture, or authenticated shell on customer pages.
-if (isPublicPortalRoute) {
-  // Replace the admin application's browser identity with a customer-facing one.
+const prepareCustomerIdentity = () => {
   document.title = 'نقطة الشحن | بوابة العميل';
   const description = document.querySelector('meta[name="description"]');
   description?.setAttribute('content', 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
@@ -30,10 +28,30 @@ if (isPublicPortalRoute) {
   document.documentElement.classList.add('light');
   document.documentElement.lang = 'ar';
   document.documentElement.dir = 'rtl';
+};
+
+// Customer APK: its only application entry is the customer portal. Opening the
+// installed app starts at the public landing page, never the administrator login.
+if (appVariant === 'customer') {
+  if (pathname === '/' || pathname === '/app' || pathname === '/login') {
+    window.history.replaceState({ path: '/public/about' }, '', '/public/about');
+  }
+  prepareCustomerIdentity();
+  void import('./PublicPortalApp').then(({ default: PublicPortalApp }) => {
+    root.render(<StrictMode><PublicPortalApp /></StrictMode>);
+  });
+} else if (appVariant !== 'admin' && isPublicPortalRoute) {
+  // Preserve the existing web/PWA behavior: public QR links open the isolated
+  // customer entry without initializing the admin app or its local business store.
+  prepareCustomerIdentity();
   void import('./PublicPortalApp').then(({ default: PublicPortalApp }) => {
     root.render(<StrictMode><PublicPortalApp /></StrictMode>);
   });
 } else {
+  // The admin APK intentionally does not route into the public customer portal.
+  if (appVariant === 'admin' && isPublicPortalRoute) {
+    window.history.replaceState({ path: '/app' }, '', '/app');
+  }
   void import('./services/pwaInstallService').then(({ initializePWAInstallCapture }) => {
     initializePWAInstallCapture();
   });
