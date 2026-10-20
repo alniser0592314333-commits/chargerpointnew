@@ -129,6 +129,8 @@ jobs:
         run: npm install
 
       - name: Build selected web variant
+        env:
+          VITE_NATIVE_PUSH_ENABLED: ${{ (matrix.variant == 'customer' && secrets.GOOGLE_SERVICES_JSON_CUSTOMER_BASE64 != '') || (matrix.variant == 'admin' && secrets.GOOGLE_SERVICES_JSON_ADMIN_BASE64 != '') }}
         run: npm run build:${{ matrix.variant }}
 
       - name: Select Capacitor app configuration
