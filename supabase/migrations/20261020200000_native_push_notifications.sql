@@ -6,9 +6,7 @@
 
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA net;
 
--- The existing customer goal-request workflow emits GOAL_REQUESTED into the
--- canonical customer-account event feed. Permit that event type at the database
--- boundary so the same event can drive the existing inbox and native push.
+-- GOAL_REQUESTED is emitted by the existing customer goal-request workflow.
 ALTER TABLE public.customer_account_events
   DROP CONSTRAINT IF EXISTS customer_account_events_event_type_check;
 ALTER TABLE public.customer_account_events
@@ -93,8 +91,7 @@ BEGIN
   WHERE name = 'native_push_dispatch_secret'
   LIMIT 1;
 
-  -- Push is best-effort: notification infrastructure must never roll back a payment,
-  -- account event, or other authoritative business transaction.
+  -- Push is best-effort: it must never roll back an authoritative business write.
   IF COALESCE(v_url, '') = '' OR COALESCE(v_secret, '') = '' THEN
     RETURN;
   END IF;
@@ -121,6 +118,10 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.enqueue_native_push_event(text, uuid, text, text) FROM PUBLIC, anon, authenticated;
 
+-- Called by the Edge Function before each send. Device tokens are not enough:
+-- the underlying Auth session and the corresponding admin/customer session must
+-- still be valid. Generic account-status/recovery alerts may bypass the app-level
+-- customer session revocation, but never a deleted/expired Supabase Auth session.
 CREATE OR REPLACE FUNCTION public.native_push_device_is_current(
   p_device_id uuid,
   p_allow_account_status_notice boolean DEFAULT false
@@ -222,19 +223,6 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.trigger_native_push_for_qr_payment() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.trigger_native_push_for_customer_event() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS native_push_qr_payment_submission ON public.qr_payment_submissions;
-CREATE TRIGGER native_push_qr_payment_submission
-AFTER INSERT OR UPDATE OF status ON public.qr_payment_submissions
-FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_qr_payment();
-
-DROP TRIGGER IF EXISTS native_push_customer_account_event ON public.customer_account_events;
-CREATE TRIGGER native_push_customer_account_event
-AFTER INSERT ON public.customer_account_events
-FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_customer_event();
-
 CREATE OR REPLACE FUNCTION public.trigger_native_push_for_goal_request()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -252,142 +240,9 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.trigger_native_push_for_goal_request() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS native_push_goal_request_reviewed ON public.goal_requests;
-CREATE TRIGGER native_push_goal_request_reviewed
-AFTER UPDATE OF status ON public.goal_requests
-FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_goal_request();
-
-COMMENT ON TABLE public.native_push_devices IS
-  'FCM device bindings for authenticated admin/customer installations; no notification content is stored here.';
-COMMENT ON TABLE public.native_push_delivery_attempts IS
-  'Idempotency and delivery diagnostics for native push; canonical notification content remains in existing business event tables.';
-),
-  platform text NOT NULL CHECK (platform IN ('android', 'ios')),
-  locale text NOT NULL DEFAULT 'ar' CHECK (locale IN ('ar', 'en')),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  last_seen_at timestamptz NOT NULL DEFAULT now(),
-  disabled_at timestamptz NULL,
-  CONSTRAINT native_push_device_identity_check CHECK (
-    (app_variant = 'customer' AND customer_id IS NOT NULL AND auth_session_id IS NOT NULL)
-    OR (app_variant = 'admin' AND customer_id IS NULL)
-  ),
-  CONSTRAINT native_push_devices_variant_device_key UNIQUE (app_variant, device_id)
-);
-
-CREATE INDEX IF NOT EXISTS native_push_devices_active_variant_idx
-  ON public.native_push_devices (app_variant, customer_id)
-  WHERE disabled_at IS NULL;
-
-CREATE TABLE IF NOT EXISTS public.native_push_delivery_attempts (
-  event_key text NOT NULL CHECK (length(event_key) BETWEEN 1 AND 256),
-  device_id uuid NOT NULL,
-  status text NOT NULL CHECK (status IN ('SENDING', 'SENT', 'FAILED')),
-  attempt_count integer NOT NULL DEFAULT 1 CHECK (attempt_count BETWEEN 1 AND 3),
-  sent_at timestamptz NULL,
-  error_code text NULL,
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (event_key, device_id)
-);
-
-ALTER TABLE public.native_push_devices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.native_push_delivery_attempts ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.native_push_devices FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON TABLE public.native_push_delivery_attempts FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.native_push_devices TO service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.native_push_delivery_attempts TO service_role;
-
-CREATE OR REPLACE FUNCTION public.enqueue_native_push_event(
-  p_source text,
-  p_record_id uuid,
-  p_operation text,
-  p_new_status text DEFAULT NULL
-)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog, public, vault, net
-AS $function$
-DECLARE
-  v_url text;
-  v_secret text;
-BEGIN
-  SELECT decrypted_secret INTO v_url
-  FROM vault.decrypted_secrets
-  WHERE name = 'native_push_function_url'
-  LIMIT 1;
-
-  SELECT decrypted_secret INTO v_secret
-  FROM vault.decrypted_secrets
-  WHERE name = 'native_push_dispatch_secret'
-  LIMIT 1;
-
-  -- Push is best-effort: notification infrastructure must never roll back a payment,
-  -- account event, or other authoritative business transaction.
-  IF COALESCE(v_url, '') = '' OR COALESCE(v_secret, '') = '' THEN
-    RETURN;
-  END IF;
-
-  PERFORM net.http_post(
-    url := v_url,
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'x-push-dispatch-secret', v_secret
-    ),
-    body := jsonb_build_object(
-      'action', 'dispatch',
-      'source', p_source,
-      'recordId', p_record_id::text,
-      'operation', p_operation,
-      'newStatus', p_new_status
-    ),
-    timeout_milliseconds := 1500
-  );
-EXCEPTION WHEN OTHERS THEN
-  RAISE WARNING 'Native push enqueue failed for %.%: %', p_source, p_record_id, SQLSTATE;
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.enqueue_native_push_event(text, uuid, text, text) FROM PUBLIC, anon, authenticated;
-
-CREATE OR REPLACE FUNCTION public.trigger_native_push_for_qr_payment()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog, public
-AS $function$
-BEGIN
-  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
-    RETURN NEW;
-  END IF;
-  IF TG_OP = 'INSERT' AND NEW.status <> 'PENDING' THEN
-    RETURN NEW;
-  END IF;
-  PERFORM public.enqueue_native_push_event(
-    'qr_payment_submissions', NEW.id, TG_OP, NEW.status::text
-  );
-  RETURN NEW;
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.trigger_native_push_for_customer_event()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog, public
-AS $function$
-BEGIN
-  PERFORM public.enqueue_native_push_event(
-    'customer_account_events', NEW.id, TG_OP, NEW.event_type::text
-  );
-  RETURN NEW;
-END;
-$function$;
-
 REVOKE ALL ON FUNCTION public.trigger_native_push_for_qr_payment() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.trigger_native_push_for_customer_event() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trigger_native_push_for_goal_request() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS native_push_qr_payment_submission ON public.qr_payment_submissions;
 CREATE TRIGGER native_push_qr_payment_submission
@@ -398,25 +253,6 @@ DROP TRIGGER IF EXISTS native_push_customer_account_event ON public.customer_acc
 CREATE TRIGGER native_push_customer_account_event
 AFTER INSERT ON public.customer_account_events
 FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_customer_event();
-
-CREATE OR REPLACE FUNCTION public.trigger_native_push_for_goal_request()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog, public
-AS $function$
-BEGIN
-  IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
-    RETURN NEW;
-  END IF;
-  PERFORM public.enqueue_native_push_event(
-    'goal_requests', NEW.id, TG_OP, NEW.status::text
-  );
-  RETURN NEW;
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.trigger_native_push_for_goal_request() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS native_push_goal_request_reviewed ON public.goal_requests;
 CREATE TRIGGER native_push_goal_request_reviewed
