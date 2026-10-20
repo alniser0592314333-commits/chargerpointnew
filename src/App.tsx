@@ -44,7 +44,8 @@ import { NotFoundPage } from './components/pages/NotFoundPage';
 import { UnauthorizedPage } from './components/pages/UnauthorizedPage';
 import { AdminManagementPage } from './components/pages/AdminManagementPage';
 import { UserSession } from './services/auth/authService';
-import { registerSuspensionHandler } from './services/supabase/client';
+import { getSupabaseAuthToken, registerSuspensionHandler } from './services/supabase/client';
+import { startNativePushNotifications, stopNativePushNotifications } from './services/nativePushNotifications';
 import { ShieldAlert } from 'lucide-react';
 import { DesignSystemPlayground } from './components/playground/DesignSystemPlayground';
 import { Button } from './components/ui/Button';
@@ -116,6 +117,11 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
   const [userSession, setUserSession] = useState<UserSession | null>(null);
+
+  useEffect(() => {
+    if (!userSession) return;
+    void startNativePushNotifications('admin', () => getSupabaseAuthToken(), document.documentElement.lang);
+  }, [userSession]);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [isBootRetrying, setIsBootRetrying] = useState(false);
@@ -180,6 +186,7 @@ export default function App() {
           }
           try {
             if (!(await isCurrentAccountSessionActive())) {
+              await stopNativePushNotifications();
               await authService.logout();
               authenticatedSession = null;
               if (isMounted) {
