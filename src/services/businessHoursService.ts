@@ -96,7 +96,7 @@ const SERVER_CONFIG_KEY = 'business_hours_config';
 
 function getBusinessHoursEndpoint(): string | null {
   if (!appConfig.supabaseUrl || !appConfig.supabaseAnonKey) return null;
-  return `${appConfig.supabaseUrl.replace(/\\/+$/, '')}/functions/v1/business-hours`;
+  return `${appConfig.supabaseUrl.replace(/\/+$/, '')}/functions/v1/business-hours`;
 }
 
 /**
