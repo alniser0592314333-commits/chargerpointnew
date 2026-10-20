@@ -2,6 +2,9 @@ name: Build Customer and Admin Android APKs
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/customer-admin-android-builds-2026-10-20
   pull_request:
     paths:
       - 'package.json'
