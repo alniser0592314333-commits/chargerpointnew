@@ -37,7 +37,9 @@ if (appVariant === 'customer') {
     window.history.replaceState({ path: '/public/about' }, '', '/public/about');
   }
   prepareCustomerIdentity();
-  void import('./PublicPortalApp').then(({ default: PublicPortalApp }) => {
+  void import('./services/nativePushNotifications').then(async ({ initializeNativePushNotificationListeners }) => {
+    await initializeNativePushNotificationListeners('customer', document.documentElement.lang);
+    const { default: PublicPortalApp } = await import('./PublicPortalApp');
     root.render(<StrictMode><PublicPortalApp /></StrictMode>);
   });
 } else if (appVariant !== 'admin' && isPublicPortalRoute) {
@@ -55,7 +57,15 @@ if (appVariant === 'customer') {
   void import('./services/pwaInstallService').then(({ initializePWAInstallCapture }) => {
     initializePWAInstallCapture();
   });
-  void import('./App.tsx').then(({ default: App }) => {
-    root.render(<StrictMode><App /></StrictMode>);
-  });
+  if (appVariant === 'admin') {
+    void import('./services/nativePushNotifications').then(async ({ initializeNativePushNotificationListeners }) => {
+      await initializeNativePushNotificationListeners('admin', document.documentElement.lang);
+      const { default: App } = await import('./App.tsx');
+      root.render(<StrictMode><App /></StrictMode>);
+    });
+  } else {
+    void import('./App.tsx').then(({ default: App }) => {
+      root.render(<StrictMode><App /></StrictMode>);
+    });
+  }
 }
