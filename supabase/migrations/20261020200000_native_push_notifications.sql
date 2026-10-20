@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS public.native_push_devices (
   app_variant text NOT NULL CHECK (app_variant IN ('admin', 'customer')),
   principal_id uuid NOT NULL,
   customer_id uuid NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-  auth_session_id text NOT NULL CHECK (auth_session_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
+  auth_session_id text NOT NULL CHECK (auth_session_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'),
   platform text NOT NULL CHECK (platform IN ('android', 'ios')),
   locale text NOT NULL DEFAULT 'ar' CHECK (locale IN ('ar', 'en')),
   created_at timestamptz NOT NULL DEFAULT now(),
