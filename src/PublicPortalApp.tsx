@@ -35,6 +35,8 @@ function scrollPublicViewToTop(): boolean {
   return true;
 }
 
+const isCustomerAccountPath = (path: string) => path.startsWith('/c/') || path.startsWith('/public/qr/customer/');
+
 const publicRoutes = [
   { prefix: '/public/qr/customer/', render: (token: string) => <ThemeProvider defaultTheme="dark"><CustomerAccountPage token={token} /></ThemeProvider> },
   { prefix: '/public/qr/order/', render: (token: string) => <ThemeProvider><PublicOrderPage token={token} /></ThemeProvider> },
@@ -61,6 +63,12 @@ const PublicPortalApp: React.FC = () => {
   const initialPath = useRef(window.location.pathname);
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const pathname = currentPath.split(/[?#]/, 1)[0];
+  const [introKey, setIntroKey] = useState(0);
+  const previousPath = useRef(pathname);
+  // A payment page opened from the customer account is part of the same account
+  // flow. Returning from payment must not replay the intro; leaving for the public
+  // home page resets the flow so the next account entry gets a fresh 4-second intro.
+  const customerFlowActive = useRef(isCustomerAccountPath(pathname));
 
   // The native APK should reopen the last signed-in customer's portal after a full
   // process restart. Keep the website's public landing-page behavior unchanged.
@@ -70,11 +78,40 @@ const PublicPortalApp: React.FC = () => {
     try { savedToken = window.localStorage.getItem('last_customer_token')?.trim() || ''; } catch {}
     if (!savedToken || savedToken.length > 512) return;
     const nextPath = '/c/' + encodeURIComponent(savedToken);
+    // This is restoration of the current app session, not a user navigating into
+    // the account; the launch intro already covers this transition.
+    customerFlowActive.current = true;
     window.history.replaceState({ path: nextPath }, '', nextPath);
     setCurrentPath(nextPath);
   // Run only for the initial native landing route.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const previous = previousPath.current;
+    previousPath.current = pathname;
+    if (previous === pathname) return;
+
+    if (isCustomerAccountPath(pathname)) {
+      if (Capacitor.isNativePlatform() && !customerFlowActive.current) {
+        setIntroKey((key) => key + 1);
+      }
+      customerFlowActive.current = true;
+      return;
+    }
+
+    if (pathname.startsWith('/pay/')) {
+      // Keep the account flow active only when payment was opened from it.
+      if (!isCustomerAccountPath(previous) && !customerFlowActive.current) {
+        customerFlowActive.current = false;
+      }
+      return;
+    }
+
+    // Returning to the public landing page ends the account flow. Other public
+    // pages also count as leaving the account, so a later entry is a new visit.
+    customerFlowActive.current = false;
+  }, [pathname]);
 
   useEffect(() => {
     const handleBack = () => {
@@ -151,7 +188,7 @@ const PublicPortalApp: React.FC = () => {
     }
   }
 
-  return <I18nProvider><FirstVisitWelcomeIntro enabled={welcomeEnabled} />{content}</I18nProvider>;
+  return <I18nProvider><FirstVisitWelcomeIntro key={introKey} enabled={welcomeEnabled} />{content}</I18nProvider>;
 };
 
 export default PublicPortalApp;
