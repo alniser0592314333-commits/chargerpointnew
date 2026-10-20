@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { I18nProvider } from './i18n/i18nContext';
 import { ThemeProvider } from './theme/themeContext';
 import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
@@ -113,7 +114,9 @@ const PublicPortalApp: React.FC = () => {
     };
   }, [pathname]);
   let content: React.ReactNode = <PublicNotFound />;
-  let welcomeEnabled = initialPath.current === '/public/about' && pathname === '/public/about';
+  // Preserve the website's existing one-time intro behavior. In the native customer APK,
+  // show the intro on every app entry, including QR deep links.
+  let welcomeEnabled = Capacitor.isNativePlatform() || (initialPath.current === '/public/about' && pathname === '/public/about');
 
   if (pathname === '/public/about') {
     content = <ThemeProvider><PublicAboutPage /></ThemeProvider>;
