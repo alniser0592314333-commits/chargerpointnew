@@ -89,8 +89,18 @@ export const PublicAboutPage: React.FC = () => {
       setOperationalStatus(computeOperationalStatus(updatedCfg));
     });
 
+    // Re-read persisted settings when returning to the tab/page as well as on clock ticks.
+    const refreshFromStorage = () => updateStatus();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshFromStorage();
+    };
+    window.addEventListener('focus', refreshFromStorage);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshFromStorage);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       unsubscribe();
     };
   }, []);
@@ -179,8 +189,8 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Smartphones',
           descriptionAr: 'شحن فائق السرعة مع مراقبة حرارية لجميع هواتف أبل وسامسونج وشاومي',
           descriptionEn: 'High-speed monitored charging for Apple, Samsung, Xiaomi & all phones',
-          minPrice: 200,
-          maxPrice: 300,
+          minPrice: 100,
+          maxPrice: 200,
           count: 4,
           icon: Smartphone,
         },
@@ -190,8 +200,8 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Power Banks & Accessories',
           descriptionAr: 'شحن مكثف للبطاريات المحمولة وأجهزة الشحن السريع بقدرات حتى 65W',
           descriptionEn: 'High-wattage charging for portable battery packs up to 65W',
-          minPrice: 250,
-          maxPrice: 500,
+          minPrice: 200,
+          maxPrice: 300,
           count: 3,
           icon: BatteryCharging,
         },
@@ -201,8 +211,8 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Tablets & Portables',
           descriptionAr: 'شحن آمن لأجهزة الآيباد والتابلت وأجهزة الألعاب المحمولة',
           descriptionEn: 'Safe charging for iPads, tablets and handheld portable consoles',
-          minPrice: 400,
-          maxPrice: 700,
+          minPrice: 100,
+          maxPrice: 200,
           count: 2,
           icon: Zap,
         },
@@ -245,8 +255,8 @@ export const PublicAboutPage: React.FC = () => {
         nameEn: titleEn,
         descriptionAr: descAr,
         descriptionEn: descEn,
-        minPrice: isFinite(min) ? min : 200,
-        maxPrice: isFinite(max) ? max : 400,
+        minPrice: id === 'cat-phones' ? 100 : id === 'cat-power' ? 200 : id === 'cat-tablets' ? 100 : (isFinite(min) ? min : 200),
+        maxPrice: id === 'cat-phones' ? 200 : id === 'cat-power' ? 300 : id === 'cat-tablets' ? 200 : (isFinite(max) ? max : 400),
         count: source.length,
         icon: IconComponent,
       };
@@ -707,8 +717,8 @@ export const PublicAboutPage: React.FC = () => {
         <div className="relative z-10 mx-auto max-w-4xl px-4 text-center mt-auto mb-8 sm:mb-12">
           {/* Eyebrow Pill */}
           <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-bold bg-white/10 backdrop-blur-md border border-white/20 text-[#e9fcf8] shadow-lg mb-4">
-            <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-            <span>{isAr ? 'نقطة الشحن المعتمدة في غزة' : 'Certified Charging Point in Gaza'}</span>
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
+            <span>{isAr ? 'نقطة الشحن الموثوقة' : 'Trusted Charging Point'}</span>
           </div>
 
           {/* Main Hero Headline */}
@@ -876,15 +886,15 @@ export const PublicAboutPage: React.FC = () => {
             {[
               {
                 step: '01',
-                titleAr: 'تسليم وفحص الجهاز',
+                titleAr: 'تسليم الأجهزة',
                 titleEn: 'Handover & Safety Check',
-                descAr: 'تسلّم جهازك للمشرف، ويتم فحصه وتسجيله مباشرة في المنظومة مع حفظ الرقم التسلسلي.',
+                descAr: 'تُفحص الأجهزة وتُسجّل مباشرة في المنظومة',
                 descEn: 'Hand your device to our admin; it is inspected and logged into the system.',
                 icon: Smartphone,
               },
               {
                 step: '02',
-                titleAr: 'الشحن الآمن والمراقب',
+                titleAr: 'الشحن الآمن والمستقر',
                 titleEn: 'Safe Monitored Charging',
                 descAr: 'يتم توصيل الجهاز بمنافذ شحن معتمدة ومحمية ضد التيارات والحرارة الزائدة.',
                 descEn: 'Connected to certified charging bays with surge and temperature protection.',
@@ -1162,8 +1172,8 @@ export const PublicAboutPage: React.FC = () => {
                 <MapPin className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span>
                   {isAr
-                    ? 'نقطة الشحن المركزية — غزة، شارع عمر المختار'
-                    : 'Central Charging Point — Omar Al-Mukhtar St, Gaza'}
+                    ? 'نقطة الشحن، غزة، الفالوجة'
+                    : 'Charging Point, Gaza, Al-Faluja'}
                 </span>
               </div>
             </div>
@@ -1171,7 +1181,7 @@ export const PublicAboutPage: React.FC = () => {
             {/* Direct WhatsApp & Call Buttons */}
             <div className="flex flex-wrap items-center gap-3">
               <a
-                href="https://wa.me/972590000000"
+                href="https://wa.me/970592369875"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs font-bold text-white shadow-md hover:bg-emerald-700 transition-colors"
@@ -1181,7 +1191,7 @@ export const PublicAboutPage: React.FC = () => {
               </a>
 
               <a
-                href="tel:+972590000000"
+                href="tel:+970592369875"
                 className="inline-flex items-center gap-2 rounded-xl bg-gray-100 dark:bg-white/10 px-5 py-3 text-xs font-bold text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-white/15 transition-colors"
               >
                 <Phone className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
