@@ -72,8 +72,9 @@ const callEndpoint = async (action: 'register' | 'unregister', bearer: string, t
     }),
   });
   if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error('Native push registration failed (' + response.status + '): ' + detail.slice(0, 160));
+    // Do not copy server response bodies into device logs; keep backend diagnostics
+    // and any future response fields out of logs on shared/customer devices.
+    throw new Error('Native push registration failed (' + response.status + ').');
   }
 };
 
