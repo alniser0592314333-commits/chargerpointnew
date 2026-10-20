@@ -101,6 +101,23 @@ describe('native push notification integration', () => {
     }));
   });
 
+  it('unregisters on logout and cannot re-register from a late token callback', async () => {
+    vi.resetModules();
+    const service = await import('../services/nativePushNotifications');
+
+    await service.initializeNativePushNotificationListeners('admin', 'en');
+    await service.startNativePushNotifications('admin', () => 'valid-access-token', 'en');
+    mocks.listeners.get('registration')?.({ value: 'fcm-token-012345678901234567890123456789' });
+
+    await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
+    await service.stopNativePushNotifications();
+
+    expect(JSON.parse(mocks.fetch.mock.calls[1][1].body).action).toBe('unregister');
+    mocks.listeners.get('registration')?.({ value: 'late-fcm-token-012345678901234567890123456789' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('shows a foreground push as a local Android notification without exposing event details', async () => {
     vi.resetModules();
     const service = await import('../services/nativePushNotifications');
