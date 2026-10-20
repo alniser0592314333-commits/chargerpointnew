@@ -15,6 +15,7 @@ let latestPushToken: string | null = null;
 let lastAuthorizedToken: string | null = null;
 let listenersReady: Promise<void> | null = null;
 let registrationInFlight = false;
+let localeObserver: MutationObserver | null = null;
 
 const endpoint = () => config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/native-push';
 
@@ -158,6 +159,15 @@ export async function initializeNativePushNotificationListeners(variant: AppVari
   currentVariant = variant;
   currentNavigationTarget = notificationTarget(variant);
   currentLocale = locale === 'en' ? 'en' : 'ar';
+  if (!localeObserver && typeof MutationObserver !== 'undefined') {
+    localeObserver = new MutationObserver(() => {
+      const nextLocale = document.documentElement.lang === 'en' ? 'en' : 'ar';
+      if (nextLocale === currentLocale) return;
+      currentLocale = nextLocale;
+      if (latestPushToken) void persistLatestToken(latestPushToken);
+    });
+    localeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
+  }
   try {
     await ensureListeners();
   } catch (error) {
