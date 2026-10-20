@@ -154,7 +154,7 @@ export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHo
  */
 export type BusinessHoursSyncError =
   | 'NO_ENDPOINT' | 'OFFLINE' | 'NO_TOKEN' | 'TOKEN_EXPIRED_NO_REFRESH'
-  | 'AUTH_REFRESH_FAILED' | 'HTTP_401' | 'HTTP_403' | 'HTTP_ERROR'
+  | 'AUTH_REFRESH_FAILED' | 'HTTP_401' | 'HTTP_403' | `HTTP_${number}`
   | 'NETWORK_ERROR' | 'INVALID_RESPONSE';
 
 export async function saveBusinessHoursConfigAndSync(
@@ -182,9 +182,7 @@ export async function saveBusinessHoursConfigAndSync(
       cache: 'no-store',
     });
     if (!response.ok) {
-      const reason: BusinessHoursSyncError =
-        response.status === 401 ? 'HTTP_401' :
-        response.status === 403 ? 'HTTP_403' : 'HTTP_ERROR';
+      const reason = `HTTP_${response.status}` as BusinessHoursSyncError;
       console.error('Business hours sync rejected:', reason);
       return { config: local, synced: false, syncError: reason };
     }
