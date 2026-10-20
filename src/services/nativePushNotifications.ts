@@ -7,6 +7,7 @@ type AppVariant = 'admin' | 'customer';
 type TokenProvider = () => string | null | Promise<string | null>;
 
 const buildVariant = import.meta.env.VITE_APP_VARIANT;
+const nativePushEnabled = import.meta.env.VITE_NATIVE_PUSH_ENABLED !== 'false';
 let currentVariant: AppVariant | null = buildVariant === 'admin' || buildVariant === 'customer' ? buildVariant : null;
 let currentTokenProvider: TokenProvider | null = null;
 let currentLocale = 'ar';
@@ -155,7 +156,7 @@ async function ensureListeners() {
 
 /** Attach tap listeners at app startup, before authentication restoration finishes. */
 export async function initializeNativePushNotificationListeners(variant: AppVariant, locale: string): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+  if (!Capacitor.isNativePlatform() || !nativePushEnabled) return;
   currentVariant = variant;
   currentNavigationTarget = notificationTarget(variant);
   currentLocale = locale === 'en' ? 'en' : 'ar';
@@ -185,7 +186,7 @@ export async function startNativePushNotifications(
   tokenProvider: TokenProvider,
   locale: string,
 ): Promise<void> {
-  if (!Capacitor.isNativePlatform() || registrationInFlight) return;
+  if (!Capacitor.isNativePlatform() || !nativePushEnabled || registrationInFlight) return;
   currentVariant = variant;
   currentTokenProvider = tokenProvider;
   currentLocale = locale === 'en' ? 'en' : 'ar';
