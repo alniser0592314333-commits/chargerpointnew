@@ -1,5 +1,5 @@
 import { config as appConfig } from '../config/env';
-import { getSupabaseAuthToken } from './supabase/client';
+import { getFreshSupabaseAuthToken } from './supabase/client';
 
 /**
  * Business Hours & Operational Status Service
@@ -106,7 +106,9 @@ function getBusinessHoursEndpoint(): string | null {
 export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHoursConfig> {
   const endpoint = getBusinessHoursEndpoint();
   if (!endpoint || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-    return getBusinessHoursConfig();
+    return typeof navigator !== 'undefined' && navigator.onLine === false
+      ? getBusinessHoursConfig()
+      : { ...DEFAULT_BUSINESS_HOURS, todayDate: getLocalDateString(), lastUpdated: new Date().toISOString() };
   }
 
   try {
@@ -122,10 +124,7 @@ export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHo
     const payload = await response.json();
     const raw = payload?.config;
     if (!raw || typeof raw !== 'object') throw new Error('BUSINESS_HOURS_INVALID_RESPONSE');
-    // Until an administrator saves a shared value, preserve this browser's existing
-    // local configuration so the first rollout does not silently replace it with defaults.
-    if (payload?.exists === false) return getBusinessHoursConfig();
-
+    // The server is authoritative whenever reachable, including before the first save.
     const shared: BusinessHoursConfig = {
       ...DEFAULT_BUSINESS_HOURS,
       ...raw,
@@ -142,8 +141,10 @@ export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHo
     }
     return shared;
   } catch (error) {
-    console.warn('Unable to refresh shared business hours; using cached copy:', error);
-    return getBusinessHoursConfig();
+    console.warn('Unable to refresh shared business hours:', error);
+    return typeof navigator !== 'undefined' && navigator.onLine === false
+      ? getBusinessHoursConfig()
+      : { ...DEFAULT_BUSINESS_HOURS, todayDate: getLocalDateString(), lastUpdated: new Date().toISOString() };
   }
 }
 
@@ -151,41 +152,57 @@ export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHo
  * Saves locally first for offline continuity, then persists to the shared server.
  * The caller must not report a public/shared save unless synced is true.
  */
+export type BusinessHoursSyncError =
+  | 'NO_ENDPOINT' | 'OFFLINE' | 'NO_TOKEN' | 'TOKEN_EXPIRED_NO_REFRESH'
+  | 'AUTH_REFRESH_FAILED' | 'HTTP_401' | 'HTTP_403' | 'HTTP_ERROR'
+  | 'NETWORK_ERROR' | 'INVALID_RESPONSE';
+
 export async function saveBusinessHoursConfigAndSync(
   updates: Partial<BusinessHoursConfig>
-): Promise<{ config: BusinessHoursConfig; synced: boolean }> {
+): Promise<{ config: BusinessHoursConfig; synced: boolean; syncError: BusinessHoursSyncError | null }> {
   const local = saveBusinessHoursConfig(updates);
   const endpoint = getBusinessHoursEndpoint();
-  const token = getSupabaseAuthToken();
-
-  if (!endpoint || !token || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-    return { config: local, synced: false };
+  if (!endpoint) return { config: local, synced: false, syncError: 'NO_ENDPOINT' };
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return { config: local, synced: false, syncError: 'OFFLINE' };
   }
-
+  const auth = await getFreshSupabaseAuthToken();
+  if (!auth.token) {
+    return { config: local, synced: false, syncError: (auth.reason as BusinessHoursSyncError | null) || 'NO_TOKEN' };
+  }
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         apikey: appConfig.supabaseAnonKey,
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${auth.token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ config: local }),
+      cache: 'no-store',
     });
     if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new Error(`BUSINESS_HOURS_SAVE_FAILED:${response.status}:${detail}`);
+      const reason: BusinessHoursSyncError =
+        response.status === 401 ? 'HTTP_401' :
+        response.status === 403 ? 'HTTP_403' : 'HTTP_ERROR';
+      console.error('Business hours sync rejected:', reason);
+      return { config: local, synced: false, syncError: reason };
     }
-    const payload = await response.json();
-    const shared = { ...local, ...(payload?.config || {}) } as BusinessHoursConfig;
+    let payload: any;
+    try { payload = await response.json(); }
+    catch { return { config: local, synced: false, syncError: 'INVALID_RESPONSE' }; }
+    if (!payload?.config || typeof payload.config !== 'object' || payload.exists === false) {
+      return { config: local, synced: false, syncError: 'INVALID_RESPONSE' };
+    }
+    const shared = { ...local, ...payload.config } as BusinessHoursConfig;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(shared)); } catch {}
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: shared }));
     }
-    return { config: shared, synced: true };
+    return { config: shared, synced: true, syncError: null };
   } catch (error) {
-    console.error('Business hours remain local because server sync failed:', error);
-    return { config: local, synced: false };
+    console.error('Business hours sync network failure:', error);
+    return { config: local, synced: false, syncError: 'NETWORK_ERROR' };
   }
 }
 
