@@ -136,7 +136,6 @@ AS $function$
     FROM public.native_push_devices d
     JOIN auth.sessions s
       ON s.id = d.auth_session_id::uuid
-     AND s.user_id = d.principal_id
      AND (s.not_after IS NULL OR s.not_after > now())
     JOIN public.admins a
       ON a.id = d.principal_id
