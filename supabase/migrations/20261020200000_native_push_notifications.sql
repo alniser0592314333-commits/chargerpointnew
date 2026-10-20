@@ -19,25 +19,21 @@ BEGIN
       'Shared authentication credential for database-triggered native push dispatch'
     );
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM vault.decrypted_secrets WHERE name = 'native_push_function_url'
+  ) THEN
+    PERFORM vault.create_secret(
+      'https://ydhcyamtgioyrxfarkwk.supabase.co/functions/v1/native-push',
+      'native_push_function_url',
+      'Native push Edge Function endpoint for asynchronous database-trigger dispatch'
+    );
+  END IF;
 END;
 $block$;
 
--- GOAL_REQUESTED is emitted by the existing customer goal-request workflow.
-ALTER TABLE public.customer_account_events
-  DROP CONSTRAINT IF EXISTS customer_account_events_event_type_check;
-ALTER TABLE public.customer_account_events
-  ADD CONSTRAINT customer_account_events_event_type_check
-  CHECK (event_type = ANY (ARRAY[
-    'RESET_REQUESTED'::text,
-    'TEMP_PASSWORD_ISSUED'::text,
-    'PASSWORD_CHANGED'::text,
-    'EMAIL_RESET_SENT'::text,
-    'ACCOUNT_FROZEN'::text,
-    'ACCOUNT_REACTIVATED'::text,
-    'ACCOUNT_CANCELLED'::text,
-    'TERMS_ACCEPTED'::text,
-    'GOAL_REQUESTED'::text
-  ]));
+-- Preserve the existing canonical event-type contract; push dispatch filters
+-- supported event types without restricting future account event writes.
 
 CREATE TABLE IF NOT EXISTS public.native_push_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
