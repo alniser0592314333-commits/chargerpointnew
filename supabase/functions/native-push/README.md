@@ -5,7 +5,7 @@ This implementation sends device notifications from the existing canonical event
 ## Events
 
 - A new pending `qr_payment_submissions` row notifies registered admin APKs.
-- Existing `customer_account_events` of type `GOAL_REQUESTED` notify admin APKs when a goal request is submitted; status changes in `goal_requests` notify the matching customer after review.
+- Inserts into the existing canonical `goal_requests` table notify admin APKs; status changes notify the matching customer after review. Password-reset and account-state events continue to use `customer_account_events`.
 - A payment submission becoming `APPROVED` or `REJECTED` notifies the matching customer installation.
 - Existing customer account events for password reset/change and account freeze/reactivation/cancellation notify the matching customer installation.
 - Notification taps open the existing admin Notifications/Goals route or restore the customer portal session.
