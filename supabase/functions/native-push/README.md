@@ -5,9 +5,8 @@ This implementation sends device notifications from the existing canonical event
 ## Events
 
 - A new pending `qr_payment_submissions` row notifies registered admin APKs.
-- A new pending `goal_requests` row notifies registered admin APKs; review decisions notify the matching customer installation.
+- Existing `customer_account_events` of type `GOAL_REQUESTED` notify admin APKs when a goal request is submitted; status changes in `goal_requests` notify the matching customer after review.
 - A payment submission becoming `APPROVED` or `REJECTED` notifies the matching customer installation.
-- Existing `customer_account_events` of type `RESET_REQUESTED` or `GOAL_REQUESTED` notify admins.
 - Existing customer account events for password reset/change and account freeze/reactivation/cancellation notify the matching customer installation.
 - Notification taps open the existing admin Notifications/Goals route or restore the customer portal session.
 - Foreground FCM events are displayed using Android local notifications; background/terminated delivery uses FCM.
