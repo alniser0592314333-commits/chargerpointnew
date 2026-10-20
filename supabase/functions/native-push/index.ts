@@ -141,7 +141,7 @@ Deno.serve(async (request: Request) => {
       if (linkError || !link) return json(403, { ok: false, error: "ACTIVE_CUSTOMER_SESSION_REQUIRED" });
       const { data: session, error: sessionError } = await admin.from("customer_account_sessions")
         .select("session_id,expires_at,revoked_at").eq("customer_id", link.customer_id)
-        .eq("auth_user_id", user.id).maybeSingle();
+        .eq("auth_user_id", user.id).eq("session_id", sessionId).maybeSingle();
       if (sessionError || !session || session.revoked_at || session.session_id !== sessionId ||
           new Date(session.expires_at).getTime() <= Date.now()) {
         return json(403, { ok: false, error: "ACTIVE_CUSTOMER_SESSION_REQUIRED" });
