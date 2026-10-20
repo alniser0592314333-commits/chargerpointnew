@@ -256,12 +256,12 @@ Deno.serve(async (request: Request) => {
     if (error || !event || (eventStatus && eventStatus !== String(event.event_type))) return json(200, { ok: true, skipped: true });
     const eventType = String(event.event_type || "");
     eventKey += ":" + eventType;
-    if (eventType === "RESET_REQUESTED" || eventType === "GOAL_REQUESTED") {
-      titleAr = eventType === "RESET_REQUESTED" ? "طلب إعادة تعيين كلمة المرور" : "طلب هدف جديد";
-      titleEn = eventType === "RESET_REQUESTED" ? "Password reset request" : "New goal request";
-      bodyAr = eventType === "RESET_REQUESTED" ? "يوجد طلب جديد بانتظار مراجعة الإدارة." : "أرسل أحد العملاء طلب إنشاء هدف جديد.";
-      bodyEn = eventType === "RESET_REQUESTED" ? "A new request is waiting for administrator review." : "A customer submitted a new goal request.";
-      targetPath = eventType === "GOAL_REQUESTED" ? "/app/goals" : "/app/notifications";
+    if (eventType === "RESET_REQUESTED") {
+      titleAr = "طلب إعادة تعيين كلمة المرور";
+      titleEn = "Password reset request";
+      bodyAr = "يوجد طلب جديد بانتظار مراجعة الإدارة.";
+      bodyEn = "A new request is waiting for administrator review.";
+      targetPath = "/app/notifications";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
         .eq("app_variant", "admin").is("disabled_at", null);
