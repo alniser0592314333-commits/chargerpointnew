@@ -70,13 +70,17 @@ export function parseRoute(pathAndHash: string): { pathname: string; hash: strin
 
 
 function isPublicPortalPath(pathname: string): boolean {
-  return pathname === '/public/about' ||
+  // The native admin build must never treat a customer portal URL as a public
+  // entry point. The web build keeps the existing customer QR route behavior.
+  return import.meta.env.VITE_APP_VARIANT !== 'admin' && (
+    pathname === '/public/about' ||
     pathname.startsWith('/c/') ||
     pathname.startsWith('/o/') ||
     pathname.startsWith('/pay/') ||
     pathname.startsWith('/public/order/') ||
     pathname.startsWith('/public/qr/customer/') ||
-    pathname.startsWith('/public/qr/order/');
+    pathname.startsWith('/public/qr/order/')
+  );
 }
 
 export default function App() {
@@ -374,34 +378,38 @@ export default function App() {
   const renderContent = () => {
     const { pathname } = parseRoute(currentPath);
 
-    // 0. Public customer portal routes (no admin entry points)
-    if (pathname === '/public/about') {
-      return <PublicAboutPage />;
+    // Public customer routes remain part of the web app, but are compiled out
+    // of the dedicated administrator APK.
+    if (import.meta.env.VITE_APP_VARIANT !== 'admin') {
+      if (pathname === '/public/about') {
+        return <PublicAboutPage />;
+      }
+      if (pathname.startsWith('/c/')) {
+        const token = pathname.replace('/c/', '');
+        return <CustomerAccountPage token={token} />;
+      }
+      if (pathname.startsWith('/public/qr/customer/')) {
+        const token = pathname.replace('/public/qr/customer/', '');
+        return <CustomerAccountPage token={token} />;
+      }
+      if (pathname.startsWith('/pay/')) {
+        const token = pathname.replace('/pay/', '');
+        return <PublicPaymentPage token={token} />;
+      }
+      if (pathname.startsWith('/o/')) {
+        const token = pathname.replace('/o/', '');
+        return <PublicOrderPage token={token} />;
+      }
+      if (pathname.startsWith('/public/order/')) {
+        const token = pathname.replace('/public/order/', '');
+        return <PublicOrderPage token={token} />;
+      }
+      if (pathname.startsWith('/public/qr/order/')) {
+        const token = pathname.replace('/public/qr/order/', '');
+        return <PublicOrderPage token={token} />;
+      }
     }
-    if (pathname.startsWith('/c/')) {
-      const token = pathname.replace('/c/', '');
-      return <CustomerAccountPage token={token} />;
-    }
-    if (pathname.startsWith('/public/qr/customer/')) {
-      const token = pathname.replace('/public/qr/customer/', '');
-      return <CustomerAccountPage token={token} />;
-    }
-    if (pathname.startsWith('/pay/')) {
-      const token = pathname.replace('/pay/', '');
-      return <PublicPaymentPage token={token} />;
-    }
-    if (pathname.startsWith('/o/')) {
-      const token = pathname.replace('/o/', '');
-      return <PublicOrderPage token={token} />;
-    }
-    if (pathname.startsWith('/public/order/')) {
-      const token = pathname.replace('/public/order/', '');
-      return <PublicOrderPage token={token} />;
-    }
-    if (pathname.startsWith('/public/qr/order/')) {
-      const token = pathname.replace('/public/qr/order/', '');
-      return <PublicOrderPage token={token} />;
-    }
+
     
     if (pathname === '/reset-password') {
       return <ResetPasswordPage onNavigate={(path) => navigate(path)} />;
