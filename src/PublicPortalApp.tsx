@@ -98,7 +98,8 @@ const PublicPortalApp: React.FC = () => {
   const initialPath = useRef(window.location.pathname);
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const pathname = currentPath.split(/[?#]/, 1)[0];
-  const nativeInitialIntro = useRef(getNativeInitialIntroEnabled(pathname));
+  const nativeInitialIntro = useRef<boolean | null>(null);
+  if (nativeInitialIntro.current === null) nativeInitialIntro.current = getNativeInitialIntroEnabled(pathname);
   const [introKey, setIntroKey] = useState(0);
   const previousPath = useRef(pathname);
   // A payment page opened from the customer account is part of the same account
@@ -213,7 +214,7 @@ const PublicPortalApp: React.FC = () => {
   let content: React.ReactNode = <PublicNotFound />;
   // Preserve the website's existing one-time intro behavior. In the native customer APK,
   // show the intro on every app entry, including QR deep links.
-  let welcomeEnabled = Capacitor.isNativePlatform() ? nativeInitialIntro.current : (initialPath.current === '/public/about' && pathname === '/public/about');
+  let welcomeEnabled = Capacitor.isNativePlatform() ? nativeInitialIntro.current === true : (initialPath.current === '/public/about' && pathname === '/public/about');
 
   if (pathname === '/public/about') {
     content = <ThemeProvider><PublicAboutPage /></ThemeProvider>;
