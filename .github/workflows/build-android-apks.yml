@@ -75,6 +75,87 @@ jobs:
                   raise SystemExit("Could not safely add CAMERA permission to AndroidManifest.xml")
               manifest.write_text(content)
 
+      - name: Apply official mountain-and-moon launcher icon and localized app name
+        run: |
+          python3 -m pip install --disable-pip-version-check cairosvg
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          import cairosvg
+
+          variant = "\${{ matrix.variant }}"
+          res = Path("android/app/src/main/res")
+          full_icon = Path("public/icon.svg")
+          foreground_icon = Path("public/charging-point-foreground.svg")
+          if not full_icon.is_file() or not foreground_icon.is_file():
+              raise SystemExit("Official Charging Point SVG icon assets are missing")
+
+          density_sizes = {
+              "mdpi": (48, 108),
+              "hdpi": (72, 162),
+              "xhdpi": (96, 216),
+              "xxhdpi": (144, 324),
+              "xxxhdpi": (192, 432),
+          }
+          for density, (legacy_size, foreground_size) in density_sizes.items():
+              folder = res / f"mipmap-{density}"
+              folder.mkdir(parents=True, exist_ok=True)
+              for name in ("ic_launcher.png", "ic_launcher_round.png"):
+                  cairosvg.svg2png(url=str(full_icon), write_to=str(folder / name),
+                                   output_width=legacy_size, output_height=legacy_size)
+              cairosvg.svg2png(url=str(foreground_icon),
+                               write_to=str(folder / "ic_launcher_foreground.png"),
+                               output_width=foreground_size, output_height=foreground_size)
+
+          adaptive_folder = res / "mipmap-anydpi-v26"
+          adaptive_folder.mkdir(parents=True, exist_ok=True)
+          adaptive_xml = '''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/cp_icon_background" />
+              <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+          </adaptive-icon>
+          '''
+          (adaptive_folder / "ic_launcher.xml").write_text(adaptive_xml)
+          (adaptive_folder / "ic_launcher_round.xml").write_text(adaptive_xml)
+
+          values = res / "values"
+          values.mkdir(parents=True, exist_ok=True)
+          (values / "cp_icon_colors.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <resources><color name="cp_icon_background">#082b32</color></resources>
+          ''')
+
+          base_name = "Charging Point Portal" if variant == "customer" else "Charging Point Admin"
+          arabic_name = "بوابة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
+          strings_file = values / "strings.xml"
+          strings = strings_file.read_text(encoding="utf-8")
+          if re.search(r'<string name="app_name">.*?</string>', strings):
+              strings = re.sub(r'<string name="app_name">.*?</string>',
+                               f'<string name="app_name">{base_name}</string>', strings, count=1)
+          else:
+              strings = strings.replace("</resources>",
+                                        f'    <string name="app_name">{base_name}</string>\n</resources>')
+          strings_file.write_text(strings, encoding="utf-8")
+
+          for locale, app_name in (("ar", arabic_name), ("en", base_name)):
+              folder = res / f"values-{locale}"
+              folder.mkdir(parents=True, exist_ok=True)
+              localized = folder / "strings.xml"
+              if localized.exists():
+                  text = localized.read_text(encoding="utf-8")
+                  if re.search(r'<string name="app_name">.*?</string>', text):
+                      text = re.sub(r'<string name="app_name">.*?</string>',
+                                    f'<string name="app_name">{app_name}</string>', text, count=1)
+                  else:
+                      text = text.replace("</resources>",
+                                          f'    <string name="app_name">{app_name}</string>\n</resources>')
+              else:
+                  text = ('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+                          f'    <string name="app_name">{app_name}</string>\n</resources>\n')
+              localized.write_text(text, encoding="utf-8")
+          print(f"Applied launcher branding and localized app name for {variant}")
+          PY
+
       - name: Sync Capacitor assets
         run: npx cap sync android
 
