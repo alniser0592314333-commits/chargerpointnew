@@ -7,6 +7,7 @@ import {
   saveBusinessHoursConfigAndSync,
   BusinessHoursConfig,
 } from '../services/businessHoursService';
+import { setSupabaseAuthToken } from '../services/supabase/client';
 
 describe('Business Hours & Operational Status Service', () => {
   const storageMap = new Map<string, string>();
@@ -32,6 +33,7 @@ describe('Business Hours & Operational Status Service', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     storageMap.delete('supabase_auth_session');
+    setSupabaseAuthToken(null);
     const result = await saveBusinessHoursConfigAndSync({ todayOpenTime: '09:00' });
     expect(result.synced).toBe(false);
     expect(result.syncError).toBe('NO_TOKEN');
