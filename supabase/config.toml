@@ -42,3 +42,6 @@ verify_jwt = false
 
 [functions.business-hours]
 verify_jwt = false
+
+[functions.native-push]
+verify_jwt = false
