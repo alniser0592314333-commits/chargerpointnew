@@ -125,8 +125,8 @@ jobs:
           <resources><color name="cp_icon_background">#082b32</color></resources>
           ''')
 
-          base_name = "Charging Point Portal" if variant == "customer" else "Charging Point Admin"
-          arabic_name = "بوابة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
+          base_name = "Charging Point" if variant == "customer" else "Charging Point Admin"
+          arabic_name = "نقطة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
           strings_file = values / "strings.xml"
           strings = strings_file.read_text(encoding="utf-8")
           if re.search(r'<string name="app_name">.*?</string>', strings):
