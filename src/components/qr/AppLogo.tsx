@@ -34,7 +34,24 @@ export const AppLogo: React.FC<AppLogoProps> = ({
 }) => {
   const activeLogo = useActiveLogo();
   const [imgError, setImgError] = React.useState(false);
+  const [isOnline, setIsOnline] = React.useState(
+    () => typeof navigator === 'undefined' || navigator.onLine
+  );
   const brandId = React.useId().replace(/:/g, '');
+
+  React.useEffect(() => {
+    const handleOnline = () => {
+      setImgError(false);
+      setIsOnline(true);
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Determine current active theme (light or dark)
   let resolvedTheme: 'light' | 'dark' = 'light';
@@ -53,8 +70,10 @@ export const AppLogo: React.FC<AppLogoProps> = ({
   // ALWAYS use the canonical White Logo from Logo Manager, strictly ignoring current UI theme.
   const isQrVariant = isQr || variant === 'qr' || variant === 'white';
 
-  let logoUrl: string | undefined = customUrl;
-  if (!logoUrl && !activeLogo.isDefault) {
+  // Dynamic/custom logo overrides are online-only. As soon as connectivity is
+  // lost, every AppLogo instance switches to the bundled official brand mark.
+  let logoUrl: string | undefined = isOnline ? customUrl : undefined;
+  if (isOnline && !logoUrl && !activeLogo.isDefault) {
     if (isQrVariant) {
       logoUrl = getCanonicalQrLogo(activeLogo);
     } else {
