@@ -68,8 +68,8 @@ export const PublicAboutPage: React.FC = () => {
   const [deviceTypes, setDeviceTypes] = useState<UIDeviceTypeItem[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
 
-  // Parallax Scroll Tracking State
-  const [scrollY, setScrollY] = useState(0);
+  // Keep scroll-driven scenery updates outside React state so the full page does not re-render on every scroll frame.
+  const pageContainerRef = useRef<HTMLDivElement | null>(null);
   const prefersReducedMotionRef = useRef(false);
 
   // ---------------------------------------------------------------------------
@@ -154,52 +154,45 @@ export const PublicAboutPage: React.FC = () => {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // 3. Parallax Scroll Handler (requestAnimationFrame + passive listener)
+  // 3. Parallax Scroll Handler (passive listener + one DOM update per frame)
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    const page = pageContainerRef.current;
+    if (!page) return;
+
+    let frameId = 0;
     let ticking = false;
 
+    const updateParallax = () => {
+      ticking = false;
+      const cappedScroll = prefersReducedMotionRef.current
+        ? 0
+        : Math.min(window.scrollY, 1200);
+
+      // Update only the scenery CSS variables. Do not trigger a React render for scroll.
+      page.style.setProperty('--moon-y', `${-cappedScroll * 0.42}px`);
+      page.style.setProperty('--moon-scale', String(Math.max(0.72, 1 - cappedScroll * 0.0003)));
+      page.style.setProperty('--ridge-y', `${cappedScroll * 0.08}px`);
+      page.style.setProperty('--peak-y', `${cappedScroll * 0.16}px`);
+      page.style.setProperty('--hill-y', `${cappedScroll * 0.26}px`);
+      page.style.setProperty('--pine-y', `${cappedScroll * 0.38}px`);
+    };
+
     const handleScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          setScrollY(window.scrollY);
-          ticking = false;
-        });
-        ticking = true;
-      }
+      if (ticking) return;
+      ticking = true;
+      frameId = window.requestAnimationFrame(updateParallax);
     };
 
+    // Apply the current position immediately, including when restoring a scrolled page.
+    updateParallax();
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
-  // Compute Parallax Offsets
-  const parallaxStyles = useMemo(() => {
-    if (prefersReducedMotionRef.current) {
-      return {
-        moonY: '0px',
-        moonScale: 1,
-        ridgeY: '0px',
-        peakY: '0px',
-        hillY: '0px',
-        pineY: '0px',
-        skyProgress: 0,
-      };
-    }
-
-    const cappedScroll = Math.min(scrollY, 1200);
-    return {
-      // Moon rises smoothly and slightly scales down into the distance
-      moonY: `${-cappedScroll * 0.42}px`,
-      moonScale: Math.max(0.72, 1 - cappedScroll * 0.0003),
-      // Mountains layer speeds
-      ridgeY: `${cappedScroll * 0.08}px`,
-      peakY: `${cappedScroll * 0.16}px`,
-      hillY: `${cappedScroll * 0.26}px`,
-      pineY: `${cappedScroll * 0.38}px`,
-      skyProgress: Math.min(1, cappedScroll / 600),
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (frameId) window.cancelAnimationFrame(frameId);
     };
-  }, [scrollY]);
+  }, []);
 
   // ---------------------------------------------------------------------------
   // 4. Grouped Pricing Categories (Derived from Real Database Data)
@@ -364,18 +357,9 @@ export const PublicAboutPage: React.FC = () => {
 
   return (
     <div
+      ref={pageContainerRef}
       dir={isRTL ? 'rtl' : 'ltr'}
       className="about-page-container selection:bg-emerald-500/20"
-      style={
-        {
-          '--moon-y': parallaxStyles.moonY,
-          '--moon-scale': parallaxStyles.moonScale,
-          '--ridge-y': parallaxStyles.ridgeY,
-          '--peak-y': parallaxStyles.peakY,
-          '--hill-y': parallaxStyles.hillY,
-          '--pine-y': parallaxStyles.pineY,
-        } as React.CSSProperties
-      }
     >
       {/* Dynamic Atmospheric Sky Background */}
       <div className="about-sky-backdrop">
