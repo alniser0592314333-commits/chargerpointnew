@@ -12,7 +12,8 @@ on:
       - 'src/main.tsx'
       - 'src/App.tsx'
       - 'src/PublicPortalApp.tsx'
-      - 'capacitor.*.config.ts'
+      - 'capacitor.*.config.json'
+      - '.gitignore'
       - '.github/workflows/build-android-apks.yml'
 
 permissions:
@@ -47,11 +48,14 @@ jobs:
       - name: Build selected web variant
         run: npm run build:${{ matrix.variant }}
 
+      - name: Select Capacitor app configuration
+        run: cp capacitor.${{ matrix.variant }}.config.json capacitor.config.json
+
       - name: Generate native Android project
-        run: CP_APP_VARIANT=${{ matrix.variant }} npx cap add android
+        run: npx cap add android
 
       - name: Sync Capacitor assets
-        run: CP_APP_VARIANT=${{ matrix.variant }} npx cap sync android
+        run: npx cap sync android
 
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug
