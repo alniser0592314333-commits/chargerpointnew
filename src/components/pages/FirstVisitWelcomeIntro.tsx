@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useI18n } from '../../i18n/i18nContext';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import './first-visit-welcome.css';
 
 const SEEN_KEY = 'cp_customer_welcome_intro_seen_v2';
+const NATIVE_SEEN_KEY = 'cp_customer_native_intro_seen_v1';
 type IntroStage = 'assembling' | 'welcome' | 'exiting';
 
 const hasSeenIntro = () => {
@@ -23,15 +25,30 @@ const rememberIntro = () => {
   }
 };
 
-/** A one-time, decorative welcome for the customer-facing portal only. */
+/** Customer APK intro on every app entry; website retains its original one-time behavior. */
 export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled }) => {
   const { locale, isRTL } = useI18n();
   const isAr = locale === 'ar';
-  const [visible, setVisible] = useState(() => enabled && !hasSeenIntro());
+  const isNative = Capacitor.isNativePlatform();
+  const [visible, setVisible] = useState(() => enabled && (isNative || !hasSeenIntro()));
   const [stage, setStage] = useState<IntroStage>('assembling');
 
   useEffect(() => {
-    if (!enabled || hasSeenIntro()) {
+    if (!enabled) {
+      setVisible(false);
+      return;
+    }
+
+    // The public website keeps its original one-time intro. Native customer APK
+    // plays the intro at every entry: 5 seconds on the first launch, then 2.2s.
+    let nativeFirstLaunch = false;
+    if (isNative) {
+      try {
+        nativeFirstLaunch = window.localStorage.getItem(NATIVE_SEEN_KEY) !== '1';
+      } catch {
+        nativeFirstLaunch = true;
+      }
+    } else if (hasSeenIntro()) {
       setVisible(false);
       return;
     }
@@ -39,35 +56,30 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
     let welcomeTimer = 0;
     let exitTimer = 0;
     let finishTimer = 0;
-    let reducedMotion = false;
-    try {
-      reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    } catch {}
+    const totalDuration = isNative ? (nativeFirstLaunch ? 5000 : 2200) : 10000;
+    const assemblingDuration = isNative ? (nativeFirstLaunch ? 1500 : 650) : 2100;
+    const exitDuration = isNative ? (nativeFirstLaunch ? 900 : 600) : 900;
+    const exitAt = Math.max(assemblingDuration + 250, totalDuration - exitDuration);
 
     setVisible(true);
-    setStage(reducedMotion ? 'welcome' : 'assembling');
-
-    if (reducedMotion) {
-      welcomeTimer = window.setTimeout(() => setStage('exiting'), 6000);
-      finishTimer = window.setTimeout(() => {
+    setStage('assembling');
+    welcomeTimer = window.setTimeout(() => setStage('welcome'), assemblingDuration);
+    exitTimer = window.setTimeout(() => setStage('exiting'), exitAt);
+    finishTimer = window.setTimeout(() => {
+      if (isNative) {
+        try { window.localStorage.setItem(NATIVE_SEEN_KEY, '1'); } catch {}
+      } else {
         rememberIntro();
-        setVisible(false);
-      }, 6300);
-    } else {
-      welcomeTimer = window.setTimeout(() => setStage('welcome'), 2100);
-      exitTimer = window.setTimeout(() => setStage('exiting'), 8700);
-      finishTimer = window.setTimeout(() => {
-        rememberIntro();
-        setVisible(false);
-      }, 10000);
-    }
+      }
+      setVisible(false);
+    }, totalDuration);
 
     return () => {
       window.clearTimeout(welcomeTimer);
       window.clearTimeout(exitTimer);
       window.clearTimeout(finishTimer);
     };
-  }, [enabled]);
+  }, [enabled, isNative]);
 
   if (!enabled || !visible) return null;
 
