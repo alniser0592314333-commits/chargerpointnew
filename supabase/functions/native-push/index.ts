@@ -23,12 +23,6 @@ const decodeClaims = (token: string): Record<string, unknown> | null => {
 const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
   .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 const encode = (value: string) => base64url(new TextEncoder().encode(value));
-const constantTimeEqual = (a: string, b: string) => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-};
 
 let cachedGoogleToken: { value: string; expiresAt: number } | null = null;
 async function getGoogleAccessToken() {
