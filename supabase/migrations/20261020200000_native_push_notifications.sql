@@ -6,6 +6,22 @@
 
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA net;
 
+-- Generate the dispatch credential inside Vault instead of asking operators to
+-- copy a secret between database and Edge Function settings.
+DO $block$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM vault.decrypted_secrets WHERE name = 'native_push_dispatch_secret'
+  ) THEN
+    PERFORM vault.create_secret(
+      encode(public.gen_random_bytes(32), 'hex'),
+      'native_push_dispatch_secret',
+      'Shared authentication credential for database-triggered native push dispatch'
+    );
+  END IF;
+END;
+$block$;
+
 -- GOAL_REQUESTED is emitted by the existing customer goal-request workflow.
 ALTER TABLE public.customer_account_events
   DROP CONSTRAINT IF EXISTS customer_account_events_event_type_check;
@@ -117,6 +133,25 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.enqueue_native_push_event(text, uuid, text, text) FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.verify_native_push_dispatch_secret(p_secret text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, vault
+AS $function$
+  SELECT COALESCE(p_secret, '') <> ''
+     AND EXISTS (
+       SELECT 1
+       FROM vault.decrypted_secrets
+       WHERE name = 'native_push_dispatch_secret'
+         AND decrypted_secret = p_secret
+     );
+$function$;
+
+REVOKE ALL ON FUNCTION public.verify_native_push_dispatch_secret(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.verify_native_push_dispatch_secret(text) TO service_role;
 
 -- Called by the Edge Function before each send. Device tokens are not enough:
 -- the underlying Auth session and the corresponding admin/customer session must
