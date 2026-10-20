@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => {
       }),
       checkPermissions: vi.fn(async () => ({ display: 'granted' })),
       requestPermissions: vi.fn(async () => ({ display: 'granted' })),
-      schedule: vi.fn(async () => undefined),
+      schedule: vi.fn(async (_options: any) => undefined),
     },
   };
 });
