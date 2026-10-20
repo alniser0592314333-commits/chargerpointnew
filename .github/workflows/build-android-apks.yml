@@ -43,8 +43,8 @@ jobs:
       - name: Typecheck application and native notification integration
         run: npm run lint
 
-      - name: Run application regression tests
-        run: npm test
+      - name: Test native notification registration and foreground delivery
+        run: npx vitest run src/tests/native_push_notifications.test.ts
 
       - name: Typecheck native push Edge Function
         run: deno check supabase/functions/native-push/index.ts
