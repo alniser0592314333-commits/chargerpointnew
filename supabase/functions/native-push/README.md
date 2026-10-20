@@ -30,9 +30,9 @@ Configure these Supabase Edge Function secrets for `native-push`:
 - `FCM_PROJECT_ID`
 - `FCM_CLIENT_EMAIL`
 - `FCM_PRIVATE_KEY` (the service-account PEM private key; keep it only in Supabase secrets)
-- `PUSH_DISPATCH_SECRET` (a high-entropy random secret)
+- the Vault-generated dispatch secret (a high-entropy random secret)
 
-The same `PUSH_DISPATCH_SECRET` value must be stored in Supabase Vault under the name `native_push_dispatch_secret`. Store the exact function URL in Vault under `native_push_function_url`, for example:
+Store the exact function URL in Vault under `native_push_function_url`, for example:
 
 `https://ydhcyamtgioyrxfarkwk.supabase.co/functions/v1/native-push`
 
