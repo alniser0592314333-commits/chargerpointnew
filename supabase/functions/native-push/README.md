@@ -30,17 +30,16 @@ Configure these Supabase Edge Function secrets for `native-push`:
 - `FCM_PROJECT_ID`
 - `FCM_CLIENT_EMAIL`
 - `FCM_PRIVATE_KEY` (the service-account PEM private key; keep it only in Supabase secrets)
-- the Vault-generated dispatch secret (a high-entropy random secret)
 
 Store the exact function URL in Vault under `native_push_function_url`, for example:
 
 `https://ydhcyamtgioyrxfarkwk.supabase.co/functions/v1/native-push`
 
-The database trigger only sends a small event reference to the function. The function re-reads the authoritative row with the service role, verifies the dispatch secret, derives recipients server-side, and sends generic messages without receipt paths, amounts, balances, passwords, or customer QR tokens.
+The migration generates the dispatch credential inside Vault. The database trigger sends only a small event reference and that credential; the Edge Function validates it through a verifier callable only with the service-role key, re-reads the authoritative row, derives recipients server-side, and sends generic messages without receipt paths, amounts, balances, passwords, or customer QR tokens.
 
 ## Rollout safety
 
 - Apply the accompanying migration only after review and explicit approval.
-- Deploy `native-push` with `verify_jwt = false` only because the function independently verifies the shared dispatch secret for database-trigger dispatch and validates Supabase Auth plus active admin/customer sessions for registration/unregistration.
+- Deploy `native-push` with `verify_jwt = false` only because the function independently verifies the Vault-generated dispatch secret for database-trigger dispatch and validates Supabase Auth plus active admin/customer sessions for registration/unregistration.
 - No migration or Edge Function deployment is performed by this branch.
 - Without Firebase configuration, the APK build intentionally continues with a warning, but actual FCM registration/delivery is unavailable.
