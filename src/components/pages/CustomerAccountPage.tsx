@@ -253,13 +253,18 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     if (password !== confirmPassword) { setErrorMessage('PASSWORD_MISMATCH'); return; }
     setBusy(true); setError('');
     try {
-      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; session_expires_at?: string }>(
+      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; session_expires_at?: string; customer_qr_token?: string | null }>(
         'activate-password', { token: accountToken, password, confirmPassword, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION },
       );
       if (result.error || !result.data?.session) { setErrorMessage(result.error || 'ACTIVATION_UNAVAILABLE'); return; }
       const sessionError = await setCustomerSession(result.data.session);
       await saveSessionExpiry(accountToken, result.data.session_expires_at);
       if (sessionError) { setError(t('تم إنشاء الحساب لكن تعذّر إكمال الدخول. ارجع وسجّل الدخول بكلمة السر.', 'Account created, but sign-in could not be completed. Return and sign in with your password.')); setMode('login'); return; }
+      const rememberedToken = typeof result.data.customer_qr_token === 'string' && result.data.customer_qr_token.length >= 24
+        ? result.data.customer_qr_token
+        : accountToken;
+      try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
+      if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, result.data.session_expires_at);
       setPassword(''); setConfirmPassword(''); setMode('portal');
     } finally { setBusy(false); }
   };
@@ -350,6 +355,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     clearCachedCustomerPortalData(accountToken);
     clearCachedCustomerPortalData(portalToken);
     localStorage.removeItem(sessionExpiryKey(accountToken));
+    localStorage.removeItem(sessionExpiryKey(portalToken));
     try {
       const remembered = localStorage.getItem('last_customer_token');
       if (remembered === accountToken || remembered === portalToken) localStorage.removeItem('last_customer_token');
