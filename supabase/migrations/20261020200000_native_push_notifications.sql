@@ -15,7 +15,8 @@ BEGIN
     PERFORM vault.create_secret(
       encode(public.gen_random_bytes(32), 'hex'),
       'native_push_dispatch_secret',
-      'Shared authentication credential for database-triggered native push dispatch'
+      'Shared authentication credential for database-triggered native push dispatch',
+      NULL
     );
   END IF;
 
@@ -25,7 +26,8 @@ BEGIN
     PERFORM vault.create_secret(
       'https://ydhcyamtgioyrxfarkwk.supabase.co/functions/v1/native-push',
       'native_push_function_url',
-      'Native push Edge Function endpoint for asynchronous database-trigger dispatch'
+      'Native push Edge Function endpoint for asynchronous database-trigger dispatch',
+      NULL
     );
   END IF;
 END;
