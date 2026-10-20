@@ -162,6 +162,17 @@ Deno.serve(async (request: Request) => {
     }
 
     const locale = normalize(input.locale, 8) === "en" ? "en" : "ar";
+    const { data: existingDevice, error: existingDeviceError } = await admin.from("native_push_devices")
+      .select("id").eq("device_id", device).eq("app_variant", variant)
+      .eq("principal_id", principalId).maybeSingle();
+    if (existingDeviceError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    if (!existingDevice) {
+      const { count, error: countError } = await admin.from("native_push_devices")
+        .select("id", { count: "exact", head: true })
+        .eq("app_variant", variant).eq("principal_id", principalId).is("disabled_at", null);
+      if (countError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      if ((count ?? 0) >= 5) return json(429, { ok: false, error: "DEVICE_LIMIT_REACHED" });
+    }
     const now = new Date().toISOString();
     // Rebind only after the caller's active server-side session has been verified.
     const { error: removeError } = await admin.from("native_push_devices").delete()
