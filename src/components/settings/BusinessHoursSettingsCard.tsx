@@ -70,15 +70,8 @@ export const BusinessHoursSettingsCard: React.FC = () => {
     if (field === 'tomorrowCloseTime') setTomorrowCloseTime(value);
     setSavedSuccess(false);
     setSavedError(null);
-    // Every committed time-field change is shared immediately; the form button remains
-    // available to explicitly re-save the complete configuration.
-    void persistConfig({
-      isActive,
-      todayOpenTime: field === 'todayOpenTime' ? value : todayOpenTime,
-      todayCloseTime: field === 'todayCloseTime' ? value : todayCloseTime,
-      tomorrowOpenTime: field === 'tomorrowOpenTime' ? value : tomorrowOpenTime,
-      tomorrowCloseTime: field === 'tomorrowCloseTime' ? value : tomorrowCloseTime,
-    }).catch(() => setSavedError('SYNC_FAILED'));
+    // Time inputs remain a draft until the explicit Save button is pressed.
+    // This prevents partial/native time-input changes from racing as separate POSTs.
   };
 
   useEffect(() => {
