@@ -56,7 +56,7 @@ jobs:
 
       - name: Configure Firebase Cloud Messaging for native push
         env:
-          GOOGLE_SERVICES_JSON_BASE64: \${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           python3 - <<'PY'
           import base64
@@ -70,7 +70,7 @@ jobs:
               print("::warning::GOOGLE_SERVICES_JSON_BASE64 is not configured; APK builds, but FCM delivery will not work until Firebase configuration is added.")
               raise SystemExit(0)
 
-          variant = "\${{ matrix.variant }}"
+          variant = "${{ matrix.variant }}"
           expected_package = "com.chargerpointnew." + variant
           try:
               firebase = base64.b64decode(encoded, validate=True)
@@ -108,7 +108,7 @@ jobs:
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           content = manifest.read_text()
           if "android.permission.POST_NOTIFICATIONS" not in content:
-              content = content.replace("<application", '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\\n    <application', 1)
+              content = content.replace("<application", '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application', 1)
           if "android.permission.CAMERA" not in content:
               content, count = re.subn(
                   r"(?m)^([ \t]*)<application\b",
