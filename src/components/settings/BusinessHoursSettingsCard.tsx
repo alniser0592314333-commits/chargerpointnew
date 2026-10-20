@@ -21,7 +21,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   const [tomorrowCloseTime, setTomorrowCloseTime] = useState<string>(config.tomorrowCloseTime || '22:00');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [savedError, setSavedError] = useState(false);
+  const [savedError, setSavedError] = useState<string | null>(null);
 
   // Serialize toggle autosaves and form saves so older requests cannot overwrite newer settings.
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -33,11 +33,11 @@ export const BusinessHoursSettingsCard: React.FC = () => {
       setConfig(result.config);
       if (result.synced) {
         setSavedSuccess(true);
-        setSavedError(false);
+        setSavedError(null);
         window.setTimeout(() => setSavedSuccess(false), 3500);
       } else {
         setSavedSuccess(false);
-        setSavedError(true);
+        setSavedError(result.syncError || 'SYNC_FAILED');
       }
       return result;
     });
@@ -49,7 +49,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
     hasUserEditedRef.current = true;
     setIsActive(nextActive);
     setSavedSuccess(false);
-    setSavedError(false);
+    setSavedError(null);
     // The public status toggle is an immediate shared setting, not a draft waiting for Save.
     void persistConfig({
       isActive: nextActive,
@@ -57,7 +57,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
       todayCloseTime,
       tomorrowOpenTime,
       tomorrowCloseTime,
-    }).catch(() => setSavedError(true));
+    }).catch(() => setSavedError('SYNC_FAILED'));
   };
 
   type HoursField = 'todayOpenTime' | 'todayCloseTime' | 'tomorrowOpenTime' | 'tomorrowCloseTime';
@@ -69,7 +69,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
     if (field === 'tomorrowOpenTime') setTomorrowOpenTime(value);
     if (field === 'tomorrowCloseTime') setTomorrowCloseTime(value);
     setSavedSuccess(false);
-    setSavedError(false);
+    setSavedError(null);
     // Every committed time-field change is shared immediately; the form button remains
     // available to explicitly re-save the complete configuration.
     void persistConfig({
@@ -78,7 +78,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
       todayCloseTime: field === 'todayCloseTime' ? value : todayCloseTime,
       tomorrowOpenTime: field === 'tomorrowOpenTime' ? value : tomorrowOpenTime,
       tomorrowCloseTime: field === 'tomorrowCloseTime' ? value : tomorrowCloseTime,
-    }).catch(() => setSavedError(true));
+    }).catch(() => setSavedError('SYNC_FAILED'));
   };
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavedSuccess(false);
-    setSavedError(false);
+    setSavedError(null);
     try {
       await persistConfig({
         isActive,
@@ -110,7 +110,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
         tomorrowCloseTime,
       });
     } catch {
-      setSavedError(true);
+      setSavedError('SYNC_FAILED');
     }
   };
 
@@ -266,7 +266,9 @@ export const BusinessHoursSettingsCard: React.FC = () => {
           ) : savedError ? (
             <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300 font-semibold" role="status">
               <AlertCircle className="w-4 h-4" />
-              <span>{isAr ? 'حُفظت محليًا فقط؛ لم تتزامن مع الصفحة العامة. تحقق من الاتصال والصلاحيات ثم أعد الحفظ.' : 'Saved locally only; not synced to the public page. Check connection and permissions, then save again.'}</span>
+              <span>{isAr
+                ? `حُفظت محليًا فقط؛ فشلت المزامنة (${savedError}). ${savedError === 'NO_TOKEN' || savedError === 'TOKEN_EXPIRED_NO_REFRESH' || savedError === 'AUTH_REFRESH_FAILED' ? 'أعد تسجيل الدخول ثم حاول مجددًا.' : savedError === 'HTTP_401' ? 'انتهت صلاحية الجلسة؛ أعد تسجيل الدخول.' : savedError === 'HTTP_403' ? 'الحساب لا يملك صلاحية تعديل الإعدادات.' : savedError === 'OFFLINE' ? 'تحقق من اتصال الإنترنت.' : savedError === 'NO_ENDPOINT' ? 'إعدادات اتصال الخادم غير متوفرة في هذه النسخة.' : savedError === 'NETWORK_ERROR' ? 'تعذر الاتصال بالخادم.' : 'تحقق من الاتصال والإعدادات ثم أعد الحفظ.'}`
+                : `Saved locally only; sync failed (${savedError}). ${savedError === 'NO_TOKEN' || savedError === 'TOKEN_EXPIRED_NO_REFRESH' || savedError === 'AUTH_REFRESH_FAILED' ? 'Sign in again and retry.' : savedError === 'HTTP_401' ? 'Session expired; sign in again.' : savedError === 'HTTP_403' ? 'This account cannot manage settings.' : savedError === 'OFFLINE' ? 'Check your internet connection.' : savedError === 'NO_ENDPOINT' ? 'Server configuration is missing in this build.' : savedError === 'NETWORK_ERROR' ? 'Could not reach the server.' : 'Check the connection and retry.'}`}</span>
             </div>
           ) : <div />}
 
