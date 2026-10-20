@@ -51,6 +51,9 @@ jobs:
       - name: Test native notification registration and foreground delivery
         run: npx vitest run src/tests/native_push_notifications.test.ts
 
+      - name: Run full application regression suite
+        run: npm test
+
       - name: Typecheck native push Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/native-push/index.ts
 
