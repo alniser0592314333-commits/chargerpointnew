@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useI18n } from '../../i18n/i18nContext';
 import { CustomerAuthScene } from './CustomerAuthScene';
@@ -26,12 +26,13 @@ const rememberIntro = () => {
 };
 
 /** Customer APK intro on every app entry; website retains its original one-time behavior. */
-export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled }) => {
+export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean; restartKey?: number }> = ({ enabled, restartKey = 0 }) => {
   const { locale, isRTL } = useI18n();
   const isAr = locale === 'ar';
   const isNative = Capacitor.isNativePlatform();
   const [visible, setVisible] = useState(() => enabled && (isNative || !hasSeenIntro()));
   const [stage, setStage] = useState<IntroStage>('assembling');
+  const hasStartedRef = useRef(false);
 
   useEffect(() => {
     if (!enabled) {
@@ -42,10 +43,12 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
     // The public website keeps its original one-time intro. The native customer APK
     // keeps the original full intro on first launch, then shows a 4-second intro
     // on every later launch.
+    const isInitialRun = !hasStartedRef.current;
+    hasStartedRef.current = true;
     let nativeFirstLaunch = false;
     if (isNative) {
       try {
-        nativeFirstLaunch = window.localStorage.getItem(NATIVE_SEEN_KEY) !== '1';
+        nativeFirstLaunch = isInitialRun && window.localStorage.getItem(NATIVE_SEEN_KEY) !== '1';
       } catch {
         nativeFirstLaunch = true;
       }
@@ -80,7 +83,7 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean }> = ({ enabled
       window.clearTimeout(exitTimer);
       window.clearTimeout(finishTimer);
     };
-  }, [enabled, isNative]);
+  }, [enabled, isNative, restartKey]);
 
   if (!enabled || !visible) return null;
 
