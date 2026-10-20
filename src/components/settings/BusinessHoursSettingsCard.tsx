@@ -60,6 +60,27 @@ export const BusinessHoursSettingsCard: React.FC = () => {
     }).catch(() => setSavedError(true));
   };
 
+  type HoursField = 'todayOpenTime' | 'todayCloseTime' | 'tomorrowOpenTime' | 'tomorrowCloseTime';
+
+  const handleTimeChange = (field: HoursField, value: string) => {
+    hasUserEditedRef.current = true;
+    if (field === 'todayOpenTime') setTodayOpenTime(value);
+    if (field === 'todayCloseTime') setTodayCloseTime(value);
+    if (field === 'tomorrowOpenTime') setTomorrowOpenTime(value);
+    if (field === 'tomorrowCloseTime') setTomorrowCloseTime(value);
+    setSavedSuccess(false);
+    setSavedError(false);
+    // Every committed time-field change is shared immediately; the form button remains
+    // available to explicitly re-save the complete configuration.
+    void persistConfig({
+      isActive,
+      todayOpenTime: field === 'todayOpenTime' ? value : todayOpenTime,
+      todayCloseTime: field === 'todayCloseTime' ? value : todayCloseTime,
+      tomorrowOpenTime: field === 'tomorrowOpenTime' ? value : tomorrowOpenTime,
+      tomorrowCloseTime: field === 'tomorrowCloseTime' ? value : tomorrowCloseTime,
+    }).catch(() => setSavedError(true));
+  };
+
   useEffect(() => {
     let mounted = true;
     const applyConfig = (current: BusinessHoursConfig) => {
@@ -170,7 +191,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={todayOpenTime}
-                  onChange={(e) => { hasUserEditedRef.current = true; setTodayOpenTime(e.target.value); }}
+                  onChange={(e) => handleTimeChange('todayOpenTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -183,7 +204,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={todayCloseTime}
-                  onChange={(e) => { hasUserEditedRef.current = true; setTodayCloseTime(e.target.value); }}
+                  onChange={(e) => handleTimeChange('todayCloseTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -206,7 +227,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={tomorrowOpenTime}
-                  onChange={(e) => { hasUserEditedRef.current = true; setTomorrowOpenTime(e.target.value); }}
+                  onChange={(e) => handleTimeChange('tomorrowOpenTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
@@ -219,7 +240,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                 <input
                   type="time"
                   value={tomorrowCloseTime}
-                  onChange={(e) => { hasUserEditedRef.current = true; setTomorrowCloseTime(e.target.value); }}
+                  onChange={(e) => handleTimeChange('tomorrowCloseTime', e.target.value)}
                   className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
                   required
                 />
