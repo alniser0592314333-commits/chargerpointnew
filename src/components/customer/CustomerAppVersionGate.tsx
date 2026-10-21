@@ -2,20 +2,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { AlertCircle, CheckCircle2, Clock3, Download, LoaderCircle, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
-import { fetchAppReleasePolicy, parseAppVersion, type AppReleasePolicy } from '../../services/appReleasePolicy';
+import { fetchAppReleasePolicy, parseAppVersion, type AppReleaseChannel, type AppReleasePolicy } from '../../services/appReleasePolicy';
 
-const CHANNEL = 'customer' as const;
 const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
-const POLICY_CACHE_KEY = 'cp_app_release_policy_v1_customer';
-const DISMISS_KEY_PREFIX = 'cp_app_release_dismissed_v1_customer_';
 type GateState = 'checking' | 'ready' | 'update' | 'blocked' | 'offline-unknown';
 
-function readCachedPolicy(): AppReleasePolicy | null {
+function readCachedPolicy(channel: AppReleaseChannel, cacheKey: string): AppReleasePolicy | null {
   try {
     const raw = localStorage.getItem(POLICY_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AppReleasePolicy;
-    if (parsed.channel !== CHANNEL || !parseAppVersion(parsed.latest_version)
+    if (parsed.channel !== channel || !parseAppVersion(parsed.latest_version)
       || !Number.isFinite(Number(parsed.version_code)) || !Number.isFinite(Date.parse(parsed.grace_until))) return null;
     return parsed;
   } catch { return null; }
@@ -25,7 +22,10 @@ function currentVersionCode(): number {
   return parseAppVersion(CURRENT_VERSION)?.code ?? 1_000_000;
 }
 
-export const CustomerAppVersionGate: React.FC<React.PropsWithChildren> = ({ children }) => {
+export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppReleaseChannel }>> = ({ children, channel }) => {
+  const policyCacheKey = 'cp_app_release_policy_v1_' + channel;
+  const dismissKeyPrefix = 'cp_app_release_dismissed_v1_' + channel + '_';
+  const activeVariant = import.meta.env.MODE === 'admin' ? 'admin' : 'customer';
   const [state, setState] = useState<GateState>('checking');
   const [policy, setPolicy] = useState<AppReleasePolicy | null>(null);
   const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -57,26 +57,26 @@ export const CustomerAppVersionGate: React.FC<React.PropsWithChildren> = ({ chil
   }, []);
 
   const checkVersion = useCallback(async () => {
-    if (!Capacitor.isNativePlatform() || import.meta.env.MODE !== 'customer') {
+    if (!Capacitor.isNativePlatform() || activeVariant !== channel) {
       setState('ready');
       return;
     }
     setIsOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
-    const resultPromise = fetchAppReleasePolicy(CHANNEL);
+    const resultPromise = fetchAppReleasePolicy(channel);
     const timeoutPromise = new Promise<{ policy: null; error: string }>((resolve) => {
       setTimeout(() => resolve({ policy: null, error: 'APP_RELEASE_CHECK_TIMEOUT' }), 8000);
     });
     const result = await Promise.race([resultPromise, timeoutPromise]);
     if (!mounted.current) return;
     if (result.policy) {
-      try { localStorage.setItem(POLICY_CACHE_KEY, JSON.stringify(result.policy)); } catch {}
+      try { localStorage.setItem(policyCacheKey, JSON.stringify(result.policy)); } catch {}
       evaluatePolicy(result.policy);
       return;
     }
-    const cached = readCachedPolicy();
+    const cached = readCachedPolicy(channel, policyCacheKey);
     if (cached) { evaluatePolicy(cached); return; }
     setState('offline-unknown');
-  }, [evaluatePolicy]);
+  }, [activeVariant, channel, evaluatePolicy, policyCacheKey]);
 
   useEffect(() => {
     mounted.current = true;
@@ -97,7 +97,7 @@ export const CustomerAppVersionGate: React.FC<React.PropsWithChildren> = ({ chil
     };
   }, [checkVersion]);
 
-  if (!Capacitor.isNativePlatform() || import.meta.env.MODE !== 'customer') return <>{children}</>;
+  if (!Capacitor.isNativePlatform() || activeVariant !== channel) return <>{children}</>;
   const hardBlock = state === 'blocked' || state === 'offline-unknown';
   const openUpdate = () => {
     const url = policy?.download_url?.trim();
@@ -125,7 +125,7 @@ export const CustomerAppVersionGate: React.FC<React.PropsWithChildren> = ({ chil
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/10">
               {state === 'checking' ? <LoaderCircle className="h-6 w-6 animate-spin text-emerald-200" /> : hardBlock ? <ShieldAlert className="h-6 w-6 text-amber-200" /> : <Download className="h-6 w-6 text-emerald-200" />}
             </div>
-            <div><p className="text-xs font-semibold tracking-wide text-emerald-200">نقطة الشحن</p><h1 className="mt-1 text-xl font-extrabold">{state === 'checking' ? 'جارٍ التحقق من الإصدار' : state === 'offline-unknown' ? 'يلزم الاتصال بالإنترنت' : state === 'blocked' ? 'انتهت صلاحية الإصدار' : 'يتوفر تحديث جديد'}</h1></div>
+            <div><p className="text-xs font-semibold tracking-wide text-emerald-200">{channel === 'customer' ? 'نقطة الشحن' : 'نقطة الشحن - الإدارة'}</p><h1 className="mt-1 text-xl font-extrabold">{state === 'checking' ? 'جارٍ التحقق من الإصدار' : state === 'offline-unknown' ? 'يلزم الاتصال بالإنترنت' : state === 'blocked' ? 'انتهت صلاحية الإصدار' : 'يتوفر تحديث جديد'}</h1></div>
           </div>
         </div>
         <div className="space-y-5 p-6">
