@@ -204,7 +204,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         else setError('service');
         return;
       }
-      if (rpcError || !response) {
+      if (rpcError === 'NETWORK_UNAVAILABLE') {
+        setServerAvailable(false);
+        const cached = readCachedPortalData(token);
+        if (cached) { setData(cached); setError(null); }
+        else { setData(null); setError('service'); }
+      } else if (rpcError || !response) {
         setServerAvailable(false);
         setData(null);
         setError(rpcError ? 'service' : 'invalid');
