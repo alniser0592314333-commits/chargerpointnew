@@ -173,7 +173,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const load = useCallback(async (manual = false, background = false) => {
     const requestId = ++requestGeneration.current;
     if (manual) setRefreshing(true); else if (!background) setLoading(true);
-    setError(null);
+    if (!background) setError(null);
     // Never show a cached/local financial snapshot as if it were current.
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       const cached = readCachedPortalData(token);
@@ -215,6 +215,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       } else {
         const verifiedSnapshot: PortalData = { ...response, cached_at: new Date().toISOString() };
         setData(verifiedSnapshot);
+        setError(null);
         try { localStorage.setItem(portalCacheKey(token), JSON.stringify(verifiedSnapshot)); } catch {}
       }
     } catch {
