@@ -32,7 +32,9 @@
     "tailwind-merge": "^3.7.0",
     "vite": "^8.3.0",
     "zod": "^4.6.5",
-    "@capacitor/app": "^7.0.1"
+    "@capacitor/app": "^7.0.1",
+    "@capacitor/push-notifications": "^7.0.2",
+    "@capacitor/local-notifications": "^7.0.2"
   },
   "devDependencies": {
     "@capacitor/android": "^7.4.3",

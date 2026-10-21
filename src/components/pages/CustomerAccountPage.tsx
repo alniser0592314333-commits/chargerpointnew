@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -203,6 +204,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setError(t('تعذّر تحميل صفحة الحساب. تحقق من الاتصال ثم أعد المحاولة.', 'The account page could not load. Check your connection and try again.'));
     }
   }, [accountToken, directEntry, orderQrToken, t]);
+
+  useEffect(() => {
+    if (mode === 'portal' && Capacitor.isNativePlatform()) {
+      void startCustomerNativePushNotifications(document.documentElement.lang);
+    }
+  }, [mode]);
 
   useEffect(() => {
     void loadEntry();
