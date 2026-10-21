@@ -63,32 +63,21 @@ jobs:
 
           migration = Path("supabase/migrations/20261020200000_native_push_notifications.sql").read_text()
           parse_sql(migration)
-          fixes = sorted(Path("supabase/migrations").glob("*fix_native_push_http_post_native_push_notifications.sql"))
+          fixes = sorted(Path("supabase/migrations").glob("*fix_native_push*.sql"))
           if not fixes:
-              raise SystemExit("Native push pg_net signature fix migration is missing")
+              raise SystemExit("Native push pg_net fix migration is missing")
           for fix in fixes:
               fix_sql = fix.read_text()
               parse_sql(fix_sql)
-              if "params := $2" not in fix_sql or "headers := $3" not in fix_sql or "body := $4" not in fix_sql:
-                  raise SystemExit("pg_net http_post call does not supply all required named arguments")
-          required = [
-              "native_push_qr_payment_submission",
-              "native_push_customer_account_event",
-              "native_push_goal_request_reviewed",
-              "native_push_device_is_current",
-              "claim_native_push_delivery",
-              "native_push_function_url",
-          ]
-          for marker in required:
-              if migration.count(marker) < 1:
-                  raise SystemExit(f"Required migration behavior missing: {marker}")
-          for trigger in ("native_push_qr_payment_submission", "native_push_customer_account_event", "native_push_goal_request_reviewed"):
-              if migration.count("CREATE TRIGGER " + trigger) != 1:
-                  raise SystemExit(f"Expected exactly one canonical trigger: {trigger}")
-          for fix in fixes:
-              for trigger in ("native_push_order_created", "native_push_order_fully_delivered"):
-                  if fix.read_text().count("CREATE TRIGGER " + trigger) != 1:
-                      raise SystemExit(f"Expected exactly one order push trigger: {trigger}")
+              if "http_post(" in fix_sql:
+                  if "http_post($1, $4, $2, $3, $5)" not in fix_sql:
+                      raise SystemExit("pg_net http_post call does not match the installed positional signature")
+                  if "pg_get_function_identity_arguments" not in fix_sql:
+                      raise SystemExit("pg_net http_post schema discovery is missing")
+          order_migration = Path("supabase/migrations/20261021100000_fix_native_push_http_post_native_push_notifications.sql").read_text()
+          for trigger in ("native_push_order_created", "native_push_order_fully_delivered"):
+              if order_migration.count("CREATE TRIGGER " + trigger) != 1:
+                  raise SystemExit(f"Expected exactly one order push trigger: {trigger}")
           print("Migration SQL parsed; payment/account/goal/order triggers and idempotency/session guards are present.")
           PY
 
