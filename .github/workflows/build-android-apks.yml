@@ -85,7 +85,11 @@ jobs:
           for trigger in ("native_push_qr_payment_submission", "native_push_customer_account_event", "native_push_goal_request_reviewed"):
               if migration.count("CREATE TRIGGER " + trigger) != 1:
                   raise SystemExit(f"Expected exactly one canonical trigger: {trigger}")
-          print("Migration SQL parsed; canonical event triggers and idempotency/session guards are present.")
+          for fix in fixes:
+              for trigger in ("native_push_order_created", "native_push_order_fully_delivered"):
+                  if fix.read_text().count("CREATE TRIGGER " + trigger) != 1:
+                      raise SystemExit(f"Expected exactly one order push trigger: {trigger}")
+          print("Migration SQL parsed; payment/account/goal/order triggers and idempotency/session guards are present.")
           PY
 
   full-app-regression-baseline:
