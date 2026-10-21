@@ -115,6 +115,22 @@ describe('native push notification integration', () => {
     expect(mocks.PushNotifications.addListener).toHaveBeenCalledTimes(5);
   });
 
+  it('cancels registration when logout races the initial auth-token lookup', async () => {
+    vi.resetModules();
+    const service = await import('../services/nativePushNotifications');
+    let resolveToken!: (value: string) => void;
+    const tokenLookup = new Promise<string>((resolve) => { resolveToken = resolve; });
+
+    const starting = service.startNativePushNotifications('admin', () => tokenLookup, 'en');
+    const stopping = service.stopNativePushNotifications();
+    resolveToken('valid-access-token');
+
+    await Promise.all([starting, stopping]);
+    expect(mocks.PushNotifications.register).not.toHaveBeenCalled();
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).action).toBe('unregister');
+  });
+
   it('unregisters on logout and cannot re-register from a late token callback', async () => {
     vi.resetModules();
     const service = await import('../services/nativePushNotifications');
