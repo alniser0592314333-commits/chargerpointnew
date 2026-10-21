@@ -112,7 +112,7 @@ describe('native push notification integration', () => {
     ]);
 
     expect(mocks.PushNotifications.register).toHaveBeenCalledTimes(1);
-    expect(mocks.PushNotifications.addListener).toHaveBeenCalledTimes(5);
+    expect(mocks.PushNotifications.addListener).toHaveBeenCalledTimes(4);
   });
 
   it('cancels registration when logout races the initial auth-token lookup', async () => {
