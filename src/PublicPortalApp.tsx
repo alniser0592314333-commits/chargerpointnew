@@ -9,7 +9,7 @@ import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
 import { FirstVisitWelcomeIntro } from './components/pages/FirstVisitWelcomeIntro';
 import './public-portal.css';
-import { CustomerAppVersionGate } from './components/customer/CustomerAppVersionGate';
+import { AppVersionGate } from './components/customer/CustomerAppVersionGate';
 
 
 function scrollPublicViewToTop(): boolean {
@@ -239,7 +239,7 @@ const PublicPortalApp: React.FC = () => {
     }
   }
 
-  return <I18nProvider><CustomerAppVersionGate><FirstVisitWelcomeIntro key={introKey} enabled={welcomeEnabled} />{content}</CustomerAppVersionGate></I18nProvider>;
+  return <I18nProvider><AppVersionGate channel="customer"><FirstVisitWelcomeIntro key={introKey} enabled={welcomeEnabled} />{content}</AppVersionGate></I18nProvider>;
 };
 
 export default PublicPortalApp;
