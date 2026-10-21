@@ -219,8 +219,11 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       }
     } catch {
       if (requestId === requestGeneration.current) {
-        setData(null);
-        setError('service');
+        if (!background) {
+          const cached = readCachedPortalData(token);
+          if (cached) { setData(cached); setError(null); }
+          else { setData(null); setError('service'); }
+        }
       }
     } finally {
       if (requestId === requestGeneration.current && !background) {
