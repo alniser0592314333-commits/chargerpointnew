@@ -152,6 +152,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     setConfirmBin("");
     setError("");
     setSuccessMessage("");
+    const remembered = readSavedAdminAccounts();
+    setSavedAdminAccounts(remembered);
+    setShowSavedAccounts(remembered.length > 0);
+    setUsername("");
     const bootstrapped = isSupabase ? await authService.checkSystemBootstrapped() : true;
     setIsBootstrapped(bootstrapped);
     setUiState("NORMAL_LOGIN");
