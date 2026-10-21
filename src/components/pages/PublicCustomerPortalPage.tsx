@@ -172,7 +172,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
 
   const load = useCallback(async (manual = false) => {
     const requestId = ++requestGeneration.current;
-    if (manual) setRefreshing(true); else setLoading(true);
+    if (manual) setRefreshing(true);
+    else if (readCachedPortalData(token)) setLoading(false);
+    else setLoading(true);
     setError(null);
     // Never show a cached/local financial snapshot as if it were current.
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
