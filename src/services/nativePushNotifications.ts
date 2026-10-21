@@ -45,10 +45,13 @@ const deviceId = (bearer: string, variant: AppVariant): string => {
 };
 
 const getAccessToken = async (): Promise<string | null> => {
+  const generation = lifecycleGeneration;
   try {
     const value = await currentTokenProvider?.();
     if (typeof value === 'string' && value.trim()) {
-      lastAuthorizedToken = value.trim();
+      // A provider promise may resolve after logout; never repopulate auth state
+      // from a lifecycle that has already been invalidated.
+      if (generation === lifecycleGeneration && currentTokenProvider) lastAuthorizedToken = value.trim();
       return value.trim();
     }
   } catch {}
