@@ -80,6 +80,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const initialized = useRef(false);
+  const portalAlreadyShown = useRef(false);
 
   const t = useCallback((ar: string, en: string) => isAr ? ar : en, [isAr]);
   const setErrorMessage = (value: string) => {
@@ -101,7 +102,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     if (initialized.current) return;
     initialized.current = true;
     try {
-      setMode('loading');
+      if (!portalAlreadyShown.current) setMode('loading');
       setError('');
       setMessage('');
       if (directEntry && !accountToken) {
@@ -138,6 +139,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (localSession.session && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
           localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(cachedPortalToken)) {
         setPortalToken(cachedPortalToken);
+        portalAlreadyShown.current = true;
         setMode('portal');
         setMessage(t('أنت غير متصل. هذه آخر نسخة محفوظة؛ الدفع وتغييرات الحساب متوقفة حتى عودة الإنترنت.', 'You are offline. This is the last saved copy; payments and account changes are disabled until you reconnect.'));
       } else {
@@ -186,7 +188,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         setEntry((current) => current ? { ...current, auth_provider: registeredData.auth_provider ?? current.auth_provider, terms_version: registeredData.terms_version ?? current.terms_version } : current);
         if (registeredData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
         else if (registeredData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
-        else setMode('portal');
+        else { portalAlreadyShown.current = true; setMode('portal'); }
         return;
       }
       await customerAuth.auth.signOut();
