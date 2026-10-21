@@ -1,0 +1,232 @@
+name: Prepare Signed Android Release APKs
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Version to build (X.Y.Z, for example 1.0.1)"
+        required: true
+        default: "1.0.1"
+        type: string
+      variant:
+        description: "APK variant to build"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - customer
+          - admin
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    name: Build signed ${{ matrix.variant }} v${{ inputs.release_version }}
+    runs-on: ubuntu-latest
+    if: ${{ inputs.variant == 'both' || inputs.variant == matrix.variant }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [customer, admin]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and run notification/version tests
+        run: |
+          npm run lint
+          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts
+
+      - name: Build production web assets
+        env:
+          VITE_APP_VERSION: ${{ inputs.release_version }}
+          VITE_NATIVE_PUSH_ENABLED: "true"
+        run: npm run build:${{ matrix.variant }}
+
+      - name: Select app identity and generate Android project
+        run: |
+          cp capacitor.${{ matrix.variant }}.config.json capacitor.config.json
+          npx cap add android
+
+      - name: Set SemVer and Android versionCode
+        env:
+          APP_VERSION: ${{ inputs.release_version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          version = os.environ["APP_VERSION"].strip()
+          parts = version.split(".")
+          if len(parts) != 3 or any(not p.isdigit() or (len(p) > 1 and p.startswith("0")) for p in parts):
+              raise SystemExit("Version must use X.Y.Z, for example 1.0.1")
+          major, minor, patch = map(int, parts)
+          if major > 2147 or minor > 999 or patch > 999:
+              raise SystemExit("Version components exceed supported limits")
+          version_code = major * 1000000 + minor * 1000 + patch
+          if version_code < 1 or version_code > 2100000000:
+              raise SystemExit("Version is outside Android versionCode range")
+          gradle = Path("android/app/build.gradle")
+          lines = gradle.read_text().splitlines()
+          code_count = 0
+          name_count = 0
+          for index, line in enumerate(lines):
+              stripped = line.strip()
+              indent = line[:len(line) - len(line.lstrip())]
+              if stripped.startswith("versionCode ") and code_count == 0:
+                  lines[index] = indent + "versionCode " + str(version_code)
+                  code_count += 1
+              elif stripped.startswith("versionName ") and name_count == 0:
+                  lines[index] = indent + 'versionName "' + version + '"'
+                  name_count += 1
+          if code_count != 1 or name_count != 1:
+              raise SystemExit("Could not safely set Android versionCode/versionName")
+          gradle.write_text("\n".join(lines) + "\n")
+          print("Configured " + version + " with Android versionCode " + str(version_code))
+          PY
+
+      - name: Configure Firebase Cloud Messaging
+        env:
+          GOOGLE_SERVICES_JSON_CUSTOMER_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_CUSTOMER_BASE64 }}
+          GOOGLE_SERVICES_JSON_ADMIN_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_ADMIN_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, re
+          from pathlib import Path
+          variant = "${{ matrix.variant }}"
+          secret_name = "GOOGLE_SERVICES_JSON_CUSTOMER_BASE64" if variant == "customer" else "GOOGLE_SERVICES_JSON_ADMIN_BASE64"
+          encoded = os.environ.get(secret_name, "").strip()
+          if not encoded:
+              raise SystemExit(secret_name + " is required for release builds")
+          try:
+              firebase = base64.b64decode(encoded, validate=True)
+              parsed = json.loads(firebase)
+          except Exception as exc:
+              raise SystemExit("Firebase JSON secret is not valid base64") from exc
+          expected_package = "com.chargerpointnew." + variant
+          packages = [x.get("client_info", {}).get("android_client_info", {}).get("package_name") for x in parsed.get("client", [])]
+          if expected_package not in packages:
+              raise SystemExit("Firebase config does not contain " + expected_package)
+          Path("android/app/google-services.json").write_bytes(firebase)
+          root_gradle = Path("android/build.gradle")
+          root = root_gradle.read_text()
+          if "com.google.gms:google-services" not in root:
+              match = re.search(r"dependencies\s*\{", root)
+              if not match:
+                  raise SystemExit("Could not locate root Gradle dependencies")
+              root = root[:match.end()] + "\n        classpath 'com.google.gms:google-services:4.4.2'" + root[match.end():]
+              root_gradle.write_text(root)
+          app_gradle = Path("android/app/build.gradle")
+          app = app_gradle.read_text()
+          if "com.google.gms.google-services" not in app:
+              app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
+          PY
+
+      - name: Add QR camera permission and official app name
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          variant = "${{ matrix.variant }}"
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text()
+          for permission in ("android.permission.POST_NOTIFICATIONS", "android.permission.CAMERA"):
+              if permission not in content:
+                  content = content.replace("<application", '    <uses-permission android:name="' + permission + '" />\n    <application', 1)
+          if "android.hardware.camera.any" not in content:
+              content = content.replace("<application", '    <uses-feature android:name="android.hardware.camera.any" android:required="false" />\n    <application', 1)
+          manifest.write_text(content)
+          values = Path("android/app/src/main/res/values/strings.xml")
+          values.parent.mkdir(parents=True, exist_ok=True)
+          text = values.read_text() if values.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+          name = "Charging Point" if variant == "customer" else "Charging Point Admin"
+          text = re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">' + name + '</string>', text, count=1) if '<string name="app_name">' in text else text.replace("</resources>", '    <string name="app_name">' + name + '</string>\n</resources>')
+          values.write_text(text)
+          ar_dir = Path("android/app/src/main/res/values-ar")
+          ar_dir.mkdir(parents=True, exist_ok=True)
+          ar_file = ar_dir / "strings.xml"
+          ar_text = ar_file.read_text() if ar_file.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+          ar_name = "نقطة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
+          ar_text = re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">' + ar_name + '</string>', ar_text, count=1) if '<string name="app_name">' in ar_text else ar_text.replace("</resources>", '    <string name="app_name">' + ar_name + '</string>\n</resources>')
+          ar_file.write_text(ar_text)
+          PY
+
+      - name: Configure permanent signing key and R8 obfuscation
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          encoded = os.environ.get("ANDROID_KEYSTORE_BASE64", "").strip()
+          if not encoded:
+              raise SystemExit("Missing ANDROID_KEYSTORE_BASE64. Configure the permanent signing key before releasing updates.")
+          try:
+              data = base64.b64decode(encoded, validate=True)
+          except Exception as exc:
+              raise SystemExit("ANDROID_KEYSTORE_BASE64 must be base64-encoded keystore bytes") from exc
+          if len(data) < 1024:
+              raise SystemExit("Signing keystore is unexpectedly small")
+          Path("android/app/release-keystore.jks").write_bytes(data)
+          gradle = Path("android/app/build.gradle")
+          gradle.write_text(gradle.read_text() + """
+          
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release-keystore.jks")
+                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled true
+                      shrinkResources true
+                      proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+                  }
+              }
+          }
+          """)
+          rules = Path("android/app/proguard-rules.pro")
+          rules.write_text((rules.read_text() if rules.exists() else "") + """
+          -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod
+          -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+          -keepclassmembers class * { @com.getcapacitor.annotation.PluginMethod <methods>; }
+          """)
+          PY
+
+      - name: Sync native plugins and build signed release
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          npx cap sync android
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Publish signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChargerPoint-${{ matrix.variant }}-v${{ inputs.release_version }}-signed-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 90
