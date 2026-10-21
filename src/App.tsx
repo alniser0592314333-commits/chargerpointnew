@@ -271,7 +271,8 @@ export default function App() {
         active = false;
       }
     };
-    const timer = window.setInterval(() => { void pullLatest(); }, 30_000);
+    // Keep the active admin view fresh across screens after server-side approvals/changes.
+    const timer = window.setInterval(() => { void pullLatest(); }, 5_000);
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void pullLatest();
     };
