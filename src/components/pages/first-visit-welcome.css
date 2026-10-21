@@ -34,64 +34,37 @@
   filter: saturate(.94);
 }
 
-.cp-welcome-intro__art > :not(defs) {
-  transform-box: fill-box;
+.cp-welcome-intro__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: saturate(.94);
+  opacity: 1;
+  transform: none;
   transform-origin: center;
-  opacity: 0;
 }
 
-.cp-welcome-intro[data-stage="assembling"] .cp-welcome-intro__art > :not(defs) {
-  animation: cp-welcome-gather 1.65s cubic-bezier(.18,.78,.2,1) both;
-  animation-delay: calc(var(--piece-order, 0) * 22ms);
+.cp-welcome-intro[data-stage="assembling"] .cp-welcome-intro__art {
+  animation: cp-welcome-art-in 1500ms cubic-bezier(.2,.7,.2,1) both;
 }
 
-.cp-welcome-intro[data-stage="welcome"] .cp-welcome-intro__art > :not(defs) {
+.cp-welcome-intro[data-stage="welcome"] .cp-welcome-intro__art {
   opacity: 1;
   transform: none;
 }
 
-.cp-welcome-intro[data-stage="exiting"] .cp-welcome-intro__art > :not(defs) {
-  animation: cp-welcome-scatter 950ms cubic-bezier(.55,.05,.8,.35) both;
-  animation-delay: calc(var(--piece-order, 0) * 12ms);
+.cp-welcome-intro[data-stage="exiting"] .cp-welcome-intro__art {
+  animation: cp-welcome-art-out 900ms ease-in both;
 }
 
-.cp-welcome-intro__art > :nth-child(2) { --piece-order: 0; --from-x: 0; --from-y: 0; --from-rotate: 0deg; --to-x: 0; --to-y: -105vh; --to-rotate: -3deg; }
-.cp-welcome-intro__art > :nth-child(3) { --piece-order: 3; --from-x: -95vw; --from-y: -12vh; --from-rotate: -8deg; --to-x: -105vw; --to-y: -18vh; --to-rotate: -12deg; }
-.cp-welcome-intro__art > :nth-child(4) { --piece-order: 5; --from-x: 95vw; --from-y: -20vh; --from-rotate: 8deg; --to-x: 105vw; --to-y: -15vh; --to-rotate: 10deg; }
-.cp-welcome-intro__art > :nth-child(5) { --piece-order: 7; --from-x: 65vw; --from-y: -80vh; --from-rotate: 30deg; --to-x: 90vw; --to-y: -95vh; --to-rotate: 35deg; }
-.cp-welcome-intro__art > :nth-child(6) { --piece-order: 2; --from-x: -45vw; --from-y: -90vh; --from-rotate: -18deg; --to-x: -80vw; --to-y: -95vh; --to-rotate: -25deg; }
-.cp-welcome-intro__art > :nth-child(7) { --piece-order: 1; --from-x: 0; --from-y: -100vh; --from-rotate: 0deg; --to-x: 0; --to-y: -110vh; --to-rotate: 8deg; }
-.cp-welcome-intro__art > :nth-child(8) { --piece-order: 4; --from-x: 0; --from-y: -100vh; --from-rotate: 0deg; --to-x: 0; --to-y: -110vh; --to-rotate: 8deg; }
-.cp-welcome-intro__art > :nth-child(9) { --piece-order: 8; --from-x: 0; --from-y: 95vh; --from-rotate: 0deg; --to-x: 0; --to-y: -110vh; --to-rotate: 5deg; }
-.cp-welcome-intro__art > :nth-child(10) { --piece-order: 9; --from-x: -105vw; --from-y: 55vh; --from-rotate: -12deg; --to-x: -110vw; --to-y: 50vh; --to-rotate: -15deg; }
-.cp-welcome-intro__art > :nth-child(11) { --piece-order: 10; --from-x: 105vw; --from-y: 65vh; --from-rotate: 12deg; --to-x: 110vw; --to-y: 75vh; --to-rotate: 15deg; }
-.cp-welcome-intro__art > :nth-child(12) { --piece-order: 11; --from-x: 0; --from-y: -105vh; --from-rotate: -6deg; --to-x: 0; --to-y: -100vh; --to-rotate: -8deg; }
-.cp-welcome-intro__art > :nth-child(13) { --piece-order: 12; --from-x: -105vw; --from-y: -5vh; --from-rotate: -9deg; --to-x: -110vw; --to-y: 0; --to-rotate: -12deg; }
-.cp-welcome-intro__art > :nth-child(14) { --piece-order: 13; --from-x: 105vw; --from-y: 10vh; --from-rotate: 10deg; --to-x: 110vw; --to-y: 15vh; --to-rotate: 12deg; }
-.cp-welcome-intro__art > :nth-child(15) { --piece-order: 14; --from-x: -100vw; --from-y: 95vh; --from-rotate: -5deg; --to-x: -110vw; --to-y: 100vh; --to-rotate: -8deg; }
-.cp-welcome-intro__art > :nth-child(16) { --piece-order: 15; --from-x: 0; --from-y: 100vh; --from-rotate: 0deg; --to-x: 0; --to-y: 110vh; --to-rotate: 0deg; }
-.cp-welcome-intro__art > :nth-child(17) { --piece-order: 16; --from-x: 105vw; --from-y: 95vh; --from-rotate: 4deg; --to-x: 110vw; --to-y: 100vh; --to-rotate: 7deg; }
-.cp-welcome-intro__art > :nth-child(18) { --piece-order: 17; --from-x: 95vw; --from-y: 105vh; --from-rotate: 16deg; --to-x: 110vw; --to-y: 110vh; --to-rotate: 20deg; }
-.cp-welcome-intro__art > :nth-child(19) { --piece-order: 18; --from-x: -95vw; --from-y: 110vh; --from-rotate: -8deg; --to-x: -105vw; --to-y: 110vh; --to-rotate: -10deg; }
-
-@keyframes cp-welcome-gather {
-  0% {
-    opacity: 0;
-    transform: translate3d(var(--from-x, 0), var(--from-y, 0), 0) rotate(var(--from-rotate, 0deg)) scale(.84);
-    filter: blur(8px) brightness(1.35);
-  }
-  68% { opacity: 1; filter: blur(0) brightness(1.08); }
-  86% { transform: translate3d(0, 0, 0) rotate(0) scale(1.025); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0) scale(1); filter: none; }
+@keyframes cp-welcome-art-in {
+  from { opacity: .35; transform: scale(1.035); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-@keyframes cp-welcome-scatter {
-  0% { opacity: 1; transform: none; filter: blur(0); }
-  100% {
-    opacity: 0;
-    transform: translate3d(var(--to-x, 0), var(--to-y, 0), 0) rotate(var(--to-rotate, 0deg)) scale(.78);
-    filter: blur(7px) brightness(1.2);
-  }
+@keyframes cp-welcome-art-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.02); }
 }
 
 .cp-welcome-intro__copy {
@@ -205,7 +178,7 @@
     animation: none !important;
     transition: none !important;
   }
-  .cp-welcome-intro__art > :not(defs) { opacity: 1 !important; transform: none !important; }
+  .cp-welcome-intro__art { opacity: 1 !important; transform: none !important; }
   .cp-welcome-intro__copy { opacity: 1; transform: none; }
   .cp-welcome-intro[data-stage="exiting"] { opacity: 0; }
 }

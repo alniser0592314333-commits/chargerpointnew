@@ -1,0 +1,8 @@
+{
+  "appId": "com.chargerpointnew.customer",
+  "appName": "نقطة الشحن",
+  "webDir": "dist/customer",
+  "server": {
+    "androidScheme": "https"
+  }
+}

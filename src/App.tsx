@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { ThemeProvider } from './theme/themeContext';
 import { I18nProvider } from './i18n/i18nContext';
 import { ToastProvider } from './components/ui/Toast';
@@ -43,7 +44,8 @@ import { NotFoundPage } from './components/pages/NotFoundPage';
 import { UnauthorizedPage } from './components/pages/UnauthorizedPage';
 import { AdminManagementPage } from './components/pages/AdminManagementPage';
 import { UserSession } from './services/auth/authService';
-import { registerSuspensionHandler } from './services/supabase/client';
+import { getSupabaseAuthToken, registerSuspensionHandler } from './services/supabase/client';
+import { startNativePushNotifications, stopNativePushNotifications } from './services/nativePushNotifications';
 import { ShieldAlert } from 'lucide-react';
 import { DesignSystemPlayground } from './components/playground/DesignSystemPlayground';
 import { Button } from './components/ui/Button';
@@ -70,19 +72,56 @@ export function parseRoute(pathAndHash: string): { pathname: string; hash: strin
 
 
 function isPublicPortalPath(pathname: string): boolean {
-  return pathname === '/public/about' ||
+  // The native admin build must never treat a customer portal URL as a public
+  // entry point. The web build keeps the existing customer QR route behavior.
+  return import.meta.env.VITE_APP_VARIANT !== 'admin' && (
+    pathname === '/public/about' ||
     pathname.startsWith('/c/') ||
     pathname.startsWith('/o/') ||
     pathname.startsWith('/pay/') ||
     pathname.startsWith('/public/order/') ||
     pathname.startsWith('/public/qr/customer/') ||
-    pathname.startsWith('/public/qr/order/');
+    pathname.startsWith('/public/qr/order/')
+  );
+}
+
+
+function scrollActiveViewToTop(): boolean {
+  const root = document.scrollingElement as HTMLElement | null;
+  if (window.scrollY > 1 || (root?.scrollTop ?? 0) > 1) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return true;
+  }
+
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((element) => {
+    if (element.scrollTop <= 1 || element.scrollHeight <= element.clientHeight + 8) return false;
+    const overflowY = window.getComputedStyle(element).overflowY;
+    if (!['auto', 'scroll', 'overlay'].includes(overflowY)) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+  });
+  if (candidates.length === 0) return false;
+
+  const depth = (element: HTMLElement) => {
+    let value = 0;
+    let parent: HTMLElement | null = element;
+    while (parent) { value += 1; parent = parent.parentElement; }
+    return value;
+  };
+  const deepest = candidates.reduce((best, element) => depth(element) > depth(best) ? element : best);
+  deepest.scrollTo({ top: 0, behavior: 'smooth' });
+  return true;
 }
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
   const [userSession, setUserSession] = useState<UserSession | null>(null);
+
+  useEffect(() => {
+    if (!userSession) return;
+    void startNativePushNotifications('admin', () => getSupabaseAuthToken(), document.documentElement.lang);
+  }, [userSession]);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [isBootRetrying, setIsBootRetrying] = useState(false);
@@ -147,6 +186,7 @@ export default function App() {
           }
           try {
             if (!(await isCurrentAccountSessionActive())) {
+              await stopNativePushNotifications();
               await authService.logout();
               authenticatedSession = null;
               if (isMounted) {
@@ -212,6 +252,7 @@ export default function App() {
         try {
           const sessionActive = await isCurrentAccountSessionActive();
           if (!sessionActive) {
+            await stopNativePushNotifications();
             await authService.logout();
             setIsAuthenticated(false);
             setUserSession(null);
@@ -257,6 +298,7 @@ export default function App() {
           try {
             const sessionActive = await isCurrentAccountSessionActive();
             if (!sessionActive) {
+              await stopNativePushNotifications();
               await authService.logout();
               setIsAuthenticated(false);
               setUserSession(null);
@@ -285,51 +327,46 @@ export default function App() {
     navigate(fallbackPath, true);
   };
 
-  // One app-wide edge-swipe handler keeps back behavior consistent across pages.
-  // Replace the current history entry so prior edited records cannot reappear.
+  // One semantic Back handler serves Android's native button and edge swipes.
+  // A scrollable page returns to its top before the route hierarchy moves.
   useEffect(() => {
-    let startX = 0;
-    let startY = 0;
-    let startedAtEdge = false;
-
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length !== 1) {
-        startedAtEdge = false;
-        return;
-      }
-      startX = event.touches[0].clientX;
-      startY = event.touches[0].clientY;
-      const width = window.innerWidth;
-      startedAtEdge = startX <= 32 || startX >= width - 32;
-    };
-
-    const handleTouchEnd = (event: TouchEvent) => {
-      if (!startedAtEdge || event.changedTouches.length !== 1) {
-        startedAtEdge = false;
-        return;
-      }
-      startedAtEdge = false;
-      const endX = event.changedTouches[0].clientX;
-      const endY = event.changedTouches[0].clientY;
-      const deltaX = endX - startX;
-      const deltaY = Math.abs(endY - startY);
-      if (Math.abs(deltaX) < 60 || deltaY > 80) return;
-      // Let the currently mounted page consume Back first (for example, closing
-      // an open Settings section). Only navigate to a route parent if no page
-      // handled the request.
+    const handleBack = () => {
       const backEvent = new Event('app:logical-back', { cancelable: true });
       window.dispatchEvent(backEvent);
       if (backEvent.defaultPrevented) return;
+      if (scrollActiveViewToTop()) return;
 
       const parentPath = resolveLogicalBackPath(currentPath);
       if (parentPath) navigate(parentPath, true);
+      // At /app (or /login), deliberately remain in the app rather than exit
+      // because of a stale WebView history entry.
+    };
+
+    let startX = 0;
+    let startY = 0;
+    let startedAtEdge = false;
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1) { startedAtEdge = false; return; }
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+      startedAtEdge = startX <= 32 || startX >= window.innerWidth - 32;
+    };
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (!startedAtEdge || event.changedTouches.length !== 1) { startedAtEdge = false; return; }
+      startedAtEdge = false;
+      const deltaX = event.changedTouches[0].clientX - startX;
+      const deltaY = Math.abs(event.changedTouches[0].clientY - startY);
+      if (Math.abs(deltaX) < 60 || deltaY > 80) return;
+      handleBack();
     };
 
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    const nativeBackListener = CapacitorApp.addListener('backButton', handleBack);
     return () => {
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchend', handleTouchEnd);
+      void nativeBackListener.then((listener) => listener.remove()).catch(() => undefined);
     };
   }, [currentPath]);
 
@@ -349,6 +386,12 @@ export default function App() {
       window.dispatchEvent(backEvent);
 
       if (backEvent.defaultPrevented) {
+        window.history.replaceState({ path: activePath }, '', activePath);
+        setCurrentPathState(activePath);
+        return;
+      }
+
+      if (scrollActiveViewToTop()) {
         window.history.replaceState({ path: activePath }, '', activePath);
         setCurrentPathState(activePath);
         return;
@@ -374,34 +417,38 @@ export default function App() {
   const renderContent = () => {
     const { pathname } = parseRoute(currentPath);
 
-    // 0. Public customer portal routes (no admin entry points)
-    if (pathname === '/public/about') {
-      return <PublicAboutPage />;
+    // Public customer routes remain part of the web app, but are compiled out
+    // of the dedicated administrator APK.
+    if (import.meta.env.VITE_APP_VARIANT !== 'admin') {
+      if (pathname === '/public/about') {
+        return <PublicAboutPage />;
+      }
+      if (pathname.startsWith('/c/')) {
+        const token = pathname.replace('/c/', '');
+        return <CustomerAccountPage token={token} />;
+      }
+      if (pathname.startsWith('/public/qr/customer/')) {
+        const token = pathname.replace('/public/qr/customer/', '');
+        return <CustomerAccountPage token={token} />;
+      }
+      if (pathname.startsWith('/pay/')) {
+        const token = pathname.replace('/pay/', '');
+        return <PublicPaymentPage token={token} />;
+      }
+      if (pathname.startsWith('/o/')) {
+        const token = pathname.replace('/o/', '');
+        return <PublicOrderPage token={token} />;
+      }
+      if (pathname.startsWith('/public/order/')) {
+        const token = pathname.replace('/public/order/', '');
+        return <PublicOrderPage token={token} />;
+      }
+      if (pathname.startsWith('/public/qr/order/')) {
+        const token = pathname.replace('/public/qr/order/', '');
+        return <PublicOrderPage token={token} />;
+      }
     }
-    if (pathname.startsWith('/c/')) {
-      const token = pathname.replace('/c/', '');
-      return <CustomerAccountPage token={token} />;
-    }
-    if (pathname.startsWith('/public/qr/customer/')) {
-      const token = pathname.replace('/public/qr/customer/', '');
-      return <CustomerAccountPage token={token} />;
-    }
-    if (pathname.startsWith('/pay/')) {
-      const token = pathname.replace('/pay/', '');
-      return <PublicPaymentPage token={token} />;
-    }
-    if (pathname.startsWith('/o/')) {
-      const token = pathname.replace('/o/', '');
-      return <PublicOrderPage token={token} />;
-    }
-    if (pathname.startsWith('/public/order/')) {
-      const token = pathname.replace('/public/order/', '');
-      return <PublicOrderPage token={token} />;
-    }
-    if (pathname.startsWith('/public/qr/order/')) {
-      const token = pathname.replace('/public/qr/order/', '');
-      return <PublicOrderPage token={token} />;
-    }
+
     
     if (pathname === '/reset-password') {
       return <ResetPasswordPage onNavigate={(path) => navigate(path)} />;
@@ -617,6 +664,7 @@ export default function App() {
         return <NotificationsRequestsPage />;
       case '/app/settings':
         return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async () => {
+          await stopNativePushNotifications();
           await authService.logout();
           setIsAuthenticated(false);
           setUserSession(null);
@@ -681,6 +729,7 @@ export default function App() {
                   type="button"
                   variant="primary"
                   onClick={async () => {
+                    await stopNativePushNotifications();
                     await authService.logout();
                     setIsAuthenticated(false);
                     setUserSession(null);

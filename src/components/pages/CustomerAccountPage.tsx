@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -176,6 +178,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           try { localStorage.setItem(portalTokenCacheKey(accountToken), registeredData.customer_qr_token); } catch {}
         }
         await saveSessionExpiry(accountToken, registeredData.session_expires_at);
+        const rememberedToken = typeof registeredData.customer_qr_token === 'string' && registeredData.customer_qr_token.length >= 24
+          ? registeredData.customer_qr_token
+          : accountToken;
+        try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
+        if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, registeredData.session_expires_at);
         setEntry((current) => current ? { ...current, auth_provider: registeredData.auth_provider ?? current.auth_provider, terms_version: registeredData.terms_version ?? current.terms_version } : current);
         if (registeredData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
         else if (registeredData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
@@ -197,6 +204,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setError(t('تعذّر تحميل صفحة الحساب. تحقق من الاتصال ثم أعد المحاولة.', 'The account page could not load. Check your connection and try again.'));
     }
   }, [accountToken, directEntry, orderQrToken, t]);
+
+  useEffect(() => {
+    if (mode === 'portal' && Capacitor.isNativePlatform()) {
+      void startCustomerNativePushNotifications(document.documentElement.lang);
+    }
+  }, [mode]);
 
   useEffect(() => {
     void loadEntry();
@@ -247,13 +260,18 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     if (password !== confirmPassword) { setErrorMessage('PASSWORD_MISMATCH'); return; }
     setBusy(true); setError('');
     try {
-      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; session_expires_at?: string }>(
+      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; session_expires_at?: string; customer_qr_token?: string | null }>(
         'activate-password', { token: accountToken, password, confirmPassword, termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION },
       );
       if (result.error || !result.data?.session) { setErrorMessage(result.error || 'ACTIVATION_UNAVAILABLE'); return; }
       const sessionError = await setCustomerSession(result.data.session);
       await saveSessionExpiry(accountToken, result.data.session_expires_at);
       if (sessionError) { setError(t('تم إنشاء الحساب لكن تعذّر إكمال الدخول. ارجع وسجّل الدخول بكلمة السر.', 'Account created, but sign-in could not be completed. Return and sign in with your password.')); setMode('login'); return; }
+      const rememberedToken = typeof result.data.customer_qr_token === 'string' && result.data.customer_qr_token.length >= 24
+        ? result.data.customer_qr_token
+        : accountToken;
+      try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
+      if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, result.data.session_expires_at);
       setPassword(''); setConfirmPassword(''); setMode('portal');
     } finally { setBusy(false); }
   };
@@ -292,6 +310,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       }
       await saveSessionExpiry(loginToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
+      const rememberedToken = typeof loginData.customer_qr_token === 'string' && loginData.customer_qr_token.length >= 24
+        ? loginData.customer_qr_token
+        : loginToken;
+      try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
+      if (rememberedToken !== loginToken) await saveSessionExpiry(rememberedToken, loginData.session_expires_at);
       setPassword('');
       setMessage('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
@@ -339,9 +362,18 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     clearCachedCustomerPortalData(accountToken);
     clearCachedCustomerPortalData(portalToken);
     localStorage.removeItem(sessionExpiryKey(accountToken));
+    localStorage.removeItem(sessionExpiryKey(portalToken));
+    try {
+      const remembered = localStorage.getItem('last_customer_token');
+      if (remembered === accountToken || remembered === portalToken) localStorage.removeItem('last_customer_token');
+    } catch {}
     setEntry((current) => current ? { ...current, activated: true } : current);
     setError('');
     setMessage('');
+    if (Capacitor.isNativePlatform()) {
+      window.location.replace('/public/about');
+      return;
+    }
     setMode('login');
   };
 

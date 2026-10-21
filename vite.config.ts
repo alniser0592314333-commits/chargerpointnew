@@ -4,18 +4,21 @@ import path from 'path';
 import {defineConfig} from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  // The default build remains the existing web/PWA app. Native APK builds
+  // explicitly select customer/admin so each APK has a single app entry point.
+  const appVariant = mode === 'customer' || mode === 'admin' ? mode : 'web';
+
   return {
     plugins: [
       react(),
       tailwindcss(),
-      VitePWA({
+      ...(appVariant === 'web' ? [VitePWA({
         registerType: 'autoUpdate',
-        // The deployed application is served from the origin root.
-        // Keep the PWA service worker and manifest aligned with the real app entry point.
+        // The deployed web application is served from the origin root.
+        // Keep the service worker and manifest aligned with the existing web entry point.
         scope: '/',
-        // The canonical manifest is the checked-in public/manifest.webmanifest.
-        // Do not emit a second manifest from vite-plugin-pwa.
+        // The canonical web manifest is checked in at public/manifest.webmanifest.
         manifest: false,
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
@@ -34,9 +37,12 @@ export default defineConfig(() => {
           enabled: true,
           type: 'module',
         },
-      }),
+      })] : []),
     ],
     define: {
+      // Compile-time constant allows Rollup to remove the other app's entry
+      // branch from each native build instead of merely hiding its UI.
+      'import.meta.env.VITE_APP_VARIANT': JSON.stringify(appVariant),
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL ?? 'https://ydhcyamtgioyrxfarkwk.supabase.co'),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY ?? 'sb_publishable_dXsrK8ltM6DCZ88HgfP27w_bxb3rvGN'),
     },

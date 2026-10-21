@@ -1,33 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#082622"/>
-      <stop offset="100%" stop-color="#14423b"/>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#082b32"/>
+      <stop offset="1" stop-color="#14535b"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#10b981"/>
-      <stop offset="100%" stop-color="#34d399"/>
+    <linearGradient id="warm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5b567"/>
+      <stop offset="1" stop-color="#e88745"/>
     </linearGradient>
   </defs>
-  <!-- Background squircle -->
-  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
-  
-  <!-- Outer glowing ring -->
-  <rect x="32" y="32" width="448" height="448" rx="104" fill="none" stroke="url(#accent)" stroke-width="8" opacity="0.3"/>
-  
-  <!-- Smartphone / Order Tablet Frame -->
-  <rect x="128" y="96" width="256" height="320" rx="36" fill="#041714" stroke="url(#accent)" stroke-width="12"/>
-  
-  <!-- Top speaker notch -->
-  <rect x="216" y="120" width="80" height="8" rx="4" fill="#14423b"/>
-  
-  <!-- Content cards -->
-  <rect x="160" y="152" width="192" height="48" rx="12" fill="url(#accent)"/>
-  <rect x="160" y="216" width="192" height="32" rx="8" fill="#0c312b"/>
-  <rect x="160" y="260" width="140" height="24" rx="6" fill="#0c312b"/>
-  <rect x="160" y="296" width="100" height="24" rx="6" fill="#0c312b"/>
-  
-  <!-- Success checkmark badge -->
-  <circle cx="320" cy="320" r="32" fill="#10b981"/>
-  <path d="M308 320l8 8 16-16" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <circle cx="344" cy="130" r="72" fill="#f6bd68"/>
+  <circle cx="367" cy="109" r="68" fill="#0b3840" opacity=".68"/>
+  <g fill="#126071" opacity=".88">
+    <path d="M0 300 98 208 160 270 252 166 354 286 424 214 512 292V512H0Z"/>
+  </g>
+  <path d="M30 444 176 208 246 294 316 160 490 444Z" fill="#0b3f4a"/>
+  <path d="M316 160 490 444H382L330 310 300 236Z" fill="url(#warm)"/>
+  <path d="M316 160 270 224 302 228 286 272 334 240 352 286 372 222Z" fill="#e6fbf5"/>
+  <path d="M176 208 134 276 166 268 154 316 194 268 246 294Z" fill="#e6fbf5"/>
+  <path d="M0 418Q110 366 220 414T512 400V512H0Z" fill="#082d34"/>
+  <g fill="#16494e">
+    <path d="M66 444 90 384 114 444Z M86 466 116 394 146 466Z"/>
+    <path d="M366 448 390 388 414 448Z M404 466 434 394 464 466Z"/>
+  </g>
 </svg>

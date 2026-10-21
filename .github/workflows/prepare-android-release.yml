@@ -1,0 +1,328 @@
+name: Prepare Signed Android Release APKs
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Version to build (X.Y.Z, for example 1.0.1)"
+        required: true
+        default: "1.0.1"
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  ignore-non-dispatch:
+    name: Ignore automatic pushes; releases are manual only
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    steps:
+      - name: Explain manual release process
+        run: echo "Release APKs are prepared only when the workflow is manually dispatched."
+
+  build-release:
+    name: Build signed ${{ matrix.variant }} v${{ inputs.release_version }}
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [customer, admin]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck and run notification/version tests
+        run: |
+          npm run lint
+          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts
+
+      - name: Build production web assets
+        env:
+          VITE_APP_VERSION: ${{ inputs.release_version }}
+          VITE_NATIVE_PUSH_ENABLED: "true"
+        run: npm run build:${{ matrix.variant }}
+
+      - name: Select app identity and generate Android project
+        run: |
+          cp capacitor.${{ matrix.variant }}.config.json capacitor.config.json
+          npx cap add android
+
+      - name: Set SemVer and Android versionCode
+        env:
+          APP_VERSION: ${{ inputs.release_version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          version = os.environ["APP_VERSION"].strip()
+          parts = version.split(".")
+          if len(parts) != 3 or any(not p.isdigit() or (len(p) > 1 and p.startswith("0")) for p in parts):
+              raise SystemExit("Version must use X.Y.Z, for example 1.0.1")
+          major, minor, patch = map(int, parts)
+          if major > 2147 or minor > 999 or patch > 999:
+              raise SystemExit("Version components exceed supported limits")
+          version_code = major * 1000000 + minor * 1000 + patch
+          if version_code < 1 or version_code > 2100000000:
+              raise SystemExit("Version is outside Android versionCode range")
+          gradle = Path("android/app/build.gradle")
+          lines = gradle.read_text().splitlines()
+          code_count = 0
+          name_count = 0
+          for index, line in enumerate(lines):
+              stripped = line.strip()
+              indent = line[:len(line) - len(line.lstrip())]
+              if stripped.startswith("versionCode ") and code_count == 0:
+                  lines[index] = indent + "versionCode " + str(version_code)
+                  code_count += 1
+              elif stripped.startswith("versionName ") and name_count == 0:
+                  lines[index] = indent + 'versionName "' + version + '"'
+                  name_count += 1
+          if code_count != 1 or name_count != 1:
+              raise SystemExit("Could not safely set Android versionCode/versionName")
+          gradle.write_text("\n".join(lines) + "\n")
+          print("Configured " + version + " with Android versionCode " + str(version_code))
+          PY
+
+      - name: Configure Firebase Cloud Messaging
+        env:
+          GOOGLE_SERVICES_JSON_CUSTOMER_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_CUSTOMER_BASE64 }}
+          GOOGLE_SERVICES_JSON_ADMIN_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_ADMIN_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, re
+          from pathlib import Path
+          variant = "${{ matrix.variant }}"
+          secret_name = "GOOGLE_SERVICES_JSON_CUSTOMER_BASE64" if variant == "customer" else "GOOGLE_SERVICES_JSON_ADMIN_BASE64"
+          encoded = os.environ.get(secret_name, "").strip()
+          if not encoded:
+              raise SystemExit(secret_name + " is required for release builds")
+          try:
+              firebase = base64.b64decode(encoded, validate=True)
+              parsed = json.loads(firebase)
+          except Exception as exc:
+              raise SystemExit("Firebase JSON secret is not valid base64") from exc
+          expected_package = "com.chargerpointnew." + variant
+          packages = [x.get("client_info", {}).get("android_client_info", {}).get("package_name") for x in parsed.get("client", [])]
+          if expected_package not in packages:
+              raise SystemExit("Firebase config does not contain " + expected_package)
+          Path("android/app/google-services.json").write_bytes(firebase)
+          root_gradle = Path("android/build.gradle")
+          root = root_gradle.read_text()
+          if "com.google.gms:google-services" not in root:
+              match = re.search(r"dependencies\s*\{", root)
+              if not match:
+                  raise SystemExit("Could not locate root Gradle dependencies")
+              root = root[:match.end()] + "\n        classpath 'com.google.gms:google-services:4.4.2'" + root[match.end():]
+              root_gradle.write_text(root)
+          app_gradle = Path("android/app/build.gradle")
+          app = app_gradle.read_text()
+          if "com.google.gms.google-services" not in app:
+              app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
+          PY
+
+      - name: Declare Android camera and notification permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          content = manifest.read_text()
+          for permission in ('android.permission.POST_NOTIFICATIONS', 'android.permission.CAMERA'):
+              if permission not in content:
+                  content = content.replace('<application', '    <uses-permission android:name="' + permission + '" />\n    <application', 1)
+          if 'android.hardware.camera.any' not in content:
+              content = content.replace('<application', '    <uses-feature android:name="android.hardware.camera.any" android:required="false" />\n    <application', 1)
+          manifest.write_text(content)
+          PY
+
+      - name: Apply official mountain-and-moon launcher icon and localized app name
+        run: |
+          python3 -m pip install --break-system-packages --disable-pip-version-check cairosvg
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          import cairosvg
+
+          variant = "${{ matrix.variant }}"
+          res = Path("android/app/src/main/res")
+          full_icon = Path("public/icon.svg")
+          foreground_icon = Path("public/charging-point-foreground.svg")
+          if not full_icon.is_file() or not foreground_icon.is_file():
+              raise SystemExit("Official Charging Point SVG icon assets are missing")
+
+          density_sizes = {
+              "mdpi": (48, 108),
+              "hdpi": (72, 162),
+              "xhdpi": (96, 216),
+              "xxhdpi": (144, 324),
+              "xxxhdpi": (192, 432),
+          }
+          for density, (legacy_size, foreground_size) in density_sizes.items():
+              folder = res / f"mipmap-{density}"
+              folder.mkdir(parents=True, exist_ok=True)
+              for name in ("ic_launcher.png", "ic_launcher_round.png"):
+                  cairosvg.svg2png(url=str(full_icon), write_to=str(folder / name),
+                                   output_width=legacy_size, output_height=legacy_size)
+              cairosvg.svg2png(url=str(foreground_icon),
+                               write_to=str(folder / "ic_launcher_foreground.png"),
+                               output_width=foreground_size, output_height=foreground_size)
+
+          adaptive_folder = res / "mipmap-anydpi-v26"
+          adaptive_folder.mkdir(parents=True, exist_ok=True)
+          adaptive_xml = '''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/cp_icon_background" />
+              <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+          </adaptive-icon>
+          '''
+          (adaptive_folder / "ic_launcher.xml").write_text(adaptive_xml)
+          (adaptive_folder / "ic_launcher_round.xml").write_text(adaptive_xml)
+
+          values = res / "values"
+          values.mkdir(parents=True, exist_ok=True)
+          (values / "cp_icon_colors.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <resources><color name="cp_icon_background">#082b32</color></resources>
+          ''')
+
+          # Keep the customer launcher label concise in both Android locales.
+          base_name = "Charging Point" if variant == "customer" else "Charging Point Admin"
+          arabic_name = "نقطة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
+          strings_file = values / "strings.xml"
+          strings = strings_file.read_text(encoding="utf-8")
+          if re.search(r'<string name="app_name">.*?</string>', strings):
+              strings = re.sub(r'<string name="app_name">.*?</string>',
+                               f'<string name="app_name">{base_name}</string>', strings, count=1)
+          else:
+              strings = strings.replace("</resources>",
+                                        f'    <string name="app_name">{base_name}</string>\n</resources>')
+          strings_file.write_text(strings, encoding="utf-8")
+
+          for locale, app_name in (("ar", arabic_name), ("en", base_name)):
+              folder = res / f"values-{locale}"
+              folder.mkdir(parents=True, exist_ok=True)
+              localized = folder / "strings.xml"
+              if localized.exists():
+                  text = localized.read_text(encoding="utf-8")
+                  if re.search(r'<string name="app_name">.*?</string>', text):
+                      text = re.sub(r'<string name="app_name">.*?</string>',
+                                    f'<string name="app_name">{app_name}</string>', text, count=1)
+                  else:
+                      text = text.replace("</resources>",
+                                          f'    <string name="app_name">{app_name}</string>\n</resources>')
+              else:
+                  text = ('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+                          f'    <string name="app_name">{app_name}</string>\n</resources>\n')
+              localized.write_text(text, encoding="utf-8")
+          print(f"Applied launcher branding and localized app name for {variant}")
+          PY
+
+      - name: Configure permanent signing key and R8 obfuscation
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          encoded = os.environ.get("ANDROID_KEYSTORE_BASE64", "").strip()
+          if not encoded:
+              raise SystemExit("Missing ANDROID_KEYSTORE_BASE64. Configure the permanent signing key before releasing updates.")
+          try:
+              data = base64.b64decode(encoded, validate=True)
+          except Exception as exc:
+              raise SystemExit("ANDROID_KEYSTORE_BASE64 must be base64-encoded keystore bytes") from exc
+          if len(data) < 1024:
+              raise SystemExit("Signing keystore is unexpectedly small")
+          Path("android/app/release-keystore.jks").write_bytes(data)
+          gradle = Path("android/app/build.gradle")
+          gradle.write_text(gradle.read_text() + """
+          
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release-keystore.jks")
+                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled true
+                      shrinkResources true
+                      proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+                  }
+              }
+          }
+          """)
+          rules = Path("android/app/proguard-rules.pro")
+          rules.write_text((rules.read_text() if rules.exists() else "") + """
+          -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod
+          -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+          -keepclassmembers class * { @com.getcapacitor.annotation.PluginMethod <methods>; }
+          """)
+          PY
+
+      - name: Sync native plugins and build signed release
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          npx cap sync android
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Stage signed APK for the GitHub Release
+        env:
+          APP_VERSION: ${{ inputs.release_version }}
+          APP_VARIANT: ${{ matrix.variant }}
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk "artifacts/ChargerPoint-${APP_VARIANT}-v${APP_VERSION}.apk"
+
+      - name: Upload signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChargerPoint-${{ matrix.variant }}-v${{ inputs.release_version }}-signed-apk
+          path: artifacts/ChargerPoint-${{ matrix.variant }}-v${{ inputs.release_version }}.apk
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-github-release:
+    name: Publish APK files to a versioned GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Download both signed APKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ChargerPoint-*-v${{ inputs.release_version }}-signed-apk
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create versioned GitHub Release with APK download links
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ inputs.release_version }}
+        run: |
+          test -s "artifacts/ChargerPoint-customer-v${APP_VERSION}.apk"
+          test -s "artifacts/ChargerPoint-admin-v${APP_VERSION}.apk"
+          gh release create "v${APP_VERSION}" artifacts/*.apk --title "نقطة الشحن v${APP_VERSION}" --generate-notes
