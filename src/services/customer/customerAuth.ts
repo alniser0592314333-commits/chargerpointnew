@@ -37,7 +37,7 @@ export async function callCustomerAccount<T = Record<string, unknown>>(
     const timeout = controller ? setTimeout(() => controller.abort(), 10000) : null;
     let response: Response;
     try {
-      response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-account', {
+      response = await fetch(config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/customer-account', {
         method: 'POST',
         cache: 'no-store',
         headers: {
