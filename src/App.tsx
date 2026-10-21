@@ -281,7 +281,7 @@ export default function App() {
         active = false;
       }
     };
-    const timer = window.setInterval(() => { void pullLatest(); }, 8_000;
+    const timer = window.setInterval(() => { void pullLatest(); }, 8_000);
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void pullLatest();
     };
