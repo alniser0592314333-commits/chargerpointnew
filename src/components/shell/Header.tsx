@@ -10,11 +10,13 @@ import { RefreshCw, CheckCircle2, Clock, AlertCircle, WifiOff } from 'lucide-rea
 export interface HeaderProps {
   onOpenMobileNav: () => void;
   currentPath: string;
+  notificationCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenMobileNav,
   currentPath,
+  notificationCount = 0,
 }) => {
   const { locale, t } = useI18n();
   const activeLogo = useActiveLogo();
@@ -177,7 +179,10 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-2.5 shrink-0 cursor-pointer p-1.5 -ms-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-[#0c312b] transition-all select-none"
             data-testid="header-brand-identity"
           >
-            <AppLogo size={32} variant="auto" className="shrink-0" />
+            <span className="relative inline-flex shrink-0">
+              <AppLogo size={32} variant="auto" className="shrink-0" />
+              {notificationCount > 0 && <span data-testid="header-notification-badge" aria-label={(locale === 'ar' ? 'إشعارات غير مقروءة: ' : 'Unread notifications: ') + notificationCount} className="absolute -end-1 -top-1 inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full border-2 border-white bg-rose-600 px-1 text-[9px] font-extrabold leading-none text-white dark:border-[#072420]">{notificationCount > 99 ? '99+' : notificationCount}</span>}
+            </span>
             <span className="font-bold text-sm sm:text-base text-gray-900 dark:text-[#daf1de] tracking-tight truncate max-w-[200px] sm:max-w-[300px]">
               {brandTitle}
             </span>
