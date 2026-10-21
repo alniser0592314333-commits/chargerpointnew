@@ -848,17 +848,25 @@ class DefaultAuthService implements AuthService {
       return inMemorySession;
     }
 
-    // Rehydrating from localStorage on page reload: verify authoritative profile against server if online
+    // Rehydrate from the last locally persisted session first when offline.
+    // The cached session is usable only until its existing expiry; server-authoritative
+    // mutations remain blocked by the transport while disconnected.
     let serverProfile: AdminProfileResult | null = null;
-    if (this.isSupabaseConfigured()) {
+    const browserReportsOnline = typeof navigator === "undefined" || navigator.onLine !== false;
+    if (this.isSupabaseConfigured() && browserReportsOnline) {
       const supabaseSession = await this.getSupabaseAuthSession();
       if (supabaseSession?.access_token) {
-        serverProfile = await this.getAdminProfile(supabaseSession.access_token);
-        if (serverProfile) {
-          if (!serverProfile.authenticated || !serverProfile.is_admin || serverProfile.is_active === false) {
-            await this.logout();
-            return null;
-          }
+        // A captive portal or a stalled connection must not hold the launch screen
+        // indefinitely. A timeout is treated as "server not reachable", not as a
+        // confirmed revocation; an explicit inactive/unauthenticated profile still logs out.
+        const profileResult = await Promise.race<AdminProfileResult | null>([
+          this.getAdminProfile(supabaseSession.access_token),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+        ]);
+        serverProfile = profileResult as AdminProfileResult | null;
+        if (serverProfile && (!serverProfile.authenticated || !serverProfile.is_admin || serverProfile.is_active === false)) {
+          await this.logout();
+          return null;
         }
       }
     }

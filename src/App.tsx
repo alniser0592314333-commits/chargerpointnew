@@ -5,6 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { ThemeProvider } from './theme/themeContext';
 import { I18nProvider } from './i18n/i18nContext';
 import { ToastProvider } from './components/ui/Toast';
@@ -122,6 +124,27 @@ export default function App() {
     if (!userSession) return;
     void startNativePushNotifications('admin', () => getSupabaseAuthToken(), document.documentElement.lang);
   }, [userSession]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || import.meta.env.MODE !== 'admin' || !isAuthenticated) return;
+    let disposed = false;
+    let listener: { remove: () => Promise<void> } | null = null;
+    void PushNotifications.addListener('pushNotificationReceived', () => {
+      if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void globalSyncBridge.requestLatestDataReload().catch((error) => {
+        console.warn('Push-triggered admin data refresh failed; periodic sync will retry.', error);
+      });
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else listener = handle;
+    }).catch((error) => {
+      console.warn('Admin push refresh listener unavailable; periodic sync remains active.', error);
+    });
+    return () => {
+      disposed = true;
+      if (listener) void listener.remove();
+    };
+  }, [isAuthenticated]);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [isBootRetrying, setIsBootRetrying] = useState(false);
@@ -205,7 +228,16 @@ export default function App() {
           // empty or partially hydrated model. Existing local data remains usable
           // when a remote read fails before any local replacement begins.
           await ensureStoreHydrated();
-          await refreshStoreFromRemote();
+          // Local hydration is the launch prerequisite. A remote refresh is best-effort:
+          // losing connectivity must not turn an already hydrated offline database into
+          // a startup error screen. Server-authoritative mutations still require network.
+          if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+            try {
+              await refreshStoreFromRemote();
+            } catch (remoteRefreshError) {
+              console.warn('Remote refresh unavailable; opening the hydrated local store.', remoteRefreshError);
+            }
+          }
         }
       } catch (error: any) {
         if (isMounted) {
@@ -271,7 +303,7 @@ export default function App() {
         active = false;
       }
     };
-    const timer = window.setInterval(() => { void pullLatest(); }, 30_000);
+    const timer = window.setInterval(() => { void pullLatest(); }, 8_000);
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void pullLatest();
     };

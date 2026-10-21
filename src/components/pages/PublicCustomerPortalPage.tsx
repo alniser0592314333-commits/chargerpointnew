@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
@@ -143,6 +145,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [serverAvailable, setServerAvailable] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
   const initialPortalQuery = new URLSearchParams(window.location.search);
   const requestedTab = initialPortalQuery.get('tab');
@@ -170,17 +173,20 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [passwordChangeBusy, setPasswordChangeBusy] = useState(false);
   const requestGeneration = useRef(0);
 
-  const load = useCallback(async (manual = false) => {
+  const load = useCallback(async (manual = false, background = false) => {
     const requestId = ++requestGeneration.current;
-    if (manual) setRefreshing(true); else setLoading(true);
-    setError(null);
+    if (manual) setRefreshing(true); else if (!background) setLoading(true);
+    if (!background) setError(null);
     // Never show a cached/local financial snapshot as if it were current.
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setServerAvailable(false);
       const cached = readCachedPortalData(token);
       if (cached) { setData(cached); setError(null); }
-      else { setData(null); setError('service'); }
-      setLoading(false);
-      setRefreshing(false);
+      else if (!background) { setData(null); setError('service'); }
+      if (!background) {
+        setLoading(false);
+        setRefreshing(false);
+      }
       return;
     }
     try {
@@ -192,11 +198,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       // Ignore stale requests and never restore financial data after connectivity drops.
       if (requestId !== requestGeneration.current) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        setData(null);
-        setError('service');
+        setServerAvailable(false);
+        const cached = readCachedPortalData(token);
+        if (cached) { setData(cached); setError(null); }
+        else setError('service');
         return;
       }
-      if (rpcError || !response) {
+      if (rpcError === 'NETWORK_UNAVAILABLE') {
+        setServerAvailable(false);
+        const cached = readCachedPortalData(token);
+        if (cached) { setData(cached); setError(null); }
+        else { setData(null); setError('service'); }
+      } else if (rpcError || !response) {
+        setServerAvailable(false);
         setData(null);
         setError(rpcError ? 'service' : 'invalid');
       } else if (
@@ -207,29 +221,36 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         !Array.isArray(response.payment_submissions) ||
         !Array.isArray(response.goals)
       ) {
+        setServerAvailable(false);
         setData(null);
         setError('service');
       } else {
         const verifiedSnapshot: PortalData = { ...response, cached_at: new Date().toISOString() };
+        setServerAvailable(true);
         setData(verifiedSnapshot);
+        setError(null);
         try { localStorage.setItem(portalCacheKey(token), JSON.stringify(verifiedSnapshot)); } catch {}
       }
     } catch {
       if (requestId === requestGeneration.current) {
-        setData(null);
-        setError('service');
+        setServerAvailable(false);
+        if (!background) {
+          const cached = readCachedPortalData(token);
+          if (cached) { setData(cached); setError(null); }
+          else { setData(null); setError('service'); }
+        }
       }
     } finally {
-      if (requestId === requestGeneration.current) {
+      if (requestId === requestGeneration.current && !background) {
         setLoading(false);
         setRefreshing(false);
       }
     }
   }, [token]);
 
-  const loadActivity = useCallback(async () => {
+  const loadActivity = useCallback(async (quiet = false) => {
     if (!online || typeof navigator !== 'undefined' && !navigator.onLine) return;
-    setActivityLoading(true);
+    if (!quiet) setActivityLoading(true);
     setActivityError(false);
     try {
       const { data: response, error: requestError } = await callCustomerAccount<PortalActivity>(
@@ -255,7 +276,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     } catch {
       setActivityError(true);
     } finally {
-      setActivityLoading(false);
+      if (!quiet) setActivityLoading(false);
     }
   }, [token, online]);
 
@@ -263,18 +284,49 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     if (data && online) void loadActivity();
   }, [data?.customer_code, online, loadActivity]);
 
+  // A foreground native push is also a data-invalidation signal. This updates
+  // the open customer page immediately after server-side approval/delivery while
+  // the existing notification listener continues to display the OS notification.
   useEffect(() => {
-    if (!online || activeTab !== 'goals') return;
-    void load(true);
-    void loadActivity();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void load(true);
-        void loadActivity();
-      }
-    }, 12000);
-    return () => window.clearInterval(interval);
-  }, [activeTab, online, load, loadActivity]);
+    if (!Capacitor.isNativePlatform()) return;
+    let listener: { remove: () => Promise<void> } | null = null;
+    let disposed = false;
+    void PushNotifications.addListener('pushNotificationReceived', () => {
+      if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void load(false, true);
+      void loadActivity(true);
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else listener = handle;
+    }).catch((error) => {
+      console.warn('Customer portal push refresh listener unavailable; periodic refresh remains active.', error);
+    });
+    return () => {
+      disposed = true;
+      if (listener) void listener.remove();
+    };
+  }, [load, loadActivity]);
+
+  // Keep the customer read model current on every tab, not only Goals.
+  // The secure customer-account endpoint remains the sole data path; this avoids
+  // granting browser access to financial tables merely to subscribe to Realtime.
+  useEffect(() => {
+    if (!online) return;
+    const refreshVisiblePortal = () => {
+      if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void load(false, true);
+      if (data) void loadActivity(true);
+    };
+    const interval = window.setInterval(refreshVisiblePortal, 5000);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') refreshVisiblePortal(); };
+    window.addEventListener('focus', refreshVisiblePortal);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshVisiblePortal);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [online, data?.customer_code, load, loadActivity]);
 
   const markNotificationsSeen = () => {
     const ids = eventRows.map((event) => event.id);
@@ -283,7 +335,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   };
 
   const requestGoal = async () => {
-    if (!online || goalRequestBusy) return;
+    if (!online || !serverAvailable || goalRequestBusy) return;
     setGoalRequestBusy(true);
     setActionMessage('');
     const { data: response, error: requestError } = await callCustomerAccount<{ already_pending?: boolean }>(
@@ -303,7 +355,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   };
 
   const changePortalPassword = async () => {
-    if (!online || passwordChangeBusy) return;
+    if (!online || !serverAvailable || passwordChangeBusy) return;
     const common = new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']);
     if (newPassword.length < 8 || newPassword.length > 128 || common.has(newPassword.trim().toLowerCase()) || /^(.)\1{7,}$/.test(newPassword)) {
       setActionMessage(isAr ? 'استخدم كلمة مرور من 8 أحرف على الأقل، وتجنب كلمات المرور الشائعة.' : 'Use at least 8 characters and avoid common passwords.');
@@ -339,7 +391,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   };
 
   const requestPasswordReset = async () => {
-    if (!online || resetRequestBusy) return;
+    if (!online || !serverAvailable || resetRequestBusy) return;
     setResetRequestBusy(true);
     setActionMessage('');
     const { error: requestError } = await callCustomerAccount('request-reset', { token });
@@ -356,6 +408,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const onOffline = () => {
       requestGeneration.current += 1;
       setOnline(false);
+      setServerAvailable(false);
       setActivity(null);
       setActivityError(true);
       const cached = readCachedPortalData(token);
@@ -502,7 +555,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       </header>
 
       <main className="relative z-10 mx-auto max-w-3xl space-y-4 px-4 py-5 pb-28 sm:py-8 sm:pb-28">
-        {!online && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{isAr ? 'أنت غير متصل. نعرض آخر نسخة محفوظة وليست بيانات لحظية؛ قد لا تشمل آخر دفعة أو تعديل.' : 'You are offline. This is the last saved snapshot, not live data; recent payments or changes may be missing.'}{data?.cached_at ? <span className="mt-1 block text-xs">{isAr ? 'آخر تحقق: ' : 'Last verified: '}{safeDate(data.cached_at, locale)}</span> : null}</p></div>}
+        {(!online || !serverAvailable) && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{!online ? (isAr ? 'أنت غير متصل. نعرض آخر نسخة محفوظة وليست بيانات لحظية؛ قد لا تشمل آخر دفعة أو تعديل.' : 'You are offline. This is the last saved snapshot, not live data; recent payments or changes may be missing.') : (isAr ? 'تعذّر الوصول إلى الخادم حاليًا. نعرض آخر نسخة محفوظة ونوقف العمليات التي تحتاج اتصالًا حتى يعود التحقق.' : 'The server is temporarily unreachable. Showing the last saved snapshot and disabling actions that require a live connection.')}{data?.cached_at ? <span className="mt-1 block text-xs">{isAr ? 'آخر تحقق: ' : 'Last verified: '}{safeDate(data.cached_at, locale)}</span> : null}</p></div>}
 
         {loading ? <div className="space-y-3" aria-live="polite"><div className="h-28 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><div className="h-36 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><p className="text-center text-sm text-slate-500">{isAr ? 'جارٍ التحقق من رمز العميل وتحميل البيانات...' : 'Verifying customer QR and loading your data…'}</p></div> :
           error || !data ? <section role="alert" className="py-5 text-center">
@@ -585,7 +638,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 <h2 className="text-base font-bold">{isAr ? 'إيصالات الدفع' : 'Payment receipts'}</h2>
                 <p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الإيصال لا يُعد دفعة معتمدة إلا بعد موافقة الإدارة.' : 'A receipt is not an approved payment until the administrator accepts it.'}</p>
                 {data.payment_submissions.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد إيصالات مرسلة.' : 'No submitted receipts.'}</p> : <div className="cp-portal-timeline">{[...data.payment_submissions].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).map((submission,index)=><div key={submission.created_at+'-'+index} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{isAr ? 'إيصال دفع' : 'Payment receipt'} · {statusLabel(submission.status)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(submission.created_at, locale)}{submission.reviewed_at ? ' · ' + safeDate(submission.reviewed_at, locale) : ''}</p></div><strong>{money(submission.amount_minor, locale)}</strong></div>)}</div>}
-                {online && <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={18} />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
+                {online && serverAvailable && <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={18} />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
               </section>
             </>}
 
@@ -599,7 +652,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 {activeGoal.bonus_recorded && activeGoal.bonus_minor !== null && <p className="mt-3 font-bold">{isAr ? 'المكافأة المثبتة' : 'Recorded reward'} · {money(activeGoal.bonus_minor, locale)}</p>}
               </div> : pendingGoalRequest ? <div className="cp-portal-request-state"><span className="cp-portal-request-state__icon"><History size={20} /></span><div><p className="font-bold">{isAr ? 'طلب إنشاء الهدف قيد المراجعة' : 'Goal request awaiting review'}</p><p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الإدارة ستحدد تفاصيل الهدف عند الموافقة.' : 'The administrator will determine the goal details after approval.'}</p><p className="mt-2 text-xs cp-portal-muted">{safeDate(pendingGoalRequest.created_at, locale)}</p></div></div>
               : activityLoading ? <p className="cp-portal-empty">{isAr ? 'جارٍ التحقق من حالة الأهداف…' : 'Checking goal status…'}</p>
-              : activityError || !activity ? <div className="cp-portal-goal-empty"><span className="cp-portal-goal-empty__icon"><Target size={28} /></span><h2 className="mt-3 text-lg font-bold">{isAr ? 'تعذّر تحميل حالة الهدف' : 'Goal status unavailable'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تقدر تعيد المحاولة أو ترسل طلب إنشاء هدف للإدارة. ستتحقق الخدمة من وجود هدف فعّال قبل تسجيل الطلب.' : 'Retry, or request a goal from the administrator. The service checks for an existing active goal before recording the request.'}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => { void load(); void loadActivity(); }}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button><button type="button" className="cp-portal-primary-button" disabled={!online || goalRequestBusy} onClick={() => void requestGoal()}>{goalRequestBusy ? <RefreshCw className="animate-spin" size={17} /> : <Target size={17} />}{isAr ? 'طلب إنشاء هدف' : 'Request a goal'}</button></div></div>
+              : activityError || !activity ? <div className="cp-portal-goal-empty"><span className="cp-portal-goal-empty__icon"><Target size={28} /></span><h2 className="mt-3 text-lg font-bold">{isAr ? 'تعذّر تحميل حالة الهدف' : 'Goal status unavailable'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تقدر تعيد المحاولة أو ترسل طلب إنشاء هدف للإدارة. ستتحقق الخدمة من وجود هدف فعّال قبل تسجيل الطلب.' : 'Retry, or request a goal from the administrator. The service checks for an existing active goal before recording the request.'}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => { void load(); void loadActivity(); }}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button><button type="button" className="cp-portal-primary-button" disabled={!online || !serverAvailable || goalRequestBusy} onClick={() => void requestGoal()}>{goalRequestBusy ? <RefreshCw className="animate-spin" size={17} /> : <Target size={17} />}{isAr ? 'طلب إنشاء هدف' : 'Request a goal'}</button></div></div>
               : <div className="cp-portal-goal-empty"><span className="cp-portal-goal-empty__icon"><Target size={28} /></span><h2 className="mt-3 text-lg font-bold">{isAr ? 'ما عندك هدف حاليًا' : 'No active goal yet'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تقدر ترسل طلبًا للإدارة، وهي تتولى تحديد تفاصيل الهدف واعتماده.' : 'You can request a goal; the administrator decides its details and approval.'}</p><button type="button" className="cp-portal-primary-button" disabled={!online || goalRequestBusy} onClick={() => void requestGoal()}>{goalRequestBusy ? <RefreshCw className="animate-spin" size={17} /> : <Target size={17} />}{isAr ? 'طلب إنشاء هدف' : 'Request a goal'}</button></div>}
               {data.goals.filter((goal) => goal.status.toUpperCase() !== 'ACTIVE').length > 0 && <div className="cp-portal-subsection"><h2 className="font-bold">{isAr ? 'الأهداف السابقة' : 'Previous goals'}</h2>{data.goals.filter((goal) => goal.status.toUpperCase() !== 'ACTIVE').map((goal,index)=><div key={index} className="cp-portal-history-row"><span>{statusLabel(goal.status)} · {goal.current_progress}/{goal.target_quantity}</span><span>{goal.bonus_recorded && goal.bonus_minor !== null ? money(goal.bonus_minor, locale) : '—'}</span></div>)}</div>}
             </section>}
@@ -607,7 +660,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             {activeTab === 'more' && moreView === 'profile' && <section className="cp-portal-section">
               <p className="cp-portal-eyebrow">{isAr ? 'بياناتك الشخصية' : 'YOUR DETAILS'}</p><h1 className="cp-portal-heading">{isAr ? 'حسابي' : 'My account'}</h1>
               <div className="cp-portal-profile"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div><div><span>{isAr ? 'رقم الحساب' : 'Account number'}</span><strong><bdi>{data.customer_code}</bdi></strong></div><div><span>{isAr ? 'آخر تسجيل دخول على هذا الجهاز' : 'Last sign-in on this device'}</span><strong>{activity?.last_login_at ? safeDate(activity.last_login_at, locale) : '—'}</strong></div><div><span>{isAr ? 'الجلسة الحالية · تنتهي في' : 'Current session · expires'}</span><strong>{activity?.session?.expires_at ? safeDate(activity.session.expires_at, locale) : '—'}</strong></div></div>
-              <div className="cp-portal-subsection"><h2 className="font-bold">{isAr ? 'أمان الحساب' : 'Account security'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'إعادة تعيين كلمة المرور تحتاج موافقة الإدارة، وبعد الموافقة يجب اختيار كلمة مرور جديدة.' : 'Password reset requires administrator approval. After approval, you must set a new password.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || resetRequestBusy} onClick={() => void requestPasswordReset()}>{resetRequestBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'طلب إعادة تعيين كلمة المرور' : 'Request password reset'}</button></div>
+              <div className="cp-portal-subsection"><h2 className="font-bold">{isAr ? 'أمان الحساب' : 'Account security'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'إعادة تعيين كلمة المرور تحتاج موافقة الإدارة، وبعد الموافقة يجب اختيار كلمة مرور جديدة.' : 'Password reset requires administrator approval. After approval, you must set a new password.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable || resetRequestBusy} onClick={() => void requestPasswordReset()}>{resetRequestBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'طلب إعادة تعيين كلمة المرور' : 'Request password reset'}</button></div>
             </section>}
 
             {activeTab === 'more' && moreView === 'events' && <section className="cp-portal-section">
@@ -627,14 +680,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
               <div className="cp-portal-subsection">
                 <h2 className="font-bold">{isAr ? 'تغيير كلمة المرور' : 'Change password'}</h2>
-                {!showPasswordChange ? <button type="button" className="cp-portal-secondary-button" disabled={!online} onClick={() => { setActionMessage(''); setShowPasswordChange(true); }}><KeyRound size={17} />{isAr ? 'تغيير كلمة المرور' : 'Change password'}</button>
+                {!showPasswordChange ? <button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable} onClick={() => { setActionMessage(''); setShowPasswordChange(true); }}><KeyRound size={17} />{isAr ? 'تغيير كلمة المرور' : 'Change password'}</button>
                 : <form className="cp-portal-password-form" onSubmit={(event) => { event.preventDefault(); void changePortalPassword(); }}>
                   <label className="cp-portal-password-label">{isAr ? 'كلمة المرور الجديدة' : 'New password'}</label>
                   <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="cp-portal-password-input" />
                   <label className="cp-portal-password-label">{isAr ? 'تأكيد كلمة المرور' : 'Confirm password'}</label>
                   <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} className="cp-portal-password-input" />
                   <p className="text-xs cp-portal-muted">{isAr ? '8 أحرف على الأقل، وتجنّب كلمات المرور الشائعة.' : 'At least 8 characters; avoid common passwords.'}</p>
-                  <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || passwordChangeBusy}>{passwordChangeBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'حفظ كلمة المرور' : 'Save password'}</button><button type="button" className="cp-portal-secondary-button" disabled={passwordChangeBusy} onClick={() => { setShowPasswordChange(false); setNewPassword(''); setConfirmNewPassword(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
+                  <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || !serverAvailable || passwordChangeBusy}>{passwordChangeBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'حفظ كلمة المرور' : 'Save password'}</button><button type="button" className="cp-portal-secondary-button" disabled={passwordChangeBusy} onClick={() => { setShowPasswordChange(false); setNewPassword(''); setConfirmNewPassword(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
                 </form>}
               </div>
               <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div></div>

@@ -37,6 +37,7 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean; restartKey?: n
   useEffect(() => {
     if (!enabled) {
       setVisible(false);
+      window.dispatchEvent(new Event('cp:customer-intro-complete'));
       return;
     }
 
@@ -54,6 +55,7 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean; restartKey?: n
       }
     } else if (hasSeenIntro()) {
       setVisible(false);
+      window.dispatchEvent(new Event('cp:customer-intro-complete'));
       return;
     }
 
@@ -76,6 +78,7 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean; restartKey?: n
         rememberIntro();
       }
       setVisible(false);
+      window.dispatchEvent(new Event('cp:customer-intro-complete'));
     }, totalDuration);
 
     return () => {

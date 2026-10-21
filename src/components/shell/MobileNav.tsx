@@ -7,10 +7,11 @@ export interface MobileNavProps {
   onClose: () => void;
   currentPath: string;
   userSession: UserSession | null;
+  notificationCount?: number;
   onNavigate: (path: string) => void;
 }
 
-export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPath, userSession, onNavigate }) => {
+export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPath, userSession, notificationCount = 0, onNavigate }) => {
   const { t } = useI18n();
 
   if (!isOpen) return null;
@@ -18,13 +19,13 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
   const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
   const hasAdminManage = isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage'));
 
-  const navItems = [
+  const navItems: Array<{ id: string; label: string; badge?: number }> = [
     { id: '/app', label: t('navHome') },
     { id: '/app/days', label: t('navDaysOrders') },
     { id: '/app/customers', label: t('navCustomers') },
     { id: '/app/financials', label: t('navFinancials') },
     ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
-    { id: '/app/notifications', label: t('navNotificationsRequests') },
+    { id: '/app/notifications', label: t('navNotificationsRequests'), badge: notificationCount },
     { id: '/app/settings/qr', label: t('navQrDesign') },
     ...(hasAdminManage ? [{ id: '/app/settings/admins', label: t('navAdminMgmt') }] : []),
     { id: '/app/settings', label: t('navSettings') },
@@ -52,13 +53,14 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
                   onNavigate(item.id);
                   onClose();
                 }}
-                className={`w-full text-start px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
+                className={`w-full flex items-center gap-2 text-start px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-gray-100 dark:bg-[#0c312b] font-semibold text-gray-900 dark:text-[#daf1de] border-s-2 border-transparent dark:border-[#8eb698]'
                     : 'text-gray-600 dark:text-[#8eb698] hover:bg-gray-50 dark:hover:bg-[#092722] hover:text-gray-900 dark:hover:text-[#daf1de]'
                 }`}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {item.id === '/app/notifications' && Boolean(item.badge) && <span aria-label={t('navNotificationsRequests') + ': ' + item.badge} className="ms-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-extrabold leading-none text-white">{Number(item.badge) > 99 ? '99+' : item.badge}</span>}
               </button>
             );
           })}
