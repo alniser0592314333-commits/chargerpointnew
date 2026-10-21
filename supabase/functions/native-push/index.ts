@@ -287,7 +287,7 @@ Deno.serve(async (request: Request) => {
       if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       recipients = data ?? [];
     }
-  } else {
+  } else if (source === "goal_requests") {
     const { data: goalRequest, error } = await admin.from("goal_requests")
       .select("id,customer_id,status,updated_at").eq("id", recordId).maybeSingle();
     if (error || !goalRequest || (eventStatus && eventStatus !== String(goalRequest.status))) {
@@ -320,9 +320,33 @@ Deno.serve(async (request: Request) => {
     } else {
       return json(200, { ok: true, skipped: true });
     }
-  }
+  } else {
+    const { data: order, error: orderError } = await admin.from("orders")
+      .select("id,customer_id").eq("id", recordId).maybeSingle();
+    if (orderError || !order || !order.customer_id) return json(200, { ok: true, skipped: true });
+    if (operation === "INSERT" && eventStatus === "CREATED") {
+      eventKey += ":CREATED";
+      titleAr = "تم إنشاء طلب شحن جديد"; titleEn = "A new charging order was created";
+      bodyAr = "تم تسجيل طلب شحن جديد لحسابك."; bodyEn = "A new charging order has been added to your account.";
+    } else if (operation === "UPDATE" && eventStatus === "DELIVERED") {
+      const { data: items, error: itemsError } = await admin.from("order_items")
+        .select("id,operational_status,deleted_at,cancelled_at").eq("order_id", recordId);
+      if (itemsError || !items) return json(200, { ok: true, skipped: true });
+      const activeItems = items.filter((item) => !item.deleted_at && !item.cancelled_at);
+      if (!activeItems.length || activeItems.some((item) => item.operational_status !== "DELIVERED")) return json(200, { ok: true, skipped: true });
+      eventKey += ":DELIVERED";
+      titleAr = "تم تسليم طلب الشحن"; titleEn = "Charging order delivered";
+      bodyAr = "تم تسليم طلب الشحن وتحديث حالته."; bodyEn = "Your charging order has been delivered and its status updated.";
+    } else {
+      return json(200, { ok: true, skipped: true });
+    }
+    targetPath = "/public/about";
+    const { data, error: recipientError } = await admin.from("native_push_devices")
+      .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+      .eq("app_variant", "customer").eq("customer_id", order.customer_id).is("disabled_at", null);
+    if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    recipients = data ?? [];
 
-  if (!recipients.length && targetPath === "/app/notifications") {
     const { data, error } = await admin.from("native_push_devices")
       .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
       .eq("app_variant", "admin").is("disabled_at", null);
