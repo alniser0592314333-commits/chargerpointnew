@@ -63,6 +63,14 @@ jobs:
 
           migration = Path("supabase/migrations/20261020200000_native_push_notifications.sql").read_text()
           parse_sql(migration)
+          fixes = sorted(Path("supabase/migrations").glob("*fix_native_push_http_post_native_push_notifications.sql"))
+          if not fixes:
+              raise SystemExit("Native push pg_net signature fix migration is missing")
+          for fix in fixes:
+              fix_sql = fix.read_text()
+              parse_sql(fix_sql)
+              if "params := $2" not in fix_sql or "headers := $3" not in fix_sql or "body := $4" not in fix_sql:
+                  raise SystemExit("pg_net http_post call does not supply all required named arguments")
           required = [
               "native_push_qr_payment_submission",
               "native_push_customer_account_event",
