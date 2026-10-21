@@ -72,8 +72,9 @@ jobs:
               if "http_post(" in fix_sql:
                   if "http_post($1, $4, $2, $3, $5)" not in fix_sql:
                       raise SystemExit("pg_net http_post call does not match the installed positional signature")
-                  if "pg_get_function_identity_arguments" not in fix_sql:
-                      raise SystemExit("pg_net http_post schema discovery is missing")
+          final_fix = Path("supabase/migrations/20261021120000_fix_native_push_pg_net_schema_resolution.sql").read_text()
+          if "http_post($1, $4, $2, $3, $5)" not in final_fix or "pg_get_function_identity_arguments" not in final_fix:
+              raise SystemExit("Final pg_net schema/signature repair is incomplete")
           order_migration = Path("supabase/migrations/20261021100000_fix_native_push_http_post_native_push_notifications.sql").read_text()
           for trigger in ("native_push_order_created", "native_push_order_fully_delivered"):
               if order_migration.count("CREATE TRIGGER " + trigger) != 1:
