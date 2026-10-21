@@ -244,24 +244,29 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || isSuspended || isAuthChecking || bootError) return;
     let active = false;
+    let lastSessionCheckAt = 0;
     const pullLatest = async () => {
       if (active || document.visibilityState !== 'visible' || navigator.onLine === false) return;
       active = true;
       try {
-        // Revoked sessions are returned to login at the next online verification cycle.
-        try {
-          const sessionActive = await isCurrentAccountSessionActive();
-          if (!sessionActive) {
-            await stopNativePushNotifications();
-            await authService.logout();
-            setIsAuthenticated(false);
-            setUserSession(null);
-            navigate('/app', true);
-            return;
+        // Refresh business data frequently, but keep the authoritative session check
+        // bounded to 30 seconds (and also run it on focus) to avoid hammering auth RPCs.
+        if (Date.now() - lastSessionCheckAt >= 30_000) {
+          lastSessionCheckAt = Date.now();
+          try {
+            const sessionActive = await isCurrentAccountSessionActive();
+            if (!sessionActive) {
+              await stopNativePushNotifications();
+              await authService.logout();
+              setIsAuthenticated(false);
+              setUserSession(null);
+              navigate('/app', true);
+              return;
+            }
+          } catch (sessionCheckError) {
+            // Keep the app available during rollout or transient network/RPC failures.
+            console.warn('Account session verification temporarily unavailable.', sessionCheckError);
           }
-        } catch (sessionCheckError) {
-          // Keep the app available during rollout or transient network/RPC failures.
-          console.warn('Account session verification temporarily unavailable.', sessionCheckError);
         }
         const result = await globalSyncBridge.requestLatestDataReload();
         if (result.needsReconciliation) await globalSyncBridge.notifyOutboxWorkAvailable();
