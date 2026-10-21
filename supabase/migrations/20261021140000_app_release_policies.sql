@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS public.app_release_policies (
 CREATE OR REPLACE FUNCTION public.guard_app_release_policy_update()
 RETURNS trigger
 LANGUAGE plpgsql
-SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $function$
 BEGIN
