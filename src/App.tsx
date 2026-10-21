@@ -47,6 +47,7 @@ import { UserSession } from './services/auth/authService';
 import { getSupabaseAuthToken, registerSuspensionHandler } from './services/supabase/client';
 import { startNativePushNotifications, stopNativePushNotifications } from './services/nativePushNotifications';
 import { ShieldAlert } from 'lucide-react';
+import { AppVersionGate } from './components/customer/CustomerAppVersionGate';
 import { DesignSystemPlayground } from './components/playground/DesignSystemPlayground';
 import { Button } from './components/ui/Button';
 import { resolveLogicalBackPath } from './navigation/backNavigation';
@@ -205,7 +206,16 @@ export default function App() {
           // empty or partially hydrated model. Existing local data remains usable
           // when a remote read fails before any local replacement begins.
           await ensureStoreHydrated();
-          await refreshStoreFromRemote();
+          // Local hydration is the launch prerequisite. A remote refresh is best-effort:
+          // losing connectivity must not turn an already hydrated offline database into
+          // a startup error screen. Server-authoritative mutations still require network.
+          if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+            try {
+              await refreshStoreFromRemote();
+            } catch (remoteRefreshError) {
+              console.warn('Remote refresh unavailable; opening the hydrated local store.', remoteRefreshError);
+            }
+          }
         }
       } catch (error: any) {
         if (isMounted) {
@@ -706,6 +716,7 @@ export default function App() {
   };
 
   return (
+    <AppVersionGate channel="admin">
     <ThemeProvider>
       <I18nProvider>
         <ToastProvider>
@@ -766,5 +777,6 @@ export default function App() {
         </ToastProvider>
       </I18nProvider>
     </ThemeProvider>
+    </AppVersionGate>
   );
 }
