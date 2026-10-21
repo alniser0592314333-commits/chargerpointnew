@@ -213,7 +213,7 @@ Deno.serve(async (request: Request) => {
   const operation = normalize(input.operation, 16);
   const eventStatus = normalize(input.newStatus, 64);
   if (!/^[0-9a-f-]{36}$/i.test(recordId) ||
-      !["qr_payment_submissions", "customer_account_events", "goal_requests"].includes(source) ||
+      !["qr_payment_submissions", "customer_account_events", "goal_requests", "orders"].includes(source) ||
       !["INSERT", "UPDATE"].includes(operation)) return json(400, { ok: false, error: "INVALID_EVENT" });
 
   let recipients: Array<Record<string, unknown>> = [];
