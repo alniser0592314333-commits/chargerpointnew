@@ -84,6 +84,8 @@ const callEndpoint = async (action: 'register' | 'unregister', bearer: string, t
 };
 
 const persistLatestToken = async (token: string) => {
+  // Ignore token callbacks after logout instead of restoring stale in-memory state.
+  if (!currentTokenProvider) return;
   latestPushToken = token;
   const generation = lifecycleGeneration;
   // Serialize token persistence so logout can wait for any already-started register
