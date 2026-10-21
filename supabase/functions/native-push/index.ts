@@ -407,6 +407,7 @@ Deno.serve(async (request: Request) => {
       bodyEn = "A new device was added to order #" + orderNumber + ". New order total: " + formatMoney(total, "en") + ".";
       targetPath = "/customer/orders?orderNumber=" + orderNumber + "&orderCreatedAt=" + encodeURIComponent(orderDate);
     } else if (eventStatus === "CANCELLED" && operation === "UPDATE") {
+      if (String(order.status || "").toLowerCase() === "cancelled") return json(200, { ok: true, skipped: true, reason: "ORDER_CANCELLATION_ALREADY_NOTIFIED" });
       if (!item.cancelled_at && !item.deleted_at) return json(200, { ok: true, skipped: true });
       eventKey += ":CANCELLED";
       titleAr = "تم إلغاء جهاز من طلبك"; titleEn = "An item in your order was cancelled";
