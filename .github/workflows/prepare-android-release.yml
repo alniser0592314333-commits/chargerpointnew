@@ -25,7 +25,7 @@ jobs:
   build-release:
     name: Build signed ${{ matrix.variant }} v${{ inputs.release_version }}
     runs-on: ubuntu-latest
-    if: ${{ inputs.variant == 'both' || inputs.variant == matrix.variant }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.variant == 'both' || github.event.inputs.variant == matrix.variant) }}
     strategy:
       fail-fast: false
       matrix:
