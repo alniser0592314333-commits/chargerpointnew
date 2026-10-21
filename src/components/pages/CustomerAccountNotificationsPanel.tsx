@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { Bell, Check, CheckCircle2, Clipboard, KeyRound, LoaderCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { getSupabaseAuthToken } from '../../services/supabase/client';
@@ -55,13 +57,15 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const [issued, setIssued] = useState<{ customerName: string; password: string } | null>(null);
 
   const t = (ar: string, en: string) => isAr ? ar : en;
-  const load = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    setError('');
+  const load = useCallback(async (quiet = false, background = false) => {
+    if (!quiet && !background) setLoading(true);
+    if (!background) setError('');
     const token = getSupabaseAuthToken();
     if (!token) {
-      setError(t('انتهت جلسة المشرف. سجّل الدخول مجددًا.', 'The administrator session has expired. Sign in again.'));
-      setLoading(false);
+      if (!background) {
+        setError(t('انتهت جلسة المشرف. سجّل الدخول مجددًا.', 'The administrator session has expired. Sign in again.'));
+        setLoading(false);
+      }
       return;
     }
     try {
@@ -71,11 +75,42 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setEvents(Array.isArray(result.data.events) ? result.data.events : []);
       setAccounts(Array.isArray(result.data.accounts) ? result.data.accounts : []);
     } catch {
-      setError(t('تعذّر تحميل إشعارات حسابات العملاء. تحقق من الصلاحيات والاتصال.', 'Could not load customer account notifications. Check permissions and connectivity.'));
-    } finally { setLoading(false); }
+      if (!background) setError(t('تعذّر تحميل إشعارات حسابات العملاء. تحقق من الصلاحيات والاتصال.', 'Could not load customer account notifications. Check permissions and connectivity.'));
+    } finally {
+      if (!background) setLoading(false);
+    }
   }, [isAr]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    let disposed = false;
+    let pushListener: { remove: () => Promise<void> } | null = null;
+    let pushListenerDisposed = false;
+    const refreshVisible = () => {
+      if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void load(false, true);
+    };
+    const timer = window.setInterval(refreshVisible, 10000);
+    window.addEventListener('focus', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
+    window.addEventListener('online', refreshVisible);
+    if (Capacitor.isNativePlatform()) {
+      void PushNotifications.addListener('pushNotificationReceived', refreshVisible).then((handle) => {
+        if (pushListenerDisposed) void handle.remove();
+        else pushListener = handle;
+      }).catch((error) => console.warn('Customer account inbox refresh listener unavailable.', error));
+    }
+    return () => {
+      disposed = true;
+      pushListenerDisposed = true;
+      if (pushListener) void pushListener.remove();
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshVisible);
+      document.removeEventListener('visibilitychange', refreshVisible);
+      window.removeEventListener('online', refreshVisible);
+    };
+  }, [load]);
 
   const prepareReset = (request: ResetRequest) => {
     setPrepared({
