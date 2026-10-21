@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { callCustomerAccount } from '../services/customer/customerAuth';
 import { getSupabaseAuthToken, invokeSupabaseRpc } from '../services/supabase/client';
 
@@ -47,6 +49,16 @@ export function useAdminNotificationCount(enabled: boolean): number {
     };
     void refresh();
     const timer = window.setInterval(() => { void refresh(); }, 10000);
+    let pushListener: { remove: () => Promise<void> } | null = null;
+    let pushListenerDisposed = false;
+    if (Capacitor.isNativePlatform()) {
+      void PushNotifications.addListener('pushNotificationReceived', () => { void refresh(); })
+        .then((handle) => {
+          if (pushListenerDisposed) void handle.remove();
+          else pushListener = handle;
+        })
+        .catch((error) => console.warn('Notification badge push refresh listener unavailable.', error));
+    }
     const onFocus = () => { void refresh(); };
     const onVisibility = () => { if (document.visibilityState === 'visible') void refresh(); };
     const onOnline = () => { void refresh(); };
@@ -55,6 +67,8 @@ export function useAdminNotificationCount(enabled: boolean): number {
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       disposed = true;
+      pushListenerDisposed = true;
+      if (pushListener) void pushListener.remove();
       window.clearInterval(timer);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);
