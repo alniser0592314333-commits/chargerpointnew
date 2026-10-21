@@ -327,7 +327,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         : accountToken;
       try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
       if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, result.data.session_expires_at);
-      setPendingRememberCustomerAccount({ token: accountToken, label: entry?.customer_name || accountToken });
+      if (!savedCustomerAccounts.some((account) => account.token === accountToken)) {
+        setPendingRememberCustomerAccount({ token: accountToken, label: entry?.customer_name || accountToken });
+      }
       setPassword(''); setConfirmPassword(''); setMode('portal');
     } finally { setBusy(false); }
   };
@@ -336,6 +338,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     event.preventDefault();
     const loginToken = directEntry ? username.trim() : accountToken;
     if (!loginToken || !password) { setErrorMessage('INVALID_CREDENTIALS'); return; }
+    let loginAccountLabel = entry?.customer_name || loginToken;
     setBusy(true); setError('');
     try {
       if (directEntry) {
@@ -349,6 +352,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           return;
         }
         setEntry(entryResult.data);
+        loginAccountLabel = entryResult.data.customer_name || loginToken;
       }
       const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string; customer_qr_token?: string | null }>(
         'login', { token: loginToken, password },
@@ -374,7 +378,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setPassword('');
       setMessage('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
-      setPendingRememberCustomerAccount({ token: loginToken, label: entry?.customer_name || loginToken });
+      if (!savedCustomerAccounts.some((account) => account.token === loginToken)) {
+        setPendingRememberCustomerAccount({ token: loginToken, label: loginAccountLabel });
+      }
       if (loginData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
       else setMode('portal');
@@ -643,6 +649,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                       {busy ? t('جارٍ التحقق…', 'Checking…') : t('دخول إلى حسابي', 'Sign in to my account')}
                       {!busy && nextArrow}
                     </button>
+                    {directEntry && savedCustomerAccounts.length > 0 && (
+                      <button type="button" onClick={() => { setShowSavedCustomerAccounts(true); setUsername(''); setPassword(''); setError(''); }}
+                        className="w-full py-2 text-sm font-semibold text-[#5d7782] transition hover:text-[#e8743b] dark:text-[#9bb8bf]">
+                        {t('اختيار حساب محفوظ', 'Choose a saved account')}
+                      </button>
+                    )}
                   </form>
                   )
                 ) : mode === 'forgot' ? (
