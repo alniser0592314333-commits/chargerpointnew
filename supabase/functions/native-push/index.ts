@@ -382,7 +382,7 @@ Deno.serve(async (request: Request) => {
   } else {
     const { data: order, error: orderError } = await admin.from("orders")
       .select("id,customer_id").eq("id", recordId).maybeSingle();
-    if (orderError || !order || !order.customer_id) return json(200, { ok: true, skipped: true });
+    if (orderError || !order || !order.customer_id || order.deleted_at) return json(200, { ok: true, skipped: true });
     if (operation === "INSERT" && eventStatus === "CREATED") {
       eventKey += ":CREATED";
       titleAr = "تم إنشاء طلب شحن جديد"; titleEn = "A new charging order was created";
