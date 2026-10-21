@@ -16,6 +16,7 @@ let latestPushToken: string | null = null;
 let lastAuthorizedToken: string | null = null;
 let listenersReady: Promise<void> | null = null;
 let registrationInFlight = false;
+let lifecycleGeneration = 0;
 let localeObserver: MutationObserver | null = null;
 
 const endpoint = () => config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/native-push';
@@ -80,8 +81,9 @@ const callEndpoint = async (action: 'register' | 'unregister', bearer: string, t
 
 const persistLatestToken = async (token: string) => {
   latestPushToken = token;
+  const generation = lifecycleGeneration;
   const bearer = await getAccessToken();
-  if (!bearer || !currentVariant) return;
+  if (generation !== lifecycleGeneration || !currentTokenProvider || !bearer || !currentVariant) return;
   try {
     await callEndpoint('register', bearer, token);
   } catch (error) {
@@ -188,21 +190,23 @@ async function startNativePushNotificationsInternal(
   locale: string,
 ): Promise<void> {
   if (!Capacitor.isNativePlatform() || !nativePushEnabled || registrationInFlight) return;
+  const generation = lifecycleGeneration;
   currentVariant = variant;
   currentTokenProvider = tokenProvider;
   currentLocale = locale === 'en' ? 'en' : 'ar';
   currentNavigationTarget = notificationTarget(variant);
   const bearer = await getAccessToken();
-  if (!bearer) return;
+  if (generation !== lifecycleGeneration || !bearer) return;
 
   registrationInFlight = true;
   try {
     await ensureListeners();
+    if (generation !== lifecycleGeneration) return;
     const permission = await PushNotifications.checkPermissions();
     const receivePermission = permission.receive === 'granted'
       ? permission
       : await PushNotifications.requestPermissions();
-    if (receivePermission.receive !== 'granted') return;
+    if (generation !== lifecycleGeneration || receivePermission.receive !== 'granted') return;
     if (Capacitor.getPlatform() === 'android') {
       await PushNotifications.createChannel({
         id: 'charging-point-events',
@@ -214,6 +218,7 @@ async function startNativePushNotificationsInternal(
       }).catch(() => undefined);
     }
     await PushNotifications.register();
+    if (generation !== lifecycleGeneration) return;
     // Re-register the previously issued FCM token after an auth/session refresh.
     if (latestPushToken) await persistLatestToken(latestPushToken);
   } catch (error) {
@@ -235,22 +240,31 @@ export function startNativePushNotifications(
   locale: string,
 ): Promise<void> {
   if (startPromise) return startPromise;
-  startPromise = startNativePushNotificationsInternal(variant, tokenProvider, locale)
-    .finally(() => { startPromise = null; });
-  return startPromise;
+  const pending = startNativePushNotificationsInternal(variant, tokenProvider, locale);
+  const tracked = pending.finally(() => {
+    if (startPromise === tracked) startPromise = null;
+  });
+  startPromise = tracked;
+  return tracked;
 }
 
 /** Remove the server-side binding before/while an authenticated user signs out. */
 export async function stopNativePushNotifications(): Promise<void> {
   if (!Capacitor.isNativePlatform() || !currentVariant) return;
-  const bearer = await getAccessToken().catch(() => null) || lastAuthorizedToken;
+  // Invalidate in-flight startup/token callbacks synchronously before awaiting anything.
+  const provider = currentTokenProvider;
   const token = latestPushToken ?? undefined;
-
-  // Stop token callbacks from re-registering the device while logout is in flight.
+  const cachedBearer = lastAuthorizedToken;
+  lifecycleGeneration += 1;
+  startPromise = null;
   currentTokenProvider = null;
   latestPushToken = null;
   lastAuthorizedToken = null;
 
+  // If logout races the first token lookup, resolve the captured provider only for
+  // unregistering; the invalidated startup path can no longer register afterwards.
+  const bearer = cachedBearer || await Promise.resolve().then(() => provider?.()).catch(() => null);
+  lastAuthorizedToken = null;
   if (bearer) {
     try {
       await callEndpoint('unregister', bearer, token);
