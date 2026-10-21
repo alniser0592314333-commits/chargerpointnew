@@ -123,6 +123,27 @@ export default function App() {
     if (!userSession) return;
     void startNativePushNotifications('admin', () => getSupabaseAuthToken(), document.documentElement.lang);
   }, [userSession]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || import.meta.env.MODE !== 'admin' || !isAuthenticated) return;
+    let disposed = false;
+    let listener: { remove: () => Promise<void> } | null = null;
+    void PushNotifications.addListener('pushNotificationReceived', () => {
+      if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void globalSyncBridge.requestLatestDataReload().catch((error) => {
+        console.warn('Push-triggered admin data refresh failed; periodic sync will retry.', error);
+      });
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else listener = handle;
+    }).catch((error) => {
+      console.warn('Admin push refresh listener unavailable; periodic sync remains active.', error);
+    });
+    return () => {
+      disposed = true;
+      if (listener) void listener.remove();
+    };
+  }, [isAuthenticated]);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [isBootRetrying, setIsBootRetrying] = useState(false);
