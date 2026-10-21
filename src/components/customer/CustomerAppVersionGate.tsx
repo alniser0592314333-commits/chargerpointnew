@@ -9,7 +9,7 @@ type GateState = 'checking' | 'ready' | 'update' | 'blocked' | 'offline-unknown'
 
 function readCachedPolicy(channel: AppReleaseChannel, cacheKey: string): AppReleasePolicy | null {
   try {
-    const raw = localStorage.getItem(POLICY_CACHE_KEY);
+    const raw = localStorage.getItem(cacheKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as AppReleasePolicy;
     if (parsed.channel !== channel || !parseAppVersion(parsed.latest_version)
@@ -48,13 +48,13 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
       return;
     }
     let dismissedUntil = 0;
-    try { dismissedUntil = Number(localStorage.getItem(DISMISS_KEY_PREFIX + nextPolicy.latest_version) || 0); } catch {}
+    try { dismissedUntil = Number(localStorage.getItem(dismissKeyPrefix + nextPolicy.latest_version) || 0); } catch {}
     setState(dismissedUntil > now ? 'ready' : 'update');
     if (deadlineTimer.current) clearTimeout(deadlineTimer.current);
     deadlineTimer.current = setTimeout(() => {
       if (mounted.current && currentVersionCode() < Number(nextPolicy.version_code)) setState('blocked');
     }, Math.min(Math.max(deadline - now, 0), 2_147_000_000));
-  }, []);
+  }, [dismissKeyPrefix]);
 
   const checkVersion = useCallback(async () => {
     if (!Capacitor.isNativePlatform() || activeVariant !== channel) {
@@ -111,7 +111,7 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
     if (!policy) return;
     const deadline = Date.parse(policy.grace_until);
     if (Date.now() >= deadline) { setState('blocked'); return; }
-    try { localStorage.setItem(DISMISS_KEY_PREFIX + policy.latest_version, String(deadline)); } catch {}
+    try { localStorage.setItem(dismissKeyPrefix + policy.latest_version, String(deadline)); } catch {}
     setState('ready');
   };
 
