@@ -803,19 +803,22 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/smart_goal_policy_fixture.sql
+      - name: Seed a historical completed-goal bonus before migrations
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/smart_goal_bonus_backfill_seed.sql
       - name: Apply the actual smart-goal policy migration
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009080000_smart_goal_policy.sql
-      - name: Execute goal progress, completion, expiry, bonus, and guard regressions
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/smart_goal_policy_runtime.test.sql
-
       - name: Apply renumbering migration after smart-goal migration
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009090000_add_atomic_day_order_renumbering.sql
+      - name: Apply Super Admin debt-limit override migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261010100000_super_admin_debt_limit_warning_policy.sql
       - name: Revoke direct access to SECURITY DEFINER goal trigger functions
         env:
           PGPASSWORD: postgres
@@ -824,6 +827,15 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261009201000_revoke_goal_evaluator_service_role_execute.sql
+      - name: Apply goal-bonus FIFO allocation migration after existing dispatcher migrations
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261011150000_allocate_goal_bonus_fifo.sql
+      - name: Execute goal progress, completion, expiry, bonus, and guard regressions
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/smart_goal_policy_runtime.test.sql
+
       - name: Verify final combined dispatcher contract and privileges
         env:
           PGPASSWORD: postgres
@@ -839,6 +851,14 @@ jobs:
             END IF;
             IF position('WHEN ''RENUMBER_DAY_ORDERS'' THEN' in definition) = 0 THEN
               RAISE EXCEPTION 'Combined dispatcher lost RENUMBER_DAY_ORDERS';
+            END IF;
+            IF position('IF COALESCE(v_admin_role' in definition) = 0 THEN
+              RAISE EXCEPTION 'Combined dispatcher lost the Super Admin debt-limit policy';
+            END IF;
+            IF position('Finance/goal operations must acquire the customer lock' in definition) = 0
+               OR position('Finance/goal operations must acquire the customer lock' in definition)
+                  > position('-- 5. ROUTE BY CANONICAL COMMAND TYPE' in definition) THEN
+              RAISE EXCEPTION 'Goal-bonus customer-first lock ordering is missing or misplaced';
             END IF;
             IF position('p_payload->>''adminBin''' in definition) > 0 THEN
               RAISE EXCEPTION 'Combined dispatcher reintroduced legacy adminBin alias';

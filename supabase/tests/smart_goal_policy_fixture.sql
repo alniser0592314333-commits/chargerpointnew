@@ -39,10 +39,14 @@ CREATE TABLE public.orders (
 CREATE TABLE public.order_items (
   id uuid PRIMARY KEY,
   order_id uuid NOT NULL REFERENCES public.orders(id),
+  item_sequence integer NOT NULL DEFAULT 1,
+  final_charge_snapshot_minor bigint NOT NULL DEFAULT 0,
+  payment_status text NOT NULL DEFAULT 'UNPAID',
   status text NOT NULL DEFAULT 'charging',
   operational_status text NOT NULL DEFAULT 'CHARGING',
   financial_status text NOT NULL DEFAULT 'UNRECOGNIZED',
   delivered_at timestamptz,
+  financially_recognized_at timestamptz,
   deleted_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now(),
   version integer NOT NULL DEFAULT 1
@@ -58,6 +62,25 @@ CREATE TABLE public.financial_ledger (
   order_item_id uuid,
   actor_admin_id uuid,
   linked_ledger_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.payments (
+  id uuid PRIMARY KEY,
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  amount_minor bigint NOT NULL CHECK (amount_minor > 0),
+  payment_method text NOT NULL,
+  reference text,
+  actor_admin_id uuid,
+  command_id uuid NOT NULL UNIQUE,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE public.payment_allocations (
+  id uuid PRIMARY KEY,
+  payment_id uuid NOT NULL REFERENCES public.payments(id),
+  order_item_id uuid NOT NULL REFERENCES public.order_items(id),
+  order_id uuid NOT NULL REFERENCES public.orders(id),
+  allocated_amount_minor bigint NOT NULL CHECK (allocated_amount_minor > 0),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE public.goals (
