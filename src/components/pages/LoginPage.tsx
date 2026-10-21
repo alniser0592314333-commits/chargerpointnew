@@ -167,6 +167,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     setUiState("SYSTEM_BOOTSTRAPPED_FALSE_NO_SESSION");
   };
 
+  const finishSuccessfulLogin = async (identifier: string, remember: boolean) => {
+    if (remember) {
+      saveAdminAccountIdentifier(identifier);
+      setSavedAdminAccounts(readSavedAdminAccounts());
+    }
+    setPendingRememberIdentifier(null);
+    setPassword('');
+    await onLoginSuccess();
+  };
+
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,8 +205,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
         try {
           const session = await authService.login(cleanUser, cleanPass);
           if (session) {
-            setPassword("");
-            await onLoginSuccess();
+            setPendingRememberIdentifier(cleanUser);
           } else {
             setError(
               locale === "en"
@@ -317,10 +326,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
           // Zero calls to signInWithPassword! Uses temporary token from memory
           const session = await authService.verifySuperAdminBin(cleanBin);
           if (session) {
-            setPassword("");
             setBin("");
             setIsBinLocked(false);
-            await onLoginSuccess();
+            setPendingRememberIdentifier(internalEmail || username.trim());
           }
         } catch (binErr: any) {
           const msg = binErr?.message || String(binErr);
