@@ -148,6 +148,29 @@ describe('native push notification integration', () => {
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('waits for an in-flight token registration before unregistering on logout', async () => {
+    vi.resetModules();
+    const service = await import('../services/nativePushNotifications');
+    let resolveRegister!: (value: { ok: boolean; status: number }) => void;
+    mocks.fetch.mockImplementationOnce(() => new Promise((resolve) => { resolveRegister = resolve; }));
+
+    await service.initializeNativePushNotificationListeners('admin', 'en');
+    await service.startNativePushNotifications('admin', () => 'valid-access-token', 'en');
+    mocks.listeners.get('registration')?.({ value: 'fcm-token-012345678901234567890123456789' });
+    await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1));
+
+    const stopping = service.stopNativePushNotifications();
+    await Promise.resolve();
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+
+    resolveRegister({ ok: true, status: 200 });
+    await stopping;
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).action).toBe('register');
+    expect(JSON.parse(mocks.fetch.mock.calls[1][1].body).action).toBe('unregister');
+  });
+
   it('shows a foreground push as a local Android notification without exposing event details', async () => {
     vi.resetModules();
     const service = await import('../services/nativePushNotifications');
