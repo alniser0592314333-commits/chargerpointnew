@@ -185,8 +185,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         localBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(accountToken)) || 'null');
         cachedPortalToken = localStorage.getItem(portalTokenCacheKey(accountToken)) || accountToken;
       } catch {}
-      const currentSessionId = localSession.session ? sessionIdFromAccessToken(localSession.session.access_token) : null;
-      if (localSession.session && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
+      const localAccessToken = localSession.session?.access_token;
+      const currentSessionId = localAccessToken ? sessionIdFromAccessToken(localAccessToken) : null;
+      if (localAccessToken && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
           localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(cachedPortalToken)) {
         setPortalToken(cachedPortalToken);
         setMode('portal');
