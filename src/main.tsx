@@ -15,7 +15,7 @@ const isPublicPortalRoute =
   pathname.startsWith('/public/qr/order/');
 
 const prepareCustomerIdentity = () => {
-  document.title = 'نقطة الشحن | بوابة العميل';
+  document.title = 'نقطة الشحن';
   const description = document.querySelector('meta[name="description"]');
   description?.setAttribute('content', 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8f6f1');
