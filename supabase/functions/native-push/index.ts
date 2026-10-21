@@ -346,7 +346,9 @@ Deno.serve(async (request: Request) => {
       .eq("app_variant", "customer").eq("customer_id", order.customer_id).is("disabled_at", null);
     if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
     recipients = data ?? [];
+  }
 
+  if (!recipients.length && targetPath === "/app/notifications") {
     const { data, error } = await admin.from("native_push_devices")
       .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
       .eq("app_variant", "admin").is("disabled_at", null);
