@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { AlertCircle, CheckCircle2, Clock3, Download, LoaderCircle, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, Download, RefreshCw, ShieldAlert } from 'lucide-react';
 import { fetchAppReleasePolicy, parseAppVersion, type AppReleaseChannel, type AppReleasePolicy } from '../../services/appReleasePolicy';
 
 const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
