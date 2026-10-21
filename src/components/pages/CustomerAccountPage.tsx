@@ -45,6 +45,21 @@ const saveSessionExpiry = async (token: string, value: unknown) => {
 
 type Mode = 'loading' | 'unavailable' | 'activate' | 'login' | 'forgot' | 'portal' | 'force-change' | 'recovery' | 'terms-update';
 
+const hasLocallyBoundCustomerSession = (token: string): boolean => {
+  if (!token) return false;
+  try {
+    const rawSession = localStorage.getItem('chargerpoint_customer_auth_session');
+    if (!rawSession) return false;
+    const session = JSON.parse(rawSession) as { access_token?: string; expires_at?: number };
+    if (!session.access_token || (typeof session.expires_at === 'number' && session.expires_at * 1000 <= Date.now())) return false;
+    const sessionId = sessionIdFromAccessToken(session.access_token);
+    const binding = JSON.parse(localStorage.getItem(sessionExpiryKey(token)) || 'null') as { expiresAt?: number; sessionId?: string } | null;
+    const portalToken = localStorage.getItem(portalTokenCacheKey(token)) || token;
+    return Boolean(sessionId && binding?.sessionId === sessionId && Number(binding.expiresAt) > Date.now()
+      && hasCachedCustomerPortalData(portalToken));
+  } catch { return false; }
+};
+
 const commonPassword = (value: string) =>
   value.length >= 8 && value.length <= 128 &&
   !new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']).has(value.trim().toLowerCase()) &&
@@ -69,9 +84,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
-  const [mode, setMode] = useState<Mode>('loading');
+  const [mode, setMode] = useState<Mode>(() => directEntry && !accountToken ? 'login' : hasLocallyBoundCustomerSession(accountToken) ? 'portal' : 'loading');
   const [entry, setEntry] = useState<EntryStatus | null>(null);
-  const [portalToken, setPortalToken] = useState(token);
+  const [portalToken, setPortalToken] = useState(() => { try { return localStorage.getItem(portalTokenCacheKey(accountToken)) || token; } catch { return token; } });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -101,7 +116,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     if (initialized.current) return;
     initialized.current = true;
     try {
-      setMode('loading');
+      if (!hasLocallyBoundCustomerSession(accountToken)) setMode('loading');
       setError('');
       setMessage('');
       if (directEntry && !accountToken) {
@@ -148,6 +163,15 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     }
     const result = await callCustomerAccount<EntryStatus>('entry', { token: accountToken });
     if (!result.data || result.error || result.data.valid !== true) {
+      // A previously server-bound session may view its cached read-only portal while
+      // offline. A confirmed server-side invalid account never uses this fallback.
+      if (result.error === 'NETWORK_UNAVAILABLE' && hasLocallyBoundCustomerSession(accountToken)) {
+        const cachedToken = (() => { try { return localStorage.getItem(portalTokenCacheKey(accountToken)) || accountToken; } catch { return accountToken; } })();
+        setPortalToken(cachedToken);
+        setMode('portal');
+        setMessage(t('أنت غير متصل. هذه آخر بيانات محفوظة؛ العمليات المالية وتغييرات الحساب متوقفة حتى عودة الإنترنت.', 'You are offline. Showing the last saved data; financial actions and account changes are disabled until you reconnect.'));
+        return;
+      }
       setMode('unavailable');
       setErrorMessage(result.error || 'ACCOUNT_UNAVAILABLE_OR_INVALID');
       return;
@@ -187,6 +211,13 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         if (registeredData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
         else if (registeredData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
         else setMode('portal');
+        return;
+      }
+      if (registered.error === 'NETWORK_UNAVAILABLE' && hasLocallyBoundCustomerSession(accountToken)) {
+        const cachedToken = (() => { try { return localStorage.getItem(portalTokenCacheKey(accountToken)) || accountToken; } catch { return accountToken; } })();
+        setPortalToken(cachedToken);
+        setMode('portal');
+        setMessage(t('تعذّر الوصول للخادم. تعرض الصفحة آخر نسخة محفوظة للقراءة فقط حتى عودة الاتصال.', 'The server is unreachable. Showing the last saved read-only copy until connectivity returns.'));
         return;
       }
       await customerAuth.auth.signOut();
