@@ -209,6 +209,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
         try {
           const session = await authService.login(cleanUser, cleanPass);
           if (session) {
+            setPassword("");
             setPendingRememberIdentifier(cleanUser);
           } else {
             setError(
