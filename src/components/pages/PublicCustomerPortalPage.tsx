@@ -172,8 +172,13 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordChangeBusy, setPasswordChangeBusy] = useState(false);
   const requestGeneration = useRef(0);
+  const backgroundLoadInFlight = useRef(false);
 
   const load = useCallback(async (manual = false, background = false) => {
+    // The 5-second refresh cadence must never cancel its own previous request.
+    // A single background read at a time keeps the newest verified snapshot eligible to render.
+    if (background && backgroundLoadInFlight.current) return;
+    if (background) backgroundLoadInFlight.current = true;
     const requestId = ++requestGeneration.current;
     if (manual) setRefreshing(true); else if (!background) setLoading(true);
     if (!background) setError(null);
@@ -187,6 +192,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         setLoading(false);
         setRefreshing(false);
       }
+      if (background) backgroundLoadInFlight.current = false;
       return;
     }
     try {
@@ -241,6 +247,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         }
       }
     } finally {
+      if (background) backgroundLoadInFlight.current = false;
       if (requestId === requestGeneration.current && !background) {
         setLoading(false);
         setRefreshing(false);
