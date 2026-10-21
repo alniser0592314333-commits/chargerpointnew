@@ -192,7 +192,7 @@ describe('Isolated customer QR portal security contract', () => {
     const helperStart = accountPage.indexOf('const hasLocallyBoundCustomerSession =');
     const helperEnd = accountPage.indexOf('const commonPassword', helperStart);
     const helper = accountPage.slice(helperStart, helperEnd);
-    expect(helper).toContain('cp_customer_session_binding:');
+    expect(accountPage).toContain("const sessionExpiryKey = (token: string) => 'cp_customer_session_binding:' + token;");
     expect(helper).toContain('binding?.sessionId === sessionId');
     expect(helper).toContain('Number(binding.expiresAt) > Date.now()');
     expect(helper).toContain('hasCachedCustomerPortalData(portalToken)');
