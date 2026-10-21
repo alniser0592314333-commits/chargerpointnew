@@ -198,7 +198,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         setError('service');
         return;
       }
-      if (rpcError || !response) {
+      if (rpcError === 'NETWORK_UNAVAILABLE') {
+        // Some Android networks report navigator.onLine=true without usable internet.
+        // Treat a failed transport as offline and retain only the previously cached snapshot.
+        const cached = readCachedPortalData(token);
+        setOnline(false);
+        if (cached) { setData(cached); setError(null); }
+        else { setData(null); setError('service'); }
+      } else if (rpcError || !response) {
         setData(null);
         setError(rpcError ? 'service' : 'invalid');
       } else if (
@@ -212,14 +219,17 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         setData(null);
         setError('service');
       } else {
+        setOnline(true);
         const verifiedSnapshot: PortalData = { ...response, cached_at: new Date().toISOString() };
         setData(verifiedSnapshot);
         try { localStorage.setItem(portalCacheKey(token), JSON.stringify(verifiedSnapshot)); } catch {}
       }
     } catch {
       if (requestId === requestGeneration.current) {
-        setData(null);
-        setError('service');
+        const cached = readCachedPortalData(token);
+        setOnline(false);
+        if (cached) { setData(cached); setError(null); }
+        else { setData(null); setError('service'); }
       }
     } finally {
       if (requestId === requestGeneration.current) {
@@ -270,7 +280,6 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   // Server-side authorization remains authoritative; offline mode only shows the
   // already-cached snapshot and never enables payment/account mutations.
   useEffect(() => {
-    if (!online) return;
     const refreshVisibleSnapshot = () => {
       if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
       void load(true);
