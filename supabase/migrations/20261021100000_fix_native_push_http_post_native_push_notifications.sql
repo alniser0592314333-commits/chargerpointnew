@@ -72,3 +72,58 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.enqueue_native_push_event(text, uuid, text, text)
   FROM PUBLIC, anon, authenticated;
+
+-- Notify the customer when a charging order is created for their account.
+CREATE OR REPLACE FUNCTION public.trigger_native_push_for_order()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+BEGIN
+  IF NEW.customer_id IS NOT NULL AND NEW.deleted_at IS NULL THEN
+    PERFORM public.enqueue_native_push_event('orders', NEW.id, 'INSERT', 'CREATED');
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Send one delivery notification only after every active item in the order
+-- has reached DELIVERED; item-level updates must not produce duplicate alerts.
+CREATE OR REPLACE FUNCTION public.trigger_native_push_for_order_item_delivery()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $function$
+BEGIN
+  IF OLD.operational_status IS DISTINCT FROM 'DELIVERED'
+     AND NEW.operational_status = 'DELIVERED'
+     AND NEW.deleted_at IS NULL
+     AND NEW.cancelled_at IS NULL
+     AND NOT EXISTS (
+       SELECT 1
+       FROM public.order_items i
+       WHERE i.order_id = NEW.order_id
+         AND i.deleted_at IS NULL
+         AND i.cancelled_at IS NULL
+         AND i.operational_status IS DISTINCT FROM 'DELIVERED'
+     ) THEN
+    PERFORM public.enqueue_native_push_event('orders', NEW.order_id, 'UPDATE', 'DELIVERED');
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.trigger_native_push_for_order() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trigger_native_push_for_order_item_delivery() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS native_push_order_created ON public.orders;
+CREATE TRIGGER native_push_order_created
+AFTER INSERT ON public.orders
+FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_order();
+
+DROP TRIGGER IF EXISTS native_push_order_fully_delivered ON public.order_items;
+CREATE TRIGGER native_push_order_fully_delivered
+AFTER UPDATE OF operational_status, delivered_at ON public.order_items
+FOR EACH ROW EXECUTE FUNCTION public.trigger_native_push_for_order_item_delivery();
