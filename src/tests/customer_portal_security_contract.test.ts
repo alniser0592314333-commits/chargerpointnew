@@ -185,3 +185,18 @@ describe('Isolated customer QR portal security contract', () => {
     expect(page).not.toContain('invokeSupabaseRestGet');
   });
 });
+
+
+  it('allows a previously bound customer session to view cached data for its seven-day binding after the short JWT expires', () => {
+    const accountPage = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/CustomerAccountPage.tsx'), 'utf8');
+    const helperStart = accountPage.indexOf('const hasLocallyBoundCustomerSession =');
+    const helperEnd = accountPage.indexOf('const commonPassword', helperStart);
+    const helper = accountPage.slice(helperStart, helperEnd);
+    expect(helper).toContain('cp_customer_session_binding:');
+    expect(helper).toContain('binding?.sessionId === sessionId');
+    expect(helper).toContain('Number(binding.expiresAt) > Date.now()');
+    expect(helper).toContain('hasCachedCustomerPortalData(portalToken)');
+    expect(helper).not.toMatch(/session\.expires_at[^\n]*Date\.now\(\)/);
+    expect(accountPage).toContain('Read the persisted session snapshot directly here');
+    expect(accountPage).toContain('This is the last saved copy; payments and account changes are disabled until you reconnect.');
+  });
