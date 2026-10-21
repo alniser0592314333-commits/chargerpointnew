@@ -144,7 +144,13 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<CustomerPortalTab>('home');
+  const initialPortalQuery = new URLSearchParams(window.location.search);
+  const requestedTab = initialPortalQuery.get('tab');
+  const initialTab: CustomerPortalTab = requestedTab === 'orders' || requestedTab === 'goals' || requestedTab === 'finance' || requestedTab === 'more'
+    ? requestedTab : 'home';
+  const [activeTab, setActiveTab] = useState<CustomerPortalTab>(initialTab);
+  const notificationOrderNumber = initialPortalQuery.get('orderNumber') || '';
+  const notificationOrderCreatedAt = initialPortalQuery.get('orderCreatedAt') || '';
   const [moreView, setMoreView] = useState<CustomerPortalMoreView>('profile');
   const [activity, setActivity] = useState<PortalActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -393,6 +399,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const pendingReviewMinor = (data?.payment_submissions || [])
     .filter((submission) => submission.status.toUpperCase() === 'PENDING')
     .reduce((total, submission) => total + (submission.amount_minor ?? 0), 0);
+  useEffect(() => {
+    if (activeTab !== 'orders' || !data || !notificationOrderNumber) return;
+    const target = [...data.orders].find((order) =>
+      String(order.order_number) === notificationOrderNumber &&
+      (!notificationOrderCreatedAt || order.created_at === notificationOrderCreatedAt)
+    );
+    if (!target) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById('customer-order-' + notificationOrderNumber)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, data, notificationOrderNumber, notificationOrderCreatedAt]);
+
   const sortedPortalOrders = [...(data?.orders || [])].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
