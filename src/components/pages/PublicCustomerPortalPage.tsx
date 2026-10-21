@@ -170,17 +170,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [passwordChangeBusy, setPasswordChangeBusy] = useState(false);
   const requestGeneration = useRef(0);
 
-  const load = useCallback(async (manual = false) => {
+  const load = useCallback(async (manual = false, background = false) => {
     const requestId = ++requestGeneration.current;
-    if (manual) setRefreshing(true); else setLoading(true);
+    if (manual) setRefreshing(true); else if (!background) setLoading(true);
     setError(null);
     // Never show a cached/local financial snapshot as if it were current.
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       const cached = readCachedPortalData(token);
       if (cached) { setData(cached); setError(null); }
-      else { setData(null); setError('service'); }
-      setLoading(false);
-      setRefreshing(false);
+      else if (!background) { setData(null); setError('service'); }
+      if (!background) {
+        setLoading(false);
+        setRefreshing(false);
+      }
       return;
     }
     try {
@@ -192,8 +194,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       // Ignore stale requests and never restore financial data after connectivity drops.
       if (requestId !== requestGeneration.current) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        setData(null);
-        setError('service');
+        const cached = readCachedPortalData(token);
+        if (cached) { setData(cached); setError(null); }
+        else setError('service');
         return;
       }
       if (rpcError || !response) {
@@ -220,16 +223,16 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         setError('service');
       }
     } finally {
-      if (requestId === requestGeneration.current) {
+      if (requestId === requestGeneration.current && !background) {
         setLoading(false);
         setRefreshing(false);
       }
     }
   }, [token]);
 
-  const loadActivity = useCallback(async () => {
+  const loadActivity = useCallback(async (quiet = false) => {
     if (!online || typeof navigator !== 'undefined' && !navigator.onLine) return;
-    setActivityLoading(true);
+    if (!quiet) setActivityLoading(true);
     setActivityError(false);
     try {
       const { data: response, error: requestError } = await callCustomerAccount<PortalActivity>(
@@ -255,7 +258,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     } catch {
       setActivityError(true);
     } finally {
-      setActivityLoading(false);
+      if (!quiet) setActivityLoading(false);
     }
   }, [token, online]);
 
@@ -263,18 +266,26 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     if (data && online) void loadActivity();
   }, [data?.customer_code, online, loadActivity]);
 
+  // Keep the customer read model current on every tab, not only Goals.
+  // The secure customer-account endpoint remains the sole data path; this avoids
+  // granting browser access to financial tables merely to subscribe to Realtime.
   useEffect(() => {
-    if (!online || activeTab !== 'goals') return;
-    void load(true);
-    void loadActivity();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void load(true);
-        void loadActivity();
-      }
-    }, 12000);
-    return () => window.clearInterval(interval);
-  }, [activeTab, online, load, loadActivity]);
+    if (!online) return;
+    const refreshVisiblePortal = () => {
+      if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void load(false, true);
+      if (data) void loadActivity(true);
+    };
+    const interval = window.setInterval(refreshVisiblePortal, 5000);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') refreshVisiblePortal(); };
+    window.addEventListener('focus', refreshVisiblePortal);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshVisiblePortal);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [online, data?.customer_code, load, loadActivity]);
 
   const markNotificationsSeen = () => {
     const ids = eventRows.map((event) => event.id);
