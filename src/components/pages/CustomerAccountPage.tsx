@@ -22,6 +22,27 @@ type EntryStatus = {
   auth_provider?: "password" | "google" | "apple" | "facebook" | null;
   terms_version?: string | null;
 };
+const SAVED_CUSTOMER_ACCOUNTS_KEY = 'cp_saved_customer_accounts_v1';
+type SavedCustomerAccount = { token: string; label: string };
+const readSavedCustomerAccounts = (): SavedCustomerAccount[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SAVED_CUSTOMER_ACCOUNTS_KEY) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    const valid = parsed.filter((item): item is SavedCustomerAccount =>
+      item && typeof item.token === 'string' && item.token.trim().length > 0 && item.token.length <= 64 &&
+      /^[A-Za-z0-9_-]+$/.test(item.token) && typeof item.label === 'string' && item.label.trim().length > 0 && item.label.length <= 160
+    );
+    return valid.filter((item, index, all) => all.findIndex((candidate) => candidate.token === item.token) === index).slice(0, 5);
+  } catch { return []; }
+};
+const saveCustomerAccount = (account: SavedCustomerAccount): SavedCustomerAccount[] => {
+  const token = account.token.trim();
+  const label = account.label.trim().slice(0, 160);
+  if (!token || token.length > 64 || !/^[A-Za-z0-9_-]+$/.test(token) || !label) return readSavedCustomerAccounts();
+  const accounts = [{ token, label }, ...readSavedCustomerAccounts().filter((item) => item.token !== token)].slice(0, 5);
+  try { localStorage.setItem(SAVED_CUSTOMER_ACCOUNTS_KEY, JSON.stringify(accounts)); } catch {}
+  return accounts;
+};
 const sessionExpiryKey = (token: string) => 'cp_customer_session_binding:' + token;
 const portalTokenCacheKey = (token: string) => 'cp_customer_portal_token:' + token;
 const sessionIdFromAccessToken = (accessToken: string): string | null => {
@@ -80,6 +101,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const orderQrToken = customerQuery.get('orderQrToken')?.trim() ?? '';
   const directEntry = token === 'portal' && !customerIdFromQuery && !orderQrToken;
   const [username, setUsername] = useState('');
+  const [savedCustomerAccounts, setSavedCustomerAccounts] = useState<SavedCustomerAccount[]>(() => readSavedCustomerAccounts());
+  const [showSavedCustomerAccounts, setShowSavedCustomerAccounts] = useState(() => directEntry && readSavedCustomerAccounts().length > 0);
+  const [pendingRememberCustomerAccount, setPendingRememberCustomerAccount] = useState<SavedCustomerAccount | null>(null);
   const [accountToken, setAccountToken] = useState(customerIdFromQuery || (orderQrToken || directEntry ? '' : token));
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
@@ -303,6 +327,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         : accountToken;
       try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
       if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, result.data.session_expires_at);
+      setPendingRememberCustomerAccount({ token: accountToken, label: entry?.customer_name || accountToken });
       setPassword(''); setConfirmPassword(''); setMode('portal');
     } finally { setBusy(false); }
   };
@@ -349,6 +374,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setPassword('');
       setMessage('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
+      setPendingRememberCustomerAccount({ token: loginToken, label: entry?.customer_name || loginToken });
       if (loginData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
       else setMode('portal');
@@ -406,14 +432,34 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
     setMode('login');
+    setUsername('');
+    setPassword('');
+    setShowSavedCustomerAccounts(directEntry && savedCustomerAccounts.length > 0);
   };
 
   if (mode === 'portal') {
     return (
       <div className="relative">
-        
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
         <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />
+        {pendingRememberCustomerAccount && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="remember-customer-title" dir="rtl">
+            <div className="w-full max-w-sm space-y-4 rounded-3xl border border-[#b9d9d8] bg-[#f7fbfa] p-5 text-[#244b55] shadow-2xl dark:border-[#2b5267] dark:bg-[#0b2935] dark:text-[#daf1de]">
+              <div className="text-center">
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#1a8a94]/10 text-[#1a8a94]"><ShieldCheck className="h-6 w-6" /></div>
+                <h2 id="remember-customer-title" className="mt-3 text-base font-extrabold">{t('حفظ تسجيل الدخول؟', 'Save this account?')}</h2>
+                <p className="mt-2 text-sm leading-6 text-[#5d7782] dark:text-[#9bb8bf]">{t('احفظ هذا الحساب على هذا الجهاز لتسهيل الدخول لاحقًا. لن نحفظ كلمة المرور، وستحتاج لإدخالها كل مرة.', 'Save this account on this device for quicker sign-in. Your password will never be saved; you must enter it each time.')}</p>
+                <p className="mt-2 truncate text-sm font-bold">{pendingRememberCustomerAccount.label}</p>
+              </div>
+              <button type="button" onClick={() => {
+                setSavedCustomerAccounts(saveCustomerAccount(pendingRememberCustomerAccount));
+                setShowSavedCustomerAccounts(false);
+                setPendingRememberCustomerAccount(null);
+              }} className="cp-auth__btn">{t('نعم، احفظ الحساب', 'Yes, save account')}</button>
+              <button type="button" onClick={() => setPendingRememberCustomerAccount(null)} className="w-full rounded-xl border border-[#b9d9d8] px-4 py-3 text-sm font-semibold text-[#5d7782] dark:border-[#2b5267] dark:text-[#9bb8bf]">{t('ليس الآن', 'Not now')}</button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -510,8 +556,8 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
                 {mode === 'loading' ? (
                   <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-sm text-[#5d7782] dark:text-[#9bb8bf]" role="status">
-                    <LoaderCircle className="h-7 w-7 animate-spin text-[#e8743b]" />
-                    {t('نتحقق من رابط الحساب بأمان…', 'Securely checking your account link…')}
+                    <LoaderCircle className="h-7 w-7 animate-spin text-[#e8743b]" aria-hidden="true" />
+                    <span className="sr-only">{t('جارٍ التحقق من الحساب', 'Verifying account')}</span>
                   </div>
                 ) : mode === 'unavailable' ? (
                   <div className="space-y-3">
@@ -560,6 +606,23 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                     {(mode === 'force-change' || mode === 'recovery') && <button type="button" onClick={() => void logout()} className="w-full py-2 text-sm font-semibold text-[#5d7782] transition hover:text-[#e8743b] dark:text-[#9bb8bf]">{t('تسجيل الخروج', 'Sign out')}</button>}
                   </form>
                 ) : mode === 'login' ? (
+                  directEntry && showSavedCustomerAccounts && savedCustomerAccounts.length > 0 ? (
+                    <div className="space-y-3" data-testid="saved-customer-accounts">
+                      <p className="text-sm font-bold text-[#244b55] dark:text-[#daf1de]">{t('اختر حسابًا محفوظًا', 'Choose a saved account')}</p>
+                      {savedCustomerAccounts.map((account) => (
+                        <button key={account.token} type="button" onClick={() => { setUsername(account.token); setShowSavedCustomerAccounts(false); setError(''); setPassword(''); }}
+                          className="flex w-full items-center gap-3 rounded-2xl border border-[#b9d9d8] bg-white/80 px-4 py-3 text-start transition hover:border-[#1a8a94] hover:bg-[#e9f7f6] dark:border-[#2b5267] dark:bg-[#0b2935] dark:hover:bg-[#142b38]">
+                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1a8a94]/10 text-[#1a8a94]"><ShieldCheck className="h-5 w-5" /></span>
+                          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{account.label}</span><span className="mt-0.5 block text-xs text-[#5d7782] dark:text-[#9bb8bf]">{t('كلمة المرور مطلوبة في كل دخول', 'Password required each time')}</span></span>
+                          <ArrowLeft className="h-4 w-4 shrink-0 rtl:rotate-180" />
+                        </button>
+                      ))}
+                      <button type="button" onClick={() => { setUsername(''); setPassword(''); setShowSavedCustomerAccounts(false); setError(''); }}
+                        className="w-full rounded-xl border border-dashed border-[#b9d9d8] px-4 py-3 text-sm font-semibold text-[#5d7782] transition hover:border-[#1a8a94] dark:border-[#2b5267] dark:text-[#9bb8bf]">
+                        {t('الدخول بحساب آخر', 'Sign in with another account')}
+                      </button>
+                    </div>
+                  ) : (
                   <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
                     {(customerIdFromQuery || directEntry) && (
                       <label className="cp-auth__label">{t('اسم المستخدم / رقم العميل', 'Username / Customer ID')}
@@ -581,6 +644,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                       {!busy && nextArrow}
                     </button>
                   </form>
+                  )
                 ) : mode === 'forgot' ? (
                   <div className="space-y-3.5">
                     <div className="cp-auth__chip mb-4 items-start">
