@@ -263,17 +263,24 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     if (data && online) void loadActivity();
   }, [data?.customer_code, online, loadActivity]);
 
+  // Refresh the authoritative portal snapshot on every visible tab so payment
+  // approvals and order changes appear without leaving/re-entering the page.
+  // Server-side authorization remains authoritative; offline mode only shows the
+  // already-cached snapshot and never enables payment/account mutations.
   useEffect(() => {
-    if (!online || activeTab !== 'goals') return;
-    void load(true);
-    void loadActivity();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void load(true);
-        void loadActivity();
-      }
-    }, 12000);
-    return () => window.clearInterval(interval);
+    if (!online) return;
+    const refreshVisibleSnapshot = () => {
+      if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void load(true);
+      if (activeTab === 'goals' || activeTab === 'more') void loadActivity();
+    };
+    const interval = window.setInterval(refreshVisibleSnapshot, 4000);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') refreshVisibleSnapshot(); };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [activeTab, online, load, loadActivity]);
 
   const markNotificationsSeen = () => {
