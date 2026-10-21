@@ -71,8 +71,11 @@ const hasLocallyBoundCustomerSession = (token: string): boolean => {
   try {
     const rawSession = localStorage.getItem('chargerpoint_customer_auth_session');
     if (!rawSession) return false;
+    // The access token commonly expires after about an hour; the separately
+    // registered customer-account binding is valid for up to seven days. Offline
+    // read-only access must follow that server-issued binding, not JWT expiry.
     const session = JSON.parse(rawSession) as { access_token?: string; expires_at?: number };
-    if (!session.access_token || (typeof session.expires_at === 'number' && session.expires_at * 1000 <= Date.now())) return false;
+    if (!session.access_token) return false;
     const sessionId = sessionIdFromAccessToken(session.access_token);
     const binding = JSON.parse(localStorage.getItem(sessionExpiryKey(token)) || 'null') as { expiresAt?: number; sessionId?: string } | null;
     const portalToken = localStorage.getItem(portalTokenCacheKey(token)) || token;
@@ -166,15 +169,25 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         return;
       }
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const { data: localSession } = await customerAuth.auth.getSession();
+      // Read the persisted session snapshot directly here. Calling auth.getSession()
+      // may try to refresh an expired JWT and fail when offline, even though the
+      // locally cached, read-only customer session binding is still valid.
+      const localSession = (() => {
+        try {
+          const raw = localStorage.getItem('chargerpoint_customer_auth_session');
+          const session = raw ? JSON.parse(raw) as { access_token?: string } : null;
+          return { session: session?.access_token ? session : null };
+        } catch { return { session: null }; }
+      })();
       let localBinding: { expiresAt?: number; sessionId?: string } | null = null;
       let cachedPortalToken = accountToken;
       try {
         localBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(accountToken)) || 'null');
         cachedPortalToken = localStorage.getItem(portalTokenCacheKey(accountToken)) || accountToken;
       } catch {}
-      const currentSessionId = localSession.session ? sessionIdFromAccessToken(localSession.session.access_token) : null;
-      if (localSession.session && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
+      const localAccessToken = localSession.session?.access_token;
+      const currentSessionId = localAccessToken ? sessionIdFromAccessToken(localAccessToken) : null;
+      if (localAccessToken && localBinding?.expiresAt && localBinding.expiresAt > Date.now() &&
           localBinding.sessionId && localBinding.sessionId === currentSessionId && hasCachedCustomerPortalData(cachedPortalToken)) {
         setPortalToken(cachedPortalToken);
         setMode('portal');
