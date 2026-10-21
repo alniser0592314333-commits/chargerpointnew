@@ -21,6 +21,24 @@ import {
   LogOut,
 } from "lucide-react";
 
+const SAVED_ADMIN_ACCOUNTS_KEY = 'cp_saved_admin_accounts_v1';
+const readSavedAdminAccounts = (): string[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]');
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 160))].slice(0, 5)
+      : [];
+  } catch { return []; }
+};
+const saveAdminAccountIdentifier = (identifier: string) => {
+  const clean = identifier.trim();
+  if (!clean || clean.length > 160) return;
+  try {
+    const accounts = [clean, ...readSavedAdminAccounts().filter((item) => item.toLowerCase() !== clean.toLowerCase())].slice(0, 5);
+    localStorage.setItem(SAVED_ADMIN_ACCOUNTS_KEY, JSON.stringify(accounts));
+  } catch {}
+};
+
 export interface LoginPageProps {
   onLoginSuccess: () => void | Promise<void>;
   bootstrapProgress?: StoreBootstrapProgress;
@@ -63,6 +81,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [savedAdminAccounts, setSavedAdminAccounts] = useState<string[]>(() => readSavedAdminAccounts());
+  const [showSavedAccounts, setShowSavedAccounts] = useState(() => readSavedAdminAccounts().length > 0);
+  const [pendingRememberIdentifier, setPendingRememberIdentifier] = useState<string | null>(null);
 
   // Initialize and check Supabase bootstrap & auth callback on mount
   useEffect(() => {
@@ -645,6 +666,34 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
               {/* ============================================================ */}
               {uiState === "NORMAL_LOGIN" && (
                 <>
+                  {showSavedAccounts && savedAdminAccounts.length > 0 ? (
+                    <div className="space-y-3" data-testid="saved-admin-accounts">
+                      <p className="text-xs font-semibold text-gray-600 dark:text-[#9bb6b0]">
+                        {locale === "en" ? "Choose a saved account" : "اختر حسابًا محفوظًا"}
+                      </p>
+                      <div className="space-y-2">
+                        {savedAdminAccounts.map((account) => (
+                          <button key={account} type="button" onClick={() => { setUsername(account); setPassword(""); setShowSavedAccounts(false); setError(""); }}
+                            className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-start transition hover:border-emerald-500 hover:bg-emerald-50 dark:border-[#244746] dark:bg-[#06201c] dark:hover:bg-[#0b352e]">
+                            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"><User className="h-5 w-5" /></span>
+                            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{account}</span><span className="mt-0.5 block text-xs text-gray-500 dark:text-[#80a89a]">{locale === "en" ? "Sign in with password" : "الدخول باستخدام كلمة المرور"}</span></span>
+                            <Lock className="h-4 w-4 shrink-0 text-gray-400" />
+                          </button>
+                        ))}
+                      </div>
+                      <button type="button" onClick={() => { setUsername(""); setPassword(""); setShowSavedAccounts(false); }}
+                        className="w-full rounded-xl border border-dashed border-gray-300 px-3 py-3 text-xs font-semibold text-gray-600 hover:border-emerald-500 dark:border-[#315653] dark:text-[#b3d5bd]">
+                        {locale === "en" ? "Sign in with another account" : "الدخول بحساب آخر"}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                  {savedAdminAccounts.length > 0 && (
+                    <button type="button" onClick={() => { setShowSavedAccounts(true); setUsername(""); setPassword(""); setError(""); }}
+                      className="mb-1 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">
+                      {locale === "en" ? "Choose a saved account" : "اختيار حساب محفوظ"}
+                    </button>
+                  )}
                   {/* Field: Username */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-gray-700 dark:text-[#daf1de] block">
@@ -715,6 +764,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
                       <Sparkles className="w-3.5 h-3.5 mr-1 text-emerald-500" />
                       {locale === "en" ? "Create Super Admin Account" : "إنشاء حساب سوبر أدمن"}
                     </Button>
+                  )}
+                    </>
                   )}
                 </>
               )}
@@ -1056,6 +1107,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
         </div>
       </main>
 
+      {pendingRememberIdentifier && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="remember-admin-title" dir={isRTL ? "rtl" : "ltr"}>
+          <div className="w-full max-w-sm space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-[#244746] dark:bg-[#0b2924]">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"><User className="h-6 w-6" /></div>
+            <div className="text-center"><h2 id="remember-admin-title" className="text-base font-extrabold">{locale === "en" ? "Save this account?" : "حفظ تسجيل الدخول؟"}</h2><p className="mt-2 text-xs leading-6 text-gray-600 dark:text-[#b3d5bd]">{locale === "en" ? "Save the username on this device for quicker sign-in next time. Your password will never be saved." : "احفظ اسم المستخدم على هذا الجهاز لتسهيل الدخول لاحقًا. لن نحفظ كلمة المرور."}</p><p className="mt-2 truncate text-sm font-bold" dir="auto">{pendingRememberIdentifier}</p></div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button type="button" variant="primary" onClick={() => void finishSuccessfulLogin(pendingRememberIdentifier, true)} className="w-full text-xs py-2.5 rounded-xl font-bold">{locale === "en" ? "Yes, save" : "نعم، احفظ"}</Button>
+              <Button type="button" variant="outline" onClick={() => void finishSuccessfulLogin(pendingRememberIdentifier, false)} className="w-full text-xs py-2.5 rounded-xl font-bold">{locale === "en" ? "Not now" : "ليس الآن"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Footer */}
       <footer className="text-center text-[11px] text-gray-400 dark:text-[#5e8674]">
         {t("copyright")}
