@@ -26,7 +26,8 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   const policyCacheKey = 'cp_app_release_policy_v1_' + channel;
   const dismissKeyPrefix = 'cp_app_release_dismissed_v1_' + channel + '_';
   const activeVariant = import.meta.env.MODE === 'admin' ? 'admin' : 'customer';
-  const [state, setState] = useState<GateState>('checking');
+  // Never hold the first frame behind a network request. Version enforcement runs in the background.
+  const [state, setState] = useState<GateState>('ready');
   const [policy, setPolicy] = useState<AppReleasePolicy | null>(null);
   const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const deadlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,7 +76,9 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
     }
     const cached = readCachedPolicy(channel, policyCacheKey);
     if (cached) { evaluatePolicy(cached); return; }
-    setState('offline-unknown');
+    // A first launch without a cached policy must remain usable offline. A previously
+    // cached policy is still enforced above, including its local expiry deadline.
+    setState('ready');
   }, [activeVariant, channel, evaluatePolicy, policyCacheKey]);
 
   useEffect(() => {
@@ -98,7 +101,7 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   }, [checkVersion]);
 
   if (!Capacitor.isNativePlatform() || activeVariant !== channel) return <>{children}</>;
-  const hardBlock = state === 'blocked' || state === 'offline-unknown';
+  const hardBlock = state === 'blocked';
   const openUpdate = () => {
     const url = policy?.download_url?.trim();
     if (!url) return;
@@ -115,7 +118,7 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
     setState('ready');
   };
 
-  if (state === 'ready') return <>{children}</>;
+  if (state === 'ready' || state === 'checking' || state === 'offline-unknown') return <>{children}</>;
   return (
     <div dir="rtl" className="fixed inset-0 z-[2147483000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#061c1a] px-4 py-8 text-right text-white">
       <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/10 bg-[#0b2925] shadow-2xl">
