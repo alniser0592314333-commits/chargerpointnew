@@ -32,15 +32,25 @@ export async function callCustomerAccount<T = Record<string, unknown>>(
     accessToken = sessionData.session?.access_token || config.supabaseAnonKey;
   }
   try {
-    const response = await fetch(config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/customer-account', {
-      method: 'POST',
-      headers: {
-        apikey: config.supabaseAnonKey,
-        Authorization: 'Bearer ' + accessToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action, ...payload }),
-    });
+    const readOnlyAction = ['entry', 'portal-data', 'customer-activity', 'verify-session', 'admin-list'].includes(action);
+    const controller = readOnlyAction ? new AbortController() : null;
+    const timeout = controller ? setTimeout(() => controller.abort(), 10000) : null;
+    let response: Response;
+    try {
+      response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-account', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          apikey: config.supabaseAnonKey,
+          Authorization: 'Bearer ' + accessToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action, ...payload }),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
     const result = await response.json().catch(() => null);
     if (!response.ok || !result || result.ok !== true) {
       return { data: result, error: typeof result?.error === 'string' ? result.error : 'CUSTOMER_ACCOUNT_REQUEST_FAILED' };
