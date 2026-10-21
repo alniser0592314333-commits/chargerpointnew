@@ -45,7 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={`w-full text-start px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
+              className={`w-full flex items-center gap-2 text-start px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
                 isActive
                   ? 'bg-gray-100 dark:bg-[#0c312b] font-semibold text-gray-900 dark:text-[#daf1de] border-s-2 border-transparent dark:border-[#8eb698]'
                   : 'text-gray-600 dark:text-[#8eb698] hover:bg-gray-50 dark:hover:bg-[#092722] hover:text-gray-900 dark:hover:text-[#daf1de]'
