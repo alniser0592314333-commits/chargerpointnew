@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications, type PushNotificationSchema, type Token } from '@capacitor/push-notifications';
-import { config } from '../config/env';
+import { config } from '../../config/env';
 
 type AppVariant = 'admin' | 'customer';
 type TokenProvider = () => string | null | Promise<string | null>;
