@@ -17,6 +17,7 @@ let lastAuthorizedToken: string | null = null;
 let listenersReady: Promise<void> | null = null;
 let registrationInFlight = false;
 let lifecycleGeneration = 0;
+let tokenPersistencePromise: Promise<void> | null = null;
 let localeObserver: MutationObserver | null = null;
 
 const endpoint = () => config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/native-push';
@@ -82,13 +83,24 @@ const callEndpoint = async (action: 'register' | 'unregister', bearer: string, t
 const persistLatestToken = async (token: string) => {
   latestPushToken = token;
   const generation = lifecycleGeneration;
-  const bearer = await getAccessToken();
-  if (generation !== lifecycleGeneration || !currentTokenProvider || !bearer || !currentVariant) return;
-  try {
+  // Serialize token persistence so logout can wait for any already-started register
+  // request before issuing unregister; otherwise network response order can rebind
+  // the device after logout.
+  const previous = tokenPersistencePromise;
+  const operation = (async () => {
+    await previous?.catch(() => undefined);
+    const bearer = await getAccessToken();
+    if (generation !== lifecycleGeneration || !currentTokenProvider || !bearer || !currentVariant) return;
     await callEndpoint('register', bearer, token);
+  })();
+  tokenPersistencePromise = operation;
+  try {
+    await operation;
   } catch (error) {
     // Registration failures must never interrupt login, payments, or normal app use.
     console.warn('Native push device registration is unavailable.', error);
+  } finally {
+    if (tokenPersistencePromise === operation) tokenPersistencePromise = null;
   }
 };
 
@@ -260,6 +272,11 @@ export async function stopNativePushNotifications(): Promise<void> {
   currentTokenProvider = null;
   latestPushToken = null;
   lastAuthorizedToken = null;
+
+  // Drain any register request that already crossed its generation check before
+  // logout; unregister must be the final server-side operation for this device.
+  const pendingPersistence = tokenPersistencePromise;
+  await pendingPersistence?.catch(() => undefined);
 
   // If logout races the first token lookup, resolve the captured provider only for
   // unregistering; the invalidated startup path can no longer register afterwards.
