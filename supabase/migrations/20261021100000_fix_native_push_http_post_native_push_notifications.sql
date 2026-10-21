@@ -46,7 +46,7 @@ BEGIN
   -- pg_net's current signature is http_post(url, params, headers, body,
   -- timeout_milliseconds). Supplying params explicitly avoids SQLSTATE 42883.
   EXECUTE format(
-    'SELECT %I.http_post(url := $1, params := $2, headers := $3, body := $4, timeout_milliseconds := $5)',
+    'SELECT %I.http_post($1, $4, $2, $3, $5)',
     v_pg_net_schema
   )
   INTO v_request_id
