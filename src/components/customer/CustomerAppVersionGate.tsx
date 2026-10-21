@@ -43,6 +43,9 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   const [state, setState] = useState<GateState>(initial.state);
   const [policy, setPolicy] = useState<AppReleasePolicy | null>(initial.policy);
   const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const currentPath = typeof window === 'undefined' ? '' : window.location.pathname;
+  const landingRoute = currentPath === '/public/about';
+  const [noticeReady, setNoticeReady] = useState(false);
   const deadlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
 
@@ -73,6 +76,9 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   const checkVersion = useCallback(async () => {
     if (!Capacitor.isNativePlatform() || activeVariant !== channel) return;
     setIsOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
+    // Re-evaluate a cached policy immediately on launch/resume before any network wait.
+    const cachedBeforeNetwork = readCachedPolicy(channel, policyCacheKey);
+    if (cachedBeforeNetwork) evaluatePolicy(cachedBeforeNetwork);
     const resultPromise = fetchAppReleasePolicy(channel);
     const timeoutPromise = new Promise<{ policy: null; error: string }>((resolve) => {
       setTimeout(() => resolve({ policy: null, error: 'APP_RELEASE_CHECK_TIMEOUT' }), 5000);
@@ -91,6 +97,17 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
     if (cached) evaluatePolicy(cached);
     else setState('ready');
   }, [activeVariant, channel, evaluatePolicy, policyCacheKey]);
+
+  useEffect(() => {
+    const shouldShow = state === 'update' && (channel === 'admin' || landingRoute);
+    if (!shouldShow) {
+      setNoticeReady(false);
+      return;
+    }
+    // Let the actual landing/login screen paint first; update prompts are secondary UI.
+    const timer = setTimeout(() => setNoticeReady(true), 850);
+    return () => clearTimeout(timer);
+  }, [state, channel, landingRoute]);
 
   useEffect(() => {
     mounted.current = true;
@@ -112,10 +129,9 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   }, [checkVersion]);
 
   if (!Capacitor.isNativePlatform() || activeVariant !== channel) return <>{children}</>;
-  const landingRoute = typeof window !== 'undefined' && window.location.pathname === '/public/about';
   // Customer update notices belong on the public landing page, never in the
-  // customer QR/login flow. Admin notices appear over the already-open admin UI.
-  const showUpdateNotice = state === 'update' && (channel === 'admin' || landingRoute);
+  // customer QR/login flow. Admin notices appear after the admin UI has painted.
+  const showUpdateNotice = state === 'update' && noticeReady && (channel === 'admin' || landingRoute);
   const hardBlock = state === 'blocked';
   const openUpdate = () => {
     const url = policy?.download_url?.trim();
