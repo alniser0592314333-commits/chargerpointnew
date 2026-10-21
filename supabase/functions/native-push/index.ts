@@ -12,6 +12,21 @@ const corsHeaders = {
 const json = (status: number, body: Json) => new Response(JSON.stringify(body), { status, headers: corsHeaders });
 const normalize = (value: unknown, max = 256) =>
   typeof value === "string" && value.length <= max ? value.trim() : "";
+const formatMoney = (minor: unknown, locale: string) => {
+  const value = Number(minor);
+  if (!Number.isFinite(value)) return locale === "en" ? "an unspecified amount" : "مبلغ غير محدد";
+  return new Intl.NumberFormat(locale === "en" ? "en-GB" : "ar-PS", {
+    style: "currency", currency: "ILS", minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(value / 100);
+};
+const formatDate = (value: unknown, locale: string) => {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return locale === "en" ? "date unavailable" : "التاريخ غير متاح";
+  return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "ar-PS", {
+    timeZone: "Asia/Gaza", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: true,
+  }).format(date);
+};
 const decodeClaims = (token: string): Record<string, unknown> | null => {
   try {
     const part = token.split(".")[1];
@@ -222,7 +237,7 @@ Deno.serve(async (request: Request) => {
   const operation = normalize(input.operation, 16);
   const eventStatus = normalize(input.newStatus, 64);
   if (!/^[0-9a-f-]{36}$/i.test(recordId) ||
-      !["qr_payment_submissions", "customer_account_events", "goal_requests", "orders"].includes(source) ||
+      !["qr_payment_submissions", "customer_account_events", "goal_requests", "goals", "orders", "order_items", "financial_ledger"].includes(source) ||
       !["INSERT", "UPDATE"].includes(operation)) return json(400, { ok: false, error: "INVALID_EVENT" });
 
   let recipients: Array<Record<string, unknown>> = [];
@@ -236,21 +251,29 @@ Deno.serve(async (request: Request) => {
 
   if (source === "qr_payment_submissions") {
     const { data: submission, error } = await admin.from("qr_payment_submissions")
-      .select("id,customer_id,status,created_at").eq("id", recordId).maybeSingle();
+      .select("id,customer_id,status,created_at,amount_minor,reviewed_at").eq("id", recordId).maybeSingle();
     if (error || !submission || (eventStatus && eventStatus !== String(submission.status))) return json(200, { ok: true, skipped: true });
     if (operation === "INSERT" && submission.status === "PENDING") {
-      titleAr = "إشعار دفع جديد";
-      titleEn = "New payment notification";
-      bodyAr = "يوجد إيصال دفع جديد بانتظار مراجعة الإدارة.";
-      bodyEn = "A payment receipt is waiting for administrator review.";
+      titleAr = "طلب دفع جديد • " + formatMoney(submission.amount_minor, "ar");
+      titleEn = "New payment • " + formatMoney(submission.amount_minor, "en");
+      bodyAr = "قيمة الدفعة: " + formatMoney(submission.amount_minor, "ar") + "\nتاريخ الإرسال: " + formatDate(submission.created_at, "ar") + "\nبانتظار مراجعة الإدارة.";
+      bodyEn = "Amount: " + formatMoney(submission.amount_minor, "en") + "\nSubmitted: " + formatDate(submission.created_at, "en") + "\nWaiting for administrator review.";
       targetPath = "/app/notifications";
     } else if (operation === "UPDATE" && ["APPROVED", "REJECTED"].includes(String(submission.status))) {
       eventKey += ":" + submission.status;
-      titleAr = "تمت مراجعة إشعار الدفع";
-      titleEn = "Payment notification reviewed";
-      bodyAr = submission.status === "APPROVED" ? "تم اعتماد إشعار الدفع بعد المراجعة." : "لم يتم اعتماد إشعار الدفع.";
-      bodyEn = submission.status === "APPROVED" ? "Your payment notification was approved after review." : "Your payment notification was not approved.";
-      targetPath = "/public/about";
+      titleAr = submission.status === "APPROVED"
+        ? "تم اعتماد دفعتك • " + formatMoney(submission.amount_minor, "ar")
+        : "لم يتم اعتماد الدفعة";
+      titleEn = submission.status === "APPROVED"
+        ? "Payment approved • " + formatMoney(submission.amount_minor, "en")
+        : "Payment not approved";
+      bodyAr = submission.status === "APPROVED"
+        ? "قيمة الدفعة: " + formatMoney(submission.amount_minor, "ar") + "\nتاريخ الدفعة: " + formatDate(submission.created_at, "ar") + "\nتم تحديث حسابك."
+        : "لم يتم اعتماد دفعتك. افتح التطبيق لمراجعة التفاصيل.";
+      bodyEn = submission.status === "APPROVED"
+        ? "Amount: " + formatMoney(submission.amount_minor, "en") + "\nPayment date: " + formatDate(submission.created_at, "en") + "\nYour account has been updated."
+        : "Your payment was not approved. Open the app for details.";
+      targetPath = "/customer/finance";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
         .eq("app_variant", "customer").eq("customer_id", submission.customer_id).is("disabled_at", null);
@@ -320,7 +343,7 @@ Deno.serve(async (request: Request) => {
       titleEn = goalRequest.status === "APPROVED" ? "Goal request approved" : "Goal request rejected";
       bodyAr = goalRequest.status === "APPROVED" ? "وافقت الإدارة على طلب إنشاء الهدف." : "لم تتم الموافقة على طلب إنشاء الهدف.";
       bodyEn = goalRequest.status === "APPROVED" ? "The administrator approved your goal request." : "The administrator did not approve your goal request.";
-      targetPath = "/public/about";
+      targetPath = "/customer/goals";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
         .eq("app_variant", "customer").eq("customer_id", goalRequest.customer_id).is("disabled_at", null);
@@ -329,14 +352,86 @@ Deno.serve(async (request: Request) => {
     } else {
       return json(200, { ok: true, skipped: true });
     }
+  } else if (source === "financial_ledger") {
+    const { data: entry, error } = await admin.from("financial_ledger")
+      .select("id,customer_id,event_type,amount_minor,reference_id,created_at")
+      .eq("id", recordId).maybeSingle();
+    if (operation !== "INSERT" || error || !entry || entry.event_type !== "PAYMENT" || !entry.customer_id ||
+        (eventStatus && eventStatus !== String(entry.event_type))) {
+      return json(200, { ok: true, skipped: true });
+    }
+    // QR-approved payments already have their own approval notification. Suppress
+    // the ledger event for those rows to avoid duplicate customer pushes.
+    if (entry.reference_id) {
+      const { data: qrLinked, error: qrLinkError } = await admin.from("qr_payment_submissions")
+        .select("id").eq("payment_id", entry.reference_id).limit(1);
+      if (qrLinkError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      if (qrLinked?.length) return json(200, { ok: true, skipped: true, reason: "QR_PAYMENT_ALREADY_NOTIFIED" });
+    }
+    eventKey += ":MANUAL_PAYMENT";
+    titleAr = "تم شحن رصيدك • " + formatMoney(entry.amount_minor, "ar");
+    titleEn = "Your balance was topped up • " + formatMoney(entry.amount_minor, "en");
+    bodyAr = "قيمة الشحن: " + formatMoney(entry.amount_minor, "ar") + "\nتاريخ الشحن: " + formatDate(entry.created_at, "ar");
+    bodyEn = "Amount added: " + formatMoney(entry.amount_minor, "en") + "\nDate: " + formatDate(entry.created_at, "en");
+    targetPath = "/customer/finance";
+    const { data, error: recipientError } = await admin.from("native_push_devices")
+      .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+      .eq("app_variant", "customer").eq("customer_id", entry.customer_id).is("disabled_at", null);
+    if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    recipients = data ?? [];
+  } else if (source === "goals") {
+    const { data: goal, error } = await admin.from("goals").select("id,customer_id,status,target_quantity,current_progress,bonus_amount_minor,completed_at").eq("id", recordId).maybeSingle();
+    if (error || !goal || eventStatus !== "COMPLETED" || String(goal.status).toUpperCase() !== "COMPLETED") return json(200, { ok: true, skipped: true });
+    eventKey += ":COMPLETED";
+    titleAr = "أحسنت! اكتمل هدفك 🎯"; titleEn = "Goal completed 🎯";
+    bodyAr = "وصلت إلى هدفك" + (goal.target_quantity ? " (" + goal.target_quantity + ")" : "") + (goal.bonus_amount_minor ? " وتم تسجيل مكافأتك بقيمة " + formatMoney(goal.bonus_amount_minor, "ar") : "") + ".";
+    bodyEn = "You reached your goal" + (goal.target_quantity ? " (" + goal.target_quantity + ")" : "") + (goal.bonus_amount_minor ? " and your reward of " + formatMoney(goal.bonus_amount_minor, "en") + " was recorded" : "") + ".";
+    targetPath = "/customer/goals";
+    const { data, error: recipientError } = await admin.from("native_push_devices").select("id,device_id,token,locale,app_variant,principal_id,customer_id").eq("app_variant", "customer").eq("customer_id", goal.customer_id).is("disabled_at", null);
+    if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    recipients = data ?? [];
+  } else if (source === "order_items") {
+    const { data: item, error: itemError } = await admin.from("order_items").select("id,order_id,created_at,cancelled_at,deleted_at,final_charge_snapshot_minor").eq("id", recordId).maybeSingle();
+    if (itemError || !item) return json(200, { ok: true, skipped: true });
+    const { data: order, error: orderError } = await admin.from("orders").select("id,customer_id,day_id,display_number,created_at,status,deleted_at").eq("id", item.order_id).maybeSingle();
+    if (orderError || !order?.customer_id || order.deleted_at) return json(200, { ok: true, skipped: true });
+    const orderNumber = Number(order.display_number || 0), orderDate = String(order.created_at || "");
+    if (eventStatus === "ADDED" && operation === "INSERT") {
+      if (new Date(String(item.created_at)).getTime() <= new Date(String(order.created_at)).getTime() + 1500) return json(200, { ok: true, skipped: true, reason: "INITIAL_ORDER_ITEM" });
+      const { data: items, error: itemsError } = await admin.from("order_items").select("final_charge_snapshot_minor,deleted_at,cancelled_at").eq("order_id", item.order_id);
+      if (itemsError || !items) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      const total = items.filter((row) => !row.deleted_at && !row.cancelled_at).reduce((sum, row) => sum + Math.max(0, Number(row.final_charge_snapshot_minor || 0)), 0);
+      eventKey += ":ITEM_ADDED";
+      titleAr = "تمت إضافة جهاز إلى طلبك"; titleEn = "A device was added to your order";
+      bodyAr = "تمت إضافة جهاز جديد إلى الطلب رقم " + orderNumber + ". إجمالي الطلب الآن: " + formatMoney(total, "ar") + ".";
+      bodyEn = "A new device was added to order #" + orderNumber + ". New order total: " + formatMoney(total, "en") + ".";
+      targetPath = "/customer/orders?orderNumber=" + orderNumber + "&orderCreatedAt=" + encodeURIComponent(orderDate);
+    } else if (eventStatus === "CANCELLED" && operation === "UPDATE") {
+      if (String(order.status || "").toLowerCase() === "cancelled") return json(200, { ok: true, skipped: true, reason: "ORDER_CANCELLATION_ALREADY_NOTIFIED" });
+      if (!item.cancelled_at && !item.deleted_at) return json(200, { ok: true, skipped: true });
+      eventKey += ":CANCELLED";
+      titleAr = "تم إلغاء جهاز من طلبك"; titleEn = "An item in your order was cancelled";
+      bodyAr = "تم إلغاء جهاز من الطلب رقم " + orderNumber + ". افتح الطلب لمراجعة التفاصيل.";
+      bodyEn = "An item in order #" + orderNumber + " was cancelled. Open the order to review details.";
+      targetPath = "/customer/orders?orderNumber=" + orderNumber + "&orderCreatedAt=" + encodeURIComponent(orderDate);
+    } else return json(200, { ok: true, skipped: true });
+    const { data, error: recipientError } = await admin.from("native_push_devices").select("id,device_id,token,locale,app_variant,principal_id,customer_id").eq("app_variant", "customer").eq("customer_id", order.customer_id).is("disabled_at", null);
+    if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    recipients = data ?? [];
   } else {
     const { data: order, error: orderError } = await admin.from("orders")
-      .select("id,customer_id").eq("id", recordId).maybeSingle();
-    if (orderError || !order || !order.customer_id) return json(200, { ok: true, skipped: true });
+      .select("id,customer_id,day_id,display_number,created_at,status,deleted_at").eq("id", recordId).maybeSingle();
+    if (orderError || !order || !order.customer_id || order.deleted_at) return json(200, { ok: true, skipped: true });
     if (operation === "INSERT" && eventStatus === "CREATED") {
       eventKey += ":CREATED";
       titleAr = "تم إنشاء طلب شحن جديد"; titleEn = "A new charging order was created";
       bodyAr = "تم تسجيل طلب شحن جديد لحسابك."; bodyEn = "A new charging order has been added to your account.";
+      targetPath = "/customer/orders?orderNumber=" + Number(order.display_number || 0) + "&orderCreatedAt=" + encodeURIComponent(String(order.created_at || ""));
+    } else if (operation === "UPDATE" && eventStatus === "CANCELLED") {
+      eventKey += ":CANCELLED";
+      titleAr = "تم إلغاء طلب الشحن"; titleEn = "Charging order cancelled";
+      bodyAr = "تم إلغاء الطلب رقم " + Number(order.display_number || 0) + "."; bodyEn = "Order #" + Number(order.display_number || 0) + " was cancelled.";
+      targetPath = "/customer/orders?orderNumber=" + Number(order.display_number || 0) + "&orderCreatedAt=" + encodeURIComponent(String(order.created_at || ""));
     } else if (operation === "UPDATE" && eventStatus === "DELIVERED") {
       const { data: items, error: itemsError } = await admin.from("order_items")
         .select("id,operational_status,deleted_at,cancelled_at").eq("order_id", recordId);
@@ -344,12 +439,20 @@ Deno.serve(async (request: Request) => {
       const activeItems = items.filter((item) => !item.deleted_at && !item.cancelled_at);
       if (!activeItems.length || activeItems.some((item) => item.operational_status !== "DELIVERED")) return json(200, { ok: true, skipped: true });
       eventKey += ":DELIVERED";
-      titleAr = "تم تسليم طلب الشحن"; titleEn = "Charging order delivered";
-      bodyAr = "تم تسليم طلب الشحن وتحديث حالته."; bodyEn = "Your charging order has been delivered and its status updated.";
+      const { data: charges, error: chargesError } = await admin.from("financial_ledger").select("amount_minor").eq("customer_id", order.customer_id).eq("order_id", recordId).eq("event_type", "ORDER_ITEM_CHARGE");
+      const { data: balance, error: balanceError } = await admin.rpc("native_push_customer_balance", { p_customer_id: order.customer_id });
+      if (chargesError || balanceError || !Number.isFinite(Number(balance))) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      const deducted = Math.abs((charges ?? []).reduce((sum, row) => sum + Number(row.amount_minor || 0), 0));
+      const balanceMinor = Number(balance);
+      const balanceAr = balanceMinor < 0 ? "المتبقي عليك: " + formatMoney(Math.abs(balanceMinor), "ar") : "رصيدك الدائن: " + formatMoney(balanceMinor, "ar");
+      const balanceEn = balanceMinor < 0 ? "Remaining due: " + formatMoney(Math.abs(balanceMinor), "en") : "Available credit: " + formatMoney(balanceMinor, "en");
+      titleAr = "تم تسليم طلبك رقم " + Number(order.display_number || 0) + " بنجاح"; titleEn = "Order #" + Number(order.display_number || 0) + " delivered";
+      bodyAr = "تم خصم " + formatMoney(deducted, "ar") + " من حسابك. " + balanceAr + ".";
+      bodyEn = formatMoney(deducted, "en") + " was charged to your account. " + balanceEn + ".";
+      targetPath = "/customer/orders?orderNumber=" + Number(order.display_number || 0) + "&orderCreatedAt=" + encodeURIComponent(String(order.created_at || ""));
     } else {
       return json(200, { ok: true, skipped: true });
     }
-    targetPath = "/public/about";
     const { data, error: recipientError } = await admin.from("native_push_devices")
       .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
       .eq("app_variant", "customer").eq("customer_id", order.customer_id).is("disabled_at", null);

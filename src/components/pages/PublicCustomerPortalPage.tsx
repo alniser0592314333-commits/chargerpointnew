@@ -144,7 +144,13 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<CustomerPortalTab>('home');
+  const initialPortalQuery = new URLSearchParams(window.location.search);
+  const requestedTab = initialPortalQuery.get('tab');
+  const initialTab: CustomerPortalTab = requestedTab === 'orders' || requestedTab === 'goals' || requestedTab === 'finance' || requestedTab === 'more'
+    ? requestedTab : 'home';
+  const [activeTab, setActiveTab] = useState<CustomerPortalTab>(initialTab);
+  const notificationOrderNumber = initialPortalQuery.get('orderNumber') || '';
+  const notificationOrderCreatedAt = initialPortalQuery.get('orderCreatedAt') || '';
   const [moreView, setMoreView] = useState<CustomerPortalMoreView>('profile');
   const [activity, setActivity] = useState<PortalActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -393,6 +399,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const pendingReviewMinor = (data?.payment_submissions || [])
     .filter((submission) => submission.status.toUpperCase() === 'PENDING')
     .reduce((total, submission) => total + (submission.amount_minor ?? 0), 0);
+  useEffect(() => {
+    if (activeTab !== 'orders' || !data || !notificationOrderNumber) return;
+    const target = [...data.orders].find((order) =>
+      String(order.order_number) === notificationOrderNumber &&
+      (!notificationOrderCreatedAt || order.created_at === notificationOrderCreatedAt)
+    );
+    if (!target) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById('customer-order-' + target.order_number + '-' + target.created_at.replace(/[^a-zA-Z0-9]/g, ''))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, data, notificationOrderNumber, notificationOrderCreatedAt]);
+
   const sortedPortalOrders = [...(data?.orders || [])].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
@@ -541,7 +560,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <p className="cp-portal-eyebrow">{isAr ? 'سجل الخدمة' : 'SERVICE HISTORY'}</p>
               <h1 className="cp-portal-heading">{isAr ? 'طلبات الشحن' : 'Charging orders'}</h1>
               {data.orders.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد طلبات مسجلة.' : 'No orders found.'}</p> : <div className="cp-portal-list">
-                {[...data.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((order) => <article key={String(order.order_number) + order.created_at} className="cp-portal-order">
+                {[...data.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((order) => <article key={String(order.order_number) + order.created_at} className="cp-portal-order" id={'customer-order-' + order.order_number + '-' + order.created_at.replace(/[^a-zA-Z0-9]/g, '')}>
                   <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold">{isAr ? 'طلب رقم' : 'Order'} #{order.order_number}</h2><p className="mt-1 text-xs cp-portal-muted">{safeDate(order.created_at, locale)}</p></div><span className="cp-portal-status">{statusLabel(order.status)}</span></div>
                   <div className="cp-portal-order__totals"><div><span>{isAr ? 'الإجمالي' : 'Total'}</span><strong>{money(order.total_minor, locale)}</strong></div><div><span>{isAr ? 'المتبقي' : 'Due'}</span><strong>{money(order.due_minor, locale)}</strong></div></div>
                   <div className="mt-3">{order.items.map((item, index) => <div key={index} className="cp-portal-device-row"><div className="min-w-0"><p className="font-medium">{isAr ? item.device_name_ar : item.device_name_en}</p><p className="mt-1 text-xs cp-portal-muted">{item.has_charger ? (isAr ? 'مع شاحن' : 'With charger') : (isAr ? 'بدون شاحن' : 'No charger')} · {statusLabel(item.status)} · {statusLabel(item.payment_status)}</p></div><strong>{money(item.total_minor, locale)}</strong></div>)}</div>
