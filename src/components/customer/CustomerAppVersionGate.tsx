@@ -104,9 +104,28 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
       setNoticeReady(false);
       return;
     }
-    // Let the actual landing/login screen paint first; update prompts are secondary UI.
-    const timer = setTimeout(() => setNoticeReady(true), 850);
-    return () => clearTimeout(timer);
+    // Let the actual screen paint first. In the customer APK, wait for the
+    // welcome intro to leave the screen before presenting a version reminder.
+    let introListener: EventListener | null = null;
+    const timer = setTimeout(() => {
+      const introVisible = channel === 'customer' && landingRoute && Boolean(document.querySelector('.cp-welcome-intro'));
+      if (!introVisible) {
+        setNoticeReady(true);
+        return;
+      }
+      introListener = () => { window.setTimeout(() => setNoticeReady(true), 80); };
+      window.addEventListener('cp:customer-intro-complete', introListener, { once: true });
+      // Close the tiny race where the intro completed between the visibility
+      // check and listener registration.
+      if (!document.querySelector('.cp-welcome-intro')) {
+        window.removeEventListener('cp:customer-intro-complete', introListener);
+        setNoticeReady(true);
+      }
+    }, 850);
+    return () => {
+      clearTimeout(timer);
+      if (introListener) window.removeEventListener('cp:customer-intro-complete', introListener);
+    };
   }, [state, channel, landingRoute]);
 
   useEffect(() => {
