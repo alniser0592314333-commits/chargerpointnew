@@ -6,6 +6,7 @@ import { BackupDataManagement } from "../settings/BackupDataManagement";
 import { SyncCenter } from "../settings/SyncCenter";
 import { AccountSessionsManager } from "../settings/AccountSessionsManager";
 import { PWASettingsCard } from "../settings/PWASettingsCard";
+import { AppReleaseSettingsCard } from "../settings/AppReleaseSettingsCard";
 import { BusinessHoursSettingsCard } from "../settings/BusinessHoursSettingsCard";
 import { authService, UserSession } from "../../services/auth/authService";
 import {
@@ -636,6 +637,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         {/* GROUP 1.5: Business Hours & Operational Status */}
         {activeSettingsSection === "general" && hasPermission("settings:manage") && (
           <BusinessHoursSettingsCard />
+        )}
+
+        {activeSettingsSection === "general" && isSuperAdmin && (
+          <AppReleaseSettingsCard locale={locale} />
         )}
 
         {/* GROUP 2: Application Identity & Brand (هوية وشعار التطبيق) */}
@@ -1518,7 +1523,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                 </span>
               </div>
               <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-100 dark:bg-[#041714] text-gray-800 dark:text-[#daf1de] border border-gray-200 dark:border-[#123832]">
-                1.0.0
+                {import.meta.env.VITE_APP_VERSION || "1.0.0"}
               </span>
             </div>
 
