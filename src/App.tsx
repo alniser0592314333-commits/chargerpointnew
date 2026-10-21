@@ -49,7 +49,6 @@ import { UserSession } from './services/auth/authService';
 import { getSupabaseAuthToken, registerSuspensionHandler } from './services/supabase/client';
 import { startNativePushNotifications, stopNativePushNotifications } from './services/nativePushNotifications';
 import { ShieldAlert } from 'lucide-react';
-import { AppVersionGate } from './components/customer/CustomerAppVersionGate';
 import { DesignSystemPlayground } from './components/playground/DesignSystemPlayground';
 import { Button } from './components/ui/Button';
 import { resolveLogicalBackPath } from './navigation/backNavigation';
@@ -739,7 +738,6 @@ export default function App() {
   };
 
   return (
-    <AppVersionGate channel="admin">
     <ThemeProvider>
       <I18nProvider>
         <ToastProvider>
@@ -800,6 +798,5 @@ export default function App() {
         </ToastProvider>
       </I18nProvider>
     </ThemeProvider>
-    </AppVersionGate>
   );
 }
