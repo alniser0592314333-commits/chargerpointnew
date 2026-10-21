@@ -41,6 +41,9 @@ const NATIVE_SESSION_KEY = 'cp_customer_native_session_active_v1';
 
 function getNativeInitialIntroEnabled(path: string): boolean {
   if (!Capacitor.isNativePlatform()) return false;
+  // A notification deep link should land immediately on its requested section,
+  // not place the welcome intro in front of the destination.
+  try { if (new URLSearchParams(window.location.search).has('tab')) return false; } catch {}
   try {
     const sessionActive = window.sessionStorage.getItem(NATIVE_SESSION_KEY) === '1';
     const previousPath = window.sessionStorage.getItem(NATIVE_LAST_ROUTE_KEY) || '';
