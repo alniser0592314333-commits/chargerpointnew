@@ -22,6 +22,14 @@ permissions:
   contents: read
 
 jobs:
+  ignore-non-dispatch:
+    name: Ignore automatic pushes; releases are manual only
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_dispatch' }}
+    steps:
+      - name: Explain manual release process
+        run: echo "Release APKs are prepared only when the workflow is manually dispatched."
+
   build-release:
     name: Build signed ${{ matrix.variant }} v${{ inputs.release_version }}
     runs-on: ubuntu-latest
