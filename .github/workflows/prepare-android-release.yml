@@ -8,15 +8,6 @@ on:
         required: true
         default: "1.0.1"
         type: string
-      variant:
-        description: "APK variant to build"
-        required: true
-        default: "both"
-        type: choice
-        options:
-          - both
-          - customer
-          - admin
 
 permissions:
   contents: read
@@ -33,7 +24,7 @@ jobs:
   build-release:
     name: Build signed ${{ matrix.variant }} v${{ inputs.release_version }}
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.variant == 'both' || github.event.inputs.variant == matrix.variant) }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
