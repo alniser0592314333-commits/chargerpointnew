@@ -276,24 +276,29 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || isSuspended || isAuthChecking || bootError) return;
     let active = false;
+    let lastSessionCheckAt = 0;
     const pullLatest = async () => {
       if (active || document.visibilityState !== 'visible' || navigator.onLine === false) return;
       active = true;
       try {
-        // Revoked sessions are returned to login at the next online verification cycle.
-        try {
-          const sessionActive = await isCurrentAccountSessionActive();
-          if (!sessionActive) {
-            await stopNativePushNotifications();
-            await authService.logout();
-            setIsAuthenticated(false);
-            setUserSession(null);
-            navigate('/app', true);
-            return;
+        // Keep the local UI fresh frequently, while the authoritative session
+        // revocation check runs on a bounded cadence instead of every data pull.
+        if (Date.now() - lastSessionCheckAt >= 30_000) {
+          lastSessionCheckAt = Date.now();
+          try {
+            const sessionActive = await isCurrentAccountSessionActive();
+            if (!sessionActive) {
+              await stopNativePushNotifications();
+              await authService.logout();
+              setIsAuthenticated(false);
+              setUserSession(null);
+              navigate('/app', true);
+              return;
+            }
+          } catch (sessionCheckError) {
+            // A network/RPC failure is not proof that the session was revoked.
+            console.warn('Account session verification temporarily unavailable.', sessionCheckError);
           }
-        } catch (sessionCheckError) {
-          // Keep the app available during rollout or transient network/RPC failures.
-          console.warn('Account session verification temporarily unavailable.', sessionCheckError);
         }
         const result = await globalSyncBridge.requestLatestDataReload();
         if (result.needsReconciliation) await globalSyncBridge.notifyOutboxWorkAvailable();
@@ -303,7 +308,7 @@ export default function App() {
         active = false;
       }
     };
-    const timer = window.setInterval(() => { void pullLatest(); }, 8_000);
+    const timer = window.setInterval(() => { void pullLatest(); }, 5_000);
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void pullLatest();
     };
