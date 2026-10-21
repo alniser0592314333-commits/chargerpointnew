@@ -61,7 +61,8 @@ if (appVariant === 'customer') {
     void import('./services/nativePushNotifications').then(async ({ initializeNativePushNotificationListeners }) => {
       await initializeNativePushNotificationListeners('admin', document.documentElement.lang);
       const { default: App } = await import('./App.tsx');
-      root.render(<StrictMode><App /></StrictMode>);
+      const { AppVersionGate } = await import('./components/customer/CustomerAppVersionGate');
+      root.render(<StrictMode><AppVersionGate channel="admin"><App /></AppVersionGate></StrictMode>);
     });
   } else {
     void import('./App.tsx').then(({ default: App }) => {
