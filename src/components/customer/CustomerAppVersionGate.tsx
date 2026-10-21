@@ -120,7 +120,9 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
 
   if (state === 'ready' || state === 'checking' || state === 'offline-unknown') return <>{children}</>;
   return (
-    <div dir="rtl" className="fixed inset-0 z-[2147483000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#061c1a] px-4 py-8 text-right text-white">
+    <>
+      {children}
+      <div dir="rtl" className="fixed inset-0 z-[2147483000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#061c1a] px-4 py-8 text-right text-white">
       <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/10 bg-[#0b2925] shadow-2xl">
         <div className="relative overflow-hidden bg-gradient-to-br from-[#124c40] via-[#0d332d] to-[#071f1c] px-6 pb-6 pt-7">
           <div className="absolute -left-10 -top-10 h-36 w-36 rounded-full bg-emerald-400/10 blur-2xl" />
@@ -149,6 +151,7 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
           {hardBlock && !policy?.download_url && <p className="text-center text-xs text-white/55">يجب توفير رابط تنزيل HTTPS للإصدار المنشور من إعدادات الإدارة.</p>}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
