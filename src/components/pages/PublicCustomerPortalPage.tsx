@@ -145,6 +145,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<'invalid' | 'service' | null>(null);
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [serverAvailable, setServerAvailable] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
   const initialPortalQuery = new URLSearchParams(window.location.search);
   const requestedTab = initialPortalQuery.get('tab');
@@ -178,6 +179,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     if (!background) setError(null);
     // Never show a cached/local financial snapshot as if it were current.
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setServerAvailable(false);
       const cached = readCachedPortalData(token);
       if (cached) { setData(cached); setError(null); }
       else if (!background) { setData(null); setError('service'); }
@@ -196,12 +198,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       // Ignore stale requests and never restore financial data after connectivity drops.
       if (requestId !== requestGeneration.current) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setServerAvailable(false);
         const cached = readCachedPortalData(token);
         if (cached) { setData(cached); setError(null); }
         else setError('service');
         return;
       }
       if (rpcError || !response) {
+        setServerAvailable(false);
         setData(null);
         setError(rpcError ? 'service' : 'invalid');
       } else if (
@@ -212,16 +216,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         !Array.isArray(response.payment_submissions) ||
         !Array.isArray(response.goals)
       ) {
+        setServerAvailable(false);
         setData(null);
         setError('service');
       } else {
         const verifiedSnapshot: PortalData = { ...response, cached_at: new Date().toISOString() };
+        setServerAvailable(true);
         setData(verifiedSnapshot);
         setError(null);
         try { localStorage.setItem(portalCacheKey(token), JSON.stringify(verifiedSnapshot)); } catch {}
       }
     } catch {
       if (requestId === requestGeneration.current) {
+        setServerAvailable(false);
         if (!background) {
           const cached = readCachedPortalData(token);
           if (cached) { setData(cached); setError(null); }
@@ -323,7 +330,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   };
 
   const requestGoal = async () => {
-    if (!online || goalRequestBusy) return;
+    if (!online || !serverAvailable || goalRequestBusy) return;
     setGoalRequestBusy(true);
     setActionMessage('');
     const { data: response, error: requestError } = await callCustomerAccount<{ already_pending?: boolean }>(
@@ -343,7 +350,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   };
 
   const changePortalPassword = async () => {
-    if (!online || passwordChangeBusy) return;
+    if (!online || !serverAvailable || passwordChangeBusy) return;
     const common = new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']);
     if (newPassword.length < 8 || newPassword.length > 128 || common.has(newPassword.trim().toLowerCase()) || /^(.)\1{7,}$/.test(newPassword)) {
       setActionMessage(isAr ? 'استخدم كلمة مرور من 8 أحرف على الأقل، وتجنب كلمات المرور الشائعة.' : 'Use at least 8 characters and avoid common passwords.');
@@ -379,7 +386,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   };
 
   const requestPasswordReset = async () => {
-    if (!online || resetRequestBusy) return;
+    if (!online || !serverAvailable || resetRequestBusy) return;
     setResetRequestBusy(true);
     setActionMessage('');
     const { error: requestError } = await callCustomerAccount('request-reset', { token });
@@ -396,6 +403,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const onOffline = () => {
       requestGeneration.current += 1;
       setOnline(false);
+      setServerAvailable(false);
       setActivity(null);
       setActivityError(true);
       const cached = readCachedPortalData(token);
@@ -542,7 +550,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       </header>
 
       <main className="relative z-10 mx-auto max-w-3xl space-y-4 px-4 py-5 pb-28 sm:py-8 sm:pb-28">
-        {!online && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{isAr ? 'أنت غير متصل. نعرض آخر نسخة محفوظة وليست بيانات لحظية؛ قد لا تشمل آخر دفعة أو تعديل.' : 'You are offline. This is the last saved snapshot, not live data; recent payments or changes may be missing.'}{data?.cached_at ? <span className="mt-1 block text-xs">{isAr ? 'آخر تحقق: ' : 'Last verified: '}{safeDate(data.cached_at, locale)}</span> : null}</p></div>}
+        {(!online || !serverAvailable) && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{!online ? (isAr ? 'أنت غير متصل. نعرض آخر نسخة محفوظة وليست بيانات لحظية؛ قد لا تشمل آخر دفعة أو تعديل.' : 'You are offline. This is the last saved snapshot, not live data; recent payments or changes may be missing.') : (isAr ? 'تعذّر الوصول إلى الخادم حاليًا. نعرض آخر نسخة محفوظة ونوقف العمليات التي تحتاج اتصالًا حتى يعود التحقق.' : 'The server is temporarily unreachable. Showing the last saved snapshot and disabling actions that require a live connection.')}{data?.cached_at ? <span className="mt-1 block text-xs">{isAr ? 'آخر تحقق: ' : 'Last verified: '}{safeDate(data.cached_at, locale)}</span> : null}</p></div>}
 
         {loading ? <div className="space-y-3" aria-live="polite"><div className="h-28 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><div className="h-36 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><p className="text-center text-sm text-slate-500">{isAr ? 'جارٍ التحقق من رمز العميل وتحميل البيانات...' : 'Verifying customer QR and loading your data…'}</p></div> :
           error || !data ? <section role="alert" className="py-5 text-center">
@@ -625,7 +633,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 <h2 className="text-base font-bold">{isAr ? 'إيصالات الدفع' : 'Payment receipts'}</h2>
                 <p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الإيصال لا يُعد دفعة معتمدة إلا بعد موافقة الإدارة.' : 'A receipt is not an approved payment until the administrator accepts it.'}</p>
                 {data.payment_submissions.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد إيصالات مرسلة.' : 'No submitted receipts.'}</p> : <div className="cp-portal-timeline">{[...data.payment_submissions].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).map((submission,index)=><div key={submission.created_at+'-'+index} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{isAr ? 'إيصال دفع' : 'Payment receipt'} · {statusLabel(submission.status)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(submission.created_at, locale)}{submission.reviewed_at ? ' · ' + safeDate(submission.reviewed_at, locale) : ''}</p></div><strong>{money(submission.amount_minor, locale)}</strong></div>)}</div>}
-                {online && <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={18} />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
+                {online && serverAvailable && <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={18} />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
               </section>
             </>}
 
@@ -667,14 +675,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
               <div className="cp-portal-subsection">
                 <h2 className="font-bold">{isAr ? 'تغيير كلمة المرور' : 'Change password'}</h2>
-                {!showPasswordChange ? <button type="button" className="cp-portal-secondary-button" disabled={!online} onClick={() => { setActionMessage(''); setShowPasswordChange(true); }}><KeyRound size={17} />{isAr ? 'تغيير كلمة المرور' : 'Change password'}</button>
+                {!showPasswordChange ? <button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable} onClick={() => { setActionMessage(''); setShowPasswordChange(true); }}><KeyRound size={17} />{isAr ? 'تغيير كلمة المرور' : 'Change password'}</button>
                 : <form className="cp-portal-password-form" onSubmit={(event) => { event.preventDefault(); void changePortalPassword(); }}>
                   <label className="cp-portal-password-label">{isAr ? 'كلمة المرور الجديدة' : 'New password'}</label>
                   <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} className="cp-portal-password-input" />
                   <label className="cp-portal-password-label">{isAr ? 'تأكيد كلمة المرور' : 'Confirm password'}</label>
                   <input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} className="cp-portal-password-input" />
                   <p className="text-xs cp-portal-muted">{isAr ? '8 أحرف على الأقل، وتجنّب كلمات المرور الشائعة.' : 'At least 8 characters; avoid common passwords.'}</p>
-                  <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || passwordChangeBusy}>{passwordChangeBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'حفظ كلمة المرور' : 'Save password'}</button><button type="button" className="cp-portal-secondary-button" disabled={passwordChangeBusy} onClick={() => { setShowPasswordChange(false); setNewPassword(''); setConfirmNewPassword(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
+                  <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || !serverAvailable || passwordChangeBusy}>{passwordChangeBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'حفظ كلمة المرور' : 'Save password'}</button><button type="button" className="cp-portal-secondary-button" disabled={passwordChangeBusy} onClick={() => { setShowPasswordChange(false); setNewPassword(''); setConfirmNewPassword(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
                 </form>}
               </div>
               <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div></div>
