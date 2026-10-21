@@ -859,7 +859,7 @@ class DefaultAuthService implements AuthService {
         // A captive portal or a stalled connection must not hold the launch screen
         // indefinitely. A timeout is treated as "server not reachable", not as a
         // confirmed revocation; an explicit inactive/unauthenticated profile still logs out.
-        const profileResult = await Promise.race<AdminProfileRpcResult | null>([
+        const profileResult = await Promise.race<AdminProfileResult | null>([
           this.getAdminProfile(supabaseSession.access_token),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
         ]);
