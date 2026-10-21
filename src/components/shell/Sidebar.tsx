@@ -1,4 +1,5 @@
 import React from 'react';
+import { usePendingNotificationCount } from '../../hooks/usePendingNotificationCount';
 import { useI18n } from '../../i18n/i18nContext';
 import { UserSession } from '../../services/auth/authService';
 
@@ -11,6 +12,7 @@ export interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNavigate, className = '' }) => {
   const { t } = useI18n();
+  const pendingNotificationCount = usePendingNotificationCount(Boolean(userSession));
 
   const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
   const hasAdminManage = isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage'));
@@ -50,7 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
                   : 'text-gray-600 dark:text-[#8eb698] hover:bg-gray-50 dark:hover:bg-[#092722] hover:text-gray-900 dark:hover:text-[#daf1de]'
               }`}
             >
-              {item.label}
+              <span className="flex min-w-0 flex-1 items-center justify-between gap-2"><span className="truncate">{item.label}</span>{item.id === '/app/notifications' && pendingNotificationCount > 0 && <span aria-label={`${pendingNotificationCount} pending notifications`} title={t('navNotificationsRequests')} className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-extrabold leading-none text-white">{pendingNotificationCount > 99 ? '99+' : pendingNotificationCount}</span>}</span>
             </button>
           );
         })}
