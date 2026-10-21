@@ -36,6 +36,7 @@ export async function callCustomerAccount<T = Record<string, unknown>>(
     const controller = readOnlyAction ? new AbortController() : null;
     const timeout = controller ? setTimeout(() => controller.abort(), 10000) : null;
     let response: Response;
+    let result: any;
     try {
       response = await fetch(config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/customer-account', {
         method: 'POST',
@@ -48,10 +49,10 @@ export async function callCustomerAccount<T = Record<string, unknown>>(
         body: JSON.stringify({ action, ...payload }),
         ...(controller ? { signal: controller.signal } : {}),
       });
+      result = await response.json().catch(() => null);
     } finally {
       if (timeout) clearTimeout(timeout);
     }
-    const result = await response.json().catch(() => null);
     if (!response.ok || !result || result.ok !== true) {
       return { data: result, error: typeof result?.error === 'string' ? result.error : 'CUSTOMER_ACCOUNT_REQUEST_FAILED' };
     }
