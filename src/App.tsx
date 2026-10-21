@@ -5,6 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { ThemeProvider } from './theme/themeContext';
 import { I18nProvider } from './i18n/i18nContext';
 import { ToastProvider } from './components/ui/Toast';
