@@ -216,36 +216,6 @@ Deno.serve(async (request: Request) => {
     return json(401, { ok: false, error: "UNAUTHORIZED" });
   }
 
-  // Secret-gated live diagnostic: targets one already-registered device only.
-  // This does not create business records or alter delivery idempotency state.
-  if (action === "test") {
-    const deviceRowId = normalize(input.deviceRowId, 64);
-    if (!/^[0-9a-f-]{36}$/i.test(deviceRowId)) return json(400, { ok: false, error: "INVALID_DEVICE" });
-    const { data: device, error: deviceError } = await admin.from("native_push_devices")
-      .select("id,device_id,token,locale,app_variant").eq("id", deviceRowId).is("disabled_at", null).maybeSingle();
-    if (deviceError || !device) return json(404, { ok: false, error: "DEVICE_NOT_FOUND" });
-    const { data: current, error: currentError } = await admin.rpc("native_push_device_is_current", {
-      p_device_id: deviceRowId, p_allow_account_status_notice: false,
-    });
-    if (currentError || current !== true) return json(403, { ok: false, error: "DEVICE_SESSION_NOT_CURRENT" });
-    const projectId = Deno.env.get("FCM_PROJECT_ID") || "";
-    if (!projectId) return json(503, { ok: false, error: "PUSH_PROVIDER_NOT_CONFIGURED" });
-    try {
-      await sendFcm(String(device.token), projectId,
-        device.locale === "en" ? "Charging Point test" : "اختبار إشعارات نقطة الشحن",
-        device.locale === "en" ? "This is a live push-delivery diagnostic." : "هذا إشعار اختبار مباشر لمسار الإرسال.",
-        "diagnostic-" + crypto.randomUUID(), device.app_variant === "admin" ? "/app/notifications" : "/public/about");
-      return json(200, { ok: true, sent: true, projectConfigured: true });
-    } catch (error) {
-      const detail = error as { status?: number; code?: string; providerMessage?: string };
-      return json(502, {
-        ok: false, sent: false, providerStatus: Number(detail.status ?? 0),
-        providerCode: String(detail.code ?? "SEND_FAILED").slice(0, 80),
-        providerMessage: String(detail.providerMessage ?? "No provider message").slice(0, 180),
-      });
-    }
-  }
-
   if (action !== "dispatch") return json(400, { ok: false, error: "UNKNOWN_ACTION" });
   const source = normalize(input.source, 64);
   const recordId = normalize(input.recordId, 64);
