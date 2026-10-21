@@ -63,6 +63,10 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
       return;
     }
     setIsOnline(typeof navigator === 'undefined' ? true : navigator.onLine);
+    // Enforce the last trusted policy immediately on resume/startup, before any
+    // network wait. This prevents an expired build from gaining an offline bypass.
+    const cachedAtStart = readCachedPolicy(channel, policyCacheKey);
+    if (cachedAtStart) evaluatePolicy(cachedAtStart);
     const resultPromise = fetchAppReleasePolicy(channel);
     const timeoutPromise = new Promise<{ policy: null; error: string }>((resolve) => {
       setTimeout(() => resolve({ policy: null, error: 'APP_RELEASE_CHECK_TIMEOUT' }), 8000);
