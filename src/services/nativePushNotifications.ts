@@ -140,11 +140,51 @@ const showForegroundNotification = async (notification: PushNotificationSchema) 
   }
 };
 
-const navigateFromNotification = (data: Record<string, unknown> | undefined) => {
+const resolveNotificationTarget = (data: Record<string, unknown> | undefined): string => {
   const requested = typeof data?.targetPath === 'string' ? data.targetPath : currentNavigationTarget;
-  const safeTarget = currentVariant === 'admin'
-    ? (requested === '/app/notifications' || requested === '/app/goals' ? requested : '/app/notifications')
-    : '/public/about';
+  if (currentVariant === 'admin') {
+    if (requested === '/app/goals' || requested === '/app/notifications' ||
+        requested === '/app/days' || requested === '/app/customers' ||
+        requested === '/app/financials') return requested;
+    // Order links are only allowed to navigate to the existing order/day detail route.
+    if (/^\/app\/days\/[0-9a-f-]{36}#order-card-[0-9a-f-]{36}$/i.test(requested)) return requested;
+    if (/^\/app\/customers\/[0-9a-f-]{36}$/i.test(requested)) return requested;
+    if (/^\/app\/financials\/customers\/[0-9a-f-]{36}$/i.test(requested)) return requested;
+    return '/app/notifications';
+  }
+
+  // Semantic customer destinations are resolved locally so customer QR tokens
+  // never need to be embedded in server-side notification payloads.
+  const params = requested.startsWith('/customer/') ? requested.slice('/customer/'.length) : '';
+  if (params) {
+    let savedToken = '';
+    try { savedToken = window.localStorage.getItem('last_customer_token')?.trim() || ''; } catch {}
+    if (savedToken && savedToken.length <= 512) {
+      const separator = params.indexOf('?');
+      const tab = separator >= 0 ? params.slice(0, separator) : params;
+      const query = separator >= 0 ? params.slice(separator + 1) : '';
+      if (tab === 'goals' || tab === 'orders' || tab === 'finance' || tab === 'home') {
+        const safeQuery = new URLSearchParams(query);
+        const clean = new URLSearchParams({ tab });
+        if (tab === 'orders') {
+          const number = safeQuery.get('orderNumber') || '';
+          const createdAt = safeQuery.get('orderCreatedAt') || '';
+          if (/^\d{1,9}$/.test(number)) clean.set('orderNumber', number);
+          if (createdAt && !Number.isNaN(Date.parse(createdAt))) clean.set('orderCreatedAt', createdAt);
+        }
+        return '/c/' + encodeURIComponent(savedToken) + '?' + clean.toString();
+      }
+    }
+    return '/public/about';
+  }
+  if (requested === '/public/about' || requested.startsWith('/c/') ||
+      requested.startsWith('/pay/') || requested.startsWith('/o/') ||
+      requested.startsWith('/public/order/') || requested.startsWith('/public/qr/')) return requested;
+  return '/public/about';
+};
+
+const navigateFromNotification = (data: Record<string, unknown> | undefined) => {
+  const safeTarget = resolveNotificationTarget(data);
   // Full navigation also supports taps when Android has recreated the WebView.
   window.location.assign(safeTarget);
 };
