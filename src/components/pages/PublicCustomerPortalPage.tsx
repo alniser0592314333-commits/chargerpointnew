@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
@@ -269,6 +271,29 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   useEffect(() => {
     if (data && online) void loadActivity();
   }, [data?.customer_code, online, loadActivity]);
+
+  // A foreground native push is also a data-invalidation signal. This updates
+  // the open customer page immediately after server-side approval/delivery while
+  // the existing notification listener continues to display the OS notification.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listener: { remove: () => Promise<void> } | null = null;
+    let disposed = false;
+    void PushNotifications.addListener('pushNotificationReceived', () => {
+      if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void load(false, true);
+      void loadActivity(true);
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else listener = handle;
+    }).catch((error) => {
+      console.warn('Customer portal push refresh listener unavailable; periodic refresh remains active.', error);
+    });
+    return () => {
+      disposed = true;
+      if (listener) void listener.remove();
+    };
+  }, [load, loadActivity]);
 
   // Keep the customer read model current on every tab, not only Goals.
   // The secure customer-account endpoint remains the sole data path; this avoids
