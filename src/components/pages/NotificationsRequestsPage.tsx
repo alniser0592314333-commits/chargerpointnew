@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import {
   AlertCircle, ArrowUpRight, Banknote, CheckCircle2, Clock3, FileImage,
   RefreshCw, ShieldCheck, XCircle,
@@ -94,10 +96,10 @@ export const NotificationsRequestsPage: React.FC = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const loadPending = useCallback(async (quiet = false) => {
+  const loadPending = useCallback(async (quiet = false, background = false) => {
     if (quiet) setRefreshing(true);
-    else setLoading(true);
-    setError('');
+    else if (!background) setLoading(true);
+    if (!background) setError('');
     try {
       const { data, error: rpcError } = await invokeSupabaseRpc<Array<Record<string, unknown>>>(
         'list_pending_qr_payment_submissions',
@@ -131,17 +133,50 @@ export const NotificationsRequestsPage: React.FC = () => {
       }));
       setItems(signed);
     } catch (err: any) {
-      setError(isAr
-        ? 'تعذّر تحميل إشعارات الدفع. تأكد من اتصالك وصلاحيتك ثم أعد المحاولة.'
-        : 'Could not load payment notifications. Check your connection and permissions, then retry.');
-      console.error('Failed to load QR payment submissions:', err);
+      if (!background) {
+        setError(isAr
+          ? 'تعذّر تحميل إشعارات الدفع. تأكد من اتصالك وصلاحيتك ثم أعد المحاولة.'
+          : 'Could not load payment notifications. Check your connection and permissions, then retry.');
+        console.error('Failed to load QR payment submissions:', err);
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!background) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [isAr]);
 
   useEffect(() => { void loadPending(); }, [loadPending]);
+
+  useEffect(() => {
+    let disposed = false;
+    let pushListener: { remove: () => Promise<void> } | null = null;
+    let pushListenerDisposed = false;
+    const refreshVisible = () => {
+      if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      void loadPending(false, true);
+    };
+    const timer = window.setInterval(refreshVisible, 10000);
+    window.addEventListener('focus', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
+    window.addEventListener('online', refreshVisible);
+    if (Capacitor.isNativePlatform()) {
+      void PushNotifications.addListener('pushNotificationReceived', refreshVisible).then((handle) => {
+        if (pushListenerDisposed) void handle.remove();
+        else pushListener = handle;
+      }).catch((error) => console.warn('Payment notification list refresh listener unavailable.', error));
+    }
+    return () => {
+      disposed = true;
+      pushListenerDisposed = true;
+      if (pushListener) void pushListener.remove();
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshVisible);
+      document.removeEventListener('visibilitychange', refreshVisible);
+      window.removeEventListener('online', refreshVisible);
+    };
+  }, [loadPending]);
 
   const review = async (item: PendingQrPayment, action: 'APPROVE' | 'REJECT', confirmed = false) => {
     if (processingId) return;
