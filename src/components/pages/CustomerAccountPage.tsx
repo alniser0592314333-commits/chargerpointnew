@@ -102,6 +102,28 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     if (initialized.current) return;
     initialized.current = true;
     try {
+      // Restore the locally verified, device-bound customer session immediately.
+      // The authoritative server checks below still run; invalid/frozen sessions
+      // are rejected before this cached view can remain active.
+      if (!portalAlreadyShown.current && accountToken && !customerIdFromQuery && !orderQrToken) {
+        const { data: cachedSessionResult } = await customerAuth.auth.getSession();
+        let cachedBinding: { expiresAt?: number; sessionId?: string } | null = null;
+        let cachedToken = accountToken;
+        try {
+          cachedBinding = JSON.parse(localStorage.getItem(sessionExpiryKey(accountToken)) || 'null');
+          cachedToken = localStorage.getItem(portalTokenCacheKey(accountToken)) || accountToken;
+        } catch {}
+        const cachedSessionId = cachedSessionResult.session
+          ? sessionIdFromAccessToken(cachedSessionResult.session.access_token)
+          : null;
+        if (cachedSessionResult.session && cachedBinding?.expiresAt && cachedBinding.expiresAt > Date.now()
+            && cachedBinding.sessionId && cachedBinding.sessionId === cachedSessionId
+            && hasCachedCustomerPortalData(cachedToken)) {
+          setPortalToken(cachedToken);
+          portalAlreadyShown.current = true;
+          setMode('portal');
+        }
+      }
       if (!portalAlreadyShown.current) setMode('loading');
       setError('');
       setMessage('');
@@ -150,6 +172,11 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     }
     const result = await callCustomerAccount<EntryStatus>('entry', { token: accountToken });
     if (!result.data || result.error || result.data.valid !== true) {
+      if (portalAlreadyShown.current && result.error === 'NETWORK_UNAVAILABLE') {
+        setMode('portal');
+        setMessage(t('تعذّر تحديث البيانات الآن. نعرض آخر نسخة محفوظة، وستتوقف العمليات الحساسة حتى عودة الاتصال.', 'Could not refresh right now. Showing the last saved copy; sensitive actions remain disabled until connectivity returns.'));
+        return;
+      }
       setMode('unavailable');
       setErrorMessage(result.error || 'ACCOUNT_UNAVAILABLE_OR_INVALID');
       return;
