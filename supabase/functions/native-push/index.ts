@@ -79,8 +79,16 @@ async function sendFcm(token: string, projectId: string, title: string, body: st
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const code = String(result?.error?.details?.[0]?.errorCode ?? result?.error?.status ?? "");
-    throw Object.assign(new Error("FCM_SEND_FAILED"), { status: response.status, code });
+    const details = Array.isArray(result?.error?.details) ? result.error.details : [];
+    const errorInfo = details.find((item: Record<string, unknown>) =>
+      typeof item["@type"] === "string" && String(item["@type"]).includes("ErrorInfo"));
+    const typedCode = details.find((item: Record<string, unknown>) => typeof item.errorCode === "string");
+    const code = String(typedCode?.errorCode ?? errorInfo?.reason ?? result?.error?.status ?? "UNKNOWN");
+    const providerMessage = String(result?.error?.message ?? "No provider message")
+      .replace(/\\s+/g, " ").slice(0, 180);
+    throw Object.assign(new Error("FCM_SEND_FAILED"), {
+      status: response.status, code, providerMessage,
+    });
   }
 }
 
@@ -196,7 +204,6 @@ Deno.serve(async (request: Request) => {
     return json(200, { ok: true });
   }
 
-  if (action !== "dispatch") return json(400, { ok: false, error: "UNKNOWN_ACTION" });
   const suppliedSecret = request.headers.get("x-push-dispatch-secret") || "";
   if (!suppliedSecret || suppliedSecret.length > 256) {
     return json(401, { ok: false, error: "UNAUTHORIZED" });
@@ -208,6 +215,38 @@ Deno.serve(async (request: Request) => {
   if (secretCheckError || secretValid !== true) {
     return json(401, { ok: false, error: "UNAUTHORIZED" });
   }
+
+  // Secret-gated live diagnostic: targets one already-registered device only.
+  // This does not create business records or alter delivery idempotency state.
+  if (action === "test") {
+    const deviceRowId = normalize(input.deviceRowId, 64);
+    if (!/^[0-9a-f-]{36}$/i.test(deviceRowId)) return json(400, { ok: false, error: "INVALID_DEVICE" });
+    const { data: device, error: deviceError } = await admin.from("native_push_devices")
+      .select("id,device_id,token,locale,app_variant").eq("id", deviceRowId).is("disabled_at", null).maybeSingle();
+    if (deviceError || !device) return json(404, { ok: false, error: "DEVICE_NOT_FOUND" });
+    const { data: current, error: currentError } = await admin.rpc("native_push_device_is_current", {
+      p_device_id: deviceRowId, p_allow_account_status_notice: false,
+    });
+    if (currentError || current !== true) return json(403, { ok: false, error: "DEVICE_SESSION_NOT_CURRENT" });
+    const projectId = Deno.env.get("FCM_PROJECT_ID") || "";
+    if (!projectId) return json(503, { ok: false, error: "PUSH_PROVIDER_NOT_CONFIGURED" });
+    try {
+      await sendFcm(String(device.token), projectId,
+        device.locale === "en" ? "Charging Point test" : "اختبار إشعارات نقطة الشحن",
+        device.locale === "en" ? "This is a live push-delivery diagnostic." : "هذا إشعار اختبار مباشر لمسار الإرسال.",
+        "diagnostic-" + crypto.randomUUID(), device.app_variant === "admin" ? "/app/notifications" : "/public/about");
+      return json(200, { ok: true, sent: true, projectConfigured: true });
+    } catch (error) {
+      const detail = error as { status?: number; code?: string; providerMessage?: string };
+      return json(502, {
+        ok: false, sent: false, providerStatus: Number(detail.status ?? 0),
+        providerCode: String(detail.code ?? "SEND_FAILED").slice(0, 80),
+        providerMessage: String(detail.providerMessage ?? "No provider message").slice(0, 180),
+      });
+    }
+  }
+
+  if (action !== "dispatch") return json(400, { ok: false, error: "UNKNOWN_ACTION" });
   const source = normalize(input.source, 64);
   const recordId = normalize(input.recordId, 64);
   const operation = normalize(input.operation, 16);
@@ -391,10 +430,13 @@ Deno.serve(async (request: Request) => {
       }).eq("event_key", eventKey).eq("device_id", recipient.device_id);
       sent += 1;
     } catch (error) {
-      const status = Number((error as { status?: number }).status ?? 0);
-      const code = String((error as { code?: string }).code ?? "SEND_FAILED").slice(0, 80);
+      const detail = error as { status?: number; code?: string; providerMessage?: string };
+      const status = Number(detail.status ?? 0);
+      const code = String(detail.code ?? "SEND_FAILED").slice(0, 80);
+      const diagnostic = [status || "", code, String(detail.providerMessage ?? "").replace(/\\s+/g, " ").slice(0, 180)]
+        .filter(Boolean).join(":").slice(0, 300);
       await admin.from("native_push_delivery_attempts").update({
-        status: "FAILED", error_code: code, updated_at: new Date().toISOString(),
+        status: "FAILED", error_code: diagnostic, updated_at: new Date().toISOString(),
       }).eq("event_key", eventKey).eq("device_id", recipient.device_id);
       if (status === 404 || code === "UNREGISTERED") {
         await admin.from("native_push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceRowId);
