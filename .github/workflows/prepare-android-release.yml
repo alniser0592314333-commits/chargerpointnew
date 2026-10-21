@@ -10,7 +10,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   ignore-non-dispatch:
@@ -289,10 +289,40 @@ jobs:
           cd android
           ./gradlew assembleRelease
 
-      - name: Publish signed APK artifact
+      - name: Stage signed APK for the GitHub Release
+        env:
+          APP_VERSION: ${{ inputs.release_version }}
+          APP_VARIANT: ${{ matrix.variant }}
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk "artifacts/ChargerPoint-${APP_VARIANT}-v${APP_VERSION}.apk"
+
+      - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ChargerPoint-${{ matrix.variant }}-v${{ inputs.release_version }}-signed-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: artifacts/ChargerPoint-${{ matrix.variant }}-v${{ inputs.release_version }}.apk
           if-no-files-found: error
           retention-days: 90
+
+  publish-github-release:
+    name: Publish APK files to a versioned GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Download both signed APKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ChargerPoint-*-v${{ inputs.release_version }}-signed-apk
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create versioned GitHub Release with APK download links
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ inputs.release_version }}
+        run: |
+          test -s "artifacts/ChargerPoint-customer-v${APP_VERSION}.apk"
+          test -s "artifacts/ChargerPoint-admin-v${APP_VERSION}.apk"
+          gh release create "v${APP_VERSION}" artifacts/*.apk --title "نقطة الشحن v${APP_VERSION}" --generate-notes
