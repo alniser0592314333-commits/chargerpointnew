@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
     if (adminRow?.is_active === true) {
       const { data: userData } = await admin.auth.admin.getUserById(uid);
       const email = userData.user?.email || adminRow.email;
-      if (email) return { type: "admin", id: adminRow.id, uid, email, role: adminRow.role };
+      if (email) return { type: "admin", id: adminRow.id, uid, email, role: adminRow.role, mustChangePassword: false };
     }
     return null;
   };
