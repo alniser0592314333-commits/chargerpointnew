@@ -148,7 +148,7 @@ Deno.serve(async (req: Request) => {
       const {data: cred} = await admin.from("account_biometric_credentials").select("id").eq("account_type",type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
       if (!cred) return reply(404,{ok:false,error:"BIOMETRIC_NOT_ENROLLED"});
       const c = await createChallenge(identity,"login",cred.id);
-      return c ? reply(200,{ok:true,...c,credentialId:cred.id,accountType:type}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
+      return c ? reply(200,{ok:true,...c,credentialId:cred.id,accountType:type,requiresBin:type === "admin" && ["SUPER_ADMIN","Super Admin"].includes(String(identity.role))}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
     }
     if (action === "login-verify") {
       const challengeId = normalize(input.challengeId,64);
@@ -185,6 +185,14 @@ Deno.serve(async (req: Request) => {
       }
       await admin.from("account_biometric_credentials").update({last_used_at:new Date().toISOString()}).eq("id",credentialId);
       return reply(200,{ok:true,session:sessionData.session,accountType:cred.account_type,subjectId:cred.subject_id,session_expires_at:cred.account_type === "customer" ? new Date(Date.now()+7*24*60*60*1000).toISOString() : undefined});
+    }
+    if (action === "status") {
+      const identity = await getAuthenticatedIdentity();
+      if (!identity) return reply(401,{ok:false,error:"AUTH_REQUIRED"});
+      const {data: cred,error} = await admin.from("account_biometric_credentials").select("id,created_at,last_used_at")
+        .eq("account_type",identity.type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
+      if (error) return reply(503,{ok:false,error:"BIOMETRIC_STATUS_UNAVAILABLE"});
+      return reply(200,{ok:true,enrolled:Boolean(cred),credentialId:cred?.id||null});
     }
     if (action === "revoke") {
       const identity = await getAuthenticatedIdentity();
