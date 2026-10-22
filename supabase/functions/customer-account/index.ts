@@ -12,6 +12,16 @@ const corsHeaders = {
 type Json = Record<string, unknown>;
 const respond = (status: number, body: Json) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
+
+// Fingerprint the authenticated customer's own read model so unchanged polls return
+// a tiny invalidation response instead of retransmitting the complete snapshot.
+async function snapshotVersion(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+const knownVersion = (value: unknown) =>
+  typeof value === "string" && /^[a-f0-9]{64}$/.test(value) ? value : "";
 const genericFailure = () => respond(401, { ok: false, error: "ACCOUNT_UNAVAILABLE_OR_INVALID" });
 const normalize = (value: unknown, max = 256) =>
   typeof value === "string" && value.length <= max ? value.trim() : "";
@@ -513,14 +523,18 @@ Deno.serve(async (request: Request) => {
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 150);
         const authTime = Number(authenticated.claims?.auth_time);
-        return respond(200, {
-          ok: true,
+        const activitySnapshot = {
           ledger,
           goal_requests: goalRequestsResult.data ?? [],
           events: eventsResult.data ?? [],
           session: sessionResult.data ? { created_at: sessionResult.data.created_at, expires_at: sessionResult.data.expires_at } : null,
           last_login_at: Number.isFinite(authTime) && authTime > 0 ? new Date(authTime * 1000).toISOString() : sessionResult.data?.created_at ?? null,
-        });
+        };
+        const version = await snapshotVersion(activitySnapshot);
+        if (knownVersion(input.knownVersion) === version) {
+          return respond(200, { ok: true, unchanged: true, version });
+        }
+        return respond(200, { ok: true, ...activitySnapshot, version });
       }
 
       const { data: qr, error: qrError } = await admin.from("qr_tokens")
@@ -531,7 +545,11 @@ Deno.serve(async (request: Request) => {
         p_public_token: qr.public_token,
       });
       if (projectionError || !projection) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-      return respond(200, { ok: true, data: projection });
+      const version = await snapshotVersion(projection);
+      if (knownVersion(input.knownVersion) === version) {
+        return respond(200, { ok: true, unchanged: true, version });
+      }
+      return respond(200, { ok: true, data: projection, version });
     }
 
     if (action === "request-reset" || action === "email-reset") {
