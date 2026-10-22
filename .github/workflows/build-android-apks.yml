@@ -14,6 +14,9 @@ on:
       - 'src/PublicPortalApp.tsx'
       - 'src/services/nativePushNotifications.ts'
       - 'src/services/auth/accountBiometric.ts'
+      - 'src/components/pages/SettingsPage.tsx'
+      - 'src/components/pages/PublicCustomerPortalPage.tsx'
+      - 'src/components/settings/AdminBiometricSettings.tsx'
       - 'scripts/android/**'
       - 'supabase/functions/account-biometric/**'
       - 'supabase/migrations/*server_verified_biometric*.sql'
@@ -154,6 +157,9 @@ jobs:
       - name: Generate native Android project
         run: npx cap add android
 
+      - name: Sync Capacitor assets
+        run: npx cap sync android
+
       - name: Install server-verified Android biometric signing plugin
         run: |
           python3 - <<'PY'
@@ -268,6 +274,9 @@ jobs:
                   raise SystemExit("Could not safely add CAMERA permission to AndroidManifest.xml")
           manifest.write_text(content)
 
+      - name: Sync Capacitor assets
+        run: npx cap sync android
+
       - name: Apply official mountain-and-moon launcher icon and localized app name
         run: |
           python3 -m pip install --break-system-packages --disable-pip-version-check cairosvg
@@ -349,9 +358,6 @@ jobs:
               localized.write_text(text, encoding="utf-8")
           print(f"Applied launcher branding and localized app name for {variant}")
           PY
-
-      - name: Sync Capacitor assets
-        run: npx cap sync android
 
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug
