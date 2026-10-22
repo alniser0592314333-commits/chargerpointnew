@@ -293,7 +293,7 @@ jobs:
           </layer-list>
           """)
 
-          launch_style = re.compile(r'(<style name="AppTheme\\.NoActionBarLaunch"[^>]*>)(.*?)(</style>)', re.S)
+          launch_style = re.compile(r'(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)(.*?)(</style>)', re.S)
           for styles_path in (values / "styles.xml", res / "values-v31" / "styles.xml"):
               if not styles_path.is_file():
                   continue
@@ -310,7 +310,7 @@ jobs:
                       if item_pattern.search(body):
                           body = item_pattern.sub(item, body, count=1)
                       else:
-                          body += "\\n        " + item
+                          body += "\n        " + item
                   return match.group(1) + body + match.group(3)
               updated, count = launch_style.subn(patch_launch, style_text, count=1)
               if count:
