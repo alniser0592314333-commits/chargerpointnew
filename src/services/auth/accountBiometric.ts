@@ -47,7 +47,7 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const { challengeId, challenge, credentialId, requiresBin } = await callEndpoint('login-challenge', { accountType, identifier });
   if (requiresBin && !bin) throw new Error('BIN_REQUIRED');
-  const { signature } = await NativeBiometric.signChallenge({ alias: credentialId, challenge, title: 'تسجيل الدخول بالبصمة', subtitle: 'أكد هويتك لفتح حسابك' });
+  const { signature } = await NativeBiometric.signChallenge({ alias: String(credentialId).replace(/-/g, ''), challenge, title: 'تسجيل الدخول بالبصمة', subtitle: 'أكد هويتك لفتح حسابك' });
   return await callEndpoint('login-verify', { challengeId, credentialId, signature, ...(bin ? { bin } : {}) });
 }
 export async function revokeAccountBiometric(accessToken: string) {
