@@ -79,7 +79,11 @@ Deno.serve(async (req: Request) => {
     return null;
   };
   const createChallenge = async (identity: {type:string;id:string;uid:string}, purpose: "enroll"|"login", credentialId: string | null) => {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const {count, error: countError} = await admin.from("account_biometric_challenges").select("id",{count:"exact",head:true})
+    .eq("account_type",identity.type).eq("subject_id",identity.id).gte("created_at",since);
+  if (countError || Number(count || 0) >= 10) return null;
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
     const challenge = Array.from(bytes, b => b.toString(16).padStart(2,"0")).join("");
     const { data, error } = await admin.from("account_biometric_challenges").insert({
       account_type: identity.type, subject_id: identity.id, auth_user_id: identity.uid,
@@ -146,7 +150,7 @@ Deno.serve(async (req: Request) => {
       }
       if (!identity) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
       const {data: cred} = await admin.from("account_biometric_credentials").select("id").eq("account_type",type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
-      if (!cred) return reply(404,{ok:false,error:"BIOMETRIC_NOT_ENROLLED"});
+      if (!cred) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
       const c = await createChallenge(identity,"login",cred.id);
       return c ? reply(200,{ok:true,...c,credentialId:cred.id,accountType:type,requiresBin:type === "admin" && ["SUPER_ADMIN","Super Admin"].includes(String(identity.role))}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
     }
