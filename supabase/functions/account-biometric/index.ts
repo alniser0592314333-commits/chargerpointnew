@@ -122,6 +122,7 @@ Deno.serve(async (req: Request) => {
     if (action === "enroll-challenge") {
       const identity = await getAuthenticatedIdentity();
       if (!identity) return reply(401, { ok:false, error:"AUTH_REQUIRED" });
+      if (identity.type === "customer" && identity.mustChangePassword) return reply(403,{ok:false,error:"PASSWORD_CHANGE_REQUIRED"});
       // An authenticated password session may replace the account's single device key.
       // This lets a customer/admin recover after changing or resetting their phone.
       const c = await createChallenge(identity,"enroll",null);
