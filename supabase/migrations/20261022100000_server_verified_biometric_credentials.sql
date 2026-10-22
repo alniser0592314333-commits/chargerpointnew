@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.account_biometric_credentials (
   subject_id uuid NOT NULL,
   auth_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   public_key_spki text NOT NULL CHECK (length(public_key_spki) BETWEEN 80 AND 4096),
-  key_alias text NOT NULL UNIQUE CHECK (key_alias ~ '^[a-f0-9]{32}
+  key_alias text NOT NULL UNIQUE CHECK (key_alias ~ '^[a-f0-9]{32}$'),
   device_label text NOT NULL DEFAULT 'Android device' CHECK (length(device_label) <= 120),
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   last_used_at timestamptz,
