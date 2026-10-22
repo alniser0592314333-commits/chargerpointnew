@@ -5,11 +5,10 @@ import { ShieldCheck, Fingerprint, LoaderCircle, Mail, LockKeyhole } from 'lucid
 import { authService } from '../../services/auth/authService';
 import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable } from '../../services/auth/accountBiometric';
 import { config } from '../../config/env';
+import { useI18n } from '../../i18n/i18nContext';
 
 export const AdminBiometricSettings: React.FC = () => {
-  const [locale, setLocale] = useState<'ar' | 'en'>(() => {
-    try { return (localStorage.getItem('sys_locale') || document.documentElement.lang || 'ar').startsWith('en') ? 'en' : 'ar'; } catch { return 'ar'; }
-  });
+  const { locale } = useI18n();
   const ar = locale === 'ar';
   const [available, setAvailable] = useState(false);
   const [enrolled, setEnrolled] = useState(false);
@@ -97,7 +96,7 @@ export const AdminBiometricSettings: React.FC = () => {
         <label className="block text-sm font-medium">{copy('كلمة المرور الحالية', 'Current password')}<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>
         <label className="block text-sm font-medium">{copy('رمز BIN', 'Security BIN')}<input type="password" required inputMode="numeric" pattern="[0-9]{4,}" autoComplete="off" value={bin} onChange={e=>setBin(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>
         {superAdmin && <div className="space-y-2"><p className="flex items-center gap-2 text-xs text-gray-500 dark:text-[#8eb698]"><Mail size={15}/>{copy('سيُرسل رمز من 6 أرقام إلى بريد السوبر أدمن.', 'A 6-digit code will be sent to the Super Admin email.')}</p>{otpSent && <label className="block text-sm font-medium">{copy('رمز التأكيد من البريد', 'Email confirmation code')}<input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" value={otp} onChange={e=>setOtp(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>}</div>}
-        <div className="flex gap-2"><button type="submit" disabled={busy} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle size={16} className="animate-spin"/> : <LockKeyhole size={16}/ >}{superAdmin && !otpSent ? copy('تحقق وأرسل الرمز', 'Verify & send code') : copy('تأكيد وتفعيل البصمة', 'Verify & enable fingerprint')}</button><button type="button" disabled={busy} onClick={()=>{setOpen(false);setPassword('');setBin('');setOtp('');setOtpSent(false);setError('');}} className="rounded-xl border border-gray-300 px-3 py-3 text-sm dark:border-[#285347]">{copy('إلغاء','Cancel')}</button></div>
+        <div className="flex gap-2"><button type="submit" disabled={busy} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle size={16} className="animate-spin"/> : <LockKeyhole size={16} />}{superAdmin && !otpSent ? copy('تحقق وأرسل الرمز', 'Verify & send code') : copy('تأكيد وتفعيل البصمة', 'Verify & enable fingerprint')}</button><button type="button" disabled={busy} onClick={()=>{setOpen(false);setPassword('');setBin('');setOtp('');setOtpSent(false);setError('');}} className="rounded-xl border border-gray-300 px-3 py-3 text-sm dark:border-[#285347]">{copy('إلغاء','Cancel')}</button></div>
       </form>}
   </section>;
 };
