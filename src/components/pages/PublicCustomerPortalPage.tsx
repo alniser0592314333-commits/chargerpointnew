@@ -324,7 +324,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       void load(false, true);
       if (data) void loadActivity(true);
     };
-    const interval = window.setInterval(refreshVisiblePortal, 5000);
+    const interval = window.setInterval(refreshVisiblePortal, 2000);
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') refreshVisiblePortal(); };
     window.addEventListener('focus', refreshVisiblePortal);
     document.addEventListener('visibilitychange', onVisibilityChange);
