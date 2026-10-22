@@ -5,6 +5,7 @@ import { AppLogo } from "../qr/AppLogo";
 import { BackupDataManagement } from "../settings/BackupDataManagement";
 import { SyncCenter } from "../settings/SyncCenter";
 import { AccountSessionsManager } from "../settings/AccountSessionsManager";
+import { AdminBiometricSettings } from "../settings/AdminBiometricSettings";
 import { PWASettingsCard } from "../settings/PWASettingsCard";
 import { AppReleaseSettingsCard } from "../settings/AppReleaseSettingsCard";
 import { BusinessHoursSettingsCard } from "../settings/BusinessHoursSettingsCard";
@@ -1210,6 +1211,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         {/* GROUP 6: Account & Role Security (الحساب والأمان) */}
         {activeSettingsSection === "account" && (
         <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
+          <AdminBiometricSettings />
           <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
             {t("accountSectionTitle")}
           </div>
