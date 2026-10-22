@@ -89,7 +89,8 @@ Deno.serve(async (req: Request) => {
     return null;
   };
   const createChallenge = async (identity: {type:string;id:string;uid:string}, purpose: "enroll"|"login", credentialId: string | null) => {
-    const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    await admin.from("account_biometric_challenges").delete().lt("expires_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+  const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const {count, error: countError} = await admin.from("account_biometric_challenges").select("id",{count:"exact",head:true})
     .eq("account_type",identity.type).eq("subject_id",identity.id).gte("created_at",since);
   if (countError || Number(count || 0) >= 10) return null;
@@ -180,6 +181,16 @@ Deno.serve(async (req: Request) => {
       const {data: identity} = await admin.auth.admin.getUserById(cred.auth_user_id);
       const email = identity.user?.email;
       if (!email || identity.user?.banned_until && new Date(identity.user.banned_until).getTime()>Date.now()) return reply(401,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
+      if (cred.account_type === "customer") {
+        const {data: currentSession} = await admin.from("customer_account_sessions").select("auth_issued_at")
+          .eq("customer_id",cred.subject_id).maybeSingle();
+        const currentIat = Number(currentSession?.auth_issued_at || 0);
+        const nowMs = Date.now();
+        if (currentIat > Math.floor(nowMs / 1000)) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
+        const waitMs = currentIat >= Math.floor(nowMs / 1000) ? (currentIat + 1) * 1000 - nowMs + 25 : 0;
+        if (waitMs > 0 && waitMs <= 2000) await new Promise((resolve) => setTimeout(resolve, waitMs));
+        else if (waitMs > 2000) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
+      }
       const {data: link} = await admin.auth.admin.generateLink({type:"magiclink",email});
       const tokenHash = link?.properties?.hashed_token;
       if (!tokenHash) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
