@@ -126,7 +126,9 @@ describe('Isolated customer QR portal security contract', () => {
   it('uses only the scoped RPC, suppresses financial data offline, and does not expose admin controls', () => {
     const page = fs.readFileSync(pagePath, 'utf8');
     expect(page).toContain("'portal-data'");
-    expect(page).toContain("callCustomerAccount<{ data: PortalData }>");
+    expect(page).toContain("callCustomerAccount<{");
+    expect(page).toContain("knownVersion: portalVersionRef.current.version");
+    expect(page).toContain("responseResult?.unchanged === true");
     expect(page).not.toContain("'public_resolve_customer_portal'");
     const accountAuth = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/customer-account/index.ts'), 'utf8');
     expect(accountAuth).toContain('.eq("token_type", "CUSTOMER")');
@@ -135,6 +137,9 @@ describe('Isolated customer QR portal security contract', () => {
     expect(accountAuth).toContain('admin-set-status');
     expect(accountAuth).toContain('customer_account_consume_rate_limit');
     expect(accountAuth).toContain('REQUEST_TOO_LARGE');
+    expect(accountAuth).toContain('snapshotVersion');
+    expect(accountAuth).toContain('knownVersion(input.knownVersion) === version');
+    expect(accountAuth).toContain('unchanged: true');
     expect(accountAuth).toContain('action === "accept-terms"');
     const accountMigration = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261018060000_customer_account_auth.sql'), 'utf8');
     expect(accountMigration).toContain('REVOKE ALL ON FUNCTION public.public_resolve_customer_portal(text) FROM PUBLIC, anon, authenticated');
