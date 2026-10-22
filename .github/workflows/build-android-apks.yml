@@ -268,6 +268,9 @@ jobs:
                   raise SystemExit("Could not safely add CAMERA permission to AndroidManifest.xml")
           manifest.write_text(content)
 
+      - name: Sync Capacitor assets
+        run: npx cap sync android
+
       - name: Apply official mountain-and-moon launcher icon and localized app name
         run: |
           python3 -m pip install --break-system-packages --disable-pip-version-check cairosvg
@@ -349,9 +352,6 @@ jobs:
               localized.write_text(text, encoding="utf-8")
           print(f"Applied launcher branding and localized app name for {variant}")
           PY
-
-      - name: Sync Capacitor assets
-        run: npx cap sync android
 
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug
