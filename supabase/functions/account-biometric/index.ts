@@ -12,7 +12,7 @@ const normalize = (v: unknown, max = 256) =>
   typeof v === "string" && v.length <= max ? v.trim() : "";
 const decodeB64 = (s: string) => { const v = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(v.padEnd(Math.ceil(v.length / 4) * 4, "=")), c => c.charCodeAt(0)); };
 const encodeB64 = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-function derToRaw(input: Uint8Array): Uint8Array | null {
+function derToRaw(input: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBuffer> | null {
   // Android's SHA256withECDSA returns ASN.1 DER; WebCrypto expects fixed-width r||s.
   if (input.length < 8 || input[0] !== 0x30) return null;
   let p = 2;
@@ -35,7 +35,7 @@ async function verifySignature(spki: string, challenge: string, signatureB64: st
     const key = await crypto.subtle.importKey("spki", decodeB64(spki), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
     const sig = derToRaw(decodeB64(signatureB64));
     if (!sig) return false;
-    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, sig, new TextEncoder().encode(challenge));
+    const signatureBytes = new Uint8Array(sig);\n    const challengeBytes = new TextEncoder().encode(challenge);\n    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, signatureBytes, challengeBytes);
   } catch { return false; }
 }
 function jwtClaims(token: string): Record<string, unknown> | null {
@@ -183,7 +183,7 @@ Deno.serve(async (req: Request) => {
         if (current && issuedAt <= Number(current.auth_issued_at)) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
         const {error: regError} = await admin.from("customer_account_sessions").upsert({
           customer_id:cred.subject_id,auth_user_id:cred.auth_user_id,session_id:sessionId,auth_issued_at:issuedAt,
-          created_at:new Date().toISOString(),expires_at,revoked_at:null,
+          created_at:new Date().toISOString(),expires_at:expiresAt,revoked_at:null,
         },{onConflict:"customer_id"});
         if (regError) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
       }
