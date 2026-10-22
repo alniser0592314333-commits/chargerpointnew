@@ -173,9 +173,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [passwordChangeBusy, setPasswordChangeBusy] = useState(false);
   const requestGeneration = useRef(0);
   const backgroundLoadInFlight = useRef(false);
+  const portalVersionRef = useRef<{ token: string; version: string } | null>(null);
+  const activityVersionRef = useRef<{ token: string; version: string } | null>(null);
+  const activityRequestGeneration = useRef(0);
 
   const load = useCallback(async (manual = false, background = false) => {
-    // The 5-second refresh cadence must never cancel its own previous request.
+    // Background refreshes are deliberately conservative; native push and foreground/focus events refresh sooner.
     // A single background read at a time keeps the newest verified snapshot eligible to render.
     if (background && backgroundLoadInFlight.current) return;
     if (background) backgroundLoadInFlight.current = true;
@@ -196,13 +199,31 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       return;
     }
     try {
-      const { data: responseResult, error: rpcError } = await callCustomerAccount<{ data: PortalData }>(
+      const { data: responseResult, error: rpcError } = await callCustomerAccount<{
+        data?: PortalData; unchanged?: boolean; version?: string;
+      }>(
         'portal-data',
-        { token }
+        {
+          token,
+          ...(portalVersionRef.current?.token === token
+            ? { knownVersion: portalVersionRef.current.version }
+            : {}),
+        }
       );
+      if (requestId !== requestGeneration.current) return;
+      portalVersionRef.current = typeof responseResult?.version === 'string'
+        ? { token, version: responseResult.version }
+        : null;
+      // The server has verified that the cached in-memory snapshot is unchanged.
+      if (!rpcError && responseResult?.unchanged === true && responseResult.version) {
+        if (requestId === requestGeneration.current) {
+          setServerAvailable(true);
+          setError(null);
+        }
+        return;
+      }
       const response = responseResult?.data ?? null;
       // Ignore stale requests and never restore financial data after connectivity drops.
-      if (requestId !== requestGeneration.current) return;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setServerAvailable(false);
         const cached = readCachedPortalData(token);
@@ -257,14 +278,31 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
 
   const loadActivity = useCallback(async (quiet = false) => {
     if (!online || typeof navigator !== 'undefined' && !navigator.onLine) return;
+    const activityRequestId = ++activityRequestGeneration.current;
     if (!quiet) setActivityLoading(true);
     setActivityError(false);
     try {
-      const { data: response, error: requestError } = await callCustomerAccount<PortalActivity>(
-        'customer-activity', { token },
+      const { data: response, error: requestError } = await callCustomerAccount<PortalActivity & {
+        unchanged?: boolean; version?: string;
+      }>(
+        'customer-activity',
+        {
+          token,
+          ...(activityVersionRef.current?.token === token
+            ? { knownVersion: activityVersionRef.current.version }
+            : {}),
+        },
       );
+      if (activityRequestId !== activityRequestGeneration.current) return;
+      activityVersionRef.current = typeof response?.version === 'string'
+        ? { token, version: response.version }
+        : null;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setActivityError(true);
+        return;
+      }
+      if (!requestError && response?.unchanged === true && response.version) {
+        setActivityError(false);
         return;
       }
       if (requestError || !response || !Array.isArray(response.ledger) ||
@@ -322,9 +360,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const refreshVisiblePortal = () => {
       if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
       void load(false, true);
-      if (data) void loadActivity(true);
     };
-    const interval = window.setInterval(refreshVisiblePortal, 5000);
+    const interval = window.setInterval(refreshVisiblePortal, 15000);
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') refreshVisiblePortal(); };
     window.addEventListener('focus', refreshVisiblePortal);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -334,6 +371,17 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [online, data?.customer_code, load, loadActivity]);
+
+  // Financial activity is larger and changes less often than the portal status.
+  // Refresh it separately to avoid downloading the activity ledger on every portal poll.
+  useEffect(() => {
+    if (!online || !data) return;
+    const refreshActivity = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) void loadActivity(true);
+    };
+    const interval = window.setInterval(refreshActivity, 30000);
+    return () => window.clearInterval(interval);
+  }, [online, data?.customer_code, loadActivity]);
 
   const markNotificationsSeen = () => {
     const ids = eventRows.map((event) => event.id);

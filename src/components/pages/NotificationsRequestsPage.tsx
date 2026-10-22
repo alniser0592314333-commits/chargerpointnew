@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import {
@@ -86,6 +86,7 @@ export const NotificationsRequestsPage: React.FC = () => {
   const { t, locale, formatCurrency } = useI18n();
   const isAr = locale === 'ar';
   const [items, setItems] = useState<PendingQrPayment[]>([]);
+  const backgroundLoadInFlight = useRef(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [approvalAmounts, setApprovalAmounts] = useState<Record<string, string>>({});
@@ -97,6 +98,8 @@ export const NotificationsRequestsPage: React.FC = () => {
   const [message, setMessage] = useState('');
 
   const loadPending = useCallback(async (quiet = false, background = false) => {
+    if (background && backgroundLoadInFlight.current) return;
+    if (background) backgroundLoadInFlight.current = true;
     if (quiet) setRefreshing(true);
     else if (!background) setLoading(true);
     if (!background) setError('');
@@ -140,6 +143,7 @@ export const NotificationsRequestsPage: React.FC = () => {
         console.error('Failed to load QR payment submissions:', err);
       }
     } finally {
+      if (background) backgroundLoadInFlight.current = false;
       if (!background) {
         setLoading(false);
         setRefreshing(false);
@@ -157,7 +161,7 @@ export const NotificationsRequestsPage: React.FC = () => {
       if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
       void loadPending(false, true);
     };
-    const timer = window.setInterval(refreshVisible, 10000);
+    const timer = window.setInterval(refreshVisible, 15000);
     window.addEventListener('focus', refreshVisible);
     document.addEventListener('visibilitychange', refreshVisible);
     window.addEventListener('online', refreshVisible);

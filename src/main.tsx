@@ -37,11 +37,18 @@ if (appVariant === 'customer') {
     window.history.replaceState({ path: '/public/about' }, '', '/public/about');
   }
   prepareCustomerIdentity();
-  void import('./services/nativePushNotifications').then(async ({ initializeNativePushNotificationListeners }) => {
-    await initializeNativePushNotificationListeners('customer', document.documentElement.lang);
-    const { default: PublicPortalApp } = await import('./PublicPortalApp');
-    root.render(<StrictMode><PublicPortalApp /></StrictMode>);
-  });
+  // Native push setup is deliberately non-blocking: permission prompts, Firebase
+  // registration, or a transient native-plugin failure must never leave the app on
+  // a blank screen. Render the customer portal independently, then initialize push.
+  void import('./PublicPortalApp')
+    .then(({ default: PublicPortalApp }) => {
+      root.render(<StrictMode><PublicPortalApp /></StrictMode>);
+    })
+    .catch((error) => console.error('Customer portal failed to load.', error));
+  void import('./services/nativePushNotifications')
+    .then(({ initializeNativePushNotificationListeners }) =>
+      initializeNativePushNotificationListeners('customer', document.documentElement.lang))
+    .catch((error) => console.warn('Customer push initialization failed; portal remains available.', error));
 } else if (appVariant !== 'admin' && isPublicPortalRoute) {
   // Preserve the existing web/PWA behavior: public QR links open the isolated
   // customer entry without initializing the admin app or its local business store.
@@ -58,15 +65,23 @@ if (appVariant === 'customer') {
     initializePWAInstallCapture();
   });
   if (appVariant === 'admin') {
-    void import('./services/nativePushNotifications').then(async ({ initializeNativePushNotificationListeners }) => {
-      await initializeNativePushNotificationListeners('admin', document.documentElement.lang);
-      const { default: App } = await import('./App.tsx');
-      const { AppVersionGate } = await import('./components/customer/CustomerAppVersionGate');
-      root.render(<StrictMode><AppVersionGate channel="admin"><App /></AppVersionGate></StrictMode>);
-    });
+    // Do not gate first paint on native push registration. A rejected permission
+    // request or FCM/native bridge failure must not suppress the entire admin UI.
+    void import('./App.tsx')
+      .then(async ({ default: App }) => {
+        const { AppVersionGate } = await import('./components/customer/CustomerAppVersionGate');
+        root.render(<StrictMode><AppVersionGate channel="admin"><App /></AppVersionGate></StrictMode>);
+      })
+      .catch((error) => console.error('Admin app failed to load.', error));
+    void import('./services/nativePushNotifications')
+      .then(({ initializeNativePushNotificationListeners }) =>
+        initializeNativePushNotificationListeners('admin', document.documentElement.lang))
+      .catch((error) => console.warn('Admin push initialization failed; app remains available.', error));
   } else {
-    void import('./App.tsx').then(({ default: App }) => {
-      root.render(<StrictMode><App /></StrictMode>);
-    });
+    void import('./App.tsx')
+      .then(({ default: App }) => {
+        root.render(<StrictMode><App /></StrictMode>);
+      })
+      .catch((error) => console.error('App failed to load.', error));
   }
 }

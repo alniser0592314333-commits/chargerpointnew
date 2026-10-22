@@ -172,9 +172,9 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
     <>
       {children}
       {(showUpdateNotice || hardBlock) && (
-        <div dir="rtl" className="fixed inset-0 z-[2147483000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#061c1a]/75 px-4 py-8 text-right text-white backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/10 bg-[#0b2925] shadow-2xl">
-            <div className="relative overflow-hidden bg-gradient-to-br from-[#124c40] via-[#0d332d] to-[#071f1c] px-6 pb-6 pt-7">
+        <div dir="rtl" className="fixed inset-0 z-[2147483000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#071b1a] px-5 py-8 text-right text-white">
+          <div role="dialog" aria-modal="true" className="flex min-h-[calc(100dvh-4rem)] w-full max-w-2xl flex-col justify-center overflow-hidden rounded-none border-0 bg-transparent shadow-none">
+            <div className="relative overflow-hidden bg-transparent px-2 pb-6 pt-7">
               <div className="relative flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/10">
                   {hardBlock ? <ShieldAlert className="h-6 w-6 text-amber-200" /> : <Download className="h-6 w-6 text-emerald-200" />}
@@ -182,21 +182,21 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
                 <div><p className="text-xs font-semibold tracking-wide text-emerald-200">{channel === 'customer' ? 'نقطة الشحن' : 'نقطة الشحن - الإدارة'}</p><h1 className="mt-1 text-xl font-extrabold">{hardBlock ? 'انتهت صلاحية الإصدار' : 'يتوفر تحديث جديد'}</h1></div>
               </div>
             </div>
-            <div className="space-y-5 p-6">
+            <div className="space-y-6 px-2 py-6">
               {hardBlock ? (
                 <div className="space-y-3">
-                  <div className="flex gap-3 rounded-2xl border border-red-300/20 bg-red-300/5 p-4 text-sm leading-7 text-red-50"><AlertCircle className="mt-1 h-5 w-5 shrink-0" /><p>لم يعد الإصدار {CURRENT_VERSION} مسموحًا به. ثبّت الإصدار {policy?.latest_version || 'الأحدث'} للمتابعة. تم حفظ سياسة الإلزام محليًا، لذلك يبقى هذا الإصدار مقفلًا دون إنترنت إذا سبق تنزيل السياسة على الجهاز.</p></div>
+                  <div className="flex gap-3 rounded-xl border border-red-300/20 bg-red-300/5 p-4 text-sm leading-7 text-red-50"><AlertCircle className="mt-1 h-5 w-5 shrink-0" /><p>لم يعد الإصدار {CURRENT_VERSION} مسموحًا به. ثبّت الإصدار {policy?.latest_version || 'الأحدث'} للمتابعة. تم حفظ سياسة الإلزام محليًا، لذلك يبقى هذا الإصدار مقفلًا دون إنترنت إذا سبق تنزيل السياسة على الجهاز.</p></div>
                   {!isOnline && <p className="text-xs text-amber-100/80">يلزم الاتصال لتنزيل ملف التحديث.</p>}
                 </div>
               ) : (
                 <>
-                  <div className="flex items-start gap-3 rounded-2xl border border-emerald-300/15 bg-emerald-300/5 p-4"><CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-emerald-200" /><div className="min-w-0 flex-1"><p className="text-sm font-bold">الإصدار الحالي: {CURRENT_VERSION} · الإصدار الجديد: {policy?.latest_version}</p>{policy?.release_notes && <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-emerald-50/80">{policy.release_notes}</p>}</div></div>
+                  <div className="flex items-start gap-3 rounded-xl border border-emerald-300/15 bg-emerald-300/5 p-4"><CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-emerald-200" /><div className="min-w-0 flex-1"><p className="text-sm font-bold">الإصدار الحالي: {CURRENT_VERSION} · الإصدار الجديد: {policy?.latest_version}</p>{policy?.release_notes && <p className="mt-2 whitespace-pre-wrap text-xs leading-6 text-emerald-50/80">{policy.release_notes}</p>}</div></div>
                   <div className="flex gap-2 text-xs leading-5 text-emerald-50/70"><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /><p>آخر موعد لاستخدام الإصدار السابق: {policy ? new Date(policy.grace_until).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</p></div>
                 </>
               )}
-              {policy?.download_url && <button type="button" onClick={openUpdate} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-4 py-3.5 text-sm font-extrabold text-[#06231d] transition hover:bg-emerald-300 active:scale-[.99]"><Download className="h-4 w-4" />تحديث التطبيق إلى {policy.latest_version}</button>}
-              {showUpdateNotice && <button type="button" onClick={dismiss} className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/5">إخفاء حتى موعد الإلزام</button>}
-              {hardBlock && <button type="button" onClick={() => void checkVersion()} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/15 px-4 py-3 text-sm font-semibold text-white/85 transition hover:bg-white/5"><RefreshCw className="h-4 w-4" />إعادة التحقق</button>}
+              {policy?.download_url && <button type="button" onClick={openUpdate} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-4 text-sm font-extrabold text-[#06231d] transition hover:bg-emerald-300 active:scale-[.99]"><Download className="h-4 w-4" />تحديث التطبيق إلى {policy.latest_version}</button>}
+              {showUpdateNotice && <button type="button" onClick={dismiss} className="w-full rounded-xl border border-white/15 px-4 py-3.5 text-sm font-semibold text-white/80 transition hover:bg-white/5">إخفاء حتى موعد الإلزام</button>}
+              {hardBlock && <button type="button" onClick={() => void checkVersion()} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3.5 text-sm font-semibold text-white/85 transition hover:bg-white/5"><RefreshCw className="h-4 w-4" />إعادة التحقق</button>}
               {hardBlock && !policy?.download_url && <p className="text-center text-xs text-white/55">يجب توفير رابط تنزيل HTTPS للإصدار المنشور من إعدادات الإدارة.</p>}
             </div>
           </div>
