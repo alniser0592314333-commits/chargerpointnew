@@ -433,7 +433,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       else setMode('portal');
     } catch (e) {
       const code = e instanceof Error ? e.message : 'BIOMETRIC_LOGIN_FAILED';
-      setError(code === 'BIOMETRIC_NOT_ENROLLED'
+      setError((code === 'BIOMETRIC_NOT_ENROLLED' || code === 'BIOMETRIC_UNAVAILABLE')
         ? t('لم تُفعّل البصمة لهذا الحساب بعد. سجّل الدخول بكلمة السر أولًا.', 'Fingerprint sign-in is not enabled for this account yet. Sign in with your password first.')
         : code === 'BIOMETRIC_CANCELLED'
           ? t('تم إلغاء التحقق بالبصمة.', 'Biometric verification was cancelled.')
