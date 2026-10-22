@@ -204,11 +204,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       if (!biometricAvailable) throw new Error('BIOMETRIC_NOT_AVAILABLE');
       const { data: current } = await customerAuth.auth.getSession();
       const currentUserId = current.session?.user?.id;
+      const passwordForReauth = biometricPassword;
       if (!currentUserId) throw new Error('AUTH_REQUIRED');
       // Use the canonical customer-account login path so re-authentication also refreshes
       // the server-side single-device session binding; never create an unregistered Auth session.
       const reauth = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string; user?: { id: string } } }>(
-        'login', { token, password: biometricPassword },
+        'login', { token, password: passwordForReauth },
       );
       setBiometricPassword('');
       const verifiedSession = reauth.data?.session;
@@ -219,7 +220,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         refresh_token: verifiedSession.refresh_token,
       });
       if (savedSession.error || !savedSession.data.session) throw new Error('AUTH_REQUIRED');
-      await enrollAccountBiometric(savedSession.data.session.access_token, 'ChargerPoint customer', { password: biometricPassword });
+      await enrollAccountBiometric(savedSession.data.session.access_token, 'ChargerPoint customer', { password: passwordForReauth });
       setBiometricEnrolled(true);
       setShowBiometricManager(false);
       setBiometricMessage(isAr ? 'تم التحقق من كلمة المرور وتفعيل البصمة لهذا الحساب على هذا الجهاز.' : 'Password verified; fingerprint sign-in is enabled for this account on this device.');
