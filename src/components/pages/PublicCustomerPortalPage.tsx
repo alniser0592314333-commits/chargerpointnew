@@ -5,6 +5,7 @@ import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
 import { startNativePushNotifications, stopNativePushNotifications } from '../../services/nativePushNotifications';
+import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable } from '../../services/auth/accountBiometric';
 import { AppLogo } from '../qr/AppLogo';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import { useTheme } from '../../theme/themeContext';
@@ -171,6 +172,56 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordChangeBusy, setPasswordChangeBusy] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnrolled, setBiometricEnrolled] = useState(false);
+  const [showBiometricManager, setShowBiometricManager] = useState(false);
+  const [biometricPassword, setBiometricPassword] = useState('');
+  const [biometricBusy, setBiometricBusy] = useState(false);
+  const [biometricMessage, setBiometricMessage] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    if (!Capacitor.isNativePlatform()) return;
+    void (async () => {
+      const available = await isNativeBiometricAvailable();
+      if (!active) return;
+      setBiometricAvailable(available);
+      const { data: authState } = await customerAuth.auth.getSession();
+      if (authState.session?.access_token) {
+        try {
+          const status = await getAccountBiometricStatus(authState.session.access_token);
+          if (active) setBiometricEnrolled(status.enrolled);
+        } catch { /* Password sign-in remains available if biometric status is temporarily unavailable. */ }
+      }
+    })();
+    return () => { active = false; };
+  }, [token]);
+
+  const saveCustomerBiometric = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBiometricBusy(true); setBiometricMessage('');
+    try {
+      if (!biometricAvailable) throw new Error('BIOMETRIC_NOT_AVAILABLE');
+      const { data: current } = await customerAuth.auth.getSession();
+      const currentUserId = current.session?.user?.id;
+      const email = current.session?.user?.email;
+      if (!currentUserId || !email) throw new Error('AUTH_REQUIRED');
+      const reauth = await customerAuth.auth.signInWithPassword({ email, password: biometricPassword });
+      setBiometricPassword('');
+      if (reauth.error || !reauth.data.session || reauth.data.user?.id !== currentUserId) throw new Error('INVALID_PASSWORD');
+      await enrollAccountBiometric(reauth.data.session.access_token, 'ChargerPoint customer');
+      setBiometricEnrolled(true);
+      setShowBiometricManager(false);
+      setBiometricMessage(isAr ? 'تم التحقق من كلمة المرور وتفعيل البصمة لهذا الحساب على هذا الجهاز.' : 'Password verified; fingerprint sign-in is enabled for this account on this device.');
+    } catch (e) {
+      const code = e instanceof Error ? e.message : '';
+      setBiometricMessage(code === 'BIOMETRIC_NOT_AVAILABLE'
+        ? (isAr ? 'هذا الجهاز لا يدعم البصمة القوية أو لم يتم إعدادها.' : 'Strong biometrics are unavailable or not configured on this device.')
+        : code === 'INVALID_PASSWORD'
+          ? (isAr ? 'كلمة المرور غير صحيحة.' : 'The password is incorrect.')
+          : (isAr ? 'تعذر تغيير البصمة. تحقق من كلمة المرور والاتصال ثم حاول مجددًا.' : 'Could not change fingerprint. Check your password and connection, then try again.'));
+    } finally { setBiometricBusy(false); }
+  };
   const requestGeneration = useRef(0);
   const backgroundLoadInFlight = useRef(false);
   const portalVersionRef = useRef<{ token: string; version: string } | null>(null);
@@ -733,6 +784,18 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <p className="cp-portal-eyebrow">{isAr ? 'تفضيلاتك' : 'PREFERENCES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإعدادات' : 'Settings'}</h1>
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={toggleTheme}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}</button></div>
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
+              {Capacitor.isNativePlatform() && <div className="cp-portal-subsection">
+                <h2 className="font-bold">{isAr ? 'الدخول بالبصمة' : 'Fingerprint sign-in'}</h2>
+                <p className="mt-2 text-sm cp-portal-muted">{biometricEnrolled ? (isAr ? 'البصمة مفعّلة لهذا الحساب على هذا الجهاز. يمكنك تغييرها متى شئت.' : 'Fingerprint is enabled for this account on this device. You can change it anytime.') : (isAr ? 'لم تضف بصمة لهذا الحساب بعد.' : 'No fingerprint is enrolled for this account yet.')}</p>
+                {biometricMessage && <p role="status" className="mt-2 text-sm">{biometricMessage}</p>}
+                {!showBiometricManager ? <button type="button" className="cp-portal-secondary-button mt-3" disabled={!biometricAvailable || !online || !serverAvailable} onClick={() => { setBiometricMessage(''); setShowBiometricManager(true); }}><ShieldCheck size={17}/>{biometricEnrolled ? (isAr ? 'تغيير / إعادة إضافة البصمة' : 'Change / re-enroll fingerprint') : (isAr ? 'إضافة البصمة' : 'Add fingerprint')}</button>
+                : <form className="cp-portal-password-form mt-3" onSubmit={(event) => { void saveCustomerBiometric(event); }}>
+                  <label className="cp-portal-password-label">{isAr ? 'كلمة المرور الحالية لتأكيد هويتك' : 'Current password to verify your identity'}</label>
+                  <input type="password" required autoComplete="current-password" value={biometricPassword} onChange={(event) => setBiometricPassword(event.target.value)} className="cp-portal-password-input"/>
+                  <p className="text-xs cp-portal-muted">{isAr ? 'بعد التحقق من كلمة المرور سيطلب الجهاز بصمتك. لا تُرسل بيانات البصمة إلى الخادم.' : 'After your password is verified, Android will ask for your fingerprint. Your biometric data is never sent to the server.'}</p>
+                  <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || !serverAvailable || biometricBusy}>{biometricBusy ? <RefreshCw size={17} className="animate-spin"/> : <ShieldCheck size={17} />}{isAr ? 'التحقق وتفعيل البصمة' : 'Verify and enable fingerprint'}</button><button type="button" className="cp-portal-secondary-button" disabled={biometricBusy} onClick={() => { setShowBiometricManager(false); setBiometricPassword(''); setBiometricMessage(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
+                </form>}
+              </div>}
               <div className="cp-portal-subsection">
                 <h2 className="font-bold">{isAr ? 'تغيير كلمة المرور' : 'Change password'}</h2>
                 {!showPasswordChange ? <button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable} onClick={() => { setActionMessage(''); setShowPasswordChange(true); }}><KeyRound size={17} />{isAr ? 'تغيير كلمة المرور' : 'Change password'}</button>
