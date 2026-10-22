@@ -203,6 +203,37 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     }
   };
 
+  const handleBiometricLogin = async () => {
+    const identifier = username.trim();
+    if (!identifier || isSubmitting) {
+      setError(locale === "en" ? "Enter your username first." : "أدخل اسم المستخدم أولًا.");
+      return;
+    }
+    setIsSubmitting(true); setError(""); setSuccessMessage("");
+    try {
+      const result = await loginWithAccountBiometric("admin", identifier, bin.trim() || undefined);
+      const authSession = result.session as SupabaseAuthSession | undefined;
+      if (!authSession?.access_token || !authSession.refresh_token) throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
+      await authService.acceptBiometricSession(authSession);
+      setBin(""); setShowBiometricBin(false); setPassword("");
+      setPendingRememberIdentifier(identifier);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      if (code === "BIN_REQUIRED") {
+        setShowBiometricBin(true);
+        setError(locale === "en" ? "Enter your Super Admin BIN, then use fingerprint again." : "أدخل رمز BIN الخاص بالسوبر أدمن، ثم اضغط البصمة مجددًا.");
+      } else if (code === "BIOMETRIC_NOT_ENROLLED" || code === "BIOMETRIC_UNAVAILABLE") {
+        setError(locale === "en" ? "Fingerprint sign-in is not enabled for this account. Sign in with your password first." : "البصمة غير مفعّلة لهذا الحساب. سجّل الدخول بكلمة السر أولًا.");
+      } else if (code === "WRONG_BIN" || code === "BIN_LOCKED_FROZEN") {
+        setError(locale === "en" ? "The BIN is incorrect or locked." : "رمز BIN غير صحيح أو تم تجميده.");
+      } else if (code === "BIOMETRIC_CANCELLED") {
+        setError(locale === "en" ? "Fingerprint verification was cancelled." : "تم إلغاء التحقق بالبصمة.");
+      } else {
+        setError(locale === "en" ? "Biometric sign-in failed. Use your password and try again." : "فشل الدخول بالبصمة. استخدم كلمة السر وحاول مرة أخرى.");
+      }
+    } finally { setIsSubmitting(false); }
+  };
+
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
