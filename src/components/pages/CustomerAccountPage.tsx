@@ -18,6 +18,7 @@ type EntryStatus = {
   valid: boolean;
   activated: boolean;
   customer_name?: string;
+  customer_code?: string | null;
   customer_qr_token?: string | null;
   email_recovery_available?: boolean;
   auth_provider?: "password" | "google" | "apple" | "facebook" | null;
@@ -343,8 +344,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         : accountToken;
       try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
       if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, result.data.session_expires_at);
-      if (!savedCustomerAccounts.some((account) => account.token === accountToken)) {
-        setPendingRememberCustomerAccount({ token: accountToken, label: entry?.customer_name || accountToken });
+      const customerLoginIdentifier = entry?.customer_code || accountToken;
+      if (!savedCustomerAccounts.some((account) => account.token === customerLoginIdentifier)) {
+        setPendingRememberCustomerAccount({ token: customerLoginIdentifier, label: entry?.customer_name || customerLoginIdentifier });
       }
       setPassword(''); setConfirmPassword('');
       setShowBiometricSetup(await isNativeBiometricAvailable());
@@ -357,6 +359,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
     const loginToken = directEntry ? username.trim() : accountToken;
     if (!loginToken || !password) { setErrorMessage('INVALID_CREDENTIALS'); return; }
     let loginAccountLabel = entry?.customer_name || loginToken;
+    let loginAccountIdentifier = entry?.customer_code || loginToken;
     setBusy(true); setError('');
     try {
       if (directEntry) {
@@ -371,8 +374,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         }
         setEntry(entryResult.data);
         loginAccountLabel = entryResult.data.customer_name || loginToken;
+        loginAccountIdentifier = entryResult.data.customer_code || loginToken;
       }
-      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string; customer_qr_token?: string | null }>(
+      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus["auth_provider"]; session_expires_at?: string; customer_qr_token?: string | null; customer_code?: string | null }>(
         'login', { token: loginToken, password },
       );
       const loginData = result.data;
@@ -380,6 +384,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         setErrorMessage(result.error === 'NETWORK_UNAVAILABLE' ? result.error : 'INVALID_CREDENTIALS');
         return;
       }
+      loginAccountIdentifier = loginData.customer_code || loginAccountIdentifier;
       const sessionError = await setCustomerSession(loginData.session);
       if (directEntry) setAccountToken(loginToken);
       if (typeof loginData.customer_qr_token === 'string' && loginData.customer_qr_token.length >= 24) {
@@ -402,8 +407,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       setPassword('');
       setMessage('');
       setEntry((current) => current ? { ...current, terms_version: loginData.terms_version ?? current.terms_version, auth_provider: loginData.auth_provider ?? current.auth_provider } : current);
-      if (!savedCustomerAccounts.some((account) => account.token === loginToken)) {
-        setPendingRememberCustomerAccount({ token: loginToken, label: loginAccountLabel });
+      const alreadySavedByEnteredIdentifier = savedCustomerAccounts.some((account) => account.token === loginToken);
+      if (alreadySavedByEnteredIdentifier && loginAccountIdentifier !== loginToken) {
+        // Upgrade older saved QR-token entries to the short customer code after a successful sign-in.
+        setSavedCustomerAccounts(saveCustomerAccount({ token: loginAccountIdentifier, label: loginAccountLabel }));
+      } else if (!savedCustomerAccounts.some((account) => account.token === loginAccountIdentifier)) {
+        setPendingRememberCustomerAccount({ token: loginAccountIdentifier, label: loginAccountLabel });
       }
       if (loginData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
@@ -434,13 +443,17 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (!session?.access_token || !session.refresh_token) throw new Error('BIOMETRIC_SESSION_UNAVAILABLE');
       const sessionError = await setCustomerSession(session);
       if (sessionError) throw new Error(sessionError);
-      const verified = await callCustomerAccount<{ customer_qr_token?: string; session_expires_at?: string; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus['auth_provider'] }>(
+      const verified = await callCustomerAccount<{ customer_qr_token?: string; customer_code?: string | null; session_expires_at?: string; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus['auth_provider'] }>(
         'verify-session', { token: loginToken }, session.access_token,
       );
       if (verified.error || !verified.data) throw new Error(verified.error || 'BIOMETRIC_SESSION_UNAVAILABLE');
       if (directEntry) setAccountToken(loginToken);
       const resolvedToken = typeof verified.data.customer_qr_token === 'string' && verified.data.customer_qr_token.length >= 24
         ? verified.data.customer_qr_token : loginToken;
+      const customerLoginIdentifier = verified.data.customer_code || loginToken;
+      if (savedCustomerAccounts.some((account) => account.token === loginToken) && customerLoginIdentifier !== loginToken) {
+        setSavedCustomerAccounts(saveCustomerAccount({ token: customerLoginIdentifier, label: entry?.customer_name || customerLoginIdentifier }));
+      }
       setPortalToken(resolvedToken);
       try { localStorage.setItem(portalTokenCacheKey(loginToken), resolvedToken); localStorage.setItem('last_customer_token', resolvedToken); } catch {}
       await saveSessionExpiry(loginToken, verified.data.session_expires_at || result.session_expires_at);

@@ -74,7 +74,18 @@ Deno.serve(async (request: Request) => {
     // identify the account; password/session checks remain mandatory.
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
       const { data: customer, error: customerError } = await admin.from("customers")
-        .select("id,name,is_active,status,deleted_at").eq("id", token).maybeSingle();
+        .select("id,name,customer_code,is_active,status,deleted_at").eq("id", token).maybeSingle();
+      if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
+        customer.status === "DELETED") return null;
+      return { token, customer, isQrToken: false };
+    }
+
+    // The customer's short, human-facing customer_code is the normal username.
+    // It identifies an account only; password/session checks remain mandatory.
+    if (token.length < 24) {
+      const { data: customer, error: customerError } = await admin.from("customers")
+        .select("id,name,customer_code,is_active,status,deleted_at")
+        .eq("customer_code", token).maybeSingle();
       if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
         customer.status === "DELETED") return null;
       return { token, customer, isQrToken: false };
@@ -87,7 +98,7 @@ Deno.serve(async (request: Request) => {
         .eq("is_active", true).maybeSingle();
       if (qrError || !qr || (qr.expires_at && new Date(qr.expires_at).getTime() <= Date.now())) return null;
       const { data: customer, error: customerError } = await admin.from("customers")
-        .select("id,name,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
+        .select("id,name,customer_code,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
       if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
         customer.status === "DELETED") return null;
       return { token, customer, isQrToken: true };
@@ -117,7 +128,7 @@ Deno.serve(async (request: Request) => {
       .eq("auth_user_id", userId).maybeSingle();
     if (error || !data) return null;
     const { data: customer, error: customerError } = await admin.from("customers")
-      .select("id,name,is_active,status,deleted_at").eq("id", data.customer_id).maybeSingle();
+      .select("id,name,customer_code,is_active,status,deleted_at").eq("id", data.customer_id).maybeSingle();
     if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
       customer.status === "DELETED" || data.account_status !== "ACTIVE") return null;
     return { ...data, customer };
@@ -217,6 +228,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, {
         ok: true, valid: true, activated: Boolean(link),
         customer_name: resolved.customer.name,
+        customer_code: resolved.customer.customer_code ?? null,
         email_recovery_available: Boolean(link?.email_verified && link?.login_email &&
           !String(link.login_email).endsWith(".invalid")),
         auth_provider: link?.auth_provider ?? null,
@@ -289,6 +301,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, {
         ok: true, session: signedIn.session, must_change_password: link.must_change_password,
         terms_version: link.terms_version, auth_provider: link.auth_provider,
+        customer_code: resolved.customer.customer_code ?? null,
         customer_qr_token: await getCustomerQrToken(resolved.customer.id),
         session_expires_at: await activeSessionExpiresAt(link, signedIn.user.id, claims),
       });
@@ -338,6 +351,7 @@ Deno.serve(async (request: Request) => {
           !(await registerSession(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         return respond(200, {
           ok: true, customer_name: link.customer.name,
+          customer_code: link.customer.customer_code ?? null,
           auth_provider: link.auth_provider,
           terms_version: link.terms_version,
           must_change_password: link.must_change_password,
@@ -354,6 +368,7 @@ Deno.serve(async (request: Request) => {
           ok: true, customer_name: link.customer.name,
           terms_version: link.terms_version,
           must_change_password: link.must_change_password,
+          customer_code: link.customer.customer_code ?? null,
           customer_qr_token: await getCustomerQrToken(link.customer_id),
           session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims),
           email_recovery_available: Boolean(link.email_verified && !String(link.login_email).endsWith(".invalid")),
