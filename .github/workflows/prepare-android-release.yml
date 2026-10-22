@@ -82,16 +82,16 @@ jobs:
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text()
           if "android.permission.USE_BIOMETRIC" not in text:
-              text = text.replace("<application", '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\\n    <application', 1)
+              text = text.replace("<application", '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n    <application', 1)
           manifest.write_text(text)
 
           app_gradle = Path("android/app/build.gradle")
           gradle = app_gradle.read_text()
           if "androidx.biometric:biometric" not in gradle:
-              match = re.search(r"dependencies\\s*\\{", gradle)
+              match = re.search(r"dependencies\s*\{", gradle)
               if not match:
                   raise SystemExit("Could not find Android app dependencies block")
-              gradle = gradle[:match.end()] + "\\n    implementation 'androidx.biometric:biometric:1.1.0'" + gradle[match.end():]
+              gradle = gradle[:match.end()] + "\n    implementation 'androidx.biometric:biometric:1.1.0'" + gradle[match.end():]
               app_gradle.write_text(gradle)
 
           activities = list(java_root.rglob("MainActivity.java"))
@@ -100,12 +100,12 @@ jobs:
           main = activities[0]
           code = main.read_text()
           if "com.chargerpointnew.biometric.AccountBiometricPlugin" not in code:
-              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\nimport com.chargerpointnew.biometric.AccountBiometricPlugin;")
+              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\nimport com.chargerpointnew.biometric.AccountBiometricPlugin;")
           if "registerPlugin(AccountBiometricPlugin.class)" not in code:
               if "void onCreate(" in code:
-                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(AccountBiometricPlugin.class);", code, count=1)
+                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(AccountBiometricPlugin.class);", code, count=1)
               else:
-                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(AccountBiometricPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(AccountBiometricPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
           main.write_text(code)
           print("Android Keystore + strong-biometric signing plugin registered.")
           PY
