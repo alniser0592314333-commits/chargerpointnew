@@ -33,11 +33,15 @@ export const isNativeBiometricAvailable = async () => {
   if (!Capacitor.isNativePlatform()) return false;
   try { return (await NativeBiometric.isAvailable()).available === true; } catch { return false; }
 };
-export async function enrollAccountBiometric(accessToken: string, deviceLabel = 'Android device') {
+export async function enrollAccountBiometric(
+  accessToken: string,
+  deviceLabel = 'Android device',
+  settingsReauth?: { password: string; bin?: string; emailOtp?: string },
+) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const alias = randomAlias();
   try {
-    const { challengeId, challenge } = await callEndpoint('enroll-challenge', {}, accessToken);
+    const { challengeId, challenge } = await callEndpoint('enroll-challenge', settingsReauth ? { settingsReauth: true, ...settingsReauth } : {}, accessToken);
     const { publicKey } = await NativeBiometric.createKey({ alias });
     const { signature } = await NativeBiometric.signChallenge({ alias, challenge, title: 'تفعيل الدخول بالبصمة', subtitle: 'أكد هويتك لتفعيل الدخول الآمن' });
     const result = await callEndpoint('enroll-verify', { challengeId, publicKey, signature, credentialId: alias, deviceLabel }, accessToken);
