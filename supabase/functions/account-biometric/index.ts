@@ -126,13 +126,13 @@ Deno.serve(async (req: Request) => {
       const challengeId = normalize(input.challengeId, 64);
       const publicKey = normalize(input.publicKey, 4096);
       const signature = normalize(input.signature, 2048);
-      if (!identity || !challengeId || !publicKey || !signature) return reply(400,{ok:false,error:"INVALID_REQUEST"});
+      if (!identity || !challengeId || !publicKey || !signature || !/^[a-f0-9]{32}$/.test(keyAlias)) return reply(400,{ok:false,error:"INVALID_REQUEST"});
       const consumed = await consumeAndVerify(challengeId,signature,"enroll");
       if (!consumed || consumed.challenge.auth_user_id !== identity.uid || consumed.challenge.subject_id !== identity.id ||
           !(await verifySignature(publicKey,consumed.challenge.challenge,signature))) return reply(401,{ok:false,error:"BIOMETRIC_PROOF_INVALID"});
       const { data, error } = await admin.from("account_biometric_credentials").upsert({
         account_type:identity.type, subject_id:identity.id, auth_user_id:identity.uid,
-        public_key_spki:publicKey, device_label:normalize(input.deviceLabel,120)||"Android device",
+        public_key_spki:publicKey, key_alias:keyAlias, device_label:normalize(input.deviceLabel,120)||"Android device",
         revoked_at:null, last_used_at:new Date().toISOString(),
       },{onConflict:"account_type,subject_id"}).select("id").single();
       return !error && data ? reply(200,{ok:true,credentialId:data.id}) : reply(503,{ok:false,error:"BIOMETRIC_ENROLLMENT_FAILED"});
@@ -162,10 +162,10 @@ Deno.serve(async (req: Request) => {
         }
       }
       if (!identity) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
-      const {data: cred} = await admin.from("account_biometric_credentials").select("id").eq("account_type",type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
+      const {data: cred} = await admin.from("account_biometric_credentials").select("id,key_alias").eq("account_type",type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
       if (!cred) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
       const c = await createChallenge(identity,"login",cred.id);
-      return c ? reply(200,{ok:true,...c,credentialId:cred.id,accountType:type,requiresBin:type === "admin" && ["SUPER_ADMIN","Super Admin"].includes(String(identity.role))}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
+      return c ? reply(200,{ok:true,...c,credentialId:cred.key_alias,accountType:type,requiresBin:type === "admin" && ["SUPER_ADMIN","Super Admin"].includes(String(identity.role))}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
     }
     if (action === "login-verify") {
       const challengeId = normalize(input.challengeId,64);
@@ -173,11 +173,12 @@ Deno.serve(async (req: Request) => {
       const signature = normalize(input.signature,2048);
       if (!challengeId || !credentialId || !signature) return reply(400,{ok:false,error:"INVALID_REQUEST"});
       const consumed = await consumeAndVerify(challengeId,signature,"login");
-      if (!consumed || consumed.challenge.credential_id !== credentialId) return reply(401,{ok:false,error:"BIOMETRIC_PROOF_INVALID"});
-      const {data: cred} = await admin.from("account_biometric_credentials").select("*").eq("id",credentialId)
+      if (!consumed) return reply(401,{ok:false,error:"BIOMETRIC_PROOF_INVALID"});
+      const {data: cred} = await admin.from("account_biometric_credentials").select("*").eq("key_alias",credentialId)
         .eq("account_type",consumed.challenge.account_type).eq("subject_id",consumed.challenge.subject_id)
         .eq("auth_user_id",consumed.challenge.auth_user_id).is("revoked_at",null).maybeSingle();
-      if (!cred || !(await verifySignature(cred.public_key_spki,consumed.challenge.challenge,signature))) return reply(401,{ok:false,error:"BIOMETRIC_PROOF_INVALID"});
+      if (!cred || consumed.challenge.credential_id !== cred.id ||
+          !(await verifySignature(cred.public_key_spki,consumed.challenge.challenge,signature))) return reply(401,{ok:false,error:"BIOMETRIC_PROOF_INVALID"});
       const {data: identity} = await admin.auth.admin.getUserById(cred.auth_user_id);
       const email = identity.user?.email;
       if (!email || identity.user?.banned_until && new Date(identity.user.banned_until).getTime()>Date.now()) return reply(401,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
@@ -216,7 +217,7 @@ Deno.serve(async (req: Request) => {
     if (action === "status") {
       const identity = await getAuthenticatedIdentity();
       if (!identity) return reply(401,{ok:false,error:"AUTH_REQUIRED"});
-      const {data: cred,error} = await admin.from("account_biometric_credentials").select("id,created_at,last_used_at")
+      const {data: cred,error} = await admin.from("account_biometric_credentials").select("id,key_alias,created_at,last_used_at")
         .eq("account_type",identity.type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
       if (error) return reply(503,{ok:false,error:"BIOMETRIC_STATUS_UNAVAILABLE"});
       return reply(200,{ok:true,enrolled:Boolean(cred),credentialId:cred?.id||null});
