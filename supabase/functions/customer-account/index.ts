@@ -217,6 +217,9 @@ Deno.serve(async (request: Request) => {
       return respond(200, {
         ok: true, valid: true, activated: Boolean(link),
         customer_name: resolved.customer.name,
+        // Return the stable customer record ID separately from the opaque QR capability.
+        // Saved-account login should use this identifier, never the long public QR token.
+        customer_id: resolved.customer.id,
         email_recovery_available: Boolean(link?.email_verified && link?.login_email &&
           !String(link.login_email).endsWith(".invalid")),
         auth_provider: link?.auth_provider ?? null,
