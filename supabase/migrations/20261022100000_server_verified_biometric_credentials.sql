@@ -37,4 +37,3 @@ CREATE INDEX IF NOT EXISTS account_biometric_challenges_expiry_idx
 ALTER TABLE public.account_biometric_challenges ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.account_biometric_challenges FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.account_biometric_challenges TO service_role;
-)
