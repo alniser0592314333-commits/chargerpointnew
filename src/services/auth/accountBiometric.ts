@@ -73,9 +73,35 @@ export async function enrollAccountBiometric(
     throw error;
   }
 }
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function requestLoginChallenge(accountType: 'customer' | 'admin', identifier: string) {
+  // A short-lived network/Edge cold-start failure must not force the customer to
+  // press the fingerprint button a second time. Retry only transient failures
+  // before the OS biometric dialog is opened; never retry credential/identity errors.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await callEndpoint('login-challenge', { accountType, identifier });
+    } catch (error) {
+      lastError = error;
+      const code = error instanceof Error ? error.message : '';
+      const transient = code === 'BIOMETRIC_REQUEST_FAILED'
+        || code === 'CHALLENGE_UNAVAILABLE'
+        || code === 'BIOMETRIC_SERVICE_UNAVAILABLE'
+        || (error instanceof TypeError);
+      if (!transient || attempt === 1) throw error;
+      await wait(350);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('BIOMETRIC_REQUEST_FAILED');
+}
+
 export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier: string, bin?: string) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
-  const { challengeId, challenge, credentialId, requiresBin } = await callEndpoint('login-challenge', { accountType, identifier });
+  const normalizedIdentifier = identifier.trim();
+  if (!normalizedIdentifier) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
+  const { challengeId, challenge, credentialId, requiresBin } = await requestLoginChallenge(accountType, normalizedIdentifier);
   if (requiresBin && !bin) throw new Error('BIN_REQUIRED');
   const en = promptLocale() === 'en';
   const { signature } = await NativeBiometric.signChallenge({
