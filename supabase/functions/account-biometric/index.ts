@@ -148,8 +148,8 @@ Deno.serve(async (req: Request) => {
           if (!qr) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
           customerId = qr.target_id;
         }
-        const { data: link } = await admin.from("customer_account_links").select("customer_id,auth_user_id,login_email,account_status").eq("customer_id",customerId).maybeSingle();
-        if (link?.account_status === "ACTIVE") identity = {type,id:link.customer_id,uid:link.auth_user_id,email:link.login_email};
+        const { data: link } = await admin.from("customer_account_links").select("customer_id,auth_user_id,login_email,account_status,must_change_password").eq("customer_id",customerId).maybeSingle();
+        if (link?.account_status === "ACTIVE" && link.must_change_password !== true) identity = {type,id:link.customer_id,uid:link.auth_user_id,email:link.login_email};
       } else {
         const { data: row } = identifier.includes("@")
           ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()
