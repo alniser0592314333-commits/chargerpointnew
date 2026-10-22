@@ -45,7 +45,8 @@ export async function enrollAccountBiometric(accessToken: string, deviceLabel = 
 }
 export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier: string, bin?: string) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
-  const { challengeId, challenge, credentialId } = await callEndpoint('login-challenge', { accountType, identifier });
+  const { challengeId, challenge, credentialId, requiresBin } = await callEndpoint('login-challenge', { accountType, identifier });
+  if (requiresBin && !bin) throw new Error('BIN_REQUIRED');
   const { signature } = await NativeBiometric.signChallenge({ alias: credentialId, challenge, title: 'تسجيل الدخول بالبصمة', subtitle: 'أكد هويتك لفتح حسابك' });
   return await callEndpoint('login-verify', { challengeId, credentialId, signature, ...(bin ? { bin } : {}) });
 }
@@ -53,4 +54,9 @@ export async function revokeAccountBiometric(accessToken: string) {
   const result = await callEndpoint('revoke', {}, accessToken);
   try { localStorage.removeItem('cp_biometric_alias_customer'); localStorage.removeItem('cp_biometric_alias_admin'); } catch {}
   return result;
+}
+
+export async function getAccountBiometricStatus(accessToken: string): Promise<{ enrolled: boolean; credentialId?: string | null }> {
+  const result = await callEndpoint('status', {}, accessToken);
+  return { enrolled: result.enrolled === true, credentialId: typeof result.credentialId === 'string' ? result.credentialId : null };
 }
