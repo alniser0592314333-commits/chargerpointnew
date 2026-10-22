@@ -105,7 +105,7 @@ public class AccountBiometricPlugin extends Plugin {
         .setTitle(call.getString("title", "Confirm your identity"))
         .setSubtitle(call.getString("subtitle", "Use your enrolled fingerprint"))
         .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        .setNegativeButtonText("Cancel")
+        .setNegativeButtonText(call.getString("negativeButtonText", "Cancel"))
         .build();
       prompt.authenticate(info, new BiometricPrompt.CryptoObject(signing));
     } catch (Exception ex) { call.reject("Biometric signature operation failed", ex); }
