@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
+import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -119,6 +120,8 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const initialized = useRef(false);
@@ -343,7 +346,9 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       if (!savedCustomerAccounts.some((account) => account.token === accountToken)) {
         setPendingRememberCustomerAccount({ token: accountToken, label: entry?.customer_name || accountToken });
       }
-      setPassword(''); setConfirmPassword(''); setMode('portal');
+      setPassword(''); setConfirmPassword('');
+      setShowBiometricSetup(await isNativeBiometricAvailable());
+      setMode('portal');
     } finally { setBusy(false); }
   };
 
@@ -383,6 +388,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       }
       await saveSessionExpiry(loginToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const biometricStatus = await getAccountBiometricStatus(loginData.session.access_token);
+          if (!biometricStatus.enrolled) setShowBiometricSetup(true);
+        } catch { /* Password sign-in remains available if biometric status cannot be checked. */ }
+      }
       const rememberedToken = typeof loginData.customer_qr_token === 'string' && loginData.customer_qr_token.length >= 24
         ? loginData.customer_qr_token
         : loginToken;
@@ -396,8 +407,73 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       }
       if (loginData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
-      else setMode('portal');
+      else {
+        setMode('portal');
+        if (Capacitor.isNativePlatform()) {
+          try {
+            const { data: authState } = await customerAuth.auth.getSession();
+            if (authState.session?.access_token) {
+              const status = await getAccountBiometricStatus(authState.session.access_token);
+              let localAlias = '';
+              try { localAlias = localStorage.getItem('cp_biometric_alias_customer') || ''; } catch {}
+              if (!status.enrolled || !status.keyAlias || localAlias !== status.keyAlias) setShowBiometricSetup(true);
+            }
+          } catch { /* Password sign-in remains successful if optional biometric setup is unavailable. */ }
+        }
+      }
     } finally { setBusy(false); }
+  };
+
+  const submitBiometricLogin = async () => {
+    const loginToken = directEntry ? username.trim() : accountToken;
+    if (!loginToken) { setErrorMessage('INVALID_CREDENTIALS'); return; }
+    setBiometricBusy(true); setError('');
+    try {
+      const result = await loginWithAccountBiometric('customer', loginToken);
+      const session = result.session as { access_token: string; refresh_token: string } | undefined;
+      if (!session?.access_token || !session.refresh_token) throw new Error('BIOMETRIC_SESSION_UNAVAILABLE');
+      const sessionError = await setCustomerSession(session);
+      if (sessionError) throw new Error(sessionError);
+      const verified = await callCustomerAccount<{ customer_qr_token?: string; session_expires_at?: string; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus['auth_provider'] }>(
+        'verify-session', { token: loginToken }, session.access_token,
+      );
+      if (verified.error || !verified.data) throw new Error(verified.error || 'BIOMETRIC_SESSION_UNAVAILABLE');
+      if (directEntry) setAccountToken(loginToken);
+      const resolvedToken = typeof verified.data.customer_qr_token === 'string' && verified.data.customer_qr_token.length >= 24
+        ? verified.data.customer_qr_token : loginToken;
+      setPortalToken(resolvedToken);
+      try { localStorage.setItem(portalTokenCacheKey(loginToken), resolvedToken); localStorage.setItem('last_customer_token', resolvedToken); } catch {}
+      await saveSessionExpiry(loginToken, verified.data.session_expires_at || result.session_expires_at);
+      if (resolvedToken !== loginToken) await saveSessionExpiry(resolvedToken, verified.data.session_expires_at || result.session_expires_at);
+      setEntry((current) => current ? { ...current, terms_version: verified.data?.terms_version ?? current.terms_version, auth_provider: verified.data?.auth_provider ?? current.auth_provider } : current);
+      setPassword(''); setMessage('');
+      if (verified.data.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
+      else if (verified.data.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
+      else setMode('portal');
+    } catch (e) {
+      const code = e instanceof Error ? e.message : 'BIOMETRIC_LOGIN_FAILED';
+      setError((code === 'BIOMETRIC_NOT_ENROLLED' || code === 'BIOMETRIC_UNAVAILABLE')
+        ? t('لم تُفعّل البصمة لهذا الحساب بعد. سجّل الدخول بكلمة السر أولًا.', 'Fingerprint sign-in is not enabled for this account yet. Sign in with your password first.')
+        : code === 'BIOMETRIC_CANCELLED'
+          ? t('تم إلغاء التحقق بالبصمة.', 'Biometric verification was cancelled.')
+          : t('تعذّر الدخول بالبصمة. استخدم كلمة السر أو أعد تفعيل البصمة.', 'Biometric sign-in failed. Use your password or enable biometrics again.'));
+    } finally { setBiometricBusy(false); }
+  };
+
+  const enableBiometric = async () => {
+    setBiometricBusy(true); setError('');
+    try {
+      const { data } = await customerAuth.auth.getSession();
+      if (!data.session?.access_token) throw new Error('AUTH_REQUIRED');
+      await enrollAccountBiometric(data.session.access_token, 'ChargerPoint customer');
+      setShowBiometricSetup(false);
+      setMessage(t('تم تفعيل الدخول بالبصمة وربطها بهذا الحساب على هذا الجهاز.', 'Fingerprint sign-in is now enabled for this account on this device.'));
+    } catch (e) {
+      const code = e instanceof Error ? e.message : '';
+      setError(code === 'BIOMETRIC_NOT_AVAILABLE'
+        ? t('هذا الجهاز لا يدعم البصمة القوية أو لم يتم إعدادها في إعدادات الجهاز.', 'Strong biometrics are unavailable or not configured on this device.')
+        : t('لم نتمكن من تفعيل البصمة. يمكنك المتابعة بكلمة السر والمحاولة لاحقًا.', 'Fingerprint setup failed. You can continue with your password and try again later.'));
+    } finally { setBiometricBusy(false); }
   };
 
   const submitTermsUpdate = async (event: React.FormEvent) => {
@@ -459,6 +535,18 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   if (mode === 'portal') {
     return (
       <div className="relative">
+        {showBiometricSetup && (
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-biometric-title" dir={isAr ? 'rtl' : 'ltr'}>
+            <div className="w-full max-w-sm space-y-4 rounded-3xl border border-[#b9d9d8] bg-[#f7fbfa] p-6 text-center text-[#244b55] shadow-2xl dark:border-[#2b5267] dark:bg-[#0b2935] dark:text-[#daf1de]">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#1a8a94]/10 text-[#1a8a94]"><ShieldCheck className="h-7 w-7" /></div>
+              <h2 id="customer-biometric-title" className="text-lg font-extrabold">{t('تفعيل الدخول بالبصمة؟', 'Enable fingerprint sign-in?')}</h2>
+              <p className="text-sm leading-6 text-[#5d7782] dark:text-[#9bb8bf]">{t('ستبقى كلمة السر متاحة دائمًا. تُحفظ البصمة على جهازك فقط، ويتحقق الخادم من توقيع تشفيري مربوط بهذا الحساب.', 'Your password will always remain available. Your fingerprint stays on the device; the server verifies a cryptographic signature bound to this account.')}</p>
+              {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p>}
+              <button type="button" disabled={biometricBusy} onClick={() => void enableBiometric()} className="cp-auth__btn">{biometricBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}{t('تفعيل البصمة', 'Enable fingerprint')}</button>
+              <button type="button" disabled={biometricBusy} onClick={() => { setShowBiometricSetup(false); setError(''); }} className="w-full rounded-xl border border-[#b9d9d8] px-4 py-3 text-sm font-semibold text-[#5d7782] dark:border-[#2b5267] dark:text-[#9bb8bf]">{t('ليس الآن، سأستخدم كلمة السر', 'Not now, I’ll use my password')}</button>
+            </div>
+          </div>
+        )}
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
         <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />
         {pendingRememberCustomerAccount && (
@@ -654,6 +742,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                         {eyeToggle}
                       </div>
                     </label>
+                    {Capacitor.isNativePlatform() && mode === 'login' && (
+                      <button type="button" disabled={busy || biometricBusy} onClick={() => void submitBiometricLogin()} className="cp-auth__btn cp-auth__btn--ghost group">
+                        {biometricBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {biometricBusy ? t('جارٍ التحقق بالبصمة…', 'Verifying fingerprint…') : t('الدخول بالبصمة', 'Sign in with fingerprint')}
+                      </button>
+                    )}
                     <div className="flex justify-end text-xs">
                       <button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="cp-auth__link">{t('نسيت كلمة السر؟', 'Forgot password?')}</button>
                     </div>

@@ -171,6 +171,7 @@ const getLocalStorage = () => {
 
 export interface AuthService {
   login(email: string, passOrPin: string, bin?: string): Promise<UserSession | null>;
+  acceptBiometricSession(session: SupabaseAuthSession): Promise<UserSession>;
   logout(): Promise<void>;
   getCurrentSession(forceRefresh?: boolean): Promise<UserSession | null>;
   getSupabaseAuthSession(): Promise<SupabaseAuthSession | null>;
@@ -730,6 +731,34 @@ class DefaultAuthService implements AuthService {
     }
 
     return null;
+  }
+
+  async acceptBiometricSession(authSession: SupabaseAuthSession): Promise<UserSession> {
+    if (!this.isSupabaseConfigured() || !authSession?.access_token || !authSession?.user?.id) {
+      throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
+    }
+    // The biometric Edge Function verifies the device signature and, for Super Admin,
+    // the canonical server-side BIN challenge before returning this Supabase session.
+    const profile = await this.getAdminProfile(authSession.access_token);
+    if (!profile || !profile.authenticated || !profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
+    if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
+    pendingSuperAdminContext = null;
+    pendingBinChangeSession = null;
+    saveStoredSupabaseAuthSession(authSession);
+    setSupabaseAuthToken(authSession.access_token);
+    const role = (profile.role || "OPERATOR") as UserRole;
+    const session: UserSession = {
+      userId: profile.admin_id || authSession.user.id,
+      email: profile.email || authSession.user.email || "",
+      fullName: profile.full_name || profile.username || authSession.user.email || "",
+      role,
+      permissions: profile.permissions || [],
+      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+    inMemorySession = session;
+    const storage = getLocalStorage();
+    if (storage) storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    return session;
   }
 
   async verifySuperAdminBin(bin: string): Promise<UserSession | null> {

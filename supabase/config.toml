@@ -45,3 +45,6 @@ verify_jwt = false
 
 [functions.native-push]
 verify_jwt = false
+
+[functions.account-biometric]
+verify_jwt = false
