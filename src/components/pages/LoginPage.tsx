@@ -12,6 +12,7 @@ import {
   Moon,
   Languages,
   Shield,
+  Fingerprint,
   Lock,
   Mail,
   Key,
@@ -218,7 +219,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       if (!authSession?.access_token || !authSession.refresh_token) throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
       await authService.acceptBiometricSession(authSession);
       setBin(""); setShowBiometricBin(false); setPassword("");
-      setPendingRememberIdentifier(identifier);
+      if (readSavedAdminAccounts().some((item) => item.toLowerCase() === identifier.toLowerCase())) {
+        await finishSuccessfulLogin(identifier, false);
+      } else {
+        setPendingRememberIdentifier(identifier);
+      }
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
       if (code === "BIN_REQUIRED") {
@@ -230,6 +235,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
         setError(locale === "en" ? "The BIN is incorrect or locked." : "رمز BIN غير صحيح أو تم تجميده.");
       } else if (code === "BIOMETRIC_CANCELLED") {
         setError(locale === "en" ? "Fingerprint verification was cancelled." : "تم إلغاء التحقق بالبصمة.");
+      } else if (code === "STALE_BIOMETRIC_SESSION") {
+        setError(locale === "en" ? "The previous sign-in session is still being finalized. Wait a moment and try fingerprint sign-in again." : "ما زال النظام ينهي جلسة الدخول السابقة. انتظر لحظة ثم حاول الدخول بالبصمة مجددًا.");
+      } else if (code === "BIOMETRIC_PROOF_INVALID") {
+        setError(locale === "en" ? "This fingerprint key is no longer valid. Sign in with your password and enable fingerprint again." : "مفتاح البصمة لم يعد صالحًا. سجّل الدخول بكلمة السر ثم فعّل البصمة مجددًا.");
+      } else if (code === "BIOMETRIC_SESSION_UNAVAILABLE" || code === "BIOMETRIC_SERVICE_UNAVAILABLE") {
+        setError(locale === "en" ? "The secure sign-in service is temporarily unavailable. Your password remains available." : "خدمة الدخول الآمن غير متاحة مؤقتًا. يمكنك الدخول بكلمة السر.");
       } else {
         setError(locale === "en" ? "Biometric sign-in failed. Use your password and try again." : "فشل الدخول بالبصمة. استخدم كلمة السر وحاول مرة أخرى.");
       }
@@ -816,7 +827,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
                   {Capacitor.isNativePlatform() && (
                     <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleBiometricLogin()}
                       className="w-full text-xs py-2.5 rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
-                      <Shield className="w-4 h-4 mr-1.5" />
+                      <Fingerprint className="w-4 h-4 mr-1.5" />
                       {isSubmitting ? (locale === "en" ? "Verifying fingerprint..." : "جارٍ التحقق بالبصمة...") : (locale === "en" ? "Sign in with fingerprint" : "الدخول بالبصمة")}
                     </Button>
                   )}
