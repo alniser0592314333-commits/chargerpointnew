@@ -19,23 +19,33 @@ function derToRaw(input: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBuffer> |
   if (input[1] & 0x80) p += (input[1] & 0x7f);
   if (input[p++] !== 0x02) return null;
   const rLen = input[p++];
-  let r = input.slice(p, p + rLen); p += rLen;
+  const rBytes = input.slice(p, p + rLen); p += rLen;
   if (input[p++] !== 0x02) return null;
   const sLen = input[p++];
-  let s = input.slice(p, p + sLen);
-  const trim = (x: Uint8Array) => x.length > 32 && x[0] === 0 ? x.slice(1) : x;
-  r = trim(r); s = trim(s);
+  const sBytes = input.slice(p, p + sLen);
+  const trim = (x: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBuffer> => {
+    const trimmed = x.length > 32 && x[0] === 0 ? x.slice(1) : x;
+    const out = new Uint8Array(trimmed.length);
+    out.set(trimmed);
+    return out;
+  };
+  const r = trim(rBytes);
+  const s = trim(sBytes);
   if (r.length > 32 || s.length > 32) return null;
   const raw = new Uint8Array(64);
-  raw.set(r, 32 - r.length); raw.set(s, 64 - s.length);
+  raw.set(r, 32 - r.length);
+  raw.set(s, 64 - s.length);
   return raw;
 }
 async function verifySignature(spki: string, challenge: string, signatureB64: string) {
   try {
-    const key = await crypto.subtle.importKey("spki", decodeB64(spki), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    const keyBytes = decodeB64(spki);
+    const key = await crypto.subtle.importKey("spki", new Uint8Array(keyBytes), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
     const sig = derToRaw(decodeB64(signatureB64));
     if (!sig) return false;
-    const signatureBytes = new Uint8Array(sig);\n    const challengeBytes = new TextEncoder().encode(challenge);\n    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, signatureBytes, challengeBytes);
+    const signatureBytes = new Uint8Array(sig);
+    const challengeBytes = new TextEncoder().encode(challenge);
+    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, signatureBytes, challengeBytes);
   } catch { return false; }
 }
 function jwtClaims(token: string): Record<string, unknown> | null {
