@@ -70,6 +70,12 @@ jobs:
 
           migration = Path("supabase/migrations/20261020200000_native_push_notifications.sql").read_text()
           parse_sql(migration)
+          biometric_migration = Path("supabase/migrations/20261022100000_server_verified_biometric_credentials.sql").read_text()
+          parse_sql(biometric_migration)
+          for table in ("account_biometric_credentials", "account_biometric_challenges"):
+              if f"REVOKE ALL ON TABLE public.{table} FROM PUBLIC, anon, authenticated" not in biometric_migration:
+                  raise SystemExit(f"Biometric table {table} is missing direct-access revocation")
+          print("Biometric credential schema parses and blocks direct anon/authenticated access.")
           fixes = sorted(Path("supabase/migrations").glob("*fix_native_push*.sql"))
           if not fixes:
               raise SystemExit("Native push pg_net fix migration is missing")
