@@ -49,10 +49,14 @@ export const AdminBiometricSettings: React.FC = () => {
     event.preventDefault(); setBusy(true); setError(''); setMessage('');
     try {
       if (!available || !Capacitor.isNativePlatform()) throw new Error('BIOMETRIC_NOT_AVAILABLE');
-      if (!password || !/^\d{4,}$/.test(bin.trim())) throw new Error('PASSWORD_AND_BIN_REQUIRED');
-      const verified = await authService.verifyCurrentPassword(email, password, bin.trim());
-      setPassword(''); setBin('');
-      if (!verified.success) throw new Error(verified.error || 'IDENTITY_VERIFICATION_FAILED');
+      // Verify password + BIN once before issuing the Super Admin email challenge.
+      // The OTP step then continues this same in-memory flow without asking the user to retype them.
+      if (!superAdmin || !otpSent) {
+        if (!password || !/^\d{4,}$/.test(bin.trim())) throw new Error('PASSWORD_AND_BIN_REQUIRED');
+        const verified = await authService.verifyCurrentPassword(email, password, bin.trim());
+        setPassword(''); setBin('');
+        if (!verified.success) throw new Error(verified.error || 'IDENTITY_VERIFICATION_FAILED');
+      }
       let accessToken = (await authService.getSupabaseAuthSession())?.access_token;
       if (superAdmin) {
         if (!otpSent) {
