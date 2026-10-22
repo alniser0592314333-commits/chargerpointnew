@@ -175,7 +175,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const backgroundLoadInFlight = useRef(false);
 
   const load = useCallback(async (manual = false, background = false) => {
-    // The 5-second refresh cadence must never cancel its own previous request.
+    // Background refreshes are deliberately conservative; native push and foreground/focus events refresh sooner.
     // A single background read at a time keeps the newest verified snapshot eligible to render.
     if (background && backgroundLoadInFlight.current) return;
     if (background) backgroundLoadInFlight.current = true;
@@ -322,9 +322,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const refreshVisiblePortal = () => {
       if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
       void load(false, true);
-      if (data) void loadActivity(true);
     };
-    const interval = window.setInterval(refreshVisiblePortal, 2000);
+    const interval = window.setInterval(refreshVisiblePortal, 15000);
     const onVisibilityChange = () => { if (document.visibilityState === 'visible') refreshVisiblePortal(); };
     window.addEventListener('focus', refreshVisiblePortal);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -334,6 +333,17 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [online, data?.customer_code, load, loadActivity]);
+
+  // Financial activity is larger and changes less often than the portal status.
+  // Refresh it separately to avoid downloading the activity ledger on every portal poll.
+  useEffect(() => {
+    if (!online || !data) return;
+    const refreshActivity = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) void loadActivity(true);
+    };
+    const interval = window.setInterval(refreshActivity, 30000);
+    return () => window.clearInterval(interval);
+  }, [online, data?.customer_code, loadActivity]);
 
   const markNotificationsSeen = () => {
     const ids = eventRows.map((event) => event.id);
