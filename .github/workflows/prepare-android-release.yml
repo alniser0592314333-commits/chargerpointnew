@@ -284,11 +284,15 @@ jobs:
           """)
           drawable = res / "drawable"
           drawable.mkdir(parents=True, exist_ok=True)
+          logo_folder = res / "drawable-nodpi"
+          logo_folder.mkdir(parents=True, exist_ok=True)
+          cairosvg.svg2png(url=str(full_icon), write_to=str(logo_folder / "cp_launch_logo.png"),
+                           output_width=144, output_height=144)
           (drawable / "cp_launch_background.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
           <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
               <item android:drawable="@color/cp_launch_background_color" />
               <item>
-                  <bitmap android:src="@mipmap/ic_launcher" android:gravity="center" />
+                  <bitmap android:src="@drawable/cp_launch_logo" android:gravity="center" />
               </item>
           </layer-list>
           """)
