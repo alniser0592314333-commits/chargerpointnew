@@ -36,12 +36,17 @@ export const isNativeBiometricAvailable = async () => {
 export async function enrollAccountBiometric(accessToken: string, deviceLabel = 'Android device') {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const alias = randomAlias();
-  const { challengeId, challenge } = await callEndpoint('enroll-challenge', {}, accessToken);
-  const { publicKey } = await NativeBiometric.createKey({ alias });
-  const { signature } = await NativeBiometric.signChallenge({ alias, challenge, title: 'تفعيل الدخول بالبصمة', subtitle: 'أكد هويتك لتفعيل الدخول الآمن' });
-  const result = await callEndpoint('enroll-verify', { challengeId, publicKey, signature, credentialId: alias, deviceLabel }, accessToken);
-  try { localStorage.setItem('cp_biometric_alias_' + result.accountType, alias); } catch {}
-  return result;
+  try {
+    const { challengeId, challenge } = await callEndpoint('enroll-challenge', {}, accessToken);
+    const { publicKey } = await NativeBiometric.createKey({ alias });
+    const { signature } = await NativeBiometric.signChallenge({ alias, challenge, title: 'تفعيل الدخول بالبصمة', subtitle: 'أكد هويتك لتفعيل الدخول الآمن' });
+    const result = await callEndpoint('enroll-verify', { challengeId, publicKey, signature, credentialId: alias, deviceLabel }, accessToken);
+    try { localStorage.setItem('cp_biometric_alias_' + result.accountType, alias); } catch {}
+    return result;
+  } catch (error) {
+    await NativeBiometric.deleteKey({ alias }).catch(() => undefined);
+    throw error;
+  }
 }
 export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier: string, bin?: string) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
@@ -64,7 +69,7 @@ export async function revokeAccountBiometric(accessToken: string) {
   return result;
 }
 
-export async function getAccountBiometricStatus(accessToken: string): Promise<{ enrolled: boolean; credentialId?: string | null }> {
+export async function getAccountBiometricStatus(accessToken: string): Promise<{ enrolled: boolean; credentialId?: string | null; keyAlias?: string | null }> {
   const result = await callEndpoint('status', {}, accessToken);
-  return { enrolled: result.enrolled === true, credentialId: typeof result.credentialId === 'string' ? result.credentialId : null };
+  return { enrolled: result.enrolled === true, credentialId: typeof result.credentialId === 'string' ? result.credentialId : null, keyAlias: typeof result.keyAlias === 'string' ? result.keyAlias : null };
 }
