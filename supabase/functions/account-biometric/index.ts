@@ -10,7 +10,7 @@ const reply = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: cors });
 const normalize = (v: unknown, max = 256) =>
   typeof v === "string" && v.length <= max ? v.trim() : "";
-const decodeB64 = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+const decodeB64 = (s: string) => { const v = s.replace(/-/g, "+").replace(/_/g, "/"); return Uint8Array.from(atob(v.padEnd(Math.ceil(v.length / 4) * 4, "=")), c => c.charCodeAt(0)); };
 const encodeB64 = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 function derToRaw(input: Uint8Array): Uint8Array | null {
   // Android's SHA256withECDSA returns ASN.1 DER; WebCrypto expects fixed-width r||s.
@@ -137,7 +137,7 @@ Deno.serve(async (req: Request) => {
         const { data: link } = await admin.from("customer_account_links").select("customer_id,auth_user_id,login_email,account_status").eq("customer_id",customerId).maybeSingle();
         if (link?.account_status === "ACTIVE") identity = {type,id:link.customer_id,uid:link.auth_user_id,email:link.login_email};
       } else {
-        const { data: row } = await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").or("username.ilike."+identifier+",email.ilike."+identifier).maybeSingle();
+        const { data: row } = identifier.includes("@")\n          ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()\n          : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("username",identifier).maybeSingle();
         if (row?.is_active === true) {
           const { data: u } = await admin.auth.admin.getUserById(row.auth_user_id);
           const email = u.user?.email || row.email;
