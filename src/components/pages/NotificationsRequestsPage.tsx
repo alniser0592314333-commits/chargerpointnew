@@ -161,7 +161,7 @@ export const NotificationsRequestsPage: React.FC = () => {
       if (disposed || document.visibilityState !== 'visible' || navigator.onLine === false) return;
       void loadPending(false, true);
     };
-    const timer = window.setInterval(refreshVisible, 2500);
+    const timer = window.setInterval(refreshVisible, 15000);
     window.addEventListener('focus', refreshVisible);
     document.addEventListener('visibilitychange', refreshVisible);
     window.addEventListener('online', refreshVisible);
