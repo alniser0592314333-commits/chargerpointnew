@@ -516,6 +516,18 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   if (mode === 'portal') {
     return (
       <div className="relative">
+        {showBiometricSetup && (
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="customer-biometric-title" dir={isAr ? 'rtl' : 'ltr'}>
+            <div className="w-full max-w-sm space-y-4 rounded-3xl border border-[#b9d9d8] bg-[#f7fbfa] p-6 text-center text-[#244b55] shadow-2xl dark:border-[#2b5267] dark:bg-[#0b2935] dark:text-[#daf1de]">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#1a8a94]/10 text-[#1a8a94]"><ShieldCheck className="h-7 w-7" /></div>
+              <h2 id="customer-biometric-title" className="text-lg font-extrabold">{t('تفعيل الدخول بالبصمة؟', 'Enable fingerprint sign-in?')}</h2>
+              <p className="text-sm leading-6 text-[#5d7782] dark:text-[#9bb8bf]">{t('ستبقى كلمة السر متاحة دائمًا. تُحفظ البصمة على جهازك فقط، ويتحقق الخادم من توقيع تشفيري مربوط بهذا الحساب.', 'Your password will always remain available. Your fingerprint stays on the device; the server verifies a cryptographic signature bound to this account.')}</p>
+              {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p>}
+              <button type="button" disabled={biometricBusy} onClick={() => void enableBiometric()} className="cp-auth__btn">{biometricBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}{t('تفعيل البصمة', 'Enable fingerprint')}</button>
+              <button type="button" disabled={biometricBusy} onClick={() => { setShowBiometricSetup(false); setError(''); }} className="w-full rounded-xl border border-[#b9d9d8] px-4 py-3 text-sm font-semibold text-[#5d7782] dark:border-[#2b5267] dark:text-[#9bb8bf]">{t('ليس الآن، سأستخدم كلمة السر', 'Not now, I’ll use my password')}</button>
+            </div>
+          </div>
+        )}
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
         <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />
         {pendingRememberCustomerAccount && (
