@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Version to build (X.Y.Z, for example 1.0.2)"
+        description: "Version to build (X.Y.Z, for example 1.0.4)"
         required: true
-        default: "1.0.2"
+        default: "1.0.4"
         type: string
 
 permissions:
@@ -248,7 +248,7 @@ jobs:
           ''')
 
           # Keep the customer launcher label concise in both Android locales.
-          base_name = "Charging Point" if variant == "customer" else "Charging Point Admin"
+          base_name = "Charger Point" if variant == "customer" else "Charger Point Admin"
           arabic_name = "نقطة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
           strings_file = values / "strings.xml"
           strings = strings_file.read_text(encoding="utf-8")
@@ -277,6 +277,66 @@ jobs:
                           f'    <string name="app_name">{app_name}</string>\n</resources>\n')
               localized.write_text(text, encoding="utf-8")
           print(f"Applied launcher branding and localized app name for {variant}")
+
+          # Keep Android's native launch window on-brand while the WebView and React app start.
+          (values / "cp_launch_colors.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
+          <resources><color name="cp_launch_background_color">#082b32</color></resources>
+          """)
+          drawable = res / "drawable"
+          drawable.mkdir(parents=True, exist_ok=True)
+          logo_folder = res / "drawable-nodpi"
+          logo_folder.mkdir(parents=True, exist_ok=True)
+          cairosvg.svg2png(url=str(full_icon), write_to=str(logo_folder / "cp_launch_logo.png"),
+                           output_width=144, output_height=144)
+          (drawable / "cp_launch_background.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
+          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item android:drawable="@color/cp_launch_background_color" />
+              <item>
+                  <bitmap android:src="@drawable/cp_launch_logo" android:gravity="center" />
+              </item>
+          </layer-list>
+          """)
+
+          launch_style = re.compile(r'(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)(.*?)(</style>)', re.S)
+          launch_style_patched = False
+          for styles_path in (values / "styles.xml", res / "values-v31" / "styles.xml"):
+              if not styles_path.is_file():
+                  continue
+              style_text = styles_path.read_text(encoding="utf-8")
+              def patch_launch(match):
+                  body = match.group(2)
+                  for item_name, item_value in (
+                      ("android:background", "@drawable/cp_launch_background"),
+                      ("windowSplashScreenBackground", "@color/cp_launch_background_color"),
+                      ("windowSplashScreenAnimatedIcon", "@mipmap/ic_launcher"),
+                  ):
+                      item = f'<item name="{item_name}">{item_value}</item>'
+                      item_pattern = re.compile(r'<item name="' + re.escape(item_name) + r'">.*?</item>', re.S)
+                      if item_pattern.search(body):
+                          body = item_pattern.sub(item, body, count=1)
+                      else:
+                          body += "\n        " + item
+                  return match.group(1) + body + match.group(3)
+              updated, count = launch_style.subn(patch_launch, style_text, count=1)
+              if count:
+                  styles_path.write_text(updated, encoding="utf-8")
+                  launch_style_patched = True
+
+              # The post-splash application window also gets a dark backing color so
+              # Android/WebView initialization cannot expose the default white frame.
+              main_style = re.compile(r'(<style name="AppTheme\.NoActionBar"[^>]*>)(.*?)(</style>)', re.S)
+              def patch_main(match):
+                  body = match.group(2)
+                  item = '<item name="android:windowBackground">@color/cp_launch_background_color</item>'
+                  item_pattern = re.compile(r'<item name="android:windowBackground">.*?</item>', re.S)
+                  body = item_pattern.sub(item, body, count=1) if item_pattern.search(body) else body + "\n        " + item
+                  return match.group(1) + body + match.group(3)
+              main_updated, main_count = main_style.subn(patch_main, styles_path.read_text(encoding="utf-8"), count=1)
+              if main_count:
+                  styles_path.write_text(main_updated, encoding="utf-8")
+          if not launch_style_patched:
+              raise SystemExit("Could not locate AppTheme.NoActionBarLaunch to remove the white native startup screen.")
+          print("Configured dark branded native launch screen and window background to avoid the white startup flash.")
           PY
 
       - name: Configure permanent signing key and R8 obfuscation

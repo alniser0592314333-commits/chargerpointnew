@@ -259,10 +259,12 @@ Deno.serve(async (req: Request) => {
           .eq("customer_id",cred.subject_id).maybeSingle();
         const currentIat = Number(currentSession?.auth_issued_at || 0);
         const nowMs = Date.now();
-        if (currentIat > Math.floor(nowMs / 1000)) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
-        const waitMs = currentIat >= Math.floor(nowMs / 1000) ? (currentIat + 1) * 1000 - nowMs + 25 : 0;
-        if (waitMs > 0 && waitMs <= 2000) await new Promise((resolve) => setTimeout(resolve, waitMs));
-        else if (waitMs > 2000) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
+        // Auth-issued timestamps have one-second precision and the Edge Runtime may
+        // observe a small clock skew. Wait for the previous session's iat to be
+        // unambiguously in the past instead of failing the first biometric attempt.
+        const waitMs = currentIat >= Math.floor(nowMs / 1000) ? (currentIat + 1) * 1000 - nowMs + 50 : 0;
+        if (waitMs > 0 && waitMs <= 3000) await new Promise((resolve) => setTimeout(resolve, waitMs));
+        else if (waitMs > 3000) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
       }
       const {data: link} = await admin.auth.admin.generateLink({type:"magiclink",email});
       const tokenHash = link?.properties?.hashed_token;
