@@ -803,6 +803,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
                     </div>
                   </div>
 
+                  {showBiometricBin && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-700 dark:text-[#daf1de] block">
+                        {locale === "en" ? "Super Admin BIN (required only for Super Admin)" : "رمز BIN للسوبر أدمن (مطلوب للسوبر أدمن فقط)"}
+                      </label>
+                      <input type="password" inputMode="numeric" autoComplete="off" value={bin} onChange={(e) => setBin(e.target.value)} maxLength={10} className="w-full text-xs bg-gray-50 dark:bg-[#06201c] border border-gray-200 dark:border-[#14423b] rounded-xl py-2.5 px-3 text-gray-900 dark:text-[#daf1de] font-mono" placeholder="••••••" />
+                    </div>
+                  )}
+                  {Capacitor.isNativePlatform() && (
+                    <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleBiometricLogin()}
+                      className="w-full text-xs py-2.5 rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                      <Shield className="w-4 h-4 mr-1.5" />
+                      {isSubmitting ? (locale === "en" ? "Verifying fingerprint..." : "جارٍ التحقق بالبصمة...") : (locale === "en" ? "Sign in with fingerprint" : "الدخول بالبصمة")}
+                    </Button>
+                  )}
+
                   {/* Sign In Button */}
                   <Button
                     type="submit"
