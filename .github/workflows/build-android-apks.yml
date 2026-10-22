@@ -157,6 +157,9 @@ jobs:
       - name: Generate native Android project
         run: npx cap add android
 
+      - name: Sync Capacitor assets
+        run: npx cap sync android
+
       - name: Install server-verified Android biometric signing plugin
         run: |
           python3 - <<'PY'
@@ -270,9 +273,6 @@ jobs:
               if count != 1:
                   raise SystemExit("Could not safely add CAMERA permission to AndroidManifest.xml")
           manifest.write_text(content)
-
-      - name: Sync Capacitor assets
-        run: npx cap sync android
 
       - name: Sync Capacitor assets
         run: npx cap sync android
