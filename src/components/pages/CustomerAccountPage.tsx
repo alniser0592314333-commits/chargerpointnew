@@ -407,7 +407,20 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       }
       if (loginData.must_change_password) { setMode('force-change'); setMessage(t('تمت الموافقة على طلب إعادة تعيين كلمة المرور. عيّن كلمة مرور جديدة للمتابعة.', 'Your password reset request was approved. Set a new password to continue.')); }
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
-      else setMode('portal');
+      else {
+        setMode('portal');
+        if (Capacitor.isNativePlatform()) {
+          try {
+            const { data: authState } = await customerAuth.auth.getSession();
+            if (authState.session?.access_token) {
+              const status = await getAccountBiometricStatus(authState.session.access_token);
+              let localAlias = '';
+              try { localAlias = localStorage.getItem('cp_biometric_alias_customer') || ''; } catch {}
+              if (!status.enrolled || !status.keyAlias || localAlias !== status.keyAlias) setShowBiometricSetup(true);
+            }
+          } catch { /* Password sign-in remains successful if optional biometric setup is unavailable. */ }
+        }
+      }
     } finally { setBusy(false); }
   };
 
