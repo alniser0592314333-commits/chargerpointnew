@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
-import { enrollAccountBiometric, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
+import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -388,6 +388,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       }
       await saveSessionExpiry(loginToken, loginData.session_expires_at);
       if (sessionError) { setErrorMessage(sessionError); return; }
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const biometricStatus = await getAccountBiometricStatus(loginData.session.access_token);
+          if (!biometricStatus.enrolled) setShowBiometricSetup(true);
+        } catch { /* Password sign-in remains available if biometric status cannot be checked. */ }
+      }
       const rememberedToken = typeof loginData.customer_qr_token === 'string' && loginData.customer_qr_token.length >= 24
         ? loginData.customer_qr_token
         : loginToken;
