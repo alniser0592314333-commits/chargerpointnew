@@ -126,6 +126,7 @@ Deno.serve(async (req: Request) => {
       const challengeId = normalize(input.challengeId, 64);
       const publicKey = normalize(input.publicKey, 4096);
       const signature = normalize(input.signature, 2048);
+      const keyAlias = normalize(input.credentialId, 32);
       if (!identity || !challengeId || !publicKey || !signature || !/^[a-f0-9]{32}$/.test(keyAlias)) return reply(400,{ok:false,error:"INVALID_REQUEST"});
       const consumed = await consumeAndVerify(challengeId,signature,"enroll");
       if (!consumed || consumed.challenge.auth_user_id !== identity.uid || consumed.challenge.subject_id !== identity.id ||
@@ -134,8 +135,8 @@ Deno.serve(async (req: Request) => {
         account_type:identity.type, subject_id:identity.id, auth_user_id:identity.uid,
         public_key_spki:publicKey, key_alias:keyAlias, device_label:normalize(input.deviceLabel,120)||"Android device",
         revoked_at:null, last_used_at:new Date().toISOString(),
-      },{onConflict:"account_type,subject_id"}).select("id").single();
-      return !error && data ? reply(200,{ok:true,credentialId:data.id}) : reply(503,{ok:false,error:"BIOMETRIC_ENROLLMENT_FAILED"});
+      },{onConflict:"account_type,subject_id"}).select("id,key_alias").single();
+      return !error && data ? reply(200,{ok:true,credentialId:data.id,keyAlias:data.key_alias}) : reply(503,{ok:false,error:"BIOMETRIC_ENROLLMENT_FAILED"});
     }
     if (action === "login-challenge") {
       const type = normalize(input.accountType,16);
