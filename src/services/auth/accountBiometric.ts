@@ -3,7 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 export interface AccountBiometricNativePlugin {
   isAvailable(): Promise<{ available: boolean }>;
   createKey(options: { alias: string }): Promise<{ publicKey: string }>;
-  signChallenge(options: { alias: string; challenge: string; title: string; subtitle: string }): Promise<{ signature: string }>;
+  signChallenge(options: { alias: string; challenge: string; title: string; subtitle: string; negativeButtonText: string }): Promise<{ signature: string }>;
   deleteKey(options: { alias: string }): Promise<{ deleted: boolean }>;
 }
 const NativeBiometric = registerPlugin<AccountBiometricNativePlugin>('AccountBiometric');
@@ -11,6 +11,12 @@ const b64url = (value: Uint8Array) => {
   let raw = '';
   value.forEach((b) => { raw += String.fromCharCode(b); });
   return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+};
+const promptLocale = () => {
+  try {
+    const value = document.documentElement.lang || localStorage.getItem('sys_locale') || 'ar';
+    return value.toLowerCase().startsWith('en') ? 'en' : 'ar';
+  } catch { return 'ar'; }
 };
 const randomAlias = () => {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -43,7 +49,13 @@ export async function enrollAccountBiometric(
   try {
     const { challengeId, challenge } = await callEndpoint('enroll-challenge', settingsReauth ? { settingsReauth: true, ...settingsReauth } : {}, accessToken);
     const { publicKey } = await NativeBiometric.createKey({ alias });
-    const { signature } = await NativeBiometric.signChallenge({ alias, challenge, title: 'تفعيل الدخول بالبصمة', subtitle: 'أكد هويتك لتفعيل الدخول الآمن' });
+    const en = promptLocale() === 'en';
+    const { signature } = await NativeBiometric.signChallenge({
+      alias, challenge,
+      title: en ? 'Enable fingerprint sign-in' : 'تفعيل الدخول بالبصمة',
+      subtitle: en ? 'Confirm your identity to enable secure sign-in' : 'أكد هويتك لتفعيل الدخول الآمن',
+      negativeButtonText: en ? 'Cancel' : 'إلغاء',
+    });
     const result = await callEndpoint('enroll-verify', { challengeId, publicKey, signature, credentialId: alias, deviceLabel }, accessToken);
     // Re-enrollment replaces the server-side credential. Remove the previous local
     // private key only after the new credential has been accepted by the server.
@@ -65,7 +77,13 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const { challengeId, challenge, credentialId, requiresBin } = await callEndpoint('login-challenge', { accountType, identifier });
   if (requiresBin && !bin) throw new Error('BIN_REQUIRED');
-  const { signature } = await NativeBiometric.signChallenge({ alias: String(credentialId).replace(/-/g, ''), challenge, title: 'تسجيل الدخول بالبصمة', subtitle: 'أكد هويتك لفتح حسابك' });
+  const en = promptLocale() === 'en';
+  const { signature } = await NativeBiometric.signChallenge({
+    alias: String(credentialId).replace(/-/g, ''), challenge,
+    title: en ? 'Sign in with fingerprint' : 'تسجيل الدخول بالبصمة',
+    subtitle: en ? 'Confirm your identity to open your account' : 'أكد هويتك لفتح حسابك',
+    negativeButtonText: en ? 'Cancel' : 'إلغاء',
+  });
   return await callEndpoint('login-verify', { challengeId, credentialId, signature, ...(bin ? { bin } : {}) });
 }
 export async function revokeAccountBiometric(accessToken: string) {
