@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Version to build (X.Y.Z, for example 1.0.3)"
+        description: "Version to build (X.Y.Z, for example 1.0.4)"
         required: true
-        default: "1.0.3"
+        default: "1.0.4"
         type: string
 
 permissions:
