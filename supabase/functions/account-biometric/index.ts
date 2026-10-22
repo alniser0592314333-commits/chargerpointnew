@@ -141,7 +141,9 @@ Deno.serve(async (req: Request) => {
         const { data: link } = await admin.from("customer_account_links").select("customer_id,auth_user_id,login_email,account_status").eq("customer_id",customerId).maybeSingle();
         if (link?.account_status === "ACTIVE") identity = {type,id:link.customer_id,uid:link.auth_user_id,email:link.login_email};
       } else {
-        const { data: row } = identifier.includes("@")\n          ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()\n          : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("username",identifier).maybeSingle();
+        const { data: row } = identifier.includes("@")
+          ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()
+          : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("username",identifier).maybeSingle();
         if (row?.is_active === true) {
           const { data: u } = await admin.auth.admin.getUserById(row.auth_user_id);
           const email = u.user?.email || row.email;
