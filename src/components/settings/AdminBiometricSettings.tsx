@@ -51,7 +51,7 @@ export const AdminBiometricSettings: React.FC = () => {
       if (!available || !Capacitor.isNativePlatform()) throw new Error('BIOMETRIC_NOT_AVAILABLE');
       const currentPassword = password;
       const currentBin = bin.trim();
-      if (!currentPassword || !/^\\d{4,}$/.test(currentBin)) throw new Error('PASSWORD_AND_BIN_REQUIRED');
+      if (!currentPassword || !/^\d{4,}$/.test(currentBin)) throw new Error('PASSWORD_AND_BIN_REQUIRED');
 
       // Before sending the Super Admin email code, verify the password and BIN through
       // the existing server-authoritative flow. The final enrollment request verifies
@@ -68,7 +68,7 @@ export const AdminBiometricSettings: React.FC = () => {
         return;
       }
 
-      if (superAdmin && !/^\\d{6}$/.test(otp.trim())) throw new Error('EMAIL_OTP_INVALID');
+      if (superAdmin && !/^\d{6}$/.test(otp.trim())) throw new Error('EMAIL_OTP_INVALID');
       const accessToken = (await authService.getSupabaseAuthSession())?.access_token;
       if (!accessToken) throw new Error('AUTH_REQUIRED');
       await enrollAccountBiometric(accessToken, 'ChargerPoint administrator', {
