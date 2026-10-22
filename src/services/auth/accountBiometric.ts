@@ -52,7 +52,15 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
 }
 export async function revokeAccountBiometric(accessToken: string) {
   const result = await callEndpoint('revoke', {}, accessToken);
-  try { localStorage.removeItem('cp_biometric_alias_customer'); localStorage.removeItem('cp_biometric_alias_admin'); } catch {}
+  try {
+    for (const type of ['customer', 'admin']) {
+      const alias = localStorage.getItem('cp_biometric_alias_' + type);
+      if (alias && /^[a-f0-9]{32}$/.test(alias) && Capacitor.isNativePlatform()) {
+        await NativeBiometric.deleteKey({ alias }).catch(() => undefined);
+      }
+      localStorage.removeItem('cp_biometric_alias_' + type);
+    }
+  } catch {}
   return result;
 }
 
