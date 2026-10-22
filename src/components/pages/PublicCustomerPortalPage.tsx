@@ -210,6 +210,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             : {}),
         }
       );
+      if (requestId !== requestGeneration.current) return;
       portalVersionRef.current = typeof responseResult?.version === 'string'
         ? { token, version: responseResult.version }
         : null;
@@ -222,8 +223,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         return;
       }
       const response = responseResult?.data ?? null;
-      // Ignore stale requests and never restore financial data after connectivity drops.
-      if (requestId !== requestGeneration.current) return;
+      // Never restore financial data after connectivity drops.
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setServerAvailable(false);
         const cached = readCachedPortalData(token);
