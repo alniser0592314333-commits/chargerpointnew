@@ -711,7 +711,13 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                         {eyeToggle}
                       </div>
                     </label>
-                    {Capacitor.isNativePlatform() && mode === 'login' && (\n                      <button type="button" disabled={busy || biometricBusy} onClick={() => void submitBiometricLogin()} className="cp-auth__btn cp-auth__btn--ghost group">\n                        {biometricBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}\n                        {biometricBusy ? t('جارٍ التحقق بالبصمة…', 'Verifying fingerprint…') : t('الدخول بالبصمة', 'Sign in with fingerprint')}\n                      </button>\n                    )}\n                    <div className="flex justify-end text-xs">
+                    {Capacitor.isNativePlatform() && mode === 'login' && (
+                      <button type="button" disabled={busy || biometricBusy} onClick={() => void submitBiometricLogin()} className="cp-auth__btn cp-auth__btn--ghost group">
+                        {biometricBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {biometricBusy ? t('جارٍ التحقق بالبصمة…', 'Verifying fingerprint…') : t('الدخول بالبصمة', 'Sign in with fingerprint')}
+                      </button>
+                    )}
+                    <div className="flex justify-end text-xs">
                       <button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="cp-auth__link">{t('نسيت كلمة السر؟', 'Forgot password?')}</button>
                     </div>
                     <button disabled={busy} type="submit" className="cp-auth__btn group">
