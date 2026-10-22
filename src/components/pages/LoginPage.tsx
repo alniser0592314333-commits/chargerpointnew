@@ -187,7 +187,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
         if (currentAuth?.access_token) {
           try {
             const status = await getAccountBiometricStatus(currentAuth.access_token);
-            if (!status.enrolled && window.confirm(locale === "en"
+            let localAlias = "";
+            try { localAlias = localStorage.getItem("cp_biometric_alias_admin") || ""; } catch {}
+            if ((!status.enrolled || !status.keyAlias || localAlias !== status.keyAlias) && window.confirm(locale === "en"
               ? "Enable fingerprint sign-in for this administrator account on this device?"
               : "هل تريد تفعيل الدخول بالبصمة لحساب الإدارة على هذا الجهاز؟")) {
               await enrollAccountBiometric(currentAuth.access_token, "ChargerPoint administrator");
