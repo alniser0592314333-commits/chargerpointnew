@@ -41,7 +41,16 @@ export async function enrollAccountBiometric(accessToken: string, deviceLabel = 
     const { publicKey } = await NativeBiometric.createKey({ alias });
     const { signature } = await NativeBiometric.signChallenge({ alias, challenge, title: 'تفعيل الدخول بالبصمة', subtitle: 'أكد هويتك لتفعيل الدخول الآمن' });
     const result = await callEndpoint('enroll-verify', { challengeId, publicKey, signature, credentialId: alias, deviceLabel }, accessToken);
-    try { localStorage.setItem('cp_biometric_alias_' + result.accountType, alias); } catch {}
+    // Re-enrollment replaces the server-side credential. Remove the previous local
+    // private key only after the new credential has been accepted by the server.
+    try {
+      const storageKey = 'cp_biometric_alias_' + result.accountType;
+      const previousAlias = localStorage.getItem(storageKey);
+      if (previousAlias && previousAlias !== alias && /^[a-f0-9]{32}$/.test(previousAlias)) {
+        await NativeBiometric.deleteKey({ alias: previousAlias }).catch(() => undefined);
+      }
+      localStorage.setItem(storageKey, alias);
+    } catch {}
     return result;
   } catch (error) {
     await NativeBiometric.deleteKey({ alias }).catch(() => undefined);
