@@ -77,8 +77,14 @@ Deno.serve(async (req: Request) => {
     if (error || !data.user) return null;
     const uid = data.user.id;
     const { data: customer } = await admin.from("customer_account_links")
-      .select("customer_id,auth_user_id,account_status,login_email").eq("auth_user_id", uid).maybeSingle();
-    if (customer && customer.account_status === "ACTIVE") return { type: "customer", id: customer.customer_id, uid, email: customer.login_email };
+      .select("customer_id,auth_user_id,account_status,login_email,must_change_password").eq("auth_user_id", uid).maybeSingle();
+    if (customer && customer.account_status === "ACTIVE") {
+      const { data: customerRecord } = await admin.from("customers")
+        .select("id,is_active,status,deleted_at").eq("id", customer.customer_id).maybeSingle();
+      if (customerRecord?.is_active === true && !customerRecord.deleted_at && customerRecord.status !== "DELETED") {
+        return { type: "customer", id: customer.customer_id, uid, email: customer.login_email, mustChangePassword: customer.must_change_password === true };
+      }
+    }
     const { data: adminRow } = await admin.from("admins")
       .select("id,auth_user_id,email,username,role,is_active").eq("auth_user_id", uid).maybeSingle();
     if (adminRow?.is_active === true) {
@@ -145,11 +151,15 @@ Deno.serve(async (req: Request) => {
       let identity: any = null;
       if (type === "customer") {
         let customerId = identifier;
-        if (!/^[0-9a-f-]{36}$/i.test(identifier)) {
-          const { data: qr } = await admin.from("qr_tokens").select("target_id").eq("public_token",identifier).eq("token_type","CUSTOMER").eq("is_active",true).maybeSingle();
-          if (!qr) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
+        const isCustomerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
+        if (!isCustomerUuid) {
+          const { data: qr } = await admin.from("qr_tokens").select("target_id,expires_at")
+            .eq("public_token",identifier).eq("token_type","CUSTOMER").eq("is_active",true).maybeSingle();
+          if (!qr || (qr.expires_at && new Date(qr.expires_at).getTime() <= Date.now())) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
           customerId = qr.target_id;
         }
+        const { data: customerRecord } = await admin.from("customers").select("id,is_active,status,deleted_at").eq("id",customerId).maybeSingle();
+        if (!customerRecord || customerRecord.is_active !== true || customerRecord.deleted_at || customerRecord.status === "DELETED") return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
         const { data: link } = await admin.from("customer_account_links").select("customer_id,auth_user_id,login_email,account_status,must_change_password").eq("customer_id",customerId).maybeSingle();
         if (link?.account_status === "ACTIVE" && link.must_change_password !== true) identity = {type,id:link.customer_id,uid:link.auth_user_id,email:link.login_email};
       } else {
