@@ -118,11 +118,71 @@ Deno.serve(async (req: Request) => {
     if (consumeError || !updated) return null;
     return { challenge: c, valid: signature };
   };
+  const verifySettingsReauthentication = async (identity: any): Promise<{ ok: boolean; status: number; error: string }> => {
+    const password = normalize(input.password, 256);
+    if (!password || !identity.email) return { ok: false, status: 400, error: "REAUTHENTICATION_REQUIRED" };
+    const { data: passwordAuth, error: passwordError } = await auth.auth.signInWithPassword({
+      email: String(identity.email).toLowerCase(),
+      password,
+    });
+    if (passwordError || !passwordAuth.user || !passwordAuth.session ||
+        passwordAuth.user.id !== identity.uid) {
+      return { ok: false, status: 401, error: "REAUTHENTICATION_FAILED" };
+    }
+
+    if (identity.type === "admin") {
+      const bin = normalize(input.bin, 32);
+      if (!/^\\d{4,}$/.test(bin)) return { ok: false, status: 400, error: "BIN_REQUIRED" };
+      // Check BIN through the existing server-authoritative attempt tracker using the
+      // freshly password-authenticated session. This does not issue a BIN-change proof.
+      const binVerifier = createClient(url, anon, {
+        global: { headers: { Authorization: "Bearer " + passwordAuth.session.access_token } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data: binResult, error: binError } = await binVerifier.rpc(
+        "verify_admin_bin_with_attempt_tracking",
+        { p_bin: bin },
+      );
+      if (binError || !binResult || binResult.success !== true) {
+        const code = binResult?.status === "LOCKED" || binResult?.status === "FROZEN"
+          ? "BIN_LOCKED_FROZEN"
+          : "WRONG_BIN";
+        return { ok: false, status: 403, error: code };
+      }
+
+      const isSuperAdmin = ["SUPER_ADMIN", "Super Admin"].includes(String(identity.role));
+      const emailOtp = normalize(input.emailOtp, 6);
+      if (isSuperAdmin) {
+        if (!/^\\d{6}$/.test(emailOtp)) return { ok: false, status: 400, error: "EMAIL_OTP_REQUIRED" };
+        const { data: otpResult, error: otpError } = await auth.auth.verifyOtp({
+          email: String(identity.email).toLowerCase(),
+          token: emailOtp,
+          type: "email",
+        });
+        if (otpError || otpResult.user?.id !== identity.uid) {
+          return { ok: false, status: 401, error: "EMAIL_OTP_INVALID" };
+        }
+      } else if (emailOtp) {
+        return { ok: false, status: 400, error: "EMAIL_OTP_NOT_REQUIRED" };
+      }
+    } else if (normalize(input.bin, 32) || normalize(input.emailOtp, 6)) {
+      return { ok: false, status: 400, error: "INVALID_REAUTHENTICATION_FIELDS" };
+    }
+
+    return { ok: true, status: 200, error: "" };
+  };
   try {
     if (action === "enroll-challenge") {
       const identity = await getAuthenticatedIdentity();
       if (!identity) return reply(401, { ok:false, error:"AUTH_REQUIRED" });
       if (identity.type === "customer" && identity.mustChangePassword) return reply(403,{ok:false,error:"PASSWORD_CHANGE_REQUIRED"});
+      // Settings enrollment/re-enrollment must prove the current password. Admins must
+      // also verify their BIN, and Super Admin must consume an email OTP server-side.
+      // The first-login opt-in remains available without a second password prompt.
+      if (input.settingsReauth === true) {
+        const proof = await verifySettingsReauthentication(identity);
+        if (!proof.ok) return reply(proof.status,{ok:false,error:proof.error});
+      }
       // An authenticated password session may replace the account's single device key.
       // This lets a customer/admin recover after changing or resetting their phone.
       const c = await createChallenge(identity,"enroll",null);
