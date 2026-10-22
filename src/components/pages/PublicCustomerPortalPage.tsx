@@ -219,7 +219,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         refresh_token: verifiedSession.refresh_token,
       });
       if (savedSession.error || !savedSession.data.session) throw new Error('AUTH_REQUIRED');
-      await enrollAccountBiometric(savedSession.data.session.access_token, 'ChargerPoint customer');
+      await enrollAccountBiometric(savedSession.data.session.access_token, 'ChargerPoint customer', { password: biometricPassword });
       setBiometricEnrolled(true);
       setShowBiometricManager(false);
       setBiometricMessage(isAr ? 'تم التحقق من كلمة المرور وتفعيل البصمة لهذا الحساب على هذا الجهاز.' : 'Password verified; fingerprint sign-in is enabled for this account on this device.');
