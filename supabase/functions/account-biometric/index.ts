@@ -221,7 +221,7 @@ Deno.serve(async (req: Request) => {
       const {data: cred,error} = await admin.from("account_biometric_credentials").select("id,key_alias,created_at,last_used_at")
         .eq("account_type",identity.type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
       if (error) return reply(503,{ok:false,error:"BIOMETRIC_STATUS_UNAVAILABLE"});
-      return reply(200,{ok:true,enrolled:Boolean(cred),credentialId:cred?.id||null});
+      return reply(200,{ok:true,enrolled:Boolean(cred),credentialId:cred?.id||null,keyAlias:cred?.key_alias||null});
     }
     if (action === "revoke") {
       const identity = await getAuthenticatedIdentity();
