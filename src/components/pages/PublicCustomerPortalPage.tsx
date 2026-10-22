@@ -173,6 +173,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [passwordChangeBusy, setPasswordChangeBusy] = useState(false);
   const requestGeneration = useRef(0);
   const backgroundLoadInFlight = useRef(false);
+  const portalVersionRef = useRef<{ token: string; version: string } | null>(null);
+  const activityVersionRef = useRef<{ token: string; version: string } | null>(null);
 
   const load = useCallback(async (manual = false, background = false) => {
     // Background refreshes are deliberately conservative; native push and foreground/focus events refresh sooner.
@@ -196,10 +198,28 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       return;
     }
     try {
-      const { data: responseResult, error: rpcError } = await callCustomerAccount<{ data: PortalData }>(
+      const { data: responseResult, error: rpcError } = await callCustomerAccount<{
+        data?: PortalData; unchanged?: boolean; version?: string;
+      }>(
         'portal-data',
-        { token }
+        {
+          token,
+          ...(portalVersionRef.current?.token === token
+            ? { knownVersion: portalVersionRef.current.version }
+            : {}),
+        }
       );
+      portalVersionRef.current = typeof responseResult?.version === 'string'
+        ? { token, version: responseResult.version }
+        : null;
+      // The server has verified that the cached in-memory snapshot is unchanged.
+      if (!rpcError && responseResult?.unchanged === true && responseResult.version) {
+        if (requestId === requestGeneration.current) {
+          setServerAvailable(true);
+          setError(null);
+        }
+        return;
+      }
       const response = responseResult?.data ?? null;
       // Ignore stale requests and never restore financial data after connectivity drops.
       if (requestId !== requestGeneration.current) return;
@@ -260,11 +280,26 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     if (!quiet) setActivityLoading(true);
     setActivityError(false);
     try {
-      const { data: response, error: requestError } = await callCustomerAccount<PortalActivity>(
-        'customer-activity', { token },
+      const { data: response, error: requestError } = await callCustomerAccount<PortalActivity & {
+        unchanged?: boolean; version?: string;
+      }>(
+        'customer-activity',
+        {
+          token,
+          ...(activityVersionRef.current?.token === token
+            ? { knownVersion: activityVersionRef.current.version }
+            : {}),
+        },
       );
+      activityVersionRef.current = typeof response?.version === 'string'
+        ? { token, version: response.version }
+        : null;
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setActivityError(true);
+        return;
+      }
+      if (!requestError && response?.unchanged === true && response.version) {
+        setActivityError(false);
         return;
       }
       if (requestError || !response || !Array.isArray(response.ledger) ||
