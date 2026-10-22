@@ -116,8 +116,8 @@ Deno.serve(async (req: Request) => {
     if (action === "enroll-challenge") {
       const identity = await getAuthenticatedIdentity();
       if (!identity) return reply(401, { ok:false, error:"AUTH_REQUIRED" });
-      const old = await admin.from("account_biometric_credentials").select("id").eq("account_type",identity.type).eq("subject_id",identity.id).is("revoked_at",null).maybeSingle();
-      if (old.data) return reply(409, {ok:false,error:"BIOMETRIC_ALREADY_ENROLLED"});
+      // An authenticated password session may replace the account's single device key.
+      // This lets a customer/admin recover after changing or resetting their phone.
       const c = await createChallenge(identity,"enroll",null);
       return c ? reply(200,{ok:true,...c,accountType:identity.type}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
     }
