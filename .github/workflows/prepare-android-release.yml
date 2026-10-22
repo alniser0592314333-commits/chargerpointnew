@@ -325,7 +325,7 @@ jobs:
                   body = match.group(2)
                   item = '<item name="android:windowBackground">@color/cp_launch_background_color</item>'
                   item_pattern = re.compile(r'<item name="android:windowBackground">.*?</item>', re.S)
-                  body = item_pattern.sub(item, body, count=1) if item_pattern.search(body) else body + "\\n        " + item
+                  body = item_pattern.sub(item, body, count=1) if item_pattern.search(body) else body + "\n        " + item
                   return match.group(1) + body + match.group(3)
               main_updated, main_count = main_style.subn(patch_main, styles_path.read_text(encoding="utf-8"), count=1)
               if main_count:
