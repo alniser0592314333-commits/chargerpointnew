@@ -13,6 +13,10 @@ on:
       - 'src/App.tsx'
       - 'src/PublicPortalApp.tsx'
       - 'src/services/nativePushNotifications.ts'
+      - 'src/services/auth/accountBiometric.ts'
+      - 'scripts/android/**'
+      - 'supabase/functions/account-biometric/**'
+      - 'supabase/migrations/*server_verified_biometric*.sql'
       - 'src/tests/native_push_notifications.test.ts'
       - 'supabase/config.toml'
       - 'supabase/functions/native-push/**'
@@ -53,6 +57,9 @@ jobs:
 
       - name: Typecheck native push Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/native-push/index.ts
+
+      - name: Typecheck server-verified biometric Edge Function
+        run: deno check --node-modules-dir=auto supabase/functions/account-biometric/index.ts
 
       - name: Parse migration SQL and assert canonical trigger coverage
         run: |
@@ -140,6 +147,52 @@ jobs:
 
       - name: Generate native Android project
         run: npx cap add android
+
+      - name: Install server-verified Android biometric signing plugin
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          source = Path("scripts/android/AccountBiometricPlugin.java")
+          if not source.is_file():
+              raise SystemExit("Server-verified biometric plugin source is missing")
+          java_root = Path("android/app/src/main/java")
+          java_root.mkdir(parents=True, exist_ok=True)
+          package_dir = java_root / "com/chargerpointnew/biometric"
+          package_dir.mkdir(parents=True, exist_ok=True)
+          (package_dir / "AccountBiometricPlugin.java").write_text(source.read_text())
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          if "android.permission.USE_BIOMETRIC" not in text:
+              text = text.replace("<application", '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\\n    <application', 1)
+          manifest.write_text(text)
+
+          app_gradle = Path("android/app/build.gradle")
+          gradle = app_gradle.read_text()
+          if "androidx.biometric:biometric" not in gradle:
+              match = re.search(r"dependencies\\s*\\{", gradle)
+              if not match:
+                  raise SystemExit("Could not find Android app dependencies block")
+              gradle = gradle[:match.end()] + "\\n    implementation 'androidx.biometric:biometric:1.1.0'" + gradle[match.end():]
+              app_gradle.write_text(gradle)
+
+          activities = list(java_root.rglob("MainActivity.java"))
+          if len(activities) != 1:
+              raise SystemExit(f"Expected exactly one generated MainActivity.java, found {len(activities)}")
+          main = activities[0]
+          code = main.read_text()
+          if "com.chargerpointnew.biometric.AccountBiometricPlugin" not in code:
+              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\nimport com.chargerpointnew.biometric.AccountBiometricPlugin;")
+          if "registerPlugin(AccountBiometricPlugin.class)" not in code:
+              if "void onCreate(" in code:
+                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(AccountBiometricPlugin.class);", code, count=1)
+              else:
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(AccountBiometricPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
+          main.write_text(code)
+          print("Android Keystore + strong-biometric signing plugin registered.")
+          PY
 
       - name: Configure Firebase Cloud Messaging for native push
         env:
