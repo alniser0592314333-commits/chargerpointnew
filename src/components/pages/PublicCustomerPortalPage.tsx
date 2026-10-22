@@ -175,6 +175,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const backgroundLoadInFlight = useRef(false);
   const portalVersionRef = useRef<{ token: string; version: string } | null>(null);
   const activityVersionRef = useRef<{ token: string; version: string } | null>(null);
+  const activityRequestGeneration = useRef(0);
 
   const load = useCallback(async (manual = false, background = false) => {
     // Background refreshes are deliberately conservative; native push and foreground/focus events refresh sooner.
@@ -277,6 +278,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
 
   const loadActivity = useCallback(async (quiet = false) => {
     if (!online || typeof navigator !== 'undefined' && !navigator.onLine) return;
+    const activityRequestId = ++activityRequestGeneration.current;
     if (!quiet) setActivityLoading(true);
     setActivityError(false);
     try {
@@ -291,6 +293,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             : {}),
         },
       );
+      if (activityRequestId !== activityRequestGeneration.current) return;
       activityVersionRef.current = typeof response?.version === 'string'
         ? { token, version: response.version }
         : null;
