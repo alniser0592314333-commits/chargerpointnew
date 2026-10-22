@@ -4,7 +4,7 @@ import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
-import androidx.activity.ComponentActivity;
+import androidx.fragment.app.FragmentActivity;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import com.getcapacitor.JSObject;
@@ -83,7 +83,7 @@ public class AccountBiometricPlugin extends Plugin {
       signature.initSign(privateKey);
       signature.update(challenge.getBytes(StandardCharsets.UTF_8));
       Signature signing = signature;
-      ComponentActivity activity = (ComponentActivity) getActivity();
+      FragmentActivity activity = (FragmentActivity) getActivity();
       Executor executor = activity.getMainExecutor();
       BiometricPrompt prompt = new BiometricPrompt(activity, executor, new BiometricPrompt.AuthenticationCallback() {
         @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
