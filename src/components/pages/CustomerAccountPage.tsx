@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
 import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
@@ -456,7 +456,13 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         ? t('لم تُفعّل البصمة لهذا الحساب بعد. سجّل الدخول بكلمة السر أولًا.', 'Fingerprint sign-in is not enabled for this account yet. Sign in with your password first.')
         : code === 'BIOMETRIC_CANCELLED'
           ? t('تم إلغاء التحقق بالبصمة.', 'Biometric verification was cancelled.')
-          : t('تعذّر الدخول بالبصمة. استخدم كلمة السر أو أعد تفعيل البصمة.', 'Biometric sign-in failed. Use your password or enable biometrics again.'));
+          : code === 'STALE_BIOMETRIC_SESSION'
+            ? t('ما زال النظام ينهي جلسة الدخول السابقة. انتظر لحظة ثم حاول مجددًا.', 'The previous sign-in session is still being finalized. Wait a moment and try again.')
+            : code === 'BIOMETRIC_PROOF_INVALID'
+              ? t('مفتاح البصمة لم يعد صالحًا. سجّل الدخول بكلمة السر ثم فعّل البصمة مجددًا.', 'This fingerprint key is no longer valid. Sign in with your password and enable fingerprint again.')
+              : code === 'BIOMETRIC_SESSION_UNAVAILABLE' || code === 'BIOMETRIC_SERVICE_UNAVAILABLE'
+                ? t('خدمة الدخول الآمن غير متاحة مؤقتًا. يمكنك الدخول بكلمة السر.', 'Secure sign-in is temporarily unavailable. You can use your password.')
+                : t('تعذّر الدخول بالبصمة. استخدم كلمة السر أو أعد تفعيل البصمة.', 'Biometric sign-in failed. Use your password or enable biometrics again.'));
     } finally { setBiometricBusy(false); }
   };
 
@@ -744,7 +750,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                     </label>
                     {Capacitor.isNativePlatform() && mode === 'login' && (
                       <button type="button" disabled={busy || biometricBusy} onClick={() => void submitBiometricLogin()} className="cp-auth__btn cp-auth__btn--ghost group">
-                        {biometricBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {biometricBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
                         {biometricBusy ? t('جارٍ التحقق بالبصمة…', 'Verifying fingerprint…') : t('الدخول بالبصمة', 'Sign in with fingerprint')}
                       </button>
                     )}
