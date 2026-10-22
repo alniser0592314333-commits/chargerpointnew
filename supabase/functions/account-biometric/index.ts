@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
 
     if (identity.type === "admin") {
       const bin = normalize(input.bin, 32);
-      if (!/^\\d{4,}$/.test(bin)) return { ok: false, status: 400, error: "BIN_REQUIRED" };
+      if (!/^\d{4,}$/.test(bin)) return { ok: false, status: 400, error: "BIN_REQUIRED" };
       // Check BIN through the existing server-authoritative attempt tracker using the
       // freshly password-authenticated session. This does not issue a BIN-change proof.
       const binVerifier = createClient(url, anon, {
@@ -153,7 +153,7 @@ Deno.serve(async (req: Request) => {
       const isSuperAdmin = ["SUPER_ADMIN", "Super Admin"].includes(String(identity.role));
       const emailOtp = normalize(input.emailOtp, 6);
       if (isSuperAdmin) {
-        if (!/^\\d{6}$/.test(emailOtp)) return { ok: false, status: 400, error: "EMAIL_OTP_REQUIRED" };
+        if (!/^\d{6}$/.test(emailOtp)) return { ok: false, status: 400, error: "EMAIL_OTP_REQUIRED" };
         const { data: otpResult, error: otpError } = await auth.auth.verifyOtp({
           email: String(identity.email).toLowerCase(),
           token: emailOtp,
