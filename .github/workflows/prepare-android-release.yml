@@ -294,6 +294,7 @@ jobs:
           """)
 
           launch_style = re.compile(r'(<style name="AppTheme\.NoActionBarLaunch"[^>]*>)(.*?)(</style>)', re.S)
+          launch_style_patched = False
           for styles_path in (values / "styles.xml", res / "values-v31" / "styles.xml"):
               if not styles_path.is_file():
                   continue
@@ -310,12 +311,28 @@ jobs:
                       if item_pattern.search(body):
                           body = item_pattern.sub(item, body, count=1)
                       else:
-                          body += "\n        " + item
+                          body += "\\n        " + item
                   return match.group(1) + body + match.group(3)
               updated, count = launch_style.subn(patch_launch, style_text, count=1)
               if count:
                   styles_path.write_text(updated, encoding="utf-8")
-          print("Configured dark branded native launch screen to avoid the white startup flash.")
+                  launch_style_patched = True
+
+              # The post-splash application window also gets a dark backing color so
+              # Android/WebView initialization cannot expose the default white frame.
+              main_style = re.compile(r'(<style name="AppTheme\\.NoActionBar"[^>]*>)(.*?)(</style>)', re.S)
+              def patch_main(match):
+                  body = match.group(2)
+                  item = '<item name="android:windowBackground">@color/cp_launch_background_color</item>'
+                  item_pattern = re.compile(r'<item name="android:windowBackground">.*?</item>', re.S)
+                  body = item_pattern.sub(item, body, count=1) if item_pattern.search(body) else body + "\\n        " + item
+                  return match.group(1) + body + match.group(3)
+              main_updated, main_count = main_style.subn(patch_main, styles_path.read_text(encoding="utf-8"), count=1)
+              if main_count:
+                  styles_path.write_text(main_updated, encoding="utf-8")
+          if not launch_style_patched:
+              raise SystemExit("Could not locate AppTheme.NoActionBarLaunch to remove the white native startup screen.")
+          print("Configured dark branded native launch screen and window background to avoid the white startup flash.")
           PY
 
       - name: Configure permanent signing key and R8 obfuscation
