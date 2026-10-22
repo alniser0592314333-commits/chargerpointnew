@@ -49,43 +49,53 @@ export const AdminBiometricSettings: React.FC = () => {
     event.preventDefault(); setBusy(true); setError(''); setMessage('');
     try {
       if (!available || !Capacitor.isNativePlatform()) throw new Error('BIOMETRIC_NOT_AVAILABLE');
-      // Verify password + BIN once before issuing the Super Admin email challenge.
-      // The OTP step then continues this same in-memory flow without asking the user to retype them.
+      const currentPassword = password;
+      const currentBin = bin.trim();
+      if (!currentPassword || !/^\\d{4,}$/.test(currentBin)) throw new Error('PASSWORD_AND_BIN_REQUIRED');
+
+      // Before sending the Super Admin email code, verify the password and BIN through
+      // the existing server-authoritative flow. The final enrollment request verifies
+      // all three proofs again server-side before issuing a biometric challenge.
       if (!superAdmin || !otpSent) {
-        if (!password || !/^\d{4,}$/.test(bin.trim())) throw new Error('PASSWORD_AND_BIN_REQUIRED');
-        const verified = await authService.verifyCurrentPassword(email, password, bin.trim());
-        setPassword(''); setBin('');
+        const verified = await authService.verifyCurrentPassword(email, currentPassword, currentBin);
         if (!verified.success) throw new Error(verified.error || 'IDENTITY_VERIFICATION_FAILED');
       }
-      let accessToken = (await authService.getSupabaseAuthSession())?.access_token;
-      if (superAdmin) {
-        if (!otpSent) {
-          await sendOtp();
-          setMessage(copy('تم إرسال رمز تأكيد إلى بريد السوبر أدمن. أدخل الرمز ثم اضغط تفعيل البصمة.', 'A confirmation code was sent to the Super Admin email. Enter it, then enable fingerprint.'));
-          return;
-        }
-        if (!/^\d{6}$/.test(otp.trim())) throw new Error('OTP_INVALID');
-        const client = createClient(config.supabaseUrl!, config.supabaseAnonKey!, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-        const result = await client.auth.verifyOtp({ email, token: otp.trim(), type: 'email' });
-        if (result.error || !result.data.session || result.data.user?.email?.toLowerCase() !== email.toLowerCase()) throw new Error('OTP_INVALID');
-        await authService.acceptBiometricSession(result.data.session as any);
-        accessToken = result.data.session.access_token;
+
+      if (superAdmin && !otpSent) {
+        await sendOtp();
+        setOtpSent(true);
+        setMessage(copy('تم إرسال رمز تأكيد إلى بريد السوبر أدمن. أدخل الرمز لإكمال التفعيل.', 'A confirmation code was sent to the Super Admin email. Enter it to finish setup.'));
+        return;
       }
+
+      if (superAdmin && !/^\\d{6}$/.test(otp.trim())) throw new Error('EMAIL_OTP_INVALID');
+      const accessToken = (await authService.getSupabaseAuthSession())?.access_token;
       if (!accessToken) throw new Error('AUTH_REQUIRED');
-      await enrollAccountBiometric(accessToken, 'ChargerPoint administrator');
-      setOtp(''); setOtpSent(false); setOpen(false); setMessage(copy('تم تفعيل البصمة وربطها بحساب الإدارة على هذا الجهاز.', 'Fingerprint sign-in is now linked to this administrator account on this device.'));
+      await enrollAccountBiometric(accessToken, 'ChargerPoint administrator', {
+        password: currentPassword,
+        bin: currentBin,
+        ...(superAdmin ? { emailOtp: otp.trim() } : {}),
+      });
+      setPassword(''); setBin(''); setOtp(''); setOtpSent(false); setOpen(false);
+      setMessage(copy('تم التحقق من كلمة المرور ورمز BIN' + (superAdmin ? ' والبريد الإلكتروني' : '') + ' وتفعيل البصمة لهذا الحساب.', 'Password and BIN' + (superAdmin ? ' and email' : '') + ' verified; fingerprint sign-in is enabled for this account.'));
       await refresh();
     } catch (e) {
       const code = e instanceof Error ? e.message : '';
       setError(code === 'BIOMETRIC_NOT_AVAILABLE'
         ? copy('هذا الجهاز لا يدعم البصمة القوية أو لم يتم إعدادها.', 'Strong biometrics are unavailable or not configured on this device.')
-        : code === 'OTP_INVALID'
+        : code === 'EMAIL_OTP_INVALID' || code === 'EMAIL_OTP_REQUIRED'
           ? copy('رمز البريد غير صحيح أو منتهي. اطلب رمزًا جديدًا.', 'The email code is invalid or expired. Request a new code.')
-          : code === 'PASSWORD_AND_BIN_REQUIRED'
-            ? copy('أدخل كلمة المرور ورمز BIN صحيحًا (4 أرقام على الأقل).', 'Enter your password and a valid BIN (at least 4 digits).')
-            : code === 'EMAIL_UNAVAILABLE'
-              ? copy('تعذر تحديد بريد الحساب لإرسال رمز التأكيد.', 'Could not determine the account email for confirmation.')
-              : copy('تعذر التحقق أو تفعيل البصمة. تحقق من البيانات والاتصال وحاول مجددًا.', 'Verification or fingerprint setup failed. Check your details and connection, then try again.'));
+          : code === 'WRONG_BIN' || code === 'BIN_REQUIRED'
+            ? copy('رمز BIN غير صحيح.', 'The BIN is incorrect.')
+            : code === 'BIN_LOCKED_FROZEN'
+              ? copy('تم قفل رمز BIN. استخدم مسار الاستعادة.', 'The BIN is locked. Use the recovery flow.')
+              : code === 'REAUTHENTICATION_FAILED'
+                ? copy('كلمة المرور غير صحيحة.', 'The password is incorrect.')
+                : code === 'PASSWORD_AND_BIN_REQUIRED'
+                  ? copy('أدخل كلمة المرور ورمز BIN الصحيح (4 أرقام على الأقل).', 'Enter your password and a valid BIN (at least 4 digits).')
+                  : code === 'EMAIL_UNAVAILABLE'
+                    ? copy('تعذر تحديد بريد الحساب لإرسال رمز التأكيد.', 'Could not determine the account email for confirmation.')
+                    : copy('تعذر التحقق أو تفعيل البصمة. تحقق من البيانات والاتصال وحاول مجددًا.', 'Verification or fingerprint setup failed. Check your details and connection, then try again.'));
     } finally { setBusy(false); }
   };
 
