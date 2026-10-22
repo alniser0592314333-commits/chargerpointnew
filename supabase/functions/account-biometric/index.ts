@@ -212,7 +212,7 @@ Deno.serve(async (req: Request) => {
         },{onConflict:"customer_id"});
         if (regError) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
       }
-      await admin.from("account_biometric_credentials").update({last_used_at:new Date().toISOString()}).eq("id",credentialId);
+      await admin.from("account_biometric_credentials").update({last_used_at:new Date().toISOString()}).eq("id",cred.id);
       return reply(200,{ok:true,session:sessionData.session,accountType:cred.account_type,subjectId:cred.subject_id,session_expires_at:cred.account_type === "customer" ? new Date(Date.now()+7*24*60*60*1000).toISOString() : undefined});
     }
     if (action === "status") {
