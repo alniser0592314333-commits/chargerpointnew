@@ -223,7 +223,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         return;
       }
       const response = responseResult?.data ?? null;
-      // Never restore financial data after connectivity drops.
+      // Ignore stale requests and never restore financial data after connectivity drops.
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setServerAvailable(false);
         const cached = readCachedPortalData(token);
