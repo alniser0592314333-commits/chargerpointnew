@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
+import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from "../../services/auth/accountBiometric";
 import { useI18n } from "../../i18n/i18nContext";
 import { useTheme } from "../../theme/themeContext";
 import { authService } from "../../services/auth/authService";
@@ -69,6 +71,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
   const [confirmPassword, setConfirmPassword] = useState("");
   const [email, setEmail] = useState("");
   const [bin, setBin] = useState("");
+  const [showBiometricBin, setShowBiometricBin] = useState(false);
   const [confirmBin, setConfirmBin] = useState("");
   const [internalEmail, setInternalEmail] = useState("");
 
@@ -179,6 +182,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     setPendingRememberIdentifier(null);
     setPassword('');
     try {
+      if (Capacitor.isNativePlatform() && await isNativeBiometricAvailable()) {
+        const currentAuth = await authService.getSupabaseAuthSession();
+        if (currentAuth?.access_token) {
+          try {
+            const status = await getAccountBiometricStatus(currentAuth.access_token);
+            if (!status.enrolled && window.confirm(locale === "en"
+              ? "Enable fingerprint sign-in for this administrator account on this device?"
+              : "هل تريد تفعيل الدخول بالبصمة لحساب الإدارة على هذا الجهاز؟")) {
+              await enrollAccountBiometric(currentAuth.access_token, "ChargerPoint administrator");
+            }
+          } catch (biometricError) {
+            console.warn("Biometric enrollment was not completed; password sign-in remains available.", biometricError);
+          }
+        }
+      }
       await onLoginSuccess();
     } catch (finishError: any) {
       setError(finishError?.message || (locale === 'en' ? 'Could not finish opening the app.' : 'تعذر إكمال فتح التطبيق.'));
