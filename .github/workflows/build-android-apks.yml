@@ -34,6 +34,7 @@ on:
       - 'capacitor.*.config.json'
       - '.gitignore'
       - '.github/workflows/build-android-apks.yml'
+      - '.github/workflows/prepare-android-release.yml'
 
 permissions:
   contents: read
