@@ -149,6 +149,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [serverAvailable, setServerAvailable] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
   const [offlineToastVisible, setOfflineToastVisible] = useState(false);
+  const [offlineToastFading, setOfflineToastFading] = useState(false);
   const [showOfflineDot, setShowOfflineDot] = useState(false);
   const [notificationsMessage, setNotificationsMessage] = useState('');
   const initialPortalQuery = new URLSearchParams(window.location.search);
@@ -185,15 +186,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   useEffect(() => {
     if (!outageActive) {
       setOfflineToastVisible(false);
+      setOfflineToastFading(false);
       setShowOfflineDot(false);
       return;
     }
     setOfflineToastVisible(true);
-    const timer = window.setTimeout(() => {
+    setOfflineToastFading(false);
+    const fadeTimer = window.setTimeout(() => setOfflineToastFading(true), 2000);
+    const hideTimer = window.setTimeout(() => {
       setOfflineToastVisible(false);
+      setOfflineToastFading(false);
       setShowOfflineDot(true);
-    }, 2200);
-    return () => window.clearTimeout(timer);
+    }, 2300);
+    return () => { window.clearTimeout(fadeTimer); window.clearTimeout(hideTimer); };
   }, [outageActive]);
 
   useEffect(() => {
@@ -681,6 +686,15 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
 
+  useEffect(() => {
+    const serverReadIds = (activity?.events || []).filter((event) => event.is_read).map((event) => 'account-event-' + event.id);
+    if (!serverReadIds.length) return;
+    setSeenNotificationIds((current) => {
+      const merged = new Set([...current, ...serverReadIds]);
+      return merged.size === current.length ? current : [...merged];
+    });
+  }, [activity?.events]);
+
   return (
     <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal cp-portal-enter relative isolate min-h-screen text-slate-900 dark:text-slate-100">
       <div aria-hidden="true" className="cp-portal-moon-scene"><CustomerAuthScene uid="cp-customer-portal-scene" /></div>
@@ -694,7 +708,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       </header>
 
       <main className="relative z-10 mx-auto max-w-3xl space-y-4 px-4 py-5 pb-28 sm:py-8 sm:pb-28">
-        {outageActive && offlineToastVisible && <div role="status" aria-live="polite" className="cp-portal-offline-toast"><WifiOff size={16} className="shrink-0"/><span>{!online ? (isAr ? 'انقطع الاتصال — تعرض آخر بيانات محفوظة.' : 'Connection lost — showing saved data.') : (isAr ? 'الخادم غير متاح مؤقتًا — بعض العمليات متوقفة.' : 'Server temporarily unavailable — some actions are paused.')}</span></div>}
+        {outageActive && offlineToastVisible && <div role="status" aria-live="polite" className={`cp-portal-offline-toast ${offlineToastFading ? 'cp-portal-offline-toast--leaving' : ''}`}><WifiOff size={16} className="shrink-0"/><span>{!online ? (isAr ? 'انقطع الاتصال — تعرض آخر بيانات محفوظة.' : 'Connection lost — showing saved data.') : (isAr ? 'الخادم غير متاح مؤقتًا — بعض العمليات متوقفة.' : 'Server temporarily unavailable — some actions are paused.')}</span></div>}
 
         {loading ? <div className="space-y-3" aria-live="polite"><div className="h-28 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><div className="h-36 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><p className="text-center text-sm text-slate-500">{isAr ? 'جارٍ التحقق من رمز العميل وتحميل البيانات...' : 'Verifying customer QR and loading your data…'}</p></div> :
           error || !data ? <section role="alert" className="py-5 text-center">
