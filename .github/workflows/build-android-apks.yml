@@ -225,6 +225,7 @@ jobs:
           PY
 
       - name: Install local payment helper with encrypted device storage and direct USSD calling
+        if: matrix.variant == 'customer'
         run: |
           python3 - <<'PY'
           from pathlib import Path
