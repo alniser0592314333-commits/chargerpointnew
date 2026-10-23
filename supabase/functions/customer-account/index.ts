@@ -596,7 +596,6 @@ Deno.serve(async (request: Request) => {
         console.error("Customer manual payment history could not be loaded");
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       }
-      const manualIds = new Set((manualRows ?? []).map((row: { id: string }) => row.id));
       // The public SQL projection intentionally omits submission IDs. Manual entries use
       // CASH (customer QR only permits the supported wallet/bank methods), so remove their
       // projection-only placeholders and append the authoritative, ID-backed rows.
