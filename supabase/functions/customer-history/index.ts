@@ -101,8 +101,12 @@ Deno.serve(async (request: Request) => {
     if (latest?.status === "APPROVED" && latest.access_expires_at && new Date(latest.access_expires_at).getTime() > now.getTime()) {
       return respond(200, { ok: true, status: "APPROVED", access_expires_at: latest.access_expires_at });
     }
-    const { error } = await admin.from("customer_history_access_requests").insert({ customer_id: link.customer_id, status: "PENDING" });
-    if (error) return respond(503, { ok: false, error: "REQUEST_FAILED" });
+    const { data: created, error } = await admin.from("customer_history_access_requests").insert({ customer_id: link.customer_id, status: "PENDING" }).select("id").single();
+    if (error || !created) return respond(503, { ok: false, error: "REQUEST_FAILED" });
+    const { error: eventError } = await admin.from("customer_account_events").insert({
+      customer_id: link.customer_id, event_type: "HISTORY_ACCESS_REQUESTED", payload: { request_id: created.id },
+    });
+    if (eventError) return respond(503, { ok: false, error: "REQUEST_SAVED_NOTIFICATION_PENDING" });
     return respond(200, { ok: true, status: "PENDING" });
   }
   if (action === "history-orders") {
