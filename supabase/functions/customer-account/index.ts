@@ -694,6 +694,20 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true });
     }
 
+    if (action === "admin-send-debt-reminders") {
+      const administrator = await requireAdmin();
+      if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
+      const { data: sentCount, error: sendError } = await admin.rpc("dispatch_customer_debt_reminders", {
+        p_reminder_key: "manual-" + crypto.randomUUID(),
+        p_force: true,
+      });
+      if (sendError || typeof sentCount !== "number") {
+        console.error("Manual debt reminder dispatch failed");
+        return respond(503, { ok: false, error: "REMINDER_SEND_FAILED" });
+      }
+      return respond(200, { ok: true, sent_count: sentCount });
+    }
+
     if (action === "admin-list") {
       const administrator = await requireAdmin();
       if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
