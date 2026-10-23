@@ -10,6 +10,7 @@ import {
 import {
   Search,
   Users,
+  Banknote,
   ChevronLeft,
   ChevronRight,
   User,
@@ -88,6 +89,14 @@ export const FinancialsPage: React.FC<FinancialsPageProps> = ({ onNavigate }) =>
         <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-0.5">
           {t('financialsSubtitle')}
         </p>
+        <button
+          type="button"
+          onClick={() => navigateTo('/app/financials/payments')}
+          className="mt-4 inline-flex items-center gap-2 border-b border-emerald-600 pb-2 text-xs font-bold text-emerald-800 transition-colors hover:text-emerald-600 dark:border-emerald-400 dark:text-emerald-300"
+        >
+          <Banknote className="h-4 w-4" />
+          <span>{isRTL ? 'دفعات الزبائن المعلّقة ومراجعتها' : 'Pending customer payments and review'}</span>
+        </button>
       </div>
 
       {loading ? (
