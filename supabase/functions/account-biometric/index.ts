@@ -151,13 +151,13 @@ Deno.serve(async (req: Request) => {
       }
 
       const isSuperAdmin = ["SUPER_ADMIN", "Super Admin"].includes(String(identity.role));
-      const emailOtp = normalize(input.emailOtp, 6);
+      const emailOtp = normalize(input.emailOtp, 8);
       if (isSuperAdmin) {
-        if (!/^\d{6}$/.test(emailOtp)) return { ok: false, status: 400, error: "EMAIL_OTP_REQUIRED" };
+        if (!/^\d{8}$/.test(emailOtp)) return { ok: false, status: 400, error: "EMAIL_OTP_REQUIRED" };
         const { data: otpResult, error: otpError } = await auth.auth.verifyOtp({
           email: String(identity.email).toLowerCase(),
           token: emailOtp,
-          type: "email",
+          type: "reauthentication",
         });
         if (otpError || otpResult.user?.id !== identity.uid) {
           return { ok: false, status: 401, error: "EMAIL_OTP_INVALID" };
@@ -165,7 +165,7 @@ Deno.serve(async (req: Request) => {
       } else if (emailOtp) {
         return { ok: false, status: 400, error: "EMAIL_OTP_NOT_REQUIRED" };
       }
-    } else if (normalize(input.bin, 32) || normalize(input.emailOtp, 6)) {
+    } else if (normalize(input.bin, 32) || normalize(input.emailOtp, 8)) {
       return { ok: false, status: 400, error: "INVALID_REAUTHENTICATION_FIELDS" };
     }
 
