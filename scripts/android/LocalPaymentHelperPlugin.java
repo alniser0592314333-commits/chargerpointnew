@@ -9,7 +9,7 @@ import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 
 import com.getcapacitor.JSObject;
-import com.getcapacitor.Permission;
+import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
