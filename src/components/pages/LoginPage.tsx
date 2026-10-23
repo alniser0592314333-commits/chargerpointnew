@@ -227,7 +227,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       try { return localStorage.getItem("cp_biometric_login_identifier_admin")?.trim() || ""; } catch { return ""; }
     })();
     let localBiometricAlias = "";
-    try { localBiometricAlias = localStorage.getItem("cp_biometric_alias_admin") || ""; } catch {}
+    try { localBiometricAlias = localStorage.getItem("cp_biometric_alias_admin") || localStorage.getItem("cp_biometric_alias_undefined") || ""; } catch {}
     if ((!identifier && !/^[a-f0-9]{32}$/.test(localBiometricAlias)) || isSubmitting) {
       setError(locale === "en"
         ? "Fingerprint sign-in is not enabled on this device yet. Sign in once and enable it first."
@@ -772,7 +772,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
               {uiState === "NORMAL_LOGIN" && (
                 <>
                   {Capacitor.isNativePlatform() && (username.trim() || (() => {
-                    try { return localStorage.getItem("cp_biometric_login_identifier_admin") || localStorage.getItem("cp_biometric_alias_admin") || ""; } catch { return ""; }
+                    try { return localStorage.getItem("cp_biometric_login_identifier_admin") || localStorage.getItem("cp_biometric_alias_admin") || localStorage.getItem("cp_biometric_alias_undefined") || ""; } catch { return ""; }
                   })()) && (
                     <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleBiometricLogin()}
                       className="w-full text-xs py-2.5 rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
