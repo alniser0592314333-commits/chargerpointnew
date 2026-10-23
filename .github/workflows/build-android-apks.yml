@@ -241,7 +241,7 @@ jobs:
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text()
           if "android.permission.CALL_PHONE" not in text:
-              text = text.replace("<application", '    <uses-permission android:name="android.permission.CALL_PHONE" />\\n    <application', 1)
+              text = text.replace("<application", '    <uses-permission android:name="android.permission.CALL_PHONE" />\n    <application', 1)
               manifest.write_text(text)
 
           activities = list(java_root.rglob("MainActivity.java"))
@@ -253,14 +253,14 @@ jobs:
           if import_line not in code:
               anchor = "import com.chargerpointnew.biometric.AccountBiometricPlugin;"
               if anchor in code:
-                  code = code.replace(anchor, anchor + "\\n" + import_line, 1)
+                  code = code.replace(anchor, anchor + "\n" + import_line, 1)
               else:
-                  code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\n" + import_line, 1)
+                  code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + import_line, 1)
           if "registerPlugin(LocalPaymentHelperPlugin.class)" not in code:
               if "void onCreate(" in code:
-                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(LocalPaymentHelperPlugin.class);", code, count=1)
+                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(LocalPaymentHelperPlugin.class);", code, count=1)
               else:
-                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(LocalPaymentHelperPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(LocalPaymentHelperPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
           main.write_text(code)
           print("Installed encrypted local payment storage and one-tap USSD call plugin.")
           PY
