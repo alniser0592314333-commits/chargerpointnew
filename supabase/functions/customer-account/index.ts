@@ -107,7 +107,7 @@ Deno.serve(async (request: Request) => {
         .select("id,name,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
       if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
         customer.status === "DELETED") return null;
-      return { token, customer, isQrToken: true };
+      return { token, customer: { ...customer, customer_code: customerCode(customer.id) }, isQrToken: true };
     }
 
     return null;
