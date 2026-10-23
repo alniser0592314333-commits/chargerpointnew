@@ -37,7 +37,19 @@ const callEndpoint = async (action: string, payload: Record<string, unknown> = {
 };
 export const isNativeBiometricAvailable = async () => {
   if (!Capacitor.isNativePlatform()) return false;
-  try { return (await NativeBiometric.isAvailable()).available === true; } catch { return false; }
+  // Android may briefly report the biometric bridge as unavailable while the
+  // Activity is returning from logout / a previous prompt. A single failed
+  // capability probe must not suppress the first actual fingerprint prompt.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const result = await NativeBiometric.isAvailable();
+      if (result.available === true) return true;
+    } catch {
+      // Retry one transient bridge/activity failure; do not loop indefinitely.
+    }
+    if (attempt === 0) await wait(250);
+  }
+  return false;
 };
 export async function enrollAccountBiometric(
   accessToken: string,
