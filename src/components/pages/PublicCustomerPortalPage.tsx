@@ -668,6 +668,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     };
     return labels[type]?.[isAr ? 0 : 1] || (isAr ? 'تحديث في الحساب' : 'Account update');
   };
+  const manualFinancialStatuses = (data?.payment_submissions || []).filter((s) => s.submission_source === 'ADMIN_MANUAL' && s.status.toUpperCase() !== 'APPROVED');
   const eventRows: PortalEventRow[] = [
     ...(data?.orders || []).map((order) => ({
       id: 'order-' + order.order_number + '-' + order.created_at,
@@ -795,7 +796,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 <h1 className="cp-portal-heading">{isAr ? 'كشف الحساب' : 'Account statement'}</h1>
                 <div className="cp-portal-balance cp-portal-balance--compact"><p className="cp-portal-eyebrow">{isAr ? 'الرصيد الحالي' : 'CURRENT BALANCE'}</p><p className="mt-2 text-sm cp-portal-muted">{balanceLabel}</p><p className="cp-portal-balance__amount">{money(Math.abs(data.balance_minor), locale)}</p></div>
                 <div className="cp-portal-subsection">
-                  <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{isAr ? 'الحركات المالية' : 'Financial movements'}</h2><span className="text-xs cp-portal-muted">{activity?.ledger.length ?? 0}</span></div>
+                  <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{isAr ? 'الحركات المالية' : 'Financial movements'}</h2><span className="text-xs cp-portal-muted">{(activity?.ledger.length ?? 0) + manualFinancialStatuses.length}</span></div>
                   {activityLoading && !activity ? <p className="cp-portal-empty">{isAr ? 'جارٍ تحميل الحركات المالية…' : 'Loading financial movements…'}</p>
                     : activityError || !activity ? <div className="cp-portal-retry"><p className="cp-portal-empty">{isAr ? 'تعذّر تحميل الحركات المالية حاليًا.' : 'Financial movements are temporarily unavailable.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => void loadActivity()}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button></div>
                     : activity.ledger.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد حركات مالية مسجلة.' : 'No financial movements found.'}</p>
