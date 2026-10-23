@@ -139,7 +139,7 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
     subtitle: en ? 'Confirm your identity to open your account' : 'أكد هويتك لفتح حسابك',
     negativeButtonText: en ? 'Cancel' : 'إلغاء',
   });
-  return await callEndpoint('login-verify', { challengeId, credentialId, signature, ...(bin ? { bin } : {}) });
+  return await callEndpoint('login-verify', { challengeId, credentialId, signature });
 }
 export async function revokeAccountBiometric(accessToken: string) {
   const result = await callEndpoint('revoke', {}, accessToken);
