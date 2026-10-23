@@ -48,7 +48,9 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
       const count = result.sent_count;
       setReminderMessage(count === 0
         ? (isRTL ? 'لا يوجد عملاء عليهم مديونية لإرسال التذكير لهم.' : 'No customers currently have an outstanding debt.')
-        : (isRTL ? 'تم تسجيل التذكير إلى ' + count + ' عميل مدين.' : 'Reminder notifications queued for ' + count + ' indebted customers.'));
+        : (isRTL
+          ? 'تم تسجيل التذكير داخل النظام لـ ' + count + ' عميل مدين. هذا لا يؤكد وصول إشعار أندرويد؛ يجب أن يكون حساب العميل مفعّلًا وجهازه مسجّلًا للإشعارات.'
+          : 'Reminder events were recorded for ' + count + ' indebted customers. This does not confirm Android delivery; each customer needs an activated account and a registered push device.'));
     } catch {
       setReminderError(true);
       setReminderMessage(isRTL ? 'تعذّر تأكيد الإرسال. تحقق من الإشعارات قبل إعادة المحاولة.' : 'Could not confirm dispatch. Check notifications before retrying.');
