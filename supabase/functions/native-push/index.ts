@@ -251,14 +251,35 @@ Deno.serve(async (request: Request) => {
 
   if (source === "qr_payment_submissions") {
     const { data: submission, error } = await admin.from("qr_payment_submissions")
-      .select("id,customer_id,status,created_at,amount_minor,reviewed_at").eq("id", recordId).maybeSingle();
+      .select("id,customer_id,status,created_at,amount_minor,reviewed_at,submission_source").eq("id", recordId).maybeSingle();
     if (error || !submission || (eventStatus && eventStatus !== String(submission.status))) return json(200, { ok: true, skipped: true });
     if (operation === "INSERT" && submission.status === "PENDING") {
-      titleAr = "طلب دفع جديد • " + formatMoney(submission.amount_minor, "ar");
-      titleEn = "New payment • " + formatMoney(submission.amount_minor, "en");
-      bodyAr = "قيمة الدفعة: " + formatMoney(submission.amount_minor, "ar") + "\nتاريخ الإرسال: " + formatDate(submission.created_at, "ar") + "\nبانتظار مراجعة الإدارة.";
-      bodyEn = "Amount: " + formatMoney(submission.amount_minor, "en") + "\nSubmitted: " + formatDate(submission.created_at, "en") + "\nWaiting for administrator review.";
-      targetPath = "/app/notifications";
+      if (submission.submission_source === "ADMIN_MANUAL") {
+        // A payment entered by an administrator is pending for the customer to review,
+        // so notify that customer's registered devices rather than falling back to admins.
+        titleAr = "تم تسجيل دفعة بانتظار الاعتماد • " + formatMoney(submission.amount_minor, "ar");
+        titleEn = "Payment recorded — awaiting approval • " + formatMoney(submission.amount_minor, "en");
+        bodyAr = "قيمة الدفعة: " + formatMoney(submission.amount_minor, "ar") + "\nتاريخ التسجيل: " + formatDate(submission.created_at, "ar") + "\nافتح حسابك لمراجعة تفاصيل الدفعة.";
+        bodyEn = "Amount: " + formatMoney(submission.amount_minor, "en") + "\nRecorded: " + formatDate(submission.created_at, "en") + "\nOpen your account to review the payment details.";
+        targetPath = "/customer/finance";
+        const { data, error: recipientError } = await admin.from("native_push_devices")
+          .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+          .eq("app_variant", "customer").eq("customer_id", submission.customer_id).is("disabled_at", null);
+        if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        recipients = data ?? [];
+      } else {
+        // Customer-submitted QR payments continue to notify administrators for review.
+        titleAr = "طلب دفع جديد • " + formatMoney(submission.amount_minor, "ar");
+        titleEn = "New payment • " + formatMoney(submission.amount_minor, "en");
+        bodyAr = "قيمة الدفعة: " + formatMoney(submission.amount_minor, "ar") + "\nتاريخ الإرسال: " + formatDate(submission.created_at, "ar") + "\nبانتظار مراجعة الإدارة.";
+        bodyEn = "Amount: " + formatMoney(submission.amount_minor, "en") + "\nSubmitted: " + formatDate(submission.created_at, "en") + "\nWaiting for administrator review.";
+        targetPath = "/app/notifications";
+        const { data, error: recipientError } = await admin.from("native_push_devices")
+          .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+          .eq("app_variant", "admin").is("disabled_at", null);
+        if (recipientError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        recipients = data ?? [];
+      }
     } else if (operation === "UPDATE" && ["APPROVED", "REJECTED"].includes(String(submission.status))) {
       eventKey += ":" + submission.status;
       titleAr = submission.status === "APPROVED"
