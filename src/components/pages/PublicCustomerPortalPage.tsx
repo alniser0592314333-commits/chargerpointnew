@@ -808,7 +808,6 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             </section>}
 
             {activeTab === 'more' && moreView === 'notifications' && <section className="cp-portal-section">
-              <p className="cp-portal-eyebrow">{isAr ? 'آخر المستجدات' : 'LATEST UPDATES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإشعارات' : 'Notifications'}</h1>
               <div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><p className="cp-portal-eyebrow">{isAr ? 'آخر المستجدات' : 'LATEST UPDATES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإشعارات' : 'Notifications'}</h1></div><button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable || activityLoading || eventRows.length === 0} onClick={() => void markAllNotificationsRead()}><CheckCircle2 size={16}/>{isAr ? 'تعليم الكل كمقروء' : 'Mark all as read'}</button></div>
               {notificationsMessage && <p role="status" className="mt-2 text-sm cp-portal-muted">{notificationsMessage}</p>}
               {activity?.events.some((event) => event.event_type === 'TEMP_PASSWORD_ISSUED') && <div className="cp-portal-notice"><Bell size={18} /><p>{isAr ? 'تمت الموافقة على طلب إعادة تعيين كلمة المرور. اتبع تعليمات تغيير كلمة المرور عند تسجيل الدخول.' : 'Your password-reset request was approved. Follow the password-change instructions when signing in.'}</p></div>}
