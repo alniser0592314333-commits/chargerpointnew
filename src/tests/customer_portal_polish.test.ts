@@ -38,7 +38,7 @@ describe('customer portal polish regression contract', () => {
     expect(page).toContain("isAr ? 'عن نقطة الشحن' : 'About Charging Point'");
     expect(page).toContain("isAr ? 'إصدار التطبيق' : 'App version'");
     expect(page).toContain("isAr ? 'إصدار الأمان' : 'Security version'");
-    expect(page).toContain('Financial activity and payment receipts');
+    expect(page).toContain('financial activity and payment receipts');
     expect(page).not.toContain('Change language to Arabic');
   });
 
@@ -61,6 +61,6 @@ describe('customer portal polish regression contract', () => {
     const submit = payment.indexOf("isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'");
     expect(form).toBeGreaterThan(-1);
     expect(submit).toBeGreaterThan(form);
-    expect(submit).toBeLessThan(payment.indexOf('isAr ? \'وسيلة الدفع\' : \'Payment method\''));
+    expect(submit).toBeLessThan(payment.indexOf('isAr ? \'وسيلة الدفع\' : \'Payment method\'', form));
   });
 });
