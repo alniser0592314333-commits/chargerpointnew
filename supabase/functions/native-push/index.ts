@@ -288,11 +288,11 @@ Deno.serve(async (request: Request) => {
     if (error || !event || (eventStatus && eventStatus !== String(event.event_type))) return json(200, { ok: true, skipped: true });
     const eventType = String(event.event_type || "");
     eventKey += ":" + eventType;
-    if (eventType === "RESET_REQUESTED") {
-      titleAr = "طلب إعادة تعيين كلمة المرور";
-      titleEn = "Password reset request";
-      bodyAr = "يوجد طلب جديد بانتظار مراجعة الإدارة.";
-      bodyEn = "A new request is waiting for administrator review.";
+    if (eventType === "RESET_REQUESTED" || eventType === "HISTORY_ACCESS_REQUESTED") {
+      titleAr = eventType === "HISTORY_ACCESS_REQUESTED" ? "طلب كشف الطلبات التاريخية" : "طلب إعادة تعيين كلمة المرور";
+      titleEn = eventType === "HISTORY_ACCESS_REQUESTED" ? "Historical order access request" : "Password reset request";
+      bodyAr = eventType === "HISTORY_ACCESS_REQUESTED" ? "يوجد طلب كشف تاريخي جديد بانتظار موافقة الإدارة." : "يوجد طلب جديد بانتظار مراجعة الإدارة.";
+      bodyEn = eventType === "HISTORY_ACCESS_REQUESTED" ? "A historical order access request is waiting for administrator approval." : "A new request is waiting for administrator review.";
       targetPath = "/app/notifications";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
