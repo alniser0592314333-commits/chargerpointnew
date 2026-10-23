@@ -62,8 +62,6 @@ export const AdminBiometricSettings: React.FC = () => {
                 ? copy('كلمة المرور غير صحيحة.', 'The password is incorrect.')
             : code === 'PASSWORD_AND_BIN_REQUIRED'
                   ? copy('أدخل كلمة المرور ورمز BIN الصحيح (4 أرقام على الأقل).', 'Enter your password and a valid BIN (at least 4 digits).')
-                  : code === 'EMAIL_UNAVAILABLE'
-                    ? copy('تعذر تحديد بريد الحساب لإرسال رمز التأكيد.', 'Could not determine the account email for confirmation.')
                     : copy('تعذر التحقق أو تفعيل البصمة. تحقق من البيانات والاتصال وحاول مجددًا.', 'Verification or fingerprint setup failed. Check your details and connection, then try again.'));
     } finally { setBusy(false); }
   };
