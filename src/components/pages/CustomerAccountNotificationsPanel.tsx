@@ -76,7 +76,8 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setRequests(Array.isArray(result.data.requests) ? result.data.requests : []);
       setEvents(Array.isArray(result.data.events) ? result.data.events : []);
       setAccounts(Array.isArray(result.data.accounts) ? result.data.accounts : []);
-      const historyResponse = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-history', {
+      const historyUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+      const historyResponse = await fetch(historyUrl + '/functions/v1/customer-history', {
         method: 'POST',
         headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'admin-list' }),
