@@ -18,6 +18,27 @@ describe('customer portal polish regression contract', () => {
     expect(component).toContain('nativeSplashHidden.current');
   });
 
+  it('resolves customer login by the canonical UUID-derived code without querying a nonexistent customers column', () => {
+    const endpoint = read('supabase/functions/customer-account/index.ts');
+    const biometric = read('supabase/functions/account-biometric/index.ts');
+    expect(endpoint).toContain('const customerCode = (customerId: string)');
+    expect(endpoint).toContain('.gte("id", `${prefix}0000-0000-0000-0000-000000000000`)');
+    expect(endpoint).not.toContain('.eq("customer_code", token)');
+    expect(endpoint).not.toContain('.select("id,name,customer_code,is_active,status,deleted_at")');
+    expect(biometric).toContain('if (!isCustomerUuid && /^[0-9a-f]{4}$/i.test(identifier))');
+    expect(biometric).toContain('.gte("id", prefix + "0000-0000-0000-0000-000000000000")');
+  });
+
+  it('keeps the biometric prompt from opening before Android activity state is ready', () => {
+    const plugin = read('scripts/android/AccountBiometricPlugin.java');
+    const styles = read('src/public-portal.css');
+    expect(plugin).toContain('Lifecycle.State.RESUMED');
+    expect(plugin).toContain('mainHandler.postDelayed(showPrompt[0], 120)');
+    expect(plugin).toContain('BIOMETRIC_PROMPT_NOT_READY');
+    expect(styles).toContain('html:has(.cp-auth), body:has(.cp-auth), #root:has(.cp-auth)');
+    expect(styles).toContain('background-color: #061c24 !important');
+  });
+
   it('keeps the finance destination clearly labeled as payments', () => {
     const navigation = read('src/components/pages/CustomerPortalNavigation.tsx');
     expect(navigation).toContain("labelAr: 'الدفع', labelEn: 'Payments'");
