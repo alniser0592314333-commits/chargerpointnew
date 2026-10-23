@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { SplashScreen } from '@capacitor/splash-screen';
 import { useI18n } from '../../i18n/i18nContext';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import './first-visit-welcome.css';
@@ -33,6 +34,29 @@ export const FirstVisitWelcomeIntro: React.FC<{ enabled: boolean; restartKey?: n
   const [visible, setVisible] = useState(() => enabled && (isNative || !hasSeenIntro()));
   const [stage, setStage] = useState<IntroStage>('assembling');
   const hasStartedRef = useRef(false);
+  const nativeSplashHidden = useRef(false);
+
+  // Keep Android's native launch screen visible until React has painted either
+  // the real welcome intro or the requested destination. This removes the
+  // WebView's white pre-render frame instead of recoloring that frame.
+  useEffect(() => {
+    if (!isNative || nativeSplashHidden.current) return;
+    let firstFrame = 0;
+    let secondFrame = 0;
+    firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        if (nativeSplashHidden.current) return;
+        nativeSplashHidden.current = true;
+        void SplashScreen.hide().catch((error) => {
+          console.warn('Native launch screen could not be dismissed after first paint.', error);
+        });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [isNative, enabled, visible]);
 
   useEffect(() => {
     if (!enabled) {

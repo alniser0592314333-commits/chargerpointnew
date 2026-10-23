@@ -5,6 +5,19 @@ import path from 'node:path';
 const read = (file: string) => fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
 
 describe('customer portal polish regression contract', () => {
+  it('holds the customer native launch screen until the correct intro or destination has painted', () => {
+    const component = read('src/components/pages/FirstVisitWelcomeIntro.tsx');
+    const config = JSON.parse(read('capacitor.customer.config.json'));
+    const packageJson = JSON.parse(read('package.json'));
+    expect(packageJson.dependencies['@capacitor/splash-screen']).toBeDefined();
+    expect(config.plugins.SplashScreen.launchAutoHide).toBe(false);
+    expect(component).toContain("import { SplashScreen } from '@capacitor/splash-screen'");
+    expect(component).toContain('window.requestAnimationFrame');
+    expect(component).toContain('window.cancelAnimationFrame');
+    expect(component).toContain('SplashScreen.hide()');
+    expect(component).toContain('nativeSplashHidden.current');
+  });
+
   it('keeps the finance destination clearly labeled as payments', () => {
     const navigation = read('src/components/pages/CustomerPortalNavigation.tsx');
     expect(navigation).toContain("labelAr: 'الدفع', labelEn: 'Payments'");
@@ -55,6 +68,9 @@ describe('customer portal polish regression contract', () => {
     expect(workflow).toContain('options:\n          - customer\n          - admin\n          - both');
     expect(workflow).toContain('inputs.release_target');
     expect(workflow).toContain('default: "1.0.5"');
+    expect(workflow).toContain('RELEASE_TARGET="${{ inputs.release_target }}"');
+    expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "customer" || "$RELEASE_TARGET" == "both" ]]');
+    expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "admin" || "$RELEASE_TARGET" == "both" ]]');
   });
 
   it('retries a transient Android biometric availability probe before suppressing the prompt', () => {

@@ -59,7 +59,7 @@ jobs:
       - name: Typecheck and run notification/version tests
         run: |
           npm run lint
-          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts
+          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts src/tests/customer_portal_polish.test.ts
 
       - name: Build production web assets
         env:
@@ -440,6 +440,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ inputs.release_version }}
         run: |
-          test -s "artifacts/ChargerPoint-customer-v${APP_VERSION}.apk"
-          test -s "artifacts/ChargerPoint-admin-v${APP_VERSION}.apk"
-          gh release create "v${APP_VERSION}" artifacts/*.apk --title "نقطة الشحن v${APP_VERSION}" --generate-notes
+          RELEASE_TARGET="${{ inputs.release_target }}"
+          files=()
+          if [[ "$RELEASE_TARGET" == "customer" || "$RELEASE_TARGET" == "both" ]]; then
+            customer_apk="artifacts/ChargerPoint-customer-v${APP_VERSION}.apk"
+            test -s "$customer_apk"
+            files+=("$customer_apk")
+          fi
+          if [[ "$RELEASE_TARGET" == "admin" || "$RELEASE_TARGET" == "both" ]]; then
+            admin_apk="artifacts/ChargerPoint-admin-v${APP_VERSION}.apk"
+            test -s "$admin_apk"
+            files+=("$admin_apk")
+          fi
+          test "${#files[@]}" -gt 0
+          gh release create "v${APP_VERSION}" "${files[@]}" --title "نقطة الشحن v${APP_VERSION}" --generate-notes
