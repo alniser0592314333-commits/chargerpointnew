@@ -207,6 +207,38 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     return result as Record<string, unknown>;
   }, []);
 
+  const requestHistoricalOrders = async () => {
+    if (historyBusy || !online) return;
+    setHistoryBusy(true);
+    setActionMessage('');
+    try {
+      const result = await callHistoryApi('request');
+      const status = typeof result.status === 'string' ? result.status : 'PENDING';
+      const expiresAt = typeof result.access_expires_at === 'string' ? result.access_expires_at : null;
+      setHistoryRequestStatus(status);
+      setHistoryAccessExpiresAt(expiresAt);
+      if (status === 'APPROVED' && expiresAt) {
+        const history = await callHistoryApi('history-orders');
+        if (Array.isArray(history.orders)) {
+          const olderOrders = history.orders as PortalOrder[];
+          setData((current) => {
+            if (!current) return current;
+            const combined = new Map<string, PortalOrder>();
+            [...current.orders, ...olderOrders].forEach((order) => combined.set(String(order.order_number) + '|' + order.created_at, order));
+            return { ...current, orders: [...combined.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) };
+          });
+        }
+        setActionMessage(isAr ? 'تم تفعيل كشف الطلبات التاريخية لمدة 24 ساعة.' : 'Historical orders are available for 24 hours.');
+      } else {
+        setActionMessage(isAr ? 'تم إرسال طلب الكشف التاريخي إلى الإدارة للموافقة.' : 'Historical order access request sent to the administrator.');
+      }
+    } catch {
+      setActionMessage(isAr ? 'تعذّر تنفيذ الطلب. تحقق من الاتصال ثم حاول مجددًا.' : 'Could not complete the request. Check the connection and try again.');
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+
   const outageActive = !online || (!serverAvailable && !loading);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
