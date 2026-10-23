@@ -193,6 +193,20 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [biometricPassword, setBiometricPassword] = useState('');
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricMessage, setBiometricMessage] = useState('');
+  const callHistoryApi = useCallback(async (action: string): Promise<Record<string, unknown>> => {
+    const { data: sessionData } = await customerAuth.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new Error('AUTH_REQUIRED');
+    const response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-history', {
+      method: 'POST',
+      headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.ok !== true) throw new Error(typeof result?.error === 'string' ? result.error : 'HISTORY_REQUEST_FAILED');
+    return result as Record<string, unknown>;
+  }, []);
+
   const outageActive = !online || (!serverAvailable && !loading);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
