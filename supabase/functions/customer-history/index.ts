@@ -79,7 +79,12 @@ Deno.serve(async (request: Request) => {
   const { data: link, error: linkError } = await admin.from("customer_account_links")
     .select("customer_id,auth_user_id,account_status,must_change_password,terms_version")
     .eq("auth_user_id", auth.user.id).maybeSingle();
-  if (linkError || !link || link.account_status !== "ACTIVE" || link.must_change_password) return respond(403, { ok: false, error: "ACCOUNT_UNAVAILABLE" });
+  if (linkError || !link || link.account_status !== "ACTIVE" || link.must_change_password || link.terms_version !== "2026-10-18-v1") return respond(403, { ok: false, error: "ACCOUNT_UNAVAILABLE" });
+  const { data: customer, error: customerError } = await admin.from("customers")
+    .select("is_active,status,deleted_at").eq("id", link.customer_id).maybeSingle();
+  if (customerError || !customer || customer.is_active !== true || customer.deleted_at || customer.status === "DELETED") {
+    return respond(403, { ok: false, error: "ACCOUNT_UNAVAILABLE" });
+  }
   const { data: session } = await admin.from("customer_account_sessions")
     .select("session_id,expires_at,revoked_at").eq("customer_id", link.customer_id)
     .eq("auth_user_id", auth.user.id).maybeSingle();
