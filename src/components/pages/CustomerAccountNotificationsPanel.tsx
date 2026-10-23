@@ -168,6 +168,25 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
     } finally { setBusy(false); }
   };
 
+  const reviewHistoryRequest = async (requestId: string, decision: 'APPROVE' | 'REJECT') => {
+    const token = getSupabaseAuthToken();
+    if (!token || busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-history', {
+        method: 'POST',
+        headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'admin-review', requestId, decision }),
+      });
+      const result = await response.json();
+      if (!response.ok || result?.ok !== true) throw new Error('REVIEW_FAILED');
+      setHistoryRequests((items) => items.filter((item) => item.id !== requestId));
+      setMessage(decision === 'APPROVE' ? t('تمت الموافقة لمدة 24 ساعة.', 'Approved for 24 hours.') : t('تم رفض الطلب.', 'Request rejected.'));
+    } catch {
+      setError(t('تعذّرت معالجة الطلب.', 'Could not process request.'));
+    } finally { setBusy(false); }
+  };
+
   const changeAccountStatus = async () => {
     if (!pendingStatus || busy) return;
     const token = getSupabaseAuthToken();
