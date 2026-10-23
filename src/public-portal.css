@@ -16,6 +16,14 @@ html.light, html.light body, body:has(.public-portal-page) {
   color: var(--portal-ink) !important;
 }
 
+/* Keep the customer APK's native splash and web surface on the same dark base.
+   Public pages override this with their own surface; account routes never expose
+   a white WebView frame while React swaps the QR, login, and password screens. */
+html, body, #root { background-color: #061c24; }
+html:has(.cp-auth), body:has(.cp-auth), #root:has(.cp-auth) {
+  background-color: #061c24 !important;
+}
+
 .public-portal-page {
   isolation: isolate;
   min-height: 100vh;
