@@ -48,6 +48,15 @@ describe('customer portal polish regression contract', () => {
     expect(workflow).toContain('("ar", arabic_name), ("en", base_name)');
   });
 
+  it('allows preparing a customer-only signed release without rebuilding the admin release', () => {
+    const workflow = read('.github/workflows/prepare-android-release.yml');
+    expect(workflow).toContain('release_target');
+    expect(workflow).toContain('default: customer');
+    expect(workflow).toContain('options:\n          - customer\n          - admin\n          - both');
+    expect(workflow).toContain('inputs.release_target');
+    expect(workflow).toContain('default: "1.0.5"');
+  });
+
   it('retries stale customer session issuance after a successful biometric proof', () => {
     const biometric = read('supabase/functions/account-biometric/index.ts');
     expect(biometric).toContain('const customerSessionAttempts = cred.account_type === "customer" ? 4 : 1');
