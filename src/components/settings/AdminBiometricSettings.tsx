@@ -26,7 +26,6 @@ export const AdminBiometricSettings: React.FC = () => {
   const copy = (a: string, e: string) => ar ? a : e;
   const refresh = async () => {
     setAvailable(await isNativeBiometricAvailable());
-    const current = await authService.getCurrentSession();
     setSuperAdmin(current?.role === 'SUPER_ADMIN');
     const auth = await authService.getSupabaseAuthSession();
     const address = auth?.user?.email || current?.email || '';
@@ -87,11 +86,11 @@ export const AdminBiometricSettings: React.FC = () => {
           ? copy('رمز البريد غير صحيح أو منتهي. اطلب رمزًا جديدًا.', 'The email code is invalid or expired. Request a new code.')
           : code === 'WRONG_BIN' || code === 'BIN_REQUIRED'
             ? copy('رمز BIN غير صحيح.', 'The BIN is incorrect.')
-            : code === 'BIN_LOCKED_FROZEN'
+        : code === 'BIN_LOCKED_FROZEN'
               ? copy('تم قفل رمز BIN. استخدم مسار الاستعادة.', 'The BIN is locked. Use the recovery flow.')
-              : code === 'REAUTHENTICATION_FAILED'
+          : code === 'REAUTHENTICATION_FAILED'
                 ? copy('كلمة المرور غير صحيحة.', 'The password is incorrect.')
-                : code === 'PASSWORD_AND_BIN_REQUIRED'
+            : code === 'PASSWORD_AND_BIN_REQUIRED'
                   ? copy('أدخل كلمة المرور ورمز BIN الصحيح (4 أرقام على الأقل).', 'Enter your password and a valid BIN (at least 4 digits).')
                   : code === 'EMAIL_UNAVAILABLE'
                     ? copy('تعذر تحديد بريد الحساب لإرسال رمز التأكيد.', 'Could not determine the account email for confirmation.')
