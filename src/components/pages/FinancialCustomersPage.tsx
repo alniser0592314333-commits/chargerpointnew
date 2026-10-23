@@ -35,9 +35,14 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
     setReminderMessage('');
     setReminderError(false);
     try {
-      const result = await callCustomerAccount<{ sent_count?: number }>('admin-send-debt-reminders', {}, token);
-      if (result.error || result.data?.ok !== true || typeof result.data.sent_count !== 'number') throw new Error('SEND_FAILED');
-      const count = result.data.sent_count;
+      const response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/debt-reminders', {
+        method: 'POST',
+        headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.ok !== true || typeof result.sent_count !== 'number') throw new Error('SEND_FAILED');
+      const count = result.sent_count;
       setReminderMessage(count === 0
         ? (isRTL ? 'لا يوجد عملاء عليهم مديونية لإرسال التذكير لهم.' : 'No customers currently have an outstanding debt.')
         : (isRTL ? 'تم تسجيل التذكير إلى ' + count + ' عميل مدين.' : 'Reminder notifications queued for ' + count + ' indebted customers.'));
