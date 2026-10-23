@@ -334,7 +334,7 @@ jobs:
 
           def set_string(xml, key, value):
               pattern = rf'<string name="{re.escape(key)}">.*?</string>'
-              replacement = f'<string name="{key}>{value}</string>'
+              replacement = f'<string name="{key}">{value}</string>'
               if re.search(pattern, xml):
                   return re.sub(pattern, replacement, xml, count=1)
               return xml.replace("</resources>", f'    {replacement}\n</resources>')
