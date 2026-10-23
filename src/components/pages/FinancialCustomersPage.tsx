@@ -103,6 +103,15 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
         </p>
       </div>
 
+      <div className="space-y-2">
+        <button type="button" onClick={() => void sendDebtReminders()} disabled={reminderSending}
+          className="w-full flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <BellRing className="h-4 w-4" />
+          {reminderSending ? (isRTL ? 'جارٍ إرسال التذكيرات…' : 'Sending reminders…') : (isRTL ? 'إرسال تذكير بالدفع لكل العملاء المدينين' : 'Send payment reminders to indebted customers')}
+        </button>
+        {reminderMessage && <p role="status" className={reminderError ? 'text-center text-xs text-rose-600' : 'text-center text-xs text-emerald-700'}>{reminderMessage}</p>}
+      </div>
+
       {/* 2. Three Primary Action Buttons (NO initial customer list fetch) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         {/* Button 1: All Customers */}
