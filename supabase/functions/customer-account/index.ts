@@ -535,7 +535,7 @@ Deno.serve(async (request: Request) => {
             .select("id,status,requested_target,created_at,reviewed_at,rejection_reason")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(20),
           admin.from("customer_account_events")
-            .select("id,event_type,is_read,created_at")
+            .select("id,event_type,is_read,created_at,payload")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(50),
           admin.from("customer_account_sessions")
             .select("created_at,expires_at").eq("customer_id", link.customer_id)
