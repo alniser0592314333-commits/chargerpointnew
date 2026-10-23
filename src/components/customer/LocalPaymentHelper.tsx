@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ChevronDown, ChevronUp, LifeBuoy, Plus, Trash2, Wallet, ShieldAlert, PhoneCall, LockKeyhole, X } from 'lucide-react';
+import { buildJawwalBCode } from '../../services/localPaymentHelperCode';
 
 type AccountKind = 'merchant' | 'friend';
 type JawwalBService = {
@@ -50,16 +51,6 @@ async function saveServices(services: JawwalBService[]): Promise<void> {
     return;
   }
   window.sessionStorage.setItem(WEB_SESSION_KEY, value);
-}
-
-function buildJawwalBCode(service: JawwalBService, amount: string): string {
-  const kind = service.accountKind === 'merchant' ? '2' : '1';
-  const phone = service.recipientPhone.replace(/\\D/g, '');
-  const normalizedAmount = amount.trim();
-  if (!/^\\d{4}$/.test(service.pin)) throw new Error('الرقم السري يجب أن يتكوّن من 4 أرقام.');
-  if (!/^\\d{8,15}$/.test(phone)) throw new Error('رقم المستلم غير صالح.');
-  if (!/^(?:0*[1-9]\\d*)(?:\\.\\d{1,2})?$/.test(normalizedAmount)) throw new Error('أدخل مبلغًا صحيحًا أكبر من صفر.');
-  return '*110*' + kind + '*' + service.pin + '*' + phone + '*' + normalizedAmount + '*1#';
 }
 
 export const openLocalPaymentHelper = () => window.dispatchEvent(new Event(OPEN_EVENT));
