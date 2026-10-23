@@ -778,7 +778,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                       {!busy && nextArrow}
                     </button>
                     {directEntry && savedCustomerAccounts.length > 0 && (
-                      <button type="button" onClick={() => { setShowSavedCustomerAccounts(true); setUsername(''); setPassword(''); setError(''); }}
+                      <button type="button" onClick={() => { setSelectedSavedCustomerAccountLabel(''); setShowSavedCustomerAccounts(true); setUsername(''); setPassword(''); setError(''); }}
                         className="w-full py-2 text-sm font-semibold text-[#5d7782] transition hover:text-[#e8743b] dark:text-[#9bb8bf]">
                         {t('اختيار حساب محفوظ', 'Choose a saved account')}
                       </button>
