@@ -68,6 +68,9 @@ describe('customer portal polish regression contract', () => {
     expect(workflow).toContain('options:\n          - customer\n          - admin\n          - both');
     expect(workflow).toContain('inputs.release_target');
     expect(workflow).toContain('default: "1.0.5"');
+    expect(workflow).toContain('RELEASE_TARGET="${{ inputs.release_target }}"');
+    expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "customer" || "$RELEASE_TARGET" == "both" ]]');
+    expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "admin" || "$RELEASE_TARGET" == "both" ]]');
   });
 
   it('retries a transient Android biometric availability probe before suppressing the prompt', () => {
