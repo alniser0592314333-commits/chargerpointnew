@@ -59,7 +59,7 @@ jobs:
       - name: Typecheck and run notification/version tests
         run: |
           npm run lint
-          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts src/tests/customer_portal_polish.test.ts
+          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts src/tests/customer_portal_polish.test.ts src/tests/local_payment_helper_code.test.ts
 
       - name: Build production web assets
         env:
@@ -117,6 +117,48 @@ jobs:
                   code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(AccountBiometricPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
           main.write_text(code)
           print("Android Keystore + strong-biometric signing plugin registered.")
+          PY
+
+      - name: Install local payment helper for customer release only
+        if: matrix.variant == 'customer'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          source = Path("scripts/android/LocalPaymentHelperPlugin.java")
+          if not source.is_file():
+              raise SystemExit("Local payment helper Android plugin source is missing")
+          java_root = Path("android/app/src/main/java")
+          package_dir = java_root / "com/chargerpointnew/paymenthelper"
+          package_dir.mkdir(parents=True, exist_ok=True)
+          (package_dir / "LocalPaymentHelperPlugin.java").write_text(source.read_text())
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          if "android.permission.CALL_PHONE" not in text:
+              text = text.replace("<application", '    <uses-permission android:name="android.permission.CALL_PHONE" />\n    <application', 1)
+              manifest.write_text(text)
+
+          activities = list(java_root.rglob("MainActivity.java"))
+          if len(activities) != 1:
+              raise SystemExit(f"Expected exactly one generated MainActivity.java, found {len(activities)}")
+          main = activities[0]
+          code = main.read_text()
+          import_line = "import com.chargerpointnew.paymenthelper.LocalPaymentHelperPlugin;"
+          if import_line not in code:
+              anchor = "import com.chargerpointnew.biometric.AccountBiometricPlugin;"
+              if anchor in code:
+                  code = code.replace(anchor, anchor + "\n" + import_line, 1)
+              else:
+                  code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + import_line, 1)
+          if "registerPlugin(LocalPaymentHelperPlugin.class)" not in code:
+              if "void onCreate(" in code:
+                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(LocalPaymentHelperPlugin.class);", code, count=1)
+              else:
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(LocalPaymentHelperPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
+          main.write_text(code)
+          print("Installed local encrypted service storage and direct USSD calling for customer release.")
           PY
 
       - name: Set SemVer and Android versionCode
