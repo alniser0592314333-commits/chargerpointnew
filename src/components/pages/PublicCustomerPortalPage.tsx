@@ -746,6 +746,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       TERMS_ACCEPTED: ['تم تحديث الموافقة على الشروط', 'Terms acceptance updated'],
       EMAIL_RESET_SENT: ['تم إرسال رابط استعادة كلمة المرور', 'Password recovery email sent'],
       GOAL_REQUESTED: ['تم إرسال طلب إنشاء هدف', 'Goal creation requested'],
+      DEBT_PAYMENT_REMINDER: ['تذكير باستحقاق الدفع', 'Payment reminder'],
+      HISTORY_ACCESS_APPROVED: ['تمت الموافقة على كشف الطلبات التاريخية لمدة 24 ساعة', 'Historical order access approved for 24 hours'],
+      HISTORY_ACCESS_REJECTED: ['تم رفض طلب كشف الطلبات التاريخية', 'Historical order access rejected'],
     };
     return labels[type]?.[isAr ? 0 : 1] || (isAr ? 'تحديث في الحساب' : 'Account update');
   };
