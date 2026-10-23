@@ -26,6 +26,7 @@ const genericFailure = () => respond(401, { ok: false, error: "ACCOUNT_UNAVAILAB
 const normalize = (value: unknown, max = 256) =>
   typeof value === "string" && value.length <= max ? value.trim() : "";
 const rawPassword = (value: unknown) => typeof value === "string" && value.length <= 128 ? value : "";
+const customerCode = (customerId: string) => customerId.replace(/-/g, "").slice(0, 4).toUpperCase();
 const strongPassword = (value: string) => {
   if (value.length < 8 || value.length > 128) return false;
   const common = new Set(["password", "password123", "12345678", "qwerty123", "11111111", "123456789", "1234567890", "qwertyuiop", "abc12345", "letmein123", "iloveyou", "admin123", "welcome1", "monkey123", "dragon123"]);
@@ -72,23 +73,28 @@ Deno.serve(async (request: Request) => {
 
     // Customer UUIDs are login identifiers, not QR capabilities. They can only
     // identify the account; password/session checks remain mandatory.
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
+    const isCustomerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token);
+    if (isCustomerUuid) {
       const { data: customer, error: customerError } = await admin.from("customers")
-        .select("id,name,customer_code,is_active,status,deleted_at").eq("id", token).maybeSingle();
+        .select("id,name,is_active,status,deleted_at").eq("id", token).maybeSingle();
       if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
         customer.status === "DELETED") return null;
-      return { token, customer, isQrToken: false };
+      return { token, customer: { ...customer, customer_code: customerCode(customer.id) }, isQrToken: false };
     }
 
-    // The customer's short, human-facing customer_code is the normal username.
-    // It identifies an account only; password/session checks remain mandatory.
-    if (token.length < 24) {
-      const { data: customer, error: customerError } = await admin.from("customers")
-        .select("id,name,customer_code,is_active,status,deleted_at")
-        .eq("customer_code", token).maybeSingle();
-      if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
-        customer.status === "DELETED") return null;
-      return { token, customer, isQrToken: false };
+    // Customer codes are the canonical four-character prefix generated from the
+    // customer's UUID by public.derive_customer_code(). The customers table has
+    // no customer_code column, so resolve that code against the UUID range.
+    if (/^[0-9a-f]{4}$/i.test(token)) {
+      const prefix = token.toLowerCase();
+      const { data: matches, error: codeError } = await admin.from("customers")
+        .select("id,name,is_active,status,deleted_at")
+        .gte("id", `${prefix}0000-0000-0000-0000-000000000000`)
+        .lte("id", `${prefix}ffff-ffff-ffff-ffff-ffffffffffff`)
+        .eq("is_active", true).is("deleted_at", null).limit(2);
+      if (codeError || !matches || matches.length !== 1 || matches[0].status === "DELETED") return null;
+      const customer = matches[0];
+      return { token, customer: { ...customer, customer_code: customerCode(customer.id) }, isQrToken: false };
     }
 
     // Only opaque public customer QR capabilities may authorize first-time activation.
@@ -98,7 +104,7 @@ Deno.serve(async (request: Request) => {
         .eq("is_active", true).maybeSingle();
       if (qrError || !qr || (qr.expires_at && new Date(qr.expires_at).getTime() <= Date.now())) return null;
       const { data: customer, error: customerError } = await admin.from("customers")
-        .select("id,name,customer_code,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
+        .select("id,name,is_active,status,deleted_at").eq("id", qr.target_id).maybeSingle();
       if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
         customer.status === "DELETED") return null;
       return { token, customer, isQrToken: true };
@@ -128,10 +134,10 @@ Deno.serve(async (request: Request) => {
       .eq("auth_user_id", userId).maybeSingle();
     if (error || !data) return null;
     const { data: customer, error: customerError } = await admin.from("customers")
-      .select("id,name,customer_code,is_active,status,deleted_at").eq("id", data.customer_id).maybeSingle();
+      .select("id,name,is_active,status,deleted_at").eq("id", data.customer_id).maybeSingle();
     if (customerError || !customer || customer.is_active !== true || customer.deleted_at ||
       customer.status === "DELETED" || data.account_status !== "ACTIVE") return null;
-    return { ...data, customer };
+    return { ...data, customer: { ...customer, customer_code: customerCode(customer.id) } };
   }
 
   async function registerSession(link: any, userId: string, claims: Record<string, unknown> | null) {
