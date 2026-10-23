@@ -301,6 +301,19 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       </div>
 
       <div className="space-y-2">
+        <h3 className="font-bold">{t('طلبات كشف الطلبات التاريخية', 'Historical order access requests')} <span className="text-sm font-normal text-gray-500">({historyRequests.length})</span></h3>
+        {historyRequests.length === 0
+          ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('لا توجد طلبات كشف تاريخي معلّقة.', 'No pending history access requests.')}</p>
+          : historyRequests.map((request) => <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 p-3 dark:border-amber-900">
+              <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('طلب الكشف في: ', 'Requested: ')}{dateLabel(request.requested_at)}</p></div>
+              <div className="flex gap-2">
+                <button type="button" disabled={busy} onClick={() => void reviewHistoryRequest(request.id, 'APPROVE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('موافقة 24 ساعة', 'Approve 24 hours')}</button>
+                <button type="button" disabled={busy} onClick={() => void reviewHistoryRequest(request.id, 'REJECT')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200">{t('رفض', 'Reject')}</button>
+              </div>
+            </article>)}
+      </div>
+
+      <div className="space-y-2">
         <h3 className="font-bold">{t('طلبات إعادة التعيين المعلّقة', 'Pending reset requests')} <span className="text-sm font-normal text-gray-500">({requests.length})</span></h3>
         {loading ? <p className="py-4 text-sm text-gray-500">{t('جارٍ التحميل…', 'Loading…')}</p>
           : requests.length === 0 ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('لا توجد طلبات معلّقة.', 'No pending reset requests.')}</p>
