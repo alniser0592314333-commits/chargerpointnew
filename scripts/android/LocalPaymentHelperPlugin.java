@@ -69,7 +69,7 @@ public class LocalPaymentHelperPlugin extends Plugin {
             call.reject("رمز الاتصال غير صالح.");
             return;
         }
-        if (!hasPermission("call")) {
+        if (getPermissionState("call") != com.getcapacitor.PermissionState.GRANTED) {
             requestPermissionForAlias("call", call, "callPermissionResult");
             return;
         }
