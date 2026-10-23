@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bell, CheckCircle2, CreditCard, Globe, History, Info, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
 import { startNativePushNotifications, stopNativePushNotifications } from '../../services/nativePushNotifications';
@@ -162,6 +162,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const notificationOrderNumber = initialPortalQuery.get('orderNumber') || '';
   const notificationOrderCreatedAt = initialPortalQuery.get('orderCreatedAt') || '';
   const [moreView, setMoreView] = useState<CustomerPortalMoreView>('profile');
+  const [settingsSubpage, setSettingsSubpage] = useState<'main' | 'security' | 'about'>('main');
   const [activity, setActivity] = useState<PortalActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(false);
@@ -838,20 +839,37 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               {eventRows.length ? <div className="cp-portal-timeline">{eventRows.map((event)=><div key={event.id} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail} · {safeDate(event.created_at, locale)}</p></div></div>)}</div> : <p className="cp-portal-empty">{isAr ? 'لا توجد إشعارات حتى الآن.' : 'No notifications yet.'}</p>}
             </section>}
 
-            {activeTab === 'more' && moreView === 'settings' && <section className="cp-portal-section">
+
+            {activeTab === 'more' && moreView === 'settings' && settingsSubpage === 'main' && <section className="cp-portal-section">
               <p className="cp-portal-eyebrow">{isAr ? 'تفضيلاتك' : 'PREFERENCES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإعدادات' : 'Settings'}</h1>
-              <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => { toggleTheme(); setShowOfflineDot(false); }}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}{showOfflineDot && <span aria-label={isAr ? 'ملاحظة اتصال' : 'Connection notice'} className="cp-portal-offline-dot"/>}</button></div>
-              <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
               <div className="cp-portal-subsection">
-                <h2 className="font-bold">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</h2>
-                <p className="mt-2 text-sm leading-6 cp-portal-muted">{isAr ? 'نقطة الشحن خدمة لمتابعة طلبات شحن الأجهزة وحالة كل طلب، والاطلاع على الرصيد والذمم والحركات المالية وإيصالات الدفع. يمكنك إرسال إشعار الدفع وإرفاق الإيصال، ومتابعة حالة المراجعة دون اعتبار الإرسال دفعة معتمدة قبل موافقة الإدارة. كما تتيح البوابة متابعة الأهداف والمكافآت، واستلام تحديثات الحساب والإشعارات، وتغيير كلمة المرور وإدارة الدخول بالبصمة على الجهاز المدعوم. تُحمّل البيانات الحساسة من الخدمة الموثوقة، وتُعرض آخر نسخة محفوظة عند انقطاع الاتصال مع إيقاف العمليات المالية حتى عودة التحقق.' : 'Charging Point lets you track charging orders and their statuses, view balances, amounts due, financial activity and payment receipts. You can submit a payment notice with a receipt image and track its review; submission is not treated as an approved payment until the administrator verifies it. The portal also supports goals and rewards, account updates and notifications, password changes, and device-based fingerprint sign-in on supported devices. Sensitive data is retrieved from the trusted service. A saved snapshot may be shown during an outage, while financial actions remain disabled until connectivity and verification return.'}</p>
+                <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => { toggleTheme(); setShowOfflineDot(false); }}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}{showOfflineDot && <span aria-label={isAr ? 'ملاحظة اتصال' : 'Connection notice'} className="cp-portal-offline-dot"/>}</button></div>
+                <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
               </div>
+              <button type="button" className="cp-portal-setting-row w-full text-start" onClick={() => setSettingsSubpage('security')} aria-label={isAr ? 'فتح إعدادات الأمان وتسجيل الدخول' : 'Open security and sign-in settings'}>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-300"><ShieldCheck size={20}/></span>
+                <span className="min-w-0 flex-1"><span className="block font-semibold">{isAr ? 'الأمان وتسجيل الدخول' : 'Security & sign-in'}</span><span className="mt-1 block text-xs cp-portal-muted">{isAr ? 'كلمة المرور والبصمة وحماية الحساب' : 'Password, fingerprint, and account protection'}</span></span>
+                <ArrowLeft size={18} className="shrink-0 opacity-60" aria-hidden="true"/>
+              </button>
+              <div className="mt-5 border-t border-slate-200/70 pt-5 dark:border-emerald-950/70">
+                <p className="mb-3 text-xs cp-portal-muted">{isAr ? 'معلومات التطبيق' : 'APP INFORMATION'}</p>
+                <button type="button" className="cp-portal-setting-row w-full text-start" onClick={() => setSettingsSubpage('about')} aria-label={isAr ? 'عن نقطة الشحن' : 'About Charging Point'}>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-300"><Info size={20}/></span>
+                  <span className="min-w-0 flex-1"><span className="block font-semibold">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</span><span className="mt-1 block text-xs cp-portal-muted">{isAr ? 'نبذة عن التطبيق ومعلومات الإصدار' : 'App overview and version information'}</span></span>
+                  <ArrowLeft size={18} className="shrink-0 opacity-60" aria-hidden="true"/>
+                </button>
+              </div>
+            </section>}
+
+            {activeTab === 'more' && moreView === 'settings' && settingsSubpage === 'security' && <section className="cp-portal-section">
+              <button type="button" className="cp-portal-text-link mb-4 inline-flex items-center gap-2" onClick={() => setSettingsSubpage('main')}><ArrowLeft size={17}/>{isAr ? 'العودة إلى الإعدادات' : 'Back to settings'}</button>
+              <p className="cp-portal-eyebrow">{isAr ? 'حماية حسابك' : 'PROTECT YOUR ACCOUNT'}</p><h1 className="cp-portal-heading">{isAr ? 'الأمان وتسجيل الدخول' : 'Security & sign-in'}</h1>
               <div className="cp-portal-subsection">
-                <h2 className="font-bold">{isAr ? 'معلومات الإصدار' : 'Version information'}</h2>
-                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار التطبيق' : 'App version'}</span><strong className="text-sm">{appVersion}</strong></div>
-                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار الأمان' : 'Security version'}</span><span className="text-xs cp-portal-muted">{isAr ? 'تُدار متطلبات الأمان عبر سياسة الخادم؛ لا يوجد رقم مستقل منشور حاليًا.' : 'Security requirements are enforced by server policy; no separate public security version is currently published.'}</span></div>
+                <h2 className="font-bold">{isAr ? 'كلمة المرور وإعادة التعيين' : 'Password & reset'}</h2>
+                <p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تغيير كلمة المرور متاح من هنا. إذا نسيتها، أرسل طلب إعادة تعيين للإدارة؛ وبعد الموافقة ستحتاج إلى اختيار كلمة مرور جديدة.' : 'Change your password here. If you forget it, request a reset from the administrator; after approval, you will need to choose a new password.'}</p>
+                <button type="button" className="cp-portal-secondary-button mt-3" disabled={!online || !serverAvailable || resetRequestBusy} onClick={() => void requestPasswordReset()}>{resetRequestBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'طلب إعادة تعيين كلمة المرور' : 'Request password reset'}</button>
               </div>
-              {Capacitor.isNativePlatform() && <div className="cp-portal-subsection">
+                            {Capacitor.isNativePlatform() && <div className="cp-portal-subsection">
                 <h2 className="font-bold">{isAr ? 'الدخول بالبصمة' : 'Fingerprint sign-in'}</h2>
                 <p className="mt-2 text-sm cp-portal-muted">{biometricEnrolled ? (isAr ? 'البصمة مفعّلة لهذا الحساب على هذا الجهاز. يمكنك تغييرها متى شئت.' : 'Fingerprint is enabled for this account on this device. You can change it anytime.') : (isAr ? 'لم تضف بصمة لهذا الحساب بعد.' : 'No fingerprint is enrolled for this account yet.')}</p>
                 {biometricMessage && <p role="status" className="mt-2 text-sm">{biometricMessage}</p>}
@@ -863,7 +881,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                   <div className="flex flex-wrap gap-2"><button type="submit" className="cp-portal-primary-button" disabled={!online || !serverAvailable || biometricBusy}>{biometricBusy ? <RefreshCw size={17} className="animate-spin"/> : <ShieldCheck size={17} />}{isAr ? 'التحقق وتفعيل البصمة' : 'Verify and enable fingerprint'}</button><button type="button" className="cp-portal-secondary-button" disabled={biometricBusy} onClick={() => { setShowBiometricManager(false); setBiometricPassword(''); setBiometricMessage(''); }}>{isAr ? 'إلغاء' : 'Cancel'}</button></div>
                 </form>}
               </div>}
-              <div className="cp-portal-subsection">
+                            <div className="cp-portal-subsection">
                 <h2 className="font-bold">{isAr ? 'تغيير كلمة المرور' : 'Change password'}</h2>
                 {!showPasswordChange ? <button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable} onClick={() => { setActionMessage(''); setShowPasswordChange(true); }}><KeyRound size={17} />{isAr ? 'تغيير كلمة المرور' : 'Change password'}</button>
                 : <form className="cp-portal-password-form" onSubmit={(event) => { event.preventDefault(); void changePortalPassword(); }}>
@@ -877,6 +895,20 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               </div>
               <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div></div>
               <button type="button" className="cp-portal-signout" onClick={() => { void handleSignOut(); }} disabled={!onLogout}><UserRound size={17} />{isAr ? 'تسجيل الخروج' : 'Sign out'}</button>
+            </section>}
+
+            {activeTab === 'more' && moreView === 'settings' && settingsSubpage === 'about' && <section className="cp-portal-section">
+              <button type="button" className="cp-portal-text-link mb-4 inline-flex items-center gap-2" onClick={() => setSettingsSubpage('main')}><ArrowLeft size={17}/>{isAr ? 'العودة إلى الإعدادات' : 'Back to settings'}</button>
+              <p className="cp-portal-eyebrow">{isAr ? 'معلومات التطبيق' : 'APP INFORMATION'}</p><h1 className="cp-portal-heading">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</h1>
+              <div className="cp-portal-subsection">
+                <h2 className="font-bold">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</h2>
+                <p className="mt-2 text-sm leading-6 cp-portal-muted">{isAr ? 'نقطة الشحن خدمة لمتابعة طلبات شحن الأجهزة وحالة كل طلب، والاطلاع على الرصيد والذمم والحركات المالية وإيصالات الدفع. يمكنك إرسال إشعار الدفع وإرفاق الإيصال، ومتابعة حالة المراجعة دون اعتبار الإرسال دفعة معتمدة قبل موافقة الإدارة. كما تتيح البوابة متابعة الأهداف والمكافآت، واستلام تحديثات الحساب والإشعارات، وتغيير كلمة المرور وإدارة الدخول بالبصمة على الجهاز المدعوم. تُحمّل البيانات الحساسة من الخدمة الموثوقة، وتُعرض آخر نسخة محفوظة عند انقطاع الاتصال مع إيقاف العمليات المالية حتى عودة التحقق.' : 'Charging Point lets you track charging orders and their statuses, view balances, amounts due, financial activity and payment receipts. You can submit a payment notice with a receipt image and track its review; submission is not treated as an approved payment until the administrator verifies it. The portal also supports goals and rewards, account updates and notifications, password changes, and device-based fingerprint sign-in on supported devices. Sensitive data is retrieved from the trusted service. A saved snapshot may be shown during an outage, while financial actions remain disabled until connectivity and verification return.'}</p>
+              </div>
+              <div className="cp-portal-subsection">
+                <h2 className="font-bold">{isAr ? 'معلومات الإصدار' : 'Version information'}</h2>
+                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار التطبيق' : 'App version'}</span><strong className="text-sm">{appVersion}</strong></div>
+                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار الأمان' : 'Security version'}</span><span className="text-xs cp-portal-muted">{isAr ? 'تُدار متطلبات الأمان عبر سياسة الخادم؛ لا يوجد رقم مستقل منشور حاليًا.' : 'Security requirements are enforced by server policy; no separate public security version is currently published.'}</span></div>
+              </div>
             </section>}
 
             <p className="cp-portal-footnote"><CheckCircle2 size={15} />{isAr ? 'عرض معلومات الحساب فقط؛ اعتماد الدفعات وتحديد الأهداف من صلاحيات الإدارة.' : 'Account information only; payment approval and goal assignment remain administrator-controlled.'}</p>
