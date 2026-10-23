@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Bell, Check, CheckCircle2, Clipboard, KeyRound, LoaderCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
+import { config } from '../../config/env';
 import { getSupabaseAuthToken } from '../../services/supabase/client';
 import { callCustomerAccount } from '../../services/customer/customerAuth';
 
