@@ -152,7 +152,7 @@ Deno.serve(async (req: Request) => {
 
       // Password and BIN are the only reauthentication factors for biometric
       // enrollment. The BIN has already been verified server-side above.
-    } else if (normalize(input.bin, 32) || normalize(input.emailOtp, 6)) {
+    } else if (normalize(input.bin, 32)) {
       return { ok: false, status: 400, error: "INVALID_REAUTHENTICATION_FIELDS" };
     }
 
