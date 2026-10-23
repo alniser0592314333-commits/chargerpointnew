@@ -248,4 +248,4 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.submit_qr_payment(text, text, text, text, bigint) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.submit_qr_payment(text, text, text, text, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_qr_payment(text, text, text, text, bigint) TO anon, authenticated;
