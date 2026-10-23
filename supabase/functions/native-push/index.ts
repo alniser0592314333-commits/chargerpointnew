@@ -323,7 +323,13 @@ Deno.serve(async (request: Request) => {
           bodyEn = "Your outstanding amount is ILS " + amount + ". Open the app to review your account.";
         }
       }
-      targetPath = "/public/about";
+      // Customer account events must open their meaningful section, not the public landing page.
+      // The client resolves these semantic targets to the locally remembered customer token.
+      targetPath = event.event_type === "DEBT_PAYMENT_REMINDER"
+        ? "/customer/finance"
+        : String(event.event_type).startsWith("HISTORY_ACCESS_")
+          ? "/customer/orders"
+          : "/customer/home";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
         .eq("app_variant", "customer").eq("customer_id", event.customer_id).is("disabled_at", null);
