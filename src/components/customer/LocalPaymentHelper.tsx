@@ -118,8 +118,8 @@ export const LocalPaymentHelper: React.FC = () => {
     const cleanName = name.trim();
     const cleanPhone = recipientPhone.replace(/[^0-9]/g, '');
     if (!cleanName) { setError('اكتب اسمًا للخدمة.'); return; }
-    if (!/^\\d{4}$/.test(pin)) { setError('الرقم السري يجب أن يتكوّن من 4 أرقام بالضبط.'); return; }
-    if (!/^\\d{8,15}$/.test(cleanPhone)) { setError('أدخل رقم جوال المستلم بالأرقام فقط.'); return; }
+    if (!/^\d{4}$/.test(pin)) { setError('الرقم السري يجب أن يتكوّن من 4 أرقام بالضبط.'); return; }
+    if (!/^\d{8,15}$/.test(cleanPhone)) { setError('أدخل رقم جوال المستلم بالأرقام فقط.'); return; }
     const next = [...services, {
       id: makeId(),
       name: cleanName,
@@ -175,7 +175,7 @@ export const LocalPaymentHelper: React.FC = () => {
   };
 
   const accountKindLabel = (kind: AccountKind) => kind === 'merchant' ? 'تاجر' : 'صديق';
-  const canCreate = useMemo(() => name.trim().length > 0 && /^\\d{4}$/.test(pin) && /^\\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, pin, recipientPhone]);
+  const canCreate = useMemo(() => name.trim().length > 0 && /^\d{4}$/.test(pin) && /^\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, pin, recipientPhone]);
 
   return (
     <>
@@ -268,7 +268,7 @@ export const LocalPaymentHelper: React.FC = () => {
                     </fieldset>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>الرقم السري لجوال B (4 أرقام)</span>
-                      <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\\D/g, '').slice(0, 4))} placeholder="••••" className="w-full rounded-xl border border-[#d9d0c3] bg-white px-3 py-3 text-base outline-none focus:border-[#9b7449]" />
+                      <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="••••" className="w-full rounded-xl border border-[#d9d0c3] bg-white px-3 py-3 text-base outline-none focus:border-[#9b7449]" />
                     </label>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>رقم جوال المستلم</span>
