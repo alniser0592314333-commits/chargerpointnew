@@ -31,6 +31,7 @@ type CustomerAccount = {
   created_at: string;
   customers?: { name?: string } | Array<{ name?: string }> | null;
 };
+type HistoryRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
 type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[] };
 
 const customerName = (value: ResetRequest['customers'] | AccountEvent['customers']) =>
@@ -48,6 +49,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const [requests, setRequests] = useState<ResetRequest[]>([]);
   const [events, setEvents] = useState<AccountEvent[]>([]);
   const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
+  const [historyRequests, setHistoryRequests] = useState<HistoryRequest[]>([]);
   const [pendingStatus, setPendingStatus] = useState<{ customerId: string; status: 'ACTIVE' | 'FROZEN'; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
