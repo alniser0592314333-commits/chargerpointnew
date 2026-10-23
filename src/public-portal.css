@@ -11,7 +11,7 @@
   --portal-shadow: 0 18px 50px rgba(47, 39, 27, .065);
 }
 
-html.light, html.light body, body:has(.public-portal-page) {
+html.light:has(.public-portal-page), html.light body:has(.public-portal-page), body:has(.public-portal-page) {
   background: var(--portal-ivory) !important;
   color: var(--portal-ink) !important;
 }
