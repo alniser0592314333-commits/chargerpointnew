@@ -5,6 +5,19 @@ import path from 'node:path';
 const read = (file: string) => fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
 
 describe('customer portal polish regression contract', () => {
+  it('holds the customer native launch screen until the correct intro or destination has painted', () => {
+    const component = read('src/components/pages/FirstVisitWelcomeIntro.tsx');
+    const config = JSON.parse(read('capacitor.customer.config.json'));
+    const packageJson = JSON.parse(read('package.json'));
+    expect(packageJson.dependencies['@capacitor/splash-screen']).toBeDefined();
+    expect(config.plugins.SplashScreen.launchAutoHide).toBe(false);
+    expect(component).toContain("import { SplashScreen } from '@capacitor/splash-screen'");
+    expect(component).toContain('window.requestAnimationFrame');
+    expect(component).toContain('window.cancelAnimationFrame');
+    expect(component).toContain('SplashScreen.hide()');
+    expect(component).toContain('nativeSplashHidden.current');
+  });
+
   it('keeps the finance destination clearly labeled as payments', () => {
     const navigation = read('src/components/pages/CustomerPortalNavigation.tsx');
     expect(navigation).toContain("labelAr: 'الدفع', labelEn: 'Payments'");
