@@ -224,6 +224,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const eventLabel = (event: AccountEvent) => {
     const labels: Record<string, [string, string]> = {
       RESET_REQUESTED: ['طلب إعادة تعيين كلمة السر', 'Password reset requested'],
+      HISTORY_ACCESS_APPROVED: ['تمت الموافقة على كشف الطلبات لمدة 24 ساعة', 'Historical order access approved for 24 hours'],
+      HISTORY_ACCESS_REJECTED: ['تم رفض طلب كشف الطلبات التاريخية', 'Historical order access request rejected'],
+      DEBT_PAYMENT_REMINDER: ['تذكير بالدفع', 'Payment reminder'],
       TEMP_PASSWORD_ISSUED: ['أصدر المشرف كلمة سر مؤقتة', 'Administrator issued a temporary password'],
       PASSWORD_CHANGED: ['غيّر العميل كلمة السر', 'Customer changed password'],
       EMAIL_RESET_SENT: ['أُرسل رابط استعادة إلى البريد', 'Email recovery link sent'],
