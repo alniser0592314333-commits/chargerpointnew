@@ -583,6 +583,46 @@ Deno.serve(async (request: Request) => {
         p_public_token: qr.public_token,
       });
       if (projectionError || !projection) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+
+      // Manual admin-entered payments share the canonical submission lifecycle, but
+      // must display their actual pending amount and rejection reason to this verified customer.
+      const { data: manualRows, error: manualError } = await admin.from("qr_payment_submissions")
+        .select("id,amount_minor,status,payment_method,created_at,reviewed_at,note,rejection_reason")
+        .eq("customer_id", link.customer_id)
+        .eq("submission_source", "ADMIN_MANUAL")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (manualError) {
+        console.error("Customer manual payment history could not be loaded");
+        return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      }
+      const manualIds = new Set((manualRows ?? []).map((row: { id: string }) => row.id));
+      // The public SQL projection intentionally omits submission IDs. Manual entries use
+      // CASH (customer QR only permits the supported wallet/bank methods), so remove their
+      // projection-only placeholders and append the authoritative, ID-backed rows.
+      const existingSubmissions = Array.isArray(projection.payment_submissions)
+        ? projection.payment_submissions.filter((row: { payment_method?: string }) => String(row.payment_method || "").toUpperCase() !== "CASH")
+        : [];
+      projection.payment_submissions = [
+        ...existingSubmissions,
+        ...(manualRows ?? []).map((row: {
+          id: string; amount_minor: number; status: string; payment_method: string;
+          created_at: string; reviewed_at: string | null; note: string | null; rejection_reason: string | null;
+        }) => ({
+          id: row.id,
+          submission_source: "ADMIN_MANUAL",
+          status: row.status,
+          payment_method: row.payment_method,
+          created_at: row.created_at,
+          reviewed_at: row.reviewed_at,
+          amount_minor: Number(row.amount_minor),
+          note: row.note,
+          rejection_reason: row.rejection_reason,
+        })),
+      ].sort((a: { created_at: string }, b: { created_at: string }) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      ).slice(0, 10);
+
       const version = await snapshotVersion(projection);
       if (knownVersion(input.knownVersion) === version) {
         return respond(200, { ok: true, unchanged: true, version });
