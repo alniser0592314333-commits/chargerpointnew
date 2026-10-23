@@ -57,6 +57,17 @@ describe('customer portal polish regression contract', () => {
     expect(workflow).toContain('default: "1.0.5"');
   });
 
+  it('retries a transient Android biometric availability probe before suppressing the prompt', () => {
+    const client = read('src/services/auth/accountBiometric.ts');
+    const availability = client.slice(
+      client.indexOf('export const isNativeBiometricAvailable'),
+      client.indexOf('export async function enrollAccountBiometric'),
+    );
+    expect(availability).toContain('for (let attempt = 0; attempt < 2; attempt++)');
+    expect(availability).toContain('await wait(250)');
+    expect(availability).toContain('NativeBiometric.isAvailable()');
+  });
+
   it('retries stale customer session issuance after a successful biometric proof', () => {
     const biometric = read('supabase/functions/account-biometric/index.ts');
     expect(biometric).toContain('const customerSessionAttempts = cred.account_type === "customer" ? 4 : 1');
