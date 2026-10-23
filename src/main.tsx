@@ -37,18 +37,18 @@ if (appVariant === 'customer') {
     window.history.replaceState({ path: '/public/about' }, '', '/public/about');
   }
   prepareCustomerIdentity();
-  // Native push setup is deliberately non-blocking: permission prompts, Firebase
-  // registration, or a transient native-plugin failure must never leave the app on
-  // a blank screen. Render the customer portal independently, then initialize push.
+  // Register notification-tap listeners as early as possible so Android cold-start
+  // taps are not lost while the customer portal bundle is still loading. This stays
+  // non-blocking: native push initialization must never gate the first screen.
+  void import('./services/nativePushNotifications')
+    .then(({ initializeNativePushNotificationListeners }) =>
+      initializeNativePushNotificationListeners('customer', document.documentElement.lang))
+    .catch((error) => console.warn('Customer push initialization failed; portal remains available.', error));
   void import('./PublicPortalApp')
     .then(({ default: PublicPortalApp }) => {
       root.render(<StrictMode><PublicPortalApp /></StrictMode>);
     })
     .catch((error) => console.error('Customer portal failed to load.', error));
-  void import('./services/nativePushNotifications')
-    .then(({ initializeNativePushNotificationListeners }) =>
-      initializeNativePushNotificationListeners('customer', document.documentElement.lang))
-    .catch((error) => console.warn('Customer push initialization failed; portal remains available.', error));
 } else if (appVariant !== 'admin' && isPublicPortalRoute) {
   // Preserve the existing web/PWA behavior: public QR links open the isolated
   // customer entry without initializing the admin app or its local business store.
