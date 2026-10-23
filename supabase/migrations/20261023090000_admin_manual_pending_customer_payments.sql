@@ -35,9 +35,15 @@ BEGIN
   WHERE a.auth_user_id = auth.uid() AND a.is_active = true
   LIMIT 1;
 
-  IF v_admin_id IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.get_effective_permissions(v_admin_id)
-    WHERE permission = 'finance:create-payment'
+  IF v_admin_id IS NULL OR (
+    NOT EXISTS (
+      SELECT 1 FROM public.get_effective_permissions(v_admin_id)
+      WHERE permission = 'finance:create-payment'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.admins a
+      WHERE a.id = v_admin_id AND a.role IN ('SUPER_ADMIN', 'Super Admin')
+    )
   ) THEN
     RAISE EXCEPTION 'Missing payment creation permission' USING ERRCODE = 'P0001';
   END IF;
@@ -96,9 +102,15 @@ BEGIN
   WHERE a.auth_user_id = auth.uid() AND a.is_active = true
   LIMIT 1;
 
-  IF v_admin_id IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.get_effective_permissions(v_admin_id)
-    WHERE permission IN ('finance:approve-payment', 'finance:create-payment')
+  IF v_admin_id IS NULL OR (
+    NOT EXISTS (
+      SELECT 1 FROM public.get_effective_permissions(v_admin_id)
+      WHERE permission IN ('finance:approve-payment', 'finance:create-payment')
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.admins a
+      WHERE a.id = v_admin_id AND a.role IN ('SUPER_ADMIN', 'Super Admin')
+    )
   ) THEN
     RAISE EXCEPTION 'Missing finance payment permission' USING ERRCODE = 'P0001';
   END IF;
