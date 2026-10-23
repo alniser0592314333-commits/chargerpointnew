@@ -12,6 +12,8 @@ on:
       - 'src/main.tsx'
       - 'src/App.tsx'
       - 'src/PublicPortalApp.tsx'
+      - 'src/components/pages/FirstVisitWelcomeIntro.tsx'
+      - 'src/components/pages/first-visit-welcome.css'
       - 'src/services/nativePushNotifications.ts'
       - 'src/services/auth/accountBiometric.ts'
       - 'src/components/pages/SettingsPage.tsx'
