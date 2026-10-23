@@ -35,11 +35,15 @@ type PortalOrder = {
   items: PortalOrderItem[];
 };
 type PortalSubmission = {
+  id?: string;
+  submission_source?: 'ADMIN_MANUAL' | 'CUSTOMER_QR' | string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | string;
   payment_method: string;
   created_at: string;
   reviewed_at: string | null;
   amount_minor: number | null;
+  note?: string | null;
+  rejection_reason?: string | null;
 };
 type PortalGoal = {
   target_quantity: number;
@@ -799,9 +803,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 </div>
               </section>
               <section className="cp-portal-section">
-                <h2 className="text-base font-bold">{isAr ? 'إيصالات الدفع' : 'Payment receipts'}</h2>
-                <p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الإيصال لا يُعد دفعة معتمدة إلا بعد موافقة الإدارة.' : 'A receipt is not an approved payment until the administrator accepts it.'}</p>
-                {data.payment_submissions.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد إيصالات مرسلة.' : 'No submitted receipts.'}</p> : <div className="cp-portal-timeline">{[...data.payment_submissions].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).map((submission,index)=><div key={submission.created_at+'-'+index} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{isAr ? 'إيصال دفع' : 'Payment receipt'} · {statusLabel(submission.status)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(submission.created_at, locale)}{submission.reviewed_at ? ' · ' + safeDate(submission.reviewed_at, locale) : ''}</p></div><strong>{money(submission.amount_minor, locale)}</strong></div>)}</div>}
+                <h2 className="text-base font-bold">{isAr ? 'الدفعات والإيصالات' : 'Payments and receipts'}</h2>
+                <p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الدفعات المعلّقة لا تدخل في الرصيد حتى اعتماد الإدارة.' : 'Pending payments do not affect your balance until approved by the administrator.'}</p>
+                {data.payment_submissions.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد دفعات أو إيصالات مسجلة.' : 'No payments or receipts found.'}</p> : <div className="cp-portal-timeline">{[...data.payment_submissions].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).map((submission,index)=><div key={(submission.id || submission.created_at)+'-'+index} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{submission.submission_source === 'ADMIN_MANUAL' ? (isAr ? 'دفعة مسجّلة من الإدارة' : 'Payment recorded by administration') : (isAr ? 'إيصال دفع' : 'Payment receipt')} · {statusLabel(submission.status)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(submission.created_at, locale)}{submission.reviewed_at ? ' · ' + safeDate(submission.reviewed_at, locale) : ''}</p>{submission.status.toUpperCase() === 'REJECTED' && submission.rejection_reason && <p className="mt-2 text-xs text-rose-600 dark:text-rose-300">{isAr ? 'ملاحظة الإدارة: ' : 'Administrator note: '}{submission.rejection_reason}</p>}{submission.submission_source === 'ADMIN_MANUAL' && submission.note && <p className="mt-2 text-xs cp-portal-muted">{isAr ? 'ملاحظة: ' : 'Note: '}{submission.note}</p>}</div><strong className="shrink-0">{money(submission.amount_minor, locale)}</strong></div>)}</div>}
                 {online && serverAvailable && <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={18} />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
               </section>
             </>}
