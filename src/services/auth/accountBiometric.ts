@@ -115,8 +115,9 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const normalizedIdentifier = identifier.trim();
   if (!normalizedIdentifier) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
-  const { challengeId, challenge, credentialId, requiresBin } = await requestLoginChallenge(accountType, normalizedIdentifier);
-  if (requiresBin && !bin) throw new Error('BIN_REQUIRED');
+  const { challengeId, challenge, credentialId } = await requestLoginChallenge(accountType, normalizedIdentifier);
+  // The device-bound strong-biometric signature is the login factor. The BIN
+  // remains available for separate sensitive actions, not for this login flow.
   const en = promptLocale() === 'en';
   const { signature } = await NativeBiometric.signChallenge({
     alias: String(credentialId).replace(/-/g, ''), challenge,
