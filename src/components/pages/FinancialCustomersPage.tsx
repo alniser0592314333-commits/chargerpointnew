@@ -19,6 +19,9 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
   const [customers, setCustomers] = useState<UIFinancialCustomerItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reminderSending, setReminderSending] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderError, setReminderError] = useState(false);
 
   // Fetch when filter is clicked
   const handleSelectFilter = (filter: 'all' | 'credit' | 'debt') => {
