@@ -440,6 +440,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APP_VERSION: ${{ inputs.release_version }}
         run: |
-          test -s "artifacts/ChargerPoint-customer-v${APP_VERSION}.apk"
-          test -s "artifacts/ChargerPoint-admin-v${APP_VERSION}.apk"
-          gh release create "v${APP_VERSION}" artifacts/*.apk --title "نقطة الشحن v${APP_VERSION}" --generate-notes
+          RELEASE_TARGET="${{ inputs.release_target }}"
+          files=()
+          if [[ "$RELEASE_TARGET" == "customer" || "$RELEASE_TARGET" == "both" ]]; then
+            customer_apk="artifacts/ChargerPoint-customer-v${APP_VERSION}.apk"
+            test -s "$customer_apk"
+            files+=("$customer_apk")
+          fi
+          if [[ "$RELEASE_TARGET" == "admin" || "$RELEASE_TARGET" == "both" ]]; then
+            admin_apk="artifacts/ChargerPoint-admin-v${APP_VERSION}.apk"
+            test -s "$admin_apk"
+            files+=("$admin_apk")
+          fi
+          test "${#files[@]}" -gt 0
+          gh release create "v${APP_VERSION}" "${files[@]}" --title "نقطة الشحن v${APP_VERSION}" --generate-notes
