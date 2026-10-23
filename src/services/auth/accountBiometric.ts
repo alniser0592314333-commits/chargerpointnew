@@ -111,7 +111,7 @@ async function requestLoginChallenge(accountType: 'customer' | 'admin', identifi
   throw lastError instanceof Error ? lastError : new Error('BIOMETRIC_REQUEST_FAILED');
 }
 
-export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier: string, bin?: string) {
+export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier?: string) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const normalizedIdentifier = identifier?.trim() || '';
   let localKeyAlias = '';
