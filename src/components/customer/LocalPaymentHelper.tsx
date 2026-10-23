@@ -248,7 +248,7 @@ export const LocalPaymentHelper: React.FC = () => {
                 {notice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
 
                 {!showCreate ? (
-                  <button type="button" onClick={() => { setShowCreate(true); setError(''); setNotice(''); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#80603b] px-4 py-3 font-bold text-white shadow-sm hover:bg-[#6f512f]">
+                  <button type="button" onClick={() => { setShowCreate(true); setError(''); setNotice(''); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white shadow-sm hover:bg-emerald-700">
                     <Plus size={18} /> إضافة خدمة جوال B
                   </button>
                 ) : (
@@ -276,7 +276,7 @@ export const LocalPaymentHelper: React.FC = () => {
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       <button type="button" onClick={resetForm} className="rounded-xl border border-gray-300 px-4 py-3 font-bold text-gray-700 dark:border-white/15 dark:text-gray-200">إلغاء</button>
-                      <button type="submit" disabled={!canCreate || busy} className="rounded-xl bg-[#80603b] px-4 py-3 font-bold text-white disabled:opacity-40">حفظ الخدمة</button>
+                      <button type="submit" disabled={!canCreate || busy} className="rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-700 disabled:opacity-40">حفظ الخدمة</button>
                     </div>
                   </form>
                 )}
