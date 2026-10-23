@@ -15,7 +15,7 @@ type Props = {
 
 const items = [
   { id: 'orders' as const, labelAr: 'الطلبات', labelEn: 'Orders', Icon: Package },
-  { id: 'finance' as const, labelAr: 'الحساب', labelEn: 'Account', Icon: ReceiptText },
+  { id: 'finance' as const, labelAr: 'الدفع', labelEn: 'Payments', Icon: ReceiptText },
   { id: 'home' as const, labelAr: 'الرئيسية', labelEn: 'Home', Icon: House },
   { id: 'goals' as const, labelAr: 'الأهداف', labelEn: 'Goals', Icon: Target },
   { id: 'more' as const, labelAr: 'المزيد', labelEn: 'More', Icon: Menu },
