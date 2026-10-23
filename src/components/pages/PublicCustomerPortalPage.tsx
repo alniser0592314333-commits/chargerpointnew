@@ -831,6 +831,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             {activeTab === 'orders' && <section className="cp-portal-section">
               <p className="cp-portal-eyebrow">{isAr ? 'سجل الخدمة' : 'SERVICE HISTORY'}</p>
               <h1 className="cp-portal-heading">{isAr ? 'طلبات الشحن' : 'Charging orders'}</h1>
+              <div className="cp-portal-subsection">
+                <button type="button" onClick={() => void requestHistoricalOrders()} disabled={historyBusy || !online}
+                  className="cp-portal-secondary-button disabled:opacity-50">
+                  <History size={16} />
+                  {historyBusy ? (isAr ? 'جارٍ التحقق…' : 'Checking access…') :
+                    historyRequestStatus === 'PENDING' ? (isAr ? 'طلب الكشف التاريخي بانتظار موافقة الإدارة' : 'Historical access request pending') :
+                    historyAccessExpiresAt && new Date(historyAccessExpiresAt).getTime() > Date.now()
+                      ? (isAr ? 'عرض الطلبات التاريخية — فعال لمدة 24 ساعة' : 'Load historical orders — access active for 24 hours')
+                      : (isAr ? 'طلب كشف الطلبات التاريخية' : 'Request historical order statement')}
+                </button>
+                {historyAccessExpiresAt && new Date(historyAccessExpiresAt).getTime() > Date.now() &&
+                  <p className="mt-2 text-xs cp-portal-muted">{isAr ? 'ينتهي الوصول في: ' : 'Access expires: '}{safeDate(historyAccessExpiresAt, locale)}</p>}
+              </div>
               {data.orders.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد طلبات مسجلة.' : 'No orders found.'}</p> : <div className="cp-portal-list">
                 {[...data.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((order) => <article key={String(order.order_number) + order.created_at} className="cp-portal-order" id={'customer-order-' + order.order_number + '-' + order.created_at.replace(/[^a-zA-Z0-9]/g, '')}>
                   <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold">{isAr ? 'طلب رقم' : 'Order'} #{order.order_number}</h2><p className="mt-1 text-xs cp-portal-muted">{safeDate(order.created_at, locale)}</p></div><span className="cp-portal-status">{statusLabel(order.status)}</span></div>
