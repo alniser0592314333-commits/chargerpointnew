@@ -284,15 +284,15 @@ Deno.serve(async (request: Request) => {
     }
   } else if (source === "customer_account_events") {
     const { data: event, error } = await admin.from("customer_account_events")
-      .select("id,customer_id,event_type,created_at,is_read").eq("id", recordId).maybeSingle();
+      .select("id,customer_id,event_type,created_at,is_read,payload").eq("id", recordId).maybeSingle();
     if (error || !event || (eventStatus && eventStatus !== String(event.event_type))) return json(200, { ok: true, skipped: true });
     const eventType = String(event.event_type || "");
     eventKey += ":" + eventType;
-    if (eventType === "RESET_REQUESTED") {
-      titleAr = "طلب إعادة تعيين كلمة المرور";
-      titleEn = "Password reset request";
-      bodyAr = "يوجد طلب جديد بانتظار مراجعة الإدارة.";
-      bodyEn = "A new request is waiting for administrator review.";
+    if (eventType === "RESET_REQUESTED" || eventType === "HISTORY_ACCESS_REQUESTED") {
+      titleAr = eventType === "HISTORY_ACCESS_REQUESTED" ? "طلب كشف الطلبات التاريخية" : "طلب إعادة تعيين كلمة المرور";
+      titleEn = eventType === "HISTORY_ACCESS_REQUESTED" ? "Historical order access request" : "Password reset request";
+      bodyAr = eventType === "HISTORY_ACCESS_REQUESTED" ? "يوجد طلب كشف تاريخي جديد بانتظار موافقة الإدارة." : "يوجد طلب جديد بانتظار مراجعة الإدارة.";
+      bodyEn = eventType === "HISTORY_ACCESS_REQUESTED" ? "A historical order access request is waiting for administrator approval." : "A new request is waiting for administrator review.";
       targetPath = "/app/notifications";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
@@ -302,6 +302,9 @@ Deno.serve(async (request: Request) => {
     } else {
       const messages: Record<string, [string, string, string, string]> = {
         TEMP_PASSWORD_ISSUED: ["تمت الموافقة على إعادة تعيين كلمة المرور", "Password reset approved", "راجع تعليمات الدخول الآمن في حسابك.", "Review the secure sign-in instructions in your account."],
+        DEBT_PAYMENT_REMINDER: ["تذكير باستحقاق الدفع", "Payment reminder", "افتح التطبيق لمراجعة المبلغ المستحق عليك.", "Open the app to review your outstanding amount."],
+        HISTORY_ACCESS_APPROVED: ["تمت الموافقة على كشف الطلبات التاريخية", "Historical order access approved", "يمكنك عرض طلباتك التاريخية خلال 24 ساعة.", "Your historical orders are available for the next 24 hours."],
+        HISTORY_ACCESS_REJECTED: ["تم رفض طلب كشف الطلبات التاريخية", "Historical order access request rejected", "افتح التطبيق لمراجعة الإشعارات.", "Open the app to review your notifications."],
         ACCOUNT_FROZEN: ["تم إيقاف الحساب مؤقتًا", "Account temporarily frozen", "تواصل مع الإدارة لمعرفة التفاصيل.", "Contact the administrator for details."],
         ACCOUNT_CANCELLED: ["تم إلغاء الحساب", "Account cancelled", "تواصل مع الإدارة إذا كنت تعتقد أن هذا خطأ.", "Contact the administrator if you believe this is an error."],
         ACCOUNT_REACTIVATED: ["تمت إعادة تفعيل الحساب", "Account reactivated", "يمكنك تسجيل الدخول مجددًا.", "You can sign in again."],
@@ -312,6 +315,14 @@ Deno.serve(async (request: Request) => {
       if (!message) return json(200, { ok: true, skipped: true });
       allowRevokedCustomerNotice = ["TEMP_PASSWORD_ISSUED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_CANCELLED", "ACCOUNT_REACTIVATED"].includes(eventType);
       titleAr = message[0]; titleEn = message[1]; bodyAr = message[2]; bodyEn = message[3];
+      if (eventType === "DEBT_PAYMENT_REMINDER") {
+        const balanceMinor = Number((event as { payload?: { balance_minor?: unknown } }).payload?.balance_minor);
+        if (Number.isFinite(balanceMinor) && balanceMinor > 0) {
+          const amount = (balanceMinor / 100).toFixed(2);
+          bodyAr = "المبلغ المستحق عليك " + amount + " شيكل. افتح التطبيق لمراجعة حسابك.";
+          bodyEn = "Your outstanding amount is ILS " + amount + ". Open the app to review your account.";
+        }
+      }
       targetPath = "/public/about";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")

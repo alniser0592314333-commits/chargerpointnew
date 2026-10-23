@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
+import { getSupabaseAuthToken } from '../../services/supabase/client';
+import { config } from '../../config/env';
 import {
   getFinancialCustomersByFilter,
   searchFinancialCustomers,
   UIFinancialCustomerItem,
 } from './dayOrdersStore';
-import { Search, ChevronLeft, ChevronRight, User, Users, TrendingUp, TrendingDown, Filter } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, User, Users, TrendingUp, TrendingDown, Filter, BellRing } from 'lucide-react';
 
 export interface FinancialCustomersPageProps {
   onSelectCustomer: (customerId: string) => void;
@@ -19,6 +21,41 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
   const [customers, setCustomers] = useState<UIFinancialCustomerItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reminderSending, setReminderSending] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderError, setReminderError] = useState(false);
+
+  const sendDebtReminders = async () => {
+    if (reminderSending) return;
+    const token = getSupabaseAuthToken();
+    if (!token) {
+      setReminderError(true);
+      setReminderMessage(isRTL ? 'انتهت جلسة الإدارة. سجّل الدخول مجددًا.' : 'Administrator session expired. Please sign in again.');
+      return;
+    }
+    setReminderSending(true);
+    setReminderMessage('');
+    setReminderError(false);
+    try {
+      const baseUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+      const response = await fetch(baseUrl + '/functions/v1/debt-reminders', {
+        method: 'POST',
+        headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.ok !== true || typeof result.sent_count !== 'number') throw new Error('SEND_FAILED');
+      const count = result.sent_count;
+      setReminderMessage(count === 0
+        ? (isRTL ? 'لا يوجد عملاء عليهم مديونية لإرسال التذكير لهم.' : 'No customers currently have an outstanding debt.')
+        : (isRTL ? 'تم تسجيل التذكير إلى ' + count + ' عميل مدين.' : 'Reminder notifications queued for ' + count + ' indebted customers.'));
+    } catch {
+      setReminderError(true);
+      setReminderMessage(isRTL ? 'تعذّر تأكيد الإرسال. تحقق من الإشعارات قبل إعادة المحاولة.' : 'Could not confirm dispatch. Check notifications before retrying.');
+    } finally {
+      setReminderSending(false);
+    }
+  };
 
   // Fetch when filter is clicked
   const handleSelectFilter = (filter: 'all' | 'credit' | 'debt') => {
@@ -72,6 +109,15 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
         <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-0.5">
           {t('customerBalancesSubtitle')}
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <button type="button" onClick={() => void sendDebtReminders()} disabled={reminderSending}
+          className="w-full flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <BellRing className="h-4 w-4" />
+          {reminderSending ? (isRTL ? 'جارٍ إرسال التذكيرات…' : 'Sending reminders…') : (isRTL ? 'إرسال تذكير بالدفع لكل العملاء المدينين' : 'Send payment reminders to indebted customers')}
+        </button>
+        {reminderMessage && <p role="status" className={reminderError ? 'text-center text-xs text-rose-600' : 'text-center text-xs text-emerald-700'}>{reminderMessage}</p>}
       </div>
 
       {/* 2. Three Primary Action Buttons (NO initial customer list fetch) */}

@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Bell, Check, CheckCircle2, Clipboard, KeyRound, LoaderCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
+import { config } from '../../config/env';
 import { getSupabaseAuthToken } from '../../services/supabase/client';
 import { callCustomerAccount } from '../../services/customer/customerAuth';
 
@@ -31,6 +32,7 @@ type CustomerAccount = {
   created_at: string;
   customers?: { name?: string } | Array<{ name?: string }> | null;
 };
+type HistoryRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
 type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[] };
 
 const customerName = (value: ResetRequest['customers'] | AccountEvent['customers']) =>
@@ -48,6 +50,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const [requests, setRequests] = useState<ResetRequest[]>([]);
   const [events, setEvents] = useState<AccountEvent[]>([]);
   const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
+  const [historyRequests, setHistoryRequests] = useState<HistoryRequest[]>([]);
   const [pendingStatus, setPendingStatus] = useState<{ customerId: string; status: 'ACTIVE' | 'FROZEN'; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -74,6 +77,15 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setRequests(Array.isArray(result.data.requests) ? result.data.requests : []);
       setEvents(Array.isArray(result.data.events) ? result.data.events : []);
       setAccounts(Array.isArray(result.data.accounts) ? result.data.accounts : []);
+      const historyUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+      const historyResponse = await fetch(historyUrl + '/functions/v1/customer-history', {
+        method: 'POST',
+        headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'admin-list' }),
+      });
+      const historyResult = await historyResponse.json().catch(() => null);
+      if (!historyResponse.ok || historyResult?.ok !== true) throw new Error('HISTORY_REQUESTS_UNAVAILABLE');
+      setHistoryRequests(Array.isArray(historyResult.requests) ? historyResult.requests : []);
     } catch {
       if (!background) setError(t('تعذّر تحميل إشعارات حسابات العملاء. تحقق من الصلاحيات والاتصال.', 'Could not load customer account notifications. Check permissions and connectivity.'));
     } finally {
@@ -158,6 +170,26 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
     } finally { setBusy(false); }
   };
 
+  const reviewHistoryRequest = async (requestId: string, decision: 'APPROVE' | 'REJECT') => {
+    const token = getSupabaseAuthToken();
+    if (!token || busy) return;
+    setBusy(true);
+    try {
+      const baseUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+      const response = await fetch(baseUrl + '/functions/v1/customer-history', {
+        method: 'POST',
+        headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'admin-review', requestId, decision }),
+      });
+      const result = await response.json();
+      if (!response.ok || result?.ok !== true) throw new Error('REVIEW_FAILED');
+      setHistoryRequests((items) => items.filter((item) => item.id !== requestId));
+      setMessage(decision === 'APPROVE' ? t('تمت الموافقة لمدة 24 ساعة.', 'Approved for 24 hours.') : t('تم رفض الطلب.', 'Request rejected.'));
+    } catch {
+      setError(t('تعذّرت معالجة الطلب.', 'Could not process request.'));
+    } finally { setBusy(false); }
+  };
+
   const changeAccountStatus = async () => {
     if (!pendingStatus || busy) return;
     const token = getSupabaseAuthToken();
@@ -195,6 +227,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const eventLabel = (event: AccountEvent) => {
     const labels: Record<string, [string, string]> = {
       RESET_REQUESTED: ['طلب إعادة تعيين كلمة السر', 'Password reset requested'],
+      HISTORY_ACCESS_APPROVED: ['تمت الموافقة على كشف الطلبات لمدة 24 ساعة', 'Historical order access approved for 24 hours'],
+      HISTORY_ACCESS_REJECTED: ['تم رفض طلب كشف الطلبات التاريخية', 'Historical order access request rejected'],
+      DEBT_PAYMENT_REMINDER: ['تذكير بالدفع', 'Payment reminder'],
       TEMP_PASSWORD_ISSUED: ['أصدر المشرف كلمة سر مؤقتة', 'Administrator issued a temporary password'],
       PASSWORD_CHANGED: ['غيّر العميل كلمة السر', 'Customer changed password'],
       EMAIL_RESET_SENT: ['أُرسل رابط استعادة إلى البريد', 'Email recovery link sent'],
@@ -269,6 +304,19 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
               </div>}
             </article>;
           })}
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="font-bold">{t('طلبات كشف الطلبات التاريخية', 'Historical order access requests')} <span className="text-sm font-normal text-gray-500">({historyRequests.length})</span></h3>
+        {historyRequests.length === 0
+          ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('لا توجد طلبات كشف تاريخي معلّقة.', 'No pending history access requests.')}</p>
+          : historyRequests.map((request) => <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 p-3 dark:border-amber-900">
+              <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('طلب الكشف في: ', 'Requested: ')}{dateLabel(request.requested_at)}</p></div>
+              <div className="flex gap-2">
+                <button type="button" disabled={busy} onClick={() => void reviewHistoryRequest(request.id, 'APPROVE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('موافقة 24 ساعة', 'Approve 24 hours')}</button>
+                <button type="button" disabled={busy} onClick={() => void reviewHistoryRequest(request.id, 'REJECT')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200">{t('رفض', 'Reject')}</button>
+              </div>
+            </article>)}
       </div>
 
       <div className="space-y-2">

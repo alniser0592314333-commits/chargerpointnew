@@ -10,6 +10,7 @@ import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAva
 import { AppLogo } from '../qr/AppLogo';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import { useTheme } from '../../theme/themeContext';
+import { config } from '../../config/env';
 import { CustomerPortalNavigation, CustomerPortalMoreView, CustomerPortalTab } from './CustomerPortalNavigation';
 import './customer-portal-dashboard.css';
 
@@ -179,6 +180,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [actionMessage, setActionMessage] = useState('');
   const [goalRequestBusy, setGoalRequestBusy] = useState(false);
   const [resetRequestBusy, setResetRequestBusy] = useState(false);
+  const [historyRequestStatus, setHistoryRequestStatus] = useState<string | null>(null);
+  const [historyAccessExpiresAt, setHistoryAccessExpiresAt] = useState<string | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -189,6 +193,124 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [biometricPassword, setBiometricPassword] = useState('');
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricMessage, setBiometricMessage] = useState('');
+  const callHistoryApi = useCallback(async (action: string): Promise<Record<string, unknown>> => {
+    const { data: sessionData } = await customerAuth.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new Error('AUTH_REQUIRED');
+    const baseUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+    const response = await fetch(baseUrl + '/functions/v1/customer-history', {
+      method: 'POST',
+      headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.ok !== true) throw new Error(typeof result?.error === 'string' ? result.error : 'HISTORY_REQUEST_FAILED');
+    return result as Record<string, unknown>;
+  }, []);
+
+  const requestHistoricalOrders = async () => {
+    if (historyBusy || !online) return;
+    setHistoryBusy(true);
+    setActionMessage('');
+    try {
+      const result = await callHistoryApi('request');
+      const status = typeof result.status === 'string' ? result.status : 'PENDING';
+      const expiresAt = typeof result.access_expires_at === 'string' ? result.access_expires_at : null;
+      setHistoryRequestStatus(status);
+      setHistoryAccessExpiresAt(expiresAt);
+      if (status === 'APPROVED' && expiresAt) {
+        const history = await callHistoryApi('history-orders');
+        if (Array.isArray(history.orders)) {
+          const olderOrders = history.orders as PortalOrder[];
+          setData((current) => {
+            if (!current) return current;
+            const combined = new Map<string, PortalOrder>();
+            [...current.orders, ...olderOrders].forEach((order) => combined.set(String(order.order_number) + '|' + order.created_at, order));
+            return { ...current, orders: [...combined.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) };
+          });
+        }
+        setActionMessage(isAr ? 'تم تفعيل كشف الطلبات التاريخية لمدة 24 ساعة.' : 'Historical orders are available for 24 hours.');
+      } else {
+        setActionMessage(isAr ? 'تم إرسال طلب الكشف التاريخي إلى الإدارة للموافقة.' : 'Historical order access request sent to the administrator.');
+      }
+    } catch {
+      setActionMessage(isAr ? 'تعذّر تنفيذ الطلب. تحقق من الاتصال ثم حاول مجددًا.' : 'Could not complete the request. Check the connection and try again.');
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!online || !data?.customer_code) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    void (async () => {
+      try {
+        const status = await callHistoryApi('status');
+        if (cancelled) return;
+        setHistoryRequestStatus(typeof status.status === 'string' ? status.status : null);
+        const expiresAt = typeof status.access_expires_at === 'string' ? status.access_expires_at : null;
+        setHistoryAccessExpiresAt(expiresAt);
+        if (!expiresAt) return;
+        const result = await callHistoryApi('history-orders');
+        if (cancelled || !Array.isArray(result.orders)) return;
+        setData((current) => {
+          if (!current) return current;
+          const merged = new Map<string, PortalOrder>();
+          [...current.orders, ...(result.orders as PortalOrder[])].forEach((order) => merged.set(String(order.order_number) + '|' + order.created_at, order));
+          return { ...current, orders: [...merged.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) };
+        });
+        timer = window.setTimeout(() => {
+          const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
+          setData((current) => current ? { ...current, orders: current.orders.filter((order) => new Date(order.created_at).getTime() >= cutoff) } : current);
+          setHistoryAccessExpiresAt(null);
+          setHistoryRequestStatus('EXPIRED');
+        }, Math.max(0, new Date(expiresAt).getTime() - Date.now()));
+      } catch { /* Recent orders remain available when history access is unavailable. */ }
+    })();
+    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
+  }, [callHistoryApi, data?.customer_code, online]);
+
+  useEffect(() => {
+    if (!online || !data?.customer_code) return;
+    let cancelled = false;
+    void callHistoryApi('status').then(async (status) => {
+      if (cancelled) return;
+      setHistoryRequestStatus(typeof status.status === 'string' ? status.status : null);
+      const expiresAt = typeof status.access_expires_at === 'string' ? status.access_expires_at : null;
+      setHistoryAccessExpiresAt(expiresAt);
+      if (!expiresAt) return;
+      const result = await callHistoryApi('history-orders');
+      if (cancelled || !Array.isArray(result.orders)) return;
+      setData((current) => {
+        if (!current) return current;
+        const merged = new Map<string, PortalOrder>();
+        [...current.orders, ...(result.orders as PortalOrder[])].forEach((order) => merged.set(String(order.order_number) + '|' + order.created_at, order));
+        return { ...current, orders: [...merged.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) };
+      });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [callHistoryApi, data?.customer_code, online]);
+
+  useEffect(() => {
+    if (!historyAccessExpiresAt) return;
+    const delay = new Date(historyAccessExpiresAt).getTime() - Date.now();
+    if (delay <= 0) {
+      const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
+      setData((current) => current ? { ...current, orders: current.orders.filter((order) => new Date(order.created_at).getTime() >= cutoff) } : current);
+      setHistoryAccessExpiresAt(null);
+      setHistoryRequestStatus('EXPIRED');
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
+      setData((current) => current ? { ...current, orders: current.orders.filter((order) => new Date(order.created_at).getTime() >= cutoff) } : current);
+      setHistoryAccessExpiresAt(null);
+      setHistoryRequestStatus('EXPIRED');
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [historyAccessExpiresAt]);
+
   const outageActive = !online || (!serverAvailable && !loading);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -665,6 +787,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       TERMS_ACCEPTED: ['تم تحديث الموافقة على الشروط', 'Terms acceptance updated'],
       EMAIL_RESET_SENT: ['تم إرسال رابط استعادة كلمة المرور', 'Password recovery email sent'],
       GOAL_REQUESTED: ['تم إرسال طلب إنشاء هدف', 'Goal creation requested'],
+      DEBT_PAYMENT_REMINDER: ['تذكير باستحقاق الدفع', 'Payment reminder'],
+      HISTORY_ACCESS_APPROVED: ['تمت الموافقة على كشف الطلبات التاريخية لمدة 24 ساعة', 'Historical order access approved for 24 hours'],
+      HISTORY_ACCESS_REJECTED: ['تم رفض طلب كشف الطلبات التاريخية', 'Historical order access rejected'],
     };
     return labels[type]?.[isAr ? 0 : 1] || (isAr ? 'تحديث في الحساب' : 'Account update');
   };
@@ -781,6 +906,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             {activeTab === 'orders' && <section className="cp-portal-section">
               <p className="cp-portal-eyebrow">{isAr ? 'سجل الخدمة' : 'SERVICE HISTORY'}</p>
               <h1 className="cp-portal-heading">{isAr ? 'طلبات الشحن' : 'Charging orders'}</h1>
+              <div className="cp-portal-subsection">
+                <button type="button" onClick={() => void requestHistoricalOrders()} disabled={historyBusy || !online}
+                  className="cp-portal-secondary-button disabled:opacity-50">
+                  <History size={16} />
+                  {historyBusy ? (isAr ? 'جارٍ التحقق…' : 'Checking access…') :
+                    historyRequestStatus === 'PENDING' ? (isAr ? 'طلب الكشف التاريخي بانتظار موافقة الإدارة' : 'Historical access request pending') :
+                    historyAccessExpiresAt && new Date(historyAccessExpiresAt).getTime() > Date.now()
+                      ? (isAr ? 'عرض الطلبات التاريخية — فعال لمدة 24 ساعة' : 'Load historical orders — access active for 24 hours')
+                      : (isAr ? 'طلب كشف الطلبات التاريخية' : 'Request historical order statement')}
+                </button>
+                {historyAccessExpiresAt && new Date(historyAccessExpiresAt).getTime() > Date.now() &&
+                  <p className="mt-2 text-xs cp-portal-muted">{isAr ? 'ينتهي الوصول في: ' : 'Access expires: '}{safeDate(historyAccessExpiresAt, locale)}</p>}
+              </div>
               {data.orders.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد طلبات مسجلة.' : 'No orders found.'}</p> : <div className="cp-portal-list">
                 {[...data.orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((order) => <article key={String(order.order_number) + order.created_at} className="cp-portal-order" id={'customer-order-' + order.order_number + '-' + order.created_at.replace(/[^a-zA-Z0-9]/g, '')}>
                   <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-bold">{isAr ? 'طلب رقم' : 'Order'} #{order.order_number}</h2><p className="mt-1 text-xs cp-portal-muted">{safeDate(order.created_at, locale)}</p></div><span className="cp-portal-status">{statusLabel(order.status)}</span></div>
