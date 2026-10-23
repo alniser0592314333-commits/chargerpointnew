@@ -38,7 +38,8 @@ export const AdminBiometricSettings: React.FC = () => {
       // Verify password and BIN before enrollment; the Edge Function repeats both
       // checks server-side before issuing the biometric challenge.
       const currentAuth = await authService.getSupabaseAuthSession();
-      const verified = await authService.verifyCurrentPassword(currentAuth?.user?.email || '', currentPassword, currentBin);
+      const currentSession = await authService.getCurrentSession();
+      const verified = await authService.verifyCurrentPassword(currentAuth?.user?.email || currentSession?.email || '', currentPassword, currentBin);
       if (!verified.success) throw new Error(verified.error || 'IDENTITY_VERIFICATION_FAILED');
 
       const accessToken = (await authService.getSupabaseAuthSession())?.access_token;
@@ -55,14 +56,14 @@ export const AdminBiometricSettings: React.FC = () => {
       setError(code === 'BIOMETRIC_NOT_AVAILABLE'
         ? copy('هذا الجهاز لا يدعم البصمة القوية أو لم يتم إعدادها.', 'Strong biometrics are unavailable or not configured on this device.')
         : code === 'WRONG_BIN' || code === 'BIN_REQUIRED'
-            ? copy('رمز BIN غير صحيح.', 'The BIN is incorrect.')
-        : code === 'BIN_LOCKED_FROZEN'
-              ? copy('تم قفل رمز BIN. استخدم مسار الاستعادة.', 'The BIN is locked. Use the recovery flow.')
-          : code === 'REAUTHENTICATION_FAILED'
-                ? copy('كلمة المرور غير صحيحة.', 'The password is incorrect.')
-            : code === 'PASSWORD_AND_BIN_REQUIRED'
-                  ? copy('أدخل كلمة المرور ورمز BIN الصحيح (4 أرقام على الأقل).', 'Enter your password and a valid BIN (at least 4 digits).')
-                    : copy('تعذر التحقق أو تفعيل البصمة. تحقق من البيانات والاتصال وحاول مجددًا.', 'Verification or fingerprint setup failed. Check your details and connection, then try again.'));
+          ? copy('رمز BIN غير صحيح.', 'The BIN is incorrect.')
+          : code === 'BIN_LOCKED_FROZEN'
+            ? copy('تم قفل رمز BIN. استخدم مسار الاستعادة.', 'The BIN is locked. Use the recovery flow.')
+            : code === 'REAUTHENTICATION_FAILED'
+              ? copy('كلمة المرور غير صحيحة.', 'The password is incorrect.')
+              : code === 'PASSWORD_AND_BIN_REQUIRED'
+                ? copy('أدخل كلمة المرور ورمز BIN الصحيح (4 أرقام على الأقل).', 'Enter your password and a valid BIN (at least 4 digits).')
+                : copy('تعذر التحقق أو تفعيل البصمة. تحقق من البيانات والاتصال وحاول مجددًا.', 'Verification or fingerprint setup failed. Check your details and connection, then try again.'));
     } finally { setBusy(false); }
   };
 
