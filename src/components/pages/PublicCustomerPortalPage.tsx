@@ -10,6 +10,7 @@ import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAva
 import { AppLogo } from '../qr/AppLogo';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import { useTheme } from '../../theme/themeContext';
+import { config } from '../../config/env';
 import { CustomerPortalNavigation, CustomerPortalMoreView, CustomerPortalTab } from './CustomerPortalNavigation';
 import './customer-portal-dashboard.css';
 
@@ -179,6 +180,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [actionMessage, setActionMessage] = useState('');
   const [goalRequestBusy, setGoalRequestBusy] = useState(false);
   const [resetRequestBusy, setResetRequestBusy] = useState(false);
+  const [historyRequestStatus, setHistoryRequestStatus] = useState<string | null>(null);
+  const [historyAccessExpiresAt, setHistoryAccessExpiresAt] = useState<string | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
