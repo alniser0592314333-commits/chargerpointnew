@@ -737,8 +737,9 @@ class DefaultAuthService implements AuthService {
     if (!this.isSupabaseConfigured() || !authSession?.access_token || !authSession?.user?.id) {
       throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
     }
-    // The biometric Edge Function verifies the device signature and, for Super Admin,
-    // the canonical server-side BIN challenge before returning this Supabase session.
+    // The biometric Edge Function verifies the registered device signature before
+    // returning this Supabase session. BIN remains separate from sign-in and may
+    // still be required by sensitive operations.
     const profile = await this.getAdminProfile(authSession.access_token);
     if (!profile || !profile.authenticated || !profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
     if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
