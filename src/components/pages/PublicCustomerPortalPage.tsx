@@ -197,7 +197,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     const { data: sessionData } = await customerAuth.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) throw new Error('AUTH_REQUIRED');
-    const response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-history', {
+    const baseUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+    const response = await fetch(baseUrl + '/functions/v1/customer-history', {
       method: 'POST',
       headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action }),
