@@ -4,10 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Version to build (X.Y.Z, for example 1.0.4)"
+        description: "Version to build (X.Y.Z, for example 1.0.5)"
         required: true
-        default: "1.0.4"
+        default: "1.0.5"
         type: string
+      release_target:
+        description: "Which APK to release"
+        required: true
+        default: customer
+        type: choice
+        options:
+          - customer
+          - admin
+          - both
 
 permissions:
   contents: write
@@ -28,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [customer, admin]
+        variant: ${{ fromJSON(inputs.release_target == 'both' && '["customer","admin"]' || format('["{0}"]', inputs.release_target)) }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
