@@ -291,6 +291,25 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     return () => { cancelled = true; };
   }, [callHistoryApi, data?.customer_code, online]);
 
+  useEffect(() => {
+    if (!historyAccessExpiresAt) return;
+    const delay = new Date(historyAccessExpiresAt).getTime() - Date.now();
+    if (delay <= 0) {
+      const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
+      setData((current) => current ? { ...current, orders: current.orders.filter((order) => new Date(order.created_at).getTime() >= cutoff) } : current);
+      setHistoryAccessExpiresAt(null);
+      setHistoryRequestStatus('EXPIRED');
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
+      setData((current) => current ? { ...current, orders: current.orders.filter((order) => new Date(order.created_at).getTime() >= cutoff) } : current);
+      setHistoryAccessExpiresAt(null);
+      setHistoryRequestStatus('EXPIRED');
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [historyAccessExpiresAt]);
+
   const outageActive = !online || (!serverAvailable && !loading);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
