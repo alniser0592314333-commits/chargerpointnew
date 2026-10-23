@@ -59,7 +59,7 @@ export async function enrollAccountBiometric(
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const alias = randomAlias();
   try {
-    const { challengeId, challenge } = await callEndpoint('enroll-challenge', settingsReauth ? { settingsReauth: true, ...settingsReauth } : {}, accessToken);
+    const { challengeId, challenge, accountType } = await callEndpoint('enroll-challenge', settingsReauth ? { settingsReauth: true, ...settingsReauth } : {}, accessToken);
     const { publicKey } = await NativeBiometric.createKey({ alias });
     const en = promptLocale() === 'en';
     const { signature } = await NativeBiometric.signChallenge({
@@ -72,7 +72,9 @@ export async function enrollAccountBiometric(
     // Re-enrollment replaces the server-side credential. Remove the previous local
     // private key only after the new credential has been accepted by the server.
     try {
-      const storageKey = 'cp_biometric_alias_' + result.accountType;
+      const enrolledAccountType = accountType === 'customer' || accountType === 'admin' ? accountType : null;
+      if (!enrolledAccountType) throw new Error('BIOMETRIC_ACCOUNT_TYPE_UNAVAILABLE');
+      const storageKey = 'cp_biometric_alias_' + enrolledAccountType;
       const previousAlias = localStorage.getItem(storageKey);
       if (previousAlias && previousAlias !== alias && /^[a-f0-9]{32}$/.test(previousAlias)) {
         await NativeBiometric.deleteKey({ alias: previousAlias }).catch(() => undefined);
