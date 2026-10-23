@@ -256,17 +256,21 @@ jobs:
           <resources><color name="cp_icon_background">#082b32</color></resources>
           ''')
 
-          # Keep the customer launcher label concise in both Android locales.
-          base_name = "Charger Point" if variant == "customer" else "Charger Point Admin"
+          # Android may use title_activity_main as the launcher label instead of app_name.
+          base_name = "Charging Point" if variant == "customer" else "Charging Point Admin"
           arabic_name = "نقطة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
+
+          def set_string(xml, key, value):
+              pattern = rf'<string name="{re.escape(key)}">.*?</string>'
+              replacement = f'<string name="{key}">{value}</string>'
+              if re.search(pattern, xml):
+                  return re.sub(pattern, replacement, xml, count=1)
+              return xml.replace("</resources>", f'    {replacement}\n</resources>')
+
           strings_file = values / "strings.xml"
           strings = strings_file.read_text(encoding="utf-8")
-          if re.search(r'<string name="app_name">.*?</string>', strings):
-              strings = re.sub(r'<string name="app_name">.*?</string>',
-                               f'<string name="app_name">{base_name}</string>', strings, count=1)
-          else:
-              strings = strings.replace("</resources>",
-                                        f'    <string name="app_name">{base_name}</string>\n</resources>')
+          for key in ("app_name", "title_activity_main"):
+              strings = set_string(strings, key, base_name)
           strings_file.write_text(strings, encoding="utf-8")
 
           for locale, app_name in (("ar", arabic_name), ("en", base_name)):
@@ -275,17 +279,12 @@ jobs:
               localized = folder / "strings.xml"
               if localized.exists():
                   text = localized.read_text(encoding="utf-8")
-                  if re.search(r'<string name="app_name">.*?</string>', text):
-                      text = re.sub(r'<string name="app_name">.*?</string>',
-                                    f'<string name="app_name">{app_name}</string>', text, count=1)
-                  else:
-                      text = text.replace("</resources>",
-                                          f'    <string name="app_name">{app_name}</string>\n</resources>')
               else:
-                  text = ('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
-                          f'    <string name="app_name">{app_name}</string>\n</resources>\n')
+                  text = '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+              for key in ("app_name", "title_activity_main"):
+                  text = set_string(text, key, app_name)
               localized.write_text(text, encoding="utf-8")
-          print(f"Applied launcher branding and localized app name for {variant}")
+          print(f"Applied locale-aware launcher labels for {variant}")
 
           # Keep Android's native launch window on-brand while the WebView and React app start.
           (values / "cp_launch_colors.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
