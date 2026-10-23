@@ -226,25 +226,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     const identifier = username.trim() || (() => {
       try { return localStorage.getItem("cp_biometric_login_identifier_admin")?.trim() || ""; } catch { return ""; }
     })();
-    if (!identifier || isSubmitting) {
+    let localBiometricAlias = "";
+    try { localBiometricAlias = localStorage.getItem("cp_biometric_alias_admin") || ""; } catch {}
+    if ((!identifier && !/^[a-f0-9]{32}$/.test(localBiometricAlias)) || isSubmitting) {
       setError(locale === "en"
-        ? "Sign in once with your account and enable fingerprint sign-in on this device first."
-        : "سجّل الدخول لحسابك مرة واحدة وفعّل البصمة على هذا الجهاز أولًا.");
+        ? "Fingerprint sign-in is not enabled on this device yet. Sign in once and enable it first."
+        : "الدخول بالبصمة غير مفعّل على هذا الجهاز بعد. سجّل الدخول مرة واحدة وفعّله أولًا.");
       return;
     }
     setIsSubmitting(true); setError(""); setSuccessMessage("");
     try {
-      const result = await loginWithAccountBiometric("admin", identifier);
+      const result = await loginWithAccountBiometric("admin", identifier || undefined);
       const authSession = result.session as SupabaseAuthSession | undefined;
       if (!authSession?.access_token || !authSession.refresh_token) throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
       await authService.acceptBiometricSession(authSession);
       setBin(""); setShowBiometricBin(false); setPassword("");
       // Biometric sign-in is already explicit consent to remember this non-secret
       // account identifier on this device; it does not save a password or BIN.
-      saveAdminAccountIdentifier(identifier);
-      setSavedAdminAccounts(readSavedAdminAccounts());
-      setShowSavedAccounts(false);
-      localStorage.setItem("cp_biometric_login_identifier_admin", identifier);
+      if (identifier) {
+        saveAdminAccountIdentifier(identifier);
+        setSavedAdminAccounts(readSavedAdminAccounts());
+        setShowSavedAccounts(false);
+        localStorage.setItem("cp_biometric_login_identifier_admin", identifier);
+      }
       await finishSuccessfulLogin(identifier, false);
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
@@ -768,7 +772,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
               {uiState === "NORMAL_LOGIN" && (
                 <>
                   {Capacitor.isNativePlatform() && (username.trim() || (() => {
-                    try { return localStorage.getItem("cp_biometric_login_identifier_admin") || ""; } catch { return ""; }
+                    try { return localStorage.getItem("cp_biometric_login_identifier_admin") || localStorage.getItem("cp_biometric_alias_admin") || ""; } catch { return ""; }
                   })()) && (
                     <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleBiometricLogin()}
                       className="w-full text-xs py-2.5 rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
