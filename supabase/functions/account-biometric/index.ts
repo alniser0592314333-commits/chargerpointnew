@@ -150,21 +150,8 @@ Deno.serve(async (req: Request) => {
         return { ok: false, status: 403, error: code };
       }
 
-      const isSuperAdmin = ["SUPER_ADMIN", "Super Admin"].includes(String(identity.role));
-      const emailOtp = normalize(input.emailOtp, 6);
-      if (isSuperAdmin) {
-        if (!/^\d{6}$/.test(emailOtp)) return { ok: false, status: 400, error: "EMAIL_OTP_REQUIRED" };
-        const { data: otpResult, error: otpError } = await auth.auth.verifyOtp({
-          email: String(identity.email).toLowerCase(),
-          token: emailOtp,
-          type: "email",
-        });
-        if (otpError || otpResult.user?.id !== identity.uid) {
-          return { ok: false, status: 401, error: "EMAIL_OTP_INVALID" };
-        }
-      } else if (emailOtp) {
-        return { ok: false, status: 400, error: "EMAIL_OTP_NOT_REQUIRED" };
-      }
+      // Password and BIN are the only reauthentication factors for biometric
+      // enrollment. The BIN has already been verified server-side above.
     } else if (normalize(input.bin, 32) || normalize(input.emailOtp, 6)) {
       return { ok: false, status: 400, error: "INVALID_REAUTHENTICATION_FIELDS" };
     }
@@ -177,7 +164,7 @@ Deno.serve(async (req: Request) => {
       if (!identity) return reply(401, { ok:false, error:"AUTH_REQUIRED" });
       if (identity.type === "customer" && identity.mustChangePassword) return reply(403,{ok:false,error:"PASSWORD_CHANGE_REQUIRED"});
       // Settings enrollment/re-enrollment must prove the current password. Admins must
-      // also verify their BIN, and Super Admin must consume an email OTP server-side.
+      // also verify their BIN. No email code or link is part of this flow.
       // The first-login opt-in remains available without a second password prompt.
       if (input.settingsReauth === true) {
         const proof = await verifySettingsReauthentication(identity);
