@@ -67,7 +67,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
   const [, setAuthSession] = useState<SupabaseAuthSession | null>(null);
 
   // Form Fields
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(() => {
+    try { return localStorage.getItem("cp_biometric_login_identifier_admin") || ""; } catch { return ""; }
+  });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [email, setEmail] = useState("");
@@ -86,7 +88,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
   const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [savedAdminAccounts, setSavedAdminAccounts] = useState<string[]>(() => readSavedAdminAccounts());
-  const [showSavedAccounts, setShowSavedAccounts] = useState(() => readSavedAdminAccounts().length > 0);
+  const [showSavedAccounts, setShowSavedAccounts] = useState(() => {
+    try {
+      if (localStorage.getItem("cp_biometric_login_identifier_admin")) return false;
+    } catch {}
+    return readSavedAdminAccounts().length > 0;
+  });
   const [pendingRememberIdentifier, setPendingRememberIdentifier] = useState<string | null>(null);
 
   // Initialize and check Supabase bootstrap & auth callback on mount
@@ -195,6 +202,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
               : "هل تريد تفعيل الدخول بالبصمة لحساب الإدارة على هذا الجهاز؟")) {
               await enrollAccountBiometric(currentAuth.access_token, "ChargerPoint administrator");
             }
+            // The account identifier is not a secret. Remember it locally only to
+            // select the correct server-side biometric credential after logout.
+            // Passwords and BIN values are never stored here.
+            const finalStatus = await getAccountBiometricStatus(currentAuth.access_token);
+            const finalAlias = localStorage.getItem("cp_biometric_alias_admin") || "";
+            if (finalStatus.enrolled && finalStatus.keyAlias && finalAlias === finalStatus.keyAlias) {
+              localStorage.setItem("cp_biometric_login_identifier_admin", identifier.trim());
+              setUsername(identifier.trim());
+            }
           } catch (biometricError) {
             console.warn("Biometric enrollment was not completed; password sign-in remains available.", biometricError);
           }
@@ -207,23 +223,33 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
   };
 
   const handleBiometricLogin = async () => {
-    const identifier = username.trim();
-    if (!identifier || isSubmitting) {
-      setError(locale === "en" ? "Enter your username first." : "أدخل اسم المستخدم أولًا.");
+    const identifier = username.trim() || (() => {
+      try { return localStorage.getItem("cp_biometric_login_identifier_admin")?.trim() || ""; } catch { return ""; }
+    })();
+    let localBiometricAlias = "";
+    try { localBiometricAlias = localStorage.getItem("cp_biometric_alias_admin") || localStorage.getItem("cp_biometric_alias_undefined") || ""; } catch {}
+    if ((!identifier && !/^[a-f0-9]{32}$/.test(localBiometricAlias)) || isSubmitting) {
+      setError(locale === "en"
+        ? "Fingerprint sign-in is not enabled on this device yet. Sign in once and enable it first."
+        : "الدخول بالبصمة غير مفعّل على هذا الجهاز بعد. سجّل الدخول مرة واحدة وفعّله أولًا.");
       return;
     }
     setIsSubmitting(true); setError(""); setSuccessMessage("");
     try {
-      const result = await loginWithAccountBiometric("admin", identifier, bin.trim() || undefined);
+      const result = await loginWithAccountBiometric("admin", identifier || undefined);
       const authSession = result.session as SupabaseAuthSession | undefined;
       if (!authSession?.access_token || !authSession.refresh_token) throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
       await authService.acceptBiometricSession(authSession);
       setBin(""); setShowBiometricBin(false); setPassword("");
-      if (readSavedAdminAccounts().some((item) => item.toLowerCase() === identifier.toLowerCase())) {
-        await finishSuccessfulLogin(identifier, false);
-      } else {
-        setPendingRememberIdentifier(identifier);
+      // Biometric sign-in is already explicit consent to remember this non-secret
+      // account identifier on this device; it does not save a password or BIN.
+      if (identifier) {
+        saveAdminAccountIdentifier(identifier);
+        setSavedAdminAccounts(readSavedAdminAccounts());
+        setShowSavedAccounts(false);
+        localStorage.setItem("cp_biometric_login_identifier_admin", identifier);
       }
+      await finishSuccessfulLogin(identifier, false);
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
       if (code === "BIN_REQUIRED") {
@@ -745,6 +771,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
               {/* ============================================================ */}
               {uiState === "NORMAL_LOGIN" && (
                 <>
+                  {Capacitor.isNativePlatform() && (username.trim() || (() => {
+                    try { return localStorage.getItem("cp_biometric_login_identifier_admin") || localStorage.getItem("cp_biometric_alias_admin") || localStorage.getItem("cp_biometric_alias_undefined") || ""; } catch { return ""; }
+                  })()) && (
+                    <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleBiometricLogin()}
+                      className="w-full text-xs py-2.5 rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
+                      <Fingerprint className="w-4 h-4 mr-1.5" />
+                      {isSubmitting ? (locale === "en" ? "Verifying fingerprint..." : "جارٍ التحقق بالبصمة...") : (locale === "en" ? "Sign in with fingerprint" : "الدخول بالبصمة")}
+                    </Button>
+                  )}
                   {showSavedAccounts && savedAdminAccounts.length > 0 ? (
                     <div className="space-y-3" data-testid="saved-admin-accounts">
                       <p className="text-xs font-semibold text-gray-600 dark:text-[#9bb6b0]">
@@ -824,14 +859,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
                       <input type="password" inputMode="numeric" autoComplete="off" value={bin} onChange={(e) => setBin(e.target.value)} maxLength={10} className="w-full text-xs bg-gray-50 dark:bg-[#06201c] border border-gray-200 dark:border-[#14423b] rounded-xl py-2.5 px-3 text-gray-900 dark:text-[#daf1de] font-mono" placeholder="••••••" />
                     </div>
                   )}
-                  {Capacitor.isNativePlatform() && (
-                    <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleBiometricLogin()}
-                      className="w-full text-xs py-2.5 rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
-                      <Fingerprint className="w-4 h-4 mr-1.5" />
-                      {isSubmitting ? (locale === "en" ? "Verifying fingerprint..." : "جارٍ التحقق بالبصمة...") : (locale === "en" ? "Sign in with fingerprint" : "الدخول بالبصمة")}
-                    </Button>
-                  )}
-
                   {/* Sign In Button */}
                   <Button
                     type="submit"

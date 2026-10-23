@@ -195,7 +195,11 @@ Deno.serve(async (req: Request) => {
     if (action === "login-challenge") {
       const type = normalize(input.accountType,16);
       const identifier = normalize(input.identifier,256);
-      if (!["customer","admin"].includes(type) || !identifier) return reply(400,{ok:false,error:"INVALID_REQUEST"});
+      const requestedCredentialId = normalize(input.credentialId,32);
+      if (!["customer","admin"].includes(type) ||
+          (!identifier && !(type === "admin" && /^[a-f0-9]{32}$/.test(requestedCredentialId)))) {
+        return reply(400,{ok:false,error:"INVALID_REQUEST"});
+      }
       let identity: any = null;
       if (type === "customer") {
         let customerId = identifier;
@@ -220,9 +224,25 @@ Deno.serve(async (req: Request) => {
         const { data: link } = await admin.from("customer_account_links").select("customer_id,auth_user_id,login_email,account_status,must_change_password").eq("customer_id",customerId).maybeSingle();
         if (link?.account_status === "ACTIVE" && link.must_change_password !== true) identity = {type,id:link.customer_id,uid:link.auth_user_id,email:link.login_email};
       } else {
-        const { data: row } = identifier.includes("@")
-          ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()
-          : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("username",identifier).maybeSingle();
+        let row: any = null;
+        if (identifier) {
+          const { data } = identifier.includes("@")
+            ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()
+            : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("username",identifier).maybeSingle();
+          row = data;
+        } else {
+          // Resolve the account from the registered random device key alias.
+          // The challenge signature remains mandatory before a session is issued.
+          const { data: deviceCredential } = await admin.from("account_biometric_credentials")
+            .select("subject_id,auth_user_id").eq("account_type","admin")
+            .eq("key_alias",requestedCredentialId).is("revoked_at",null).maybeSingle();
+          if (deviceCredential) {
+            const { data } = await admin.from("admins")
+              .select("id,auth_user_id,email,username,role,is_active")
+              .eq("id",deviceCredential.subject_id).eq("auth_user_id",deviceCredential.auth_user_id).maybeSingle();
+            row = data;
+          }
+        }
         if (row?.is_active === true) {
           const { data: u } = await admin.auth.admin.getUserById(row.auth_user_id);
           const email = u.user?.email || row.email;
@@ -233,7 +253,7 @@ Deno.serve(async (req: Request) => {
       const {data: cred} = await admin.from("account_biometric_credentials").select("id,key_alias").eq("account_type",type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
       if (!cred) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
       const c = await createChallenge(identity,"login",cred.id);
-      return c ? reply(200,{ok:true,...c,credentialId:cred.key_alias,accountType:type,requiresBin:type === "admin" && ["SUPER_ADMIN","Super Admin"].includes(String(identity.role))}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
+      return c ? reply(200,{ok:true,...c,credentialId:cred.key_alias,accountType:type}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
     }
     if (action === "login-verify") {
       const challengeId = normalize(input.challengeId,64);

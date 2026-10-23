@@ -89,14 +89,14 @@ export async function enrollAccountBiometric(
 }
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function requestLoginChallenge(accountType: 'customer' | 'admin', identifier: string) {
+async function requestLoginChallenge(accountType: 'customer' | 'admin', identifier: string, credentialId?: string) {
   // A short-lived network/Edge cold-start failure must not force the customer to
   // press the fingerprint button a second time. Retry only transient failures
   // before the OS biometric dialog is opened; never retry credential/identity errors.
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await callEndpoint('login-challenge', { accountType, identifier });
+      return await callEndpoint('login-challenge', { accountType, ...(identifier ? { identifier } : {}), ...(credentialId ? { credentialId } : {}) });
     } catch (error) {
       lastError = error;
       const code = error instanceof Error ? error.message : '';
@@ -111,12 +111,27 @@ async function requestLoginChallenge(accountType: 'customer' | 'admin', identifi
   throw lastError instanceof Error ? lastError : new Error('BIOMETRIC_REQUEST_FAILED');
 }
 
-export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier: string, bin?: string) {
+export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier?: string) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
-  const normalizedIdentifier = identifier.trim();
-  if (!normalizedIdentifier) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
-  const { challengeId, challenge, credentialId, requiresBin } = await requestLoginChallenge(accountType, normalizedIdentifier);
-  if (requiresBin && !bin) throw new Error('BIN_REQUIRED');
+  const normalizedIdentifier = identifier?.trim() || '';
+  let localKeyAlias = '';
+  try {
+    localKeyAlias = localStorage.getItem('cp_biometric_alias_' + accountType) || '';
+    // Migrate the alias saved by the earlier enrollment bug, which used an
+    // undefined account type even though the server credential was valid.
+    if (!localKeyAlias && accountType === 'admin') {
+      const legacyAlias = localStorage.getItem('cp_biometric_alias_undefined') || '';
+      if (/^[a-f0-9]{32}$/.test(legacyAlias)) {
+        localKeyAlias = legacyAlias;
+        localStorage.setItem('cp_biometric_alias_admin', legacyAlias);
+        localStorage.removeItem('cp_biometric_alias_undefined');
+      }
+    }
+  } catch {}
+  if (!normalizedIdentifier && !/^[a-f0-9]{32}$/.test(localKeyAlias)) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
+  const { challengeId, challenge, credentialId } = await requestLoginChallenge(accountType, normalizedIdentifier, localKeyAlias || undefined);
+  // The device-bound strong-biometric signature is the login factor. The BIN
+  // remains available for separate sensitive actions, not for this login flow.
   const en = promptLocale() === 'en';
   const { signature } = await NativeBiometric.signChallenge({
     alias: String(credentialId).replace(/-/g, ''), challenge,
@@ -124,7 +139,7 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
     subtitle: en ? 'Confirm your identity to open your account' : 'أكد هويتك لفتح حسابك',
     negativeButtonText: en ? 'Cancel' : 'إلغاء',
   });
-  return await callEndpoint('login-verify', { challengeId, credentialId, signature, ...(bin ? { bin } : {}) });
+  return await callEndpoint('login-verify', { challengeId, credentialId, signature });
 }
 export async function revokeAccountBiometric(accessToken: string) {
   const result = await callEndpoint('revoke', {}, accessToken);
