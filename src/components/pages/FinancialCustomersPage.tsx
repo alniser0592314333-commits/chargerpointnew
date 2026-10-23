@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useI18n } from '../../i18n/i18nContext';
+import { getSupabaseAuthToken } from '../../services/supabase/client';
+import { config } from '../../config/env';
 import {
   getFinancialCustomersByFilter,
   searchFinancialCustomers,
