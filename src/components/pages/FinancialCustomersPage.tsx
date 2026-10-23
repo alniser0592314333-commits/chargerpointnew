@@ -5,7 +5,7 @@ import {
   searchFinancialCustomers,
   UIFinancialCustomerItem,
 } from './dayOrdersStore';
-import { Search, ChevronLeft, ChevronRight, User, Users, TrendingUp, TrendingDown, Filter } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, User, Users, TrendingUp, TrendingDown, Filter, BellRing } from 'lucide-react';
 
 export interface FinancialCustomersPageProps {
   onSelectCustomer: (customerId: string) => void;
