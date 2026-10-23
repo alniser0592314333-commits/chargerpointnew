@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
@@ -152,6 +153,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [offlineToastFading, setOfflineToastFading] = useState(false);
   const [showOfflineDot, setShowOfflineDot] = useState(false);
   const [notificationsMessage, setNotificationsMessage] = useState('');
+  const [appVersion, setAppVersion] = useState(import.meta.env.VITE_APP_VERSION || '—');
   const initialPortalQuery = new URLSearchParams(window.location.search);
   const requestedTab = initialPortalQuery.get('tab');
   const initialTab: CustomerPortalTab = requestedTab === 'orders' || requestedTab === 'goals' || requestedTab === 'finance' || requestedTab === 'more'
@@ -183,6 +185,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricMessage, setBiometricMessage] = useState('');
   const outageActive = !online || (!serverAvailable && !loading);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let active = true;
+    void CapacitorApp.getInfo().then((info) => {
+      if (active && typeof info.version === 'string' && info.version.trim()) setAppVersion(info.version.trim());
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     if (!outageActive) {
       setOfflineToastVisible(false);
@@ -838,7 +848,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               </div>
               <div className="cp-portal-subsection">
                 <h2 className="font-bold">{isAr ? 'معلومات الإصدار' : 'Version information'}</h2>
-                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار التطبيق' : 'App version'}</span><strong className="text-sm">{import.meta.env.VITE_APP_VERSION || '1.0.0'}</strong></div>
+                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار التطبيق' : 'App version'}</span><strong className="text-sm">{appVersion}</strong></div>
                 <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار الأمان' : 'Security version'}</span><span className="text-xs cp-portal-muted">{isAr ? 'تُدار متطلبات الأمان عبر سياسة الخادم؛ لا يوجد رقم مستقل منشور حاليًا.' : 'Security requirements are enforced by server policy; no separate public security version is currently published.'}</span></div>
               </div>
               {Capacitor.isNativePlatform() && <div className="cp-portal-subsection">
