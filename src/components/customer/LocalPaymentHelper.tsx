@@ -195,7 +195,7 @@ export const LocalPaymentHelper: React.FC = () => {
         aria-label="فتح خدمات المساعدة"
       >
         <LifeBuoy size={17} aria-hidden="true" />
-        <span>خدمات مساعدة</span>
+        <span className="hidden sm:inline">خدمات مساعدة</span>
       </button>
 
       {isOpen && (
