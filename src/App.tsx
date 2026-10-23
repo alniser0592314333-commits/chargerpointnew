@@ -36,6 +36,7 @@ import { PublicAboutPage } from './components/pages/PublicAboutPage';
 import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
+import { FinancialPendingPaymentsPage } from './components/pages/FinancialPendingPaymentsPage';
 import { GoalsPage } from './components/pages/GoalsPage';
 import { NotificationsRequestsPage } from './components/pages/NotificationsRequestsPage';
 import { SettingsPage } from './components/pages/SettingsPage';
@@ -623,6 +624,10 @@ export default function App() {
           }}
         />
       );
+    }
+
+    if (pathname === '/app/financials/payments') {
+      return <FinancialPendingPaymentsPage onBack={() => navigate('/app/financials')} />;
     }
 
     if (pathname.startsWith('/app/financials/customers/') && pathname !== '/app/financials/customers') {
