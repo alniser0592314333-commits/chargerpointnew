@@ -823,7 +823,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       id: 'account-event-' + event.id,
       created_at: event.created_at,
       title: translateAccountEvent(event.event_type),
-      detail: safeDate(event.created_at, locale),
+      detail: event.event_type === 'DEBT_PAYMENT_REMINDER' && typeof event.payload?.balance_minor === 'number'
+        ? (isAr ? 'المبلغ المستحق عليك ' : 'Outstanding amount: ') + money(event.payload.balance_minor, locale)
+        : '',
     })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
 
