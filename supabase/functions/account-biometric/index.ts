@@ -233,7 +233,7 @@ Deno.serve(async (req: Request) => {
       const {data: cred} = await admin.from("account_biometric_credentials").select("id,key_alias").eq("account_type",type).eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
       if (!cred) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
       const c = await createChallenge(identity,"login",cred.id);
-      return c ? reply(200,{ok:true,...c,credentialId:cred.key_alias,accountType:type,requiresBin:type === "admin" && ["SUPER_ADMIN","Super Admin"].includes(String(identity.role))}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
+      return c ? reply(200,{ok:true,...c,credentialId:cred.key_alias,accountType:type}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
     }
     if (action === "login-verify") {
       const challengeId = normalize(input.challengeId,64);
