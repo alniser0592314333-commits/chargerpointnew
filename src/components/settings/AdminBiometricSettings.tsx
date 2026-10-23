@@ -39,18 +39,9 @@ export const AdminBiometricSettings: React.FC = () => {
 
   const sendOtp = async () => {
     if (!config.supabaseUrl || !config.supabaseAnonKey || !email) throw new Error('EMAIL_UNAVAILABLE');
-    const session = await authService.getSupabaseAuthSession();
-    if (!session?.access_token || !session.refresh_token) throw new Error('AUTH_REQUIRED');
     const client = createClient(config.supabaseUrl, config.supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-    const { error: sessionError } = await client.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    });
-    if (sessionError) throw sessionError;
-    // Use Supabase's dedicated reauthentication email template. This avoids
-    // changing the global Magic Link template used by other passwordless flows.
-    const { error } = await client.auth.reauthenticate();
-    if (error) throw error;
+    const result = await client.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+    if (result.error) throw result.error;
     setOtpSent(true);
   };
 
@@ -77,7 +68,7 @@ export const AdminBiometricSettings: React.FC = () => {
         return;
       }
 
-      if (superAdmin && !/^\d{8}$/.test(otp.trim())) throw new Error('EMAIL_OTP_INVALID');
+      if (superAdmin && !/^\d{6}$/.test(otp.trim())) throw new Error('EMAIL_OTP_INVALID');
       const accessToken = (await authService.getSupabaseAuthSession())?.access_token;
       if (!accessToken) throw new Error('AUTH_REQUIRED');
       await enrollAccountBiometric(accessToken, 'ChargerPoint administrator', {
@@ -118,7 +109,7 @@ export const AdminBiometricSettings: React.FC = () => {
       : <form onSubmit={(e) => void submit(e)} className="space-y-3">
         <label className="block text-sm font-medium">{copy('كلمة المرور الحالية', 'Current password')}<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>
         <label className="block text-sm font-medium">{copy('رمز BIN', 'Security BIN')}<input type="password" required inputMode="numeric" pattern="[0-9]{4,}" autoComplete="off" value={bin} onChange={e=>setBin(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>
-        {superAdmin && <div className="space-y-2"><p className="flex items-center gap-2 text-xs text-gray-500 dark:text-[#8eb698]"><Mail size={15}/>{copy('سيُرسل رمز تحقق رقمي إلى بريد السوبر أدمن.', 'A numeric verification code will be sent to the Super Admin email.')}</p>{otpSent && <label className="block text-sm font-medium">{copy('رمز التأكيد من البريد', 'Email confirmation code')}<input required inputMode="numeric" pattern="[0-9]{8}" maxLength={8} autoComplete="one-time-code" value={otp} onChange={e=>setOtp(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>}</div>}
+        {superAdmin && <div className="space-y-2"><p className="flex items-center gap-2 text-xs text-gray-500 dark:text-[#8eb698]"><Mail size={15}/>{copy('سيُرسل رمز من 6 أرقام إلى بريد السوبر أدمن.', 'A 6-digit code will be sent to the Super Admin email.')}</p>{otpSent && <label className="block text-sm font-medium">{copy('رمز التأكيد من البريد', 'Email confirmation code')}<input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" value={otp} onChange={e=>setOtp(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>}</div>}
         <div className="flex gap-2"><button type="submit" disabled={busy} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle size={16} className="animate-spin"/> : <LockKeyhole size={16} />}{superAdmin && !otpSent ? copy('تحقق وأرسل الرمز', 'Verify & send code') : copy('تأكيد وتفعيل البصمة', 'Verify & enable fingerprint')}</button><button type="button" disabled={busy} onClick={()=>{setOpen(false);setPassword('');setBin('');setOtp('');setOtpSent(false);setError('');}} className="rounded-xl border border-gray-300 px-3 py-3 text-sm dark:border-[#285347]">{copy('إلغاء','Cancel')}</button></div>
       </form>}
   </section>;
