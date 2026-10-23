@@ -270,6 +270,27 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
   }, [callHistoryApi, data?.customer_code, online]);
 
+  useEffect(() => {
+    if (!online || !data?.customer_code) return;
+    let cancelled = false;
+    void callHistoryApi('status').then(async (status) => {
+      if (cancelled) return;
+      setHistoryRequestStatus(typeof status.status === 'string' ? status.status : null);
+      const expiresAt = typeof status.access_expires_at === 'string' ? status.access_expires_at : null;
+      setHistoryAccessExpiresAt(expiresAt);
+      if (!expiresAt) return;
+      const result = await callHistoryApi('history-orders');
+      if (cancelled || !Array.isArray(result.orders)) return;
+      setData((current) => {
+        if (!current) return current;
+        const merged = new Map<string, PortalOrder>();
+        [...current.orders, ...(result.orders as PortalOrder[])].forEach((order) => merged.set(String(order.order_number) + '|' + order.created_at, order));
+        return { ...current, orders: [...merged.values()].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) };
+      });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [callHistoryApi, data?.customer_code, online]);
+
   const outageActive = !online || (!serverAvailable && !loading);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
