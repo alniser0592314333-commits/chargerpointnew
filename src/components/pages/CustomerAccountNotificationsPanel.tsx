@@ -76,6 +76,14 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setRequests(Array.isArray(result.data.requests) ? result.data.requests : []);
       setEvents(Array.isArray(result.data.events) ? result.data.events : []);
       setAccounts(Array.isArray(result.data.accounts) ? result.data.accounts : []);
+      const historyResponse = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-history', {
+        method: 'POST',
+        headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'admin-list' }),
+      });
+      const historyResult = await historyResponse.json().catch(() => null);
+      if (!historyResponse.ok || historyResult?.ok !== true) throw new Error('HISTORY_REQUESTS_UNAVAILABLE');
+      setHistoryRequests(Array.isArray(historyResult.requests) ? historyResult.requests : []);
     } catch {
       if (!background) setError(t('تعذّر تحميل إشعارات حسابات العملاء. تحقق من الصلاحيات والاتصال.', 'Could not load customer account notifications. Check permissions and connectivity.'));
     } finally {
