@@ -343,7 +343,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
@@ -432,6 +432,26 @@ Deno.serve(async (request: Request) => {
       const currentSessionId = normalize(authenticated.claims?.session_id, 64);
       if (sessionError || !registered || registered.revoked_at ||
         registered.session_id !== currentSessionId || new Date(registered.expires_at).getTime() <= Date.now()) return genericFailure();
+
+      if (action === "request-history") {
+        const { data: pending, error: pendingError } = await admin.from("customer_history_access_requests")
+          .select("id,status").eq("customer_id", link.customer_id).eq("status", "PENDING").maybeSingle();
+        if (pendingError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        if (pending) return respond(200, { ok: true, status: "PENDING" });
+        const { data: access, error: accessError } = await admin.from("customer_history_access_requests")
+          .select("status,access_expires_at").eq("customer_id", link.customer_id).eq("status", "APPROVED")
+          .gt("access_expires_at", now.toISOString()).order("access_expires_at", { ascending: false }).limit(1).maybeSingle();
+        if (accessError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        if (access) return respond(200, { ok: true, status: "APPROVED", access_expires_at: access.access_expires_at });
+        const { error: insertError } = await admin.from("customer_history_access_requests").insert({
+          customer_id: link.customer_id, status: "PENDING", requested_at: now.toISOString(),
+        });
+        if (insertError) {
+          if (insertError.code === "23505") return respond(200, { ok: true, status: "PENDING" });
+          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        }
+        return respond(200, { ok: true, status: "PENDING" });
+      }
 
       if (action === "request-goal") {
         const { data: activeGoal, error: activeGoalError } = await admin.from("goals")
