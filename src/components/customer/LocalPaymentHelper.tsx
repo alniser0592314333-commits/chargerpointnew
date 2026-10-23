@@ -195,30 +195,30 @@ export const LocalPaymentHelper: React.FC = () => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="cp-payment-helper-title"
-            className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-[#d9c8ad] bg-[#fffdf8] p-5 text-[#292720] shadow-2xl sm:rounded-3xl sm:p-6"
+            className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-gray-200 bg-white p-5 text-gray-900 dark:border-white/10 dark:bg-[#0d2a29] dark:text-white shadow-2xl sm:rounded-3xl sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
             <header className="mb-5 flex items-start justify-between gap-3">
               <div>
-                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#e9dfce] text-[#785b38]">
+                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
                   <LifeBuoy size={23} />
                 </div>
                 <h2 id="cp-payment-helper-title" className="text-xl font-extrabold">خدمات مساعدة</h2>
-                <p className="mt-1 text-sm text-[#777166]">اختصارات محلية لتسهيل خطواتك اليومية</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-[#a4cac2]">اختصارات محلية لتسهيل خطواتك اليومية</p>
               </div>
-              <button type="button" onClick={() => setIsOpen(false)} className="rounded-full p-2 text-[#777166] hover:bg-[#f4eee3]" aria-label="إغلاق">
+              <button type="button" onClick={() => setIsOpen(false)} className="rounded-full p-2 text-gray-500 dark:text-[#a4cac2] hover:bg-gray-100 dark:hover:bg-white/10" aria-label="إغلاق">
                 <X size={21} />
               </button>
             </header>
 
             {!consentAccepted ? (
               <div className="space-y-4">
-                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
-                  <div className="mb-2 flex items-center gap-2 font-extrabold text-amber-900">
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-500/10 p-4">
+                  <div className="mb-2 flex items-center gap-2 font-extrabold text-amber-900 dark:text-amber-200">
                     <ShieldAlert size={20} />
                     <span>إخلاء مسؤولية وشروط الاستخدام</span>
                   </div>
-                  <ul className="list-disc space-y-2 ps-5 text-sm leading-6 text-amber-950">
+                  <ul className="list-disc space-y-2 ps-5 text-sm leading-6 text-amber-950 dark:text-amber-100">
                     <li>هذه ميزة اختيارية لتسهيل إنشاء رموز الاتصال فقط؛ أنت مسؤول عن صحة بيانات المستلم والمبلغ ونوع الحساب.</li>
                     <li>لا يرسل التطبيق هذه الخدمات إلى حسابك أو قاعدة بيانات ChargerPointNew، ولا يزامنها مع أجهزتك الأخرى.</li>
                     <li>على نسخة أندرويد، تحفظ بيانات الخدمة محليًا مشفّرة بمفتاح Android Keystore على هذا الهاتف. حذف التطبيق أو بياناته قد يؤدي إلى فقدان الخدمات نهائيًا.</li>
@@ -226,22 +226,22 @@ export const LocalPaymentHelper: React.FC = () => {
                     <li>الاتصال لا يثبت نجاح الدفع. راجع تفاصيل USSD ونتيجة مزود الخدمة بنفسك، ولا تؤكد أي عملية لا تعرفها.</li>
                   </ul>
                 </div>
-                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e8e1d5] p-3 text-sm leading-6">
-                  <input type="checkbox" checked={consentChecked} onChange={(event) => setConsentChecked(event.target.checked)} className="mt-1 h-4 w-4 accent-[#80603b]" />
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3 dark:border-white/10 text-sm leading-6">
+                  <input type="checkbox" checked={consentChecked} onChange={(event) => setConsentChecked(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-600" />
                   <span>قرأت إخلاء المسؤولية وأوافق على استخدام الخدمة على مسؤوليتي.</span>
                 </label>
-                <button type="button" disabled={!consentChecked} onClick={() => void acceptDisclaimer()} className="w-full rounded-xl bg-[#80603b] px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                <button type="button" disabled={!consentChecked} onClick={() => void acceptDisclaimer()} className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40">
                   حسناً، متابعة
                 </button>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-2xl border border-[#e8e1d5] bg-[#f8f6f1] p-3">
+                <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-[#071d1c]">
                   <div className="flex items-center gap-2 text-sm font-bold">
-                    <LockKeyhole size={17} className="text-[#80603b]" />
+                    <LockKeyhole size={17} className="text-emerald-700 dark:text-emerald-300" />
                     <span>حفظ محلي على هذا الجهاز</span>
                   </div>
-                  <span className="rounded-full bg-[#e9dfce] px-2.5 py-1 text-[11px] font-bold text-[#785b38]">جوال B فقط</span>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">جوال B فقط</span>
                 </div>
 
                 {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -252,40 +252,40 @@ export const LocalPaymentHelper: React.FC = () => {
                     <Plus size={18} /> إضافة خدمة جوال B
                   </button>
                 ) : (
-                  <form onSubmit={(event) => void createService(event)} className="space-y-3 rounded-2xl border border-[#e8e1d5] p-4">
+                  <form onSubmit={(event) => void createService(event)} className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-white/10">
                     <h3 className="font-extrabold">إضافة خدمة دفع جديدة</h3>
-                    <p className="text-xs leading-5 text-[#777166]">كل البيانات التالية تدخل مرة واحدة لكل خدمة. لن يُطلب منك سوى المبلغ عند الدفع.</p>
+                    <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">كل البيانات التالية تدخل مرة واحدة لكل خدمة. لن يُطلب منك سوى المبلغ عند الدفع.</p>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>اسم الخدمة</span>
-                      <input required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="مثال: سوبرماركت حمدان" className="w-full rounded-xl border border-[#d9d0c3] bg-white px-3 py-3 text-base outline-none focus:border-[#9b7449]" />
+                      <input required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="مثال: سوبرماركت حمدان" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
                     </label>
                     <fieldset className="space-y-2">
                       <legend className="text-sm font-semibold">نوع الحساب المستلم</legend>
                       <div className="grid grid-cols-2 gap-2">
-                        <button type="button" aria-pressed={accountKind === 'merchant'} onClick={() => setAccountKind('merchant')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${accountKind === 'merchant' ? 'border-[#80603b] bg-[#f4eee3] text-[#785b38]' : 'border-[#d9d0c3] bg-white'}`}>تاجر · 2</button>
-                        <button type="button" aria-pressed={accountKind === 'friend'} onClick={() => setAccountKind('friend')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${accountKind === 'friend' ? 'border-[#80603b] bg-[#f4eee3] text-[#785b38]' : 'border-[#d9d0c3] bg-white'}`}>صديق · 1</button>
+                        <button type="button" aria-pressed={accountKind === 'merchant'} onClick={() => setAccountKind('merchant')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${accountKind === 'merchant' ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-200' : 'border-gray-300 bg-white dark:border-white/15 dark:bg-[#071d1c]'}`}>تاجر · 2</button>
+                        <button type="button" aria-pressed={accountKind === 'friend'} onClick={() => setAccountKind('friend')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${accountKind === 'friend' ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-200' : 'border-gray-300 bg-white dark:border-white/15 dark:bg-[#071d1c]'}`}>صديق · 1</button>
                       </div>
                     </fieldset>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>الرقم السري لجوال B (4 أرقام)</span>
-                      <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="••••" className="w-full rounded-xl border border-[#d9d0c3] bg-white px-3 py-3 text-base outline-none focus:border-[#9b7449]" />
+                      <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="••••" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
                     </label>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>رقم جوال المستلم</span>
-                      <input required type="tel" inputMode="tel" autoComplete="off" value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder="059XXXXXXX" className="w-full rounded-xl border border-[#d9d0c3] bg-white px-3 py-3 text-base outline-none focus:border-[#9b7449]" />
+                      <input required type="tel" inputMode="tel" autoComplete="off" value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder="059XXXXXXX" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                      <button type="button" onClick={resetForm} className="rounded-xl border border-[#d9d0c3] px-4 py-3 font-bold text-[#5e574c]">إلغاء</button>
+                      <button type="button" onClick={resetForm} className="rounded-xl border border-gray-300 px-4 py-3 font-bold text-gray-700 dark:border-white/15 dark:text-gray-200">إلغاء</button>
                       <button type="submit" disabled={!canCreate || busy} className="rounded-xl bg-[#80603b] px-4 py-3 font-bold text-white disabled:opacity-40">حفظ الخدمة</button>
                     </div>
                   </form>
                 )}
 
                 {services.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-[#d9d0c3] px-4 py-7 text-center">
-                    <Wallet size={27} className="mx-auto mb-2 text-[#9b7449]" />
+                  <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-7 dark:border-white/20 text-center">
+                    <Wallet size={27} className="mx-auto mb-2 text-emerald-600 dark:text-emerald-400" />
                     <p className="font-bold">ما عندك خدمات محفوظة</p>
-                    <p className="mt-1 text-sm text-[#777166]">أضف خدمة جوال B لتظهر هنا.</p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-[#a4cac2]">أضف خدمة جوال B لتظهر هنا.</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -293,28 +293,28 @@ export const LocalPaymentHelper: React.FC = () => {
                     {services.map((service, index) => {
                       const expanded = expandedId === service.id;
                       return (
-                        <article key={service.id} className="overflow-hidden rounded-2xl border border-[#e8e1d5] bg-white">
+                        <article key={service.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-white/10 dark:bg-[#0a2423]">
                           <div className="flex items-center gap-2 p-3">
                             <button type="button" onClick={() => setExpandedId(expanded ? null : service.id)} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-3 text-start">
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f4eee3] text-[#80603b]"><Wallet size={19} /></span>
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f4eee3] text-emerald-700 dark:text-emerald-300"><Wallet size={19} /></span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-extrabold">{index + 1}. {service.name}</span>
-                                <span className="mt-0.5 block text-xs text-[#777166]">جوال B · {accountKindLabel(service.accountKind)} · {service.recipientPhone}</span>
+                                <span className="mt-0.5 block text-xs text-gray-500 dark:text-[#a4cac2]">جوال B · {accountKindLabel(service.accountKind)} · {service.recipientPhone}</span>
                               </span>
                               {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                             </button>
                             <button type="button" onClick={() => void deleteService(service.id)} className="rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label={'حذف ' + service.name}><Trash2 size={17} /></button>
                           </div>
                           {expanded && (
-                            <div className="space-y-3 border-t border-[#eee6da] bg-[#fffdf8] p-4">
+                            <div className="space-y-3 border-t border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-[#071d1c] p-4">
                               <label className="block space-y-1 text-sm font-bold">
                                 <span>المبلغ المراد إرساله (شيكل)</span>
-                                <input type="number" inputMode="decimal" min="0.01" step="0.01" value={amounts[service.id] || ''} onChange={(event) => setAmounts((current) => ({ ...current, [service.id]: event.target.value }))} placeholder="مثال: 25" className="w-full rounded-xl border border-[#d9d0c3] bg-white px-3 py-3 text-lg outline-none focus:border-[#9b7449]" />
+                                <input type="number" inputMode="decimal" min="0.01" step="0.01" value={amounts[service.id] || ''} onChange={(event) => setAmounts((current) => ({ ...current, [service.id]: event.target.value }))} placeholder="مثال: 25" className="w-full rounded-xl border border-gray-300 bg-white dark:border-white/15 dark:bg-[#071d1c] px-3 py-3 text-lg outline-none focus:border-emerald-500" />
                               </label>
-                              <button type="button" disabled={busy} onClick={() => void pay(service)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0b3c3a] px-4 py-3 font-extrabold text-white shadow-sm disabled:opacity-50">
+                              <button type="button" disabled={busy} onClick={() => void pay(service)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 font-extrabold text-white shadow-sm hover:bg-[#115e59] disabled:opacity-50">
                                 <PhoneCall size={18} /> {busy ? 'جارٍ بدء الاتصال…' : 'دفع والاتصال'}
                               </button>
-                              <p className="text-xs leading-5 text-[#777166]">سيُركّب التطبيق الرمز تلقائيًا. قد يطلب نظام الهاتف أو مزود الخدمة تأكيدًا إضافيًا، ولا يضمن بدء الاتصال نجاح التحويل.</p>
+                              <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">سيُركّب التطبيق الرمز تلقائيًا. قد يطلب نظام الهاتف أو مزود الخدمة تأكيدًا إضافيًا، ولا يضمن بدء الاتصال نجاح التحويل.</p>
                             </div>
                           )}
                         </article>
