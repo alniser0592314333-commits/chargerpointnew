@@ -23,6 +23,32 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
   const [reminderMessage, setReminderMessage] = useState('');
   const [reminderError, setReminderError] = useState(false);
 
+  const sendDebtReminders = async () => {
+    if (reminderSending) return;
+    const token = getSupabaseAuthToken();
+    if (!token) {
+      setReminderError(true);
+      setReminderMessage(isRTL ? 'انتهت جلسة الإدارة. سجّل الدخول مجددًا.' : 'Administrator session expired. Please sign in again.');
+      return;
+    }
+    setReminderSending(true);
+    setReminderMessage('');
+    setReminderError(false);
+    try {
+      const result = await callCustomerAccount<{ sent_count?: number }>('admin-send-debt-reminders', {}, token);
+      if (result.error || result.data?.ok !== true || typeof result.data.sent_count !== 'number') throw new Error('SEND_FAILED');
+      const count = result.data.sent_count;
+      setReminderMessage(count === 0
+        ? (isRTL ? 'لا يوجد عملاء عليهم مديونية لإرسال التذكير لهم.' : 'No customers currently have an outstanding debt.')
+        : (isRTL ? 'تم تسجيل التذكير إلى ' + count + ' عميل مدين.' : 'Reminder notifications queued for ' + count + ' indebted customers.'));
+    } catch {
+      setReminderError(true);
+      setReminderMessage(isRTL ? 'تعذّر تأكيد الإرسال. تحقق من الإشعارات قبل إعادة المحاولة.' : 'Could not confirm dispatch. Check notifications before retrying.');
+    } finally {
+      setReminderSending(false);
+    }
+  };
+
   // Fetch when filter is clicked
   const handleSelectFilter = (filter: 'all' | 'credit' | 'debt') => {
     setActiveFilter(filter);
