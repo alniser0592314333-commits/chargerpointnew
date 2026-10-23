@@ -35,7 +35,8 @@ export const FinancialCustomersPage: React.FC<FinancialCustomersPageProps> = ({
     setReminderMessage('');
     setReminderError(false);
     try {
-      const response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/debt-reminders', {
+      const baseUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+      const response = await fetch(baseUrl + '/functions/v1/debt-reminders', {
         method: 'POST',
         headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: '{}',
