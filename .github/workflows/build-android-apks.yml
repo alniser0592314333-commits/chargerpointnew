@@ -55,14 +55,17 @@ jobs:
       - name: Typecheck application and native notification integration
         run: npm run lint
 
-      - name: Test native notification registration and foreground delivery
-        run: npx vitest run src/tests/native_push_notifications.test.ts
+      - name: Test native notification registration and customer portal regressions
+        run: npx vitest run src/tests/native_push_notifications.test.ts src/tests/customer_portal_polish.test.ts
 
       - name: Typecheck native push Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/native-push/index.ts
 
       - name: Typecheck server-verified biometric Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/account-biometric/index.ts
+
+      - name: Typecheck authenticated customer-account Edge Function
+        run: deno check --node-modules-dir=auto supabase/functions/customer-account/index.ts
 
       - name: Parse migration SQL and assert canonical trigger coverage
         run: |
