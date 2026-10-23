@@ -115,7 +115,19 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const normalizedIdentifier = identifier?.trim() || '';
   let localKeyAlias = '';
-  try { localKeyAlias = localStorage.getItem('cp_biometric_alias_' + accountType) || ''; } catch {}
+  try {
+    localKeyAlias = localStorage.getItem('cp_biometric_alias_' + accountType) || '';
+    // Migrate the alias saved by the earlier enrollment bug, which used an
+    // undefined account type even though the server credential was valid.
+    if (!localKeyAlias && accountType === 'admin') {
+      const legacyAlias = localStorage.getItem('cp_biometric_alias_undefined') || '';
+      if (/^[a-f0-9]{32}$/.test(legacyAlias)) {
+        localKeyAlias = legacyAlias;
+        localStorage.setItem('cp_biometric_alias_admin', legacyAlias);
+        localStorage.removeItem('cp_biometric_alias_undefined');
+      }
+    }
+  } catch {}
   if (!normalizedIdentifier && !/^[a-f0-9]{32}$/.test(localKeyAlias)) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
   const { challengeId, challenge, credentialId } = await requestLoginChallenge(accountType, normalizedIdentifier, localKeyAlias || undefined);
   // The device-bound strong-biometric signature is the login factor. The BIN
