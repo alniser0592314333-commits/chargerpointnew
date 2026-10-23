@@ -89,14 +89,14 @@ export async function enrollAccountBiometric(
 }
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function requestLoginChallenge(accountType: 'customer' | 'admin', identifier: string) {
+async function requestLoginChallenge(accountType: 'customer' | 'admin', identifier: string, credentialId?: string) {
   // A short-lived network/Edge cold-start failure must not force the customer to
   // press the fingerprint button a second time. Retry only transient failures
   // before the OS biometric dialog is opened; never retry credential/identity errors.
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await callEndpoint('login-challenge', { accountType, identifier });
+      return await callEndpoint('login-challenge', { accountType, ...(identifier ? { identifier } : {}), ...(credentialId ? { credentialId } : {}) });
     } catch (error) {
       lastError = error;
       const code = error instanceof Error ? error.message : '';
@@ -113,9 +113,11 @@ async function requestLoginChallenge(accountType: 'customer' | 'admin', identifi
 
 export async function loginWithAccountBiometric(accountType: 'customer' | 'admin', identifier: string, bin?: string) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
-  const normalizedIdentifier = identifier.trim();
-  if (!normalizedIdentifier) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
-  const { challengeId, challenge, credentialId } = await requestLoginChallenge(accountType, normalizedIdentifier);
+  const normalizedIdentifier = identifier?.trim() || '';
+  let localKeyAlias = '';
+  try { localKeyAlias = localStorage.getItem('cp_biometric_alias_' + accountType) || ''; } catch {}
+  if (!normalizedIdentifier && !/^[a-f0-9]{32}$/.test(localKeyAlias)) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
+  const { challengeId, challenge, credentialId } = await requestLoginChallenge(accountType, normalizedIdentifier, localKeyAlias || undefined);
   // The device-bound strong-biometric signature is the login factor. The BIN
   // remains available for separate sensitive actions, not for this login flow.
   const en = promptLocale() === 'en';
