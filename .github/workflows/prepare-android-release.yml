@@ -59,7 +59,7 @@ jobs:
       - name: Typecheck and run notification/version tests
         run: |
           npm run lint
-          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts
+          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts src/tests/customer_portal_polish.test.ts
 
       - name: Build production web assets
         env:
