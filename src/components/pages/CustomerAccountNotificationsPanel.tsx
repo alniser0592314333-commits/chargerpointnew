@@ -173,7 +173,8 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
     if (!token || busy) return;
     setBusy(true);
     try {
-      const response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/customer-history', {
+      const baseUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
+      const response = await fetch(baseUrl + '/functions/v1/customer-history', {
         method: 'POST',
         headers: { apikey: config.supabaseAnonKey, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'admin-review', requestId, decision }),
