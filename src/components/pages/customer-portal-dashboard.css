@@ -613,6 +613,10 @@ html.dark .cp-customer-portal .cp-portal-offline-toast {
   from { opacity: 0; transform: translateY(-8px); filter: blur(3px); }
   to { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
+.cp-customer-portal .cp-portal-offline-toast--leaving { animation: cp-portal-toast-out 280ms ease-in both; }
+@keyframes cp-portal-toast-out {
+  to { opacity: 0; transform: translateY(-5px); filter: blur(5px); }
+}
 @media (prefers-reduced-motion: reduce) {
   .cp-customer-portal .cp-portal-offline-toast { animation: none !important; }
 }
