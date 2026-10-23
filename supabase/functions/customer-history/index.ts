@@ -41,13 +41,15 @@ Deno.serve(async (request: Request) => {
     const raw = await res.json().catch(() => null);
     const p = Array.isArray(raw) ? raw[0] : raw;
     const permissions = Array.isArray(p?.permissions) ? p.permissions : [];
-    return p?.is_admin === true && p?.is_active !== false &&
+    const allowed = p?.is_admin === true && p?.is_active !== false &&
       (p.role === "SUPER_ADMIN" || permissions.some((v: string) =>
         ["customers:edit","customers:write","customers:manage","customer_accounts:manage","customer_accounts:reset","admin:manage"].includes(v)));
+    return allowed && typeof p.admin_id === "string" ? p.admin_id : null;
   };
 
   if (action === "admin-list" || action === "admin-review") {
-    if (!(await requireAdmin())) return respond(403, { ok: false, error: "FORBIDDEN" });
+    const administratorId = await requireAdmin();
+    if (!administratorId) return respond(403, { ok: false, error: "FORBIDDEN" });
     if (action === "admin-list") {
       const { data, error } = await admin.from("customer_history_access_requests")
         .select("id,customer_id,status,requested_at,customers(name)").eq("status", "PENDING")
@@ -61,7 +63,7 @@ Deno.serve(async (request: Request) => {
     const { data: changed, error } = await admin.from("customer_history_access_requests").update({
       status: decision === "APPROVE" ? "APPROVED" : "REJECTED",
       reviewed_at: now.toISOString(),
-      reviewed_by: auth.user.id,
+      reviewed_by: administratorId,
       access_expires_at: decision === "APPROVE" ? new Date(now.getTime() + 86400000).toISOString() : null,
     }).eq("id", id).eq("status", "PENDING").select("id,customer_id,status,access_expires_at").maybeSingle();
     if (error || !changed) return respond(409, { ok: false, error: "REQUEST_NO_LONGER_PENDING" });
