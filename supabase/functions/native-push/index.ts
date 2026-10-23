@@ -302,6 +302,9 @@ Deno.serve(async (request: Request) => {
     } else {
       const messages: Record<string, [string, string, string, string]> = {
         TEMP_PASSWORD_ISSUED: ["تمت الموافقة على إعادة تعيين كلمة المرور", "Password reset approved", "راجع تعليمات الدخول الآمن في حسابك.", "Review the secure sign-in instructions in your account."],
+        DEBT_PAYMENT_REMINDER: ["تذكير باستحقاق الدفع", "Payment reminder", "افتح التطبيق لمراجعة المبلغ المستحق عليك.", "Open the app to review your outstanding amount."],
+        HISTORY_ACCESS_APPROVED: ["تمت الموافقة على كشف الطلبات التاريخية", "Historical order access approved", "يمكنك عرض طلباتك التاريخية خلال 24 ساعة.", "Your historical orders are available for the next 24 hours."],
+        HISTORY_ACCESS_REJECTED: ["تم رفض طلب كشف الطلبات التاريخية", "Historical order access request rejected", "افتح التطبيق لمراجعة الإشعارات.", "Open the app to review your notifications."],
         ACCOUNT_FROZEN: ["تم إيقاف الحساب مؤقتًا", "Account temporarily frozen", "تواصل مع الإدارة لمعرفة التفاصيل.", "Contact the administrator for details."],
         ACCOUNT_CANCELLED: ["تم إلغاء الحساب", "Account cancelled", "تواصل مع الإدارة إذا كنت تعتقد أن هذا خطأ.", "Contact the administrator if you believe this is an error."],
         ACCOUNT_REACTIVATED: ["تمت إعادة تفعيل الحساب", "Account reactivated", "يمكنك تسجيل الدخول مجددًا.", "You can sign in again."],
