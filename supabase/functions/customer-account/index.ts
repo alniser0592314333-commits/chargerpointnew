@@ -484,6 +484,7 @@ Deno.serve(async (request: Request) => {
       }
 
       if (action === "mark-notifications-read") {
+        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         // Only mark notifications belonging to the authenticated customer. Keep this
         // server-side so the read state survives reinstall and follows the account.
         const { data: changedEvents, error: markError } = await admin
