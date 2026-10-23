@@ -4,7 +4,10 @@ import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
+import android.os.Handler;
+import android.os.Looper;
 import androidx.fragment.app.FragmentActivity;
+import androidx.lifecycle.Lifecycle;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import com.getcapacitor.JSObject;
@@ -85,7 +88,7 @@ public class AccountBiometricPlugin extends Plugin {
       Signature signing = signature;
       FragmentActivity activity = (FragmentActivity) getActivity();
       Executor executor = activity.getMainExecutor();
-      BiometricPrompt prompt = new BiometricPrompt(activity, executor, new BiometricPrompt.AuthenticationCallback() {
+      BiometricPrompt.AuthenticationCallback callback = new BiometricPrompt.AuthenticationCallback() {
         @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
           try {
             Signature authorized = result.getCryptoObject() == null ? null : result.getCryptoObject().getSignature();
@@ -100,14 +103,40 @@ public class AccountBiometricPlugin extends Plugin {
           call.reject("BIOMETRIC_CANCELLED");
         }
         @Override public void onAuthenticationFailed() { /* Let Android permit another biometric attempt. */ }
-      });
+      };
       BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
         .setTitle(call.getString("title", "Confirm your identity"))
         .setSubtitle(call.getString("subtitle", "Use your enrolled fingerprint"))
         .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         .setNegativeButtonText(call.getString("negativeButtonText", "Cancel"))
         .build();
-      prompt.authenticate(info, new BiometricPrompt.CryptoObject(signing));
+      // A tap immediately after a route change can arrive while Android is saving
+      // FragmentManager state. Wait for the Activity to be resumed before opening
+      // the OS prompt; otherwise the first tap can fail before the prompt appears.
+      Handler mainHandler = new Handler(Looper.getMainLooper());
+      int[] promptAttempts = new int[] { 0 };
+      Runnable[] showPrompt = new Runnable[1];
+      showPrompt[0] = () -> {
+        if (activity.isFinishing() || activity.isDestroyed()) {
+          call.reject("BIOMETRIC_PROMPT_NOT_READY");
+          return;
+        }
+        boolean resumed = activity.getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.RESUMED);
+        boolean stateSaved = activity.getSupportFragmentManager().isStateSaved();
+        if (!resumed || stateSaved) {
+          if (promptAttempts[0]++ < 12) mainHandler.postDelayed(showPrompt[0], 100);
+          else call.reject("BIOMETRIC_PROMPT_NOT_READY");
+          return;
+        }
+        try {
+          BiometricPrompt prompt = new BiometricPrompt(activity, executor, callback);
+          prompt.authenticate(info, new BiometricPrompt.CryptoObject(signing));
+        } catch (Exception promptError) {
+          if (promptAttempts[0]++ < 3) mainHandler.postDelayed(showPrompt[0], 120);
+          else call.reject("Biometric prompt could not be opened", promptError);
+        }
+      };
+      mainHandler.postDelayed(showPrompt[0], 120);
     } catch (Exception ex) { call.reject("Biometric signature operation failed", ex); }
   }
 

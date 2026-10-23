@@ -213,7 +213,16 @@ Deno.serve(async (req: Request) => {
       if (type === "customer") {
         let customerId = identifier;
         const isCustomerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
-        if (!isCustomerUuid) {
+        if (!isCustomerUuid && /^[0-9a-f]{4}$/i.test(identifier)) {
+          // Customer codes are the first four UUID hex characters, matching derive_customer_code().
+          const prefix = identifier.toLowerCase();
+          const { data: matches, error: codeError } = await admin.from("customers").select("id,is_active,status,deleted_at")
+            .gte("id", prefix + "0000-0000-0000-0000-000000000000")
+            .lte("id", prefix + "ffff-ffff-ffff-ffff-ffffffffffff")
+            .eq("is_active", true).is("deleted_at", null).limit(2);
+          if (codeError || !matches || matches.length !== 1 || matches[0].status === "DELETED") return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
+          customerId = matches[0].id;
+        } else if (!isCustomerUuid) {
           const { data: qr } = await admin.from("qr_tokens").select("target_id,expires_at")
             .eq("public_token",identifier).eq("token_type","CUSTOMER").eq("is_active",true).maybeSingle();
           if (!qr || (qr.expires_at && new Date(qr.expires_at).getTime() <= Date.now())) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
