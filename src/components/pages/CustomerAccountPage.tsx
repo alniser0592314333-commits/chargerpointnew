@@ -108,6 +108,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const [username, setUsername] = useState('');
   const [savedCustomerAccounts, setSavedCustomerAccounts] = useState<SavedCustomerAccount[]>(() => readSavedCustomerAccounts());
   const [showSavedCustomerAccounts, setShowSavedCustomerAccounts] = useState(() => directEntry && readSavedCustomerAccounts().length > 0);
+  const [selectedSavedCustomerAccountLabel, setSelectedSavedCustomerAccountLabel] = useState('');
   const [pendingRememberCustomerAccount, setPendingRememberCustomerAccount] = useState<SavedCustomerAccount | null>(null);
   const [accountToken, setAccountToken] = useState(customerIdFromQuery || (orderQrToken || directEntry ? '' : token));
   const { locale, setLocale } = useI18n();
@@ -736,7 +737,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                     <div className="space-y-3" data-testid="saved-customer-accounts">
                       <p className="text-sm font-bold text-[#244b55] dark:text-[#daf1de]">{t('اختر حسابًا محفوظًا', 'Choose a saved account')}</p>
                       {savedCustomerAccounts.map((account) => (
-                        <button key={account.token} type="button" onClick={() => { setUsername(account.token); setShowSavedCustomerAccounts(false); setError(''); setPassword(''); }}
+                        <button key={account.token} type="button" onClick={() => { setUsername(account.token); setSelectedSavedCustomerAccountLabel(account.label); setShowSavedCustomerAccounts(false); setError(''); setPassword(''); }}
                           className="flex w-full items-center gap-3 rounded-2xl border border-[#b9d9d8] bg-white/80 px-4 py-3 text-start transition hover:border-[#1a8a94] hover:bg-[#e9f7f6] dark:border-[#2b5267] dark:bg-[#0b2935] dark:hover:bg-[#142b38]">
                           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#1a8a94]/10 text-[#1a8a94]"><ShieldCheck className="h-5 w-5" /></span>
                           <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{account.label}</span><span className="mt-0.5 block text-xs text-[#5d7782] dark:text-[#9bb8bf]">{t('كلمة المرور مطلوبة في كل دخول', 'Password required each time')}</span></span>
@@ -750,11 +751,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
                     </div>
                   ) : (
                   <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
-                    {(customerIdFromQuery || directEntry) && (
+                    {(customerIdFromQuery || directEntry) && !selectedSavedCustomerAccountLabel && (
                       <label className="cp-auth__label">{t('اسم المستخدم / رقم العميل', 'Username / Customer ID')}
                         <input value={directEntry ? username : customerIdFromQuery} onChange={directEntry ? (event) => setUsername(event.target.value) : undefined} readOnly={!directEntry} required={directEntry} maxLength={128} autoComplete="username" className="cp-auth__input" aria-label={t('اسم المستخدم / رقم العميل', 'Username / Customer ID')} placeholder={t('أدخل اسم المستخدم أو رقم العميل', 'Enter username or customer ID')} />
                       </label>
                     )}
+                    {selectedSavedCustomerAccountLabel && <div className="cp-auth__chip !py-2.5"><span className="block truncate text-sm font-bold">{selectedSavedCustomerAccountLabel}</span><button type="button" className="ms-auto text-xs font-semibold text-[#146069] dark:text-[#a8dff5]" onClick={() => { setSelectedSavedCustomerAccountLabel(''); setUsername(''); }}>{t('تغيير الحساب', 'Change account')}</button></div>}
                     <label className="cp-auth__label">{t('كلمة السر', 'Password')}
                       <div className="relative">
                         <input required maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="cp-auth__input !pe-12" placeholder={t('أدخل كلمة السر الخاصة بك', 'Enter your password')} />
