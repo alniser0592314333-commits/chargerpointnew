@@ -894,14 +894,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 </form>}
               </div>
               <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div></div>
-              <div className="cp-portal-profile cp-portal-profile--footer"><div><span>{isAr ? 'اسم العميل' : 'Customer name'}</span><strong>{data.customer_name}</strong></div></div>
               <button type="button" className="cp-portal-signout" onClick={() => { void handleSignOut(); }} disabled={!onLogout}><UserRound size={17} />{isAr ? 'تسجيل الخروج' : 'Sign out'}</button>
             </section>}
 
             {activeTab === 'more' && moreView === 'settings' && settingsSubpage === 'about' && <section className="cp-portal-section">
               <button type="button" className="cp-portal-text-link mb-4 inline-flex items-center gap-2" onClick={() => setSettingsSubpage('main')}><ArrowLeft size={17}/>{isAr ? 'العودة إلى الإعدادات' : 'Back to settings'}</button>
               <p className="cp-portal-eyebrow">{isAr ? 'معلومات التطبيق' : 'APP INFORMATION'}</p><h1 className="cp-portal-heading">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</h1>
-                              <h2 className="font-bold">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</h2>
+              <div className="cp-portal-subsection">
+                <h2 className="font-bold">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</h2>
                 <p className="mt-2 text-sm leading-6 cp-portal-muted">{isAr ? 'نقطة الشحن خدمة لمتابعة طلبات شحن الأجهزة وحالة كل طلب، والاطلاع على الرصيد والذمم والحركات المالية وإيصالات الدفع. يمكنك إرسال إشعار الدفع وإرفاق الإيصال، ومتابعة حالة المراجعة دون اعتبار الإرسال دفعة معتمدة قبل موافقة الإدارة. كما تتيح البوابة متابعة الأهداف والمكافآت، واستلام تحديثات الحساب والإشعارات، وتغيير كلمة المرور وإدارة الدخول بالبصمة على الجهاز المدعوم. تُحمّل البيانات الحساسة من الخدمة الموثوقة، وتُعرض آخر نسخة محفوظة عند انقطاع الاتصال مع إيقاف العمليات المالية حتى عودة التحقق.' : 'Charging Point lets you track charging orders and their statuses, view balances, amounts due, financial activity and payment receipts. You can submit a payment notice with a receipt image and track its review; submission is not treated as an approved payment until the administrator verifies it. The portal also supports goals and rewards, account updates and notifications, password changes, and device-based fingerprint sign-in on supported devices. Sensitive data is retrieved from the trusted service. A saved snapshot may be shown during an outage, while financial actions remain disabled until connectivity and verification return.'}</p>
               </div>
                               <h2 className="font-bold">{isAr ? 'معلومات الإصدار' : 'Version information'}</h2>
