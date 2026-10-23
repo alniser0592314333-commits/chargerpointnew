@@ -130,3 +130,122 @@ REVOKE ALL ON FUNCTION public.create_admin_pending_customer_payment(uuid, bigint
 REVOKE ALL ON FUNCTION public.list_admin_manual_customer_payments() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_admin_pending_customer_payment(uuid, bigint, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.list_admin_manual_customer_payments() TO authenticated;
+
+-- Keep manual admin entries separate from customer QR duplicate/rate-limit checks.
+CREATE OR REPLACE FUNCTION public.submit_qr_payment(
+  p_public_token text,
+  p_payment_method text,
+  p_receipt_path text,
+  p_note text DEFAULT NULL,
+  p_amount_minor bigint DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_target_id uuid; v_customer_id uuid; v_order_id uuid; v_token_type text;
+  v_due_minor bigint; v_customer_balance_minor bigint; v_submission_id uuid;
+  v_method text := upper(trim(coalesce(p_payment_method, '')));
+  v_note text := nullif(left(trim(coalesce(p_note, '')), 500), '');
+BEGIN
+  IF v_method NOT IN ('JAWAL_PAY', 'PALPAY', 'BANK_OF_PALESTINE') THEN
+    RAISE EXCEPTION 'Unsupported payment method' USING ERRCODE = '22023';
+  END IF;
+  IF p_public_token IS NULL OR length(p_public_token) < 20 OR length(p_public_token) > 128 THEN
+    RAISE EXCEPTION 'Invalid QR token' USING ERRCODE = '22023';
+  END IF;
+  SELECT qt.target_id, qt.token_type INTO v_target_id, v_token_type
+  FROM public.qr_tokens qt
+  WHERE qt.public_token = p_public_token AND qt.token_type IN ('ORDER', 'CUSTOMER')
+    AND qt.is_active = true AND (qt.expires_at IS NULL OR qt.expires_at > now())
+  LIMIT 1;
+  IF v_target_id IS NULL OR v_token_type IS NULL THEN
+    RAISE EXCEPTION 'QR not found or inactive' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF v_token_type = 'ORDER' THEN
+    SELECT o.id, o.customer_id INTO v_order_id, v_customer_id
+    FROM public.orders o JOIN public.customers c ON c.id = o.customer_id
+    WHERE o.id = v_target_id AND o.deleted_at IS NULL AND o.cancelled_at IS NULL
+      AND c.deleted_at IS NULL AND c.is_active = true AND c.status <> 'DELETED';
+    IF v_order_id IS NULL THEN RAISE EXCEPTION 'Order QR not found or inactive' USING ERRCODE = 'P0002'; END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended('qr-payment:customer:' || v_customer_id::text, 0));
+    PERFORM pg_advisory_xact_lock(hashtextextended('qr-payment:order:' || v_order_id::text, 0));
+    IF p_amount_minor IS NOT NULL THEN RAISE EXCEPTION 'Order payment amount is calculated by the server' USING ERRCODE = '22023'; END IF;
+    SELECT coalesce(sum(fl.amount_minor), 0)::bigint INTO v_customer_balance_minor
+    FROM public.financial_ledger fl WHERE fl.customer_id = v_customer_id;
+    IF p_receipt_path IS NULL OR length(p_receipt_path) > 300
+      OR p_receipt_path NOT LIKE 'orders/' || v_order_id::text || '/%'
+      OR p_receipt_path LIKE '%..%'
+      OR NOT EXISTS (SELECT 1 FROM storage.objects so WHERE so.bucket_id = 'qr-payment-receipts' AND so.name = p_receipt_path) THEN
+      RAISE EXCEPTION 'Receipt upload is missing or invalid' USING ERRCODE = '22023';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM public.qr_payment_submissions s
+      WHERE s.customer_id = v_customer_id AND s.status = 'PENDING'
+        AND s.submission_source = 'CUSTOMER_QR'
+        AND (s.order_id = v_order_id OR s.order_id IS NULL)
+    ) THEN
+      RAISE EXCEPTION 'A payment notification for this customer account or order is already awaiting review' USING ERRCODE = 'P0001';
+    END IF;
+    IF (SELECT count(*) FROM public.qr_payment_submissions s WHERE s.order_id = v_order_id AND s.submission_source = 'CUSTOMER_QR') >= 3 THEN
+      RAISE EXCEPTION 'Maximum of three payment notifications reached for this order QR' USING ERRCODE = 'P0001';
+    END IF;
+    SELECT coalesce(sum(greatest(oi.final_charge_snapshot_minor - coalesce(pa.paid_minor, 0), 0)), 0)::bigint INTO v_due_minor
+    FROM public.order_items oi
+    LEFT JOIN LATERAL (
+      SELECT coalesce(sum(pal.allocated_amount_minor), 0)::bigint AS paid_minor
+      FROM public.payment_allocations pal WHERE pal.order_item_id = oi.id
+    ) pa ON true
+    WHERE oi.order_id = v_order_id AND oi.cancelled_at IS NULL AND oi.deleted_at IS NULL
+      AND oi.financial_status = 'RECOGNIZED' AND oi.financially_recognized_at IS NOT NULL;
+    v_due_minor := greatest(v_due_minor - greatest(v_customer_balance_minor, 0), 0);
+    IF v_due_minor <= 0 THEN
+      RAISE EXCEPTION 'There is no remaining amount on financially recognized order items' USING ERRCODE = 'P0001';
+    END IF;
+  ELSE
+    SELECT c.id INTO v_customer_id FROM public.customers c
+    WHERE c.id = v_target_id AND c.deleted_at IS NULL AND c.is_active = true AND c.status <> 'DELETED';
+    IF v_customer_id IS NULL THEN RAISE EXCEPTION 'Customer QR not found or inactive' USING ERRCODE = 'P0002'; END IF;
+    IF p_amount_minor IS NOT NULL THEN
+      RAISE EXCEPTION 'Customer-provided payment amount is not accepted; reviewer determines the amount' USING ERRCODE = '22023';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended('qr-payment:customer:' || v_customer_id::text, 0));
+    IF p_receipt_path IS NULL OR length(p_receipt_path) > 300
+      OR p_receipt_path NOT LIKE 'customers/' || v_customer_id::text || '/%'
+      OR p_receipt_path LIKE '%..%'
+      OR NOT EXISTS (SELECT 1 FROM storage.objects so WHERE so.bucket_id = 'qr-payment-receipts' AND so.name = p_receipt_path) THEN
+      RAISE EXCEPTION 'Receipt upload is missing or invalid' USING ERRCODE = '22023';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM public.qr_payment_submissions s
+      WHERE s.customer_id = v_customer_id AND s.status = 'PENDING' AND s.submission_source = 'CUSTOMER_QR'
+    ) THEN
+      RAISE EXCEPTION 'A payment notification for this customer account is already awaiting review' USING ERRCODE = 'P0001';
+    END IF;
+    IF (
+      SELECT count(*) FROM public.qr_payment_submissions s
+      WHERE s.customer_id = v_customer_id AND s.submission_source = 'CUSTOMER_QR'
+        AND s.created_at > now() - interval '1 hour'
+    ) >= 3 THEN
+      RAISE EXCEPTION 'Too many payment notifications for this customer account. Please try again later.' USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+
+  INSERT INTO public.qr_payment_submissions (
+    id, order_id, customer_id, amount_minor, payment_method, receipt_url, note, status,
+    created_at, updated_at, version, submission_source
+  ) VALUES (
+    gen_random_uuid(), v_order_id, v_customer_id, 0, v_method, p_receipt_path, v_note, 'PENDING',
+    clock_timestamp(), clock_timestamp(), 1, 'CUSTOMER_QR'
+  )
+  RETURNING id INTO v_submission_id;
+
+  RETURN jsonb_build_object('success', true, 'submission_id', v_submission_id, 'amount_minor', NULL, 'status', 'PENDING');
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.submit_qr_payment(text, text, text, text, bigint) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.submit_qr_payment(text, text, text, text, bigint) TO authenticated;
