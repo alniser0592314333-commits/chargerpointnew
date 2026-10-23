@@ -823,7 +823,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       id: 'account-event-' + event.id,
       created_at: event.created_at,
       title: translateAccountEvent(event.event_type),
-      detail: safeDate(event.created_at, locale),
+      detail: event.event_type === 'DEBT_PAYMENT_REMINDER' && typeof event.payload?.balance_minor === 'number'
+        ? (isAr ? 'المبلغ المستحق عليك ' : 'Outstanding amount: ') + money(event.payload.balance_minor, locale)
+        : '',
     })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
 
@@ -898,7 +900,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 </div>
                 <div className="cp-portal-subsection">
                   <div className="flex items-center justify-between gap-3"><h2 className="text-base font-bold">{isAr ? 'آخر التحديثات' : 'Recent updates'}</h2><button type="button" className="cp-portal-text-link" onClick={() => { setActiveTab('more'); setMoreView('notifications'); }}>{isAr ? 'عرض الكل' : 'View all'}</button></div>
-                  {eventRows.length ? <div className="cp-portal-timeline">{eventRows.slice(0, 3).map((event) => <div key={event.id} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail} · {safeDate(event.created_at, locale)}</p></div></div>)}</div> : <p className="cp-portal-empty">{isAr ? 'لا توجد تحديثات جديدة.' : 'No recent updates.'}</p>}
+                  {eventRows.length ? <div className="cp-portal-timeline">{eventRows.slice(0, 3).map((event) => <div key={event.id} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail ? event.detail + ' · ' : ''}{safeDate(event.created_at, locale)}</p></div></div>)}</div> : <p className="cp-portal-empty">{isAr ? 'لا توجد تحديثات جديدة.' : 'No recent updates.'}</p>}
                 </div>
               </section>
             </>}

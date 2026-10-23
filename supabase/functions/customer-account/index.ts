@@ -535,7 +535,7 @@ Deno.serve(async (request: Request) => {
             .select("id,status,requested_target,created_at,reviewed_at,rejection_reason")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(20),
           admin.from("customer_account_events")
-            .select("id,event_type,is_read,created_at")
+            .select("id,event_type,is_read,created_at,payload")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(50),
           admin.from("customer_account_sessions")
             .select("created_at,expires_at").eq("customer_id", link.customer_id)
@@ -738,6 +738,9 @@ Deno.serve(async (request: Request) => {
         .eq("status", "PENDING").gt("expires_at", now.toISOString()).order("requested_at", { ascending: true });
       const { data: events, error: eventError } = await admin.from("customer_account_events")
         .select("id,customer_id,event_type,request_id,is_read,created_at,customers(name)")
+        // Debt reminders belong exclusively to the customer's inbox; exposing them
+        // in the admin account-event panel makes dispatch look like admin delivery.
+        .neq("event_type", "DEBT_PAYMENT_REMINDER")
         .order("created_at", { ascending: false }).limit(50);
       const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
         .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name)")
