@@ -54,7 +54,7 @@ export const isNativeBiometricAvailable = async () => {
 export async function enrollAccountBiometric(
   accessToken: string,
   deviceLabel = 'Android device',
-  settingsReauth?: { password: string; bin?: string; emailOtp?: string },
+  settingsReauth?: { password: string; bin?: string },
 ) {
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const alias = randomAlias();
