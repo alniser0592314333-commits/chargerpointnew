@@ -337,7 +337,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "request-goal" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
@@ -481,6 +481,23 @@ Deno.serve(async (request: Request) => {
         }
         if (!(await ensureGoalRequestEvent(created.id))) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         return respond(200, { ok: true, already_pending: false, request: created });
+      }
+
+      if (action === "mark-notifications-read") {
+        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        // Only mark notifications belonging to the authenticated customer. Keep this
+        // server-side so the read state survives reinstall and follows the account.
+        const { data: changedEvents, error: markError } = await admin
+          .from("customer_account_events")
+          .update({ is_read: true })
+          .eq("customer_id", link.customer_id)
+          .eq("is_read", false)
+          .select("id");
+        if (markError) {
+          console.error("Customer notifications could not be marked as read");
+          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        }
+        return respond(200, { ok: true, updated_count: changedEvents?.length ?? 0 });
       }
 
       if (action === "customer-activity") {

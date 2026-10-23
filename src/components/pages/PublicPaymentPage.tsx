@@ -737,6 +737,13 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           {/* Payment form and companion illustration */}
           <div className="payment-portal-layout">
           <form onSubmit={submit} className="payment-portal-form mx-auto w-full max-w-xl space-y-4">
+            <button
+              type="submit"
+              disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/15 bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-300/15 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
+            >
+              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإشعار…' : 'Sending notification…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'}</span></>}
+            </button>
             {error && (
               <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm leading-5 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -860,13 +867,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </p>
             </section>
 
-            <button
-              type="submit"
-              disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
-            >
-              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإشعار…' : 'Sending notification…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'}</span></>}
-            </button>
+
           </form>
           <aside className="payment-portal-visual" aria-label={isAr ? "خدمات نقطة الشحن" : "Charging Point service information"}>
             <div className="payment-portal-visual-art" aria-hidden="true">

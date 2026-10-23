@@ -254,37 +254,49 @@ Deno.serve(async (req: Request) => {
       const {data: identity} = await admin.auth.admin.getUserById(cred.auth_user_id);
       const email = identity.user?.email;
       if (!email || identity.user?.banned_until && new Date(identity.user.banned_until).getTime()>Date.now()) return reply(401,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
-      if (cred.account_type === "customer") {
-        const {data: currentSession} = await admin.from("customer_account_sessions").select("auth_issued_at")
-          .eq("customer_id",cred.subject_id).maybeSingle();
-        const currentIat = Number(currentSession?.auth_issued_at || 0);
-        const nowMs = Date.now();
-        // Auth-issued timestamps have one-second precision and the Edge Runtime may
-        // observe a small clock skew. Wait for the previous session's iat to be
-        // unambiguously in the past instead of failing the first biometric attempt.
-        const waitMs = currentIat >= Math.floor(nowMs / 1000) ? (currentIat + 1) * 1000 - nowMs + 50 : 0;
-        if (waitMs > 0 && waitMs <= 3000) await new Promise((resolve) => setTimeout(resolve, waitMs));
-        else if (waitMs > 3000) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
-      }
-      const {data: link} = await admin.auth.admin.generateLink({type:"magiclink",email});
-      const tokenHash = link?.properties?.hashed_token;
-      if (!tokenHash) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
-      const {data: sessionData,error: sessionError} = await auth.auth.verifyOtp({token_hash:tokenHash,type:"magiclink"});
-      if (sessionError || !sessionData.session || sessionData.user?.id !== cred.auth_user_id) return reply(401,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
-      if (cred.account_type === "customer") {
+      // Supabase JWT iat has one-second precision. Immediately after logout, a new
+      // biometric session can be minted in the same second as the previous session.
+      // Retrying session issuance server-side avoids consuming a biometric challenge
+      // and forcing the customer to tap the fingerprint button a second time.
+      let sessionData: any = null;
+      let issuedAt = 0;
+      let sessionId = "";
+      const customerSessionAttempts = cred.account_type === "customer" ? 4 : 1;
+      for (let attempt = 0; attempt < customerSessionAttempts; attempt++) {
+        const {data: link} = await admin.auth.admin.generateLink({type:"magiclink",email});
+        const tokenHash = link?.properties?.hashed_token;
+        if (!tokenHash) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
+        const verifiedSession = await auth.auth.verifyOtp({token_hash:tokenHash,type:"magiclink"});
+        if (verifiedSession.error || !verifiedSession.data.session || verifiedSession.data.user?.id !== cred.auth_user_id) {
+          return reply(401,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
+        }
+        sessionData = verifiedSession.data;
+        if (cred.account_type !== "customer") break;
         const claims = jwtClaims(sessionData.session.access_token);
-        const sessionId = normalize(claims?.session_id,64);
-        const issuedAt = Number(claims?.iat);
-        if (!/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isSafeInteger(issuedAt)) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
-        const expiresAt = new Date(Date.now()+7*24*60*60*1000).toISOString();
-        const {data: current} = await admin.from("customer_account_sessions").select("auth_issued_at").eq("customer_id",cred.subject_id).maybeSingle();
-        if (current && issuedAt <= Number(current.auth_issued_at)) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
-        const {error: regError} = await admin.from("customer_account_sessions").upsert({
-          customer_id:cred.subject_id,auth_user_id:cred.auth_user_id,session_id:sessionId,auth_issued_at:issuedAt,
-          created_at:new Date().toISOString(),expires_at:expiresAt,revoked_at:null,
-        },{onConflict:"customer_id"});
-        if (regError) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
+        sessionId = normalize(claims?.session_id,64);
+        issuedAt = Number(claims?.iat);
+        if (!/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isSafeInteger(issuedAt)) {
+          return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
+        }
+        const {data: current, error: currentError} = await admin.from("customer_account_sessions")
+          .select("auth_issued_at").eq("customer_id",cred.subject_id).maybeSingle();
+        if (currentError) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
+        if (!current || issuedAt > Number(current.auth_issued_at || 0)) {
+          const expiresAt = new Date(Date.now()+7*24*60*60*1000).toISOString();
+          const {error: regError} = await admin.from("customer_account_sessions").upsert({
+            customer_id:cred.subject_id,auth_user_id:cred.auth_user_id,session_id:sessionId,auth_issued_at:issuedAt,
+            created_at:new Date().toISOString(),expires_at:expiresAt,revoked_at:null,
+          },{onConflict:"customer_id"});
+          if (regError) return reply(503,{ok:false,error:"BIOMETRIC_SESSION_UNAVAILABLE"});
+          break;
+        }
+        sessionData = null;
+        if (attempt < customerSessionAttempts - 1) {
+          const waitMs = Math.max(100, Math.min(1100, (Number(current.auth_issued_at) + 1) * 1000 - Date.now() + 75));
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
       }
+      if (!sessionData) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
       await admin.from("account_biometric_credentials").update({last_used_at:new Date().toISOString()}).eq("id",cred.id);
       return reply(200,{ok:true,session:sessionData.session,accountType:cred.account_type,subjectId:cred.subject_id,session_expires_at:cred.account_type === "customer" ? new Date(Date.now()+7*24*60*60*1000).toISOString() : undefined});
     }

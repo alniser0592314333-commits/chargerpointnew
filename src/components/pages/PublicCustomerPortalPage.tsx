@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { AlertTriangle, Bell, CheckCircle2, CreditCard, Globe, History, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
@@ -148,6 +149,11 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [serverAvailable, setServerAvailable] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [refreshing, setRefreshing] = useState(false);
+  const [offlineToastVisible, setOfflineToastVisible] = useState(false);
+  const [offlineToastFading, setOfflineToastFading] = useState(false);
+  const [showOfflineDot, setShowOfflineDot] = useState(false);
+  const [notificationsMessage, setNotificationsMessage] = useState('');
+  const [appVersion, setAppVersion] = useState(import.meta.env.VITE_APP_VERSION || '—');
   const initialPortalQuery = new URLSearchParams(window.location.search);
   const requestedTab = initialPortalQuery.get('tab');
   const initialTab: CustomerPortalTab = requestedTab === 'orders' || requestedTab === 'goals' || requestedTab === 'finance' || requestedTab === 'more'
@@ -178,6 +184,32 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [biometricPassword, setBiometricPassword] = useState('');
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricMessage, setBiometricMessage] = useState('');
+  const outageActive = !online || (!serverAvailable && !loading);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let active = true;
+    void CapacitorApp.getInfo().then((info) => {
+      if (active && typeof info.version === 'string' && info.version.trim()) setAppVersion(info.version.trim());
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!outageActive) {
+      setOfflineToastVisible(false);
+      setOfflineToastFading(false);
+      setShowOfflineDot(false);
+      return;
+    }
+    setOfflineToastVisible(true);
+    setOfflineToastFading(false);
+    const fadeTimer = window.setTimeout(() => setOfflineToastFading(true), 2000);
+    const hideTimer = window.setTimeout(() => {
+      setOfflineToastVisible(false);
+      setOfflineToastFading(false);
+      setShowOfflineDot(true);
+    }, 2300);
+    return () => { window.clearTimeout(fadeTimer); window.clearTimeout(hideTimer); };
+  }, [outageActive]);
 
   useEffect(() => {
     let active = true;
@@ -451,6 +483,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     try { window.localStorage.setItem('cp_customer_notifications_seen:' + token, JSON.stringify(ids)); } catch {}
   };
 
+  const markAllNotificationsRead = async () => {
+    if (!online || !serverAvailable || activityLoading) return;
+    setNotificationsMessage('');
+    const result = await callCustomerAccount<{ updated_count?: number }>('mark-notifications-read', { token });
+    if (result.error) {
+      setNotificationsMessage(isAr ? 'تعذّر تحديث حالة الإشعارات على الخادم. حاول مرة أخرى.' : 'Could not update notification read status on the server. Please try again.');
+      return;
+    }
+    markNotificationsSeen();
+    setNotificationsMessage(isAr ? 'تم تعليم الإشعارات كمقروءة.' : 'Notifications marked as read.');
+    await loadActivity(true);
+  };
+
   const requestGoal = async () => {
     if (!online || !serverAvailable || goalRequestBusy) return;
     setGoalRequestBusy(true);
@@ -651,6 +696,15 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
 
+  useEffect(() => {
+    const serverReadIds = (activity?.events || []).filter((event) => event.is_read).map((event) => 'account-event-' + event.id);
+    if (!serverReadIds.length) return;
+    setSeenNotificationIds((current) => {
+      const merged = new Set([...current, ...serverReadIds]);
+      return merged.size === current.length ? current : [...merged];
+    });
+  }, [activity?.events]);
+
   return (
     <div dir={isAr ? 'rtl' : 'ltr'} className="cp-customer-portal cp-portal-enter relative isolate min-h-screen text-slate-900 dark:text-slate-100">
       <div aria-hidden="true" className="cp-portal-moon-scene"><CustomerAuthScene uid="cp-customer-portal-scene" /></div>
@@ -658,21 +712,13 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <AppLogo size={40} variant="auto" className="shrink-0" />
-            <div><p className="font-bold">{isAr ? 'نقطة الشحن' : 'Charging Point'}</p><p className="text-xs text-slate-500 dark:text-emerald-200/70">{isAr ? 'بوابة العميل' : 'Customer portal'}</p></div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="cp-portal-header-control" aria-label={isAr ? 'تغيير اللغة إلى الإنجليزية' : 'Change language to Arabic'}>
-              <Globe className="h-4 w-4" /><span>{isAr ? 'English' : 'العربية'}</span>
-            </button>
-            <button type="button" onClick={toggleTheme} className="cp-portal-header-control cp-portal-header-control--icon" aria-label={isAr ? 'تغيير المظهر' : 'Change appearance'} title={isAr ? 'تغيير المظهر' : 'Change appearance'}>
-              {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
+            <div><p className="font-bold">{isAr ? 'نقطة الشحن' : 'Charging Point'}</p></div>
           </div>
         </div>
       </header>
 
       <main className="relative z-10 mx-auto max-w-3xl space-y-4 px-4 py-5 pb-28 sm:py-8 sm:pb-28">
-        {(!online || !serverAvailable) && <div role="status" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100"><WifiOff className="mt-0.5 h-5 w-5 shrink-0" /><p>{!online ? (isAr ? 'أنت غير متصل. نعرض آخر نسخة محفوظة وليست بيانات لحظية؛ قد لا تشمل آخر دفعة أو تعديل.' : 'You are offline. This is the last saved snapshot, not live data; recent payments or changes may be missing.') : (isAr ? 'تعذّر الوصول إلى الخادم حاليًا. نعرض آخر نسخة محفوظة ونوقف العمليات التي تحتاج اتصالًا حتى يعود التحقق.' : 'The server is temporarily unreachable. Showing the last saved snapshot and disabling actions that require a live connection.')}{data?.cached_at ? <span className="mt-1 block text-xs">{isAr ? 'آخر تحقق: ' : 'Last verified: '}{safeDate(data.cached_at, locale)}</span> : null}</p></div>}
+        {outageActive && offlineToastVisible && <div role="status" aria-live="polite" className={`cp-portal-offline-toast ${offlineToastFading ? 'cp-portal-offline-toast--leaving' : ''}`}><WifiOff size={16} className="shrink-0"/><span>{!online ? (isAr ? 'انقطع الاتصال — تعرض آخر بيانات محفوظة.' : 'Connection lost — showing saved data.') : (isAr ? 'الخادم غير متاح مؤقتًا — بعض العمليات متوقفة.' : 'Server temporarily unavailable — some actions are paused.')}</span></div>}
 
         {loading ? <div className="space-y-3" aria-live="polite"><div className="h-28 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><div className="h-36 rounded-2xl bg-slate-200 dark:bg-emerald-950" /><p className="text-center text-sm text-slate-500">{isAr ? 'جارٍ التحقق من رمز العميل وتحميل البيانات...' : 'Verifying customer QR and loading your data…'}</p></div> :
           error || !data ? <section role="alert" className="py-5 text-center">
@@ -786,15 +832,25 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             </section>}
 
             {activeTab === 'more' && moreView === 'notifications' && <section className="cp-portal-section">
-              <p className="cp-portal-eyebrow">{isAr ? 'آخر المستجدات' : 'LATEST UPDATES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإشعارات' : 'Notifications'}</h1>
+              <div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><p className="cp-portal-eyebrow">{isAr ? 'آخر المستجدات' : 'LATEST UPDATES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإشعارات' : 'Notifications'}</h1></div><button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable || activityLoading || eventRows.length === 0} onClick={() => void markAllNotificationsRead()}><CheckCircle2 size={16}/>{isAr ? 'تعليم الكل كمقروء' : 'Mark all as read'}</button></div>
+              {notificationsMessage && <p role="status" className="mt-2 text-sm cp-portal-muted">{notificationsMessage}</p>}
               {activity?.events.some((event) => event.event_type === 'TEMP_PASSWORD_ISSUED') && <div className="cp-portal-notice"><Bell size={18} /><p>{isAr ? 'تمت الموافقة على طلب إعادة تعيين كلمة المرور. اتبع تعليمات تغيير كلمة المرور عند تسجيل الدخول.' : 'Your password-reset request was approved. Follow the password-change instructions when signing in.'}</p></div>}
               {eventRows.length ? <div className="cp-portal-timeline">{eventRows.map((event)=><div key={event.id} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail} · {safeDate(event.created_at, locale)}</p></div></div>)}</div> : <p className="cp-portal-empty">{isAr ? 'لا توجد إشعارات حتى الآن.' : 'No notifications yet.'}</p>}
             </section>}
 
             {activeTab === 'more' && moreView === 'settings' && <section className="cp-portal-section">
               <p className="cp-portal-eyebrow">{isAr ? 'تفضيلاتك' : 'PREFERENCES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإعدادات' : 'Settings'}</h1>
-              <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={toggleTheme}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}</button></div>
+              <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => { toggleTheme(); setShowOfflineDot(false); }}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}{showOfflineDot && <span aria-label={isAr ? 'ملاحظة اتصال' : 'Connection notice'} className="cp-portal-offline-dot"/>}</button></div>
               <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
+              <div className="cp-portal-subsection">
+                <h2 className="font-bold">{isAr ? 'عن نقطة الشحن' : 'About Charging Point'}</h2>
+                <p className="mt-2 text-sm leading-6 cp-portal-muted">{isAr ? 'نقطة الشحن خدمة لمتابعة طلبات شحن الأجهزة وحالة كل طلب، والاطلاع على الرصيد والذمم والحركات المالية وإيصالات الدفع. يمكنك إرسال إشعار الدفع وإرفاق الإيصال، ومتابعة حالة المراجعة دون اعتبار الإرسال دفعة معتمدة قبل موافقة الإدارة. كما تتيح البوابة متابعة الأهداف والمكافآت، واستلام تحديثات الحساب والإشعارات، وتغيير كلمة المرور وإدارة الدخول بالبصمة على الجهاز المدعوم. تُحمّل البيانات الحساسة من الخدمة الموثوقة، وتُعرض آخر نسخة محفوظة عند انقطاع الاتصال مع إيقاف العمليات المالية حتى عودة التحقق.' : 'Charging Point lets you track charging orders and their statuses, view balances, amounts due, financial activity and payment receipts. You can submit a payment notice with a receipt image and track its review; submission is not treated as an approved payment until the administrator verifies it. The portal also supports goals and rewards, account updates and notifications, password changes, and device-based fingerprint sign-in on supported devices. Sensitive data is retrieved from the trusted service. A saved snapshot may be shown during an outage, while financial actions remain disabled until connectivity and verification return.'}</p>
+              </div>
+              <div className="cp-portal-subsection">
+                <h2 className="font-bold">{isAr ? 'معلومات الإصدار' : 'Version information'}</h2>
+                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار التطبيق' : 'App version'}</span><strong className="text-sm">{appVersion}</strong></div>
+                <div className="cp-portal-setting-row"><span className="text-sm cp-portal-muted">{isAr ? 'إصدار الأمان' : 'Security version'}</span><span className="text-xs cp-portal-muted">{isAr ? 'تُدار متطلبات الأمان عبر سياسة الخادم؛ لا يوجد رقم مستقل منشور حاليًا.' : 'Security requirements are enforced by server policy; no separate public security version is currently published.'}</span></div>
+              </div>
               {Capacitor.isNativePlatform() && <div className="cp-portal-subsection">
                 <h2 className="font-bold">{isAr ? 'الدخول بالبصمة' : 'Fingerprint sign-in'}</h2>
                 <p className="mt-2 text-sm cp-portal-muted">{biometricEnrolled ? (isAr ? 'البصمة مفعّلة لهذا الحساب على هذا الجهاز. يمكنك تغييرها متى شئت.' : 'Fingerprint is enabled for this account on this device. You can change it anytime.') : (isAr ? 'لم تضف بصمة لهذا الحساب بعد.' : 'No fingerprint is enrolled for this account yet.')}</p>
