@@ -286,7 +286,7 @@ jobs:
           strings = strings_file.read_text(encoding="utf-8")
           desc_key = "ussd_accessibility_service_description"
           if f'name="{desc_key}"' not in strings:
-              strings = strings.replace("</resources>", '    <string name="ussd_accessibility_service_description">USSD payment step assistance for Charging Point</string>\\n</resources>')
+              strings = strings.replace("</resources>", '    <string name="ussd_accessibility_service_description">USSD payment step assistance for Charging Point</string>\n</resources>')
               strings_file.write_text(strings, encoding="utf-8")
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
@@ -306,7 +306,7 @@ jobs:
           if "com.chargerpointnew.paymenthelper.UssdAutomationService" not in manifest_text:
               if "</application>" not in manifest_text:
                   raise SystemExit("Could not find application closing tag in AndroidManifest.xml")
-              manifest_text = manifest_text.replace("</application>", service_declaration + "\\n    </application>", 1)
+              manifest_text = manifest_text.replace("</application>", service_declaration + "\n    </application>", 1)
               manifest.write_text(manifest_text)
           print("Installed encrypted local payment storage, direct USSD calling, and registered the USSD accessibility service.")
           PY
