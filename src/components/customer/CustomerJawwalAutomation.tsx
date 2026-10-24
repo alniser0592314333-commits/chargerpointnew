@@ -11,7 +11,6 @@ type NativePaymentApi = {
   placeCall(options: { code: string; steps: string[] }): Promise<void>;
 };
 const NativePayment = registerPlugin<NativePaymentApi>('LocalPaymentHelper');
-const PHONE = '0592369875';
 
 type Props = { mode: 'setup' | 'payment' | 'reconfigure' };
 
@@ -19,6 +18,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
   const [isAr, setIsAr] = useState(document.documentElement.lang.toLowerCase().startsWith('ar'));
   const [open, setOpen] = useState(false);
   const [configured, setConfigured] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : false);
   const [pin, setPin] = useState('');
   const [amount, setAmount] = useState('');
   const [busy, setBusy] = useState(false);
@@ -26,6 +26,14 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
   const [notice, setNotice] = useState('');
   const [successToast, setSuccessToast] = useState('');
   const t = (ar: string, en: string) => isAr ? ar : en;
+
+  useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, []);
 
   useEffect(() => {
     const update = () => setIsAr(document.documentElement.lang.toLowerCase().startsWith('ar'));
@@ -67,7 +75,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       const { value } = await NativePayment.getServices();
       const list = value ? JSON.parse(value) : [];
       const others = Array.isArray(list) ? list.filter((item: StoredService) => item?.provider !== 'jawwal-pay') : [];
-      others.push({ id: 'customer-jawwal-pay', provider: 'jawwal-pay', name: 'Jawwal Pay', accountKind: 'friend', pin, recipientPhone: PHONE, createdAt: Date.now(), ussdSteps: [] });
+      others.push({ id: 'customer-jawwal-pay', provider: 'jawwal-pay', name: 'Jawwal Pay', accountKind: 'friend', pin, recipientPhone: '', createdAt: Date.now(), ussdSteps: [] });
       await NativePayment.setServices({ value: JSON.stringify(others) });
       setConfigured(true); setPin('');
       window.dispatchEvent(new Event('cp-jawwal-pay-config-updated'));
@@ -93,7 +101,10 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       const list = value ? JSON.parse(value) : [];
       const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\d{4}$/.test(item.pin)) : null;
       if (!service) { setConfigured(false); throw new Error('SETUP'); }
-      const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone: PHONE }, normalized);
+      const { data: recipientData, error: recipientError } = await customerAuth.rpc('get_jawwal_pay_recipient');
+      const recipientPhone = (recipientData as { recipient_phone?: string } | null)?.recipient_phone || '';
+      if (recipientError || !new RegExp('^05[0-9]{8}$').test(recipientPhone)) throw new Error('RECIPIENT_UNAVAILABLE');
+      const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone }, normalized);
       const minor = Math.round(Number(normalized) * 100);
       const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', { p_amount_minor: minor });
       if (submitError || !submission || (submission as { success?: boolean }).success !== true) {
@@ -111,11 +122,15 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
         ? t('لديك دفعة بانتظار المراجعة بالفعل. انتظر قرار الإدارة قبل إرسال دفعة أخرى.', 'You already have a payment awaiting review. Wait for the administrator before submitting another.')
         : code === 'SETUP'
           ? t('إعداد وسيلة الدفع غير موجود. أضفها من الصفحة الرئيسية أولًا.', 'Payment setup is missing. Add it from Home first.')
-          : code === 'SUBMIT'
+          : code === 'RECIPIENT_UNAVAILABLE'
+            ? t('تعذّر جلب رقم التحويل الحالي من الخادم. تأكد من الإنترنت ولم يبدأ الاتصال.', 'Could not retrieve the current recipient number. Check internet; no call was started.')
+            : code === 'SUBMIT'
             ? t('تعذّر إرسال طلب الدفع للإدارة. لم يبدأ اتصال جوال باي؛ تحقق من الإنترنت وحاول مجددًا.', 'Could not submit the payment request. Jawwal Pay was not started; check internet and try again.')
             : t('تعذّر بدء اتصال جوال باي. تحقّق من صلاحية الاتصال والشريحة، وراجع حالة طلب الدفع في الحساب قبل إعادة المحاولة.', 'Could not start Jawwal Pay. Check call permission and SIM, and review the payment request in your account before retrying.'));
     } finally { setBusy(false); }
   };
+
+  if (mode === 'payment' && !isOnline) return null;
 
   if ((mode === 'setup' && configured) || (mode === 'reconfigure' && successToast)) {
     return successToast ? <div role="status" className="fixed inset-x-4 top-4 z-[150] mx-auto max-w-md rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 shadow-xl dark:border-emerald-400/30 dark:bg-[#103a32] dark:text-emerald-100">{successToast}</div> : null;

@@ -1899,6 +1899,18 @@ export async function rpcFetchAuditLogs(): Promise<{ data: AuditLog[] | null; er
   return { data, error };
 }
 
+export async function rpcGetJawwalPayRecipient(): Promise<{ data: { recipient_phone?: string } | null; error: string | null }> {
+  return invokeSupabaseRpc<{ recipient_phone?: string }>('get_jawwal_pay_recipient');
+}
+
+export async function rpcSetJawwalPayRecipient(recipientPhone: string): Promise<{ success: boolean; error: string | null }> {
+  const { data, error } = await invokeSupabaseRpc<{ success?: boolean }>('set_jawwal_pay_recipient', {
+    p_recipient_phone: recipientPhone,
+  });
+  return { success: !error && data?.success === true, error };
+}
+
+
 export async function rpcFetchCustomPermissions(): Promise<{ data: CustomPermission[] | null; error: string | null }> {
   // Custom permissions are security-sensitive admin data. Read them through the
   // authoritative SECURITY DEFINER RPC instead of direct PostgREST table access,

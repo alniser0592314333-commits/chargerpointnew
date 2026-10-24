@@ -9,6 +9,7 @@ import { AdminBiometricSettings } from "../settings/AdminBiometricSettings";
 import { PWASettingsCard } from "../settings/PWASettingsCard";
 import { AppReleaseSettingsCard } from "../settings/AppReleaseSettingsCard";
 import { BusinessHoursSettingsCard } from "../settings/BusinessHoursSettingsCard";
+import { JawwalPayRecipientSettings } from "../settings/JawwalPayRecipientSettings";
 import { authService, UserSession } from "../../services/auth/authService";
 import {
   getSavedLogos,
@@ -638,6 +639,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         {/* GROUP 1.5: Business Hours & Operational Status */}
         {activeSettingsSection === "general" && hasPermission("settings:manage") && (
           <BusinessHoursSettingsCard />
+        )}
+
+        {activeSettingsSection === "general" && hasPermission("settings:manage") && (
+          <JawwalPayRecipientSettings locale={locale} />
         )}
 
         {activeSettingsSection === "general" && isSuperAdmin && (
