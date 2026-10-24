@@ -133,6 +133,15 @@ describe('customer portal polish regression contract', () => {
     expect(automation).toContain('onSubmissionCreated?.()');
   });
 
+  it('allows wallet top-ups without outstanding debt while retaining pending-payment protection', () => {
+    const page = read('src/components/pages/PublicCustomerPortalPage.tsx');
+    const home = page.slice(page.indexOf('cp-portal-pending-payment'), page.indexOf('<CustomerJawwalAutomation mode="setup"'));
+    expect(home).not.toContain('data.balance_minor < 0');
+    expect(home).toContain('data.pending_jawwal_payments_count');
+    expect(home).toContain('< 3');
+    expect(home).toContain('online && serverAvailable');
+  });
+
   it('rebinds customer push registration when the authenticated session changes', () => {
     const page = read('src/components/pages/PublicCustomerPortalPage.tsx');
     const push = read('src/services/nativePushNotifications.ts');
