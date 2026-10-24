@@ -80,7 +80,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     try {
       const { value } = await NativePayment.getServices();
       const list = value ? JSON.parse(value) : [];
-      const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\\d{4}$/.test(item.pin)) : null;
+      const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\d{4}$/.test(item.pin)) : null;
       if (!service) { setConfigured(false); throw new Error('SETUP'); }
       const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone: PHONE }, normalized);
       const minor = Math.round(Number(normalized) * 100);
@@ -121,7 +121,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       <p className="ps-6 text-xs">{t('يجب اختيار شريحة الاتصال المرتبطة بحساب جوال باي. الرقم السري يُحفظ مشفّرًا على الهاتف ولا يُرسل إلى خادم التطبيق.', 'Select the calling SIM linked to your Jawwal Pay account. Your PIN is encrypted on this phone and is never sent to the app server.')}</p>
       <button type="button" onClick={() => setNotice(t('تذكّر اختيار شريحة جوال باي قبل الاتصال.', 'Remember to select the Jawwal Pay SIM before calling.'))} className="ms-6 text-xs font-bold text-blue-700 underline underline-offset-2 dark:text-sky-300">{t('فهمت ذلك', 'Got it')}</button>
     </div>
-    <form onSubmit={e=>{e.preventDefault(); void savePin()}} className="mt-3 space-y-3"><label className="block text-sm font-semibold">{t('الرقم السري لجوال باي', 'Jawwal Pay PIN')}<input autoComplete="off" inputMode="numeric" pattern="[0-9]*" maxLength={4} type="password" value={pin} onChange={e=>setPin(e.target.value.replace(/[^0-9]/g,'').slice(0,4))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c]" placeholder="••••" /></label><button type="submit" disabled={busy || !/^\\d{4}$/.test(pin)} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة وسيلة الدفع', 'Add payment method')}</button></form>
+    <form onSubmit={e=>{e.preventDefault(); void savePin()}} className="mt-3 space-y-3"><label className="block text-sm font-semibold">{t('الرقم السري لجوال باي', 'Jawwal Pay PIN')}<input autoComplete="off" inputMode="numeric" pattern="[0-9]*" maxLength={4} type="password" value={pin} onChange={e=>setPin(e.target.value.replace(/[^0-9]/g,'').slice(0,4))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c]" placeholder="••••" /></label><button type="submit" disabled={busy || !/^\d{4}$/.test(pin)} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة وسيلة الدفع', 'Add payment method')}</button></form>
     {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-2 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>}
     {notice && <p role="status" className="mt-3 rounded-lg bg-sky-50 p-2 text-sm text-sky-800 dark:bg-sky-500/10 dark:text-sky-200">{notice}</p>}
   </section>;
