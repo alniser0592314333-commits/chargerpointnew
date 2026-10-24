@@ -136,7 +136,9 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     const viewport = window.visualViewport;
     const update = () => {
       const height = viewport?.height || window.innerHeight;
+      const top = viewport?.offsetTop || 0;
       document.documentElement.style.setProperty('--cp-jawwal-viewport-height', `${Math.round(height)}px`);
+      document.documentElement.style.setProperty('--cp-jawwal-viewport-top', `${Math.round(top)}px`);
     };
     update();
     viewport?.addEventListener('resize', update);
