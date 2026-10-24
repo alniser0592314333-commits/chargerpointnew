@@ -179,8 +179,10 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     } catch { return []; }
   });
   const [actionMessage, setActionMessage] = useState('');
-  const [showFinancialMovements, setShowFinancialMovements] = useState(false);
-  const [showPaymentReceipts, setShowPaymentReceipts] = useState(false);
+  const [showFinancialMovements, setShowFinancialMovements] = useState(true);
+  const [showPaymentReceipts, setShowPaymentReceipts] = useState(true);
+  const [financeView, setFinanceView] = useState<'receipts' | 'movements'>('receipts');
+  const [financeMenuOpen, setFinanceMenuOpen] = useState(false);
   const [goalRequestBusy, setGoalRequestBusy] = useState(false);
   const [resetRequestBusy, setResetRequestBusy] = useState(false);
   const [historyRequestStatus, setHistoryRequestStatus] = useState<string | null>(null);
@@ -937,8 +939,19 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <section className="cp-portal-section">
                 <p className="cp-portal-eyebrow">{isAr ? 'حسابك المالي' : 'YOUR FINANCES'}</p>
                 <h1 className="cp-portal-heading">{isAr ? 'كشف الحساب' : 'Account statement'}</h1>
+                <div className="cp-finance-view-picker">
+                  <button type="button" className="cp-finance-view-picker__trigger" aria-expanded={financeMenuOpen} onClick={() => setFinanceMenuOpen((open) => !open)}>
+                    <span>{financeView === 'receipts' ? (isAr ? 'الدفعات والإيصالات' : 'Payments and receipts') : (isAr ? 'الحركات المالية' : 'Financial movements')}</span>
+                    <span aria-hidden="true" className={financeMenuOpen ? 'cp-finance-view-picker__chevron is-open' : 'cp-finance-view-picker__chevron'}>⌄</span>
+                  </button>
+                  {financeMenuOpen && <div className="cp-finance-view-picker__menu" role="menu">
+                    <button type="button" role="menuitem" className={financeView === 'receipts' ? 'is-active' : ''} onClick={() => { setFinanceView('receipts'); setShowPaymentReceipts(true); setShowFinancialMovements(false); setFinanceMenuOpen(false); }}>{isAr ? 'الدفعات والإيصالات' : 'Payments and receipts'}</button>
+                    <button type="button" role="menuitem" className={financeView === 'movements' ? 'is-active' : ''} onClick={() => { setFinanceView('movements'); setShowFinancialMovements(true); setShowPaymentReceipts(false); setFinanceMenuOpen(false); }}>{isAr ? 'الحركات المالية' : 'Financial movements'}</button>
+                  </div>}
+                </div>
                 <div className="cp-portal-balance cp-portal-balance--compact"><p className="cp-portal-eyebrow">{isAr ? 'الرصيد الحالي' : 'CURRENT BALANCE'}</p><p className="mt-2 text-sm cp-portal-muted">{balanceLabel}</p><p className={`cp-portal-balance__amount ${data.balance_minor < 0 ? 'text-rose-600 dark:text-rose-300' : data.balance_minor > 0 ? 'text-emerald-600 dark:text-emerald-300' : 'cp-portal-muted'}`}>{data.balance_minor < 0 ? '−' : data.balance_minor > 0 ? '+' : ''}{money(Math.abs(data.balance_minor), locale)}</p></div>
-                <div className="cp-portal-subsection">
+                {financeView === 'movements' && (
+<div className="cp-portal-subsection">
                   <button type="button" className="flex w-full items-center justify-between gap-3 text-start" onClick={() => setShowFinancialMovements((value) => !value)} aria-expanded={showFinancialMovements}><span className="font-bold">{isAr ? 'الحركات المالية' : 'Financial movements'}</span><span className="flex items-center gap-2 text-xs cp-portal-muted">{(activity?.ledger.length ?? 0) + manualFinancialStatuses.length}<span aria-hidden="true">{showFinancialMovements ? '−' : '+'}</span></span></button>
                   {showFinancialMovements && (activityLoading && !activity ? <p className="cp-portal-empty">{isAr ? 'جارٍ تحميل الحركات المالية…' : 'Loading financial movements…'}</p>
                     : activityError || !activity ? <div className="cp-portal-retry"><p className="cp-portal-empty">{isAr ? 'تعذّر تحميل الحركات المالية حاليًا.' : 'Financial movements are temporarily unavailable.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => void loadActivity()}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button></div>
@@ -947,7 +960,9 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                       {[...activity.ledger.map((entry) => ({ kind: 'ledger' as const, id: entry.id, created_at: entry.created_at, event_type: entry.event_type, amount_minor: entry.amount_minor, metadata: entry.metadata, submission: null as PortalSubmission | null })), ...manualFinancialStatuses.map((submission) => ({ kind: 'manual' as const, id: submission.id || submission.created_at, created_at: submission.created_at, event_type: submission.status.toUpperCase(), amount_minor: Number(submission.amount_minor || 0), metadata: null, submission }))].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((entry) => <div key={entry.kind + '-' + entry.id} className="cp-portal-timeline__row cp-portal-finance-row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{entry.kind === 'manual' ? (isAr ? 'دفعة مسجّلة من الإدارة' : 'Admin-recorded payment') + ' · ' + statusLabel(entry.event_type) : translateLedgerType(entry.event_type)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(entry.created_at, locale)}{entry.kind === 'ledger' && typeof entry.metadata?.order_number === 'number' ? ' · ' + (isAr ? 'طلب رقم ' : 'Order #') + entry.metadata.order_number : ''}</p>{entry.kind === 'manual' && entry.event_type === 'PENDING' && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{isAr ? 'بانتظار الاعتماد — لا يؤثر المبلغ على رصيدك حاليًا.' : 'Pending approval — this amount is not included in your balance.'}</p>}{entry.kind === 'manual' && entry.event_type === 'REJECTED' && entry.submission?.rejection_reason && <p className="mt-1 text-xs text-rose-600 dark:text-rose-300">{(isAr ? 'ملاحظة الإدارة: ' : 'Administrator note: ') + entry.submission.rejection_reason}</p>}{entry.kind === 'manual' && entry.submission?.note && <p className="mt-1 text-xs cp-portal-muted">{(isAr ? 'ملاحظة: ' : 'Note: ') + entry.submission.note}</p>}</div><strong className="shrink-0">{entry.kind === 'ledger' && entry.event_type === 'DISCOUNT' ? '−' + money(Math.abs(entry.amount_minor), locale) : money(entry.amount_minor, locale)}</strong></div>)}
                     </div>)}
                 </div>
+                )}
               </section>
+              {financeView === 'receipts' && (
               <section className="cp-portal-section">
                 <button type="button" className="flex w-full items-center justify-between gap-3 text-start" onClick={() => setShowPaymentReceipts((value) => !value)} aria-expanded={showPaymentReceipts}><h2 className="text-base font-bold">{isAr ? 'الدفعات والإيصالات' : 'Payments and receipts'}</h2><span aria-hidden="true" className="cp-portal-muted">{showPaymentReceipts ? '−' : '+'}</span></button>
                 {showPaymentReceipts && <>
@@ -956,6 +971,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 {online && serverAvailable && <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={18} />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
                 </>}
               </section>
+                )}
+
             </>}
 
             {activeTab === 'goals' && <section className="cp-portal-section">

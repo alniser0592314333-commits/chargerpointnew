@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { AlertTriangle, LockKeyhole, Wallet, X } from 'lucide-react';
 import { customerAuth } from '../../services/customer/customerAuth';
 import { buildJawwalBCode } from '../../services/localPaymentHelperCode';
+import { authorizeJawwalPaymentBiometric } from '../../services/auth/accountBiometric';
 
 type StoredService = { id: string; provider?: string; pin: string; recipientPhone?: string; accountKind?: 'friend' | 'merchant' };
 type NativePaymentApi = {
@@ -106,7 +107,22 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       if (recipientError || !new RegExp('^05[0-9]{8}$').test(recipientPhone)) throw new Error('RECIPIENT_UNAVAILABLE');
       const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone }, normalized);
       const minor = Math.round(Number(normalized) * 100);
-      const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', { p_amount_minor: minor });
+      const { data: sessionData } = await customerAuth.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('AUTH_REQUIRED');
+      let biometricAuthorization: { authorizationId: string; expiresAt: string };
+      try {
+        biometricAuthorization = await authorizeJawwalPaymentBiometric(accessToken);
+      } catch (biometricError) {
+        const biometricCode = biometricError instanceof Error ? biometricError.message : '';
+        if (biometricCode === 'BIOMETRIC_NOT_ENROLLED') throw new Error('BIOMETRIC_NOT_ENROLLED');
+        if (biometricCode === 'JAWJAL_BIOMETRIC_LOCKED' || biometricCode === 'JAWJAL_BIOMETRIC_LOCKED') throw new Error('BIOMETRIC_LOCKED');
+        if (biometricCode === 'BIOMETRIC_PROOF_INVALID') throw new Error('BIOMETRIC_RETRY');
+        throw biometricError;
+      }
+      const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', {
+        p_amount_minor: minor, p_biometric_authorization_id: biometricAuthorization.authorizationId
+      });
       if (submitError || !submission || (submission as { success?: boolean }).success !== true) {
         const message = submitError?.message || '';
         if (/already awaiting review/i.test(message)) throw new Error('PENDING');
@@ -118,7 +134,13 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       setOpen(false);
     } catch (e) {
       const code = e instanceof Error ? e.message : '';
-      setError(code === 'PENDING'
+      setError(code === 'BIOMETRIC_NOT_ENROLLED'
+        ? t('البصمة غير مفعّلة. أضف بصمتك من إعدادات الحساب ثم حاول مجددًا.', 'Fingerprint is not enrolled. Enable it in account settings and try again.')
+        : code === 'BIOMETRIC_LOCKED' || code === 'JAWJAL_BIOMETRIC_LOCKED'
+          ? t('تم تجميد الخدمة مؤقتا يرجى المحاولة لاحقا', 'Service temporarily frozen. Please try again later.')
+          : code === 'BIOMETRIC_RETRY' || code === 'BIOMETRIC_PROOF_INVALID'
+            ? t('لم يتم تأكيد البصمة. حاول مرة أخرى.', 'Fingerprint was not verified. Please try again.')
+            : code === 'PENDING'
         ? t('لديك دفعة بانتظار المراجعة بالفعل. انتظر قرار الإدارة قبل إرسال دفعة أخرى.', 'You already have a payment awaiting review. Wait for the administrator before submitting another.')
         : code === 'SETUP'
           ? t('إعداد وسيلة الدفع غير موجود. أضفها من الصفحة الرئيسية أولًا.', 'Payment setup is missing. Add it from Home first.')
@@ -129,6 +151,27 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
             : t('تعذّر بدء اتصال جوال باي. تحقّق من صلاحية الاتصال والشريحة، وراجع حالة طلب الدفع في الحساب قبل إعادة المحاولة.', 'Could not start Jawwal Pay. Check call permission and SIM, and review the payment request in your account before retrying.'));
     } finally { setBusy(false); }
   };
+
+  // Keep the amount dialog above Android's soft keyboard and account navigation.
+  useEffect(() => {
+    if (!open) return;
+    const viewport = window.visualViewport;
+    const update = () => {
+      const height = viewport?.height || window.innerHeight;
+      const top = viewport?.offsetTop || 0;
+      document.documentElement.style.setProperty('--cp-jawwal-viewport-height', `${Math.round(height)}px`);
+      document.documentElement.style.setProperty('--cp-jawwal-viewport-top', `${Math.round(top)}px`);
+    };
+    update();
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [open]);
 
   if (mode === 'payment' && !isOnline) return null;
 
@@ -157,7 +200,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     <button type="button" onClick={()=>{setOpen(true);setError('');setNotice('');}} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white shadow-sm hover:bg-sky-800"><Wallet size={17} className="me-2 inline-block"/>{t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</button>
     {notice && <p role="status" className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-100">{notice}</p>}
     {error && <p role="alert" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>}
-    {open && <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/65 p-3 sm:items-center"><div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-white p-5 text-slate-900 shadow-2xl dark:bg-[#0d2a29] dark:text-white">
+    {open && <div className="cp-jawwal-payment-overlay fixed inset-0 z-[140] flex items-end justify-center bg-black/65 p-2 sm:items-center"><div role="dialog" aria-modal="true" className="cp-jawwal-payment-dialog w-full max-w-sm rounded-2xl bg-white p-4 text-slate-900 shadow-2xl dark:bg-[#0d2a29] dark:text-white">
       <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-extrabold">{t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</h3><button type="button" aria-label={t('إغلاق','Close')} onClick={()=>setOpen(false)} className="rounded-lg p-1"><X size={19}/></button></div>
       <form onSubmit={e=>{e.preventDefault();void startPayment()}} className="mt-4 space-y-3"><label className="block text-sm font-semibold">{t('المبلغ (شيكل)', 'Amount (ILS)')}<input autoFocus inputMode="decimal" type="number" min="0.01" step="0.01" required value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-lg text-slate-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-[#071d1c] dark:text-white"/></label>
         <p className="text-xs leading-5 text-slate-500 dark:text-slate-300">{t('سيُرسل طلب الدفعة إلى الإدارة للمراجعة، ثم يبدأ اتصال جوال باي. لن يتغير رصيدك حتى اعتماد الدفعة.', 'The payment request will be sent for administrator review, then Jawwal Pay starts. Your balance changes only after approval.')}</p>

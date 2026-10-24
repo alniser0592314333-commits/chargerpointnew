@@ -94,7 +94,7 @@ Deno.serve(async (req: Request) => {
     }
     return null;
   };
-  const createChallenge = async (identity: {type:string;id:string;uid:string}, purpose: "enroll"|"login", credentialId: string | null) => {
+  const createChallenge = async (identity: {type:string;id:string;uid:string}, purpose: "enroll"|"login"|"jawwal-payment", credentialId: string | null) => {
     await admin.from("account_biometric_challenges").delete().lt("expires_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
   const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const {count, error: countError} = await admin.from("account_biometric_challenges").select("id",{count:"exact",head:true})
@@ -109,7 +109,7 @@ Deno.serve(async (req: Request) => {
     if (error || !data) return null;
     return { challengeId: data.id as string, challenge };
   };
-  const consumeAndVerify = async (challengeId: string, signature: string, expectedPurpose: "enroll"|"login") => {
+  const consumeAndVerify = async (challengeId: string, signature: string, expectedPurpose: "enroll"|"login"|"jawwal-payment") => {
     const { data: c, error } = await admin.from("account_biometric_challenges").select("*")
       .eq("id", challengeId).eq("purpose", expectedPurpose).is("consumed_at", null).gt("expires_at", new Date().toISOString()).maybeSingle();
     if (error || !c) return null;
@@ -315,6 +315,53 @@ Deno.serve(async (req: Request) => {
       if (!sessionData) return reply(401,{ok:false,error:"STALE_BIOMETRIC_SESSION"});
       await admin.from("account_biometric_credentials").update({last_used_at:new Date().toISOString()}).eq("id",cred.id);
       return reply(200,{ok:true,session:sessionData.session,accountType:cred.account_type,subjectId:cred.subject_id,session_expires_at:cred.account_type === "customer" ? new Date(Date.now()+7*24*60*60*1000).toISOString() : undefined});
+    }
+    if (action === "jawwal-payment-challenge") {
+      const identity = await getAuthenticatedIdentity();
+      if (!identity || identity.type !== "customer") return reply(401,{ok:false,error:"AUTH_REQUIRED"});
+      if (identity.mustChangePassword) return reply(403,{ok:false,error:"PASSWORD_CHANGE_REQUIRED"});
+      const {data: guard} = await admin.from("customer_jawwal_biometric_guard").select("failed_attempts,window_started_at,locked_until").eq("customer_id",identity.id).maybeSingle();
+      if (guard?.locked_until && new Date(guard.locked_until).getTime()>Date.now()) return reply(423,{ok:false,error:"JAWJAL_BIOMETRIC_LOCKED",lockedUntil:guard.locked_until});
+      const {data: cred,error: credError} = await admin.from("account_biometric_credentials").select("id,key_alias,public_key_spki")
+        .eq("account_type","customer").eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
+      if (credError || !cred) return reply(409,{ok:false,error:"BIOMETRIC_NOT_ENROLLED"});
+      const challenge = await createChallenge(identity,"jawwal-payment",cred.id);
+      return challenge ? reply(200,{ok:true,...challenge,credentialId:cred.key_alias}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
+    }
+    if (action === "jawwal-payment-verify") {
+      const identity = await getAuthenticatedIdentity();
+      const challengeId = normalize(input.challengeId,64);
+      const credentialId = normalize(input.credentialId,64);
+      const signature = normalize(input.signature,2048);
+      if (!identity || identity.type !== "customer" || !challengeId || !credentialId || !signature) return reply(400,{ok:false,error:"INVALID_REQUEST"});
+      const {data: guard} = await admin.from("customer_jawwal_biometric_guard").select("failed_attempts,window_started_at,locked_until").eq("customer_id",identity.id).maybeSingle();
+      if (guard?.locked_until && new Date(guard.locked_until).getTime()>Date.now()) return reply(423,{ok:false,error:"JAWJAL_BIOMETRIC_LOCKED",lockedUntil:guard.locked_until});
+      const consumed = await consumeAndVerify(challengeId,signature,"jawwal-payment");
+      const {data: cred} = await admin.from("account_biometric_credentials").select("*").eq("key_alias",credentialId)
+        .eq("account_type","customer").eq("subject_id",identity.id).eq("auth_user_id",identity.uid).is("revoked_at",null).maybeSingle();
+      const valid = !!(consumed && cred && consumed.challenge.auth_user_id===identity.uid &&
+        consumed.challenge.subject_id===identity.id && consumed.challenge.credential_id===cred.id &&
+        await verifySignature(cred.public_key_spki,consumed.challenge.challenge,signature));
+      if (!valid) {
+        const now = new Date();
+        const withinWindow = !!(guard?.window_started_at && now.getTime()-new Date(guard.window_started_at).getTime()<3600000);
+        const attempts = withinWindow ? Number(guard?.failed_attempts||0)+1 : 1;
+        const lockedUntil = attempts>=3 ? new Date(now.getTime()+3600000).toISOString() : null;
+        const {error: guardError} = await admin.from("customer_jawwal_biometric_guard").upsert({
+          customer_id:identity.id,failed_attempts:Math.min(attempts,3),
+          window_started_at:withinWindow ? guard.window_started_at : now.toISOString(),
+          locked_until:lockedUntil,updated_at:now.toISOString()
+        },{onConflict:"customer_id"});
+        if (guardError) return reply(503,{ok:false,error:"BIOMETRIC_GUARD_UNAVAILABLE"});
+        return reply(401,{ok:false,error:lockedUntil ? "JAWJAL_BIOMETRIC_LOCKED" : "BIOMETRIC_PROOF_INVALID",
+          attemptsRemaining:Math.max(0,3-attempts),lockedUntil});
+      }
+      const {data: authz,error: authzError} = await admin.from("customer_jawwal_biometric_authorizations")
+        .insert({customer_id:identity.id,auth_user_id:identity.uid,challenge_id:challengeId})
+        .select("id,expires_at").single();
+      if (authzError || !authz) return reply(503,{ok:false,error:"BIOMETRIC_AUTHORIZATION_FAILED"});
+      await admin.from("account_biometric_credentials").update({last_used_at:new Date().toISOString()}).eq("id",cred.id);
+      return reply(200,{ok:true,authorizationId:authz.id,expiresAt:authz.expires_at});
     }
     if (action === "status") {
       const identity = await getAuthenticatedIdentity();
