@@ -115,7 +115,7 @@ describe('customer portal polish regression contract', () => {
   it('places the payment notification action before the payment form fields', () => {
     const payment = read('src/components/pages/PublicPaymentPage.tsx');
     const form = payment.indexOf('<form onSubmit={submit} className="payment-portal-form');
-    const submit = payment.indexOf("isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'");
+    const submit = payment.indexOf("isAr ? 'إرسال إيصال الدفع للمراجعة' : 'Send payment receipt for review'");
     expect(form).toBeGreaterThan(-1);
     expect(submit).toBeGreaterThan(form);
     expect(submit).toBeLessThan(payment.indexOf('isAr ? \'وسيلة الدفع\' : \'Payment method\'', form));
