@@ -373,18 +373,14 @@ Deno.serve(async (req: Request) => {
         consumed.challenge.subject_id===identity.id && consumed.challenge.credential_id===cred.id &&
         await verifySignature(cred.public_key_spki,consumed.challenge.challenge,signature));
       if (!valid) {
-        const now = new Date();
-        const withinWindow = !!(guard?.window_started_at && now.getTime()-new Date(guard.window_started_at).getTime()<3600000);
-        const attempts = withinWindow ? Number(guard?.failed_attempts||0)+1 : 1;
-        const lockedUntil = attempts>=3 ? new Date(now.getTime()+3600000).toISOString() : null;
-        const {error: guardError} = await admin.from("customer_jawwal_biometric_guard").upsert({
-          customer_id:identity.id,failed_attempts:Math.min(attempts,3),
-          window_started_at:withinWindow ? guard.window_started_at : now.toISOString(),
-          locked_until:lockedUntil,updated_at:now.toISOString()
-        },{onConflict:"customer_id"});
-        if (guardError) return reply(503,{ok:false,error:"BIOMETRIC_GUARD_UNAVAILABLE"});
-        return reply(401,{ok:false,error:lockedUntil ? "JAWJAL_BIOMETRIC_LOCKED" : "BIOMETRIC_PROOF_INVALID",
-          attemptsRemaining:Math.max(0,3-attempts),lockedUntil});
+        const {data: failure, error: failureError} = await admin.rpc(
+          "record_customer_jawwal_biometric_failure",
+          { p_customer_id: identity.id },
+        );
+        if (failureError || !failure) return reply(503,{ok:false,error:"BIOMETRIC_GUARD_UNAVAILABLE"});
+        const lockedUntil = typeof failure.lockedUntil === "string" ? failure.lockedUntil : null;
+        return reply(401,{ok:false,error:lockedUntil && new Date(lockedUntil).getTime()>Date.now() ? "JAWJAL_BIOMETRIC_LOCKED" : "BIOMETRIC_PROOF_INVALID",
+          attemptsRemaining:Number(failure.attemptsRemaining ?? 0),lockedUntil});
       }
       const {data: authz,error: authzError} = await admin.from("customer_jawwal_biometric_authorizations")
         .insert({customer_id:identity.id,auth_user_id:identity.uid,challenge_id:challengeId})
