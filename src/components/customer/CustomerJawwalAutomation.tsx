@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { AlertTriangle, LockKeyhole, Wallet } from 'lucide-react';
+import { AlertTriangle, LockKeyhole, Wallet, X } from 'lucide-react';
+import { customerAuth } from '../../services/customer/customerAuth';
 import { buildJawwalBCode } from '../../services/localPaymentHelperCode';
 
 type StoredService = { id: string; provider?: string; pin: string; recipientPhone?: string; accountKind?: 'friend' | 'merchant' };
@@ -10,20 +11,20 @@ type NativePaymentApi = {
   placeCall(options: { code: string; steps: string[] }): Promise<void>;
 };
 const NativePayment = registerPlugin<NativePaymentApi>('LocalPaymentHelper');
-const CONSENT_KEY = 'cp_jawwal_automation_terms_v1';
 const PHONE = '0592369875';
 
-export const CustomerJawwalAutomation: React.FC = () => {
+type Props = { mode: 'setup' | 'payment' };
+
+export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
   const [isAr, setIsAr] = useState(document.documentElement.lang.toLowerCase().startsWith('ar'));
   const [open, setOpen] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [pin, setPin] = useState('');
   const [amount, setAmount] = useState('');
-  const [accepted, setAccepted] = useState(false);
-  const [consentChecked, setConsentChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [successToast, setSuccessToast] = useState('');
   const t = (ar: string, en: string) => isAr ? ar : en;
 
   useEffect(() => {
@@ -36,7 +37,6 @@ export const CustomerJawwalAutomation: React.FC = () => {
 
   useEffect(() => {
     let active = true;
-    try { setAccepted(window.localStorage.getItem(CONSENT_KEY) === 'yes'); } catch {}
     if (Capacitor.isNativePlatform()) {
       void NativePayment.getServices().then(({ value }) => {
         if (!active) return;
@@ -51,7 +51,7 @@ export const CustomerJawwalAutomation: React.FC = () => {
   const savePin = async () => {
     setError(''); setNotice('');
     if (!/^\d{4}$/.test(pin)) { setError(t('أدخل الرقم السري لجوال باي المكوّن من 4 أرقام.', 'Enter the 4-digit Jawwal Pay PIN.')); return; }
-    if (!Capacitor.isNativePlatform()) { setError(t('حفظ الرقم السري الآمن متاح في تطبيق أندرويد فقط.', 'Secure PIN storage is available in the Android app only.')); return; }
+    if (!Capacitor.isNativePlatform()) { setError(t('إضافة وسيلة الدفع الآمنة متاحة في تطبيق أندرويد فقط.', 'Secure payment setup is available in the Android app only.')); return; }
     setBusy(true);
     try {
       const { value } = await NativePayment.getServices();
@@ -59,8 +59,9 @@ export const CustomerJawwalAutomation: React.FC = () => {
       const others = Array.isArray(list) ? list.filter((item: StoredService) => item?.provider !== 'jawwal-pay') : [];
       others.push({ id: 'customer-jawwal-pay', provider: 'jawwal-pay', name: 'Jawwal Pay', accountKind: 'friend', pin, recipientPhone: PHONE, createdAt: Date.now(), ussdSteps: [] });
       await NativePayment.setServices({ value: JSON.stringify(others) });
-      setConfigured(true); setOpen(false); setPin('');
-      setNotice(t('تم حفظ إعداد الأتمتة على هذا الجهاز فقط.', 'Automation settings saved on this device only.'));
+      setConfigured(true); setPin('');
+      setSuccessToast(t('تمت إضافة وسيلة الدفع بنجاح.', 'Payment method added successfully.'));
+      window.setTimeout(() => setSuccessToast(''), 3200);
     } catch {
       setError(t('تعذّر الحفظ الآمن. لم يتم حفظ الرقم السري.', 'Secure save failed. The PIN was not saved.'));
     } finally { setBusy(false); }
@@ -68,43 +69,74 @@ export const CustomerJawwalAutomation: React.FC = () => {
 
   const startPayment = async () => {
     setError(''); setNotice('');
-    if (!configured) { setOpen(true); return; }
-    let code = '';
-    try { code = buildJawwalBCode({ accountKind: 'friend', pin, recipientPhone: PHONE }, amount); }
-    catch (e) { setError(e instanceof Error ? t(e.message, 'Enter a valid amount greater than zero.') : t('راجع المبلغ.', 'Check the amount.')); return; }
+    const normalized = amount.trim().replace(',', '.');
+    if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(normalized) || Number(normalized) <= 0) {
+      setError(t('أدخل مبلغًا صحيحًا أكبر من صفر.', 'Enter a valid amount greater than zero.'));
+      return;
+    }
     if (!Capacitor.isNativePlatform()) { setError(t('الدفع المباشر متاح من تطبيق أندرويد فقط.', 'Direct payment is available in the Android app only.')); return; }
+    if (!navigator.onLine) { setError(t('يلزم الاتصال بالإنترنت لإرسال الدفعة إلى الإدارة.', 'An internet connection is required to notify the administrator.')); return; }
     setBusy(true);
     try {
+      const { value } = await NativePayment.getServices();
+      const list = value ? JSON.parse(value) : [];
+      const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\d{4}$/.test(item.pin)) : null;
+      if (!service) { setConfigured(false); throw new Error('SETUP'); }
+      const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone: PHONE }, normalized);
+      const minor = Math.round(Number(normalized) * 100);
+      const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', { p_amount_minor: minor });
+      if (submitError || !submission || (submission as { success?: boolean }).success !== true) {
+        const message = submitError?.message || '';
+        if (/already awaiting review/i.test(message)) throw new Error('PENDING');
+        throw new Error('SUBMIT');
+      }
       await NativePayment.placeCall({ code, steps: [] });
-      setNotice(t('تم فتح اتصال جوال باي. راجع شاشة الهاتف وأكمل العملية؛ فتح الاتصال لا يعني أن الدفع نجح.', 'Jawwal Pay was opened. Review the phone screen and complete the transaction; opening the call does not mean payment succeeded.'));
+      setNotice(t('تم إرسال طلب الدفع بقيمة ' + normalized + ' شيكل إلى الإدارة، والدفعة الآن بانتظار الاعتماد. أكمل خطوات جوال باي على الهاتف وتأكد من رسالة العملية الرسمية.', 'Payment request for ILS ' + normalized + ' was sent to the administrator and is pending approval. Complete Jawwal Pay on your phone and verify the provider’s official result.'));
       setAmount('');
-    } catch {
-      setError(t('تعذّر بدء الاتصال. تحقق من صلاحية الاتصال وإعداد الشريحة.', 'Could not start the call. Check call permission and SIM settings.'));
+      setOpen(false);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : '';
+      setError(code === 'PENDING'
+        ? t('لديك دفعة بانتظار المراجعة بالفعل. انتظر قرار الإدارة قبل إرسال دفعة أخرى.', 'You already have a payment awaiting review. Wait for the administrator before submitting another.')
+        : code === 'SETUP'
+          ? t('إعداد وسيلة الدفع غير موجود. أضفها من الصفحة الرئيسية أولًا.', 'Payment setup is missing. Add it from Home first.')
+          : code === 'SUBMIT'
+            ? t('تعذّر إرسال طلب الدفع للإدارة. لم يبدأ اتصال جوال باي؛ تحقق من الإنترنت وحاول مجددًا.', 'Could not submit the payment request. Jawwal Pay was not started; check internet and try again.')
+            : t('تعذّر بدء اتصال جوال باي. تحقّق من صلاحية الاتصال والشريحة، وراجع حالة طلب الدفع في الحساب قبل إعادة المحاولة.', 'Could not start Jawwal Pay. Check call permission and SIM, and review the payment request in your account before retrying.'));
     } finally { setBusy(false); }
   };
 
-  return <section className="mt-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-4 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-white">
+  if (mode === 'setup' && configured) {
+    return successToast ? <div role="status" className="fixed inset-x-4 top-4 z-[150] mx-auto max-w-md rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 shadow-xl dark:border-emerald-400/30 dark:bg-[#103a32] dark:text-emerald-100">{successToast}</div> : null;
+  }
+
+  if (mode === 'setup') return <section className="mt-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-4 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-white">
     <div className="flex items-center gap-3">
       <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"><Wallet size={20}/></span>
-      <div className="min-w-0 flex-1"><h3 className="font-extrabold">{t('أتمتة', 'Automation')}</h3><p className="text-xs text-slate-600 dark:text-slate-300">{t('الدفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</p></div>
-      <span className="text-xs text-slate-500 dark:text-slate-400"><LockKeyhole size={15}/></span>
+      <div className="min-w-0 flex-1"><h3 className="font-extrabold">{t('أتمتة', 'Automation')}</h3><p className="text-xs text-slate-600 dark:text-slate-300">{t('إضافة وسيلة دفع جوال باي لهذا الجهاز', 'Add Jawwal Pay to this device')}</p></div>
+      <LockKeyhole size={15} className="text-slate-500"/>
     </div>
     <div className="mt-3 space-y-2 rounded-xl border border-amber-300/80 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
-      <p className="flex items-start gap-2"><AlertTriangle size={17} className="mt-0.5 shrink-0"/><span>{t('بمجرد إدخال المبلغ والضغط على دفع، سيبدأ تحويل المبلغ مباشرة عبر جوال باي. راجع المبلغ قبل المتابعة.', 'Entering the amount and tapping Pay starts the Jawwal Pay transfer directly. Check the amount before continuing.')}</span></p>
-      <p className="ps-6 text-xs">{t('يجب أن تكون الشريحة المحددة للاتصال هي الشريحة المرتبطة بحساب جوال باي.', 'The selected calling SIM must be the SIM linked to your Jawwal Pay account.')}</p>
-      <button type="button" onClick={() => { try { window.localStorage.setItem('cp_jawwal_sim_hint_ack_v1','yes'); } catch {} setNotice(t('تذكّر اختيار شريحة جوال باي قبل الاتصال.', 'Remember to select the Jawwal Pay SIM before calling.')); }} className="ms-6 text-xs font-bold text-blue-700 underline underline-offset-2 dark:text-sky-300">{t('فهمت ذلك', 'Got it')}</button>
+      <p className="flex items-start gap-2"><AlertTriangle size={17} className="mt-0.5 shrink-0"/><span>{t('أدخل الرقم السري المكوّن من 4 أرقام لحفظ وسيلة الدفع بأمان على هذا الجهاز. عند الدفع سيبدأ اتصال جوال باي، وسيبقى رصيدك دون تغيير حتى تعتمد الإدارة الدفعة.', 'Enter your 4-digit PIN to securely add this payment method on this device. A Jawwal Pay call starts when paying; your balance will not change until the administrator approves the payment.')}</span></p>
+      <p className="ps-6 text-xs">{t('يجب اختيار شريحة الاتصال المرتبطة بحساب جوال باي. الرقم السري يُحفظ مشفّرًا على الهاتف ولا يُرسل إلى خادم التطبيق.', 'Select the calling SIM linked to your Jawwal Pay account. Your PIN is encrypted on this phone and is never sent to the app server.')}</p>
+      <button type="button" onClick={() => setNotice(t('تذكّر اختيار شريحة جوال باي قبل الاتصال.', 'Remember to select the Jawwal Pay SIM before calling.'))} className="ms-6 text-xs font-bold text-blue-700 underline underline-offset-2 dark:text-sky-300">{t('فهمت ذلك', 'Got it')}</button>
     </div>
-    {!configured ? <button type="button" onClick={() => setOpen(true)} className="mt-3 w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white hover:bg-sky-800">{t('إعداد الأتمتة', 'Set up automation')}</button> : <div className="mt-3 space-y-3">
-      <label className="block text-sm font-semibold">{t('المبلغ (شيكل)', 'Amount (ILS)')}<input inputMode="decimal" type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder={t('أدخل المبلغ', 'Enter amount')} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base text-slate-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-[#071d1c] dark:text-white"/></label>
-      <button type="button" disabled={busy || !amount.trim()} onClick={() => void startPayment()} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? t('جارٍ التجهيز…', 'Starting…') : t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</button>
-      <button type="button" onClick={() => { setPin(''); setOpen(true); }} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-white/15">{t('تغيير الرقم السري المحفوظ', 'Change saved PIN')}</button>
-    </div>}
+    <form onSubmit={e=>{e.preventDefault(); void savePin()}} className="mt-3 space-y-3"><label className="block text-sm font-semibold">{t('الرقم السري لجوال باي', 'Jawwal Pay PIN')}<input autoComplete="off" inputMode="numeric" pattern="[0-9]*" maxLength={4} type="password" value={pin} onChange={e=>setPin(e.target.value.replace(/[^0-9]/g,'').slice(0,4))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c]" placeholder="••••" /></label><button type="submit" disabled={busy || !/^\d{4}$/.test(pin)} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة وسيلة الدفع', 'Add payment method')}</button></form>
     {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-2 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>}
     {notice && <p role="status" className="mt-3 rounded-lg bg-sky-50 p-2 text-sm text-sky-800 dark:bg-sky-500/10 dark:text-sky-200">{notice}</p>}
-    {open && <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/65 p-3 sm:items-center"><div role="dialog" aria-modal="true" className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-slate-900 shadow-2xl dark:bg-[#0d2a29] dark:text-white">
-      <h3 className="text-lg font-extrabold">{t('إعداد أتمتة جوال باي', 'Set up Jawwal Pay automation')}</h3>
-      {!accepted ? <div className="mt-3 space-y-3"><div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100"><p className="font-extrabold">{t('شروط الاستخدام وإخلاء المسؤولية', 'Terms and disclaimer')}</p><ul className="mt-2 list-disc space-y-1 ps-5"><li>{t('الميزة اختيارية، وأنت مسؤول عن التأكد من المبلغ والمستلم والشريحة قبل الدفع.', 'This feature is optional. You are responsible for checking the amount, recipient, and SIM before payment.')}</li><li>{t('يُحفظ الرقم السري مشفّرًا محليًا على هذا الهاتف باستخدام Android Keystore، ولا يُرسل إلى خادم أو قاعدة بيانات التطبيق.', 'The PIN is encrypted and stored locally on this phone using Android Keystore. It is not sent to the app server or database.')}</li><li>{t('حذف التطبيق أو بياناته قد يحذف الإعدادات المحفوظة. لا تشارك هاتفك أو رمزك السري.', 'Uninstalling the app or clearing its data may erase saved settings. Do not share your phone or PIN.')}</li><li>{t('التطبيق يبدأ اتصال USSD فقط ولا يستطيع ضمان قبول العملية أو استرجاع مبلغها. تحقق من رسالة جوال باي الرسمية.', 'The app only starts a USSD call and cannot guarantee approval or reversal. Verify the official Jawwal Pay result.')}</li><li>{t('باختيارك المتابعة، تتحمل مسؤولية استخدام الميزة والعمليات التي تؤكدها عبر مزود الخدمة.', 'By continuing, you accept responsibility for using this feature and transactions confirmed through the provider.')}</li></ul></div><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={consentChecked} onChange={e=>setConsentChecked(e.target.checked)} className="mt-1 accent-sky-600"/><span>{t('قرأت الشروط وإخلاء المسؤولية وأوافق.', 'I have read and accept the terms and disclaimer.')}</span></label><button disabled={!consentChecked} onClick={()=>{try{window.localStorage.setItem(CONSENT_KEY,'yes')}catch{} setAccepted(true)}} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{t('موافقة ومتابعة', 'Accept and continue')}</button></div> : <form onSubmit={e=>{e.preventDefault(); void savePin()}} className="mt-3 space-y-3"><p className="text-sm text-slate-600 dark:text-slate-300">{t('أدخل الرقم السري فقط. سيُحفظ على هذا الجهاز ولن يُرفع إلى الخادم.', 'Enter only your PIN. It is saved on this device and will not be uploaded to the server.')}</p><label className="block text-sm font-semibold">{t('الرقم السري لجوال باي', 'Jawwal Pay PIN')}<input autoComplete="off" inputMode="numeric" maxLength={4} type="password" value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,4))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c]" placeholder="••••" /></label><button type="submit" disabled={busy || !/^\d{4}$/.test(pin)} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ الرقم السري', 'Save PIN')}</button></form>}
-      <button type="button" onClick={()=>setOpen(false)} className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-white/15">{t('إغلاق', 'Close')}</button>
-    </div></div>}
   </section>;
+
+  if (!configured) return null;
+  return <div className="mt-3">
+    <button type="button" onClick={()=>{setOpen(true);setError('');setNotice('');}} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white shadow-sm hover:bg-sky-800"><Wallet size={17} className="me-2 inline-block"/>{t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</button>
+    {notice && <p role="status" className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-100">{notice}</p>}
+    {error && <p role="alert" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>}
+    {open && <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/65 p-3 sm:items-center"><div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-2xl bg-white p-5 text-slate-900 shadow-2xl dark:bg-[#0d2a29] dark:text-white">
+      <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-extrabold">{t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</h3><button type="button" aria-label={t('إغلاق','Close')} onClick={()=>setOpen(false)} className="rounded-lg p-1"><X size={19}/></button></div>
+      <form onSubmit={e=>{e.preventDefault();void startPayment()}} className="mt-4 space-y-3"><label className="block text-sm font-semibold">{t('المبلغ (شيكل)', 'Amount (ILS)')}<input autoFocus inputMode="decimal" type="number" min="0.01" step="0.01" required value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-lg text-slate-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-[#071d1c] dark:text-white"/></label>
+        <p className="text-xs leading-5 text-slate-500 dark:text-slate-300">{t('سيُرسل طلب الدفعة إلى الإدارة للمراجعة، ثم يبدأ اتصال جوال باي. لن يتغير رصيدك حتى اعتماد الدفعة.', 'The payment request will be sent for administrator review, then Jawwal Pay starts. Your balance changes only after approval.')}</p>
+        <button type="submit" disabled={busy || !amount.trim()} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('دفع', 'Pay')}</button></form>
+      {error && <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+    </div></div>}
+  </div>;
 };

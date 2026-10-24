@@ -17,6 +17,7 @@ import {
   PublicOrderQrData,
 } from './dayOrdersStore';
 import { config } from '../../config/env';
+import { CustomerJawwalAutomation } from '../customer/CustomerJawwalAutomation';
 import {
   PublicQrPaymentSubmissionRpcResult,
   rpcResolveQrPaymentSubmission,
@@ -867,6 +868,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </p>
             </section>
 
+            {customer && !order && <CustomerJawwalAutomation mode="payment" />}
 
           </form>
           <aside className="payment-portal-visual" aria-label={isAr ? "خدمات نقطة الشحن" : "Charging Point service information"}>
