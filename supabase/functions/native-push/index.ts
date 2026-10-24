@@ -251,14 +251,22 @@ Deno.serve(async (request: Request) => {
 
   if (source === "qr_payment_submissions") {
     const { data: submission, error } = await admin.from("qr_payment_submissions")
-      .select("id,customer_id,status,created_at,amount_minor,reviewed_at").eq("id", recordId).maybeSingle();
+      .select("id,customer_id,status,created_at,amount_minor,reviewed_at,payment_method,submission_source").eq("id", recordId).maybeSingle();
     if (error || !submission || (eventStatus && eventStatus !== String(submission.status))) return json(200, { ok: true, skipped: true });
     if (operation === "INSERT" && submission.status === "PENDING") {
-      titleAr = "طلب دفع جديد • " + formatMoney(submission.amount_minor, "ar");
-      titleEn = "New payment • " + formatMoney(submission.amount_minor, "en");
-      bodyAr = "قيمة الدفعة: " + formatMoney(submission.amount_minor, "ar") + "\nتاريخ الإرسال: " + formatDate(submission.created_at, "ar") + "\nبانتظار مراجعة الإدارة.";
-      bodyEn = "Amount: " + formatMoney(submission.amount_minor, "en") + "\nSubmitted: " + formatDate(submission.created_at, "en") + "\nWaiting for administrator review.";
+      const isJawwalPay = submission.submission_source === "CUSTOMER_JAWAL_PAY" || submission.payment_method === "JAWAL_PAY";
+      titleAr = (isJawwalPay ? "طلب دفع بواسطة جوال باي" : "طلب دفع جديد") + " • " + formatMoney(submission.amount_minor, "ar");
+      titleEn = (isJawwalPay ? "Jawwal Pay payment request" : "New payment") + " • " + formatMoney(submission.amount_minor, "en");
+      bodyAr = (isJawwalPay ? "وسيلة الدفع: جوال باي\n" : "") + "قيمة الدفعة: " + formatMoney(submission.amount_minor, "ar") + "\nتاريخ الإرسال: " + formatDate(submission.created_at, "ar") + "\nبانتظار مراجعة الإدارة.";
+      bodyEn = (isJawwalPay ? "Method: Jawwal Pay\n" : "") + "Amount: " + formatMoney(submission.amount_minor, "en") + "\nSubmitted: " + formatDate(submission.created_at, "en") + "\nWaiting for administrator review.";
       targetPath = "/app/notifications";
+      if (isJawwalPay) {
+        const { data: customerDevices, error: customerDevicesError } = await admin.from("native_push_devices")
+          .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+          .eq("app_variant", "customer").eq("customer_id", submission.customer_id).is("disabled_at", null);
+        if (customerDevicesError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        recipients = customerDevices ?? [];
+      }
     } else if (operation === "UPDATE" && ["APPROVED", "REJECTED"].includes(String(submission.status))) {
       eventKey += ":" + submission.status;
       titleAr = submission.status === "APPROVED"
