@@ -123,6 +123,8 @@ describe('customer portal polish regression contract', () => {
     expect(submit).toBeGreaterThan(method);
     expect(jawwal).toBeGreaterThan(submit);
     expect(payment).toContain('aria-labelledby="jawwal-payment-method-title"');
+    expect(payment).toContain("isAr ? 'الدفع المباشر بواسطة جوال باي' : 'Direct payment with Jawwal Pay'");
+    expect(payment).toContain('طريقة دفع مستقلة عن التحويل البنكي وإرسال الإيصال.');
   });
 
   it('uses an authoritative uncapped Jawwal pending count and refreshes after submission', () => {
