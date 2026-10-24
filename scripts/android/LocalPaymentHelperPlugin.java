@@ -104,6 +104,9 @@ public class LocalPaymentHelperPlugin extends Plugin {
         for (int i = 0; i < steps.length(); i++) {
             String step = steps.optString(i, "").trim();
             if (step.isEmpty() || step.length() > 80 || (!"__AUTO_OK__".equals(step) && (step.contains("#") || step.contains("*")))) {
+                call.reject("نص إحدى خطوات USSD غير صالح.");
+                return;
+            }
         }
         if (steps.length() > 0 && !isAutomationServiceEnabled()) { call.reject("فعّل خدمة أتمتة خطوات USSD من إعدادات إمكانية الوصول أولًا."); return; }
         try { prefs().edit().putString("pending_steps_encrypted", encrypt(steps.toString())).putInt("pending_step_index", 0).putLong("pending_steps_created_at", System.currentTimeMillis()).putString("last_dialog_signature", "").apply(); }
