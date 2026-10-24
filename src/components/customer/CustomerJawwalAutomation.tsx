@@ -163,8 +163,8 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       }
       setError(code === 'BIOMETRIC_NOT_ENROLLED'
         ? t('البصمة غير مفعّلة. أضف بصمتك من إعدادات الحساب ثم حاول مجددًا.', 'Fingerprint is not enrolled. Enable it in account settings and try again.')
-        : code === 'BIOMETRIC_LOCKED' || code === 'JAWJAL_BIOMETRIC_LOCKED'
-          ? t('تم تجميد الخدمة مؤقتا يرجى المحاولة لاحقا', 'Service temporarily frozen. Please try again later.')
+        : code === 'BIOMETRIC_LOCKED' || code.startsWith('JAWJAL_BIOMETRIC_LOCKED')
+          ? t('تم تجميد الخدمة مؤقتًا. انتظر انتهاء العدّ التنازلي قبل المحاولة مجددًا.', 'Service is temporarily locked. Wait for the countdown to finish before trying again.')
           : code === 'BIOMETRIC_RETRY' || code === 'BIOMETRIC_PROOF_INVALID'
             ? t('لم يتم تأكيد البصمة. حاول مرة أخرى.', 'Fingerprint was not verified. Please try again.')
             : code === 'PENDING'
