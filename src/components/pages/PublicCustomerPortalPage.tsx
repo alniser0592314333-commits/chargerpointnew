@@ -63,7 +63,6 @@ type PortalData = {
   orders: PortalOrder[];
   payment_submissions: PortalSubmission[];
   pending_jawwal_payments_count?: number;
-  pending_jawwal_payments_count?: number;
   goals: PortalGoal[];
   cached_at?: string;
 };
@@ -927,7 +926,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                     <CustomerJawwalAutomation mode="payment" onSubmissionCreated={() => {
                       setData((current) => current ? {
                         ...current,
-                        pending_jawwal_payments_count: Math.min(3, (current.pending_jawwal_payments_count ?? 2) + 1),
+                        pending_jawwal_payments_count: Math.min(3, (current.pending_jawwal_payments_count ?? 0) + 1),
                       } : current);
                       void load(false, true);
                     }} />}
