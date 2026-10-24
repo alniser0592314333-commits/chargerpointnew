@@ -743,7 +743,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/15 bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-300/15 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
             >
-              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإشعار…' : 'Sending notification…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إشعار الدفع' : 'Send payment notification'}</span></>}
+              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإيصال…' : 'Sending receipt…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إيصال الدفع للمراجعة' : 'Send payment receipt for review'}</span></>}
             </button>
             {error && (
               <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm leading-5 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
@@ -868,9 +868,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </p>
             </section>
 
-            {customer && !order && <CustomerJawwalAutomation mode="payment" />}
-
-          </form>
+            </form>
           <aside className="payment-portal-visual" aria-label={isAr ? "خدمات نقطة الشحن" : "Charging Point service information"}>
             <div className="payment-portal-visual-art" aria-hidden="true">
               <svg viewBox="0 0 520 410" xmlns="http://www.w3.org/2000/svg">
@@ -890,6 +888,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             <div className="payment-portal-visual-points"><span><CheckCircle2 className="h-4 w-4" />{isAr ? "ثلاث وسائل تحويل متاحة" : "Three transfer methods"}</span><span><ShieldCheck className="h-4 w-4" />{isAr ? "اعتماد بعد مراجعة الإيصال" : "Receipt review before approval"}</span></div>
           </aside>
           </div>
+          {customer && !order && <div className="mx-auto mt-5 w-full max-w-xl"><CustomerJawwalAutomation mode="payment" /></div>}
           </>
         )}
       </main>
