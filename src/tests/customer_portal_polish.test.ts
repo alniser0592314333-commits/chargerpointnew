@@ -120,4 +120,26 @@ describe('customer portal polish regression contract', () => {
     expect(submit).toBeGreaterThan(form);
     expect(submit).toBeLessThan(payment.indexOf('isAr ? \'وسيلة الدفع\' : \'Payment method\'', form));
   });
+
+  it('uses an authoritative uncapped Jawwal pending count and refreshes after submission', () => {
+    const page = read('src/components/pages/PublicCustomerPortalPage.tsx');
+    const endpoint = read('supabase/functions/customer-account/index.ts');
+    const automation = read('src/components/customer/CustomerJawwalAutomation.tsx');
+    expect(endpoint).toContain('pending_jawwal_payments_count = Number(pendingJawwalCount)');
+    expect(endpoint).toContain('.eq("submission_source", "CUSTOMER_JAWAL_PAY")');
+    expect(endpoint).toContain('.eq("status", "PENDING")');
+    expect(page).toContain('data.pending_jawwal_payments_count');
+    expect(page).toContain('onSubmissionCreated={() =>');
+    expect(automation).toContain('onSubmissionCreated?.()');
+  });
+
+  it('rebinds customer push registration when the authenticated session changes', () => {
+    const page = read('src/components/pages/PublicCustomerPortalPage.tsx');
+    const push = read('src/services/nativePushNotifications.ts');
+    expect(page).toContain('customerAuth.auth.onAuthStateChange');
+    expect(page).toContain("event === 'SIGNED_OUT'");
+    expect(page).toContain('pushSessionKeyRef.current = key');
+    expect(push).toContain('queuedStartRequest = request');
+    expect(push).toContain('run it after the old attempt ends');
+  });
 });
