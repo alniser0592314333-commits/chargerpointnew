@@ -17,3 +17,16 @@ export function buildJawwalBCode(service: JawwalBCodeInput, amount: string): str
   }
   return '*110*' + kind + '*' + service.pin + '*' + phone + '*' + normalizedAmount + '*1#';
 }
+
+
+export type PalPayCodeInput = { recipientPhone: string };
+
+export function buildPalPayCode(service: PalPayCodeInput, amount: string): string {
+  const phone = service.recipientPhone.replace(/\D/g, '');
+  const normalizedAmount = amount.trim();
+  if (!/^\d{8,15}$/.test(phone)) throw new Error('رقم المستلم غير صالح.');
+  if (!/^(?:[1-9]\d*|0)(?:\.\d{1,2})?$/.test(normalizedAmount) || Number(normalizedAmount) <= 0) {
+    throw new Error('أدخل مبلغًا صحيحًا أكبر من صفر.');
+  }
+  return '*370*1*1*' + phone + '*' + normalizedAmount + '#';
+}
