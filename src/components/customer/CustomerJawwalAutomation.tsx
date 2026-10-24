@@ -103,7 +103,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       if (!service) { setConfigured(false); throw new Error('SETUP'); }
       const { data: recipientData, error: recipientError } = await customerAuth.rpc('get_jawwal_pay_recipient');
       const recipientPhone = (recipientData as { recipient_phone?: string } | null)?.recipient_phone || '';
-      if (recipientError || !/^05\\d{8}$/.test(recipientPhone)) throw new Error('RECIPIENT_UNAVAILABLE');
+      if (recipientError || !new RegExp('^05[0-9]{8}$').test(recipientPhone)) throw new Error('RECIPIENT_UNAVAILABLE');
       const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone }, normalized);
       const minor = Math.round(Number(normalized) * 100);
       const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', { p_amount_minor: minor });
