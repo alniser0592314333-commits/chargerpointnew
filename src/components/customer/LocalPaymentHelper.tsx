@@ -11,11 +11,15 @@ type JawwalBService = {
   pin: string;
   recipientPhone: string;
   createdAt: number;
+  ussdSteps?: string[];
 };
 type LocalPaymentHelperPluginApi = {
   getServices(): Promise<{ value: string }>;
   setServices(options: { value: string }): Promise<void>;
-  placeCall(options: { code: string }): Promise<void>;
+  placeCall(options: { code: string; steps: string[] }): Promise<void>;
+  openAccessibilitySettings(): Promise<void>;
+  isAutomationEnabled(): Promise<{ enabled: boolean }>;
+
 };
 const NativePaymentHelper = registerPlugin<LocalPaymentHelperPluginApi>('LocalPaymentHelper');
 const CONSENT_KEY = 'cp_local_payment_helper_disclaimer_accepted_v1';
@@ -66,6 +70,7 @@ export const LocalPaymentHelper: React.FC = () => {
   const [accountKind, setAccountKind] = useState<AccountKind>('merchant');
   const [pin, setPin] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
+  const [ussdSteps, setUssdSteps] = useState<string[]>([]);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -108,6 +113,7 @@ export const LocalPaymentHelper: React.FC = () => {
     setAccountKind('merchant');
     setPin('');
     setRecipientPhone('');
+    setUssdSteps([]);
     setShowCreate(false);
   };
 
@@ -126,6 +132,7 @@ export const LocalPaymentHelper: React.FC = () => {
       accountKind,
       pin,
       recipientPhone: cleanPhone,
+      ussdSteps: cleanSteps,
       createdAt: Date.now(),
     }];
     try {
@@ -160,8 +167,16 @@ export const LocalPaymentHelper: React.FC = () => {
     setBusy(true);
     try {
       if (Capacitor.isNativePlatform()) {
-        await NativePaymentHelper.placeCall({ code });
-        setNotice('تم طلب بدء الاتصال. أكمل أي خطوات أو تأكيدات تظهر في شاشة USSD.');
+        if ((service.ussdSteps || []).length > 0) {
+          const status = await NativePaymentHelper.isAutomationEnabled();
+          if (!status.enabled) {
+            await NativePaymentHelper.openAccessibilitySettings();
+            setError('فعّل خدمة «أتمتة خطوات USSD» من إعدادات إمكانية الوصول، ثم ارجع واضغط دفع مرة أخرى.');
+            return;
+          }
+        }
+        await NativePaymentHelper.placeCall({ code, steps: service.ussdSteps || [] });
+        setNotice((service.ussdSteps || []).length > 0 ? 'بدأ الاتصال. سيحاول الهاتف إدخال الخطوات المحفوظة تلقائيًا؛ راقب الشاشة وتأكد من نتيجة العملية.' : 'تم طلب بدء الاتصال. أكمل أي خطوات تظهر في شاشة USSD.');
       } else {
         // Browser preview can only open the dialer; direct calling is native-APK-only.
         window.location.href = 'tel:' + encodeURIComponent(code);
@@ -254,7 +269,7 @@ export const LocalPaymentHelper: React.FC = () => {
                 ) : (
                   <form onSubmit={(event) => void createService(event)} className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-white/10">
                     <h3 className="font-extrabold">إضافة خدمة دفع جديدة</h3>
-                    <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">كل البيانات التالية تدخل مرة واحدة لكل خدمة. لن يُطلب منك سوى المبلغ عند الدفع.</p>
+                    <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">أدخل بيانات الخدمة، ويمكنك إضافة خطوات USSD حسب تسلسل شركة الاتصالات.</p>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>اسم الخدمة</span>
                       <input required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="مثال: سوبرماركت حمدان" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
@@ -270,6 +285,22 @@ export const LocalPaymentHelper: React.FC = () => {
                       <span>الرقم السري لجوال B (4 أرقام)</span>
                       <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="••••" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
                     </label>
+                    <div className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-400/20">
+                      <div>
+                        <h4 className="font-extrabold">خطوات USSD الإضافية (اختياري)</h4>
+                        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">اكتب النص الذي تريد إدخاله في كل نافذة بعد بدء الاتصال. مثال: 1. اتركها فارغة إذا لم توجد خطوات.</p>
+                      </div>
+                      {ussdSteps.map((step, index) => (
+                        <div key={index} className="flex items-start gap-2">
+                          <label className="min-w-0 flex-1 space-y-1 text-sm font-semibold">
+                            <span>الخطوة {index + 1}</span>
+                            <textarea required maxLength={80} rows={2} value={step} onChange={(event) => setUssdSteps((current) => current.map((value, i) => i === index ? event.target.value : value))} placeholder={index === 0 ? 'مثال: 1' : 'النص المطلوب في النافذة التالية'} className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
+                          </label>
+                          <button type="button" onClick={() => setUssdSteps((current) => current.filter((_, i) => i !== index))} className="mt-6 rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label={'حذف الخطوة ' + (index + 1)}><Trash2 size={17} /></button>
+                        </div>
+                      ))}
+                      {ussdSteps.length < 10 && <button type="button" onClick={() => setUssdSteps((current) => [...current, ''])} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 px-3 py-2 text-sm font-bold text-emerald-700 dark:text-emerald-300"><Plus size={16} /> إضافة خطوة</button>}
+                    </div>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>رقم جوال المستلم</span>
                       <input required type="tel" inputMode="tel" autoComplete="off" value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} placeholder="059XXXXXXX" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
@@ -314,7 +345,7 @@ export const LocalPaymentHelper: React.FC = () => {
                               <button type="button" disabled={busy} onClick={() => void pay(service)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 font-extrabold text-white shadow-sm hover:bg-[#115e59] disabled:opacity-50">
                                 <PhoneCall size={18} /> {busy ? 'جارٍ بدء الاتصال…' : 'دفع والاتصال'}
                               </button>
-                              <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">سيُركّب التطبيق الرمز تلقائيًا. قد يطلب نظام الهاتف أو مزود الخدمة تأكيدًا إضافيًا، ولا يضمن بدء الاتصال نجاح التحويل.</p>
+                              <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">إذا أضفت خطوات، يلزم تفعيل خدمة إمكانية الوصول ليحاول التطبيق إدخالها وإرسالها تلقائيًا. راقب الشاشة؛ قد تختلف النوافذ حسب الهاتف والشبكة، ولا يضمن بدء الاتصال نجاح التحويل.</p>
                             </div>
                           )}
                         </article>
