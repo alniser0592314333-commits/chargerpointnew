@@ -13,7 +13,7 @@ type NativePaymentApi = {
 const NativePayment = registerPlugin<NativePaymentApi>('LocalPaymentHelper');
 const PHONE = '0592369875';
 
-type Props = { mode: 'setup' | 'payment' };
+type Props = { mode: 'setup' | 'payment' | 'reconfigure' };
 
 export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
   const [isAr, setIsAr] = useState(document.documentElement.lang.toLowerCase().startsWith('ar'));
@@ -37,6 +37,16 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
 
   useEffect(() => {
     let active = true;
+    const refreshConfigured = () => {
+      if (!Capacitor.isNativePlatform()) return;
+      void NativePayment.getServices().then(({ value }) => {
+        if (!active) return;
+        const list = value ? JSON.parse(value) : [];
+        const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\\d{4}$/.test(item.pin)) : null;
+        setConfigured(Boolean(service));
+      }).catch(() => undefined);
+    };
+    window.addEventListener('cp-jawwal-pay-config-updated', refreshConfigured);
     if (Capacitor.isNativePlatform()) {
       void NativePayment.getServices().then(({ value }) => {
         if (!active) return;
@@ -45,7 +55,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
         if (service) { setConfigured(true); setPin(service.pin); }
       }).catch(() => { if (active) setError(t('تعذّرت قراءة الإعدادات الآمنة على هذا الجهاز.', 'Could not read secure settings on this device.')); });
     }
-    return () => { active = false; };
+    return () => { active = false; window.removeEventListener('cp-jawwal-pay-config-updated', refreshConfigured); };
   }, []);
 
   const savePin = async () => {
@@ -60,6 +70,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       others.push({ id: 'customer-jawwal-pay', provider: 'jawwal-pay', name: 'Jawwal Pay', accountKind: 'friend', pin, recipientPhone: PHONE, createdAt: Date.now(), ussdSteps: [] });
       await NativePayment.setServices({ value: JSON.stringify(others) });
       setConfigured(true); setPin('');
+      window.dispatchEvent(new Event('cp-jawwal-pay-config-updated'));
       setSuccessToast(t('تمت إضافة وسيلة الدفع بنجاح.', 'Payment method added successfully.'));
       window.setTimeout(() => setSuccessToast(''), 3200);
     } catch {
@@ -106,14 +117,14 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     } finally { setBusy(false); }
   };
 
-  if (mode === 'setup' && configured) {
+  if ((mode === 'setup' && configured) || (mode === 'reconfigure' && successToast)) {
     return successToast ? <div role="status" className="fixed inset-x-4 top-4 z-[150] mx-auto max-w-md rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 shadow-xl dark:border-emerald-400/30 dark:bg-[#103a32] dark:text-emerald-100">{successToast}</div> : null;
   }
 
-  if (mode === 'setup') return <section className="mt-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-4 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-white">
+  if (mode === 'setup' || mode === 'reconfigure') return <section className="mt-3 rounded-2xl border border-sky-200/80 bg-sky-50/70 p-4 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-white">
     <div className="flex items-center gap-3">
       <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"><Wallet size={20}/></span>
-      <div className="min-w-0 flex-1"><h3 className="font-extrabold">{t('أتمتة', 'Automation')}</h3><p className="text-xs text-slate-600 dark:text-slate-300">{t('إضافة وسيلة دفع جوال باي لهذا الجهاز', 'Add Jawwal Pay to this device')}</p></div>
+      <div className="min-w-0 flex-1"><h3 className="font-extrabold">{mode === 'reconfigure' ? t('إعادة إعداد وسيلة الدفع', 'Reset payment method') : t('أتمتة', 'Automation')}</h3><p className="text-xs text-slate-600 dark:text-slate-300">{mode === 'reconfigure' ? t('أدخل الرقم السري الجديد لجوال باي', 'Enter your new Jawwal Pay PIN') : t('إضافة وسيلة دفع جوال باي لهذا الجهاز', 'Add Jawwal Pay to this device')}</p></div>
       <LockKeyhole size={15} className="text-slate-500"/>
     </div>
     <div className="mt-3 space-y-2 rounded-xl border border-amber-300/80 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
@@ -121,7 +132,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       <p className="ps-6 text-xs">{t('يجب اختيار شريحة الاتصال المرتبطة بحساب جوال باي. الرقم السري يُحفظ مشفّرًا على الهاتف ولا يُرسل إلى خادم التطبيق.', 'Select the calling SIM linked to your Jawwal Pay account. Your PIN is encrypted on this phone and is never sent to the app server.')}</p>
       <button type="button" onClick={() => setNotice(t('تذكّر اختيار شريحة جوال باي قبل الاتصال.', 'Remember to select the Jawwal Pay SIM before calling.'))} className="ms-6 text-xs font-bold text-blue-700 underline underline-offset-2 dark:text-sky-300">{t('فهمت ذلك', 'Got it')}</button>
     </div>
-    <form onSubmit={e=>{e.preventDefault(); void savePin()}} className="mt-3 space-y-3"><label className="block text-sm font-semibold">{t('الرقم السري لجوال باي', 'Jawwal Pay PIN')}<input autoComplete="off" inputMode="numeric" pattern="[0-9]*" maxLength={4} type="password" value={pin} onChange={e=>setPin(e.target.value.replace(/[^0-9]/g,'').slice(0,4))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c]" placeholder="••••" /></label><button type="submit" disabled={busy || !/^\d{4}$/.test(pin)} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('إضافة وسيلة الدفع', 'Add payment method')}</button></form>
+    <form onSubmit={e=>{e.preventDefault(); void savePin()}} className="mt-3 space-y-3"><label className="block text-sm font-semibold">{t('الرقم السري لجوال باي', 'Jawwal Pay PIN')}<input autoComplete="off" inputMode="numeric" pattern="[0-9]*" maxLength={4} type="password" value={pin} onChange={e=>setPin(e.target.value.replace(/[^0-9]/g,'').slice(0,4))} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c]" placeholder="••••" /></label><button type="submit" disabled={busy || !/^\d{4}$/.test(pin)} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الحفظ…', 'Saving…') : mode === 'reconfigure' ? t('حفظ الرقم السري الجديد', 'Save new PIN') : t('إضافة وسيلة الدفع', 'Add payment method')}</button></form>
     {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-2 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>}
     {notice && <p role="status" className="mt-3 rounded-lg bg-sky-50 p-2 text-sm text-sky-800 dark:bg-sky-500/10 dark:text-sky-200">{notice}</p>}
   </section>;
