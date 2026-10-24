@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJawwalBCode } from '../services/localPaymentHelperCode';
+import { buildJawwalBCode, buildPalPayCode } from '../services/localPaymentHelperCode';
 
 describe('Jawwal B local payment helper code builder', () => {
   it('builds the merchant code with type 2 and puts amount before *1#', () => {
