@@ -329,8 +329,8 @@ export const LocalPaymentHelper: React.FC = () => {
                           <button type="button" onClick={() => setUssdSteps((current) => current.filter((_, i) => i !== index))} className="mt-6 rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label={'حذف الخطوة ' + (index + 1)}><Trash2 size={17} /></button>
                         </div>
                       ))}
-                      {ussdSteps.length < 10 && {ussdSteps.length === 0 && <p className="text-xs text-gray-500 dark:text-[#a4cac2]">لا توجد خطوات تلقائية إضافية.</p>}
-                      <button type="button" onClick={() => setUssdSteps((current) => [...current, ''])} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 px-3 py-2 text-sm font-bold text-emerald-700 dark:text-emerald-300"><Plus size={16} /> إضافة خطوة اختيارية</button>}
+                      {ussdSteps.length === 0 && <p className="text-xs text-gray-500 dark:text-[#a4cac2]">لا توجد خطوات تلقائية إضافية.</p>}
+                      {ussdSteps.length < (provider === 'palpay' ? 7 : 10) && <button type="button" onClick={() => setUssdSteps((current) => [...current, ''])} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 px-3 py-2 text-sm font-bold text-emerald-700 dark:text-emerald-300"><Plus size={16} /> إضافة خطوة اختيارية</button>}
                     </div>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>رقم جوال المستلم</span>
