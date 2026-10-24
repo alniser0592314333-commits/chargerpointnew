@@ -11,7 +11,6 @@ type NativePaymentApi = {
   placeCall(options: { code: string; steps: string[] }): Promise<void>;
 };
 const NativePayment = registerPlugin<NativePaymentApi>('LocalPaymentHelper');
-const CONSENT_KEY = 'cp_jawwal_automation_terms_v1';
 const PHONE = '0592369875';
 
 type Props = { mode: 'setup' | 'payment' };
@@ -22,8 +21,6 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
   const [configured, setConfigured] = useState(false);
   const [pin, setPin] = useState('');
   const [amount, setAmount] = useState('');
-  const [accepted, setAccepted] = useState(false);
-  const [consentChecked, setConsentChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -40,7 +37,6 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
 
   useEffect(() => {
     let active = true;
-    try { setAccepted(window.localStorage.getItem(CONSENT_KEY) === 'yes'); } catch {}
     if (Capacitor.isNativePlatform()) {
       void NativePayment.getServices().then(({ value }) => {
         if (!active) return;
