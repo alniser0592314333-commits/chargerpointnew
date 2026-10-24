@@ -168,15 +168,47 @@ export async function authorizeJawwalPaymentBiometric(accessToken: string): Prom
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const alias = localStorage.getItem('cp_biometric_alias_customer') || '';
   if (!/^[a-f0-9]{32}$/.test(alias)) throw new Error('BIOMETRIC_NOT_ENROLLED');
-  const challenge = await callEndpoint('jawwal-payment-challenge', {}, accessToken);
+  let challenge: Record<string, unknown>;
+  try {
+    challenge = await callEndpoint('jawwal-payment-challenge', {}, accessToken);
+  } catch (error) {
+    const details = error && typeof error === 'object' && 'details' in error
+      ? (error as Error & { details?: Record<string, unknown> }).details : undefined;
+    if (error instanceof Error && error.message === 'JAWJAL_BIOMETRIC_LOCKED' && typeof details?.lockedUntil === 'string') {
+      throw new Error('JAWJAL_BIOMETRIC_LOCKED:' + details.lockedUntil);
+    }
+    throw error;
+  }
   const en = promptLocale() === 'en';
-  const signed = await NativeBiometric.signChallenge({
-    alias: String(challenge.credentialId).replace(/-/g, ''),
-    challenge: challenge.challenge,
-    title: en ? 'Authorize Jawwal Pay' : 'تأكيد الدفع بالبصمة',
-    subtitle: en ? 'Verify your identity to submit this payment' : 'أكد هويتك بالبصمة لإرسال الدفعة',
-    negativeButtonText: en ? 'Cancel' : 'إلغاء',
-  });
+  let signed: { signature: string };
+  try {
+    signed = await NativeBiometric.signChallenge({
+      alias: String(challenge.credentialId).replace(/-/g, ''),
+      challenge: String(challenge.challenge),
+      title: en ? 'Authorize Jawwal Pay' : 'تأكيد الدفع بالبصمة',
+      subtitle: en ? 'Verify your identity to submit this payment' : 'أكد هويتك بالبصمة لإرسال الدفعة',
+      negativeButtonText: en ? 'Cancel' : 'إلغاء',
+    });
+  } catch (promptError) {
+    const promptCode = promptError instanceof Error ? promptError.message : 'BIOMETRIC_PROMPT_FAILED';
+    // Once a server challenge exists, every failed/cancelled prompt is reported
+    // to the server. If reporting fails, fail closed and never submit a payment.
+    try {
+      const failed = await callEndpoint('jawwal-payment-failure', {
+        challengeId: challenge.challengeId,
+        credentialId: challenge.credentialId,
+        reason: promptCode.slice(0, 80),
+      }, accessToken);
+      if (typeof failed.lockedUntil === 'string' && new Date(failed.lockedUntil).getTime() > Date.now()) {
+        throw new Error('JAWJAL_BIOMETRIC_LOCKED:' + failed.lockedUntil);
+      }
+    } catch (reportError) {
+      if (reportError instanceof Error && reportError.message.startsWith('JAWJAL_BIOMETRIC_LOCKED:')) throw reportError;
+      throw new Error('BIOMETRIC_FAILURE_COULD_NOT_BE_RECORDED');
+    }
+    if (promptCode === 'BIOMETRIC_CANCELLED') throw new Error('BIOMETRIC_CANCELLED');
+    throw new Error('BIOMETRIC_PROMPT_FAILED');
+  }
   const verified = await callEndpoint('jawwal-payment-verify', {
     challengeId: challenge.challengeId,
     credentialId: challenge.credentialId,
