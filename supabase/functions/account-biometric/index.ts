@@ -386,6 +386,14 @@ Deno.serve(async (req: Request) => {
         .insert({customer_id:identity.id,auth_user_id:identity.uid,challenge_id:challengeId})
         .select("id,expires_at").single();
       if (authzError || !authz) return reply(503,{ok:false,error:"BIOMETRIC_AUTHORIZATION_FAILED"});
+      // A valid proof resets the rolling failure window and any expired lock.
+      // A live lock is checked above and cannot be cleared by this success path.
+      const {error: resetGuardError} = await admin.from("customer_jawwal_biometric_guard")
+        .upsert({customer_id:identity.id,failed_attempts:0,window_started_at:null,locked_until:null,updated_at:new Date().toISOString()},{onConflict:"customer_id"});
+      if (resetGuardError) {
+        await admin.from("customer_jawwal_biometric_authorizations").delete().eq("id",authz.id);
+        return reply(503,{ok:false,error:"BIOMETRIC_GUARD_RESET_FAILED"});
+      }
       await admin.from("account_biometric_credentials").update({last_used_at:new Date().toISOString()}).eq("id",cred.id);
       return reply(200,{ok:true,authorizationId:authz.id,expiresAt:authz.expires_at});
     }
