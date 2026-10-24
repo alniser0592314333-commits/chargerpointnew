@@ -82,6 +82,11 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     if (!navigator.onLine) { setError(t('يلزم الاتصال بالإنترنت لإرسال الدفعة إلى الإدارة.', 'An internet connection is required to notify the administrator.')); return; }
     setBusy(true);
     try {
+      const { value } = await NativePayment.getServices();
+      const list = value ? JSON.parse(value) : [];
+      const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\\d{4}$/.test(item.pin)) : null;
+      if (!service) { setConfigured(false); throw new Error('SETUP'); }
+      const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone: PHONE }, normalized);
       const minor = Math.round(Number(normalized) * 100);
       const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', { p_amount_minor: minor });
       if (submitError || !submission || (submission as { success?: boolean }).success !== true) {
@@ -89,11 +94,6 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
         if (/already awaiting review/i.test(message)) throw new Error('PENDING');
         throw new Error('SUBMIT');
       }
-      const { value } = await NativePayment.getServices();
-      const list = value ? JSON.parse(value) : [];
-      const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\d{4}$/.test(item.pin)) : null;
-      if (!service) { setConfigured(false); throw new Error('SETUP'); }
-      const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone: PHONE }, normalized);
       await NativePayment.placeCall({ code, steps: [] });
       setNotice(t('تم إرسال طلب الدفع بقيمة ' + normalized + ' شيكل إلى الإدارة، والدفعة الآن بانتظار الاعتماد. أكمل خطوات جوال باي على الهاتف وتأكد من رسالة العملية الرسمية.', 'Payment request for ILS ' + normalized + ' was sent to the administrator and is pending approval. Complete Jawwal Pay on your phone and verify the provider’s official result.'));
       setAmount('');
