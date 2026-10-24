@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { AlertTriangle, LockKeyhole, Wallet, X } from 'lucide-react';
 import { customerAuth } from '../../services/customer/customerAuth';
@@ -179,9 +180,14 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     } finally { setBusy(false); }
   };
 
-  // Keep the amount dialog above Android's soft keyboard and account navigation.
+  // The payment dialog is rendered in document.body to escape all page stacking contexts.
+  // Hide the fixed customer dock while paying so it never sits above the Android keyboard.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      document.body.classList.remove('cp-jawwal-payment-open');
+      return;
+    }
+    document.body.classList.add('cp-jawwal-payment-open');
     const viewport = window.visualViewport;
     const update = () => {
       const height = viewport?.height || window.innerHeight;
@@ -194,6 +200,9 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     viewport?.addEventListener('scroll', update);
     window.addEventListener('resize', update);
     return () => {
+      document.body.classList.remove('cp-jawwal-payment-open');
+      document.documentElement.style.removeProperty('--cp-jawwal-viewport-height');
+      document.documentElement.style.removeProperty('--cp-jawwal-viewport-top');
       viewport?.removeEventListener('resize', update);
       viewport?.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
@@ -227,7 +236,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     <button type="button" onClick={()=>{setOpen(true);setError('');setNotice('');}} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white shadow-sm hover:bg-sky-800"><Wallet size={17} className="me-2 inline-block"/>{t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</button>
     {notice && <p role="status" className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-100">{notice}</p>}
     {error && <p role="alert" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>}
-    {open && <div className="cp-jawwal-payment-overlay fixed inset-0 z-[140] flex items-end justify-center bg-black/65 p-2 sm:items-center"><div role="dialog" aria-modal="true" className="cp-jawwal-payment-dialog w-full max-w-sm rounded-2xl bg-white p-4 text-slate-900 shadow-2xl dark:bg-[#0d2a29] dark:text-white">
+    {open && createPortal(<div className="cp-jawwal-payment-overlay fixed inset-0 z-[2147483000] flex items-end justify-center bg-black/65 p-2 sm:items-center"><div role="dialog" aria-modal="true" className="cp-jawwal-payment-dialog w-full max-w-sm rounded-2xl bg-white p-4 text-slate-900 shadow-2xl dark:bg-[#0d2a29] dark:text-white">
       <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-extrabold">{t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</h3><button type="button" aria-label={t('إغلاق','Close')} onClick={()=>setOpen(false)} className="rounded-lg p-1"><X size={19}/></button></div>
       <form onSubmit={e=>{e.preventDefault();void startPayment()}} className="mt-4 space-y-3"><label className="block text-sm font-semibold">{t('المبلغ (شيكل)', 'Amount (ILS)')}<input autoFocus inputMode="decimal" type="number" min="0.01" step="0.01" required value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-lg text-slate-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-[#071d1c] dark:text-white"/></label>
         <p className="text-xs leading-5 text-slate-500 dark:text-slate-300">{t('سيُرسل طلب الدفعة إلى الإدارة للمراجعة، ثم يبدأ اتصال جوال باي. لن يتغير رصيدك حتى اعتماد الدفعة.', 'The payment request will be sent for administrator review, then Jawwal Pay starts. Your balance changes only after approval.')}</p>
@@ -237,6 +246,6 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
         <p className="mt-1 tabular-nums">{t('الوقت المتبقي لفك التجميد:', 'Time until unlock:')} {lockCountdown}</p>
       </div>}
       {error && <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
-    </div></div>}
+    </div></div>, document.body)}
   </div>;
 };
