@@ -521,9 +521,7 @@ Deno.serve(async (request: Request) => {
       const recipientPath = recipient.app_variant === "customer" && source === "qr_payment_submissions" && operation === "INSERT"
         ? "/customer/finance"
         : targetPath;
-      const recipientTitle = recipient.app_variant === "customer" && source === "qr_payment_submissions" && operation === "INSERT"
-        ? (locale === "en" ? "Payment submitted • " + formatMoney(0, "en").replace("0.00", (Number(0) / 100).toFixed(2)) : "تم إرسال طلب الدفع")
-        : (locale === "en" ? titleEn : titleAr);
+      const recipientTitle = locale === "en" ? titleEn : titleAr;
       await sendFcm(token, projectId, recipientTitle,
         locale === "en" ? bodyEn : bodyAr, eventKey + ":" + recipient.app_variant, recipientPath);
       await admin.from("native_push_delivery_attempts").update({
