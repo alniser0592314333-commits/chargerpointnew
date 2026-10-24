@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { AlertTriangle, LockKeyhole, Wallet, X } from 'lucide-react';
 import { customerAuth } from '../../services/customer/customerAuth';
 import { buildJawwalBCode } from '../../services/localPaymentHelperCode';
+import { authorizeJawwalPaymentBiometric } from '../../services/auth/accountBiometric';
 
 type StoredService = { id: string; provider?: string; pin: string; recipientPhone?: string; accountKind?: 'friend' | 'merchant' };
 type NativePaymentApi = {
@@ -106,7 +107,22 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       if (recipientError || !new RegExp('^05[0-9]{8}$').test(recipientPhone)) throw new Error('RECIPIENT_UNAVAILABLE');
       const code = buildJawwalBCode({ accountKind: 'friend', pin: service.pin, recipientPhone }, normalized);
       const minor = Math.round(Number(normalized) * 100);
-      const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', { p_amount_minor: minor });
+      const { data: sessionData } = await customerAuth.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error('AUTH_REQUIRED');
+      let biometricAuthorization: { authorizationId: string; expiresAt: string };
+      try {
+        biometricAuthorization = await authorizeJawwalPaymentBiometric(accessToken);
+      } catch (biometricError) {
+        const biometricCode = biometricError instanceof Error ? biometricError.message : '';
+        if (biometricCode === 'BIOMETRIC_NOT_ENROLLED') throw new Error('BIOMETRIC_NOT_ENROLLED');
+        if (biometricCode === 'JAWJAL_BIOMETRIC_LOCKED' || biometricCode === 'JAWJAL_BIOMETRIC_LOCKED') throw new Error('BIOMETRIC_LOCKED');
+        if (biometricCode === 'BIOMETRIC_PROOF_INVALID') throw new Error('BIOMETRIC_RETRY');
+        throw biometricError;
+      }
+      const { data: submission, error: submitError } = await customerAuth.rpc('submit_customer_jawwal_pay_payment', {
+        p_amount_minor: minor, p_biometric_authorization_id: biometricAuthorization.authorizationId
+      });
       if (submitError || !submission || (submission as { success?: boolean }).success !== true) {
         const message = submitError?.message || '';
         if (/already awaiting review/i.test(message)) throw new Error('PENDING');
@@ -118,7 +134,13 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       setOpen(false);
     } catch (e) {
       const code = e instanceof Error ? e.message : '';
-      setError(code === 'PENDING'
+      setError(code === 'BIOMETRIC_NOT_ENROLLED'
+        ? t('البصمة غير مفعّلة. أضف بصمتك من إعدادات الحساب ثم حاول مجددًا.', 'Fingerprint is not enrolled. Enable it in account settings and try again.')
+        : code === 'BIOMETRIC_LOCKED' || code === 'JAWJAL_BIOMETRIC_LOCKED'
+          ? t('تم تجميد الخدمة مؤقتا يرجى المحاولة لاحقا', 'Service temporarily frozen. Please try again later.')
+          : code === 'BIOMETRIC_RETRY' || code === 'BIOMETRIC_PROOF_INVALID'
+            ? t('لم يتم تأكيد البصمة. حاول مرة أخرى.', 'Fingerprint was not verified. Please try again.')
+            : code === 'PENDING'
         ? t('لديك دفعة بانتظار المراجعة بالفعل. انتظر قرار الإدارة قبل إرسال دفعة أخرى.', 'You already have a payment awaiting review. Wait for the administrator before submitting another.')
         : code === 'SETUP'
           ? t('إعداد وسيلة الدفع غير موجود. أضفها من الصفحة الرئيسية أولًا.', 'Payment setup is missing. Add it from Home first.')
