@@ -106,7 +106,7 @@ public class LocalPaymentHelperPlugin extends Plugin {
             if (step.isEmpty() || step.length() > 80 || step.contains("#") || step.contains("*")) { call.reject("نص إحدى خطوات USSD غير صالح."); return; }
         }
         if (steps.length() > 0 && !isAutomationServiceEnabled()) { call.reject("فعّل خدمة أتمتة خطوات USSD من إعدادات إمكانية الوصول أولًا."); return; }
-        try { prefs().edit().putString("pending_steps_encrypted", encrypt(steps.toString())).putInt("pending_step_index", 0).putString("last_dialog_signature", "").apply(); }
+        try { prefs().edit().putString("pending_steps_encrypted", encrypt(steps.toString())).putInt("pending_step_index", 0).putLong("pending_steps_created_at", System.currentTimeMillis()).putString("last_dialog_signature", "").apply(); }
         catch (Exception e) { call.reject("تعذر تجهيز خطوات USSD محليًا بأمان."); return; }
         if (getPermissionState("call") != com.getcapacitor.PermissionState.GRANTED) {
             requestPermissionForAlias("call", call, "callPermissionResult");
