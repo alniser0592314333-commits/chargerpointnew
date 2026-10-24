@@ -32,7 +32,11 @@ const callEndpoint = async (action: string, payload: Record<string, unknown> = {
     body: JSON.stringify({ action, ...payload }),
   });
   const body = await response.json().catch(() => null);
-  if (!response.ok || !body?.ok) throw new Error(typeof body?.error === 'string' ? body.error : 'BIOMETRIC_REQUEST_FAILED');
+  if (!response.ok || !body?.ok) {
+    const error = new Error(typeof body?.error === 'string' ? body.error : 'BIOMETRIC_REQUEST_FAILED') as Error & { details?: Record<string, unknown> };
+    error.details = body && typeof body === 'object' ? body : undefined;
+    throw error;
+  }
   return body;
 };
 export const isNativeBiometricAvailable = async () => {
