@@ -139,9 +139,9 @@ jobs:
           xml_dir.mkdir(parents=True, exist_ok=True)
           (xml_dir / "ussd_automation_service.xml").write_text(Path("scripts/android/ussd_automation_service.xml").read_text())
           strings = Path("android/app/src/main/res/values/strings.xml")
-          strings_text = strings.read_text() if strings.exists() else '<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n</resources>\\n'
+          strings_text = strings.read_text() if strings.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
           if "ussd_automation_service_description" not in strings_text:
-              strings_text = strings_text.replace("</resources>", '    <string name="ussd_automation_service_description">يسمح للتطبيق بإدخال الخطوات التي حفظتها في نوافذ USSD وإرسالها تلقائيًا أثناء عملية الدفع.</string>\\n</resources>')
+              strings_text = strings_text.replace("</resources>", '    <string name="ussd_automation_service_description">يسمح للتطبيق بإدخال الخطوات التي حفظتها في نوافذ USSD وإرسالها تلقائيًا أثناء عملية الدفع.</string>\n</resources>')
           strings.write_text(strings_text)
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           manifest_text = manifest.read_text()
@@ -158,7 +158,7 @@ jobs:
                   android:resource="@xml/ussd_automation_service" />
           </service>'''
           if "com.chargerpointnew.paymenthelper.UssdAutomationService" not in manifest_text:
-              manifest_text = manifest_text.replace("</application>", service_decl + "\\n    </application>")
+              manifest_text = manifest_text.replace("</application>", service_decl + "\n    </application>")
               manifest.write_text(manifest_text)
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
