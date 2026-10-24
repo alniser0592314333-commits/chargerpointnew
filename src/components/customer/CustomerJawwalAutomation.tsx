@@ -130,8 +130,6 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
     } finally { setBusy(false); }
   };
 
-  if (mode === 'payment' && !isOnline) return null;
-
   // Keep the amount dialog above Android's soft keyboard and account navigation.
   useEffect(() => {
     if (!open) return;
@@ -150,6 +148,8 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       window.removeEventListener('resize', update);
     };
   }, [open]);
+
+  if (mode === 'payment' && !isOnline) return null;
 
   if ((mode === 'setup' && configured) || (mode === 'reconfigure' && successToast)) {
     return successToast ? <div role="status" className="fixed inset-x-4 top-4 z-[150] mx-auto max-w-md rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900 shadow-xl dark:border-emerald-400/30 dark:bg-[#103a32] dark:text-emerald-100">{successToast}</div> : null;
