@@ -694,3 +694,49 @@ html.dark .cp-customer-portal .cp-portal-offline-toast {
 }
 .cp-finance-view-picker__menu button.is-active,
 .cp-finance-view-picker__menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+
+
+/* Keep payment actions visibly inside the balance card on narrow customer screens. */
+.cp-customer-portal .cp-portal-balance__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.cp-customer-portal .cp-portal-balance__actions > a,
+.cp-customer-portal .cp-portal-balance__actions > button {
+  position: relative;
+  z-index: 2;
+  max-width: 100%;
+  min-height: 38px;
+  border-radius: 11px;
+}
+@media (max-width: 420px) {
+  .cp-customer-portal .cp-portal-balance__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cp-customer-portal .cp-portal-balance__actions > a,
+  .cp-customer-portal .cp-portal-balance__actions > button {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    white-space: normal;
+  }
+}
+
+/* The native soft keyboard can shrink the visual viewport without moving the layout viewport. */
+.cp-jawwal-payment-overlay {
+  z-index: 9999 !important;
+  top: var(--cp-jawwal-viewport-top, 0px) !important;
+  bottom: auto !important;
+  height: var(--cp-jawwal-viewport-height, 100dvh);
+  min-height: 0;
+  box-sizing: border-box;
+  align-items: center;
+}
+.cp-jawwal-payment-dialog {
+  width: min(100%, 420px);
+  flex: 0 1 auto;
+}
