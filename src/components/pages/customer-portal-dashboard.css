@@ -640,3 +640,57 @@ html.dark .cp-customer-portal .cp-portal-offline-toast {
   .cp-jawwal-payment-dialog { padding: 12px; }
   .cp-jawwal-payment-dialog form { margin-top: 10px; }
 }
+
+
+/* Compact selector for switching between payment receipts and financial movements. */
+.cp-finance-view-picker {
+  position: relative;
+  z-index: 12;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+}
+.cp-finance-view-picker__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  max-width: 100%;
+  padding: 4px 2px;
+  color: var(--cp-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+.cp-finance-view-picker__chevron {
+  display: inline-block;
+  color: var(--cp-muted);
+  font-size: 17px;
+  line-height: 1;
+  transition: transform 120ms ease;
+}
+.cp-finance-view-picker__chevron.is-open { transform: rotate(180deg); }
+.cp-finance-view-picker__menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  inset-inline-start: 0;
+  display: grid;
+  min-width: 190px;
+  max-width: min(260px, calc(100vw - 36px));
+  padding: 4px;
+  border: 1px solid var(--cp-line);
+  border-radius: 10px;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .13);
+}
+.cp-finance-view-picker__menu button {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  text-align: start;
+  font-size: 12px;
+  font-weight: 650;
+}
+.cp-finance-view-picker__menu button.is-active,
+.cp-finance-view-picker__menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
