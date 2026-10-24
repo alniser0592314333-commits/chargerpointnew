@@ -42,7 +42,6 @@ import {
 } from '../../services/businessHoursService';
 import { getAllDeviceTypes, UIDeviceTypeItem } from './dayOrdersStore';
 import './public-about.css';
-import { LocalPaymentHelper, openLocalPaymentHelper } from '../customer/LocalPaymentHelper';
 
 export const PublicAboutPage: React.FC = () => {
   const { locale, setLocale, isRTL, formatCurrency } = useI18n();
@@ -411,9 +410,6 @@ export const PublicAboutPage: React.FC = () => {
               <span>{isAr ? operationalStatus.headlineAr : operationalStatus.headlineEn}</span>
             </div>
 
-            {/* Local payment helper: available before sign-in from the public customer landing page. */}
-            <LocalPaymentHelper />
-
             {/* Prominent CTA: "تفقّد طلباتك" */}
             <button
               type="button"
@@ -564,26 +560,6 @@ export const PublicAboutPage: React.FC = () => {
                   </button>
                 )}
 
-                {/* Local payment helper is also available from the More menu. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsDrawerOpen(false);
-                    openLocalPaymentHelper();
-                  }}
-                  className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <Wallet className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                    <div>
-                      <span className="block">{isAr ? 'خدمات مساعدة' : 'Helper Services'}</span>
-                      <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                        {isAr ? 'خدمات دفع محفوظة على الجهاز' : 'Payment shortcuts stored on this device'}
-                      </span>
-                    </div>
-                  </div>
-                  {isRTL ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                </button>
 
                 {/* Contact Us: keep contact choices accessible from the More menu. */}
                 <button
