@@ -191,3 +191,12 @@ html.dark .cp-portal-more-menu__icon { color: #8ed9dc; background: #123d48; }
 @media (prefers-reduced-motion: reduce) {
   .cp-portal-dock__item, .cp-portal-dock__orb, .cp-portal-dock__label, .cp-portal-more-menu, .cp-portal-more-scrim { transition: none !important; animation: none !important; }
 }
+
+
+/* A full-screen Jawwal payment dialog owns the viewport; never show the dock above the soft keyboard. */
+body.cp-jawwal-payment-open .cp-portal-dock,
+body.cp-jawwal-payment-open .cp-portal-more-scrim {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
