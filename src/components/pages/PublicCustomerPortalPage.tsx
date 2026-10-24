@@ -168,7 +168,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const notificationOrderNumber = initialPortalQuery.get('orderNumber') || '';
   const notificationOrderCreatedAt = initialPortalQuery.get('orderCreatedAt') || '';
   const [moreView, setMoreView] = useState<CustomerPortalMoreView>('profile');
-  const [settingsSubpage, setSettingsSubpage] = useState<'main' | 'security' | 'about'>('main');
+  const [settingsSubpage, setSettingsSubpage] = useState<'main' | 'security' | 'about' | 'payment'>('main');
   const [activity, setActivity] = useState<PortalActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(false);
@@ -179,6 +179,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     } catch { return []; }
   });
   const [actionMessage, setActionMessage] = useState('');
+  const [showFinancialMovements, setShowFinancialMovements] = useState(false);
+  const [showPaymentReceipts, setShowPaymentReceipts] = useState(false);
   const [goalRequestBusy, setGoalRequestBusy] = useState(false);
   const [resetRequestBusy, setResetRequestBusy] = useState(false);
   const [historyRequestStatus, setHistoryRequestStatus] = useState<string | null>(null);
@@ -872,7 +874,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 </div>
                 <div className="cp-portal-balance">
                   <p className="mt-2 text-sm cp-portal-muted">{balanceLabel}</p>
-                  <p className="cp-portal-balance__amount">{money(Math.abs(data.balance_minor), locale)}</p>
+                  <p className={`cp-portal-balance__amount ${data.balance_minor < 0 ? 'text-rose-600 dark:text-rose-300' : data.balance_minor > 0 ? 'text-emerald-600 dark:text-emerald-300' : 'cp-portal-muted'}`}>{data.balance_minor < 0 ? '−' : data.balance_minor > 0 ? '+' : ''}{money(Math.abs(data.balance_minor), locale)}</p>
                   <div className="cp-portal-balance__actions">
                     {data.balance_minor < 0 && online
                       ? <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={17} />{isAr ? 'إرسال دفعة' : 'Make a payment'}</a>
@@ -880,6 +882,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                     {(pendingReviewMinor > 0 || data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING')) &&
                       <button type="button" className="cp-portal-text-link" onClick={() => setActiveTab('finance')}>{isAr ? 'دفعة قيد المراجعة' : 'Payment under review'}</button>}
                   </div>
+                  {data.balance_minor < 0 && online && <CustomerJawwalAutomation mode="payment" />}
                 </div>
                 <CustomerJawwalAutomation mode="setup" />
                 <div className="cp-portal-subsection">
@@ -934,22 +937,24 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <section className="cp-portal-section">
                 <p className="cp-portal-eyebrow">{isAr ? 'حسابك المالي' : 'YOUR FINANCES'}</p>
                 <h1 className="cp-portal-heading">{isAr ? 'كشف الحساب' : 'Account statement'}</h1>
-                <div className="cp-portal-balance cp-portal-balance--compact"><p className="cp-portal-eyebrow">{isAr ? 'الرصيد الحالي' : 'CURRENT BALANCE'}</p><p className="mt-2 text-sm cp-portal-muted">{balanceLabel}</p><p className="cp-portal-balance__amount">{money(Math.abs(data.balance_minor), locale)}</p></div>
+                <div className="cp-portal-balance cp-portal-balance--compact"><p className="cp-portal-eyebrow">{isAr ? 'الرصيد الحالي' : 'CURRENT BALANCE'}</p><p className="mt-2 text-sm cp-portal-muted">{balanceLabel}</p><p className={`cp-portal-balance__amount ${data.balance_minor < 0 ? 'text-rose-600 dark:text-rose-300' : data.balance_minor > 0 ? 'text-emerald-600 dark:text-emerald-300' : 'cp-portal-muted'}`}>{data.balance_minor < 0 ? '−' : data.balance_minor > 0 ? '+' : ''}{money(Math.abs(data.balance_minor), locale)}</p></div>
                 <div className="cp-portal-subsection">
-                  <div className="flex items-center justify-between gap-3"><h2 className="font-bold">{isAr ? 'الحركات المالية' : 'Financial movements'}</h2><span className="text-xs cp-portal-muted">{(activity?.ledger.length ?? 0) + manualFinancialStatuses.length}</span></div>
-                  {activityLoading && !activity ? <p className="cp-portal-empty">{isAr ? 'جارٍ تحميل الحركات المالية…' : 'Loading financial movements…'}</p>
+                  <button type="button" className="flex w-full items-center justify-between gap-3 text-start" onClick={() => setShowFinancialMovements((value) => !value)} aria-expanded={showFinancialMovements}><span className="font-bold">{isAr ? 'الحركات المالية' : 'Financial movements'}</span><span className="flex items-center gap-2 text-xs cp-portal-muted">{(activity?.ledger.length ?? 0) + manualFinancialStatuses.length}<span aria-hidden="true">{showFinancialMovements ? '−' : '+'}</span></span></button>
+                  {showFinancialMovements && (activityLoading && !activity ? <p className="cp-portal-empty">{isAr ? 'جارٍ تحميل الحركات المالية…' : 'Loading financial movements…'}</p>
                     : activityError || !activity ? <div className="cp-portal-retry"><p className="cp-portal-empty">{isAr ? 'تعذّر تحميل الحركات المالية حاليًا.' : 'Financial movements are temporarily unavailable.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => void loadActivity()}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button></div>
                     : activity.ledger.length === 0 && manualFinancialStatuses.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد حركات مالية مسجلة.' : 'No financial movements found.'}</p>
                     : <div className="cp-portal-timeline">
                       {[...activity.ledger.map((entry) => ({ kind: 'ledger' as const, id: entry.id, created_at: entry.created_at, event_type: entry.event_type, amount_minor: entry.amount_minor, metadata: entry.metadata, submission: null as PortalSubmission | null })), ...manualFinancialStatuses.map((submission) => ({ kind: 'manual' as const, id: submission.id || submission.created_at, created_at: submission.created_at, event_type: submission.status.toUpperCase(), amount_minor: Number(submission.amount_minor || 0), metadata: null, submission }))].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map((entry) => <div key={entry.kind + '-' + entry.id} className="cp-portal-timeline__row cp-portal-finance-row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{entry.kind === 'manual' ? (isAr ? 'دفعة مسجّلة من الإدارة' : 'Admin-recorded payment') + ' · ' + statusLabel(entry.event_type) : translateLedgerType(entry.event_type)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(entry.created_at, locale)}{entry.kind === 'ledger' && typeof entry.metadata?.order_number === 'number' ? ' · ' + (isAr ? 'طلب رقم ' : 'Order #') + entry.metadata.order_number : ''}</p>{entry.kind === 'manual' && entry.event_type === 'PENDING' && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{isAr ? 'بانتظار الاعتماد — لا يؤثر المبلغ على رصيدك حاليًا.' : 'Pending approval — this amount is not included in your balance.'}</p>}{entry.kind === 'manual' && entry.event_type === 'REJECTED' && entry.submission?.rejection_reason && <p className="mt-1 text-xs text-rose-600 dark:text-rose-300">{(isAr ? 'ملاحظة الإدارة: ' : 'Administrator note: ') + entry.submission.rejection_reason}</p>}{entry.kind === 'manual' && entry.submission?.note && <p className="mt-1 text-xs cp-portal-muted">{(isAr ? 'ملاحظة: ' : 'Note: ') + entry.submission.note}</p>}</div><strong className="shrink-0">{entry.kind === 'ledger' && entry.event_type === 'DISCOUNT' ? '−' + money(Math.abs(entry.amount_minor), locale) : money(entry.amount_minor, locale)}</strong></div>)}
-                    </div>}
+                    </div>)}
                 </div>
               </section>
               <section className="cp-portal-section">
-                <h2 className="text-base font-bold">{isAr ? 'الدفعات والإيصالات' : 'Payments and receipts'}</h2>
+                <button type="button" className="flex w-full items-center justify-between gap-3 text-start" onClick={() => setShowPaymentReceipts((value) => !value)} aria-expanded={showPaymentReceipts}><h2 className="text-base font-bold">{isAr ? 'الدفعات والإيصالات' : 'Payments and receipts'}</h2><span aria-hidden="true" className="cp-portal-muted">{showPaymentReceipts ? '−' : '+'}</span></button>
+                {showPaymentReceipts && <>
                 <p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الدفعات المعلّقة لا تدخل في الرصيد حتى اعتماد الإدارة.' : 'Pending payments do not affect your balance until approved by the administrator.'}</p>
                 {data.payment_submissions.length === 0 ? <p className="cp-portal-empty">{isAr ? 'لا توجد دفعات أو إيصالات مسجلة.' : 'No payments or receipts found.'}</p> : <div className="cp-portal-timeline">{[...data.payment_submissions].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).map((submission,index)=><div key={(submission.id || submission.created_at)+'-'+index} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{submission.submission_source === 'ADMIN_MANUAL' ? (isAr ? 'دفعة مسجّلة من الإدارة' : 'Payment recorded by administration') : submission.submission_source === 'CUSTOMER_JAWAL_PAY' ? (isAr ? 'طلب دفع بواسطة جوال باي' : 'Jawwal Pay payment request') : (isAr ? 'إيصال دفع' : 'Payment receipt')} · {statusLabel(submission.status)}</p><p className="mt-1 text-xs cp-portal-muted">{safeDate(submission.created_at, locale)}{submission.reviewed_at ? ' · ' + safeDate(submission.reviewed_at, locale) : ''}</p>{submission.status.toUpperCase() === 'REJECTED' && submission.rejection_reason && <p className="mt-2 text-xs text-rose-600 dark:text-rose-300">{isAr ? 'ملاحظة الإدارة: ' : 'Administrator note: '}{submission.rejection_reason}</p>}{submission.submission_source === 'ADMIN_MANUAL' && submission.note && <p className="mt-2 text-xs cp-portal-muted">{isAr ? 'ملاحظة: ' : 'Note: '}{submission.note}</p>}</div><strong className="shrink-0">{money(submission.amount_minor, locale)}</strong></div>)}</div>}
                 {online && serverAvailable && <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={18} />{isAr ? 'إرسال إيصال دفع' : 'Submit payment receipt'}</a>}
+                </>}
               </section>
             </>}
 
@@ -993,6 +998,11 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'المظهر' : 'Appearance'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'داكن افتراضيًا ويمكنك تغييره' : 'Dark by default; change it anytime'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => { toggleTheme(); setShowOfflineDot(false); }}>{resolvedTheme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{resolvedTheme === 'dark' ? (isAr ? 'فاتح' : 'Light') : (isAr ? 'داكن' : 'Dark')}{showOfflineDot && <span aria-label={isAr ? 'ملاحظة اتصال' : 'Connection notice'} className="cp-portal-offline-dot"/>}</button></div>
                 <div className="cp-portal-setting-row"><div><p className="font-semibold">{isAr ? 'اللغة' : 'Language'}</p><p className="mt-1 text-xs cp-portal-muted">{isAr ? 'اختر لغة الواجهة' : 'Choose your interface language'}</p></div><button type="button" className="cp-portal-setting-button" onClick={() => setLocale(isAr ? 'en' : 'ar')}><Globe size={17} />{isAr ? 'English' : 'العربية'}</button></div>
               </div>
+              <button type="button" className="cp-portal-setting-row w-full text-start" onClick={() => setSettingsSubpage('payment')} aria-label={isAr ? 'إعادة إعداد وسيلة الدفع' : 'Reset payment method'}>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-300"><Wallet size={20}/></span>
+                <span className="min-w-0 flex-1"><span className="block font-semibold">{isAr ? 'إعادة إعداد وسيلة الدفع' : 'Reset payment method'}</span><span className="mt-1 block text-xs cp-portal-muted">{isAr ? 'تغيير الرقم السري لجوال باي المحفوظ على هذا الجهاز' : 'Change the Jawwal Pay PIN saved on this device'}</span></span>
+                <ArrowLeft size={18} className="shrink-0 opacity-60" aria-hidden="true"/>
+              </button>
               <button type="button" className="cp-portal-setting-row w-full text-start" onClick={() => setSettingsSubpage('security')} aria-label={isAr ? 'فتح إعدادات الأمان وتسجيل الدخول' : 'Open security and sign-in settings'}>
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-300"><ShieldCheck size={20}/></span>
                 <span className="min-w-0 flex-1"><span className="block font-semibold">{isAr ? 'الأمان وتسجيل الدخول' : 'Security & sign-in'}</span><span className="mt-1 block text-xs cp-portal-muted">{isAr ? 'كلمة المرور والبصمة وحماية الحساب' : 'Password, fingerprint, and account protection'}</span></span>
@@ -1006,6 +1016,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                   <ArrowLeft size={18} className="shrink-0 opacity-60" aria-hidden="true"/>
                 </button>
               </div>
+            </section>}
+
+            {activeTab === 'more' && moreView === 'settings' && settingsSubpage === 'payment' && <section className="cp-portal-section">
+              <button type="button" className="cp-portal-text-link mb-4 inline-flex items-center gap-2" onClick={() => setSettingsSubpage('main')}><ArrowLeft size={17}/>{isAr ? 'العودة إلى الإعدادات' : 'Back to settings'}</button>
+              <p className="cp-portal-eyebrow">{isAr ? 'وسيلة الدفع' : 'PAYMENT METHOD'}</p><h1 className="cp-portal-heading">{isAr ? 'إعادة إعداد وسيلة الدفع' : 'Reset payment method'}</h1>
+              <CustomerJawwalAutomation mode="reconfigure" />
             </section>}
 
             {activeTab === 'more' && moreView === 'settings' && settingsSubpage === 'security' && <section className="cp-portal-section">
