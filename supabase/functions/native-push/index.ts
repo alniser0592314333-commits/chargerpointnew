@@ -264,8 +264,11 @@ Deno.serve(async (request: Request) => {
         const { data: customerDevices, error: customerDevicesError } = await admin.from("native_push_devices")
           .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
           .eq("app_variant", "customer").eq("customer_id", submission.customer_id).is("disabled_at", null);
-        if (customerDevicesError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-        recipients = customerDevices ?? [];
+        const { data: adminDevices, error: adminDevicesError } = await admin.from("native_push_devices")
+          .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
+          .eq("app_variant", "admin").is("disabled_at", null);
+        if (customerDevicesError || adminDevicesError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        recipients = [...(adminDevices ?? []), ...(customerDevices ?? [])];
       }
     } else if (operation === "UPDATE" && ["APPROVED", "REJECTED"].includes(String(submission.status))) {
       eventKey += ":" + submission.status;
@@ -515,8 +518,14 @@ Deno.serve(async (request: Request) => {
     if (claimError) { failed += 1; continue; }
     if (claimed !== true) continue;
     try {
-      await sendFcm(token, projectId, locale === "en" ? titleEn : titleAr,
-        locale === "en" ? bodyEn : bodyAr, eventKey, targetPath);
+      const recipientPath = recipient.app_variant === "customer" && source === "qr_payment_submissions" && operation === "INSERT"
+        ? "/customer/finance"
+        : targetPath;
+      const recipientTitle = recipient.app_variant === "customer" && source === "qr_payment_submissions" && operation === "INSERT"
+        ? (locale === "en" ? "Payment submitted • " + formatMoney(0, "en").replace("0.00", (Number(0) / 100).toFixed(2)) : "تم إرسال طلب الدفع")
+        : (locale === "en" ? titleEn : titleAr);
+      await sendFcm(token, projectId, recipientTitle,
+        locale === "en" ? bodyEn : bodyAr, eventKey + ":" + recipient.app_variant, recipientPath);
       await admin.from("native_push_delivery_attempts").update({
         status: "SENT", sent_at: new Date().toISOString(), error_code: null,
       }).eq("event_key", eventKey).eq("device_id", recipient.device_id);
