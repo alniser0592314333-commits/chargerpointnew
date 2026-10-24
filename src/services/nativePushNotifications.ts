@@ -298,7 +298,7 @@ export function startNativePushNotifications(
   locale: string,
 ): Promise<void> {
   const request = { variant, tokenProvider, locale };
-  if (startPromise) {
+  if (startPromise || registrationInFlight) {
     // If authentication changes while the first native registration is still in
     // flight, keep the newest session request and run it after the old attempt ends.
     // Otherwise the old session can win the race and leave the device bound stale.
