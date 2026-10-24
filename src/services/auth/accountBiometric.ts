@@ -209,10 +209,21 @@ export async function authorizeJawwalPaymentBiometric(accessToken: string): Prom
     if (promptCode === 'BIOMETRIC_CANCELLED') throw new Error('BIOMETRIC_CANCELLED');
     throw new Error('BIOMETRIC_PROMPT_FAILED');
   }
-  const verified = await callEndpoint('jawwal-payment-verify', {
-    challengeId: challenge.challengeId,
-    credentialId: challenge.credentialId,
-    signature: signed.signature,
-  }, accessToken);
+  let verified: Record<string, unknown>;
+  try {
+    verified = await callEndpoint('jawwal-payment-verify', {
+      challengeId: challenge.challengeId,
+      credentialId: challenge.credentialId,
+      signature: signed.signature,
+    }, accessToken);
+  } catch (error) {
+    const details = error && typeof error === 'object' && 'details' in error
+      ? (error as Error & { details?: Record<string, unknown> }).details : undefined;
+    if (error instanceof Error && typeof details?.lockedUntil === 'string' &&
+        new Date(details.lockedUntil).getTime() > Date.now()) {
+      throw new Error('JAWJAL_BIOMETRIC_LOCKED:' + details.lockedUntil);
+    }
+    throw error;
+  }
   return { authorizationId: String(verified.authorizationId), expiresAt: String(verified.expiresAt) };
 }
