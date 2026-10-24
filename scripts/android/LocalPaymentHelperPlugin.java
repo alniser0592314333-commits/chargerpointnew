@@ -3,6 +3,9 @@ package com.chargerpointnew.paymenthelper;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.provider.Settings;
+import android.view.accessibility.AccessibilityManager;
+import org.json.JSONArray;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.security.keystore.KeyGenParameterSpec;
@@ -63,12 +66,48 @@ public class LocalPaymentHelperPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void isAutomationEnabled(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("enabled", isAutomationServiceEnabled());
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openAccessibilitySettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) { call.reject("تعذر فتح إعدادات إمكانية الوصول."); }
+    }
+
+    private boolean isAutomationServiceEnabled() {
+        AccessibilityManager manager = (AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
+        if (manager == null) return false;
+        for (android.accessibilityservice.AccessibilityServiceInfo info : manager.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
+            if (info.getId() != null && info.getId().contains("UssdAutomationService")) return true;
+        }
+        return false;
+    }
+
+    @PluginMethod
     public void placeCall(PluginCall call) {
         String code = call.getString("code");
         if (code == null || !code.matches("^\\*110\\*[12]\\*\\d{4}\\*\\d{8,15}\\*\\d+(?:\\.\\d{1,2})?\\*1#$")) {
             call.reject("رمز الاتصال غير صالح.");
             return;
         }
+        JSONArray steps = call.getArray("steps");
+        if (steps == null) steps = new JSONArray();
+        if (steps.length() > 10) { call.reject("الحد الأقصى 10 خطوات USSD."); return; }
+        for (int i = 0; i < steps.length(); i++) {
+            String step = steps.optString(i, "").trim();
+            if (step.isEmpty() || step.length() > 80 || step.contains("#") || step.contains("*")) { call.reject("نص إحدى خطوات USSD غير صالح."); return; }
+        }
+        if (steps.length() > 0 && !isAutomationServiceEnabled()) { call.reject("فعّل خدمة أتمتة خطوات USSD من إعدادات إمكانية الوصول أولًا."); return; }
+        try { prefs().edit().putString("pending_steps_encrypted", encrypt(steps.toString())).putInt("pending_step_index", 0).putString("last_dialog_signature", "").apply(); }
+        catch (Exception e) { call.reject("تعذر تجهيز خطوات USSD محليًا بأمان."); return; }
         if (getPermissionState("call") != com.getcapacitor.PermissionState.GRANTED) {
             requestPermissionForAlias("call", call, "callPermissionResult");
             return;
