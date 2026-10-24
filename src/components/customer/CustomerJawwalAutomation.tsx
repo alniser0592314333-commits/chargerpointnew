@@ -26,7 +26,25 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [successToast, setSuccessToast] = useState('');
+  const [lockedUntil, setLockedUntil] = useState('');
+  const [clockNow, setClockNow] = useState(Date.now());
   const t = (ar: string, en: string) => isAr ? ar : en;
+
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const tick = () => {
+      const now = Date.now();
+      setClockNow(now);
+      if (new Date(lockedUntil).getTime() <= now) setLockedUntil('');
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [lockedUntil]);
+
+  const lockSeconds = Math.max(0, Math.ceil((new Date(lockedUntil).getTime() - clockNow) / 1000));
+  const lockCountdown = [Math.floor(lockSeconds / 3600), Math.floor((lockSeconds % 3600) / 60), lockSeconds % 60]
+    .map((part) => String(part).padStart(2, '0')).join(':');
 
   useEffect(() => {
     const online = () => setIsOnline(true);
@@ -134,10 +152,19 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       setOpen(false);
     } catch (e) {
       const code = e instanceof Error ? e.message : '';
+      const lockPrefix = 'JAWJAL_BIOMETRIC_LOCKED:';
+      const parsedLock = code.startsWith(lockPrefix) ? code.slice(lockPrefix.length) : '';
+      if (parsedLock && Number.isFinite(new Date(parsedLock).getTime())) setLockedUntil(parsedLock);
+      if (code === 'BIOMETRIC_CANCELLED' || code === 'BIOMETRIC_PROMPT_FAILED' || code === 'BIOMETRIC_FAILURE_COULD_NOT_BE_RECORDED') {
+        setError(code === 'BIOMETRIC_CANCELLED'
+          ? t('تم إلغاء البصمة، واحتُسبت محاولة فاشلة. الإلغاء المتكرر قد يجمّد جوال باي لمدة ساعة.', 'Fingerprint was canceled and counted as a failed attempt. Repeated cancellations may lock Jawwal Pay for one hour.')
+          : t('تعذّر إكمال البصمة أو تسجيل المحاولة بأمان. لم يتم إرسال طلب الدفع؛ حاول مجددًا.', 'Fingerprint failed or could not be securely recorded. No payment request was submitted; try again.'));
+        return;
+      }
       setError(code === 'BIOMETRIC_NOT_ENROLLED'
         ? t('البصمة غير مفعّلة. أضف بصمتك من إعدادات الحساب ثم حاول مجددًا.', 'Fingerprint is not enrolled. Enable it in account settings and try again.')
-        : code === 'BIOMETRIC_LOCKED' || code === 'JAWJAL_BIOMETRIC_LOCKED'
-          ? t('تم تجميد الخدمة مؤقتا يرجى المحاولة لاحقا', 'Service temporarily frozen. Please try again later.')
+        : code === 'BIOMETRIC_LOCKED' || code.startsWith('JAWJAL_BIOMETRIC_LOCKED')
+          ? t('تم تجميد الخدمة مؤقتًا. انتظر انتهاء العدّ التنازلي قبل المحاولة مجددًا.', 'Service is temporarily locked. Wait for the countdown to finish before trying again.')
           : code === 'BIOMETRIC_RETRY' || code === 'BIOMETRIC_PROOF_INVALID'
             ? t('لم يتم تأكيد البصمة. حاول مرة أخرى.', 'Fingerprint was not verified. Please try again.')
             : code === 'PENDING'
@@ -204,7 +231,11 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-extrabold">{t('دفع بواسطة جوال باي', 'Pay with Jawwal Pay')}</h3><button type="button" aria-label={t('إغلاق','Close')} onClick={()=>setOpen(false)} className="rounded-lg p-1"><X size={19}/></button></div>
       <form onSubmit={e=>{e.preventDefault();void startPayment()}} className="mt-4 space-y-3"><label className="block text-sm font-semibold">{t('المبلغ (شيكل)', 'Amount (ILS)')}<input autoFocus inputMode="decimal" type="number" min="0.01" step="0.01" required value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-lg text-slate-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-[#071d1c] dark:text-white"/></label>
         <p className="text-xs leading-5 text-slate-500 dark:text-slate-300">{t('سيُرسل طلب الدفعة إلى الإدارة للمراجعة، ثم يبدأ اتصال جوال باي. لن يتغير رصيدك حتى اعتماد الدفعة.', 'The payment request will be sent for administrator review, then Jawwal Pay starts. Your balance changes only after approval.')}</p>
-        <button type="submit" disabled={busy || !amount.trim()} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('دفع', 'Pay')}</button></form>
+        <button type="submit" disabled={busy || !amount.trim() || lockSeconds > 0} className="w-full rounded-xl bg-sky-700 px-4 py-3 font-bold text-white disabled:opacity-40">{busy ? t('جارٍ الإرسال…', 'Submitting…') : lockSeconds > 0 ? t('الخدمة مجمّدة', 'Service locked') : t('دفع', 'Pay')}</button></form>
+      {lockSeconds > 0 && <div role="status" aria-live="polite" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm font-bold text-rose-800 dark:border-rose-400/30 dark:bg-rose-950/30 dark:text-rose-200">
+        <p>{t('تم تجميد الدفع بالبصمة بعد 3 محاولات فاشلة.', 'Fingerprint payment is locked after 3 failed attempts.')}</p>
+        <p className="mt-1 tabular-nums">{t('الوقت المتبقي لفك التجميد:', 'Time until unlock:')} {lockCountdown}</p>
+      </div>}
       {error && <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
     </div></div>}
   </div>;

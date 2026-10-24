@@ -32,7 +32,11 @@ const callEndpoint = async (action: string, payload: Record<string, unknown> = {
     body: JSON.stringify({ action, ...payload }),
   });
   const body = await response.json().catch(() => null);
-  if (!response.ok || !body?.ok) throw new Error(typeof body?.error === 'string' ? body.error : 'BIOMETRIC_REQUEST_FAILED');
+  if (!response.ok || !body?.ok) {
+    const error = new Error(typeof body?.error === 'string' ? body.error : 'BIOMETRIC_REQUEST_FAILED') as Error & { details?: Record<string, unknown> };
+    error.details = body && typeof body === 'object' ? body : undefined;
+    throw error;
+  }
   return body;
 };
 export const isNativeBiometricAvailable = async () => {
@@ -164,19 +168,62 @@ export async function authorizeJawwalPaymentBiometric(accessToken: string): Prom
   if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
   const alias = localStorage.getItem('cp_biometric_alias_customer') || '';
   if (!/^[a-f0-9]{32}$/.test(alias)) throw new Error('BIOMETRIC_NOT_ENROLLED');
-  const challenge = await callEndpoint('jawwal-payment-challenge', {}, accessToken);
+  let challenge: Record<string, unknown>;
+  try {
+    challenge = await callEndpoint('jawwal-payment-challenge', {}, accessToken);
+  } catch (error) {
+    const details = error && typeof error === 'object' && 'details' in error
+      ? (error as Error & { details?: Record<string, unknown> }).details : undefined;
+    if (error instanceof Error && error.message === 'JAWJAL_BIOMETRIC_LOCKED' && typeof details?.lockedUntil === 'string') {
+      throw new Error('JAWJAL_BIOMETRIC_LOCKED:' + details.lockedUntil);
+    }
+    throw error;
+  }
   const en = promptLocale() === 'en';
-  const signed = await NativeBiometric.signChallenge({
-    alias: String(challenge.credentialId).replace(/-/g, ''),
-    challenge: challenge.challenge,
-    title: en ? 'Authorize Jawwal Pay' : 'تأكيد الدفع بالبصمة',
-    subtitle: en ? 'Verify your identity to submit this payment' : 'أكد هويتك بالبصمة لإرسال الدفعة',
-    negativeButtonText: en ? 'Cancel' : 'إلغاء',
-  });
-  const verified = await callEndpoint('jawwal-payment-verify', {
-    challengeId: challenge.challengeId,
-    credentialId: challenge.credentialId,
-    signature: signed.signature,
-  }, accessToken);
+  let signed: { signature: string };
+  try {
+    signed = await NativeBiometric.signChallenge({
+      alias: String(challenge.credentialId).replace(/-/g, ''),
+      challenge: String(challenge.challenge),
+      title: en ? 'Authorize Jawwal Pay' : 'تأكيد الدفع بالبصمة',
+      subtitle: en ? 'Verify your identity to submit this payment' : 'أكد هويتك بالبصمة لإرسال الدفعة',
+      negativeButtonText: en ? 'Cancel' : 'إلغاء',
+    });
+  } catch (promptError) {
+    const promptCode = promptError instanceof Error ? promptError.message : 'BIOMETRIC_PROMPT_FAILED';
+    // Once a server challenge exists, every failed/cancelled prompt is reported
+    // to the server. If reporting fails, fail closed and never submit a payment.
+    try {
+      const failed = await callEndpoint('jawwal-payment-failure', {
+        challengeId: challenge.challengeId,
+        credentialId: challenge.credentialId,
+        reason: promptCode.slice(0, 80),
+      }, accessToken);
+      if (typeof failed.lockedUntil === 'string' && new Date(failed.lockedUntil).getTime() > Date.now()) {
+        throw new Error('JAWJAL_BIOMETRIC_LOCKED:' + failed.lockedUntil);
+      }
+    } catch (reportError) {
+      if (reportError instanceof Error && reportError.message.startsWith('JAWJAL_BIOMETRIC_LOCKED:')) throw reportError;
+      throw new Error('BIOMETRIC_FAILURE_COULD_NOT_BE_RECORDED');
+    }
+    if (promptCode === 'BIOMETRIC_CANCELLED') throw new Error('BIOMETRIC_CANCELLED');
+    throw new Error('BIOMETRIC_PROMPT_FAILED');
+  }
+  let verified: Record<string, unknown>;
+  try {
+    verified = await callEndpoint('jawwal-payment-verify', {
+      challengeId: challenge.challengeId,
+      credentialId: challenge.credentialId,
+      signature: signed.signature,
+    }, accessToken);
+  } catch (error) {
+    const details = error && typeof error === 'object' && 'details' in error
+      ? (error as Error & { details?: Record<string, unknown> }).details : undefined;
+    if (error instanceof Error && typeof details?.lockedUntil === 'string' &&
+        new Date(details.lockedUntil).getTime() > Date.now()) {
+      throw new Error('JAWJAL_BIOMETRIC_LOCKED:' + details.lockedUntil);
+    }
+    throw error;
+  }
   return { authorizationId: String(verified.authorizationId), expiresAt: String(verified.expiresAt) };
 }
