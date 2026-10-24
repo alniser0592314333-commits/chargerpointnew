@@ -112,13 +112,17 @@ describe('customer portal polish regression contract', () => {
     expect(biometric).toContain('issuedAt > Number(current.auth_issued_at || 0)');
   });
 
-  it('places the payment notification action before the payment form fields', () => {
+  it('places receipt submission after the manual transfer fields and keeps Jawwal Pay separate', () => {
     const payment = read('src/components/pages/PublicPaymentPage.tsx');
     const form = payment.indexOf('<form onSubmit={submit} className="payment-portal-form');
+    const method = payment.indexOf("isAr ? 'وسيلة الدفع' : 'Payment method'", form);
     const submit = payment.indexOf("isAr ? 'إرسال إيصال الدفع' : 'Send Payment Receipt'");
+    const jawwal = payment.indexOf('jawwal-payment-method-title');
     expect(form).toBeGreaterThan(-1);
-    expect(submit).toBeGreaterThan(form);
-    expect(submit).toBeLessThan(payment.indexOf('isAr ? \'وسيلة الدفع\' : \'Payment method\'', form));
+    expect(method).toBeGreaterThan(form);
+    expect(submit).toBeGreaterThan(method);
+    expect(jawwal).toBeGreaterThan(submit);
+    expect(payment).toContain('aria-labelledby="jawwal-payment-method-title"');
   });
 
   it('uses an authoritative uncapped Jawwal pending count and refreshes after submission', () => {
