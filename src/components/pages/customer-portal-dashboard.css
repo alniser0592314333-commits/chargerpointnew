@@ -620,3 +620,23 @@ html.dark .cp-customer-portal .cp-portal-offline-toast {
 @media (prefers-reduced-motion: reduce) {
   .cp-customer-portal .cp-portal-offline-toast { animation: none !important; }
 }
+
+
+/* Jawwal Pay dialog: adapt to the visible Android viewport when the soft keyboard opens. */
+.cp-jawwal-payment-overlay {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+.cp-jawwal-payment-dialog {
+  max-height: calc(var(--cp-jawwal-viewport-height, 100dvh) - env(safe-area-inset-top) - 12px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+.cp-jawwal-payment-dialog input {
+  scroll-margin-bottom: 16px;
+}
+@media (max-height: 520px) {
+  .cp-jawwal-payment-dialog { padding: 12px; }
+  .cp-jawwal-payment-dialog form { margin-top: 10px; }
+}
