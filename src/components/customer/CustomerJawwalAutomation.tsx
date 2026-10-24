@@ -42,7 +42,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       void NativePayment.getServices().then(({ value }) => {
         if (!active) return;
         const list = value ? JSON.parse(value) : [];
-        const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\\d{4}$/.test(item.pin)) : null;
+        const service = Array.isArray(list) ? list.find((item: StoredService) => item?.provider === 'jawwal-pay' && /^\d{4}$/.test(item.pin)) : null;
         setConfigured(Boolean(service));
       }).catch(() => undefined);
     };
