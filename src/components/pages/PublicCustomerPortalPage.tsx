@@ -878,13 +878,15 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                   <p className="mt-2 text-sm cp-portal-muted">{balanceLabel}</p>
                   <p className={`cp-portal-balance__amount ${data.balance_minor < 0 ? 'text-rose-600 dark:text-rose-300' : data.balance_minor > 0 ? 'text-emerald-600 dark:text-emerald-300' : 'cp-portal-muted'}`}>{data.balance_minor < 0 ? '−' : data.balance_minor > 0 ? '+' : ''}{money(Math.abs(data.balance_minor), locale)}</p>
                   <div className="cp-portal-balance__actions">
-                    {(pendingReviewMinor > 0 || data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING'))
-                      ? <button type="button" className="cp-portal-pending-payment" onClick={() => setActiveTab('finance')}><span className="cp-portal-pending-payment__dot" aria-hidden="true" />{isAr ? 'دفعة قيد المراجعة' : 'Payment under review'}</button>
-                      : data.balance_minor < 0 && online
-                        ? <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={17} />{isAr ? 'إرسال دفعة' : 'Make a payment'}</a>
-                        : <button type="button" className="cp-portal-secondary-button" onClick={() => setActiveTab('finance')}><ReceiptTextFallback />{isAr ? 'تفقد إيصالاتك' : 'View payment receipts'}</button>}
+                    {data.balance_minor < 0 && online
+                      ? <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={17} />{isAr ? 'إرسال دفعة' : 'Make a payment'}</a>
+                      : <button type="button" className="cp-portal-secondary-button" onClick={() => setActiveTab('finance')}><ReceiptTextFallback />{isAr ? 'تفقد إيصالاتك' : 'View payment receipts'}</button>}
+                    {(pendingReviewMinor > 0 || data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING')) &&
+                      <button type="button" className="cp-portal-pending-payment" onClick={() => setActiveTab('finance')}><span className="cp-portal-pending-payment__dot" aria-hidden="true" />{isAr ? 'دفعات قيد المراجعة' : 'Payments under review'}</button>}
                   </div>
-                  {data.balance_minor < 0 && online && !data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING') && <CustomerJawwalAutomation mode="payment" />}
+                  {data.balance_minor < 0 && online &&
+                    data.payment_submissions.filter((submission) => submission.submission_source === 'CUSTOMER_JAWAL_PAY' && submission.status.toUpperCase() === 'PENDING').length < 3 &&
+                    <CustomerJawwalAutomation mode="payment" />}
                 </div>
                 <CustomerJawwalAutomation mode="setup" />
                 <div className="cp-portal-subsection">
