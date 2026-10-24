@@ -128,6 +128,7 @@ export const LocalPaymentHelper: React.FC = () => {
     const cleanPhone = recipientPhone.replace(/[^0-9]/g, '');
     if (!cleanName) { setError('اكتب اسمًا للخدمة.'); return; }
     if (provider === 'jawwal-pay' && !/^\d{4}$/.test(pin)) { setError('الرقم السري لجوال باي يجب أن يتكوّن من 4 أرقام بالضبط.'); return; }
+    if (provider === 'palpay' && !/^\d{4,8}$/.test(pin)) { setError('أدخل الرقم السري لبال باي (من 4 إلى 8 أرقام).'); return; }
     if (!/^\d{8,15}$/.test(cleanPhone)) { setError('أدخل رقم جوال المستلم بالأرقام فقط.'); return; }
     const cleanSteps = ussdSteps.map((step) => step.trim());
     if (cleanSteps.some((step) => !step || step.length > 80 || step.includes('*') || step.includes('#'))) { setError('اكتب نصًا صالحًا لكل خطوة (حتى 80 حرفًا، دون * أو #).'); return; }
@@ -211,7 +212,7 @@ export const LocalPaymentHelper: React.FC = () => {
   };
 
   const accountKindLabel = (kind: AccountKind) => kind === 'merchant' ? 'تاجر' : 'صديق';
-  const canCreate = useMemo(() => name.trim().length > 0 && (provider === 'palpay' ? /^\\d{4,8}$/.test(pin) : /^\\d{4}$/.test(pin)) && ussdSteps.every((step) => step.trim().length > 0 && step.trim().length <= 80 && !step.includes('*') && !step.includes('#')) && ussdSteps.length <= 10 && /^\\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, provider, pin, ussdSteps, recipientPhone]);
+  const canCreate = useMemo(() => name.trim().length > 0 && (provider === 'palpay' ? /^\d{4,8}$/.test(pin) : /^\d{4}$/.test(pin)) && ussdSteps.every((step) => step.trim().length > 0 && step.trim().length <= 80 && !step.includes('*') && !step.includes('#')) && ussdSteps.length <= 10 && /^\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, provider, pin, ussdSteps, recipientPhone]);
 
   return (
     <>
@@ -310,10 +311,10 @@ export const LocalPaymentHelper: React.FC = () => {
                         <button type="button" aria-pressed={accountKind === 'friend'} onClick={() => setAccountKind('friend')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${accountKind === 'friend' ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-200' : 'border-gray-300 bg-white dark:border-white/15 dark:bg-[#071d1c]'}`}>صديق · 1</button>
                       </div>
                     </fieldset>
-                    {provider === 'jawwal-pay' && <label className="block space-y-1 text-sm font-semibold">
-                      <span>الرقم السري لجوال باي (4 أرقام)</span>
-                      <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="••••" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
-                    </label>}
+                    <label className="block space-y-1 text-sm font-semibold">
+                      <span>{provider === 'jawwal-pay' ? 'الرقم السري لجوال باي (4 أرقام)' : 'الرقم السري لبال باي'}</span>
+                      <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={provider === 'jawwal-pay' ? 4 : 8} pattern={provider === 'jawwal-pay' ? '[0-9]{4}' : '[0-9]{4,8}'} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, provider === 'jawwal-pay' ? 4 : 8))} placeholder="••••" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
+                    </label>
                     <div className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-400/20">
                       <div>
                         <h4 className="font-extrabold">خطوات USSD الإضافية (اختياري)</h4>
