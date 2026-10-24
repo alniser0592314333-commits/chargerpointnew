@@ -159,3 +159,24 @@ export async function getAccountBiometricStatus(accessToken: string): Promise<{ 
   const result = await callEndpoint('status', {}, accessToken);
   return { enrolled: result.enrolled === true, credentialId: typeof result.credentialId === 'string' ? result.credentialId : null, keyAlias: typeof result.keyAlias === 'string' ? result.keyAlias : null };
 }
+
+export async function authorizeJawwalPaymentBiometric(accessToken: string): Promise<{ authorizationId: string; expiresAt: string }> {
+  if (!(await isNativeBiometricAvailable())) throw new Error('BIOMETRIC_NOT_AVAILABLE');
+  const alias = localStorage.getItem('cp_biometric_alias_customer') || '';
+  if (!/^[a-f0-9]{32}$/.test(alias)) throw new Error('BIOMETRIC_NOT_ENROLLED');
+  const challenge = await callEndpoint('jawwal-payment-challenge', {}, accessToken);
+  const en = promptLocale() === 'en';
+  const signed = await NativeBiometric.signChallenge({
+    alias: String(challenge.credentialId).replace(/-/g, ''),
+    challenge: challenge.challenge,
+    title: en ? 'Authorize Jawwal Pay' : 'تأكيد الدفع بالبصمة',
+    subtitle: en ? 'Verify your identity to submit this payment' : 'أكد هويتك بالبصمة لإرسال الدفعة',
+    negativeButtonText: en ? 'Cancel' : 'إلغاء',
+  });
+  const verified = await callEndpoint('jawwal-payment-verify', {
+    challengeId: challenge.challengeId,
+    credentialId: challenge.credentialId,
+    signature: signed.signature,
+  }, accessToken);
+  return { authorizationId: String(verified.authorizationId), expiresAt: String(verified.expiresAt) };
+}
