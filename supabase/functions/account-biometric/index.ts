@@ -328,6 +328,36 @@ Deno.serve(async (req: Request) => {
       const challenge = await createChallenge(identity,"jawwal-payment",cred.id);
       return challenge ? reply(200,{ok:true,...challenge,credentialId:cred.key_alias}) : reply(503,{ok:false,error:"CHALLENGE_UNAVAILABLE"});
     }
+    if (action === "jawwal-payment-failure") {
+      const identity = await getAuthenticatedIdentity();
+      const challengeId = normalize(input.challengeId,64);
+      const credentialId = normalize(input.credentialId,64);
+      if (!identity || identity.type !== "customer" || !challengeId || !credentialId) {
+        return reply(400,{ok:false,error:"INVALID_REQUEST"});
+      }
+      const {data: guard} = await admin.from("customer_jawwal_biometric_guard")
+        .select("locked_until").eq("customer_id",identity.id).maybeSingle();
+      if (guard?.locked_until && new Date(guard.locked_until).getTime()>Date.now()) {
+        return reply(423,{ok:false,error:"JAWJAL_BIOMETRIC_LOCKED",lockedUntil:guard.locked_until});
+      }
+      const consumed = await consumeAndVerify(challengeId,"prompt-failed","jawwal-payment");
+      if (!consumed || consumed.challenge.auth_user_id !== identity.uid || consumed.challenge.subject_id !== identity.id) {
+        return reply(409,{ok:false,error:"BIOMETRIC_CHALLENGE_EXPIRED"});
+      }
+      const {data: cred} = await admin.from("account_biometric_credentials").select("id,key_alias")
+        .eq("account_type","customer").eq("subject_id",identity.id).eq("auth_user_id",identity.uid)
+        .is("revoked_at",null).maybeSingle();
+      if (!cred || cred.key_alias !== credentialId || consumed.challenge.credential_id !== cred.id) {
+        return reply(401,{ok:false,error:"BIOMETRIC_CREDENTIAL_MISMATCH"});
+      }
+      const {data: failure,error: failureError} = await admin.rpc(
+        "record_customer_jawwal_biometric_failure",
+        {p_customer_id:identity.id},
+      );
+      if (failureError || !failure) return reply(503,{ok:false,error:"BIOMETRIC_GUARD_UNAVAILABLE"});
+      const lockedUntil = typeof failure.lockedUntil === "string" ? failure.lockedUntil : null;
+      return reply(200,{ok:true,attemptsRemaining:Number(failure.attemptsRemaining ?? 0),lockedUntil});
+    }
     if (action === "jawwal-payment-verify") {
       const identity = await getAuthenticatedIdentity();
       const challengeId = normalize(input.challengeId,64);
