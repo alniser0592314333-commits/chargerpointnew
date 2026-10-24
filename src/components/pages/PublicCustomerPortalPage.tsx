@@ -919,7 +919,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                     {(pendingReviewMinor > 0 || data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING')) &&
                       <button type="button" className="cp-portal-pending-payment" onClick={() => setActiveTab('finance')}><span className="cp-portal-pending-payment__dot" aria-hidden="true" />{isAr ? 'دفعات قيد المراجعة' : 'Payments under review'}</button>}
                   </div>
-                  {data.balance_minor < 0 && online && serverAvailable &&
+                  {online && serverAvailable &&
                     (typeof data.pending_jawwal_payments_count === 'number'
                       ? data.pending_jawwal_payments_count
                       : 3) < 3 &&
