@@ -130,7 +130,6 @@ export const LocalPaymentHelper: React.FC = () => {
     if (provider === 'jawwal-pay' && !/^\d{4}$/.test(pin)) { setError('الرقم السري لجوال باي يجب أن يتكوّن من 4 أرقام بالضبط.'); return; }
     if (!/^\d{8,15}$/.test(cleanPhone)) { setError('أدخل رقم جوال المستلم بالأرقام فقط.'); return; }
     const cleanSteps = ussdSteps.map((step) => step.trim());
-    if (provider === 'palpay' && (cleanSteps.length !== 1 || !cleanSteps[0])) { setError('أدخل الرقم السري لبال باي كخطوة واحدة.'); return; }
     if (cleanSteps.some((step) => !step || step.length > 80 || step.includes('*') || step.includes('#'))) { setError('اكتب نصًا صالحًا لكل خطوة (حتى 80 حرفًا، دون * أو #).'); return; }
     if (cleanSteps.length > 10) { setError('الحد الأقصى 10 خطوات إضافية.'); return; }
     const next = [...services, {
@@ -138,7 +137,7 @@ export const LocalPaymentHelper: React.FC = () => {
       provider,
       name: cleanName,
       accountKind,
-      pin: provider === 'jawwal-pay' ? pin : '',
+      pin,
       recipientPhone: cleanPhone,
       ussdSteps: cleanSteps,
       createdAt: Date.now(),
@@ -196,7 +195,7 @@ export const LocalPaymentHelper: React.FC = () => {
             return;
           }
         }
-        const configuredSteps = service.provider === 'palpay' ? [...(service.ussdSteps || []), '1', '__AUTO_OK__'] : (service.ussdSteps || []);
+        const configuredSteps = service.provider === 'palpay' ? [service.pin, ...(service.ussdSteps || []), '1', '__AUTO_OK__'] : (service.ussdSteps || []);
         await NativePaymentHelper.placeCall({ code, steps: configuredSteps });
         setNotice((service.ussdSteps || []).length > 0 ? 'بدأ الاتصال. سيحاول الهاتف إدخال الخطوات المحفوظة تلقائيًا؛ راقب الشاشة وتأكد من نتيجة العملية.' : 'تم طلب بدء الاتصال. أكمل أي خطوات تظهر في شاشة USSD.');
       } else {
@@ -292,7 +291,7 @@ export const LocalPaymentHelper: React.FC = () => {
                 ) : (
                   <form onSubmit={(event) => void createService(event)} className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-white/10">
                     <h3 className="font-extrabold">إضافة خدمة دفع جديدة</h3>
-                    <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">اختر طريقة الدفع. لبال باي أدخل الرقم السري كخطوة واحدة، وسيُدخل التطبيق الرقم 1 ويضغط موافق تلقائيًا حسب النوافذ التي يدعمها الهاتف.</p>
+                    <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">اختر طريقة الدفع. الرقم السري حقل مستقل، أما خطوات USSD الإضافية فاختيارية؛ يمكنك حفظ الخدمة دونها أو إضافة عدة خطوات.</p>
                     <fieldset className="space-y-2">
                       <legend className="text-sm font-semibold">طريقة الدفع</legend>
                       <div className="grid grid-cols-2 gap-2">
@@ -317,8 +316,8 @@ export const LocalPaymentHelper: React.FC = () => {
                     </label>}
                     <div className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-400/20">
                       <div>
-                        <h4 className="font-extrabold">{provider === 'palpay' ? 'الرقم السري لبال باي' : 'خطوات USSD الإضافية (اختياري)'}</h4>
-                        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">اكتب النص الذي تريد إدخاله في كل نافذة بعد بدء الاتصال. مثال: 1. اتركها فارغة إذا لم توجد خطوات.</p>
+                        <h4 className="font-extrabold">خطوات USSD الإضافية (اختياري)</h4>
+                        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">أضف فقط الخطوات التي تريد تعبئتها تلقائيًا بعد بدء الاتصال. اتركها فارغة إذا أردت إدخال كل ما بعدها يدويًا.</p>
                       </div>
                       {ussdSteps.map((step, index) => (
                         <div key={index} className="flex items-start gap-2">
@@ -329,7 +328,8 @@ export const LocalPaymentHelper: React.FC = () => {
                           <button type="button" onClick={() => setUssdSteps((current) => current.filter((_, i) => i !== index))} className="mt-6 rounded-lg p-2 text-red-600 hover:bg-red-50" aria-label={'حذف الخطوة ' + (index + 1)}><Trash2 size={17} /></button>
                         </div>
                       ))}
-                      {ussdSteps.length < 10 && <button type="button" onClick={() => setUssdSteps((current) => [...current, ''])} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 px-3 py-2 text-sm font-bold text-emerald-700 dark:text-emerald-300"><Plus size={16} /> إضافة خطوة</button>}
+                      {ussdSteps.length < 10 && {ussdSteps.length === 0 && <p className="text-xs text-gray-500 dark:text-[#a4cac2]">لا توجد خطوات تلقائية إضافية.</p>}
+                      <button type="button" onClick={() => setUssdSteps((current) => [...current, ''])} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-emerald-500 px-3 py-2 text-sm font-bold text-emerald-700 dark:text-emerald-300"><Plus size={16} /> إضافة خطوة اختيارية</button>}
                     </div>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>رقم جوال المستلم</span>
