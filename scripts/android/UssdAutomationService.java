@@ -38,9 +38,16 @@ public class UssdAutomationService extends AccessibilityService {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             String encrypted = prefs.getString("pending_steps_encrypted", null);
             if (encrypted == null) return;
+            if (System.currentTimeMillis() - prefs.getLong("pending_steps_created_at", 0) > 120000) {
+                prefs.edit().remove("pending_steps_encrypted").remove("pending_step_index").remove("pending_steps_created_at").remove("last_dialog_signature").apply();
+                return;
+            }
             JSONArray steps = new JSONArray(decrypt(encrypted));
             int index = prefs.getInt("pending_step_index", 0);
-            if (index >= steps.length()) return;
+            if (index >= steps.length()) {
+                prefs.edit().remove("pending_steps_encrypted").remove("pending_step_index").remove("pending_steps_created_at").remove("last_dialog_signature").apply();
+                return;
+            }
             AccessibilityNodeInfo root = getRootInActiveWindow();
             if (root == null) return;
 
