@@ -738,13 +738,6 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
           {/* Payment form and companion illustration */}
           <div className="payment-portal-layout">
           <form onSubmit={submit} className="payment-portal-form mx-auto w-full max-w-xl space-y-4">
-            <button
-              type="submit"
-              disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/15 bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-300/15 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
-            >
-              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإيصال…' : 'Sending receipt…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إيصال الدفع' : 'Send Payment Receipt'}</span></>}
-            </button>
             {error && (
               <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-sm leading-5 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -762,8 +755,11 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             <section className="rounded-[1.75rem] border border-white/90 bg-white/90 p-4 shadow-2xl shadow-slate-900/5 backdrop-blur-xl transition-colors duration-300 dark:border-white/10 dark:bg-[#101e21]/95 dark:shadow-black/25 sm:p-6">
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div>
-                  <h1 className="text-base font-extrabold text-slate-900 dark:text-slate-50">{isAr ? 'إشعار الدفع' : 'Payment notification'}</h1>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{isAr ? 'اختار وسيلة الدفع وأرفق صورة الإيصال.' : 'Choose a payment method and attach the receipt.'}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-teal-100 px-2 text-[11px] font-extrabold text-teal-800 dark:bg-teal-900/60 dark:text-teal-200">1</span>
+                    <h1 className="text-base font-extrabold text-slate-900 dark:text-slate-50">{isAr ? 'التحويل البنكي أو المحفظة' : 'Bank transfer or digital wallet'}</h1>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{isAr ? 'حوّل المبلغ، ثم اختر وسيلة التحويل وأرفق الإيصال لإرساله إلى الإدارة للمراجعة.' : 'Transfer the amount, then select the transfer method and attach your receipt for admin review.'}</p>
                 </div>
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300">
                   <ShieldCheck className="h-5 w-5" />
@@ -868,6 +864,15 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
               </p>
             </section>
 
+            <button
+              type="submit"
+              disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/15 bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-300/15 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
+            >
+              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإيصال…' : 'Sending receipt…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إيصال الدفع' : 'Send Payment Receipt'}</span></>}
+            </button>
+
+
             </form>
           <aside className="payment-portal-visual" aria-label={isAr ? "خدمات نقطة الشحن" : "Charging Point service information"}>
             <div className="payment-portal-visual-art" aria-hidden="true">
@@ -888,7 +893,20 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             <div className="payment-portal-visual-points"><span><CheckCircle2 className="h-4 w-4" />{isAr ? "ثلاث وسائل تحويل متاحة" : "Three transfer methods"}</span><span><ShieldCheck className="h-4 w-4" />{isAr ? "اعتماد بعد مراجعة الإيصال" : "Receipt review before approval"}</span></div>
           </aside>
           </div>
-          {customer && !order && <div className="mx-auto mt-5 w-full max-w-xl"><CustomerJawwalAutomation mode="payment" /></div>}
+          {customer && !order && (
+            <section aria-labelledby="jawwal-payment-method-title" className="mx-auto mt-6 w-full max-w-xl overflow-hidden rounded-[1.75rem] border border-sky-200/80 bg-white/90 shadow-xl shadow-slate-900/5 backdrop-blur-xl dark:border-sky-900/60 dark:bg-[#101e21]/95 dark:shadow-black/25">
+              <div className="flex items-start gap-3 border-b border-sky-100/80 bg-sky-50/70 px-4 py-4 dark:border-sky-900/50 dark:bg-sky-950/25 sm:px-6">
+                <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-sky-100 px-2 text-xs font-extrabold text-sky-800 dark:bg-sky-900/70 dark:text-sky-200">2</span>
+                <div className="min-w-0 flex-1">
+                  <h2 id="jawwal-payment-method-title" className="text-base font-extrabold text-slate-900 dark:text-slate-50">{isAr ? 'الدفع المباشر بواسطة جوال باي' : 'Direct payment with Jawwal Pay'}</h2>
+                  <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{isAr ? 'طريقة دفع مستقلة عن التحويل البنكي وإرسال الإيصال. اضغط أدناه لبدء عملية الدفع عبر جوال باي.' : 'A separate payment option from bank transfer and receipt submission. Continue below to start a Jawwal Pay transaction.'}</p>
+                </div>
+              </div>
+              <div className="p-4 sm:p-6">
+                <CustomerJawwalAutomation mode="payment" />
+              </div>
+            </section>
+          )}
           </>
         )}
       </main>
