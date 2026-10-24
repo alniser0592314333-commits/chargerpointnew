@@ -881,7 +881,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                       <button type="button" className="cp-portal-text-link" onClick={() => setActiveTab('finance')}>{isAr ? 'دفعة قيد المراجعة' : 'Payment under review'}</button>}
                   </div>
                 </div>
-                <CustomerJawwalAutomation />
+                <CustomerJawwalAutomation mode="setup" />
                 <div className="cp-portal-subsection">
                   <div className="flex items-center justify-between gap-3">
                     <div><p className="cp-portal-eyebrow">{isAr ? 'متابعة الشحن' : 'CHARGING UPDATE'}</p><h2 className="mt-1 text-lg font-bold">{isAr ? 'طلبك الحالي' : 'Your current order'}</h2></div>
