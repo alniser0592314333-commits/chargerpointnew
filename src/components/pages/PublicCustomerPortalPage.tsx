@@ -13,6 +13,7 @@ import { useTheme } from '../../theme/themeContext';
 import { config } from '../../config/env';
 import { CustomerPortalNavigation, CustomerPortalMoreView, CustomerPortalTab } from './CustomerPortalNavigation';
 import './customer-portal-dashboard.css';
+import { CustomerJawwalAutomation } from '../customer/CustomerJawwalAutomation';
 
 const ReceiptTextFallback = () => <CreditCard size={17} aria-hidden="true" />;
 const CalendarDaysFallback = () => <History size={18} aria-hidden="true" />;
@@ -880,6 +881,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                       <button type="button" className="cp-portal-text-link" onClick={() => setActiveTab('finance')}>{isAr ? 'دفعة قيد المراجعة' : 'Payment under review'}</button>}
                   </div>
                 </div>
+                <CustomerJawwalAutomation />
                 <div className="cp-portal-subsection">
                   <div className="flex items-center justify-between gap-3">
                     <div><p className="cp-portal-eyebrow">{isAr ? 'متابعة الشحن' : 'CHARGING UPDATE'}</p><h2 className="mt-1 text-lg font-bold">{isAr ? 'طلبك الحالي' : 'Your current order'}</h2></div>
