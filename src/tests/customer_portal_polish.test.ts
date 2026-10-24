@@ -115,7 +115,7 @@ describe('customer portal polish regression contract', () => {
   it('places the payment notification action before the payment form fields', () => {
     const payment = read('src/components/pages/PublicPaymentPage.tsx');
     const form = payment.indexOf('<form onSubmit={submit} className="payment-portal-form');
-    const submit = payment.indexOf("isAr ? 'إرسال إيصال الدفع للمراجعة' : 'Send payment receipt for review'");
+    const submit = payment.indexOf("isAr ? 'إرسال إيصال الدفع' : 'Send Payment Receipt'");
     expect(form).toBeGreaterThan(-1);
     expect(submit).toBeGreaterThan(form);
     expect(submit).toBeLessThan(payment.indexOf('isAr ? \'وسيلة الدفع\' : \'Payment method\'', form));
@@ -141,5 +141,13 @@ describe('customer portal polish regression contract', () => {
     expect(page).toContain('pushSessionKeyRef.current = key');
     expect(push).toContain('queuedStartRequest = request');
     expect(push).toContain('run it after the old attempt ends');
+  });
+
+  it('keeps receipt submission and Jawwal Pay as clearly distinct bilingual actions', () => {
+    const payment = read('src/components/pages/PublicPaymentPage.tsx');
+    const automation = read('src/components/customer/CustomerJawwalAutomation.tsx');
+    expect(payment).toContain("isAr ? 'إرسال إيصال الدفع' : 'Send Payment Receipt'");
+    expect(automation).toContain("t('الدفع بواسطة جوال باي', 'Pay with Jawwal Pay')");
+    expect(automation).not.toContain("t('أتمتة الدفع عبر جوال باي', 'Automated Jawwal Pay')");
   });
 });
