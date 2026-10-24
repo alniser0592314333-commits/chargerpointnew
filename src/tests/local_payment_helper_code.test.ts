@@ -25,3 +25,10 @@ describe('Jawwal B local payment helper code builder', () => {
     expect(() => buildJawwalBCode({ accountKind: 'merchant', pin: '1234', recipientPhone: '0599123456' }, '25*1#')).toThrow();
   });
 });
+
+
+describe('PalPay USSD code', () => {
+  it('builds the requested recipient and amount code', () => {
+    expect(buildPalPayCode({ recipientPhone: '0599123456' }, '12.5')).toBe('*370*1*1*0599123456*12.5#');
+  });
+});
