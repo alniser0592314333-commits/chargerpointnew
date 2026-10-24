@@ -59,20 +59,23 @@ public class UssdAutomationService extends AccessibilityService {
             if (prompt.isEmpty() || prompt.equals(prefs.getString("last_dialog_signature", ""))) return;
             AccessibilityNodeInfo edit = edits.isEmpty() ? null : edits.get(0);
             AccessibilityNodeInfo send = null;
+            AccessibilityNodeInfo approve = null;
             for (AccessibilityNodeInfo button : buttons) {
                 CharSequence label = button.getText();
                 String text = label == null ? "" : label.toString().trim().toLowerCase(java.util.Locale.ROOT);
-                if (text.equals("send") || text.equals("إرسال") || text.equals("ارسال") ||
-                    text.equals("ok") || text.equals("موافق") || text.equals("التالي") || text.equals("continue")) {
-                    send = button; break;
-                }
+                if (text.equals("send") || text.equals("إرسال") || text.equals("ارسال") || text.equals("التالي") || text.equals("continue")) send = button;
+                if (text.equals("ok") || text.equals("موافق") || text.equals("نعم")) approve = button;
             }
-            if (edit == null || send == null) return;
             String value = steps.optString(index, "");
-            Bundle args = new Bundle();
-            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value);
-            if (!edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return;
-            if (!send.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return;
+            if ("__AUTO_OK__".equals(value)) {
+                if (approve == null || !approve.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return;
+            } else {
+                if (edit == null || send == null) return;
+                Bundle args = new Bundle();
+                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value);
+                if (!edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return;
+                if (!send.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return;
+            }
             prefs.edit().putString("last_dialog_signature", prompt).putInt("pending_step_index", index + 1).apply();
             lastActionAt = System.currentTimeMillis();
         } catch (Exception ignored) {

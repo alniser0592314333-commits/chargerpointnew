@@ -94,7 +94,7 @@ public class LocalPaymentHelperPlugin extends Plugin {
     @PluginMethod
     public void placeCall(PluginCall call) {
         String code = call.getString("code");
-        if (code == null || !code.matches("^\\*110\\*[12]\\*\\d{4}\\*\\d{8,15}\\*\\d+(?:\\.\\d{1,2})?\\*1#$")) {
+        if (code == null || !(code.matches("^\\*110\\*[12]\\*\\d{4}\\*\\d{8,15}\\*\\d+(?:\\.\\d{1,2})?\\*1#$") || code.matches("^\\*370\\*1\\*1\\*\\d{8,15}\\*\\d+(?:\\.\\d{1,2})?#$"))) {
             call.reject("رمز الاتصال غير صالح.");
             return;
         }
@@ -103,7 +103,10 @@ public class LocalPaymentHelperPlugin extends Plugin {
         if (steps.length() > 10) { call.reject("الحد الأقصى 10 خطوات USSD."); return; }
         for (int i = 0; i < steps.length(); i++) {
             String step = steps.optString(i, "").trim();
-            if (step.isEmpty() || step.length() > 80 || step.contains("#") || step.contains("*")) { call.reject("نص إحدى خطوات USSD غير صالح."); return; }
+            if (step.isEmpty() || step.length() > 80 || (!"__AUTO_OK__".equals(step) && (step.contains("#") || step.contains("*")))) {
+                call.reject("نص إحدى خطوات USSD غير صالح.");
+                return;
+            }
         }
         if (steps.length() > 0 && !isAutomationServiceEnabled()) { call.reject("فعّل خدمة أتمتة خطوات USSD من إعدادات إمكانية الوصول أولًا."); return; }
         try { prefs().edit().putString("pending_steps_encrypted", encrypt(steps.toString())).putInt("pending_step_index", 0).putLong("pending_steps_created_at", System.currentTimeMillis()).putString("last_dialog_signature", "").apply(); }
@@ -122,7 +125,7 @@ public class LocalPaymentHelperPlugin extends Plugin {
             return;
         }
         String code = call.getString("code");
-        if (code == null || !code.matches("^\\*110\\*[12]\\*\\d{4}\\*\\d{8,15}\\*\\d+(?:\\.\\d{1,2})?\\*1#$")) {
+        if (code == null || !(code.matches("^\\*110\\*[12]\\*\\d{4}\\*\\d{8,15}\\*\\d+(?:\\.\\d{1,2})?\\*1#$") || code.matches("^\\*370\\*1\\*1\\*\\d{8,15}\\*\\d+(?:\\.\\d{1,2})?#$"))) {
             call.reject("رمز الاتصال غير صالح.");
             return;
         }

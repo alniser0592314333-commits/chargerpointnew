@@ -263,7 +263,52 @@ jobs:
               else:
                   code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(LocalPaymentHelperPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
           main.write_text(code)
-          print("Installed encrypted local payment storage and one-tap USSD call plugin.")
+          # Register the AccessibilityService itself; copying only the Capacitor plugin
+          # does not make the automation service appear in Android Accessibility settings.
+          automation_source = Path("scripts/android/UssdAutomationService.java")
+          if not automation_source.is_file():
+              raise SystemExit("USSD accessibility service source is missing")
+          (package_dir / "UssdAutomationService.java").write_text(automation_source.read_text())
+
+          xml_dir = Path("android/app/src/main/res/xml")
+          xml_dir.mkdir(parents=True, exist_ok=True)
+          (xml_dir / "ussd_accessibility_service.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:description="@string/ussd_accessibility_service_description"
+              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:notificationTimeout="100"
+              android:canRetrieveWindowContent="true"
+              android:canPerformGestures="false" />
+          """)
+
+          strings_file = Path("android/app/src/main/res/values/strings.xml")
+          strings = strings_file.read_text(encoding="utf-8")
+          desc_key = "ussd_accessibility_service_description"
+          if f'name="{desc_key}"' not in strings:
+              strings = strings.replace("</resources>", '    <string name="ussd_accessibility_service_description">USSD payment step assistance for Charging Point</string>\n</resources>')
+              strings_file.write_text(strings, encoding="utf-8")
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          manifest_text = manifest.read_text()
+          service_declaration = """        <service
+              android:name="com.chargerpointnew.paymenthelper.UssdAutomationService"
+              android:label="Charging Point - USSD payment assistance"
+              android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+              android:exported="true">
+              <intent-filter>
+                  <action android:name="android.accessibilityservice.AccessibilityService" />
+              </intent-filter>
+              <meta-data
+                  android:name="android.accessibilityservice"
+                  android:resource="@xml/ussd_accessibility_service" />
+          </service>"""
+          if "com.chargerpointnew.paymenthelper.UssdAutomationService" not in manifest_text:
+              if "</application>" not in manifest_text:
+                  raise SystemExit("Could not find application closing tag in AndroidManifest.xml")
+              manifest_text = manifest_text.replace("</application>", service_declaration + "\n    </application>", 1)
+              manifest.write_text(manifest_text)
+          print("Installed encrypted local payment storage, direct USSD calling, and registered the USSD accessibility service.")
           PY
 
       - name: Configure Firebase Cloud Messaging for native push

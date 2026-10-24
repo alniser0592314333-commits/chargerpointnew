@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildJawwalBCode } from '../services/localPaymentHelperCode';
+import { buildJawwalBCode, buildPalPayCode } from '../services/localPaymentHelperCode';
 
 describe('Jawwal B local payment helper code builder', () => {
   it('builds the merchant code with type 2 and puts amount before *1#', () => {
@@ -23,5 +23,12 @@ describe('Jawwal B local payment helper code builder', () => {
     expect(() => buildJawwalBCode({ accountKind: 'merchant', pin: '1234', recipientPhone: '12' }, '25')).toThrow();
     expect(() => buildJawwalBCode({ accountKind: 'merchant', pin: '1234', recipientPhone: '0599123456' }, '0')).toThrow();
     expect(() => buildJawwalBCode({ accountKind: 'merchant', pin: '1234', recipientPhone: '0599123456' }, '25*1#')).toThrow();
+  });
+});
+
+
+describe('PalPay USSD code', () => {
+  it('builds the requested recipient and amount code', () => {
+    expect(buildPalPayCode({ recipientPhone: '0599123456' }, '12.5')).toBe('*370*1*1*0599123456*12.5#');
   });
 });
