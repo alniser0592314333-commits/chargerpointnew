@@ -290,16 +290,27 @@ async function startNativePushNotificationsInternal(
  * A shared promise prevents parallel permission prompts and duplicate native registration.
  */
 let startPromise: Promise<void> | null = null;
+let queuedStartRequest: { variant: AppVariant; tokenProvider: TokenProvider; locale: string } | null = null;
 
 export function startNativePushNotifications(
   variant: AppVariant,
   tokenProvider: TokenProvider,
   locale: string,
 ): Promise<void> {
-  if (startPromise) return startPromise;
+  const request = { variant, tokenProvider, locale };
+  if (startPromise || registrationInFlight) {
+    // If authentication changes while the first native registration is still in
+    // flight, keep the newest session request and run it after the old attempt ends.
+    // Otherwise the old session can win the race and leave the device bound stale.
+    queuedStartRequest = request;
+    return startPromise ?? Promise.resolve();
+  }
   const pending = startNativePushNotificationsInternal(variant, tokenProvider, locale);
   const tracked = pending.finally(() => {
     if (startPromise === tracked) startPromise = null;
+    const queued = queuedStartRequest;
+    queuedStartRequest = null;
+    if (queued) void startNativePushNotifications(queued.variant, queued.tokenProvider, queued.locale);
   });
   startPromise = tracked;
   return tracked;
@@ -314,6 +325,7 @@ export async function stopNativePushNotifications(): Promise<void> {
   const cachedBearer = lastAuthorizedToken;
   lifecycleGeneration += 1;
   startPromise = null;
+  queuedStartRequest = null;
   currentTokenProvider = null;
   latestPushToken = null;
   lastAuthorizedToken = null;

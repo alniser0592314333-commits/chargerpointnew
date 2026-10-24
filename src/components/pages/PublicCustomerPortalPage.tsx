@@ -62,6 +62,7 @@ type PortalData = {
   balance_minor: number;
   orders: PortalOrder[];
   payment_submissions: PortalSubmission[];
+  pending_jawwal_payments_count?: number;
   goals: PortalGoal[];
   cached_at?: string;
 };
@@ -136,13 +137,47 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
+  const pushSessionKeyRef = useRef('');
 
   useEffect(() => {
-    void startNativePushNotifications(
-      'customer',
-      async () => (await customerAuth.auth.getSession()).data.session?.access_token ?? null,
-      locale,
-    );
+    let active = true;
+    const tokenProvider = async () => (await customerAuth.auth.getSession()).data.session?.access_token ?? null;
+    const sessionKey = (accessToken: string) => {
+      try {
+        const part = accessToken.split('.')[1];
+        const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+        const claims = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+        return typeof claims.sub === 'string' && typeof claims.session_id === 'string'
+          ? claims.sub + ':' + claims.session_id
+          : '';
+      } catch { return ''; }
+    };
+    const register = (accessToken: string | null | undefined, force = false) => {
+      if (!active || !accessToken) return;
+      const key = sessionKey(accessToken);
+      if (!key || (!force && key === pushSessionKeyRef.current)) return;
+      pushSessionKeyRef.current = key;
+      void startNativePushNotifications('customer', tokenProvider, locale);
+    };
+    const { data: authListener } = customerAuth.auth.onAuthStateChange((event, session) => {
+      // Defer auth work out of Supabase's callback to avoid auth-lock re-entrancy.
+      queueMicrotask(() => {
+        if (!active) return;
+        if (event === 'SIGNED_OUT') {
+          pushSessionKeyRef.current = '';
+          void stopNativePushNotifications();
+          return;
+        }
+        register(session?.access_token);
+      });
+    });
+    void customerAuth.auth.getSession().then(({ data: current }) => {
+      if (active) register(current.session?.access_token, true);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
   }, [locale, token]);
 
   const handleSignOut = async () => {
@@ -884,9 +919,17 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                     {(pendingReviewMinor > 0 || data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING')) &&
                       <button type="button" className="cp-portal-pending-payment" onClick={() => setActiveTab('finance')}><span className="cp-portal-pending-payment__dot" aria-hidden="true" />{isAr ? 'دفعات قيد المراجعة' : 'Payments under review'}</button>}
                   </div>
-                  {data.balance_minor < 0 && online &&
-                    data.payment_submissions.filter((submission) => submission.submission_source === 'CUSTOMER_JAWAL_PAY' && submission.status.toUpperCase() === 'PENDING').length < 3 &&
-                    <CustomerJawwalAutomation mode="payment" />}
+                  {data.balance_minor < 0 && online && serverAvailable &&
+                    (typeof data.pending_jawwal_payments_count === 'number'
+                      ? data.pending_jawwal_payments_count
+                      : 3) < 3 &&
+                    <CustomerJawwalAutomation mode="payment" onSubmissionCreated={() => {
+                      setData((current) => current ? {
+                        ...current,
+                        pending_jawwal_payments_count: Math.min(3, (current.pending_jawwal_payments_count ?? 0) + 1),
+                      } : current);
+                      void load(false, true);
+                    }} />}
                 </div>
                 <CustomerJawwalAutomation mode="setup" />
                 <div className="cp-portal-subsection">

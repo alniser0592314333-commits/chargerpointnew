@@ -604,43 +604,57 @@ Deno.serve(async (request: Request) => {
       });
       if (projectionError || !projection) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
 
-      // Manual admin-entered payments share the canonical submission lifecycle, but
-      // must display their actual pending amount and rejection reason to this verified customer.
-      const { data: manualRows, error: manualError } = await admin.from("qr_payment_submissions")
-        .select("id,amount_minor,status,payment_method,created_at,reviewed_at,note,rejection_reason")
+      // Read the bounded customer-facing history with its true source and IDs. The
+      // SQL QR projection intentionally omits source/IDs, which made the client count
+      // zero pending Jawwal requests and could incorrectly leave the action enabled.
+      const { data: submissionRows, error: submissionError } = await admin.from("qr_payment_submissions")
+        .select("id,amount_minor,status,payment_method,created_at,reviewed_at,note,rejection_reason,submission_source,payment_id")
         .eq("customer_id", link.customer_id)
-        .eq("submission_source", "ADMIN_MANUAL")
         .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
         .limit(10);
-      if (manualError) {
-        console.error("Customer manual payment history could not be loaded");
+      const { count: pendingJawwalCount, error: pendingCountError } = await admin.from("qr_payment_submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("customer_id", link.customer_id)
+        .eq("submission_source", "CUSTOMER_JAWAL_PAY")
+        .eq("status", "PENDING");
+      if (submissionError || pendingCountError || pendingJawwalCount === null) {
+        console.error("Customer payment history or pending Jawwal count could not be loaded");
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       }
-      // The public SQL projection intentionally omits submission IDs. Manual entries use
-      // CASH (customer QR only permits the supported wallet/bank methods), so remove their
-      // projection-only placeholders and append the authoritative, ID-backed rows.
-      const existingSubmissions = Array.isArray(projection.payment_submissions)
-        ? projection.payment_submissions.filter((row: { payment_method?: string }) => String(row.payment_method || "").toUpperCase() !== "CASH")
-        : [];
-      projection.payment_submissions = [
-        ...existingSubmissions,
-        ...(manualRows ?? []).map((row: {
-          id: string; amount_minor: number; status: string; payment_method: string;
-          created_at: string; reviewed_at: string | null; note: string | null; rejection_reason: string | null;
-        }) => ({
-          id: row.id,
-          submission_source: "ADMIN_MANUAL",
-          status: row.status,
-          payment_method: row.payment_method,
-          created_at: row.created_at,
-          reviewed_at: row.reviewed_at,
-          amount_minor: Number(row.amount_minor),
-          note: row.note,
-          rejection_reason: row.rejection_reason,
-        })),
-      ].sort((a: { created_at: string }, b: { created_at: string }) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      ).slice(0, 10);
+
+      const approvedPaymentIds = (submissionRows ?? [])
+        .filter((row: { status: string; payment_id: string | null }) => row.status === "APPROVED" && row.payment_id)
+        .map((row: { payment_id: string }) => row.payment_id);
+      const paymentAmounts = new Map<string, number>();
+      if (approvedPaymentIds.length) {
+        const { data: linkedPayments, error: linkedPaymentError } = await admin.from("payments")
+          .select("id,amount_minor").in("id", approvedPaymentIds);
+        if (linkedPaymentError || !linkedPayments) {
+          console.error("Approved customer payment amounts could not be loaded");
+          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        }
+        for (const payment of linkedPayments) paymentAmounts.set(String(payment.id), Number(payment.amount_minor));
+      }
+
+      projection.payment_submissions = (submissionRows ?? []).map((row: {
+        id: string; amount_minor: number; status: string; payment_method: string;
+        created_at: string; reviewed_at: string | null; note: string | null;
+        rejection_reason: string | null; submission_source: string; payment_id: string | null;
+      }) => ({
+        id: row.id,
+        submission_source: row.submission_source,
+        status: row.status,
+        payment_method: row.payment_method,
+        created_at: row.created_at,
+        reviewed_at: row.reviewed_at,
+        amount_minor: row.status === "APPROVED"
+          ? (row.payment_id && paymentAmounts.has(row.payment_id) ? paymentAmounts.get(row.payment_id)! : Number(row.amount_minor))
+          : Number(row.amount_minor),
+        note: row.note,
+        rejection_reason: row.rejection_reason,
+      }));
+      projection.pending_jawwal_payments_count = Number(pendingJawwalCount);
 
       const version = await snapshotVersion(projection);
       if (knownVersion(input.knownVersion) === version) {
