@@ -147,7 +147,7 @@ export const LocalPaymentHelper: React.FC = () => {
       setServices(next);
       setExpandedId(next[next.length - 1].id);
       resetForm();
-      if (Capacitor.isNativePlatform() && cleanSteps.length > 0) {
+      if (Capacitor.isNativePlatform() && (provider === 'palpay' || cleanSteps.length > 0)) {
         try {
           const status = await NativePaymentHelper.isAutomationEnabled();
           if (!status.enabled) {
@@ -187,7 +187,7 @@ export const LocalPaymentHelper: React.FC = () => {
     setBusy(true);
     try {
       if (Capacitor.isNativePlatform()) {
-        if ((service.ussdSteps || []).length > 0) {
+        if (service.provider === 'palpay' || (service.ussdSteps || []).length > 0) {
           const status = await NativePaymentHelper.isAutomationEnabled();
           if (!status.enabled) {
             await NativePaymentHelper.openAccessibilitySettings();
@@ -197,7 +197,7 @@ export const LocalPaymentHelper: React.FC = () => {
         }
         const configuredSteps = service.provider === 'palpay' ? [service.pin, ...(service.ussdSteps || []), '1', '__AUTO_OK__'] : (service.ussdSteps || []);
         await NativePaymentHelper.placeCall({ code, steps: configuredSteps });
-        setNotice((service.ussdSteps || []).length > 0 ? 'بدأ الاتصال. سيحاول الهاتف إدخال الخطوات المحفوظة تلقائيًا؛ راقب الشاشة وتأكد من نتيجة العملية.' : 'تم طلب بدء الاتصال. أكمل أي خطوات تظهر في شاشة USSD.');
+        setNotice(configuredSteps.length > 0 ? 'بدأ الاتصال. سيحاول الهاتف إدخال الرقم السري والخطوات التي اخترتها تلقائيًا؛ راقب الشاشة وتأكد من نتيجة العملية.' : 'تم طلب بدء الاتصال. أكمل أي خطوات تظهر في شاشة USSD.');
       } else {
         // Browser preview can only open the dialer; direct calling is native-APK-only.
         window.location.href = 'tel:' + encodeURIComponent(code);
@@ -211,7 +211,7 @@ export const LocalPaymentHelper: React.FC = () => {
   };
 
   const accountKindLabel = (kind: AccountKind) => kind === 'merchant' ? 'تاجر' : 'صديق';
-  const canCreate = useMemo(() => name.trim().length > 0 && (provider === 'palpay' ? ussdSteps.length === 1 && !!ussdSteps[0].trim() : /^\d{4}$/.test(pin)) && /^\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, provider, pin, ussdSteps, recipientPhone]);
+  const canCreate = useMemo(() => name.trim().length > 0 && (provider === 'palpay' ? /^\\d{4,8}$/.test(pin) : /^\\d{4}$/.test(pin)) && ussdSteps.every((step) => step.trim().length > 0 && step.trim().length <= 80 && !step.includes('*') && !step.includes('#')) && ussdSteps.length <= 10 && /^\\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, provider, pin, ussdSteps, recipientPhone]);
 
   return (
     <>
