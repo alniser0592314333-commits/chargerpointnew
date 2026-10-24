@@ -126,6 +126,9 @@ export const LocalPaymentHelper: React.FC = () => {
     if (!cleanName) { setError('اكتب اسمًا للخدمة.'); return; }
     if (!/^\d{4}$/.test(pin)) { setError('الرقم السري يجب أن يتكوّن من 4 أرقام بالضبط.'); return; }
     if (!/^\d{8,15}$/.test(cleanPhone)) { setError('أدخل رقم جوال المستلم بالأرقام فقط.'); return; }
+    const cleanSteps = ussdSteps.map((step) => step.trim());
+    if (cleanSteps.some((step) => !step || step.length > 80 || step.includes('*') || step.includes('#'))) { setError('اكتب نصًا صالحًا لكل خطوة (حتى 80 حرفًا، دون * أو #).'); return; }
+    if (cleanSteps.length > 10) { setError('الحد الأقصى 10 خطوات إضافية.'); return; }
     const next = [...services, {
       id: makeId(),
       name: cleanName,
