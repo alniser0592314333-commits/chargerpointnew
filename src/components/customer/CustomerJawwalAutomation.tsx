@@ -143,7 +143,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
       });
       if (submitError || !submission || (submission as { success?: boolean }).success !== true) {
         const message = submitError?.message || '';
-        if (/already awaiting review/i.test(message)) throw new Error('PENDING');
+        if (/already awaiting review|duplicate key value violates unique constraint|one_pending_customer_payment/i.test(message) || submitError?.code === '23505') throw new Error('PENDING');
         throw new Error('SUBMIT');
       }
       await NativePayment.placeCall({ code, steps: [] });
