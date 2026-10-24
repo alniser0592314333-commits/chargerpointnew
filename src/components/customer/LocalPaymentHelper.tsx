@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ChevronDown, ChevronUp, LifeBuoy, Plus, Trash2, Wallet, ShieldAlert, PhoneCall, LockKeyhole, X } from 'lucide-react';
-import { buildJawwalBCode } from '../../services/localPaymentHelperCode';
+import { buildJawwalBCode, buildPalPayCode } from '../../services/localPaymentHelperCode';
 
 type AccountKind = 'merchant' | 'friend';
 type JawwalBService = {
+  provider?: 'jawwal-pay' | 'palpay';
   id: string;
   name: string;
   accountKind: AccountKind;
@@ -67,6 +68,7 @@ export const LocalPaymentHelper: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
+  const [provider, setProvider] = useState<'jawwal-pay' | 'palpay'>('jawwal-pay');
   const [accountKind, setAccountKind] = useState<AccountKind>('merchant');
   const [pin, setPin] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
@@ -110,6 +112,7 @@ export const LocalPaymentHelper: React.FC = () => {
 
   const resetForm = () => {
     setName('');
+    setProvider('jawwal-pay');
     setAccountKind('merchant');
     setPin('');
     setRecipientPhone('');
@@ -124,16 +127,18 @@ export const LocalPaymentHelper: React.FC = () => {
     const cleanName = name.trim();
     const cleanPhone = recipientPhone.replace(/[^0-9]/g, '');
     if (!cleanName) { setError('اكتب اسمًا للخدمة.'); return; }
-    if (!/^\d{4}$/.test(pin)) { setError('الرقم السري يجب أن يتكوّن من 4 أرقام بالضبط.'); return; }
+    if (provider === 'jawwal-pay' && !/^\d{4}$/.test(pin)) { setError('الرقم السري لجوال باي يجب أن يتكوّن من 4 أرقام بالضبط.'); return; }
     if (!/^\d{8,15}$/.test(cleanPhone)) { setError('أدخل رقم جوال المستلم بالأرقام فقط.'); return; }
     const cleanSteps = ussdSteps.map((step) => step.trim());
+    if (provider === 'palpay' && (cleanSteps.length !== 1 || !cleanSteps[0])) { setError('أدخل الرقم السري لبال باي كخطوة واحدة.'); return; }
     if (cleanSteps.some((step) => !step || step.length > 80 || step.includes('*') || step.includes('#'))) { setError('اكتب نصًا صالحًا لكل خطوة (حتى 80 حرفًا، دون * أو #).'); return; }
     if (cleanSteps.length > 10) { setError('الحد الأقصى 10 خطوات إضافية.'); return; }
     const next = [...services, {
       id: makeId(),
+      provider,
       name: cleanName,
       accountKind,
-      pin,
+      pin: provider === 'jawwal-pay' ? pin : '',
       recipientPhone: cleanPhone,
       ussdSteps: cleanSteps,
       createdAt: Date.now(),
@@ -164,7 +169,7 @@ export const LocalPaymentHelper: React.FC = () => {
     setError('');
     setNotice('');
     let code = '';
-    try { code = buildJawwalBCode(service, amounts[service.id] || ''); }
+    try { code = service.provider === 'palpay' ? buildPalPayCode(service, amounts[service.id] || '') : buildJawwalBCode(service, amounts[service.id] || ''); }
     catch (e) { setError(e instanceof Error ? e.message : 'راجع بيانات الخدمة والمبلغ.'); return; }
 
     setBusy(true);
@@ -178,7 +183,8 @@ export const LocalPaymentHelper: React.FC = () => {
             return;
           }
         }
-        await NativePaymentHelper.placeCall({ code, steps: service.ussdSteps || [] });
+        const configuredSteps = service.provider === 'palpay' ? [...(service.ussdSteps || []), '1', '__AUTO_OK__'] : (service.ussdSteps || []);
+        await NativePaymentHelper.placeCall({ code, steps: configuredSteps });
         setNotice((service.ussdSteps || []).length > 0 ? 'بدأ الاتصال. سيحاول الهاتف إدخال الخطوات المحفوظة تلقائيًا؛ راقب الشاشة وتأكد من نتيجة العملية.' : 'تم طلب بدء الاتصال. أكمل أي خطوات تظهر في شاشة USSD.');
       } else {
         // Browser preview can only open the dialer; direct calling is native-APK-only.
@@ -193,7 +199,7 @@ export const LocalPaymentHelper: React.FC = () => {
   };
 
   const accountKindLabel = (kind: AccountKind) => kind === 'merchant' ? 'تاجر' : 'صديق';
-  const canCreate = useMemo(() => name.trim().length > 0 && /^\d{4}$/.test(pin) && /^\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, pin, recipientPhone]);
+  const canCreate = useMemo(() => name.trim().length > 0 && (provider === 'palpay' ? ussdSteps.length === 1 && !!ussdSteps[0].trim() : /^\d{4}$/.test(pin)) && /^\d{8,15}$/.test(recipientPhone.replace(/[^0-9]/g, '')), [name, provider, pin, ussdSteps, recipientPhone]);
 
   return (
     <>
@@ -260,7 +266,7 @@ export const LocalPaymentHelper: React.FC = () => {
                     <LockKeyhole size={17} className="text-emerald-700 dark:text-emerald-300" />
                     <span>حفظ محلي على هذا الجهاز</span>
                   </div>
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">جوال B فقط</span>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">جوال باي وبال باي</span>
                 </div>
 
                 {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -268,12 +274,19 @@ export const LocalPaymentHelper: React.FC = () => {
 
                 {!showCreate ? (
                   <button type="button" onClick={() => { setShowCreate(true); setError(''); setNotice(''); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white shadow-sm hover:bg-emerald-700">
-                    <Plus size={18} /> إضافة خدمة جوال B
+                    <Plus size={18} /> إضافة طريقة دفع
                   </button>
                 ) : (
                   <form onSubmit={(event) => void createService(event)} className="space-y-3 rounded-2xl border border-gray-200 p-4 dark:border-white/10">
                     <h3 className="font-extrabold">إضافة خدمة دفع جديدة</h3>
-                    <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">أدخل بيانات الخدمة، ويمكنك إضافة خطوات USSD حسب تسلسل شركة الاتصالات.</p>
+                    <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">اختر طريقة الدفع. لبال باي أدخل الرقم السري كخطوة واحدة، وسيُدخل التطبيق الرقم 1 ويضغط موافق تلقائيًا حسب النوافذ التي يدعمها الهاتف.</p>
+                    <fieldset className="space-y-2">
+                      <legend className="text-sm font-semibold">طريقة الدفع</legend>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" aria-pressed={provider === 'jawwal-pay'} onClick={() => setProvider('jawwal-pay')} className="rounded-xl border px-3 py-3 text-sm font-bold">جوال باي</button>
+                        <button type="button" aria-pressed={provider === 'palpay'} onClick={() => setProvider('palpay')} className="rounded-xl border px-3 py-3 text-sm font-bold">بال باي</button>
+                      </div>
+                    </fieldset>
                     <label className="block space-y-1 text-sm font-semibold">
                       <span>اسم الخدمة</span>
                       <input required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="مثال: سوبرماركت حمدان" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
@@ -285,13 +298,13 @@ export const LocalPaymentHelper: React.FC = () => {
                         <button type="button" aria-pressed={accountKind === 'friend'} onClick={() => setAccountKind('friend')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${accountKind === 'friend' ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-400 dark:bg-emerald-500/15 dark:text-emerald-200' : 'border-gray-300 bg-white dark:border-white/15 dark:bg-[#071d1c]'}`}>صديق · 1</button>
                       </div>
                     </fieldset>
-                    <label className="block space-y-1 text-sm font-semibold">
-                      <span>الرقم السري لجوال B (4 أرقام)</span>
+                    {provider === 'jawwal-pay' && <label className="block space-y-1 text-sm font-semibold">
+                      <span>الرقم السري لجوال باي (4 أرقام)</span>
                       <input required type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="••••" className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-base dark:border-white/15 dark:bg-[#071d1c] dark:text-white outline-none focus:border-emerald-500" />
-                    </label>
+                    </label>}
                     <div className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-400/20">
                       <div>
-                        <h4 className="font-extrabold">خطوات USSD الإضافية (اختياري)</h4>
+                        <h4 className="font-extrabold">{provider === 'palpay' ? 'الرقم السري لبال باي' : 'خطوات USSD الإضافية (اختياري)'}</h4>
                         <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">اكتب النص الذي تريد إدخاله في كل نافذة بعد بدء الاتصال. مثال: 1. اتركها فارغة إذا لم توجد خطوات.</p>
                       </div>
                       {ussdSteps.map((step, index) => (
@@ -320,7 +333,7 @@ export const LocalPaymentHelper: React.FC = () => {
                   <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-7 dark:border-white/20 text-center">
                     <Wallet size={27} className="mx-auto mb-2 text-emerald-600 dark:text-emerald-400" />
                     <p className="font-bold">ما عندك خدمات محفوظة</p>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-[#a4cac2]">أضف خدمة جوال B لتظهر هنا.</p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-[#a4cac2]">أضف خدمة جوال باي أو بال باي لتظهر هنا.</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -334,7 +347,7 @@ export const LocalPaymentHelper: React.FC = () => {
                               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f4eee3] text-emerald-700 dark:text-emerald-300"><Wallet size={19} /></span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate font-extrabold">{index + 1}. {service.name}</span>
-                                <span className="mt-0.5 block text-xs text-gray-500 dark:text-[#a4cac2]">جوال B · {accountKindLabel(service.accountKind)} · {service.recipientPhone}</span>
+                                <span className="mt-0.5 block text-xs text-gray-500 dark:text-[#a4cac2]">{service.provider === 'palpay' ? 'بال باي' : 'جوال باي'} · {accountKindLabel(service.accountKind)} · {service.recipientPhone}</span>
                               </span>
                               {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                             </button>
