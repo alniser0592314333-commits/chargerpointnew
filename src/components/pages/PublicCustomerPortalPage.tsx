@@ -884,7 +884,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                         ? <a href={'/pay/' + encodeURIComponent(token)} className="cp-portal-primary-link"><CreditCard size={17} />{isAr ? 'إرسال دفعة' : 'Make a payment'}</a>
                         : <button type="button" className="cp-portal-secondary-button" onClick={() => setActiveTab('finance')}><ReceiptTextFallback />{isAr ? 'تفقد إيصالاتك' : 'View payment receipts'}</button>}
                   </div>
-                  {data.balance_minor < 0 && online && <CustomerJawwalAutomation mode="payment" />}
+                  {data.balance_minor < 0 && online && !data.payment_submissions.some((submission) => submission.status.toUpperCase() === 'PENDING') && <CustomerJawwalAutomation mode="payment" />}
                 </div>
                 <CustomerJawwalAutomation mode="setup" />
                 <div className="cp-portal-subsection">
