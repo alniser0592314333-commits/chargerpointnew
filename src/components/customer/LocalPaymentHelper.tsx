@@ -26,6 +26,8 @@ const NativePaymentHelper = registerPlugin<LocalPaymentHelperPluginApi>('LocalPa
 const CONSENT_KEY = 'cp_local_payment_helper_disclaimer_accepted_v1';
 const WEB_SESSION_KEY = 'cp_local_payment_helper_demo_services_v1';
 const OPEN_EVENT = 'cp-open-local-payment-helper';
+// Production release builds default to manual USSD confirmation to avoid requiring Accessibility access.
+const USSD_AUTOMATION_ENABLED = import.meta.env.VITE_USSD_AUTOMATION_ENABLED === 'true';
 
 function makeId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -148,7 +150,7 @@ export const LocalPaymentHelper: React.FC = () => {
       setServices(next);
       setExpandedId(next[next.length - 1].id);
       resetForm();
-      if (Capacitor.isNativePlatform() && (provider === 'palpay' || cleanSteps.length > 0)) {
+      if (USSD_AUTOMATION_ENABLED && Capacitor.isNativePlatform() && (provider === 'palpay' || cleanSteps.length > 0)) {
         try {
           const status = await NativePaymentHelper.isAutomationEnabled();
           if (!status.enabled) {
@@ -188,7 +190,7 @@ export const LocalPaymentHelper: React.FC = () => {
     setBusy(true);
     try {
       if (Capacitor.isNativePlatform()) {
-        if (service.provider === 'palpay' || (service.ussdSteps || []).length > 0) {
+        if (USSD_AUTOMATION_ENABLED && (service.provider === 'palpay' || (service.ussdSteps || []).length > 0)) {
           const status = await NativePaymentHelper.isAutomationEnabled();
           if (!status.enabled) {
             await NativePaymentHelper.openAccessibilitySettings();
@@ -196,9 +198,9 @@ export const LocalPaymentHelper: React.FC = () => {
             return;
           }
         }
-        const configuredSteps = service.provider === 'palpay' ? [service.pin, ...(service.ussdSteps || []), '1', '__AUTO_OK__'] : (service.ussdSteps || []);
+        const configuredSteps = USSD_AUTOMATION_ENABLED ? (service.provider === 'palpay' ? [service.pin, ...(service.ussdSteps || []), '1', '__AUTO_OK__'] : (service.ussdSteps || [])) : [];
         await NativePaymentHelper.placeCall({ code, steps: configuredSteps });
-        setNotice(configuredSteps.length > 0 ? 'بدأ الاتصال. سيحاول الهاتف إدخال الرقم السري والخطوات التي اخترتها تلقائيًا؛ راقب الشاشة وتأكد من نتيجة العملية.' : 'تم طلب بدء الاتصال. أكمل أي خطوات تظهر في شاشة USSD.');
+        setNotice(configuredSteps.length > 0 ? 'بدأ الاتصال. سيحاول الهاتف إدخال الرقم السري والخطوات التي اخترتها تلقائيًا؛ راقب الشاشة وتأكد من نتيجة العملية.' : 'بدأ الاتصال. أدخل الرقم السري وأكمل خطوات USSD يدويًا على شاشة الهاتف، وتأكد من نتيجة العملية قبل اعتبار الدفع ناجحًا.');
       } else {
         // Browser preview can only open the dialer; direct calling is native-APK-only.
         window.location.href = 'tel:' + encodeURIComponent(code);
@@ -260,7 +262,7 @@ export const LocalPaymentHelper: React.FC = () => {
                     <li>لا يرسل التطبيق هذه الخدمات إلى حسابك أو قاعدة بيانات ChargerPointNew، ولا يزامنها مع أجهزتك الأخرى.</li>
                     <li>على نسخة أندرويد، تحفظ بيانات الخدمة محليًا مشفّرة بمفتاح Android Keystore على هذا الهاتف. حذف التطبيق أو بياناته قد يؤدي إلى فقدان الخدمات نهائيًا.</li>
                     <li>عند بدء الاتصال، قد يظهر رمز USSD في تطبيق الهاتف أو سجل المكالمات؛ لا تستخدم الميزة على جهاز مشترك، واحمِ هاتفك ورقمك السري.</li>
-                    <li>ميزة الأتمتة الاختيارية تحتاج صلاحية إمكانية الوصول، وتستخدمها لمحاولة إدخال الخطوات في نوافذ تطبيق الهاتف فقط. عطّلها من إعدادات أندرويد متى شئت.</li>
+                    <li>في إصدار التثبيت الآمن، تُدخل خطوات USSD يدويًا على شاشة الهاتف؛ لا يحتاج التطبيق إلى صلاحية إمكانية الوصول لأتمتتها.</li>
                     <li>الاتصال لا يثبت نجاح الدفع. راجع تفاصيل USSD ونتيجة مزود الخدمة بنفسك، ولا تؤكد أي عملية لا تعرفها.</li>
                   </ul>
                 </div>
@@ -318,7 +320,7 @@ export const LocalPaymentHelper: React.FC = () => {
                     <div className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-400/20">
                       <div>
                         <h4 className="font-extrabold">خطوات USSD الإضافية (اختياري)</h4>
-                        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">أضف فقط الخطوات التي تريد تعبئتها تلقائيًا بعد بدء الاتصال. اتركها فارغة إذا أردت إدخال كل ما بعدها يدويًا.</p>
+                        <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">يمكنك حفظ الخطوات كتذكير، لكن في إصدار التثبيت الآمن ستدخلها يدويًا على شاشة USSD.</p>
                       </div>
                       {ussdSteps.map((step, index) => (
                         <div key={index} className="flex items-start gap-2">
@@ -376,7 +378,7 @@ export const LocalPaymentHelper: React.FC = () => {
                               <button type="button" disabled={busy} onClick={() => void pay(service)} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0f766e] px-4 py-3 font-extrabold text-white shadow-sm hover:bg-[#115e59] disabled:opacity-50">
                                 <PhoneCall size={18} /> {busy ? 'جارٍ بدء الاتصال…' : 'دفع والاتصال'}
                               </button>
-                              <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">إذا أضفت خطوات، يلزم تفعيل خدمة إمكانية الوصول ليحاول التطبيق إدخالها وإرسالها تلقائيًا. راقب الشاشة؛ قد تختلف النوافذ حسب الهاتف والشبكة، ولا يضمن بدء الاتصال نجاح التحويل.</p>
+                              <p className="text-xs leading-5 text-gray-500 dark:text-[#a4cac2]">أدخل الرقم السري وأي خطوات إضافية يدويًا على شاشة USSD. راقب المستلم والمبلغ وتأكد من رسالة نجاح مزود الخدمة؛ بدء الاتصال وحده لا يثبت نجاح التحويل.</p>
                             </div>
                           )}
                         </article>
