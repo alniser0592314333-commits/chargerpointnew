@@ -119,7 +119,7 @@ jobs:
           print("Android Keystore + strong-biometric signing plugin registered.")
           PY
 
-      - name: Install local payment helper for customer release only
+      - name: Install local Jawwal Pay plugin for customer release only (no Accessibility service)
         if: matrix.variant == 'customer'
         run: |
           python3 - <<'PY'
@@ -127,45 +127,22 @@ jobs:
           import re
 
           source = Path("scripts/android/LocalPaymentHelperPlugin.java")
-          service_source = Path("scripts/android/UssdAutomationService.java")
-          if not source.is_file() or not service_source.is_file():
-              raise SystemExit("Local payment helper or USSD automation source is missing")
+          if not source.is_file():
+              raise SystemExit("Local payment helper source is missing")
           java_root = Path("android/app/src/main/java")
           package_dir = java_root / "com/chargerpointnew/paymenthelper"
           package_dir.mkdir(parents=True, exist_ok=True)
           (package_dir / "LocalPaymentHelperPlugin.java").write_text(source.read_text())
-          (package_dir / "UssdAutomationService.java").write_text(service_source.read_text())
-          xml_dir = Path("android/app/src/main/res/xml")
-          xml_dir.mkdir(parents=True, exist_ok=True)
-          (xml_dir / "ussd_automation_service.xml").write_text(Path("scripts/android/ussd_automation_service.xml").read_text())
-          strings = Path("android/app/src/main/res/values/strings.xml")
-          strings_text = strings.read_text() if strings.exists() else '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
-          if "ussd_automation_service_description" not in strings_text:
-              strings_text = strings_text.replace("</resources>", '    <string name="ussd_automation_service_description">يسمح للتطبيق بإدخال الخطوات التي حفظتها في نوافذ USSD وإرسالها تلقائيًا أثناء عملية الدفع.</string>\n</resources>')
-          strings.write_text(strings_text)
-          manifest = Path("android/app/src/main/AndroidManifest.xml")
-          manifest_text = manifest.read_text()
-          service_decl = '''        <service
-              android:name="com.chargerpointnew.paymenthelper.UssdAutomationService"
-              android:label="أتمتة خطوات USSD"
-              android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-              android:exported="true">
-              <intent-filter>
-                  <action android:name="android.accessibilityservice.AccessibilityService" />
-              </intent-filter>
-              <meta-data
-                  android:name="android.accessibilityservice"
-                  android:resource="@xml/ussd_automation_service" />
-          </service>'''
-          if "com.chargerpointnew.paymenthelper.UssdAutomationService" not in manifest_text:
-              manifest_text = manifest_text.replace("</application>", service_decl + "\n    </application>")
-              manifest.write_text(manifest_text)
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
-          text = manifest.read_text()
-          if "android.permission.CALL_PHONE" not in text:
-              text = text.replace("<application", '    <uses-permission android:name="android.permission.CALL_PHONE" />\n    <application', 1)
-              manifest.write_text(text)
+          manifest_text = manifest.read_text()
+          # Direct USSD calling only: do not declare/register any Accessibility service.
+          manifest_text = re.sub(r'\\s*<service\\b(?=[^>]*com\\.chargerpointnew\\.paymenthelper\\.UssdAutomationService)[\\s\\S]*?</service>', '', manifest_text)
+          manifest.write_text(manifest_text)
+
+          if "android.permission.CALL_PHONE" not in manifest_text:
+              manifest_text = manifest_text.replace("<application", '    <uses-permission android:name="android.permission.CALL_PHONE" />\\n    <application', 1)
+              manifest.write_text(manifest_text)
 
           activities = list(java_root.rglob("MainActivity.java"))
           if len(activities) != 1:
@@ -176,16 +153,16 @@ jobs:
           if import_line not in code:
               anchor = "import com.chargerpointnew.biometric.AccountBiometricPlugin;"
               if anchor in code:
-                  code = code.replace(anchor, anchor + "\n" + import_line, 1)
+                  code = code.replace(anchor, anchor + "\\n" + import_line, 1)
               else:
-                  code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + import_line, 1)
+                  code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\n" + import_line, 1)
           if "registerPlugin(LocalPaymentHelperPlugin.class)" not in code:
               if "void onCreate(" in code:
-                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(LocalPaymentHelperPlugin.class);", code, count=1)
+                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(LocalPaymentHelperPlugin.class);", code, count=1)
               else:
-                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(LocalPaymentHelperPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(LocalPaymentHelperPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
           main.write_text(code)
-          print("Installed local encrypted service storage and direct USSD calling for customer release.")
+          print("Installed encrypted local PIN storage and direct USSD calling; Accessibility service excluded.")
           PY
 
       - name: Set SemVer and Android versionCode
