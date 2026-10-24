@@ -303,7 +303,7 @@ export function startNativePushNotifications(
     // flight, keep the newest session request and run it after the old attempt ends.
     // Otherwise the old session can win the race and leave the device bound stale.
     queuedStartRequest = request;
-    return startPromise;
+    return startPromise ?? Promise.resolve();
   }
   const pending = startNativePushNotificationsInternal(variant, tokenProvider, locale);
   const tracked = pending.finally(() => {
