@@ -16,6 +16,8 @@ type ManualPayment = {
   created_at: string;
   reviewed_at: string | null;
   reviewed_by_name: string | null;
+  payment_method?: string | null;
+  submission_source?: string | null;
 };
 
 const parseAmountMinor = (value: string): number | null => {
@@ -64,6 +66,8 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
         created_at: String(row.created_at ?? ''),
         reviewed_at: row.reviewed_at == null ? null : String(row.reviewed_at),
         reviewed_by_name: row.reviewed_by_name == null ? null : String(row.reviewed_by_name),
+        payment_method: row.payment_method == null ? null : String(row.payment_method),
+        submission_source: row.submission_source == null ? null : String(row.submission_source),
       })).filter((row) => row.id));
     } catch (e) {
       console.error('Could not load manually recorded customer payments', e);
@@ -205,7 +209,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
           : rows.length === 0 ? <p className="py-8 text-center text-sm text-gray-500">{isAr ? 'لا توجد دفعات مسجّلة حتى الآن.' : 'No manually recorded payments yet.'}</p>
           : <div className="divide-y divide-gray-200 dark:divide-[#164238]">{rows.map((row) => <article key={row.id} className="space-y-3 py-4">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0"><p className="text-sm font-bold">{row.customer_name}</p><p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{row.customer_code} · {formatDateTime(row.created_at)}</p>{row.note && <p className="mt-2 text-xs text-gray-600 dark:text-[#b1d4bf]">{row.note}</p>}</div>
+              <div className="min-w-0"><p className="text-sm font-bold">{row.customer_name}</p><p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{row.customer_code} · {formatDateTime(row.created_at)}</p>{row.submission_source === 'CUSTOMER_JAWAL_PAY' && <p className="mt-1 text-xs font-bold text-rose-700 dark:text-rose-300">{isAr ? 'دفع بواسطة جوال باي' : 'Jawwal Pay payment'}</p>}{row.note && <p className="mt-2 text-xs text-gray-600 dark:text-[#b1d4bf]">{row.note}</p>}</div>
               <div className="shrink-0 text-end"><p className="text-base font-bold tabular-nums">{formatCurrency(row.amount_minor)}</p><p className={`mt-1 inline-flex items-center gap-1 text-xs font-semibold ${row.status === 'PENDING' ? 'text-amber-700 dark:text-amber-300' : row.status === 'APPROVED' ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>{row.status === 'PENDING' ? <Clock3 size={13} /> : row.status === 'APPROVED' ? <CheckCircle2 size={13} /> : <XCircle size={13} />}{row.status === 'PENDING' ? (isAr ? 'بانتظار الاعتماد' : 'Pending') : row.status === 'APPROVED' ? (isAr ? 'معتمدة' : 'Approved') : (isAr ? 'مرفوضة' : 'Rejected')}</p></div>
             </div>
             {row.status === 'PENDING' && <div className="space-y-3 border-s-2 border-amber-400 ps-3">
