@@ -499,4 +499,11 @@ jobs:
             files+=("$admin_apk")
           fi
           test "${#files[@]}" -gt 0
-          gh release create "v${APP_VERSION}" "${files[@]}" --title "نقطة الشحن v${APP_VERSION}" --generate-notes
+          tag="v${APP_VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; replacing matching APK assets with the newly built signed APKs."
+            gh release upload "$tag" "${files[@]}" --clobber
+            gh release edit "$tag" --title "نقطة الشحن v${APP_VERSION}"
+          else
+            gh release create "$tag" "${files[@]}" --title "نقطة الشحن v${APP_VERSION}" --generate-notes
+          fi
