@@ -14,9 +14,9 @@ type NativePaymentApi = {
 };
 const NativePayment = registerPlugin<NativePaymentApi>('LocalPaymentHelper');
 
-type Props = { mode: 'setup' | 'payment' | 'reconfigure' };
+type Props = { mode: 'setup' | 'payment' | 'reconfigure'; onSubmissionCreated?: () => void };
 
-export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
+export const CustomerJawwalAutomation: React.FC<Props> = ({ mode, onSubmissionCreated }) => {
   const [isAr, setIsAr] = useState(document.documentElement.lang.toLowerCase().startsWith('ar'));
   const [open, setOpen] = useState(false);
   const [configured, setConfigured] = useState(false);
@@ -147,6 +147,9 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode }) => {
         if (/already awaiting review|duplicate key value violates unique constraint|one_pending_customer_payment|max_three_pending_jawwal_payments|three payments awaiting review/i.test(message) || submitError?.code === '23505' || submitError?.code === '23514') throw new Error('PENDING');
         throw new Error('SUBMIT');
       }
+      // The server has accepted the request even if Android cannot launch the USSD call.
+      // Update the authoritative pending counter before invoking the native dialer.
+      onSubmissionCreated?.();
       await NativePayment.placeCall({ code, steps: [] });
       setNotice(t('تم إرسال طلب الدفع بقيمة ' + normalized + ' شيكل إلى الإدارة، والدفعة الآن بانتظار الاعتماد. أكمل خطوات جوال باي على الهاتف وتأكد من رسالة العملية الرسمية.', 'Payment request for ILS ' + normalized + ' was sent to the administrator and is pending approval. Complete Jawwal Pay on your phone and verify the provider’s official result.'));
       setAmount('');
