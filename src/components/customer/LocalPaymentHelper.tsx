@@ -148,6 +148,19 @@ export const LocalPaymentHelper: React.FC = () => {
       setServices(next);
       setExpandedId(next[next.length - 1].id);
       resetForm();
+      if (Capacitor.isNativePlatform() && cleanSteps.length > 0) {
+        try {
+          const status = await NativePaymentHelper.isAutomationEnabled();
+          if (!status.enabled) {
+            setNotice('تم حفظ الخدمة. يلزم تفعيل صلاحية إمكانية الوصول مرة واحدة لتعبئة خطوات USSD تلقائيًا.');
+            await NativePaymentHelper.openAccessibilitySettings();
+            return;
+          }
+        } catch {
+          setNotice('تم حفظ الخدمة، لكن تعذّر فتح إعدادات إمكانية الوصول. يمكنك تفعيل «أتمتة خطوات USSD» يدويًا من إعدادات الهاتف.');
+          return;
+        }
+      }
       setNotice('تم حفظ الخدمة على هذا الجهاز فقط.');
     } catch {
       setError('تعذّر حفظ الخدمة محليًا. لم يتم إرسال بياناتها إلى خادم.');
