@@ -31,7 +31,7 @@ export const JawwalPayRecipientSettings: React.FC<Props> = ({ locale }) => {
     setError("");
     setSuccess("");
     const clean = phone.replace(/[\\s()-]/g, "");
-    if (!/^05\\d{8}$/.test(clean)) {
+    if (!new RegExp('^05[0-9]{8}$').test(clean)) {
       setError(isAr ? "أدخل رقم جوال فلسطيني صحيحًا بصيغة 05xxxxxxxx." : "Enter a valid Palestinian mobile number in 05xxxxxxxx format.");
       return;
     }
