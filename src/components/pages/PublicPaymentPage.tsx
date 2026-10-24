@@ -862,15 +862,15 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <span>{isAr ? 'يُرسل الإشعار عبر اتصال آمن، ولا يُعتمد الدفع إلا بعد مراجعة الإيصال.' : 'The notification is sent over a secure connection. Payment is credited only after receipt review.'}</span>
               </p>
-            </section>
 
-            <button
-              type="submit"
-              disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/15 bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-300/15 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
-            >
-              {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإيصال…' : 'Sending receipt…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إيصال الدفع' : 'Send Payment Receipt'}</span></>}
-            </button>
+              <button
+                type="submit"
+                disabled={sending || (Boolean(order) && !orderPaymentAllowed)}
+                className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/15 bg-emerald-600 px-5 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-300/15 dark:bg-emerald-500 dark:hover:bg-emerald-600 dark:focus:ring-offset-[#071313]"
+              >
+                {sending ? <><RefreshCw className="h-4 w-4 animate-spin" /><span>{isAr ? 'جارٍ إرسال الإيصال…' : 'Sending receipt…'}</span></> : <><ShieldCheck className="h-4 w-4" /><span>{isAr ? 'إرسال إيصال الدفع' : 'Send Payment Receipt'}</span></>}
+              </button>
+            </section>
 
 
             </form>
