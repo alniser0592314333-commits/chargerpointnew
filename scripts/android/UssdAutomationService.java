@@ -28,6 +28,11 @@ public class UssdAutomationService extends AccessibilityService {
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null || (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.getEventType() != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)) return;
+        CharSequence sourcePackage = event.getPackageName();
+        String packageName = sourcePackage == null ? "" : sourcePackage.toString();
+        if (!(packageName.equals("com.samsung.android.dialer") || packageName.equals("com.android.phone") ||
+              packageName.equals("com.samsung.android.app.telephonyui") || packageName.equals("com.samsung.android.incallui") ||
+              packageName.equals("com.android.server.telecom"))) return;
         if (System.currentTimeMillis() - lastActionAt < 900) return;
         try {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE);
