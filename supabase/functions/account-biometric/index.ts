@@ -213,7 +213,7 @@ Deno.serve(async (req: Request) => {
           if (deviceCredentialError || !deviceCredential) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
           customerId = deviceCredential.subject_id;
         }
-        const isCustomerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
+        const isCustomerUuid = !identifier || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
         if (!isCustomerUuid && /^[0-9a-f]{4}$/i.test(identifier)) {
           // Customer codes are the first four UUID hex characters, matching derive_customer_code().
           const prefix = identifier.toLowerCase();
