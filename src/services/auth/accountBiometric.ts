@@ -5,6 +5,7 @@ export interface AccountBiometricNativePlugin {
   createKey(options: { alias: string }): Promise<{ publicKey: string }>;
   signChallenge(options: { alias: string; challenge: string; title: string; subtitle: string; negativeButtonText: string }): Promise<{ signature: string }>;
   deleteKey(options: { alias: string }): Promise<{ deleted: boolean }>;
+  listAliases(): Promise<{ aliases: string[] }>;
 }
 const NativeBiometric = registerPlugin<AccountBiometricNativePlugin>('AccountBiometric');
 const b64url = (value: Uint8Array) => {
@@ -132,18 +133,53 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
       }
     }
   } catch {}
-  if (!normalizedIdentifier && !/^[a-f0-9]{32}$/.test(localKeyAlias)) throw new Error('BIOMETRIC_IDENTIFIER_REQUIRED');
-  const { challengeId, challenge, credentialId } = await requestLoginChallenge(accountType, normalizedIdentifier, localKeyAlias || undefined);
+
+  // Android Keystore keys can outlive app data. Discover only keys that still
+  // exist in this app's Keystore; localStorage is intentionally not authoritative.
+  let keyAliases: string[] = [];
+  try {
+    const result = await NativeBiometric.listAliases();
+    keyAliases = Array.isArray(result.aliases)
+      ? result.aliases.filter((alias) => /^[a-f0-9]{32}$/.test(alias))
+      : [];
+  } catch {
+    if (/^[a-f0-9]{32}$/.test(localKeyAlias)) keyAliases = [localKeyAlias];
+  }
+  if (/^[a-f0-9]{32}$/.test(localKeyAlias) && keyAliases.includes(localKeyAlias)) {
+    keyAliases = [localKeyAlias, ...keyAliases.filter((alias) => alias !== localKeyAlias)];
+  }
+  if (!normalizedIdentifier && keyAliases.length === 0) throw new Error('BIOMETRIC_KEY_MISSING');
+
+  let challenge: { challengeId: string; challenge: string; credentialId: string };
+  if (normalizedIdentifier) {
+    challenge = await requestLoginChallenge(accountType, normalizedIdentifier, /^[a-f0-9]{32}$/.test(localKeyAlias) ? localKeyAlias : undefined);
+  } else {
+    let matched = false;
+    let lastError: unknown;
+    for (const alias of keyAliases) {
+      try {
+        challenge = await requestLoginChallenge(accountType, '', alias);
+        matched = true;
+        break;
+      } catch (error) {
+        lastError = error;
+        const code = error instanceof Error ? error.message : '';
+        if (code !== 'BIOMETRIC_UNAVAILABLE' && code !== 'INVALID_REQUEST') throw error;
+      }
+    }
+    if (!matched) throw lastError instanceof Error ? lastError : new Error('BIOMETRIC_NOT_ENROLLED');
+  }
+
   // The device-bound strong-biometric signature is the login factor. The BIN
   // remains available for separate sensitive actions, not for this login flow.
   const en = promptLocale() === 'en';
   const { signature } = await NativeBiometric.signChallenge({
-    alias: String(credentialId).replace(/-/g, ''), challenge,
+    alias: String(challenge!.credentialId).replace(/-/g, ''), challenge: challenge!.challenge,
     title: en ? 'Sign in with fingerprint' : 'تسجيل الدخول بالبصمة',
     subtitle: en ? 'Confirm your identity to open your account' : 'أكد هويتك لفتح حسابك',
     negativeButtonText: en ? 'Cancel' : 'إلغاء',
   });
-  return await callEndpoint('login-verify', { challengeId, credentialId, signature });
+  return await callEndpoint('login-verify', { challengeId: challenge!.challengeId, credentialId: challenge!.credentialId, signature });
 }
 export async function revokeAccountBiometric(accessToken: string) {
   const result = await callEndpoint('revoke', {}, accessToken);
