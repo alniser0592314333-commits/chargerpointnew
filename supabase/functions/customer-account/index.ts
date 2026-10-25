@@ -367,9 +367,15 @@ Deno.serve(async (request: Request) => {
       }
 
       if (action === "verify-session") {
-        const resolved = await resolveQr(input.token);
-        if (!resolved || resolved.customer.id !== link.customer_id ||
-          !(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        // QR-based entry still verifies the QR against the authenticated account.
+        // Biometric login may have no locally stored QR after app data is cleared;
+        // in that case the authenticated Supabase user + linked customer + active
+        // server session are the proof. A missing token never bypasses session checks.
+        if (input.token) {
+          const resolved = await resolveQr(input.token);
+          if (!resolved || resolved.customer.id !== link.customer_id) return genericFailure();
+        }
+        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         return respond(200, {
           ok: true, customer_name: link.customer.name,
           terms_version: link.terms_version,
