@@ -94,6 +94,15 @@ describe('customer portal polish regression contract', () => {
     expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "admin" || "$RELEASE_TARGET" == "both" ]]');
   });
 
+  it('allows authenticated biometric session verification without a locally stored QR token', () => {
+    const endpoint = read('supabase/functions/customer-account/index.ts');
+    const page = read('src/components/pages/CustomerAccountPage.tsx');
+    const verifyBlock = endpoint.slice(endpoint.indexOf('if (action === "verify-session")'), endpoint.indexOf('if (action === "accept-terms")'));
+    expect(verifyBlock).toContain('if (input.token)');
+    expect(verifyBlock).toContain('sessionIsActive(link, authenticated.user.id, authenticated.claims)');
+    expect(page).toContain("'verify-session', suppliedIdentifier ? { token: loginToken } : {}");
+  });
+
   it('allows customer fingerprint sign-in after app data is cleared without a username', () => {
     const client = read('src/services/auth/accountBiometric.ts');
     const page = read('src/components/pages/CustomerAccountPage.tsx');

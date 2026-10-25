@@ -449,7 +449,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       const sessionError = await setCustomerSession(session);
       if (sessionError) throw new Error(sessionError);
       const verified = await callCustomerAccount<{ customer_qr_token?: string; customer_code?: string | null; session_expires_at?: string; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus['auth_provider'] }>(
-        'verify-session', { token: loginToken }, session.access_token,
+        'verify-session', suppliedIdentifier ? { token: loginToken } : {}, session.access_token,
       );
       if (verified.error || !verified.data) throw new Error(verified.error || 'BIOMETRIC_SESSION_UNAVAILABLE');
       if (directEntry) setAccountToken(loginToken);
