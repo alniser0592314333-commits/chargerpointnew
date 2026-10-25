@@ -37,7 +37,7 @@ const hasDebtLimitOverridePermission = (): boolean => {
   try {
     const auth = getCurrentAdminAuthorizationContext();
     const actor = auth.requireAuth();
-    return actor.canOverrideDebtLimit || auth.hasPermission('orders:override-debt-limit');
+    return actor.isSuperAdmin || auth.hasPermission('orders:override-debt-limit');
   } catch {
     return false;
   }
