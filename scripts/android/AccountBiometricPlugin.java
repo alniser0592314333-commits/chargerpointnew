@@ -11,6 +11,7 @@ import androidx.lifecycle.Lifecycle;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -138,6 +139,27 @@ public class AccountBiometricPlugin extends Plugin {
       };
       mainHandler.postDelayed(showPrompt[0], 120);
     } catch (Exception ex) { call.reject("Biometric signature operation failed", ex); }
+  }
+
+  @PluginMethod
+  public void listAliases(PluginCall call) {
+    try {
+      KeyStore store = KeyStore.getInstance(STORE);
+      store.load(null);
+      JSArray aliases = new JSArray();
+      java.util.Enumeration<String> names = store.aliases();
+      while (names.hasMoreElements()) {
+        String alias = names.nextElement();
+        // This plugin creates random 128-bit hexadecimal aliases. Returning only
+        // that exact format avoids exposing unrelated Keystore entries.
+        if (validAlias(alias) && store.isKeyEntry(alias)) aliases.put(alias);
+      }
+      JSObject ret = new JSObject();
+      ret.put("aliases", aliases);
+      call.resolve(ret);
+    } catch (Exception ex) {
+      call.reject("Could not inspect biometric keys", ex);
+    }
   }
 
   @PluginMethod
