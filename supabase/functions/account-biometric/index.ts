@@ -197,12 +197,22 @@ Deno.serve(async (req: Request) => {
       const identifier = normalize(input.identifier,256);
       const requestedCredentialId = normalize(input.credentialId,32);
       if (!["customer","admin"].includes(type) ||
-          (!identifier && !(type === "admin" && /^[a-f0-9]{32}$/.test(requestedCredentialId)))) {
+          (!identifier && !/^[a-f0-9]{32}$/.test(requestedCredentialId))) {
         return reply(400,{ok:false,error:"INVALID_REQUEST"});
       }
       let identity: any = null;
       if (type === "customer") {
         let customerId = identifier;
+        if (!identifier) {
+          // After Android app data is cleared, recover the customer identity from
+          // the registered Keystore alias. The alias is only a lookup hint: the
+          // private-key signature of the fresh challenge is still mandatory.
+          const { data: deviceCredential, error: deviceCredentialError } = await admin.from("account_biometric_credentials")
+            .select("subject_id,auth_user_id").eq("account_type","customer")
+            .eq("key_alias",requestedCredentialId).is("revoked_at",null).maybeSingle();
+          if (deviceCredentialError || !deviceCredential) return reply(401,{ok:false,error:"BIOMETRIC_UNAVAILABLE"});
+          customerId = deviceCredential.subject_id;
+        }
         const isCustomerUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
         if (!isCustomerUuid && /^[0-9a-f]{4}$/i.test(identifier)) {
           // Customer codes are the first four UUID hex characters, matching derive_customer_code().
