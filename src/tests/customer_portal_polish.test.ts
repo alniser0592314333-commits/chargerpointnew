@@ -94,6 +94,21 @@ describe('customer portal polish regression contract', () => {
     expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "admin" || "$RELEASE_TARGET" == "both" ]]');
   });
 
+  it('allows customer fingerprint sign-in after app data is cleared without a username', () => {
+    const client = read('src/services/auth/accountBiometric.ts');
+    const page = read('src/components/pages/CustomerAccountPage.tsx');
+    const plugin = read('scripts/android/AccountBiometricPlugin.java');
+    const endpoint = read('supabase/functions/account-biometric/index.ts');
+    expect(client).toContain('NativeBiometric.listAliases()');
+    expect(client).toContain("throw new Error('BIOMETRIC_KEY_MISSING')");
+    expect(plugin).toContain('public void listAliases(PluginCall call)');
+    expect(endpoint).toContain('the registered Keystore alias');
+    expect(endpoint).toContain('.eq("key_alias",requestedCredentialId)');
+    expect(page).toContain("loginWithAccountBiometric('customer', suppliedIdentifier || undefined)");
+    expect(page).toContain('typeof result.subjectId === \'string\'');
+    expect(page).not.toContain("if (!loginToken) { setErrorMessage('INVALID_CREDENTIALS'); return; }");
+  });
+
   it('retries a transient Android biometric availability probe before suppressing the prompt', () => {
     const client = read('src/services/auth/accountBiometric.ts');
     const availability = client.slice(
