@@ -86,6 +86,7 @@ export const AdminManagementPage: React.FC = () => {
   const SYSTEM_PERMISSIONS = [
     { key: "orders:view", labelEn: "View Orders", labelAr: "عرض الطلبات" },
     { key: "orders:create", labelEn: "Create Orders", labelAr: "إنشاء الطلبات" },
+    { key: "orders:override-debt-limit", labelEn: "Allow Orders Beyond Customer Debt Limit", labelAr: "السماح بإنشاء طلبات رغم تجاوز حد الدين" },
     { key: "orders:edit", labelEn: "Edit Orders", labelAr: "تعديل الطلبات" },
     { key: "orders:deliver", labelEn: "Deliver Orders", labelAr: "تسليم الطلبات" },
     { key: "orders:cancel", labelEn: "Cancel Orders", labelAr: "إلغاء الطلبات" },
