@@ -11,6 +11,7 @@ export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'FINAN
 export type Permission =
   | 'orders:view'
   | 'orders:create'
+  | 'orders:override-debt-limit'
   | 'orders:edit'
   | 'orders:renumber-day'
   | 'orders:deliver'
