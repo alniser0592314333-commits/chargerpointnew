@@ -150,7 +150,7 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
   }
   if (!normalizedIdentifier && keyAliases.length === 0) throw new Error('BIOMETRIC_KEY_MISSING');
 
-  let challenge: { challengeId: string; challenge: string; credentialId: string };
+  let challenge: { challengeId: string; challenge: string; credentialId: string } | null = null;
   if (normalizedIdentifier) {
     challenge = await requestLoginChallenge(accountType, normalizedIdentifier, /^[a-f0-9]{32}$/.test(localKeyAlias) ? localKeyAlias : undefined);
   } else {
@@ -170,16 +170,18 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
     if (!matched) throw lastError instanceof Error ? lastError : new Error('BIOMETRIC_NOT_ENROLLED');
   }
 
+  if (!challenge) throw new Error('BIOMETRIC_NOT_ENROLLED');
+
   // The device-bound strong-biometric signature is the login factor. The BIN
   // remains available for separate sensitive actions, not for this login flow.
   const en = promptLocale() === 'en';
   const { signature } = await NativeBiometric.signChallenge({
-    alias: String(challenge!.credentialId).replace(/-/g, ''), challenge: challenge!.challenge,
+    alias: String(challenge.credentialId).replace(/-/g, ''), challenge: challenge.challenge,
     title: en ? 'Sign in with fingerprint' : 'تسجيل الدخول بالبصمة',
     subtitle: en ? 'Confirm your identity to open your account' : 'أكد هويتك لفتح حسابك',
     negativeButtonText: en ? 'Cancel' : 'إلغاء',
   });
-  return await callEndpoint('login-verify', { challengeId: challenge!.challengeId, credentialId: challenge!.credentialId, signature });
+  return await callEndpoint('login-verify', { challengeId: challenge.challengeId, credentialId: challenge.credentialId, signature });
 }
 export async function revokeAccountBiometric(accessToken: string) {
   const result = await callEndpoint('revoke', {}, accessToken);
