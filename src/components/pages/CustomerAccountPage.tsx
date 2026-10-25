@@ -435,13 +435,17 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   };
 
   const submitBiometricLogin = async () => {
-    const loginToken = directEntry ? username.trim() : accountToken;
-    if (!loginToken) { setErrorMessage('INVALID_CREDENTIALS'); return; }
+    // On the direct customer entry screen, fingerprint alone identifies the
+    // enrolled account; username/QR values are not required after app data clear.
+    const suppliedIdentifier = directEntry ? '' : accountToken;
     setBiometricBusy(true); setError('');
     try {
-      const result = await loginWithAccountBiometric('customer', loginToken);
+      const result = await loginWithAccountBiometric('customer', suppliedIdentifier || undefined);
       const session = result.session as { access_token: string; refresh_token: string } | undefined;
       if (!session?.access_token || !session.refresh_token) throw new Error('BIOMETRIC_SESSION_UNAVAILABLE');
+      const loginToken = typeof result.subjectId === 'string' && result.subjectId.length > 0
+        ? result.subjectId : suppliedIdentifier;
+      if (!loginToken) throw new Error('BIOMETRIC_SESSION_UNAVAILABLE');
       const sessionError = await setCustomerSession(session);
       if (sessionError) throw new Error(sessionError);
       const verified = await callCustomerAccount<{ customer_qr_token?: string; customer_code?: string | null; session_expires_at?: string; must_change_password?: boolean; terms_version?: string | null; auth_provider?: EntryStatus['auth_provider'] }>(
@@ -466,7 +470,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       else setMode('portal');
     } catch (e) {
       const code = e instanceof Error ? e.message : 'BIOMETRIC_LOGIN_FAILED';
-      setError((code === 'BIOMETRIC_NOT_ENROLLED' || code === 'BIOMETRIC_UNAVAILABLE')
+      setError((code === 'BIOMETRIC_NOT_ENROLLED' || code === 'BIOMETRIC_UNAVAILABLE' || code === 'BIOMETRIC_KEY_MISSING')
         ? t('لم تُفعّل البصمة لهذا الحساب بعد. سجّل الدخول بكلمة السر أولًا.', 'Fingerprint sign-in is not enabled for this account yet. Sign in with your password first.')
         : code === 'BIOMETRIC_CANCELLED'
           ? t('تم إلغاء التحقق بالبصمة.', 'Biometric verification was cancelled.')
