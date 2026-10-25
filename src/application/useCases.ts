@@ -181,7 +181,7 @@ export class FinalUseCases {
     if (!customer.isActive) throw new InactiveCustomerError();
 
     const currentBalance = await this.deps.customerRepo.getBalance(customerId);
-    const allowed = checkDebtLimit(currentBalance, customer.debtLimitMinor, actor.isSuperAdmin);
+    const allowed = checkDebtLimit(currentBalance, customer.debtLimitMinor, actor.isSuperAdmin || auth.hasPermission('orders:override-debt-limit'));
     if (!allowed) {
       return { success: false, error: 'Debt limit exceeded. Regular admin blocked.', code: 'DEBT_LIMIT_EXCEEDED' };
     }
@@ -543,7 +543,7 @@ export class FinalUseCases {
     if (!customer.isActive) throw new InactiveCustomerError();
 
     const currentBalance = await this.deps.customerRepo.getBalance(customerId);
-    if (!checkDebtLimit(currentBalance, customer.debtLimitMinor, actor.isSuperAdmin)) {
+    if (!checkDebtLimit(currentBalance, customer.debtLimitMinor, actor.isSuperAdmin || auth.hasPermission('orders:override-debt-limit'))) {
       return { success: false, error: 'Debt limit exceeded. Regular admin blocked.', code: 'DEBT_LIMIT_EXCEEDED' };
     }
 
@@ -797,7 +797,7 @@ export class FinalUseCases {
 
     const currentCustomerBalance = await this.deps.customerRepo.getBalance(order.customerId);
     const projectedBalance = currentCustomerBalance - item.totalPriceMinor;
-    if (!checkDebtLimit(projectedBalance, customer.debtLimitMinor, actor.isSuperAdmin)) {
+    if (!checkDebtLimit(projectedBalance, customer.debtLimitMinor, actor.isSuperAdmin || auth.hasPermission('orders:override-debt-limit'))) {
       throw new BusinessRuleViolation(
         `Debt limit exceeded: Customer debt limit of ${customer.debtLimitMinor} minor units exceeded by projected balance ${projectedBalance}`
       );
