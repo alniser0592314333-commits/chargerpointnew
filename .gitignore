@@ -11,3 +11,4 @@ capacitor.config.json
 .vitest/
 *.bak
 temp_fn_def.sql
+.env
