@@ -51,7 +51,6 @@ export const PublicAboutPage: React.FC = () => {
   // Modal & Drawer State
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isAppDownloadToastOpen, setIsAppDownloadToastOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [activeFaqIndex, setActiveFaqIndex] = useState<number | null>(0);
 
@@ -542,7 +541,7 @@ export const PublicAboutPage: React.FC = () => {
                 {!Capacitor.isNativePlatform() && (
                   <button
                     type="button"
-                    onClick={() => setIsAppDownloadToastOpen(true)}
+                    onClick={() => { setIsDrawerOpen(false); window.location.assign('/download'); }}
                     className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
@@ -550,12 +549,12 @@ export const PublicAboutPage: React.FC = () => {
                       <div>
                         <span className="block">{isAr ? 'تنزيل التطبيق' : 'Download App'}</span>
                         <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                          {isAr ? 'تثبيت سريع على الشاشة الرئيسية' : 'Quick add to home screen'}
+                          {isAr ? 'تنزيل النسخة الرسمية مع متابعة التقدم' : 'Official app download with live progress'}
                         </span>
                       </div>
                     </div>
                     <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                      {isAr ? 'قريباً' : 'Soon'}
+                      {isAr ? 'متاح الآن' : 'Available now'}
                     </span>
                   </button>
                 )}
@@ -1324,35 +1323,7 @@ export const PublicAboutPage: React.FC = () => {
         onClose={() => setIsQrModalOpen(false)}
       />
 
-      {/* Temporary PWA/Download App Notice Dialog */}
-      {isAppDownloadToastOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in"
-        >
-          <div className="relative w-full max-w-sm rounded-3xl bg-[#0d2a29] text-white p-6 shadow-2xl border border-white/10 space-y-4 text-center">
-            <div className="h-12 w-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
-              <Download className="h-6 w-6" />
-            </div>
-            <h3 className="text-base font-bold">
-              {isAr ? 'تطبيق نقطة الشحن' : 'Charging Point App'}
-            </h3>
-            <p className="text-xs text-[#a4cac2] leading-relaxed">
-              {isAr
-                ? 'التطبيق الأصلي قيد الاعتماد قريباً على المتاجر. يمكنك الآن إضافته لشاشتك الرئيسية من خيارات المتصفح (إضافة إلى الشاشة الرئيسية) للوصول الفوري بدون تثبيت.'
-                : 'Native app is coming soon. You can add this page to your home screen directly from your browser menu for instant access.'}
-            </p>
-            <button
-              type="button"
-              onClick={() => setIsAppDownloadToastOpen(false)}
-              className="w-full py-2.5 rounded-xl bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700 transition-colors"
-            >
-              {isAr ? 'حسناً، فهمت' : 'Got It'}
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };

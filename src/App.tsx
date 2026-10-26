@@ -33,6 +33,7 @@ import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import { PublicAppDownloadPage } from './components/pages/PublicAppDownloadPage';
 import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
@@ -80,6 +81,7 @@ function isPublicPortalPath(pathname: string): boolean {
   return import.meta.env.VITE_APP_VARIANT !== 'admin' && (
     pathname === '/' ||
     pathname === '/public/about' ||
+    pathname === '/download' ||
     pathname.startsWith('/c/') ||
     pathname.startsWith('/o/') ||
     pathname.startsWith('/pay/') ||
@@ -462,6 +464,9 @@ export default function App() {
     if (import.meta.env.VITE_APP_VARIANT !== 'admin') {
       if (pathname === '/' || pathname === '/public/about') {
         return <PublicAboutPage />;
+      }
+      if (pathname === '/download') {
+        return <PublicAppDownloadPage />;
       }
       if (pathname.startsWith('/c/')) {
         const token = pathname.replace('/c/', '');
