@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, Download, Gauge, HardDrive, Home, MoonStar, RefreshCw, ShieldCheck, Wifi, XCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, Download, Gauge, HardDrive, MoonStar, RefreshCw, ShieldCheck, Wifi, XCircle } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { fetchAppReleasePolicy, type AppReleasePolicy } from '../../services/appReleasePolicy';
 import './public-app-download.css';
@@ -95,13 +95,13 @@ export const PublicAppDownloadPage: React.FC = () => {
       let blob: Blob;
       if (response.body && typeof response.body.getReader === 'function') {
         const reader = response.body.getReader();
-        const chunks: Uint8Array[] = [];
+        const chunks: BlobPart[] = [];
         let loaded = 0;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           if (!value) continue;
-          chunks.push(value);
+          chunks.push(value as BlobPart);
           loaded += value.byteLength;
           setReceived(loaded);
           const now = Date.now();
