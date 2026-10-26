@@ -165,6 +165,43 @@ jobs:
           print("Installed encrypted local PIN storage and direct USSD calling; Accessibility service excluded.")
           PY
 
+      - name: Install native in-app APK updater
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          source = Path("scripts/android/ApkUpdatePlugin.java")
+          if not source.is_file():
+              raise SystemExit("Native APK updater plugin source is missing")
+          java_root = Path("android/app/src/main/java")
+          package_dir = java_root / "com/chargerpointnew/apkupdate"
+          package_dir.mkdir(parents=True, exist_ok=True)
+          (package_dir / "ApkUpdatePlugin.java").write_text(source.read_text())
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          manifest_text = manifest.read_text()
+          if "android.permission.REQUEST_INSTALL_PACKAGES" not in manifest_text:
+              manifest_text = manifest_text.replace("<application", '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application', 1)
+              manifest.write_text(manifest_text)
+
+          activities = list(java_root.rglob("MainActivity.java"))
+          if len(activities) != 1:
+              raise SystemExit(f"Expected exactly one generated MainActivity.java, found {len(activities)}")
+          main = activities[0]
+          code = main.read_text()
+          import_line = "import com.chargerpointnew.apkupdate.ApkUpdatePlugin;"
+          if import_line not in code:
+              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + import_line, 1)
+          if "registerPlugin(ApkUpdatePlugin.class)" not in code:
+              if "void onCreate(" in code:
+                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(ApkUpdatePlugin.class);", code, count=1)
+              else:
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(ApkUpdatePlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
+          main.write_text(code)
+          print("Registered native DownloadManager-based APK updater and Android installer.")
+          PY
+
       - name: Set SemVer and Android versionCode
         env:
           APP_VERSION: ${{ inputs.release_version }}

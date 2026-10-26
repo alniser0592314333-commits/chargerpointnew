@@ -1,10 +1,29 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
-import { Capacitor } from '@capacitor/core';
-import { AlertCircle, CheckCircle2, Clock3, Download, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { AlertCircle, CheckCircle2, Clock3, Download, Gauge, RefreshCw, ShieldAlert, XCircle } from 'lucide-react';
 import { fetchAppReleasePolicy, parseAppVersion, type AppReleaseChannel, type AppReleasePolicy } from '../../services/appReleasePolicy';
 
 const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
+
+type ApkDownloadProgress = { status: string; bytesDownloaded?: number; totalBytes?: number; done: boolean; failed: boolean; reason?: string };
+type ApkUpdaterPlugin = {
+  startDownload(options: { url: string; version: string }): Promise<{ downloadId: string }>;
+  getProgress(options: { downloadId: string }): Promise<ApkDownloadProgress>;
+  install(options: { downloadId: string }): Promise<void>;
+};
+const ApkUpdater = registerPlugin<ApkUpdaterPlugin>('ApkUpdater');
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value < 1024) return value + ' B';
+  const units = ['KB', 'MB', 'GB'];
+  let size = value / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++; }
+  return size.toFixed(size >= 100 ? 0 : 1) + ' ' + units[unit];
+}
+
 type GateState = 'ready' | 'update' | 'blocked';
 
 function readCachedPolicy(channel: AppReleaseChannel, cacheKey: string): AppReleasePolicy | null {
@@ -46,6 +65,11 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   const currentPath = typeof window === 'undefined' ? '' : window.location.pathname;
   const landingRoute = currentPath === '/public/about';
   const [noticeReady, setNoticeReady] = useState(false);
+  const [downloadId, setDownloadId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<ApkDownloadProgress | null>(null);
+  const [downloadError, setDownloadError] = useState('');
+  const [downloadSpeed, setDownloadSpeed] = useState(0);
+  const progressSample = useRef<{ at: number; bytes: number } | null>(null);
   const deadlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
 
@@ -152,14 +176,64 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   // customer QR/login flow. Admin notices appear after the admin UI has painted.
   const showUpdateNotice = state === 'update' && noticeReady && (channel === 'admin' || landingRoute);
   const hardBlock = state === 'blocked';
-  const openUpdate = () => {
+  const startUpdateDownload = async () => {
     const url = policy?.download_url?.trim();
-    if (!url) return;
+    if (!url) { setDownloadError('رابط تنزيل التحديث غير متوفر في إعدادات الإدارة.'); return; }
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'https:') window.open(parsed.toString(), '_blank', 'noopener,noreferrer');
-    } catch {}
+      if (parsed.protocol !== 'https:') { setDownloadError('رابط التحديث غير صالح؛ يجب أن يبدأ بـ HTTPS.'); return; }
+      setDownloadError('');
+      setDownloadId(null);
+      setDownloadProgress({ status: 'starting', bytesDownloaded: 0, totalBytes: -1, done: false, failed: false });
+      setDownloadSpeed(0);
+      progressSample.current = null;
+      const result = await ApkUpdater.startDownload({ url: parsed.toString(), version: policy?.latest_version || 'latest' });
+      setDownloadId(result.downloadId);
+    } catch (error) {
+      setDownloadProgress(null);
+      setDownloadError(error instanceof Error ? error.message : 'تعذر بدء التنزيل. تحقق من الاتصال ورابط الإصدار.');
+    }
   };
+
+  const installDownloadedUpdate = async () => {
+    if (!downloadId || !downloadProgress?.done) return;
+    setDownloadError('');
+    try {
+      await ApkUpdater.install({ downloadId });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('INSTALL_PERMISSION_REQUIRED')) {
+        setDownloadError('فعّل السماح بتثبيت التطبيقات من هذا المصدر في إعدادات أندرويد، ثم ارجع واضغط «تثبيت الآن» مرة أخرى.');
+      } else {
+        setDownloadError(message || 'تعذر فتح شاشة تثبيت أندرويد.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!downloadId || downloadProgress?.done || downloadProgress?.failed) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const progress = await ApkUpdater.getProgress({ downloadId });
+        if (cancelled) return;
+        const bytes = Number(progress.bytesDownloaded || 0);
+        const now = Date.now();
+        const previous = progressSample.current;
+        if (previous && now > previous.at && bytes >= previous.bytes) {
+          setDownloadSpeed((bytes - previous.bytes) * 1000 / (now - previous.at));
+        }
+        progressSample.current = { at: now, bytes };
+        setDownloadProgress(progress);
+        if (progress.failed) setDownloadError('فشل تنزيل ملف التحديث. تحقق من الرابط والإنترنت ثم أعد المحاولة.');
+      } catch (error) {
+        if (!cancelled) setDownloadError(error instanceof Error ? error.message : 'تعذر قراءة تقدم التنزيل.');
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => { void poll(); }, 800);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [downloadId, downloadProgress?.done, downloadProgress?.failed]);
   const dismiss = () => {
     if (!policy) return;
     const deadline = Date.parse(policy.grace_until);
@@ -194,7 +268,33 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
                   <div className="flex gap-2 text-xs leading-5 text-emerald-50/70"><Clock3 className="mt-0.5 h-4 w-4 shrink-0" /><p>آخر موعد لاستخدام الإصدار السابق: {policy ? new Date(policy.grace_until).toLocaleString('ar', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</p></div>
                 </>
               )}
-              {policy?.download_url && <button type="button" onClick={openUpdate} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-4 text-sm font-extrabold text-[#06231d] transition hover:bg-emerald-300 active:scale-[.99]"><Download className="h-4 w-4" />تحديث التطبيق إلى {policy.latest_version}</button>}
+              {policy?.download_url && (
+                <div className="space-y-3">
+                  {downloadProgress && (
+                    <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4" aria-live="polite">
+                      <div className="flex items-center justify-between gap-3 text-sm font-bold">
+                        <span>{downloadProgress.done ? 'اكتمل تنزيل التحديث' : downloadProgress.failed ? 'تعذر إكمال التنزيل' : 'جارٍ تنزيل التحديث…'}</span>
+                        <span className="font-mono">{downloadProgress.done ? '100%' : (downloadProgress.totalBytes && downloadProgress.totalBytes > 0 ? Math.min(99, Math.floor((Number(downloadProgress.bytesDownloaded || 0) / downloadProgress.totalBytes) * 100)) + '%' : '…')}</span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
+                        <div className={`h-full rounded-full transition-all duration-300 ${downloadProgress.failed ? 'bg-red-400' : 'bg-emerald-300'}`} style={{ width: downloadProgress.done ? '100%' : (downloadProgress.totalBytes && downloadProgress.totalBytes > 0 ? Math.min(99, (Number(downloadProgress.bytesDownloaded || 0) / downloadProgress.totalBytes) * 100) + '%' : '35%') }} />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/70">
+                        <span>{formatBytes(Number(downloadProgress.bytesDownloaded || 0))} / {formatBytes(Number(downloadProgress.totalBytes ?? -1))}</span>
+                        {!downloadProgress.done && !downloadProgress.failed && <span className="flex items-center gap-1"><Gauge className="h-3.5 w-3.5" />{formatBytes(downloadSpeed)}/ث</span>}
+                      </div>
+                    </div>
+                  )}
+                  {downloadError && <div role="alert" className="flex gap-2 rounded-xl border border-red-300/20 bg-red-300/5 p-3 text-sm leading-6 text-red-50"><XCircle className="mt-1 h-4 w-4 shrink-0" /><p>{downloadError}</p></div>}
+                  {downloadProgress?.done ? (
+                    <button type="button" onClick={() => void installDownloadedUpdate()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-4 text-sm font-extrabold text-[#06231d] transition hover:bg-emerald-300 active:scale-[.99]"><CheckCircle2 className="h-4 w-4" />تثبيت الآن</button>
+                  ) : downloadProgress && !downloadProgress.failed ? (
+                    <button type="button" disabled className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400/60 px-4 py-4 text-sm font-extrabold text-[#06231d]"><Download className="h-4 w-4 animate-pulse" />جارٍ تنزيل التحديث…</button>
+                  ) : (
+                    <button type="button" onClick={() => void startUpdateDownload()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-4 text-sm font-extrabold text-[#06231d] transition hover:bg-emerald-300 active:scale-[.99]"><Download className="h-4 w-4" />{downloadProgress?.failed ? 'إعادة محاولة التنزيل' : `تحديث التطبيق إلى ${policy.latest_version}`}</button>
+                  )}
+                </div>
+              )}
               {showUpdateNotice && <button type="button" onClick={dismiss} className="w-full rounded-xl border border-white/15 px-4 py-3.5 text-sm font-semibold text-white/80 transition hover:bg-white/5">إخفاء حتى موعد الإلزام</button>}
               {hardBlock && <button type="button" onClick={() => void checkVersion()} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3.5 text-sm font-semibold text-white/85 transition hover:bg-white/5"><RefreshCw className="h-4 w-4" />إعادة التحقق</button>}
               {hardBlock && !policy?.download_url && <p className="text-center text-xs text-white/55">يجب توفير رابط تنزيل HTTPS للإصدار المنشور من إعدادات الإدارة.</p>}
