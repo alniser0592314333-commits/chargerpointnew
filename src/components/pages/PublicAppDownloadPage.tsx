@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, Download, Gauge, HardDrive, Home, MoonStar, RefreshCw, ShieldCheck, Wifi, XCircle } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { fetchAppReleasePolicy, type AppReleasePolicy } from '../../services/appReleasePolicy';
+import './public-app-download.css';
 
 type DownloadState = 'idle' | 'loading-policy' | 'downloading' | 'complete' | 'error';
 
@@ -35,7 +36,6 @@ export const PublicAppDownloadPage: React.FC = () => {
   const [total, setTotal] = useState(-1);
   const [speed, setSpeed] = useState(0);
   const [directFallback, setDirectFallback] = useState(false);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
   const previousRef = useRef<{ bytes: number; at: number }>({ bytes: 0, at: 0 });
   const abortRef = useRef<AbortController | null>(null);
   const [downloadUrl, setDownloadUrl] = useState('');
@@ -84,7 +84,6 @@ export const PublicAppDownloadPage: React.FC = () => {
     setReceived(0);
     setTotal(-1);
     setSpeed(0);
-    setStartedAt(Date.now());
     previousRef.current = { bytes: 0, at: Date.now() };
     setState('downloading');
     try {
