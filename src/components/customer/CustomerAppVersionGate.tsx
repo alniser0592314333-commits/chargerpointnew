@@ -183,6 +183,7 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
       const parsed = new URL(url);
       if (parsed.protocol !== 'https:') { setDownloadError('رابط التحديث غير صالح؛ يجب أن يبدأ بـ HTTPS.'); return; }
       setDownloadError('');
+      setDownloadId(null);
       setDownloadProgress({ status: 'starting', bytesDownloaded: 0, totalBytes: -1, done: false, failed: false });
       setDownloadSpeed(0);
       progressSample.current = null;
