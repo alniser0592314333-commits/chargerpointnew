@@ -1,0 +1,60 @@
+/* Official public APK download experience — mountain, moon and night-sky identity. */
+.cp-download-page{position:relative;isolation:isolate;min-height:100svh;overflow:hidden;background:radial-gradient(ellipse at 50% 5%,#164653 0%,#092631 43%,#04141d 100%);color:#f2f7fa;font-family:Inter,"Noto Sans Arabic","Segoe UI",Tahoma,sans-serif;padding:0 20px 26px}
+.cp-download-page *{box-sizing:border-box}
+.cp-download-stars{position:absolute;inset:0;z-index:-3;opacity:.65;background-image:radial-gradient(1px 1px at 10% 14%,#fff,transparent 2px),radial-gradient(1.5px 1.5px at 23% 31%,#d8f5ff,transparent 2px),radial-gradient(1px 1px at 78% 18%,#fff,transparent 2px),radial-gradient(1px 1px at 88% 42%,#ffdda6,transparent 2px),radial-gradient(1.5px 1.5px at 62% 9%,#fff,transparent 2px),radial-gradient(1px 1px at 42% 24%,#fff,transparent 2px);background-size:370px 300px}
+.cp-download-moon{position:absolute;z-index:-2;top:100px;left:calc(50% - 42px);width:84px;height:84px;border-radius:50%;background:radial-gradient(circle at 35% 32%,#fff5d5,#f3c77e 62%,#ce9251);box-shadow:0 0 35px #e9bf7640,0 0 100px #f0bc6b1c}
+.cp-download-moon span{position:absolute;inset:9px;border-radius:50%;border:1px solid #fff5d566}
+.cp-download-ridge{position:absolute;z-index:-1;bottom:0;left:-5%;width:110%;pointer-events:none}
+.cp-download-ridge-back{height:36%;background:linear-gradient(155deg,#16444d,#0c303a 68%);clip-path:polygon(0 60%,12% 42%,24% 61%,39% 19%,50% 47%,64% 11%,77% 54%,90% 28%,100% 48%,100% 100%,0 100%)}
+.cp-download-ridge-front{height:24%;background:linear-gradient(155deg,#0b3038,#061a23 72%);clip-path:polygon(0 42%,13% 68%,28% 30%,43% 58%,59% 22%,73% 56%,87% 32%,100% 54%,100% 100%,0 100%)}
+.cp-download-header{position:relative;z-index:1;max-width:980px;margin:0 auto;min-height:78px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid #ffffff17}
+.cp-download-brand{display:flex;align-items:center;gap:11px;color:#f2f7fa;text-decoration:none}
+.cp-download-brand-mark{display:grid;place-items:center;width:40px;height:40px;border:1px solid #f3cf8b55;border-radius:14px;color:#f4d69b;background:#ffffff08}
+.cp-download-brand strong,.cp-download-brand small{display:block}
+.cp-download-brand strong{font-size:14px;font-weight:850}
+.cp-download-brand small{margin-top:3px;color:#8daeb9;font-size:9px;letter-spacing:.19em}
+.cp-download-language{border:1px solid #ffffff2b;border-radius:12px;padding:9px 13px;background:#ffffff09;color:#edf6fa;font-size:12px;font-weight:750}
+.cp-download-content{position:relative;z-index:1;width:min(100%,510px);margin:48px auto 0;text-align:center}
+.cp-download-eyebrow{display:inline-flex;align-items:center;gap:7px;color:#f2d39b;font-size:10px;font-weight:850;letter-spacing:.19em}
+.cp-download-app-icon{position:relative;display:grid;place-items:center;width:76px;height:76px;margin:18px auto 17px;border:1px solid #f4d79c66;border-radius:25px;background:linear-gradient(145deg,#1a4d57dd,#082631ed);color:#f4d69b;box-shadow:0 14px 42px #0004,inset 0 1px #ffffff30}
+.cp-download-app-icon span{position:absolute;right:14px;bottom:14px;width:7px;height:7px;border-radius:50%;background:#80e2bd;box-shadow:0 0 12px #80e2bd}
+.cp-download-content h1{margin:0;color:#fff;font-size:clamp(25px,5vw,35px);font-weight:850;letter-spacing:-.04em;line-height:1.35}
+.cp-download-subtitle{max-width:400px;margin:11px auto 0;color:#a8c2cc;font-size:13px;line-height:1.9}
+.cp-download-version{display:flex;align-items:center;justify-content:center;gap:10px;margin:20px auto 23px;color:#a7c0c9;font-size:10px;letter-spacing:.1em}
+.cp-download-version strong{padding:5px 9px;border:1px solid #ffffff20;border-radius:8px;background:#ffffff0b;color:#f4d69b;font-size:12px;letter-spacing:0}
+.cp-download-release-dot{width:6px;height:6px;border-radius:50%;background:#7ce1b6;box-shadow:0 0 9px #7ce1b6}
+.cp-download-panel{padding:21px;text-align:start;border:1px solid #ffffff1c;border-radius:24px;background:linear-gradient(145deg,#0d2d38eF,#071d27f2);box-shadow:0 22px 65px #0003,inset 0 1px #ffffff13;backdrop-filter:blur(18px)}
+.cp-download-panel-title,.cp-download-panel-title>div{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cp-download-panel-title>div{justify-content:flex-start}
+.cp-download-panel-icon{display:grid;place-items:center;width:31px;height:31px;border-radius:10px;background:#ffffff0d;color:#f3d39b}
+.cp-download-panel-title strong{font-size:13px;font-weight:800}
+.cp-download-status{display:inline-flex;align-items:center;gap:6px;color:#9fbac4;font-size:10px;font-weight:700}
+.cp-download-status.is-complete{color:#8de4bb}
+.cp-download-pulse{width:6px;height:6px;border-radius:50%;background:#eec77f;box-shadow:0 0 0 4px #eec77f1c;animation:cp-download-pulse 1.4s infinite}
+.cp-download-progress-track{height:9px;margin-top:22px;overflow:hidden;border-radius:99px;background:#ffffff12;box-shadow:inset 0 1px 2px #0004}
+.cp-download-progress-track span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#b78a4c,#f3d59a 52%,#8de4bb);box-shadow:0 0 16px #d5b47a66;transition:width .2s ease}
+.cp-download-progress-track span.is-complete{background:linear-gradient(90deg,#53c99c,#a6f2ce)}
+.cp-download-percent-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;color:#91adb8;font-size:10px}
+.cp-download-percent-row strong{color:#f5d79c;font-size:15px;font-variant-numeric:tabular-nums}
+.cp-download-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:20px}
+.cp-download-stats>div{display:flex;align-items:flex-start;gap:8px;min-width:0;padding:11px 9px;border:1px solid #ffffff12;border-radius:13px;background:#ffffff06;color:#dfc28e}
+.cp-download-stats>div>span{display:grid;gap:6px;min-width:0;color:#8eabb6;font-size:9px;line-height:1.4}
+.cp-download-stats strong{overflow-wrap:anywhere;color:#eef6f8;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}
+.cp-download-primary{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;min-height:49px;margin-top:19px;border:1px solid #f8dda15c;border-radius:14px;background:linear-gradient(100deg,#b78648,#e6c58b);color:#10262d;font-size:13px;font-weight:900;box-shadow:0 9px 24px #0002;transition:transform .18s,filter .18s}
+.cp-download-primary:hover:not(:disabled){filter:brightness(1.07);transform:translateY(-1px)}
+.cp-download-primary:disabled{cursor:wait;opacity:.82}
+.cp-download-error{display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:11px;border:1px solid #fb929238;border-radius:12px;background:#fb92920d;color:#ffc0c0;font-size:11px;line-height:1.7}
+.cp-download-error svg{margin-top:2px}
+.cp-download-complete{display:flex;align-items:flex-start;gap:10px;margin-top:17px;padding:13px;border:1px solid #8de4bb35;border-radius:13px;background:#8de4bb0c;color:#8de4bb}
+.cp-download-complete strong{display:block;font-size:12px}
+.cp-download-complete p{margin-top:5px;color:#a8c2cc;font-size:11px;line-height:1.8}
+.cp-download-direct{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;color:#f3d59a;font-size:11px;font-weight:750;text-decoration:underline;text-underline-offset:3px}
+.cp-download-notes{margin-top:15px;padding-top:13px;border-top:1px solid #ffffff15;color:#a8c2cc;font-size:11px;line-height:1.8;white-space:pre-wrap}
+.cp-download-security{display:flex;align-items:flex-start;justify-content:center;gap:8px;margin:18px auto 0;color:#8faeb9;font-size:10px;line-height:1.8}
+.cp-download-security svg{flex-shrink:0;margin-top:2px;color:#8de4bb}
+.cp-download-back{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;color:#e5c58f;font-size:12px;font-weight:750;text-decoration:none}
+.cp-download-footer{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:14px;width:min(100%,510px);margin:48px auto 0;padding-top:15px;border-top:1px solid #ffffff16;color:#7998a5;font-size:10px}
+.cp-download-footer span{display:flex;align-items:center;gap:6px}
+@keyframes cp-download-pulse{50%{opacity:.45;box-shadow:0 0 0 7px #eec77f08}}
+@media(max-width:420px){.cp-download-page{padding-inline:14px}.cp-download-content{margin-top:35px}.cp-download-panel{padding:16px}.cp-download-stats{gap:6px}.cp-download-stats>div{padding:9px 6px;gap:5px}.cp-download-stats>div>span{font-size:8px}.cp-download-stats strong{font-size:10px}.cp-download-footer{margin-top:35px}}
+@media(prefers-reduced-motion:reduce){.cp-download-page *{animation:none!important;transition:none!important}}
