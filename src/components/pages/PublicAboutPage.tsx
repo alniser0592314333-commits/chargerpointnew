@@ -51,7 +51,6 @@ export const PublicAboutPage: React.FC = () => {
   // Modal & Drawer State
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isAppDownloadToastOpen, setIsAppDownloadToastOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [activeFaqIndex, setActiveFaqIndex] = useState<number | null>(0);
 
