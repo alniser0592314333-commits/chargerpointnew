@@ -75,9 +75,10 @@ export function parseRoute(pathAndHash: string): { pathname: string; hash: strin
 
 
 function isPublicPortalPath(pathname: string): boolean {
-  // The native admin build must never treat a customer portal URL as a public
-  // entry point. The web build keeps the existing customer QR route behavior.
+  // Public customer entry points are isolated from admin auth/bootstrap.
+  // The native admin build must never treat customer URLs as public routes.
   return import.meta.env.VITE_APP_VARIANT !== 'admin' && (
+    pathname === '/' ||
     pathname === '/public/about' ||
     pathname.startsWith('/c/') ||
     pathname.startsWith('/o/') ||
@@ -153,9 +154,10 @@ export default function App() {
     phase: 'IDLE', percent: 0, completedRows: 0, totalRows: 0, message: '',
   });
   const [currentPath, setCurrentPathState] = useState(() => {
-    return window.location.pathname && window.location.pathname !== '/'
-      ? window.location.pathname
-      : '/app';
+    const pathname = window.location.pathname || '/';
+    // Web root is the public customer landing page; native/admin builds retain /app.
+    if (pathname === '/' && import.meta.env.VITE_APP_VARIANT !== 'admin') return '/';
+    return pathname !== '/' ? pathname : '/app';
   });
 
   // Public QR links must load the isolated customer entry point, never remain inside the admin SPA.
@@ -458,7 +460,7 @@ export default function App() {
     // Public customer routes remain part of the web app, but are compiled out
     // of the dedicated administrator APK.
     if (import.meta.env.VITE_APP_VARIANT !== 'admin') {
-      if (pathname === '/public/about') {
+      if (pathname === '/' || pathname === '/public/about') {
         return <PublicAboutPage />;
       }
       if (pathname.startsWith('/c/')) {
