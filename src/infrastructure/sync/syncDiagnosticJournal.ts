@@ -50,7 +50,7 @@ export function getSyncDiagnosticJournal(): PersistedSyncDiagnosticEvent[] {
 export function installSyncDiagnosticGlobalHandlers(): void {
   if (typeof window === 'undefined') return;
   const marker = '__cpSyncDiagnosticHandlersInstalled';
-  const target = window as Window & { [key: string]: unknown };
+  const target = window as unknown as Window & { [key: string]: unknown };
   if (target[marker]) return;
   target[marker] = true;
 
