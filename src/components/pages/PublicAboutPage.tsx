@@ -21,6 +21,7 @@ import {
   ArrowUpRight,
   Sparkles,
   Download,
+  Smartphone,
   UserCheck,
   ChevronLeft,
   ChevronRight,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
+import { fetchAppReleasePolicy } from '../../services/appReleasePolicy';
 import { AppLogo } from '../qr/AppLogo';
 import { QrScannerModal } from '../qr/QrScannerModal';
 import {
@@ -43,6 +45,8 @@ import {
 import { getAllDeviceTypes, UIDeviceTypeItem } from './dayOrdersStore';
 import './public-about.css';
 
+type DeferredPwaInstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }> };
+
 export const PublicAboutPage: React.FC = () => {
   const { locale, setLocale, isRTL, formatCurrency } = useI18n();
   const { resolvedTheme, toggleTheme, setTheme } = useTheme();
@@ -53,6 +57,69 @@ export const PublicAboutPage: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [activeFaqIndex, setActiveFaqIndex] = useState<number | null>(0);
+  const [deferredPwaPrompt, setDeferredPwaPrompt] = useState<DeferredPwaInstallPrompt | null>(null);
+  const [releaseDownloadUrl, setReleaseDownloadUrl] = useState('');
+  const [isStartingDownload, setIsStartingDownload] = useState(false);
+
+  useEffect(() => {
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredPwaPrompt(event as DeferredPwaInstallPrompt);
+    };
+    const onInstalled = () => setDeferredPwaPrompt(null);
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    void fetchAppReleasePolicy('customer').then(({ policy }) => {
+      if (policy?.download_url) setReleaseDownloadUrl(policy.download_url.trim());
+    }).catch(() => undefined);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const startDirectApkDownload = async () => {
+    let url = releaseDownloadUrl;
+    if (!url) {
+      setIsStartingDownload(true);
+      try {
+        const { policy } = await fetchAppReleasePolicy('customer');
+        url = policy?.download_url?.trim() || '';
+        if (url) setReleaseDownloadUrl(url);
+      } catch { /* Show a simple message below if policy cannot be loaded. */ }
+      setIsStartingDownload(false);
+    }
+    if (!url) {
+      window.alert(isAr ? 'تعذر جلب رابط تنزيل التطبيق. حاول مرة أخرى.' : 'Could not load the app download link. Please try again.');
+      return;
+    }
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:') throw new Error('HTTPS required');
+      // Dropbox's dl=1 parameter requests the file directly instead of its preview page.
+      if (parsed.hostname === 'www.dropbox.com' || parsed.hostname === 'dropbox.com') parsed.searchParams.set('dl', '1');
+      window.location.assign(parsed.toString());
+    } catch {
+      window.alert(isAr ? 'رابط التنزيل غير صالح.' : 'The download link is invalid.');
+    }
+  };
+
+  const installWebsiteAsPwa = async () => {
+    if (deferredPwaPrompt) {
+      await deferredPwaPrompt.prompt();
+      const choice = await deferredPwaPrompt.userChoice;
+      if (choice.outcome === 'accepted') setDeferredPwaPrompt(null);
+      return;
+    }
+    const alreadyInstalled = window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (alreadyInstalled) {
+      window.alert(isAr ? 'الصفحة مثبتة بالفعل على جهازك.' : 'This page is already installed on your device.');
+    } else {
+      window.alert(isAr
+        ? 'لتثبيت الصفحة: افتح قائمة المتصفح ⋮ ثم اختر «إضافة إلى الشاشة الرئيسية» أو «تثبيت التطبيق».'
+        : 'To install this page, open the browser menu ⋮ and choose “Add to Home screen” or “Install app”.');
+    }
+  };
 
   // Business Hours & Live Status State: local settings are used only while offline.
   const getInitialHoursConfig = () =>
@@ -541,15 +608,15 @@ export const PublicAboutPage: React.FC = () => {
                 {!Capacitor.isNativePlatform() && (
                   <button
                     type="button"
-                    onClick={() => { setIsDrawerOpen(false); window.location.assign('/download'); }}
+                    onClick={() => { setIsDrawerOpen(false); void startDirectApkDownload(); }}
                     className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                       <div>
-                        <span className="block">{isAr ? 'تنزيل التطبيق' : 'Download App'}</span>
+                        <span className="block">{isAr ? 'تثبيت التطبيق' : 'Download App'}</span>
                         <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                          {isAr ? 'تنزيل النسخة الرسمية مع متابعة التقدم' : 'Official app download with live progress'}
+                          {isAr ? 'بدء تنزيل ملف APK مباشرة' : 'Start APK download directly'}
                         </span>
                       </div>
                     </div>
@@ -558,7 +625,24 @@ export const PublicAboutPage: React.FC = () => {
                     </span>
                   </button>
                 )}
-
+                {!Capacitor.isNativePlatform() && (
+                  <button
+                    type="button"
+                    onClick={() => { setIsDrawerOpen(false); void installWebsiteAsPwa(); }}
+                    className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="h-5 w-5 text-[#0f766e] dark:text-[#6ee7b7]" />
+                      <div>
+                        <span className="block">{isAr ? 'تثبيت الصفحة' : 'Install page'}</span>
+                        <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
+                          {isAr ? 'إضافة الموقع إلى الشاشة الرئيسية' : 'Add this website to your home screen'}
+                        </span>
+                      </div>
+                    </div>
+                    <ArrowUpRight className="h-4 w-4 text-gray-400" />
+                  </button>
+                )}
 
                 {/* Contact Us: keep contact choices accessible from the More menu. */}
                 <button
@@ -785,6 +869,26 @@ export const PublicAboutPage: React.FC = () => {
               <QrCode className="h-5 w-5" />
               <span>{isAr ? 'مسح QR وتفقّد طلبك' : 'Scan QR & Track Order'}</span>
             </button>
+
+            {!Capacitor.isNativePlatform() && <>
+              <button
+                type="button"
+                onClick={() => void startDirectApkDownload()}
+                disabled={isStartingDownload}
+                className="inline-flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#0f766e] to-[#047857] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-emerald-950/40 hover:from-[#115e59] hover:to-[#065f46] transition-all cursor-pointer border border-emerald-400/30 disabled:opacity-70"
+              >
+                <Download className="h-5 w-5" />
+                <span>{isAr ? (isStartingDownload ? 'جارٍ تجهيز التنزيل…' : 'تثبيت التطبيق') : (isStartingDownload ? 'Preparing download…' : 'Download app')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void installWebsiteAsPwa()}
+                className="inline-flex items-center gap-2 rounded-2xl bg-white/10 backdrop-blur-md px-6 py-3.5 text-sm font-bold text-white border border-white/25 hover:bg-white/20 transition-all cursor-pointer"
+              >
+                <Smartphone className="h-5 w-5" />
+                <span>{isAr ? 'تثبيت الصفحة' : 'Install page'}</span>
+              </button>
+            </>}
 
             <a
               href="#pricing-section"
