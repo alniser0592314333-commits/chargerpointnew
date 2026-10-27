@@ -1,4 +1,5 @@
 import { localDb } from '../localDb/localDb';
+import { getSyncDiagnosticJournal } from './syncDiagnosticJournal';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -148,6 +149,7 @@ export async function downloadSyncFailureBundle(): Promise<{ filename: string; b
   ]);
   const mutationSnapshots = (snapshot.mutationSnapshots || []).filter((item) => activeIds.has(item.commandId));
   const optimisticOverlays = (snapshot.optimisticOverlays || []).filter((item) => activeIds.has(item.commandId));
+  const runtimeEvents = getSyncDiagnosticJournal();
   const now = new Date();
   const filename = `chargerpoint-sync-diagnostics-${now.toISOString().replace(/[:.]/g, '-')}.zip`;
 
@@ -170,6 +172,7 @@ export async function downloadSyncFailureBundle(): Promise<{ filename: string; b
       historyPending: pendingHistory.length,
       mutationSnapshots: mutationSnapshots.length,
       optimisticOverlays: optimisticOverlays.length,
+      runtimeEvents: runtimeEvents.length,
     },
     privacy: 'Sensitive credential-like fields are redacted. Operational identifiers, error messages, timestamps and financial payload fields are retained for diagnosis. Review the archive before sharing.',
     notes: [
@@ -187,6 +190,7 @@ export async function downloadSyncFailureBundle(): Promise<{ filename: string; b
       'failed-and-blocked.json contains failed, conflicting, blocked and dependency-waiting operations.',
       'pending.json contains commands that have not reached a confirmed terminal state.',
       'mutation-snapshots.json and optimistic-overlays.json help determine whether local optimistic state needs reconciliation.',
+      'runtime-events.json contains a bounded local journal of sync transitions plus uncaught JavaScript errors and unhandled promise rejections.'
       'local-record-counts.json reports counts only; operational customer/order tables are not exported wholesale.',
       '',
       'Security: credential-like values are redacted, but this file may still contain business/customer identifiers and error details. Share it only with the intended support recipient.',
@@ -205,6 +209,7 @@ export async function downloadSyncFailureBundle(): Promise<{ filename: string; b
     { name: 'sync-state.json', content: jsonFile(snapshot.syncState) },
     { name: 'mutation-snapshots.json', content: jsonFile(mutationSnapshots) },
     { name: 'optimistic-overlays.json', content: jsonFile(optimisticOverlays) },
+    { name: 'runtime-events.json', content: jsonFile(runtimeEvents) },
     { name: 'local-record-counts.json', content: jsonFile(Object.fromEntries(Object.entries(snapshot.tables).map(([table, rows]) => [table, rows.length]))) },
   ];
 
