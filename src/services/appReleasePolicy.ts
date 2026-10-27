@@ -28,6 +28,29 @@ export function parseAppVersion(value: string): { major: number; minor: number; 
   return { major, minor, patch, code };
 }
 
+/**
+ * Resolve Dropbox shared-file URLs to the content host instead of the Dropbox
+ * preview host. The rlkey must be preserved because it grants access to newer
+ * /scl/fi shared links. Keep dl=1 as a download hint for browsers that honor it.
+ *
+ * This is intentionally centralized here so the customer download button and
+ * version-update screens use the same resolved URL without changing the URL
+ * stored in the release policy.
+ */
+export function resolveDirectAppDownloadUrl(value: string): string {
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'https:') return value;
+    if (url.hostname === 'www.dropbox.com' || url.hostname === 'dropbox.com') {
+      url.hostname = 'dl.dropboxusercontent.com';
+      url.searchParams.set('dl', '1');
+    }
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 export async function fetchAppReleasePolicy(channel: AppReleaseChannel): Promise<AppReleasePolicyResult> {
   const { data, error } = await invokeSupabaseRestGet<AppReleasePolicy>(
     'app_release_policies',
@@ -36,11 +59,15 @@ export async function fetchAppReleasePolicy(channel: AppReleaseChannel): Promise
     true,
   );
   if (error) return { policy: null, error };
-  const policy = data?.[0];
-  if (!policy || policy.channel !== channel || !parseAppVersion(policy.latest_version)
-      || !Number.isFinite(Number(policy.version_code)) || !Number.isFinite(Date.parse(policy.grace_until))) {
+  const row = data?.[0];
+  if (!row || row.channel !== channel || !parseAppVersion(row.latest_version)
+      || !Number.isFinite(Number(row.version_code)) || !Number.isFinite(Date.parse(row.grace_until))) {
     return { policy: null, error: 'APP_RELEASE_POLICY_UNAVAILABLE' };
   }
+  const policy: AppReleasePolicy = {
+    ...row,
+    download_url: resolveDirectAppDownloadUrl(row.download_url || ''),
+  };
   return { policy, error: null };
 }
 
