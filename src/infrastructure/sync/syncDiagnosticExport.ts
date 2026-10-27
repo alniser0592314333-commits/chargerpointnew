@@ -3,16 +3,16 @@ import { getSyncDiagnosticJournal } from './syncDiagnosticJournal';
 
 type JsonRecord = Record<string, unknown>;
 
-const SECRET_KEY = /(password|passwd|secret|access.?token|refresh.?token|authorization|api.?key|service.?role|\bbin\b|\bpin\b|receipt.?url|proof.?url|private.?key|credential)/i;
+const SECRET_KEY = /(password|passwd|secret|token|authorization|api.?key|service.?role|\\bbin\\b|\\bpin\\b|receipt.?url|proof.?url|private.?key|credential|phone|mobile|email)/i;
 
 function redact(value: unknown, key = ''): unknown {
   if (SECRET_KEY.test(key)) return '[REDACTED]';
   if (Array.isArray(value)) return value.map((item) => redact(item));
   if (typeof value === 'string') {
     return value
-      .replace(/Bearer\\s+[A-Za-z0-9._~+\\/-]+=*/gi, 'Bearer [REDACTED]')
-      .replace(/eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}/g, '[JWT REDACTED]')
-      .replace(/(https?:\\/\\/[^\\s?]+)\\?[^\\s]+/gi, '$1?[QUERY REDACTED]');
+      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [REDACTED]')
+      .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '[JWT REDACTED]')
+      .replace(/(https?:\/\/[^\s?]+)\?[^\s]+/gi, '$1?[QUERY REDACTED]');
   }
   if (value && typeof value === 'object') {
     const out: JsonRecord = {};
