@@ -668,7 +668,7 @@ export const PublicAboutPage: React.FC = () => {
           <svg viewBox="0 0 1200 400" preserveAspectRatio="none" className="w-full h-full">
             <path
               d="M-50 280L120 180L240 240L380 140L520 250L680 160L820 260L960 150L1100 240L1250 170V400H-50Z"
-              fill={resolvedTheme === 'dark' ? '#07242c' : '#0c4755'}
+              fill="#0c4755"
               opacity="0.85"
             />
           </svg>
@@ -717,7 +717,7 @@ export const PublicAboutPage: React.FC = () => {
           <svg viewBox="0 0 1200 300" preserveAspectRatio="none" className="w-full h-full">
             <path
               d="M-50 180C140 100 320 170 500 130S860 80 1250 170V300H-50Z"
-              fill={resolvedTheme === 'dark' ? '#0d3239' : '#14606f'}
+              fill="#14606f"
               opacity="0.9"
             />
           </svg>
@@ -726,7 +726,7 @@ export const PublicAboutPage: React.FC = () => {
         {/* PARALLAX LAYER 5: Front Pine Silhouettes */}
         <div className="parallax-layer-pines" aria-hidden="true">
           <svg viewBox="0 0 1200 160" preserveAspectRatio="none" className="w-full h-full">
-            <g fill={resolvedTheme === 'dark' ? '#04171a' : '#082a32'}>
+            <g fill="#082a32">
               {[
                 [30, 140, 0.9],
                 [80, 150, 0.75],
