@@ -14,16 +14,21 @@ const isPublicPortalRoute =
   pathname.startsWith('/public/qr/customer/') ||
   pathname.startsWith('/public/qr/order/');
 
-const prepareCustomerIdentity = () => {
+const prepareCustomerIdentity = (preserveWebPwa = false) => {
   document.title = 'نقطة الشحن';
   const description = document.querySelector('meta[name="description"]');
   description?.setAttribute('content', 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8f6f1');
-  document.querySelector('link[rel="manifest"]')?.remove();
-  document.querySelector('link[rel="apple-touch-icon"]')?.remove();
-  document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.remove();
-  document.querySelector('meta[name="mobile-web-app-capable"]')?.remove();
-  document.querySelector('meta[name="apple-mobile-web-app-title"]')?.remove();
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#082622');
+  // Native APK shells manage their own installation identity. The public web
+  // customer portal must keep its manifest and web-app metadata so browsers can
+  // install it as a real standalone PWA rather than only offering a home shortcut.
+  if (!preserveWebPwa) {
+    document.querySelector('link[rel="manifest"]')?.remove();
+    document.querySelector('link[rel="apple-touch-icon"]')?.remove();
+    document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.remove();
+    document.querySelector('meta[name="mobile-web-app-capable"]')?.remove();
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.remove();
+  }
   document.documentElement.classList.remove('dark');
   document.documentElement.classList.add('light');
   document.documentElement.lang = 'ar';
@@ -50,12 +55,16 @@ if (appVariant === 'customer') {
       initializeNativePushNotificationListeners('customer', document.documentElement.lang))
     .catch((error) => console.warn('Customer push initialization failed; portal remains available.', error));
 } else if (appVariant !== 'admin' && isPublicPortalRoute) {
-  // Preserve the existing web/PWA behavior: public QR links open the isolated
-  // customer entry without initializing the admin app or its local business store.
-  prepareCustomerIdentity();
+  // Public customer routes are a first-class installable PWA entry. Keep the
+  // manifest metadata and capture the browser's native install prompt here too;
+  // this branch previously removed the manifest and skipped PWA prompt capture.
+  prepareCustomerIdentity(true);
+  void import('./services/pwaInstallService').then(({ initializePWAInstallCapture }) => {
+    initializePWAInstallCapture();
+  });
   void import('./PublicPortalApp').then(({ default: PublicPortalApp }) => {
     root.render(<StrictMode><PublicPortalApp /></StrictMode>);
-  });
+  }).catch((error) => console.error('Public customer portal failed to load.', error));
 } else {
   // The admin APK intentionally does not route into the public customer portal.
   if (appVariant === 'admin' && isPublicPortalRoute) {
