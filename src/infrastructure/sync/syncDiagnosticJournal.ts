@@ -1,4 +1,4 @@
-import { SyncEvent } from './syncEngine';
+import type { SyncEvent } from './syncEngine';
 
 const STORAGE_KEY = 'cp_sync_diagnostic_events_v1';
 const MAX_EVENTS = 500;
