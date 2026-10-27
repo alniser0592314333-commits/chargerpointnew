@@ -7,6 +7,7 @@ import { localDb, OutboxRecord, SyncHistoryRecord } from '../../infrastructure/l
 import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
 import { downloadSyncFailureBundle } from '../../infrastructure/sync/syncDiagnosticExport';
+import { clearSyncDiagnosticJournal } from '../../infrastructure/sync/syncDiagnosticJournal';
 import { authService } from '../../services/auth/authService';
 import {
   RefreshCw,
@@ -528,6 +529,7 @@ export const SyncCenter: React.FC = () => {
   const handleClearDiagnostics = async () => {
     try {
       await localDb.clearSyncHistory();
+      clearSyncDiagnosticJournal();
       syncEventEmitter.emit({ type: 'sync_history_cleared', timestamp: new Date().toISOString() });
       await refreshSyncData();
       showToast(
