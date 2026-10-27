@@ -529,8 +529,8 @@ export const SyncCenter: React.FC = () => {
   const handleClearDiagnostics = async () => {
     try {
       await localDb.clearSyncHistory();
-      clearSyncDiagnosticJournal();
       syncEventEmitter.emit({ type: 'sync_history_cleared', timestamp: new Date().toISOString() });
+      clearSyncDiagnosticJournal();
       await refreshSyncData();
       showToast(
         locale === 'ar' ? 'تم تفريغ سجل تشخيصات المزامنة بنجاح' : 'Sync diagnostic log cleared successfully',
