@@ -6,6 +6,7 @@ import { Modal } from '../ui/Modal';
 import { localDb, OutboxRecord, SyncHistoryRecord } from '../../infrastructure/localDb/localDb';
 import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
+import { downloadSyncFailureBundle } from '../../infrastructure/sync/syncDiagnosticExport';
 import { authService } from '../../services/auth/authService';
 import {
   RefreshCw,
@@ -31,6 +32,7 @@ import {
   Sparkles,
   Unlock,
   Play,
+  Download,
 } from 'lucide-react';
 
 export type MainSyncState =
@@ -216,6 +218,25 @@ export const SyncCenter: React.FC = () => {
   };
 
   const currentState = deriveMainState();
+
+  // Export a read-only diagnostic snapshot for support. This never retries or mutates queued commands.
+  const handleExportDiagnostics = async () => {
+    try {
+      const result = await downloadSyncFailureBundle();
+      showToast(
+        locale === 'ar'
+          ? `تم تجهيز ملف التشخيص: ${result.filename} — فاشلة: ${result.failed}، معلّقة: ${result.pending}`
+          : `Diagnostic ZIP created: ${result.filename} — failed: ${result.failed}, pending: ${result.pending}`,
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Failed to export sync diagnostic bundle:', err);
+      showToast(
+        err?.message || (locale === 'ar' ? 'تعذر إنشاء ملف تشخيص المزامنة' : 'Could not create sync diagnostic bundle'),
+        'error'
+      );
+    }
+  };
 
   // Handle Manual Sync
   const handleManualSync = async () => {
@@ -846,6 +867,19 @@ export const SyncCenter: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleExportDiagnostics}
+                disabled={isSyncing}
+                className="text-xs h-8 px-3 cursor-pointer border-emerald-300 dark:border-[#31554e] text-emerald-800 dark:text-[#daf1de] rounded-md"
+                title={locale === 'ar' ? 'تصدير العمليات الفاشلة والمعلقة في ملف ZIP' : 'Export failed and pending sync diagnostics as ZIP'}
+              >
+                <Download className={`w-3.5 h-3.5 ${isRTL ? 'ml-1.5' : 'mr-1.5'}`} />
+                <span>{locale === 'ar' ? 'تصدير ملف التشخيص ZIP' : 'Export Diagnostic ZIP'}</span>
+              </Button>
+
               <Button
                 type="button"
                 variant="outline"
