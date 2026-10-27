@@ -133,7 +133,10 @@ function createZip(files: Array<{ name: string; content: string }>): Blob {
   put32(endView, 12, centralDirectory.length);
   put32(endView, 16, localOffset);
   put16(endView, 20, 0);
-  return new Blob([...localParts, centralDirectory, end], { type: 'application/zip' });
+  const archive = concat([...localParts, centralDirectory, end]);
+  const archiveBuffer = new ArrayBuffer(archive.length);
+  new Uint8Array(archiveBuffer).set(archive);
+  return new Blob([archiveBuffer], { type: 'application/zip' });
 }
 
 function jsonFile(value: unknown): string {
