@@ -21,7 +21,6 @@ import {
   ArrowUpRight,
   Sparkles,
   Download,
-  Smartphone,
   UserCheck,
   ChevronLeft,
   ChevronRight,
