@@ -31,6 +31,11 @@ export function recordSyncDiagnosticEvent(event: SyncEvent): void {
   }
 }
 
+export function clearSyncDiagnosticJournal(): void {
+  const storage = safeStorage();
+  try { storage?.removeItem(STORAGE_KEY); } catch { /* best-effort diagnostics cleanup */ }
+}
+
 export function getSyncDiagnosticJournal(): PersistedSyncDiagnosticEvent[] {
   const storage = safeStorage();
   if (!storage) return [];
