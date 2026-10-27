@@ -3,6 +3,9 @@
  */
 
 import { ID } from '../../types/common';
+import { installSyncDiagnosticGlobalHandlers, recordSyncDiagnosticEvent } from './syncDiagnosticJournal';
+
+installSyncDiagnosticGlobalHandlers();
 import { localDb, OutboxRecord, SyncHistoryRecord } from '../localDb/localDb';
 import {
   OutboxScheduler,
@@ -325,6 +328,7 @@ export class SyncEventEmitter {
     return () => { this.listeners = this.listeners.filter(l => l !== listener); };
   }
   emit(event: SyncEvent) {
+    recordSyncDiagnosticEvent(event);
     this.listeners.forEach(l => l(event));
   }
 }
