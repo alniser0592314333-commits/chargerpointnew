@@ -196,7 +196,7 @@ export async function downloadSyncFailureBundle(): Promise<{ filename: string; b
       'failed-and-blocked.json contains failed, conflicting, blocked and dependency-waiting operations.',
       'pending.json contains commands that have not reached a confirmed terminal state.',
       'mutation-snapshots.json and optimistic-overlays.json help determine whether local optimistic state needs reconciliation.',
-      'runtime-events.json contains a bounded local journal of sync transitions plus uncaught JavaScript errors and unhandled promise rejections.'
+      'runtime-events.json contains a bounded local journal of sync transitions plus uncaught JavaScript errors and unhandled promise rejections.',
       'local-record-counts.json reports counts only; operational customer/order tables are not exported wholesale.',
       '',
       'Security: credential-like values are redacted, but this file may still contain business/customer identifiers and error details. Share it only with the intended support recipient.',
