@@ -115,8 +115,8 @@ export const PublicAboutPage: React.FC = () => {
       window.alert(isAr ? 'الصفحة مثبتة بالفعل على جهازك.' : 'This page is already installed on your device.');
     } else {
       window.alert(isAr
-        ? 'لتثبيت الصفحة: افتح قائمة المتصفح ⋮ ثم اختر «إضافة إلى الشاشة الرئيسية» أو «تثبيت التطبيق».'
-        : 'To install this page, open the browser menu ⋮ and choose “Add to Home screen” or “Install app”.');
+        ? 'التثبيت المباشر غير متاح من المتصفح الحالي. افتح الموقع في Google Chrome المحدّث وتأكد أنك تستخدم الرابط الآمن https، ثم أعد المحاولة. لن نضيف اختصارًا عاديًا بدل تثبيت التطبيق.'
+        : 'Direct installation is unavailable in this browser. Open this secure HTTPS site in an up-to-date Google Chrome browser and try again. We will not substitute a simple shortcut for app installation.');
     }
   };
 
@@ -633,9 +633,9 @@ export const PublicAboutPage: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <Smartphone className="h-5 w-5 text-[#0f766e] dark:text-[#6ee7b7]" />
                       <div>
-                        <span className="block">{isAr ? 'تثبيت الصفحة' : 'Install page'}</span>
+                        <span className="block">{isAr ? 'تثبيت تطبيق PWA' : 'Install PWA app'}</span>
                         <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                          {isAr ? 'إضافة الموقع إلى الشاشة الرئيسية' : 'Add this website to your home screen'}
+                          {isAr ? 'تثبيت التطبيق على الجهاز' : 'Install the app on this device'}
                         </span>
                       </div>
                     </div>
