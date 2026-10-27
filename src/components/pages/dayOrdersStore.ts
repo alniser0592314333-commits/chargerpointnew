@@ -4326,7 +4326,13 @@ export const getCustomerOrders = async (
     });
   }
 
-  return summaries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return summaries.sort((a, b) => {
+    // Customer history is a business-day ledger: sort by the canonical business date,
+    // not record creation time (older/imported orders can have midnight or delayed createdAt).
+    const dateOrder = String(b.businessDate || '').localeCompare(String(a.businessDate || ''));
+    if (dateOrder !== 0) return dateOrder;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 };
 
 export interface UICustomerFinancialItem {
