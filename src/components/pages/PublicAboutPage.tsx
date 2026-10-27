@@ -869,26 +869,6 @@ export const PublicAboutPage: React.FC = () => {
               <span>{isAr ? 'مسح QR وتفقّد طلبك' : 'Scan QR & Track Order'}</span>
             </button>
 
-            {!Capacitor.isNativePlatform() && <>
-              <button
-                type="button"
-                onClick={() => void startDirectApkDownload()}
-                disabled={isStartingDownload}
-                className="inline-flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#0f766e] to-[#047857] px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-emerald-950/40 hover:from-[#115e59] hover:to-[#065f46] transition-all cursor-pointer border border-emerald-400/30 disabled:opacity-70"
-              >
-                <Download className="h-5 w-5" />
-                <span>{isAr ? (isStartingDownload ? 'جارٍ تجهيز التنزيل…' : 'تثبيت التطبيق') : (isStartingDownload ? 'Preparing download…' : 'Download app')}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void installWebsiteAsPwa()}
-                className="inline-flex items-center gap-2 rounded-2xl bg-white/10 backdrop-blur-md px-6 py-3.5 text-sm font-bold text-white border border-white/25 hover:bg-white/20 transition-all cursor-pointer"
-              >
-                <Smartphone className="h-5 w-5" />
-                <span>{isAr ? 'تثبيت الصفحة' : 'Install page'}</span>
-              </button>
-            </>}
-
             <a
               href="#pricing-section"
               className="inline-flex items-center gap-2 rounded-2xl bg-white/10 backdrop-blur-md px-6 py-3.5 text-sm font-bold text-white border border-white/25 hover:bg-white/20 transition-all cursor-pointer"
