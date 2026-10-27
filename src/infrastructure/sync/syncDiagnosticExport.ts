@@ -3,7 +3,7 @@ import { getSyncDiagnosticJournal } from './syncDiagnosticJournal';
 
 type JsonRecord = Record<string, unknown>;
 
-const SECRET_KEY = /(password|passwd|secret|token|authorization|api.?key|service.?role|\\bbin\\b|\\bpin\\b|receipt.?url|proof.?url|private.?key|credential|phone|mobile|email)/i;
+const SECRET_KEY = /(password|passwd|secret|token|authorization|api.?key|service.?role|\bbin\b|\bpin\b|receipt.?url|proof.?url|private.?key|credential|phone|mobile|email)/i;
 
 function redact(value: unknown, key = ''): unknown {
   if (SECRET_KEY.test(key)) return '[REDACTED]';
