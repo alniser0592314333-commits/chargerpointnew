@@ -28,8 +28,9 @@ html.dark {
   --about-sky-top: #031417;
   --about-sky-mid: #062329;
   --about-sky-bot: #0a343c;
-  --about-moon-glow: rgba(255, 190, 90, 0.45);
-  --about-moon-color: #fca742;
+  /* Theme affects the page chrome, not the moon illustration or its glow. */
+  --about-moon-glow: rgba(255, 217, 160, 0.6);
+  --about-moon-color: #ffd28f;
   --about-card-bg: rgba(10, 36, 35, 0.85);
   --about-card-border: rgba(142, 216, 204, 0.14);
   --about-card-text: #e7f5f2;
@@ -96,6 +97,8 @@ html.dark .about-sky-night {
    ========================================================================= */
 
 .parallax-hero-stage {
+  /* Keep this illustrated scene in its authored colors even when the device/browser uses dark mode. */
+  color-scheme: only light;
   position: relative;
   width: 100%;
   height: 92vh;
