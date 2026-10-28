@@ -1322,17 +1322,17 @@ export const PublicAboutPage: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => { window.location.assign('/public/services/wallet'); }}
+            onClick={() => { window.location.assign('/public/services'); }}
             className="group about-card w-full p-5 sm:p-7 text-start transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50"
-            aria-label={isAr ? 'فتح إدارة المحفظة' : 'Open wallet management'}
+            aria-label={isAr ? 'فتح خدمات المساعدة' : 'Open assistance services'}
           >
             <div className="flex items-center gap-4">
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md shadow-emerald-900/15">
                 <Wallet className="h-7 w-7" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-lg font-extrabold text-gray-900 dark:text-white">{isAr ? 'إدارة المحفظة' : 'Wallet Management'}</span>
-                <span className="mt-1 block text-sm leading-6 text-gray-600 dark:text-[#a0c5bd]">{isAr ? 'إدارة المحافظ والحركات المالية من مكان واحد، بعد التحقق من حسابك وصلاحية الاشتراك.' : 'Manage wallets and financial activity after verifying your account and subscription access.'}</span>
+                <span className="block text-lg font-extrabold text-gray-900 dark:text-white">{isAr ? 'خدمات مساعدة' : 'Assistance Services'}</span>
+                <span className="mt-1 block text-sm leading-6 text-gray-600 dark:text-[#a0c5bd]">{isAr ? 'أكد هويتك أولًا، وبعدها اختار الخدمة اللي بدك إياها.' : 'Verify your identity first, then choose the service you need.'}</span>
               </span>
               <span className="text-emerald-700 transition-transform group-hover:-translate-x-1 dark:text-emerald-300" aria-hidden="true">{isAr ? '←' : '→'}</span>
             </div>
