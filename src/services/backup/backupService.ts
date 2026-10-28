@@ -2098,7 +2098,7 @@ export class BackupService {
     auth.requireAuth();
     auth.assertPermission('settings:manage');
 
-    if (!bin || !/^\\d{4,}$/.test(bin.trim())) {
+    if (!bin || !/^\d{4,}$/.test(bin.trim())) {
       throw new AuthorizationError('BIN must contain at least 4 numeric digits.');
     }
     if (!snapshot || !Array.isArray(snapshot.businessDays) ||
@@ -2106,7 +2106,7 @@ export class BackupService {
       throw new SnapshotFormatError('Backup is missing business days, orders, or order items.');
     }
     const dates = [...new Set((businessDates || []).filter((d) =>
-      typeof d === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(d)
+      typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
     ))].sort();
     if (dates.length === 0) throw new SnapshotFormatError('Select at least one valid business date.');
 
