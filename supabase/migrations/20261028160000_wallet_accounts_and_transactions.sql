@@ -1,6 +1,20 @@
 -- Customer-owned wallet accounts and an append-only transaction journal.
+-- This wallet authorization ledger is separate from the admin/service entitlement tables.
 -- Apply only after reviewing this migration; it is not deployed automatically.
 begin;
+
+create table public.wallet_service_entitlements (
+  customer_id uuid not null references public.customers(id) on delete restrict,
+  service_key text not null check (service_key = 'wallet_management'),
+  enabled boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (customer_id, service_key)
+);
+alter table public.wallet_service_entitlements enable row level security;
+alter table public.wallet_service_entitlements force row level security;
+revoke all on public.wallet_service_entitlements from anon, authenticated;
+grant select, insert, update on public.wallet_service_entitlements to service_role;
 
 create table public.wallet_accounts (
   id uuid primary key default gen_random_uuid(),
@@ -8,7 +22,7 @@ create table public.wallet_accounts (
   provider text not null check (provider in ('PalPay', 'Jawwal Pay', 'Bank of Palestine')),
   wallet_number text not null check (length(trim(wallet_number)) between 1 and 64),
   display_name text not null check (length(trim(display_name)) between 1 and 120),
-  currency text not null default 'ILS' check (currency ~ '^[A-Z]{3}$'),
+  currency text not null default 'ILS' check (currency in ('ILS', 'USD', 'JOD')),
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -23,7 +37,7 @@ create table public.wallet_transactions (
   source_wallet_id uuid null,
   destination_wallet_id uuid null,
   amount_minor bigint not null check (amount_minor > 0),
-  currency text not null check (currency ~ '^[A-Z]{3}$'),
+  currency text not null check (currency in ('ILS', 'USD', 'JOD')),
   idempotency_key uuid not null,
   reference text null check (reference is null or length(reference) <= 160),
   note text null check (note is null or length(note) <= 1000),
@@ -83,7 +97,7 @@ begin
   if p_customer_id is null or p_actor_auth_user_id is null or p_idempotency_key is null
     or p_transaction_type is null or p_transaction_type not in ('INCOME', 'EXPENSE', 'TRANSFER')
     or p_amount_minor is null or p_amount_minor <= 0
-    or p_currency is null or p_currency !~ '^[A-Z]{3}$'
+    or p_currency is null or p_currency not in ('ILS', 'USD', 'JOD')
     or coalesce(length(p_reference), 0) > 160 or coalesce(length(p_note), 0) > 1000 then
     raise exception 'INVALID_WALLET_TRANSACTION' using errcode = '22023';
   end if;
@@ -97,7 +111,7 @@ begin
   end if;
 
   if not exists (
-    select 1 from public.customer_service_entitlements e
+    select 1 from public.wallet_service_entitlements e
     where e.customer_id = p_customer_id and e.service_key = 'wallet_management' and e.enabled = true
   ) then
     raise exception 'WALLET_SERVICE_NOT_ENABLED' using errcode = '42501';
