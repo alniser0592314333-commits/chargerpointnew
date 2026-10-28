@@ -7,7 +7,7 @@ type WalletAccount = { id: string; provider: string; wallet_number: string; disp
 type WalletTransaction = { id: string; transaction_type: 'INCOME' | 'EXPENSE' | 'TRANSFER'; amount_minor: number; currency: string; created_at: string; reference?: string | null; note?: string | null; source_wallet_name?: string | null; destination_wallet_name?: string | null };
 type Snapshot = { accounts: WalletAccount[]; transactions: WalletTransaction[] };
 
-export const WalletSnapshotPanel: React.FC = () => {
+export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = ({ onStepUpRequired }) => {
   const { locale } = useI18n();
   const isAr = locale === 'ar';
   const t = (ar: string, en: string) => isAr ? ar : en;
@@ -34,7 +34,10 @@ export const WalletSnapshotPanel: React.FC = () => {
       const result = await callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot', { limit: 50 });
       if (result.error || !result.data?.snapshot) {
         setSnapshot(null);
-        setError(result.error === 'NETWORK_UNAVAILABLE'
+        if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired();
+        setError(result.error === 'STEP_UP_REQUIRED'
+          ? t('انتهت مدة تأكيد الهوية. ارجع لخدمات المساعدة وأكّد هويتك من جديد.', 'Identity verification expired. Return to Assistance Services and verify again.')
+          : result.error === 'NETWORK_UNAVAILABLE'
           ? t('الاتصال غير متاح؛ بيانات المحفظة مخفية.', 'Connection unavailable; wallet data is hidden.')
           : t('تعذّر تحميل بيانات المحفظة. تأكد أن الخدمة مفعّلة وأن قاعدة البيانات جاهزة.', 'Could not load wallet data. Confirm the service is enabled and the database is ready.'));
         return;
@@ -72,7 +75,7 @@ export const WalletSnapshotPanel: React.FC = () => {
         event.preventDefault(); if (saving) return; setSaving(true); setError('');
         try {
           const result = await callWalletService('wallet-create-account', { provider, walletNumber, displayName, currency });
-          if (result.error) { setError(result.error === 'WALLET_ACCOUNT_EXISTS' ? t('المحفظة مسجلة من قبل.', 'Wallet already registered.') : t('تعذّرت إضافة المحفظة.', 'Could not add wallet.')); return; }
+          if (result.error) { if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired(); setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. ارجع لخدمات المساعدة وأكّد هويتك من جديد.', 'Identity verification expired. Return to Assistance Services and verify again.') : result.error === 'WALLET_ACCOUNT_EXISTS' ? t('المحفظة مسجلة من قبل.', 'Wallet already registered.') : t('تعذّرت إضافة المحفظة.', 'Could not add wallet.')); return; }
           setWalletNumber(''); setDisplayName(''); await refresh();
         } finally { setSaving(false); }
       }}>
@@ -110,11 +113,13 @@ export const WalletSnapshotPanel: React.FC = () => {
             reference: reference.trim() || null, note: note.trim() || null,
           });
           if (result.error) {
+            if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired();
             if (result.error === 'IDEMPOTENCY_KEY_REUSED') {
               setTransactionConflict(true);
               setConflictReviewed(false);
             }
-            setError(result.error === 'INSUFFICIENT_WALLET_BALANCE' ? t('الرصيد غير كافٍ.', 'Insufficient balance.')
+            setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. ارجع لخدمات المساعدة وأكّد هويتك من جديد.', 'Identity verification expired. Return to Assistance Services and verify again.')
+              : result.error === 'INSUFFICIENT_WALLET_BALANCE' ? t('الرصيد غير كافٍ.', 'Insufficient balance.')
               : result.error === 'IDEMPOTENCY_KEY_REUSED' ? t('تعارض في مفتاح الحركة؛ لم يتم تأكيد التسجيل.', 'Transaction key conflict; recording was not confirmed.')
               : result.error === 'WALLET_UNAVAILABLE' ? t('المحفظة غير متاحة أو العملة غير متطابقة.', 'Wallet unavailable or currency mismatch.')
               : t('تعذّر تسجيل الحركة؛ لم يتم عرض نجاح غير مؤكد.', 'Could not record transaction; no unconfirmed success was shown.'));
