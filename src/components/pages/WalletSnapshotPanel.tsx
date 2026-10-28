@@ -25,6 +25,8 @@ export const WalletSnapshotPanel: React.FC = () => {
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
   const [transactionKey, setTransactionKey] = useState('');
+  const [transactionConflict, setTransactionConflict] = useState(false);
+  const [conflictReviewed, setConflictReviewed] = useState(false);
   const [saving, setSaving] = useState(false);
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
@@ -84,7 +86,7 @@ export const WalletSnapshotPanel: React.FC = () => {
     <section className="mt-8 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
-        event.preventDefault(); if (saving) return;
+        event.preventDefault(); if (saving || transactionConflict) return;
         const enteredAmount = Number(amount);
         if (!Number.isFinite(enteredAmount) || enteredAmount <= 0) { setError(t('أدخل مبلغًا صحيحًا أكبر من صفر.', 'Enter a valid amount greater than zero.')); return; }
         const accounts = snapshot?.accounts || [];
@@ -108,13 +110,17 @@ export const WalletSnapshotPanel: React.FC = () => {
             reference: reference.trim() || null, note: note.trim() || null,
           });
           if (result.error) {
+            if (result.error === 'IDEMPOTENCY_KEY_REUSED') {
+              setTransactionConflict(true);
+              setConflictReviewed(false);
+            }
             setError(result.error === 'INSUFFICIENT_WALLET_BALANCE' ? t('الرصيد غير كافٍ.', 'Insufficient balance.')
               : result.error === 'IDEMPOTENCY_KEY_REUSED' ? t('تعارض في مفتاح الحركة؛ لم يتم تأكيد التسجيل.', 'Transaction key conflict; recording was not confirmed.')
               : result.error === 'WALLET_UNAVAILABLE' ? t('المحفظة غير متاحة أو العملة غير متطابقة.', 'Wallet unavailable or currency mismatch.')
               : t('تعذّر تسجيل الحركة؛ لم يتم عرض نجاح غير مؤكد.', 'Could not record transaction; no unconfirmed success was shown.'));
             return;
           }
-          setAmount(''); setReference(''); setNote(''); setTransactionKey(''); await refresh();
+          setAmount(''); setReference(''); setNote(''); setTransactionKey(''); setTransactionConflict(false); setConflictReviewed(false); await refresh();
         } finally { setSaving(false); }
       }}>
         <label className="grid gap-1 text-sm font-semibold">{t('نوع الحركة', 'Transaction type')}<select value={transactionType} onChange={e => setTransactionType(e.target.value as 'INCOME' | 'EXPENSE' | 'TRANSFER')} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="INCOME">{t('وارد', 'Income')}</option><option value="EXPENSE">{t('صادر', 'Expense')}</option><option value="TRANSFER">{t('تحويل بين محافظي', 'Transfer between my wallets')}</option></select></label>
@@ -123,7 +129,12 @@ export const WalletSnapshotPanel: React.FC = () => {
         <label className="grid gap-1 text-sm font-semibold">{t('المبلغ', 'Amount')}<input required type="number" min={transactionType === 'EXPENSE' ? (snapshot?.accounts.find(a => a.id === sourceWalletId)?.currency === 'JOD' ? '0.001' : '0.01') : (snapshot?.accounts.find(a => a.id === destinationWalletId)?.currency === 'JOD' ? '0.001' : '0.01')} step={transactionType === 'EXPENSE' ? (snapshot?.accounts.find(a => a.id === sourceWalletId)?.currency === 'JOD' ? '0.001' : '0.01') : (snapshot?.accounts.find(a => a.id === destinationWalletId)?.currency === 'JOD' ? '0.001' : '0.01')} value={amount} onChange={e => setAmount(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
         <label className="grid gap-1 text-sm font-semibold">{t('المرجع (اختياري)', 'Reference (optional)')}<input maxLength={160} value={reference} onChange={e => setReference(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
         <label className="grid gap-1 text-sm font-semibold sm:col-span-2">{t('ملاحظة (اختياري)', 'Note (optional)')}<textarea maxLength={1000} rows={2} value={note} onChange={e => setNote(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
-        <button disabled={saving || !(snapshot?.accounts || []).some(a => a.is_active)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ التسجيل…', 'Recording…') : t('تأكيد الحركة', 'Record transaction')}</button>
+        {transactionConflict && <div role="alert" className="grid gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100 sm:col-span-2">
+          <p>{t('تم إيقاف التسجيل بسبب تعارض مفتاح الحركة. راجع آخر الحركات قبل بدء محاولة جديدة؛ لا تعاود إرسال نفس النموذج تلقائيًا.', 'Recording is paused because the transaction key conflicted. Review recent activity before starting a new attempt; this form will not be resubmitted automatically.')}</p>
+          <button type="button" disabled={loading || saving} onClick={async () => { await refresh(); setConflictReviewed(true); }} className="justify-self-start rounded-lg border border-amber-400/60 px-3 py-2 font-bold disabled:opacity-50">{loading ? t('جارٍ تحديث السجل…', 'Refreshing history…') : t('تحديث سجل الحركات ومراجعته', 'Refresh and review transaction history')}</button>
+          {conflictReviewed && <label className="flex items-start gap-2"><input type="checkbox" checked={false} onChange={() => { setTransactionKey(crypto.randomUUID()); setTransactionConflict(false); setConflictReviewed(false); setError(''); }} /><span>{t('راجعت السجل وأريد بدء محاولة جديدة بمفتاح جديد.', 'I reviewed the history and want to start a new attempt with a new key.')}</span></label>}
+        </div>}
+        <button disabled={saving || transactionConflict || !(snapshot?.accounts || []).some(a => a.is_active)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ التسجيل…', 'Recording…') : transactionConflict ? t('التسجيل متوقف للمراجعة', 'Recording paused for review') : t('تأكيد الحركة', 'Record transaction')}</button>
       </form>
       <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('لا يُقبل الصادر أو التحويل إذا كان الرصيد غير كافٍ؛ الخادم هو المرجع النهائي.', 'Expenses and transfers are rejected if funds are insufficient; the server is authoritative.')}</p>
     </section>
