@@ -72,7 +72,24 @@ begin
   end loop;
 
   -- Lock affected live days and protect accounting history from destructive edits.
-  select array_agg(id) into v_old_day_ids from public.business_days where business_date = any(v_dates) for update;
+  -- A backup containing already-recognized charges cannot be replayed as
+  -- operational rows without its matching immutable ledger history.
+  if exists (
+    select 1
+    from jsonb_to_recordset(v_payload_items) as x(
+      id uuid,order_id uuid,financial_status text)
+    join jsonb_to_recordset(v_payload_orders) as o(id uuid,day_id uuid)
+      on o.id = x.order_id
+    join jsonb_to_recordset(v_payload_days) as bd(id uuid,business_date date)
+      on bd.id = o.day_id
+    where bd.business_date = any(v_dates)
+      and coalesce(x.financial_status,'UNRECOGNIZED') = 'RECOGNIZED'
+  ) then
+    raise exception 'Backup contains recognized financial items; restore refused to avoid creating charges without ledger history';
+  end if;
+
+  perform id from public.business_days where business_date = any(v_dates) for update;
+  select array_agg(id) into v_old_day_ids from public.business_days where business_date = any(v_dates);
   if exists (
     select 1 from public.orders o
     join public.business_days d on d.id = o.day_id
