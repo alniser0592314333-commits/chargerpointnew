@@ -2119,10 +2119,22 @@ export class BackupService {
       }
     }
 
+    const selectedDays = snapshot.businessDays.filter((day: any) =>
+      dates.includes(String(day.businessDate ?? day.business_date ?? '').slice(0, 10))
+    );
+    const selectedDayIds = new Set(selectedDays.map((day: any) => day.id));
+    const selectedOrders = snapshot.orders.filter((order: any) =>
+      selectedDayIds.has(order.dayId ?? order.day_id)
+    );
+    const selectedOrderIds = new Set(selectedOrders.map((order: any) => order.id));
+    const selectedItems = snapshot.orderItems.filter((item: any) =>
+      selectedOrderIds.has(item.orderId ?? item.order_id)
+    );
+
     const rpcResult = await invokeSupabaseRpc<any>('restore_selected_business_days', {
       p_bin: bin.trim(),
       p_snapshot: {
-        businessDays: snapshot.businessDays.map((d: any) => ({
+        businessDays: selectedDays.map((d: any) => ({
           ...d,
           business_date: d.businessDate ?? d.business_date,
           opened_at: d.openedAt ?? d.opened_at,
@@ -2131,7 +2143,7 @@ export class BackupService {
           created_at: d.createdAt ?? d.created_at,
           updated_at: d.updatedAt ?? d.updated_at,
         })),
-        orders: snapshot.orders.map((o: any) => ({
+        orders: selectedOrders.map((o: any) => ({
           ...o,
           day_id: o.dayId ?? o.day_id,
           customer_id: o.customerId ?? o.customer_id,
@@ -2145,7 +2157,7 @@ export class BackupService {
           updated_at: o.updatedAt ?? o.updated_at,
           deleted_at: o.deletedAt ?? o.deleted_at,
         })),
-        orderItems: snapshot.orderItems.map((i: any) => ({
+        orderItems: selectedItems.map((i: any) => ({
           ...i,
           order_id: i.orderId ?? i.order_id,
           device_type_id: i.deviceTypeId ?? i.device_type_id,
