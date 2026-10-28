@@ -675,7 +675,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
             </button>
           )}
           <button
-            onClick={() => setLocale(locale === "en" ? "ar" : "en")
+            onClick={() => setLocale(locale === "en" ? "ar" : "en")}
             className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-[#80a89a] dark:hover:bg-[#0a2e28] transition-colors cursor-pointer text-xs flex items-center gap-1"
             title="Toggle Language"
           >
