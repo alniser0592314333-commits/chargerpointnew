@@ -27,7 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   // The authenticated admin header has its own PWA install action. Public
   // customer pages use their separate entry point and install experience.
   useEffect(() => {
-    if (Capacitor.isNativePlatform() || import.meta.env.VITE_APP_VARIANT === 'customer') return;
+    if (Capacitor.isNativePlatform()) return;
     setPwaInstallState(getPWAInstallState());
     return subscribePWAInstall(() => setPwaInstallState(getPWAInstallState()));
   }, []);
@@ -226,7 +226,6 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Admin-only install action: icon-only, hidden in native/standalone app. */}
           {!Capacitor.isNativePlatform() &&
-            import.meta.env.VITE_APP_VARIANT !== 'customer' &&
             !pwaInstallState.installed && (
               <button
                 type="button"
