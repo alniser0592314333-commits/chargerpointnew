@@ -102,9 +102,18 @@ begin
     join public.order_items oi on oi.order_id = o.id
     where d.business_date = any(v_dates)
       and (oi.financial_status = 'RECOGNIZED'
-           or exists (select 1 from public.financial_ledger fl where fl.order_item_id = oi.id))
+           or exists (select 1 from public.financial_ledger fl where fl.order_item_id = oi.id)
+           or exists (select 1 from public.financial_ledger fl where fl.order_id = o.id))
   ) then
     raise exception 'Selected live days contain recognized financial history; restore refused to protect the ledger';
+  end if;
+  if exists (
+    select 1 from public.payment_allocations pa
+    join public.orders o on o.id = pa.order_id
+    join public.business_days d on d.id = o.day_id
+    where d.business_date = any(v_dates)
+  ) then
+    raise exception 'Selected live days contain order-level payment allocations; restore refused to protect payments';
   end if;
   if exists (
     select 1 from public.payment_allocations pa
