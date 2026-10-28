@@ -125,6 +125,40 @@ begin
     raise exception 'Selected live days contain payment allocations; restore refused to protect payments';
   end if;
 
+  -- Protect ancillary records that refer to orders/items outside the rows
+  -- being replaced. They are audit/idempotency history, not disposable backup data.
+  if exists (
+    select 1 from public.customer_delivery_push_logs l
+    join public.order_items oi on oi.id = l.order_item_id
+    join public.orders o on o.id = oi.order_id
+    join public.business_days d on d.id = o.day_id
+    where d.business_date = any(v_dates)
+  ) then
+    raise exception 'Selected days have delivery push history; restore refused to preserve notification idempotency';
+  end if;
+  if exists (
+    select 1 from public.qr_payment_submissions s
+    join public.orders o on o.id = s.order_id
+    join public.business_days d on d.id = o.day_id
+    where d.business_date = any(v_dates)
+  ) then
+    raise exception 'Selected days have QR payment submissions; restore refused to preserve payment review history';
+  end if;
+  if exists (
+    select 1 from public.order_items replacement
+    join public.order_items original on original.id = replacement.replacement_of_item_id
+    join public.orders o on o.id = original.order_id
+    join public.business_days d on d.id = o.day_id
+    where d.business_date = any(v_dates)
+      and not exists (
+        select 1 from public.orders ro
+        join public.business_days rd on rd.id = ro.day_id
+        where ro.id = replacement.order_id and rd.business_date = any(v_dates)
+      )
+  ) then
+    raise exception 'Selected days have replacement items referenced by other days; restore refused';
+  end if;
+
   -- Validate all references before mutating anything.
   if exists (
     select 1 from jsonb_to_recordset(v_payload_orders)
