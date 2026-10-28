@@ -3,19 +3,6 @@
 -- Apply only after reviewing this migration; it is not deployed automatically.
 begin;
 
-create table public.wallet_service_entitlements (
-  customer_id uuid not null references public.customers(id) on delete restrict,
-  service_key text not null check (service_key = 'wallet_management'),
-  enabled boolean not null default false,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  primary key (customer_id, service_key)
-);
-alter table public.wallet_service_entitlements enable row level security;
-alter table public.wallet_service_entitlements force row level security;
-revoke all on public.wallet_service_entitlements from anon, authenticated;
-grant select, insert, update on public.wallet_service_entitlements to service_role;
-
 create table public.wallet_accounts (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid not null references public.customers(id) on delete restrict,
