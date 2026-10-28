@@ -385,7 +385,16 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
               <div className="flex items-start gap-2"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-600" /><div><p className="font-semibold">{customerName(event.customers) || event.customer_id}</p><p className="text-sm">{eventLabel(event)}</p><p className="mt-1 text-xs text-gray-500">{dateLabel(event.created_at)}</p></div></div>
               <div className="flex flex-wrap items-center gap-2">
                 {!event.is_read && <button type="button" disabled={busy} onClick={() => void markRead(event)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold dark:border-[#315653]"><Check className="h-3.5 w-3.5" />{t('تمت المراجعة', 'Mark read')}</button>}
-                {pendingWalletRequest && <button type="button" disabled={busy} onClick={() => { document.getElementById('wallet-activation-request-' + pendingWalletRequest.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('مراجعة الطلب', 'Review request')}</button>}
+                {pendingWalletRequest && <div className="w-full space-y-2 rounded-lg border border-emerald-200 p-3 dark:border-emerald-900">
+                  <p className="text-xs font-semibold">{t('طلب تفعيل المحفظة بانتظار قرارك', 'Wallet activation is awaiting your decision')}</p>
+                  <label className="block text-xs font-medium">{t('سبب الرفض (مطلوب عند الرفض)', 'Rejection reason (required to reject)')}
+                    <textarea maxLength={1000} value={walletRejectionReasons[pendingWalletRequest.id] ?? ''} onChange={(change) => setWalletRejectionReasons((items) => ({ ...items, [pendingWalletRequest.id]: change.target.value }))} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm dark:border-[#315653] dark:bg-[#0b2928]" rows={2} />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" disabled={busy} onClick={() => void reviewWalletActivation(pendingWalletRequest.id, 'APPROVE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('قبول وتفعيل', 'Approve and enable')}</button>
+                    <button type="button" disabled={busy || !(walletRejectionReasons[pendingWalletRequest.id] ?? '').trim()} onClick={() => void reviewWalletActivation(pendingWalletRequest.id, 'REJECT')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200">{t('رفض مع السبب', 'Reject with reason')}</button>
+                  </div>
+                </div>}
               </div>
             </article>;
           })}
