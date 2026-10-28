@@ -354,7 +354,7 @@ Deno.serve(async (request: Request) => {
         if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims)) ||
           link.account_status !== "ACTIVE" || link.must_change_password ||
           link.terms_version !== TERMS_VERSION) return genericFailure();
-        const { data: entitlement, error: entitlementError } = await admin.from("customer_service_entitlements")
+        const { data: entitlement, error: entitlementError } = await admin.from("wallet_service_entitlements")
           .select("enabled").eq("customer_id", link.customer_id).eq("service_key", "wallet_management").maybeSingle();
         if (entitlementError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         if (!entitlement || entitlement.enabled !== true) return respond(403, { ok: false, error: "SERVICE_NOT_ENABLED" });
