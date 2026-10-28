@@ -20,6 +20,11 @@ describe('Wallet activation workflow security contract', () => {
     expect(wallet).toContain('if (!entitlement || entitlement.enabled !== true)');
     expect(wallet).toContain('registered.session_id !== sessionId');
     expect(wallet).toContain('link.must_change_password');
+    expect(wallet).toContain('WALLET_STEP_UP_MAX_AGE_MS');
+    expect(wallet).toContain('Date.now() - authenticatedAt > WALLET_STEP_UP_MAX_AGE_MS');
+    expect(wallet).toContain('error: "STEP_UP_REQUIRED"');
+    expect(wallet).toContain("registered.created_at");
+    expect(read('src/components/pages/WalletManagementPage.tsx')).toContain("gate === 'step-up-required'");
   });
 
   it('prevents duplicate pending requests and keeps wallet activation independent from customer deletion', () => {
