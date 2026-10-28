@@ -92,7 +92,7 @@ jobs:
           # These tests inspect source contracts only; never connect to production.
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run src/tests/wallet_management_security_contract.test.ts
+        run: npx vitest run src/tests/wallet_management_security_contract.test.ts src/tests/wallet_activation_flow_contract.test.ts
 
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
