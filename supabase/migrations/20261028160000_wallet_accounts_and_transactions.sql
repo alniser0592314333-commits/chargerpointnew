@@ -1,11 +1,12 @@
--- Customer-owned wallet accounts and an append-only transaction journal.
--- This wallet authorization ledger is separate from the admin/service entitlement tables.
+-- Independent public-wallet ledger. customer_id is the canonical UUID copied from the
+-- existing customer identity at authorization time, deliberately without an FK into admin data.
+-- No admin customer, balance, order, or payment rows are written by these tables.
 -- Apply only after reviewing this migration; it is not deployed automatically.
 begin;
 
 create table public.wallet_accounts (
   id uuid primary key default gen_random_uuid(),
-  customer_id uuid not null references public.customers(id) on delete restrict,
+  customer_id uuid not null,
   provider text not null check (provider in ('PalPay', 'Jawwal Pay', 'Bank of Palestine')),
   wallet_number text not null check (length(trim(wallet_number)) between 1 and 64),
   display_name text not null check (length(trim(display_name)) between 1 and 120),
