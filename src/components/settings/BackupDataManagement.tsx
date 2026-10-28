@@ -586,8 +586,14 @@ export const BackupDataManagement: React.FC = () => {
     setScopedRestoreError(null);
     try {
       const auth = await getAuthContext();
+      const selectedSnapshot = snapshots.find((snapshot) =>
+        snapshot.snapshotId === scopedRestoreSnapshotId && snapshot.status === 'COMPLETED'
+      );
+      if (!selectedSnapshot) {
+        throw new Error(locale === 'ar' ? 'النسخة الاحتياطية المختارة غير متاحة' : 'Selected backup snapshot is unavailable');
+      }
       const result = await backupService.restoreSelectedBusinessDays(
-        auth, scopedRestoreBin, scopedRestoreData, scopedRestoreDates
+        auth, scopedRestoreBin, selectedSnapshot, scopedRestoreDates
       );
       await reloadStoreFromLocal();
       showToast(
