@@ -52,7 +52,7 @@ begin
   where a.auth_user_id = auth.uid() and a.is_active = true
   limit 1;
   if v_admin_id is null then raise exception 'Active admin session required'; end if;
-  if coalesce(v_admin_role,'') not in ('SUPER_ADMIN','ADMIN')
+  if coalesce(v_admin_role,'') <> 'SUPER_ADMIN'
      and not ('settings:manage' = any(coalesce(v_admin_permissions, array[]::text[]))) then
     raise exception 'Permission denied: settings:manage required';
   end if;
