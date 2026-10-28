@@ -14,6 +14,17 @@ export const WalletSnapshotPanel: React.FC = () => {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [provider, setProvider] = useState('PalPay');
+  const [walletNumber, setWalletNumber] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [currency, setCurrency] = useState('ILS');
+  const [transactionType, setTransactionType] = useState<'INCOME' | 'EXPENSE' | 'TRANSFER'>('INCOME');
+  const [sourceWalletId, setSourceWalletId] = useState('');
+  const [destinationWalletId, setDestinationWalletId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try {
@@ -51,6 +62,65 @@ export const WalletSnapshotPanel: React.FC = () => {
       <div><p className="text-sm font-bold">{tx.transaction_type === 'INCOME' ? t('وارد', 'Income') : tx.transaction_type === 'EXPENSE' ? t('صادر', 'Expense') : t('تحويل', 'Transfer')}</p><p className="mt-1 text-xs text-slate-500">{tx.source_wallet_name || tx.destination_wallet_name || tx.reference || '—'} · {new Date(tx.created_at).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>{tx.note && <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{tx.note}</p>}</div>
       <p className="font-bold tabular-nums">{money(tx.amount_minor, tx.currency)}</p>
     </article>)}</div>}
+    <section className="mt-8 border-t border-slate-200 pt-6 dark:border-white/10">
+      <h2 className="text-lg font-extrabold">{t('إضافة محفظة', 'Add a wallet')}</h2>
+      <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
+        event.preventDefault(); if (saving) return; setSaving(true); setError('');
+        try {
+          const result = await callCustomerAccount('wallet-create-account', { provider, walletNumber, displayName, currency });
+          if (result.error) { setError(result.error === 'WALLET_ACCOUNT_EXISTS' ? t('المحفظة مسجلة من قبل.', 'Wallet already registered.') : t('تعذّرت إضافة المحفظة.', 'Could not add wallet.')); return; }
+          setWalletNumber(''); setDisplayName(''); await refresh();
+        } finally { setSaving(false); }
+      }}>
+        <label className="grid gap-1 text-sm font-semibold">{t('المزوّد', 'Provider')}<select value={provider} onChange={e => setProvider(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option>PalPay</option><option>Jawwal Pay</option><option>Bank of Palestine</option></select></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('اسم المحفظة', 'Wallet name')}<input required maxLength={120} value={displayName} onChange={e => setDisplayName(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('رقم المحفظة', 'Wallet number')}<input required maxLength={64} value={walletNumber} onChange={e => setWalletNumber(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('العملة', 'Currency')}<select value={currency} onChange={e => setCurrency(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="ILS">ILS — شيكل</option><option value="USD">USD — دولار</option><option value="JOD">JOD — دينار</option></select></label>
+        <button disabled={saving} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ المحفظة', 'Save wallet')}</button>
+      </form>
+    </section>
+    <section className="mt-8 border-t border-slate-200 pt-6 dark:border-white/10">
+      <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
+      <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
+        event.preventDefault(); if (saving) return;
+        const amountMinor = Math.round(Number(amount) * 100);
+        if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) { setError(t('أدخل مبلغًا صحيحًا أكبر من صفر.', 'Enter a valid amount greater than zero.')); return; }
+        const accounts = snapshot?.accounts || [];
+        const source = accounts.find(a => a.id === sourceWalletId && a.is_active);
+        const destination = accounts.find(a => a.id === destinationWalletId && a.is_active);
+        if (transactionType !== 'INCOME' && !source) { setError(t('اختار محفظة المصدر.', 'Choose a source wallet.')); return; }
+        if (transactionType !== 'EXPENSE' && !destination) { setError(t('اختار محفظة الوجهة.', 'Choose a destination wallet.')); return; }
+        if (transactionType === 'TRANSFER' && (source?.id === destination?.id || source?.currency !== destination?.currency)) { setError(t('التحويل يتطلب محفظتين مختلفتين بنفس العملة.', 'Transfer requires two different wallets in the same currency.')); return; }
+        const selectedCurrency = transactionType === 'EXPENSE' ? source!.currency : destination!.currency;
+        if (source && source.currency !== selectedCurrency) { setError(t('عملة المحافظ غير متطابقة.', 'Wallet currencies do not match.')); return; }
+        setSaving(true); setError('');
+        try {
+          const result = await callCustomerAccount('wallet-record-transaction', {
+            transactionType, sourceWalletId: transactionType === 'INCOME' ? null : sourceWalletId,
+            destinationWalletId: transactionType === 'EXPENSE' ? null : destinationWalletId,
+            amountMinor, currency: selectedCurrency, idempotencyKey: crypto.randomUUID(),
+            reference: reference.trim() || null, note: note.trim() || null,
+          });
+          if (result.error) {
+            setError(result.error === 'INSUFFICIENT_WALLET_BALANCE' ? t('الرصيد غير كافٍ.', 'Insufficient balance.')
+              : result.error === 'IDEMPOTENCY_KEY_REUSED' ? t('تعارض في مفتاح الحركة؛ لم يتم تأكيد التسجيل.', 'Transaction key conflict; recording was not confirmed.')
+              : result.error === 'WALLET_UNAVAILABLE' ? t('المحفظة غير متاحة أو العملة غير متطابقة.', 'Wallet unavailable or currency mismatch.')
+              : t('تعذّر تسجيل الحركة؛ لم يتم عرض نجاح غير مؤكد.', 'Could not record transaction; no unconfirmed success was shown.'));
+            return;
+          }
+          setAmount(''); setReference(''); setNote(''); await refresh();
+        } finally { setSaving(false); }
+      }}>
+        <label className="grid gap-1 text-sm font-semibold">{t('نوع الحركة', 'Transaction type')}<select value={transactionType} onChange={e => setTransactionType(e.target.value as 'INCOME' | 'EXPENSE' | 'TRANSFER')} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="INCOME">{t('وارد', 'Income')}</option><option value="EXPENSE">{t('صادر', 'Expense')}</option><option value="TRANSFER">{t('تحويل بين محافظي', 'Transfer between my wallets')}</option></select></label>
+        {transactionType !== 'INCOME' && <label className="grid gap-1 text-sm font-semibold">{t('من محفظة', 'From wallet')}<select required value={sourceWalletId} onChange={e => setSourceWalletId(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="">{t('اختار محفظة', 'Choose wallet')}</option>{(snapshot?.accounts || []).filter(a => a.is_active).map(a => <option key={a.id} value={a.id}>{a.display_name} — {a.currency}</option>)}</select></label>}
+        {transactionType !== 'EXPENSE' && <label className="grid gap-1 text-sm font-semibold">{t('إلى محفظة', 'To wallet')}<select required value={destinationWalletId} onChange={e => setDestinationWalletId(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="">{t('اختار محفظة', 'Choose wallet')}</option>{(snapshot?.accounts || []).filter(a => a.is_active).map(a => <option key={a.id} value={a.id}>{a.display_name} — {a.currency}</option>)}</select></label>}
+        <label className="grid gap-1 text-sm font-semibold">{t('المبلغ', 'Amount')}<input required type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('المرجع (اختياري)', 'Reference (optional)')}<input maxLength={160} value={reference} onChange={e => setReference(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+        <label className="grid gap-1 text-sm font-semibold sm:col-span-2">{t('ملاحظة (اختياري)', 'Note (optional)')}<textarea maxLength={1000} rows={2} value={note} onChange={e => setNote(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+        <button disabled={saving || !(snapshot?.accounts || []).some(a => a.is_active)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ التسجيل…', 'Recording…') : t('تأكيد الحركة', 'Record transaction')}</button>
+      </form>
+      <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('لا يُقبل الصادر أو التحويل إذا كان الرصيد غير كافٍ؛ الخادم هو المرجع النهائي.', 'Expenses and transfers are rejected if funds are insufficient; the server is authoritative.')}</p>
+    </section>
     <p className="mt-4 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('الأرصدة محسوبة من سجل الحركات على الخادم، وليست محفوظة بشكل منفصل في المتصفح.', 'Balances are derived from the server transaction journal, not stored separately in the browser.')}</p>
   </div>;
 };
