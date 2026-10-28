@@ -48,7 +48,7 @@ describe('Public wallet management access contract', () => {
     expect(walletEndpoint).toContain('UNKNOWN_WALLET_ACTION');
     expect(walletEndpoint).not.toContain('get_current_admin_profile');
     const supabaseConfig = fs.readFileSync(path.resolve(process.cwd(), 'supabase/config.toml'), 'utf8');
-    expect(supabaseConfig).toContain('[functions.wallet-service]\\nverify_jwt = false');
+    expect(supabaseConfig).toContain('[functions.wallet-service]' + String.fromCharCode(10) + 'verify_jwt = false');
   });
 
   it('defaults access off and prevents direct client table access', () => {
