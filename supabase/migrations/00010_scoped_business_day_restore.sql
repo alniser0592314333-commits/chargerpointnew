@@ -141,6 +141,9 @@ begin
   end if;
 
   -- Remove dependent, non-financial records only for the selected dates.
+  delete from public.qr_tokens qt using public.orders o, public.business_days d
+    where qt.target_id = o.id and o.day_id = d.id and d.business_date = any(v_dates)
+      and qt.token_type = 'ORDER';
   delete from public.order_number_reservations r using public.business_days d
     where r.business_day_id = d.id and d.business_date = any(v_dates);
   delete from public.order_items oi using public.orders o, public.business_days d
@@ -160,7 +163,7 @@ begin
 
   insert into public.orders
     (id,day_id,customer_id,display_number,status,customer_balance_snapshot_minor,notes,qr_token_id,charging_at,delivered_at,cancelled_at,created_at,updated_at,deleted_at,version)
-  select x.id,x.day_id,x.customer_id,x.display_number,x.status,x.customer_balance_snapshot_minor,x.notes,x.qr_token_id,x.charging_at,x.delivered_at,x.cancelled_at,x.created_at,x.updated_at,x.deleted_at,coalesce(x.version,1)
+  select x.id,x.day_id,x.customer_id,x.display_number,x.status,x.customer_balance_snapshot_minor,x.notes,null::uuid,x.charging_at,x.delivered_at,x.cancelled_at,x.created_at,x.updated_at,x.deleted_at,coalesce(x.version,1)
   from jsonb_to_recordset(v_payload_orders) as x(
     id uuid,day_id uuid,customer_id uuid,display_number integer,status text,customer_balance_snapshot_minor bigint,
     notes text,qr_token_id uuid,charging_at timestamptz,delivered_at timestamptz,cancelled_at timestamptz,
