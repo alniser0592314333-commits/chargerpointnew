@@ -343,6 +343,20 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
             </article>)}
       </div>
 
+      <div className="space-y-3">
+        <h3 className="font-bold">{t('طلبات تفعيل المحفظة', 'Wallet activation requests')} <span className="text-sm font-normal text-gray-500">({walletActivationRequests.length})</span></h3>
+        {walletActivationRequests.length === 0
+          ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('ما في طلبات تفعيل محفظة معلّقة.', 'No pending wallet activation requests.')}</p>
+          : walletActivationRequests.map((request) => <article key={request.id} className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-900">
+              <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('تاريخ الطلب: ', 'Requested: ')}{dateLabel(request.requested_at)}</p></div>
+              <label className="block text-xs font-semibold">{t('سبب الرفض (اختياري)', 'Rejection reason (optional)')}<textarea maxLength={1000} value={walletRejectionReasons[request.id] ?? ''} onChange={(event) => setWalletRejectionReasons((items) => ({ ...items, [request.id]: event.target.value }))} className="mt-2 w-full rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-[#315653] dark:bg-[#0b2928]" rows={2} /></label>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={busy} onClick={() => void reviewWalletActivation(request.id, 'APPROVE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('موافقة وتفعيل', 'Approve and enable')}</button>
+                <button type="button" disabled={busy} onClick={() => void reviewWalletActivation(request.id, 'REJECT')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200">{t('رفض الطلب', 'Reject request')}</button>
+              </div>
+            </article>)}
+      </div>
+
       <div className="space-y-2">
         <h3 className="font-bold">{t('طلبات إعادة التعيين المعلّقة', 'Pending reset requests')} <span className="text-sm font-normal text-gray-500">({requests.length})</span></h3>
         {loading ? <p className="py-4 text-sm text-gray-500">{t('جارٍ التحميل…', 'Loading…')}</p>
