@@ -60,7 +60,7 @@ describe('Public wallet management access contract', () => {
   });
 
   it('renders wallet balances and activity only from the authenticated server snapshot', () => {
-    expect(page).toContain('<WalletSnapshotPanel />');
+    expect(page).toContain('<WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} />');
     expect(walletPanel).toContain("callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot'");
     expect(walletPanel).toContain('balance_minor');
     expect(walletPanel).toContain('snapshot.transactions.map');
