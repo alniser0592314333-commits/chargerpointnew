@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Wallet, History } from 'lucide-react';
-import { callCustomerAccount } from '../../services/customer/customerAuth';
+import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
 
 type WalletAccount = { id: string; provider: string; wallet_number: string; display_name: string; currency: string; is_active: boolean; balance_minor: number };
@@ -31,7 +31,7 @@ export const WalletSnapshotPanel: React.FC = () => {
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const result = await callCustomerAccount<{ snapshot?: Snapshot }>('wallet-snapshot', { limit: 50 });
+      const result = await callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot', { limit: 50 });
       if (result.error || !result.data?.snapshot) {
         setSnapshot(null);
         setError(result.error === 'NETWORK_UNAVAILABLE'
@@ -71,7 +71,7 @@ export const WalletSnapshotPanel: React.FC = () => {
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving) return; setSaving(true); setError('');
         try {
-          const result = await callCustomerAccount('wallet-create-account', { provider, walletNumber, displayName, currency });
+          const result = await callWalletService('wallet-create-account', { provider, walletNumber, displayName, currency });
           if (result.error) { setError(result.error === 'WALLET_ACCOUNT_EXISTS' ? t('المحفظة مسجلة من قبل.', 'Wallet already registered.') : t('تعذّرت إضافة المحفظة.', 'Could not add wallet.')); return; }
           setWalletNumber(''); setDisplayName(''); await refresh();
         } finally { setSaving(false); }
@@ -103,7 +103,7 @@ export const WalletSnapshotPanel: React.FC = () => {
         setTransactionKey(idempotencyKey);
         setSaving(true); setError('');
         try {
-          const result = await callCustomerAccount('wallet-record-transaction', {
+          const result = await callWalletService('wallet-record-transaction', {
             transactionType, sourceWalletId: transactionType === 'INCOME' ? null : sourceWalletId,
             destinationWalletId: transactionType === 'EXPENSE' ? null : destinationWalletId,
             amountMinor, currency: selectedCurrency, idempotencyKey,
