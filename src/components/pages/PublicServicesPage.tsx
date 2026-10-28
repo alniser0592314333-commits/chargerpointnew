@@ -41,8 +41,14 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
       }
       if (biometricAvailable && biometricReady) {
         const result = await loginWithAccountBiometric('customer');
-        if (!result) {
+        const biometricSession = result.session as { access_token: string; refresh_token: string } | undefined;
+        if (!biometricSession?.access_token || !biometricSession.refresh_token) {
           setError(t('لم يتم تأكيد الهوية بالبصمة. حاول مرة ثانية.', 'Biometric verification was not completed. Try again.'));
+          return;
+        }
+        const sessionError = await setCustomerSession(biometricSession);
+        if (sessionError) {
+          setError(t('تعذّر تحديث الجلسة الآمنة.', 'Could not update the secure session.'));
           return;
         }
       }
