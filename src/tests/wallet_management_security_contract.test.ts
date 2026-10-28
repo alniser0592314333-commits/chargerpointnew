@@ -80,4 +80,14 @@ describe('Public wallet management access contract', () => {
     expect(walletSchema).toContain('IDEMPOTENCY_KEY_REUSED');
     expect(endpoint).toContain('code.includes("IDEMPOTENCY_KEY_REUSED")');
   });
+
+  it('keeps the wallet transaction migration syntactically complete and single-pass', () => {
+    expect((walletSchema.match(/^begin;$/gm) || [])).toHaveLength(1);
+    expect((walletSchema.match(/^commit;$/gm) || [])).toHaveLength(1);
+    expect((walletSchema.match(/create or replace function public\.wallet_record_transaction\(/g) || [])).toHaveLength(1);
+    expect(walletSchema).toContain("p_currency !~ '^[A-Z]{3}$'");
+    expect(walletSchema).toContain("p_transaction_type is null or p_transaction_type not in ('INCOME', 'EXPENSE', 'TRANSFER')");
+    expect(walletSchema).not.toMatch(/p_currency !~ '\^\[A-Z\]\{3\}\s*\n/);
+  });
+
 });
