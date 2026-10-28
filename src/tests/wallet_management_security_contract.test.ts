@@ -27,9 +27,10 @@ describe('Public wallet management access contract', () => {
   });
 
   it('requires the existing customer credentials and fails closed when offline or unauthorized', () => {
-    expect(page).toContain("callCustomerAccount");
+    expect(page).toContain("callWalletService");
     expect(page).toContain("'login'");
     expect(page).toContain("'wallet-management-access'");
+    expect(page).toContain("callWalletService");
     expect(page).toContain("setGate('offline')");
     expect(page).toContain("setGate('denied')");
     expect(page).toContain('Financial data remains hidden');
@@ -58,7 +59,7 @@ describe('Public wallet management access contract', () => {
 
   it('renders wallet balances and activity only from the authenticated server snapshot', () => {
     expect(page).toContain('<WalletSnapshotPanel />');
-    expect(walletPanel).toContain("callCustomerAccount<{ snapshot?: Snapshot }>('wallet-snapshot'");
+    expect(walletPanel).toContain("callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot'");
     expect(walletPanel).toContain('balance_minor');
     expect(walletPanel).toContain('snapshot.transactions.map');
     expect(walletPanel).toContain('setSnapshot(null)');
