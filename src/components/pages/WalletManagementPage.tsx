@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, History, Search, Plus } from 'lucide-react';
 import { callCustomerAccount, customerAuth, setCustomerSession } from '../../services/customer/customerAuth';
+import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { WalletSnapshotPanel } from './WalletSnapshotPanel';
@@ -21,7 +22,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
 
   const verifyAccess = async (accessToken: string) => {
     setGate('checking-access');
-    const result = await callCustomerAccount<{ customer_name?: string; wallet_management_enabled?: boolean }>(
+    const result = await callWalletService<{ customer_name?: string; wallet_management_enabled?: boolean }>(
       'wallet-management-access', {}, accessToken,
     );
     if (result.error === 'NETWORK_UNAVAILABLE') { setGate('offline'); return; }
