@@ -775,11 +775,22 @@ Deno.serve(async (request: Request) => {
       const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
         .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name)")
         .order("created_at", { ascending: false }).limit(200);
-      const { data: walletActivationRequests, error: walletRequestsError } = await admin.from("wallet_activation_requests")
-        .select("id,customer_id,status,requested_at,customers(name)")
+      const { data: walletActivationRows, error: walletRequestsError } = await admin.from("wallet_activation_requests")
+        .select("id,customer_id,status,requested_at")
         .eq("status", "PENDING").order("requested_at", { ascending: true }).limit(100);
       if (requestError || eventError || accountsError || walletRequestsError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [], accounts: accounts ?? [], walletActivationRequests: walletActivationRequests ?? [] });
+      const walletCustomerIds = [...new Set((walletActivationRows ?? []).map((row: { customer_id: string }) => row.customer_id))];
+      let walletCustomers: Array<{ id: string; name: string }> = [];
+      if (walletCustomerIds.length) {
+        const { data, error: walletCustomersError } = await admin.from("customers").select("id,name").in("id", walletCustomerIds);
+        if (walletCustomersError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        walletCustomers = data ?? [];
+      }
+      const walletCustomerNames = new Map(walletCustomers.map((row) => [row.id, row.name]));
+      const walletActivationRequests = (walletActivationRows ?? []).map((row: { id: string; customer_id: string; status: string; requested_at: string }) => ({
+        ...row, customers: { name: walletCustomerNames.get(row.customer_id) ?? "" },
+      }));
+      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [], accounts: accounts ?? [], walletActivationRequests });
     }
 
     if (action === "admin-review-wallet-activation") {
