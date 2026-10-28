@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Fingerprint, ShieldCheck, Wallet, LoaderCircle, LockKeyhole } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
-import { customerAuth } from '../../services/customer/customerAuth';
+import { callCustomerAccount, customerAuth, setCustomerSession } from '../../services/customer/customerAuth';
 import { getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
 
 type Props = { onBack: () => void; onOpenWallet: () => void };
@@ -20,13 +20,15 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
 
   useEffect(() => {
     let active = true;
-    void Promise.all([customerAuth.auth.getSession(), isNativeBiometricAvailable(), getAccountBiometricStatus()])
-      .then(([session, available, status]) => {
+    void customerAuth.auth.getSession().then(async (session) => {
+      const token = session.data.session?.access_token || '';
+      const [available, status] = await Promise.all([isNativeBiometricAvailable(), token ? getAccountBiometricStatus(token).catch(() => ({ enrolled: false })) : Promise.resolve({ enrolled: false })]);
         if (!active) return;
         setHasSession(Boolean(session.data.session?.access_token));
         setBiometricAvailable(available);
-        setBiometricReady(Boolean(status?.enabled));
-      }).catch(() => { if (active) setHasSession(false); });
+        setBiometricReady(Boolean(status.enrolled));
+      });
+    }).catch(() => { if (active) setHasSession(false); });
     return () => { active = false; };
   }, []);
 
