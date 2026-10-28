@@ -86,6 +86,7 @@ export const BackupDataManagement: React.FC = () => {
   const [isScopedRestoreOpen, setIsScopedRestoreOpen] = useState<boolean>(false);
   const [scopedRestoreBin, setScopedRestoreBin] = useState<string>('');
   const [scopedRestoreData, setScopedRestoreData] = useState<BackupSnapshotData | null>(null);
+  const [scopedRestoreSnapshotId, setScopedRestoreSnapshotId] = useState<string>('');
   const [scopedRestoreDates, setScopedRestoreDates] = useState<string[]>([]);
   const [scopedRestoreError, setScopedRestoreError] = useState<string | null>(null);
 
@@ -529,18 +530,47 @@ export const BackupDataManagement: React.FC = () => {
     setScopedRestoreError(null);
     setScopedRestoreBin('');
     setScopedRestoreData(null);
+    setScopedRestoreSnapshotId('');
     setScopedRestoreDates([]);
     try {
-      const data = await backupService.captureLocalData();
+      const list = await backupService.listSnapshots();
+      const sorted = [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setSnapshots(sorted);
+      const latest = sorted.find((snapshot) => snapshot.status === 'COMPLETED' &&
+        Array.isArray(snapshot.data?.businessDays) && Array.isArray(snapshot.data?.orders) &&
+        Array.isArray(snapshot.data?.orderItems));
+      if (!latest) {
+        setScopedRestoreError(locale === 'ar'
+          ? 'لا توجد نسخة احتياطية مكتملة تحتوي على الأيام والطلبات. أنشئ نسخة احتياطية أولاً.'
+          : 'No completed backup with business days and orders was found. Create a backup first.');
+        setIsScopedRestoreOpen(true);
+        return;
+      }
+      const data = latest.data;
       const dates = [...new Set((data.businessDays || []).map((day: any) =>
         String(day.businessDate ?? day.business_date ?? '').slice(0, 10)
       ).filter((date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)))] as string[];
+      setScopedRestoreSnapshotId(latest.snapshotId);
       setScopedRestoreData(data);
       setScopedRestoreDates(dates);
       setIsScopedRestoreOpen(true);
     } catch (err: any) {
-      showToast(locale === 'ar' ? 'تعذر تحميل بيانات الاستعادة' : 'Could not load restore data', 'error');
+      showToast(locale === 'ar' ? 'تعذر تحميل النسخ الاحتياطية' : 'Could not load backups', 'error');
     }
+  };
+
+  const handleScopedRestoreSnapshotChange = (snapshotId: string) => {
+    const snapshot = snapshots.find((entry) => entry.snapshotId === snapshotId &&
+      entry.status === 'COMPLETED' && Array.isArray(entry.data?.businessDays) &&
+      Array.isArray(entry.data?.orders) && Array.isArray(entry.data?.orderItems));
+    if (!snapshot) return;
+    const dates = [...new Set((snapshot.data.businessDays || []).map((day: any) =>
+      String(day.businessDate ?? day.business_date ?? '').slice(0, 10)
+    ).filter((date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)))] as string[];
+    setScopedRestoreSnapshotId(snapshot.snapshotId);
+    setScopedRestoreData(snapshot.data);
+    setScopedRestoreDates(dates);
+    setScopedRestoreError(null);
   };
 
   const handleExecuteScopedRestore = async () => {
@@ -1457,6 +1487,19 @@ export const BackupDataManagement: React.FC = () => {
               : 'Only selected dates will be replaced. Other days, customers and settings remain unchanged. Days with recognized financial ledger entries or payment allocations are blocked to protect accounting.'}
           </div>
           {scopedRestoreError && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-700">{scopedRestoreError}</div>}
+          <div>
+            <label className="block font-semibold mb-1">{locale === 'ar' ? 'مصدر النسخة الاحتياطية' : 'Backup source'}</label>
+            <select value={scopedRestoreSnapshotId} onChange={(e) => handleScopedRestoreSnapshotChange(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 dark:border-[#28544c] bg-white dark:bg-[#092d29] px-3 py-2">
+              {snapshots.filter((snapshot) => snapshot.status === 'COMPLETED' &&
+                Array.isArray(snapshot.data?.businessDays) && Array.isArray(snapshot.data?.orders) &&
+                Array.isArray(snapshot.data?.orderItems)).map((snapshot) =>
+                <option key={snapshot.snapshotId} value={snapshot.snapshotId}>
+                  {snapshot.snapshotName} — {new Date(snapshot.createdAt).toLocaleString(locale === 'ar' ? 'ar' : 'en')}
+                </option>
+              )}
+            </select>
+          </div>
           <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#14423b] p-3 space-y-2">
             {(scopedRestoreData?.businessDays || []).map((day: any) => {
               const date = String(day.businessDate ?? day.business_date ?? '').slice(0, 10);
