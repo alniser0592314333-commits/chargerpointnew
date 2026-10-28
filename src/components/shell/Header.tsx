@@ -5,7 +5,9 @@ import { useActiveLogo } from '../../services/storage/logoStorage';
 import { localDb } from '../../infrastructure/localDb/localDb';
 import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
-import { RefreshCw, CheckCircle2, Clock, AlertCircle, WifiOff } from 'lucide-react';
+import { RefreshCw, CheckCircle2, Clock, AlertCircle, WifiOff, Download } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { getPWAInstallState, promptPWAInstall, subscribePWAInstall } from '../../services/pwaInstallService';
 
 export interface HeaderProps {
   onOpenMobileNav: () => void;
@@ -20,6 +22,37 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { locale, t } = useI18n();
   const activeLogo = useActiveLogo();
+  const [pwaInstallState, setPwaInstallState] = useState(() => getPWAInstallState());
+
+  // The authenticated admin header has its own PWA install action. Public
+  // customer pages use their separate entry point and install experience.
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    setPwaInstallState(getPWAInstallState());
+    return subscribePWAInstall(() => setPwaInstallState(getPWAInstallState()));
+  }, []);
+
+  const handleInstallAdminPWA = async () => {
+    if (pwaInstallState.installable) {
+      try {
+        await promptPWAInstall();
+      } catch (error) {
+        console.warn('Admin PWA install prompt failed.', error);
+      }
+      return;
+    }
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const message = isIOS
+      ? (locale === 'ar'
+          ? 'لتثبيت نقطة الشحن كتطبيق: اضغط مشاركة في Safari ثم اختر «إضافة إلى الشاشة الرئيسية».'
+          : 'To install Charging Point as an app, tap Share in Safari, then choose “Add to Home Screen”.')
+      : (locale === 'ar'
+          ? 'التثبيت المباشر غير متاح من المتصفح الحالي. افتح التطبيق في Chrome، ثم من القائمة اختر «تثبيت التطبيق» وليس «إنشاء اختصار».'
+          : 'Direct installation is unavailable in this browser. Open the app in Chrome, then choose “Install app” from the menu—not “Create shortcut”.');
+    window.alert(message);
+  };
 
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -191,6 +224,21 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* 2. Sync Status & Practical Action Zone */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Admin-only install action: icon-only, hidden in native/standalone app. */}
+          {!Capacitor.isNativePlatform() &&
+            !pwaInstallState.installed && (
+              <button
+                type="button"
+                onClick={() => void handleInstallAdminPWA()}
+                aria-label={locale === 'ar' ? 'تثبيت تطبيق الإدارة' : 'Install admin app'}
+                title={locale === 'ar' ? 'تثبيت تطبيق الإدارة' : 'Install admin app'}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 text-gray-700 transition hover:bg-gray-100 active:scale-95 dark:border-[#194e44] dark:text-[#daf1de] dark:hover:bg-[#0c312b]"
+                data-testid="admin-pwa-install"
+              >
+                <Download className="h-[18px] w-[18px]" aria-hidden="true" />
+              </button>
+            )}
+
           {/* Sync Status Badge */}
           <div className="flex items-center" data-testid="header-sync-status">
             <button

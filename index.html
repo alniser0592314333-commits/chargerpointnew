@@ -16,7 +16,19 @@
     <meta name="apple-mobile-web-app-title" content="منظومة إدارة الطلبات" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      // Choose a distinct install identity for the administrator PWA. Public
+      // customer routes retain the existing customer manifest and start URL.
+      (function() {
+        var path = window.location.pathname;
+        var isAdminRoute = path === '/app' || path.indexOf('/app/') === 0 ||
+          path === '/login' || path === '/reset-password';
+        var manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = isAdminRoute ? '/manifest-admin.webmanifest' : '/manifest.webmanifest';
+        document.head.appendChild(manifestLink);
+      })();
+    </script>
     <script>
       (function() {
         try {
