@@ -3,7 +3,8 @@
 begin;
 
 create table if not exists public.wallet_service_entitlements (
-  customer_id uuid not null references public.customers(id) on delete cascade,
+  -- Canonical customer UUID only; deliberately no FK into the admin-owned customers table.
+  customer_id uuid not null,
   service_key text not null check (service_key in ('wallet_management')),
   enabled boolean not null default false,
   created_at timestamptz not null default now(),
