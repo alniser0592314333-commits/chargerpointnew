@@ -343,11 +343,24 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "reauthenticate") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
       if (!link) return genericFailure();
+
+      if (action === "reauthenticate") {
+        const password = rawPassword(input.password);
+        if (!password || link.must_change_password || link.terms_version !== TERMS_VERSION ||
+            !(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        const { data: refreshed, error: reauthError } = await authClient.auth.signInWithPassword({
+          email: link.login_email, password,
+        });
+        if (reauthError || !refreshed.session || refreshed.user?.id !== authenticated.user.id) return genericFailure();
+        const refreshedClaims = decodeClaims(refreshed.session.access_token);
+        if (!(await registerSession(link, authenticated.user.id, refreshedClaims))) return genericFailure();
+        return respond(200, { ok: true, session: refreshed.session });
+      }
 
       if (action === "register-session") {
         const resolved = await resolveQr(input.token);
