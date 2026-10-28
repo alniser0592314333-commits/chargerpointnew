@@ -2,6 +2,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { CUSTOMER_ACCOUNT_TERMS_VERSION } from "../_shared/customerAccountTerms.ts";
 
 const TERMS_VERSION = CUSTOMER_ACCOUNT_TERMS_VERSION;
+// Wallet access requires a recently authenticated customer session. The session
+// registration timestamp is written only by the existing password/biometric
+// authentication flows, so a stale logged-in browser cannot bypass the public
+// services identity gate by opening the wallet URL directly.
+const WALLET_STEP_UP_MAX_AGE_MS = 15 * 60 * 1000;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -55,11 +60,16 @@ Deno.serve(async (request: Request) => {
   if (customerError || !customer || customer.is_active !== true || customer.deleted_at || customer.status === "DELETED") return genericFailure();
   const sessionId = normalize(claims?.session_id, 64);
   const { data: registered, error: sessionError } = await admin.from("customer_account_sessions")
-    .select("session_id,auth_user_id,expires_at,revoked_at")
+    .select("session_id,auth_user_id,created_at,expires_at,revoked_at")
     .eq("customer_id", link.customer_id).eq("auth_user_id", authData.user.id).eq("session_id", sessionId).maybeSingle();
   if (sessionError || !registered || registered.revoked_at || registered.session_id !== sessionId ||
     new Date(registered.expires_at).getTime() <= Date.now() || link.must_change_password ||
     link.terms_version !== TERMS_VERSION) return genericFailure();
+  const authenticatedAt = Date.parse(registered.created_at);
+  if (!Number.isFinite(authenticatedAt) || Date.now() - authenticatedAt < 0 ||
+    Date.now() - authenticatedAt > WALLET_STEP_UP_MAX_AGE_MS) {
+    return respond(403, { ok: false, error: "STEP_UP_REQUIRED" });
+  }
   // Activation request/status are available to an authenticated customer before
   // entitlement is granted. Financial wallet operations remain behind the entitlement.
   if (action === "wallet-activation-status") {
