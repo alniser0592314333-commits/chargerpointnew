@@ -46,7 +46,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
     } catch {
       setSnapshot(null); setError(t('تعذّر تحميل بيانات المحفظة.', 'Could not load wallet data.'));
     } finally { setLoading(false); }
-  }, [isAr]);
+  }, [isAr, onStepUpRequired]);
   useEffect(() => { void refresh(); }, [refresh]);
   const currencyScale = (currency: string) => currency === 'JOD' ? 1000 : 100;
   const money = (minor: number, currency: string) => (Number(minor || 0) / currencyScale(currency)).toLocaleString(isAr ? 'ar-PS' : 'en-US', { minimumFractionDigits: currency === 'JOD' ? 3 : 2, maximumFractionDigits: currency === 'JOD' ? 3 : 2 }) + ' ' + currency;
