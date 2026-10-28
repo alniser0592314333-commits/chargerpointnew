@@ -24,6 +24,7 @@ export const WalletSnapshotPanel: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
+  const [transactionKey, setTransactionKey] = useState('');
   const [saving, setSaving] = useState(false);
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
@@ -93,12 +94,14 @@ export const WalletSnapshotPanel: React.FC = () => {
         if (transactionType === 'TRANSFER' && (source?.id === destination?.id || source?.currency !== destination?.currency)) { setError(t('التحويل يتطلب محفظتين مختلفتين بنفس العملة.', 'Transfer requires two different wallets in the same currency.')); return; }
         const selectedCurrency = transactionType === 'EXPENSE' ? source!.currency : destination!.currency;
         if (source && source.currency !== selectedCurrency) { setError(t('عملة المحافظ غير متطابقة.', 'Wallet currencies do not match.')); return; }
+        const idempotencyKey = transactionKey || crypto.randomUUID();
+        setTransactionKey(idempotencyKey);
         setSaving(true); setError('');
         try {
           const result = await callCustomerAccount('wallet-record-transaction', {
             transactionType, sourceWalletId: transactionType === 'INCOME' ? null : sourceWalletId,
             destinationWalletId: transactionType === 'EXPENSE' ? null : destinationWalletId,
-            amountMinor, currency: selectedCurrency, idempotencyKey: crypto.randomUUID(),
+            amountMinor, currency: selectedCurrency, idempotencyKey,
             reference: reference.trim() || null, note: note.trim() || null,
           });
           if (result.error) {
@@ -108,7 +111,7 @@ export const WalletSnapshotPanel: React.FC = () => {
               : t('تعذّر تسجيل الحركة؛ لم يتم عرض نجاح غير مؤكد.', 'Could not record transaction; no unconfirmed success was shown.'));
             return;
           }
-          setAmount(''); setReference(''); setNote(''); await refresh();
+          setAmount(''); setReference(''); setNote(''); setTransactionKey(''); await refresh();
         } finally { setSaving(false); }
       }}>
         <label className="grid gap-1 text-sm font-semibold">{t('نوع الحركة', 'Transaction type')}<select value={transactionType} onChange={e => setTransactionType(e.target.value as 'INCOME' | 'EXPENSE' | 'TRANSFER')} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="INCOME">{t('وارد', 'Income')}</option><option value="EXPENSE">{t('صادر', 'Expense')}</option><option value="TRANSFER">{t('تحويل بين محافظي', 'Transfer between my wallets')}</option></select></label>
