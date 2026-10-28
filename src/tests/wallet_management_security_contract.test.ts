@@ -79,9 +79,9 @@ describe('Public wallet management access contract', () => {
     expect(walletEndpoint).toContain('customer_name: customer.name');
     expect(walletEndpoint).toContain('customer_id: link.customer_id, provider, wallet_number');
     expect(walletSchema).toContain('customer_id uuid not null');
-    expect(walletSchema).not.toMatch(/customer_id uuid not null references public\\.customers\\(id\\)/i);
+    expect(walletSchema).not.toContain('references public.customers(id)');
     expect(migration).toContain('customer_id uuid not null');
-    expect(migration).not.toMatch(/customer_id uuid not null references public\\.customers\\(id\\)/i);
+    expect(migration).not.toContain('references public.customers(id)');
     expect(walletEndpoint).toContain('.eq("session_id", sessionId).maybeSingle()');
     expect(walletSchema).not.toMatch(/create table(?: if not exists)? public\.customers\b/i);
     expect(walletEndpoint).not.toContain('admin.from("customers").insert');
