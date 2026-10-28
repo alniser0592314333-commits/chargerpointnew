@@ -32,7 +32,7 @@ export async function callCustomerAccount<T = Record<string, unknown>>(
     accessToken = sessionData.session?.access_token || config.supabaseAnonKey;
   }
   try {
-    const readOnlyAction = ['entry', 'portal-data', 'customer-activity', 'verify-session', 'admin-list', 'wallet-management-access'].includes(action);
+    const readOnlyAction = ['entry', 'portal-data', 'customer-activity', 'verify-session', 'admin-list', 'wallet-management-access', 'wallet-snapshot'].includes(action);
     const controller = readOnlyAction ? new AbortController() : null;
     const timeout = controller ? setTimeout(() => controller.abort(), 10000) : null;
     let response: Response;
