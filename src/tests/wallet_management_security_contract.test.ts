@@ -21,16 +21,14 @@ describe('Public wallet management access contract', () => {
   });
 
   it('bounds wallet access verification to avoid an indefinite loading state', () => {
-    const auth = fs.readFileSync(path.resolve(process.cwd(), 'src/services/customer/customerAuth.ts'), 'utf8');
     expect(walletClient).toContain("/functions/v1/wallet-service");
-    expect(auth).toContain('setTimeout(() => controller.abort(), 10000)');
+    expect(walletClient).toContain('setTimeout(() => controller.abort(), 15000)');
   });
 
   it('requires the existing customer credentials and fails closed when offline or unauthorized', () => {
     expect(page).toContain("callWalletService");
     expect(page).toContain("'login'");
     expect(page).toContain("'wallet-management-access'");
-    expect(page).toContain("callWalletService");
     expect(page).toContain("setGate('offline')");
     expect(page).toContain("setGate('denied')");
     expect(page).toContain('Financial data remains hidden');
@@ -47,6 +45,10 @@ describe('Public wallet management access contract', () => {
     expect(endpoint).not.toContain('wallet-management-access');
     expect(endpoint).not.toContain('wallet-record-transaction');
     expect(walletEndpoint).toContain('entitlement.enabled !== true');
+    expect(walletEndpoint).toContain('UNKNOWN_WALLET_ACTION');
+    expect(walletEndpoint).not.toContain('get_current_admin_profile');
+    const supabaseConfig = fs.readFileSync(path.resolve(process.cwd(), 'supabase/config.toml'), 'utf8');
+    expect(supabaseConfig).toContain('[functions.wallet-service]\\nverify_jwt = false');
   });
 
   it('defaults access off and prevents direct client table access', () => {
@@ -82,9 +84,8 @@ describe('Public wallet management access contract', () => {
   });
 
   it('bounds snapshot reads and rejects reuse of an idempotency key with changed transaction data', () => {
-    const auth = fs.readFileSync(path.resolve(process.cwd(), 'src/services/customer/customerAuth.ts'), 'utf8');
     expect(walletClient).toContain("/functions/v1/wallet-service");
-    expect(auth).toContain('setTimeout(() => controller.abort(), 10000)');
+    expect(walletClient).toContain('setTimeout(() => controller.abort(), 15000)');
     expect(walletSchema).toContain('p_currency is null');
     expect(walletSchema).toContain('IDEMPOTENCY_KEY_REUSED');
     expect(walletEndpoint).toContain('code.includes("IDEMPOTENCY_KEY_REUSED")');
