@@ -214,6 +214,16 @@ begin
     raise exception 'Backup order items reference missing device types';
   end if;
 
+  -- Expire previously issued offline number blocks for these dates. Keeping
+  -- stale blocks active could assign numbers that collide with restored orders.
+  update public.order_number_reservations r
+  set next_number = r.end_number + 1,
+      status = 'EXHAUSTED',
+      updated_at = now(),
+      version = r.version + 1
+  from public.business_days d
+  where r.business_day_id = d.id and d.business_date = any(v_dates);
+
   -- Remove dependent, non-financial records only for the selected dates.
   delete from public.qr_tokens qt using public.orders o, public.business_days d
     where qt.target_id = o.id and o.day_id = d.id and d.business_date = any(v_dates)
