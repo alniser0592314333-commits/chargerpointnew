@@ -83,18 +83,28 @@ begin
   end loop;
 
   -- Lock affected live days and protect accounting history from destructive edits.
+  if exists (
+    select 1 from public.financial_ledger fl
+    join public.orders o on o.id = fl.order_id
+    join public.business_days d on d.id = o.day_id
+    where d.business_date = any(v_dates)
+  ) then
+    raise exception 'Selected live days have financial ledger history; restore refused to protect accounting';
+  end if;
+
   -- A backup containing already-recognized charges cannot be replayed as
   -- operational rows without its matching immutable ledger history.
   if exists (
     select 1
     from jsonb_to_recordset(v_payload_items) as x(
-      id uuid,order_id uuid,financial_status text)
+      id uuid,order_id uuid,financial_status text,payment_status text)
     join jsonb_to_recordset(v_payload_orders) as o(id uuid,day_id uuid)
       on o.id = x.order_id
     join jsonb_to_recordset(v_payload_days) as bd(id uuid,business_date date)
       on bd.id = o.day_id
     where bd.business_date = any(v_dates)
-      and coalesce(x.financial_status,'UNRECOGNIZED') = 'RECOGNIZED'
+      and (coalesce(upper(x.financial_status),'UNRECOGNIZED') = 'RECOGNIZED'
+           or coalesce(upper(x.payment_status),'UNPAID') in ('PAID','PARTIALLY_PAID'))
   ) then
     raise exception 'Backup contains recognized financial items; restore refused to avoid creating charges without ledger history';
   end if;
