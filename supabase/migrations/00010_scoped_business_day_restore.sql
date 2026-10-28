@@ -209,7 +209,7 @@ begin
 
   insert into public.orders
     (id,day_id,customer_id,display_number,status,customer_balance_snapshot_minor,notes,qr_token_id,charging_at,delivered_at,cancelled_at,created_at,updated_at,deleted_at,version)
-  select x.id,x.day_id,x.customer_id,x.display_number,x.status,x.customer_balance_snapshot_minor,x.notes,null::uuid,x.charging_at,x.delivered_at,x.cancelled_at,x.created_at,x.updated_at,x.deleted_at,coalesce(x.version,1)
+  select x.id,x.day_id,x.customer_id,x.display_number,lower(coalesce(x.status,'pending')),x.customer_balance_snapshot_minor,x.notes,null::uuid,x.charging_at,x.delivered_at,x.cancelled_at,x.created_at,x.updated_at,x.deleted_at,coalesce(x.version,1)
   from jsonb_to_recordset(v_payload_orders) as x(
     id uuid,day_id uuid,customer_id uuid,display_number integer,status text,customer_balance_snapshot_minor bigint,
     notes text,qr_token_id uuid,charging_at timestamptz,delivered_at timestamptz,cancelled_at timestamptz,
@@ -234,7 +234,7 @@ begin
 
   insert into public.order_items
     (id,order_id,device_type_id,item_sequence,operational_status,financial_status,payment_status,status,device_name_snapshot,device_icon_snapshot,base_price_snapshot_minor,charger_fee_enabled_snapshot,customer_charger_fee_exempt_snapshot,charger_fee_snapshot_minor,discount_snapshot_minor,final_charge_snapshot_minor,has_charger,unit_price_minor,total_price_minor,replacement_of_item_id,delivered_at,financially_recognized_at,cancelled_at,deleted_at,created_at,updated_at,version)
-  select x.id,x.order_id,x.device_type_id,coalesce(x.item_sequence,1),x.operational_status,x.financial_status,x.payment_status,x.status,
+  select x.id,x.order_id,x.device_type_id,coalesce(x.item_sequence,1),upper(coalesce(x.operational_status,'CHARGING')),upper(coalesce(x.financial_status,'UNRECOGNIZED')),upper(coalesce(x.payment_status,'UNPAID')),lower(coalesce(x.status,'charging')),
     coalesce(x.device_name_snapshot,''),coalesce(x.device_icon_snapshot,'smartphone'),coalesce(x.base_price_snapshot_minor,0),
     coalesce(x.charger_fee_enabled_snapshot,true),coalesce(x.customer_charger_fee_exempt_snapshot,false),
     coalesce(x.charger_fee_snapshot_minor,0),coalesce(x.discount_snapshot_minor,0),coalesce(x.final_charge_snapshot_minor,0),
