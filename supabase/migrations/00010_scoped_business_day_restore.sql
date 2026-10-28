@@ -135,6 +135,8 @@ begin
   end if;
 
   -- Remove dependent, non-financial records only for the selected dates.
+  delete from public.order_number_reservations r using public.business_days d
+    where r.business_day_id = d.id and d.business_date = any(v_dates);
   delete from public.order_items oi using public.orders o, public.business_days d
     where oi.order_id = o.id and o.day_id = d.id and d.business_date = any(v_dates);
   delete from public.orders o using public.business_days d
