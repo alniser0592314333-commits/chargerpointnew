@@ -175,6 +175,8 @@ jobs:
           psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028150000_wallet_management_entitlements.sql
           psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028160000_wallet_accounts_and_transactions.sql
           psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028161000_wallet_snapshot_rpc.sql
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028170000_wallet_activation_requests.sql
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028171000_wallet_activation_review_rpc.sql
           psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 <<'SQL'
           DO $wallet_isolation$
           BEGIN
