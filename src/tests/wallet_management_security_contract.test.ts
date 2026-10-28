@@ -81,6 +81,13 @@ describe('Public wallet management access contract', () => {
     expect(endpoint).toContain('code.includes("IDEMPOTENCY_KEY_REUSED")');
   });
 
+  it('uses currency-specific minor units for wallet entry and balance display', () => {
+    expect(walletPanel).toContain("currency === 'JOD' ? 1000 : 100");
+    expect(walletPanel).toContain("currency === 'JOD' ? 3 : 2");
+    expect(walletPanel).toContain('enteredAmount * currencyScale(selectedCurrency)');
+    expect(walletPanel).toContain("'0.001' : '0.01'");
+  });
+
   it('keeps the wallet transaction migration syntactically complete and single-pass', () => {
     expect((walletSchema.match(/^begin;$/gm) || [])).toHaveLength(1);
     expect((walletSchema.match(/^commit;$/gm) || [])).toHaveLength(1);
