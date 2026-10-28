@@ -39,7 +39,7 @@ Deno.serve(async (request: Request) => {
   catch { return respond(400, { ok: false, error: "INVALID_REQUEST" }); }
   if (!input || typeof input.action !== "string") return respond(400, { ok: false, error: "INVALID_REQUEST" });
   const action = input.action;
-  if (!["wallet-management-access", "wallet-snapshot", "wallet-create-account", "wallet-record-transaction"].includes(action)) {
+  if (!["wallet-activation-status", "wallet-request-activation", "wallet-management-access", "wallet-snapshot", "wallet-create-account", "wallet-record-transaction"].includes(action)) {
     return respond(404, { ok: false, error: "UNKNOWN_WALLET_ACTION" });
   }
   if (!bearer || bearer === anonKey) return genericFailure();
@@ -60,6 +60,59 @@ Deno.serve(async (request: Request) => {
   if (sessionError || !registered || registered.revoked_at || registered.session_id !== sessionId ||
     new Date(registered.expires_at).getTime() <= Date.now() || link.must_change_password ||
     link.terms_version !== TERMS_VERSION) return genericFailure();
+  // Activation request/status are available to an authenticated customer before
+  // entitlement is granted. Financial wallet operations remain behind the entitlement.
+  if (action === "wallet-activation-status") {
+    const { data: entitlement, error: entitlementError } = await admin.from("wallet_service_entitlements")
+      .select("enabled").eq("customer_id", link.customer_id).eq("service_key", "wallet_management").maybeSingle();
+    const { data: requests, error: requestError } = await admin.from("wallet_activation_requests")
+      .select("id,status,requested_at,decided_at,rejection_reason")
+      .eq("customer_id", link.customer_id).order("requested_at", { ascending: false }).limit(1);
+    if (entitlementError || requestError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    const latest = requests?.[0] ?? null;
+    return respond(200, {
+      ok: true,
+      wallet_management_enabled: entitlement?.enabled === true,
+      request: latest ? {
+        id: latest.id, status: latest.status, requested_at: latest.requested_at,
+        decided_at: latest.decided_at, rejection_reason: latest.rejection_reason,
+      } : null,
+    });
+  }
+  if (action === "wallet-request-activation") {
+    const { data: entitlement, error: entitlementError } = await admin.from("wallet_service_entitlements")
+      .select("enabled").eq("customer_id", link.customer_id).eq("service_key", "wallet_management").maybeSingle();
+    if (entitlementError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    if (entitlement?.enabled === true) return respond(200, { ok: true, status: "APPROVED", wallet_management_enabled: true });
+    const { data: pending, error: pendingError } = await admin.from("wallet_activation_requests")
+      .select("id,status,requested_at").eq("customer_id", link.customer_id).eq("status", "PENDING").maybeSingle();
+    if (pendingError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    if (pending) return respond(200, { ok: true, status: "PENDING", request: pending, already_pending: true });
+    const { data: created, error: createError } = await admin.from("wallet_activation_requests")
+      .insert({ customer_id: link.customer_id, status: "PENDING" })
+      .select("id,status,requested_at").single();
+    if (createError) {
+      if (createError.code === "23505") {
+        const { data: raced } = await admin.from("wallet_activation_requests")
+          .select("id,status,requested_at").eq("customer_id", link.customer_id).eq("status", "PENDING").maybeSingle();
+        if (raced) return respond(200, { ok: true, status: "PENDING", request: raced, already_pending: true });
+      }
+      console.error("Wallet activation request could not be recorded", createError.code ?? "unknown");
+      return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    }
+    const { error: eventError } = await admin.from("customer_account_events").insert({
+      customer_id: link.customer_id,
+      event_type: "WALLET_ACTIVATION_REQUESTED",
+      payload: { wallet_activation_request_id: created.id },
+    });
+    if (eventError) {
+      // Keep the request durable, but report that notification delivery needs attention.
+      console.error("Wallet activation request saved but admin notification event failed");
+      return respond(503, { ok: false, error: "REQUEST_SAVED_NOTIFICATION_PENDING", request: created });
+    }
+    return respond(200, { ok: true, status: "PENDING", request: created });
+  }
+
   const { data: entitlement, error: entitlementError } = await admin.from("wallet_service_entitlements")
     .select("enabled").eq("customer_id", link.customer_id).eq("service_key", "wallet_management").maybeSingle();
   if (entitlementError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
