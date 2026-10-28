@@ -14,6 +14,7 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
   const [password, setPassword] = useState('');
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricReady, setBiometricReady] = useState(false);
+  const [preferPassword, setPreferPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState('');
@@ -40,7 +41,7 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
         setError(t('سجّل الدخول لحساب العميل من صفحة حسابي أولًا، ثم ارجع إلى خدمات المساعدة.', 'Sign in through the customer account page first, then return to assistance services.'));
         return;
       }
-      if (biometricAvailable && biometricReady) {
+      if (biometricAvailable && biometricReady && !preferPassword) {
         const result = await loginWithAccountBiometric('customer');
         const biometricSession = result.session as { access_token: string; refresh_token: string } | undefined;
         if (!biometricSession?.access_token || !biometricSession.refresh_token) {
@@ -104,7 +105,8 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
       <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-300">{t('منطقة مستقلة لخدماتك الإضافية. لازم نتحقق من جلسة حسابك قبل عرض الخدمات.', 'A separate area for additional services. We verify your customer session before displaying services.')}</p>
       {!verified && <div className="mt-7 max-w-lg border-t border-slate-200 pt-6 dark:border-white/10"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-teal-50 text-teal-800 dark:bg-teal-300/10 dark:text-teal-200">{biometricAvailable && biometricReady ? <Fingerprint size={22} /> : <LockKeyhole size={22} />}</span><div><h2 className="font-bold">{t('تأكيد الهوية', 'Verify your identity')}</h2><p className="mt-1 text-xs text-slate-500">{biometricAvailable && biometricReady ? t('استخدم البصمة المسجلة على جهازك.', 'Use the biometric method enrolled on this device.') : t('يلزم تسجيل الدخول إلى حساب العميل بجلسة فعّالة.', 'An active customer account session is required.')}</p></div></div>
         {!hasSession && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-300/10 dark:text-amber-100">{t('ما في جلسة عميل فعّالة. ارجع لحسابي وسجّل الدخول أولًا.', 'No active customer session. Return to My Account and sign in first.')}</p>}
-        {hasSession && !(biometricAvailable && biometricReady) && <label className="mt-4 grid gap-2 text-sm font-semibold">{t('كلمة المرور الحالية', 'Current password')}<input type="password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>}
+        {hasSession && (!(biometricAvailable && biometricReady) || preferPassword) && <label className="mt-4 grid gap-2 text-sm font-semibold">{t('كلمة المرور الحالية', 'Current password')}<input type="password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>}
+        {biometricAvailable && biometricReady && <button type="button" onClick={() => { setPreferPassword((value) => !value); setPassword(''); setError(''); }} className="mt-3 block rounded-lg px-1 py-2 text-sm font-semibold text-teal-800 underline dark:text-teal-200">{preferPassword ? t('استخدم البصمة بدل كلمة المرور', 'Use fingerprint instead') : t('استخدم كلمة المرور بدل البصمة', 'Use password instead of fingerprint')}</button>}
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
         <button onClick={() => void verify()} disabled={busy || !hasSession} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <ShieldCheck size={17} />}{busy ? t('جارٍ التحقق…', 'Verifying…') : t('تأكيد وفتح الخدمات', 'Verify and continue')}</button>
       </div>}
