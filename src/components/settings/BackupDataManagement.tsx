@@ -534,7 +534,7 @@ export const BackupDataManagement: React.FC = () => {
       const data = await backupService.captureLocalData();
       const dates = [...new Set((data.businessDays || []).map((day: any) =>
         String(day.businessDate ?? day.business_date ?? '').slice(0, 10)
-      ).filter((date: string) => /^\\d{4}-\\d{2}-\\d{2}$/.test(date)))] as string[];
+      ).filter((date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)))] as string[];
       setScopedRestoreData(data);
       setScopedRestoreDates(dates);
       setIsScopedRestoreOpen(true);
@@ -548,7 +548,7 @@ export const BackupDataManagement: React.FC = () => {
       setScopedRestoreError(locale === 'ar' ? 'اختر يوماً واحداً على الأقل' : 'Select at least one day');
       return;
     }
-    if (!/^\\d{4,}$/.test(scopedRestoreBin.trim())) {
+    if (!/^\d{4,}$/.test(scopedRestoreBin.trim())) {
       setScopedRestoreError(locale === 'ar' ? 'أدخل رمز BIN صحيحاً' : 'Enter a valid BIN');
       return;
     }
