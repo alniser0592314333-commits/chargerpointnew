@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, History, Search, Plus } from 'lucide-react';
 import { callCustomerAccount, customerAuth, setCustomerSession } from '../../services/customer/customerAuth';
 import { callWalletService } from '../../services/customer/walletService';
@@ -21,6 +21,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   const [customerLabel, setCustomerLabel] = useState('');
   const [activationRequest, setActivationRequest] = useState<ActivationRequest>(null);
   const t = (ar: string, en: string) => isAr ? ar : en;
+  const handleStepUpRequired = useCallback(() => setGate('step-up-required'), []);
 
   const verifyAccess = async (accessToken: string) => {
     setGate('checking-access');
@@ -161,7 +162,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             { icon: Search, title: t('البحث الموحد', 'Unified search'), detail: t('البحث بالاسم أو رقم المحفظة أو المرجع', 'Search by name, wallet number, or reference') },
             { icon: Plus, title: t('تسجيل حركة', 'Record activity'), detail: t('إضافة حركة مرتبطة بالمحفظة', 'Record activity linked to a wallet') },
           ].map(item => <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/[0.025]"><item.icon size={20} className="text-teal-700 dark:text-teal-300" /><h2 className="mt-3 text-sm font-bold">{item.title}</h2><p className="mt-1 text-xs leading-6 text-slate-600 dark:text-slate-400">{item.detail}</p></div>)}</div>
-          <WalletSnapshotPanel onStepUpRequired={() => setGate('step-up-required')} />
+          <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} />
         </div>}
       </section>
     </main>
