@@ -17,7 +17,7 @@ begin
     raise exception 'INVALID_WALLET_QUERY' using errcode = '22023';
   end if;
   if not exists (
-    select 1 from public.customer_service_entitlements e
+    select 1 from public.wallet_service_entitlements e
     where e.customer_id = p_customer_id and e.service_key = 'wallet_management' and e.enabled = true
   ) then
     raise exception 'WALLET_SERVICE_NOT_ENABLED' using errcode = '42501';
