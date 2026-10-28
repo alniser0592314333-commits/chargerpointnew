@@ -26,8 +26,7 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
         if (!active) return;
         setHasSession(Boolean(session.data.session?.access_token));
         setBiometricAvailable(available);
-        setBiometricReady(Boolean(status.enrolled));
-      });
+      setBiometricReady(Boolean(status.enrolled));
     }).catch(() => { if (active) setHasSession(false); });
     return () => { active = false; };
   }, []);
