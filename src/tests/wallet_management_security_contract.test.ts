@@ -56,6 +56,10 @@ describe('Public wallet management access contract', () => {
     expect(walletPanel).toContain('balance_minor');
     expect(walletPanel).toContain('snapshot.transactions.map');
     expect(walletPanel).toContain('setSnapshot(null)');
+    expect(walletPanel).toContain("'wallet-create-account'");
+    expect(walletPanel).toContain("'wallet-record-transaction'");
+    expect(walletPanel).toContain('transactionKey || crypto.randomUUID()');
+    expect(walletPanel).toContain('INSUFFICIENT_WALLET_BALANCE');
   });
 
   it('keeps wallet records customer-scoped and denies direct browser table access', () => {
