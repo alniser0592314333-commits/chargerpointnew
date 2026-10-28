@@ -2083,6 +2083,103 @@ export class BackupService {
    * Generates an item-by-item, ID-matched preview difference between Local and Online business data.
    * Compares each table by strictly matching entity.id (Rule: Local ID === Online ID).
    */
+  /**
+   * Restores only selected business dates from a portable/local snapshot.
+   * The database RPC validates admin + BIN, runs atomically, and refuses
+   * destructive changes to days with recognized financial history.
+   */
+  async restoreSelectedBusinessDays(
+    auth: AuthorizationContext,
+    bin: string,
+    snapshot: Partial<BackupSnapshotData>,
+    businessDates: string[]
+  ): Promise<{ success: boolean; business_dates: string[]; days: number; orders: number; order_items: number }> {
+    assertOnlineForSensitiveOperation('Restoring selected business days');
+    auth.requireAuth();
+    auth.assertPermission('settings:manage');
+
+    if (!bin || !/^\\d{4,}$/.test(bin.trim())) {
+      throw new AuthorizationError('BIN must contain at least 4 numeric digits.');
+    }
+    if (!snapshot || !Array.isArray(snapshot.businessDays) ||
+        !Array.isArray(snapshot.orders) || !Array.isArray(snapshot.orderItems)) {
+      throw new SnapshotFormatError('Backup is missing business days, orders, or order items.');
+    }
+    const dates = [...new Set((businessDates || []).filter((d) =>
+      typeof d === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(d)
+    ))].sort();
+    if (dates.length === 0) throw new SnapshotFormatError('Select at least one valid business date.');
+
+    for (const date of dates) {
+      const matches = snapshot.businessDays.filter((day: any) =>
+        String(day.businessDate ?? day.business_date ?? '').slice(0, 10) === date
+      );
+      if (matches.length !== 1) {
+        throw new SnapshotFormatError(`Backup must contain exactly one business day for ${date}.`);
+      }
+    }
+
+    const rpcResult = await invokeSupabaseRpc<any>('restore_selected_business_days', {
+      p_bin: bin.trim(),
+      p_snapshot: {
+        businessDays: snapshot.businessDays.map((d: any) => ({
+          ...d,
+          business_date: d.businessDate ?? d.business_date,
+          opened_at: d.openedAt ?? d.opened_at,
+          closed_at: d.closedAt ?? d.closed_at,
+          closed_by: d.closedBy ?? d.closed_by,
+          created_at: d.createdAt ?? d.created_at,
+          updated_at: d.updatedAt ?? d.updated_at,
+        })),
+        orders: snapshot.orders.map((o: any) => ({
+          ...o,
+          day_id: o.dayId ?? o.day_id,
+          customer_id: o.customerId ?? o.customer_id,
+          display_number: o.displayNumber ?? o.display_number,
+          customer_balance_snapshot_minor: o.customerBalanceSnapshotMinor ?? o.customer_balance_snapshot_minor,
+          qr_token_id: o.qrTokenId ?? o.qr_token_id,
+          charging_at: o.chargingAt ?? o.charging_at,
+          delivered_at: o.deliveredAt ?? o.delivered_at,
+          cancelled_at: o.cancelledAt ?? o.cancelled_at,
+          created_at: o.createdAt ?? o.created_at,
+          updated_at: o.updatedAt ?? o.updated_at,
+          deleted_at: o.deletedAt ?? o.deleted_at,
+        })),
+        orderItems: snapshot.orderItems.map((i: any) => ({
+          ...i,
+          order_id: i.orderId ?? i.order_id,
+          device_type_id: i.deviceTypeId ?? i.device_type_id,
+          item_sequence: i.itemSequence ?? i.item_sequence,
+          operational_status: i.operationalStatus ?? i.operational_status,
+          financial_status: i.financialStatus ?? i.financial_status,
+          payment_status: i.paymentStatus ?? i.payment_status,
+          device_name_snapshot: i.deviceNameSnapshot ?? i.device_name_snapshot,
+          device_icon_snapshot: i.deviceIconSnapshot ?? i.device_icon_snapshot,
+          base_price_snapshot_minor: i.basePriceSnapshotMinor ?? i.base_price_snapshot_minor,
+          charger_fee_enabled_snapshot: i.chargerFeeEnabledSnapshot ?? i.charger_fee_enabled_snapshot,
+          customer_charger_fee_exempt_snapshot: i.customerChargerFeeExemptSnapshot ?? i.customer_charger_fee_exempt_snapshot,
+          charger_fee_snapshot_minor: i.chargerFeeSnapshotMinor ?? i.charger_fee_snapshot_minor,
+          discount_snapshot_minor: i.discountSnapshotMinor ?? i.discount_snapshot_minor,
+          final_charge_snapshot_minor: i.finalChargeSnapshotMinor ?? i.final_charge_snapshot_minor,
+          has_charger: i.hasCharger ?? i.has_charger,
+          unit_price_minor: i.unitPriceMinor ?? i.unit_price_minor,
+          total_price_minor: i.totalPriceMinor ?? i.total_price_minor,
+          replacement_of_item_id: i.replacementOfItemId ?? i.replacement_of_item_id,
+          delivered_at: i.deliveredAt ?? i.delivered_at,
+          financially_recognized_at: i.financiallyRecognizedAt ?? i.financially_recognized_at,
+          cancelled_at: i.cancelledAt ?? i.cancelled_at,
+          deleted_at: i.deletedAt ?? i.deleted_at,
+          created_at: i.createdAt ?? i.created_at,
+          updated_at: i.updatedAt ?? i.updated_at,
+        })),
+      },
+      p_business_dates: dates,
+    });
+    if (rpcResult.error) throw new Error(String(rpcResult.error));
+    if (!rpcResult.data?.success) throw new Error('Scoped restore did not complete successfully.');
+    return rpcResult.data;
+  }
+
   async previewReplacementDiff(
     customOnlineData?: Partial<BackupSnapshotData>,
     customLocalData?: Partial<BackupSnapshotData>
