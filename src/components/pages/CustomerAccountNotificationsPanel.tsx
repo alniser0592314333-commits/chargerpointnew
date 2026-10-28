@@ -195,6 +195,10 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   };
 
   const reviewWalletActivation = async (requestId: string, decision: 'APPROVE' | 'REJECT') => {
+    if (decision === 'REJECT' && !(walletRejectionReasons[requestId] ?? '').trim()) {
+      setError(t('اكتب سبب الرفض قبل رفض الطلب حتى يعرف العميل السبب.', 'Enter a rejection reason so the customer knows why the request was rejected.'));
+      return;
+    }
     const token = getSupabaseAuthToken();
     if (!token || busy) return;
     setBusy(true); setError(''); setMessage('');
@@ -350,9 +354,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
         <h3 className="font-bold">{t('طلبات تفعيل المحفظة', 'Wallet activation requests')} <span className="text-sm font-normal text-gray-500">({walletActivationRequests.length})</span></h3>
         {walletActivationRequests.length === 0
           ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('ما في طلبات تفعيل محفظة معلّقة.', 'No pending wallet activation requests.')}</p>
-          : walletActivationRequests.map((request) => <article key={request.id} className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-900">
+          : walletActivationRequests.map((request) => <article id={'wallet-activation-request-' + request.id} key={request.id} className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-900">
               <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('تاريخ الطلب: ', 'Requested: ')}{dateLabel(request.requested_at)}</p></div>
-              <label className="block text-xs font-semibold">{t('سبب الرفض (اختياري)', 'Rejection reason (optional)')}<textarea maxLength={1000} value={walletRejectionReasons[request.id] ?? ''} onChange={(event) => setWalletRejectionReasons((items) => ({ ...items, [request.id]: event.target.value }))} className="mt-2 w-full rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-[#315653] dark:bg-[#0b2928]" rows={2} /></label>
+              <label className="block text-xs font-semibold">{t('سبب الرفض (مطلوب عند الرفض)', 'Rejection reason (required to reject)')}<textarea maxLength={1000} value={walletRejectionReasons[request.id] ?? ''} onChange={(event) => setWalletRejectionReasons((items) => ({ ...items, [request.id]: event.target.value }))} className="mt-2 w-full rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-[#315653] dark:bg-[#0b2928]" rows={2} /></label>
               <div className="flex flex-wrap gap-2">
                 <button type="button" disabled={busy} onClick={() => void reviewWalletActivation(request.id, 'APPROVE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('موافقة وتفعيل', 'Approve and enable')}</button>
                 <button type="button" disabled={busy} onClick={() => void reviewWalletActivation(request.id, 'REJECT')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200">{t('رفض الطلب', 'Reject request')}</button>
@@ -373,10 +377,18 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       <div className="space-y-2">
         <h3 className="font-bold">{t('سجل إشعارات الحسابات', 'Account notification history')} <span className="text-sm font-normal text-gray-500">({events.length})</span></h3>
         {events.length === 0 ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('لا توجد إشعارات بعد.', 'No account notifications yet.')}</p>
-          : events.map((event) => <article key={event.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${event.is_read ? 'border-gray-200 opacity-75 dark:border-[#244746]' : 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20'}`}>
+          : events.map((event) => {
+            const pendingWalletRequest = event.event_type === 'WALLET_ACTIVATION_REQUESTED'
+              ? walletActivationRequests.find((request) => request.customer_id === event.customer_id)
+              : undefined;
+            return <article key={event.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${event.is_read ? 'border-gray-200 opacity-75 dark:border-[#244746]' : 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20'}`}>
               <div className="flex items-start gap-2"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-600" /><div><p className="font-semibold">{customerName(event.customers) || event.customer_id}</p><p className="text-sm">{eventLabel(event)}</p><p className="mt-1 text-xs text-gray-500">{dateLabel(event.created_at)}</p></div></div>
-              {!event.is_read && <button type="button" disabled={busy} onClick={() => void markRead(event)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold dark:border-[#315653]"><Check className="h-3.5 w-3.5" />{t('تمت المراجعة', 'Mark read')}</button>}
-            </article>)}
+              <div className="flex flex-wrap items-center gap-2">
+                {!event.is_read && <button type="button" disabled={busy} onClick={() => void markRead(event)} className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold dark:border-[#315653]"><Check className="h-3.5 w-3.5" />{t('تمت المراجعة', 'Mark read')}</button>}
+                {pendingWalletRequest && <button type="button" disabled={busy} onClick={() => { document.getElementById('wallet-activation-request-' + pendingWalletRequest.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('مراجعة الطلب', 'Review request')}</button>}
+              </div>
+            </article>;
+          })}
       </div>
     </section>
   );
