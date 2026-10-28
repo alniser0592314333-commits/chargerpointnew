@@ -19,7 +19,7 @@ export async function callWalletService<T = Record<string, unknown>>(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch(config.supabaseUrl.replace(/\\/+$/, '') + '/functions/v1/wallet-service', {
+    const response = await fetch(config.supabaseUrl.replace(/\/+$/, '') + '/functions/v1/wallet-service', {
       method: 'POST',
       cache: 'no-store',
       headers: {
