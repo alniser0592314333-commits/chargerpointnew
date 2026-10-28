@@ -6,6 +6,8 @@ describe('Public wallet management access contract', () => {
   const page = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/WalletManagementPage.tsx'), 'utf8');
   const portal = fs.readFileSync(path.resolve(process.cwd(), 'src/PublicPortalApp.tsx'), 'utf8');
   const endpoint = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/customer-account/index.ts'), 'utf8');
+  const walletEndpoint = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/wallet-service/index.ts'), 'utf8');
+  const walletClient = fs.readFileSync(path.resolve(process.cwd(), 'src/services/customer/walletService.ts'), 'utf8');
   const migration = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261028150000_wallet_management_entitlements.sql'), 'utf8');
   const walletPanel = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/WalletSnapshotPanel.tsx'), 'utf8');
   const walletSchema = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261028160000_wallet_accounts_and_transactions.sql'), 'utf8');
@@ -20,7 +22,7 @@ describe('Public wallet management access contract', () => {
 
   it('bounds wallet access verification to avoid an indefinite loading state', () => {
     const auth = fs.readFileSync(path.resolve(process.cwd(), 'src/services/customer/customerAuth.ts'), 'utf8');
-    expect(auth).toContain("'wallet-management-access'");
+    expect(walletClient).toContain("/functions/v1/wallet-service");
     expect(auth).toContain('setTimeout(() => controller.abort(), 10000)');
   });
 
@@ -34,13 +36,16 @@ describe('Public wallet management access contract', () => {
   });
 
   it('enforces active session, active account, and explicit entitlement on the server', () => {
-    expect(endpoint).toContain('action === "wallet-management-access"');
-    expect(endpoint).toContain('sessionIsActive(link, authenticated.user.id, authenticated.claims)');
-    expect(endpoint).toContain('link.account_status !== "ACTIVE"');
-    expect(endpoint).toContain('link.must_change_password');
-    expect(endpoint).toContain('wallet_service_entitlements');
-    expect(endpoint).not.toContain('customer_service_entitlements');
-    expect(endpoint).toContain('entitlement.enabled !== true');
+    expect(walletEndpoint).toContain('action === "wallet-management-access"');
+    expect(endpoint).not.toContain('wallet-management-access');
+    expect(walletEndpoint).toContain('sessionId');
+    expect(walletEndpoint).toContain('registered.session_id !== sessionId');
+    expect(walletEndpoint).toContain('link.account_status !== "ACTIVE"');
+    expect(walletEndpoint).toContain('link.must_change_password');
+    expect(walletEndpoint).toContain('wallet_service_entitlements');
+    expect(endpoint).not.toContain('wallet-management-access');
+    expect(endpoint).not.toContain('wallet-record-transaction');
+    expect(walletEndpoint).toContain('entitlement.enabled !== true');
   });
 
   it('defaults access off and prevents direct client table access', () => {
@@ -66,8 +71,8 @@ describe('Public wallet management access contract', () => {
   });
 
   it('keeps wallet records customer-scoped and denies direct browser table access', () => {
-    expect(endpoint).toContain('p_customer_id: link.customer_id');
-    expect(endpoint).toContain('p_actor_auth_user_id: authenticated.user.id');
+    expect(walletEndpoint).toContain('p_customer_id: link.customer_id');
+    expect(walletEndpoint).toContain('p_actor_auth_user_id: authData.user.id');
     expect(walletSchema).toContain('foreign key (source_wallet_id, customer_id)');
     expect(walletSchema).toContain('foreign key (destination_wallet_id, customer_id)');
     expect(walletSchema).toContain('force row level security');
@@ -77,11 +82,11 @@ describe('Public wallet management access contract', () => {
 
   it('bounds snapshot reads and rejects reuse of an idempotency key with changed transaction data', () => {
     const auth = fs.readFileSync(path.resolve(process.cwd(), 'src/services/customer/customerAuth.ts'), 'utf8');
-    expect(auth).toContain("'wallet-snapshot'].includes(action)");
+    expect(walletClient).toContain("/functions/v1/wallet-service");
     expect(auth).toContain('setTimeout(() => controller.abort(), 10000)');
     expect(walletSchema).toContain('p_currency is null');
     expect(walletSchema).toContain('IDEMPOTENCY_KEY_REUSED');
-    expect(endpoint).toContain('code.includes("IDEMPOTENCY_KEY_REUSED")');
+    expect(walletEndpoint).toContain('code.includes("IDEMPOTENCY_KEY_REUSED")');
   });
 
   it('uses currency-specific minor units for wallet entry and balance display', () => {
