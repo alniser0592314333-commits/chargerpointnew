@@ -56,7 +56,7 @@ Deno.serve(async (request: Request) => {
   const sessionId = normalize(claims?.session_id, 64);
   const { data: registered, error: sessionError } = await admin.from("customer_account_sessions")
     .select("session_id,auth_user_id,expires_at,revoked_at")
-    .eq("customer_id", link.customer_id).eq("auth_user_id", authData.user.id).maybeSingle();
+    .eq("customer_id", link.customer_id).eq("auth_user_id", authData.user.id).eq("session_id", sessionId).maybeSingle();
   if (sessionError || !registered || registered.revoked_at || registered.session_id !== sessionId ||
     new Date(registered.expires_at).getTime() <= Date.now() || link.must_change_password ||
     link.terms_version !== TERMS_VERSION) return genericFailure();
