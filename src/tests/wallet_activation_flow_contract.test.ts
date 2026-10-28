@@ -48,6 +48,9 @@ describe('Wallet activation workflow security contract', () => {
     expect(adminPanel).toContain('reviewWalletActivation');
     expect(adminPanel).toContain('Wallet activation requests');
     expect(servicesPage).toContain('verify-session');
+    expect(servicesPage).toContain("'reauthenticate'");
+    expect(servicesPage).toContain('loginWithAccountBiometric');
+    expect(servicesPage).toContain('Use password instead of fingerprint');
     expect(publicRouter).toContain("pathname === '/public/services'");
     expect(publicRouter).toContain("pathname === '/public/services/wallet'");
   });
