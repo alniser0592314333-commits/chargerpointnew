@@ -438,6 +438,7 @@ Deno.serve(async (request: Request) => {
           if (error || !data || data.ok !== true) {
             const code = error?.message ?? "";
             if (code.includes("INSUFFICIENT_WALLET_BALANCE")) return respond(409, { ok: false, error: "INSUFFICIENT_WALLET_BALANCE" });
+            if (code.includes("IDEMPOTENCY_KEY_REUSED")) return respond(409, { ok: false, error: "IDEMPOTENCY_KEY_REUSED" });
             if (code.includes("WALLET_SERVICE_NOT_ENABLED")) return respond(403, { ok: false, error: "SERVICE_NOT_ENABLED" });
             if (code.includes("SOURCE_WALLET_UNAVAILABLE") || code.includes("DESTINATION_WALLET_UNAVAILABLE")) {
               return respond(400, { ok: false, error: "WALLET_UNAVAILABLE" });
