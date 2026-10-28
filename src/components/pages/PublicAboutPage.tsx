@@ -1306,6 +1306,44 @@ export const PublicAboutPage: React.FC = () => {
         </section>
 
         {/* ===================================================================
+            ASSISTANCE SERVICES: WALLET MANAGEMENT
+            =================================================================== */}
+        <section id="assistance-services" className="space-y-5">
+          <div className="text-center max-w-xl mx-auto space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-[#6ee7b7]">
+              {isAr ? 'خدمات خاصة للمشتركين' : 'Subscriber Services'}
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
+              {isAr ? 'خدمات مساعدة' : 'Assistance Services'}
+            </h2>
+            <p className="text-sm leading-7 text-gray-600 dark:text-[#a0c5bd]">
+              {isAr ? 'خدمات إضافية متاحة للمشتركين المصرّح لهم فقط.' : 'Additional services available only to authorized subscribers.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { window.history.pushState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); window.dispatchEvent(new PopStateEvent('popstate')); }}
+            className="group about-card w-full p-5 sm:p-7 text-start transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50"
+            aria-label={isAr ? 'فتح إدارة المحفظة' : 'Open wallet management'}
+          >
+            <div className="flex items-center gap-4">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-md shadow-emerald-900/15">
+                <Wallet className="h-7 w-7" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-lg font-extrabold text-gray-900 dark:text-white">{isAr ? 'إدارة المحفظة' : 'Wallet Management'}</span>
+                <span className="mt-1 block text-sm leading-6 text-gray-600 dark:text-[#a0c5bd]">{isAr ? 'إدارة المحافظ والحركات المالية من مكان واحد، بعد التحقق من حسابك وصلاحية الاشتراك.' : 'Manage wallets and financial activity after verifying your account and subscription access.'}</span>
+              </span>
+              <span className="text-emerald-700 transition-transform group-hover:-translate-x-1 dark:text-emerald-300" aria-hidden="true">{isAr ? '←' : '→'}</span>
+            </div>
+            <div className="mt-4 flex items-center gap-2 border-t border-gray-200/70 pt-4 text-xs font-semibold text-emerald-800 dark:border-white/10 dark:text-emerald-300">
+              <ShieldCheck className="h-4 w-4" />
+              <span>{isAr ? 'دخول محمي للمشتركين المصرّح لهم' : 'Protected access for authorized subscribers'}</span>
+            </div>
+          </button>
+        </section>
+
+        {/* ===================================================================
             SECTION 5: FAQ ACCORDION (الأسئلة الشائعة)
             =================================================================== */}
         <section id="faq-section" className="space-y-6">
