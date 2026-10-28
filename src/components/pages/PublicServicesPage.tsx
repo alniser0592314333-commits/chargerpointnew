@@ -11,6 +11,7 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
   const [hasSession, setHasSession] = useState(false);
+  const [password, setPassword] = useState('');
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricReady, setBiometricReady] = useState(false);
   const [busy, setBusy] = useState(false);
