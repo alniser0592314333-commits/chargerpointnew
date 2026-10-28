@@ -28,6 +28,9 @@ declare
   v_payload_orders jsonb;
   v_payload_items jsonb;
   v_date date;
+  v_restored_order record;
+  v_order_qr_token text;
+  v_order_qr_id uuid;
 begin
   if auth.uid() is null then
     raise exception 'Authentication required';
@@ -212,6 +215,21 @@ begin
     notes text,qr_token_id uuid,charging_at timestamptz,delivered_at timestamptz,cancelled_at timestamptz,
     created_at timestamptz,updated_at timestamptz,deleted_at timestamptz,version integer)
   where x.day_id in (select id from public.business_days where business_date = any(v_dates));
+
+  -- Issue fresh QR capabilities for restored orders; never reactivate a
+  -- stale token that may have been scanned or copied before the restore.
+  for v_restored_order in
+    select o.id from public.orders o
+    join public.business_days d on d.id = o.day_id
+    where d.business_date = any(v_dates)
+  loop
+    v_order_qr_token := public.get_or_create_order_qr__session_guarded_impl(v_restored_order.id);
+    select qt.id into v_order_qr_id
+    from public.qr_tokens qt
+    where qt.public_token = v_order_qr_token and qt.token_type = 'ORDER'
+    limit 1;
+    update public.orders set qr_token_id = v_order_qr_id where id = v_restored_order.id;
+  end loop;
 
   insert into public.order_items
     (id,order_id,device_type_id,item_sequence,operational_status,financial_status,payment_status,status,device_name_snapshot,device_icon_snapshot,base_price_snapshot_minor,charger_fee_enabled_snapshot,customer_charger_fee_exempt_snapshot,charger_fee_snapshot_minor,discount_snapshot_minor,final_charge_snapshot_minor,has_charger,unit_price_minor,total_price_minor,replacement_of_item_id,delivered_at,financially_recognized_at,cancelled_at,deleted_at,created_at,updated_at,version)
