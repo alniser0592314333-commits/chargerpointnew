@@ -2,7 +2,7 @@
 -- an administrator explicitly enables the service for that customer.
 begin;
 
-create table if not exists public.customer_service_entitlements (
+create table if not exists public.wallet_service_entitlements (
   customer_id uuid not null references public.customers(id) on delete cascade,
   service_key text not null check (service_key in ('wallet_management')),
   enabled boolean not null default false,
@@ -12,15 +12,15 @@ create table if not exists public.customer_service_entitlements (
   primary key (customer_id, service_key)
 );
 
-alter table public.customer_service_entitlements enable row level security;
-alter table public.customer_service_entitlements force row level security;
+alter table public.wallet_service_entitlements enable row level security;
+alter table public.wallet_service_entitlements force row level security;
 
-revoke all on table public.customer_service_entitlements from anon, authenticated;
-grant select, insert, update, delete on table public.customer_service_entitlements to service_role;
+revoke all on table public.wallet_service_entitlements from anon, authenticated;
+grant select, insert, update, delete on table public.wallet_service_entitlements to service_role;
 
-comment on table public.customer_service_entitlements is
+comment on table public.wallet_service_entitlements is
   'Server-enforced entitlements for optional customer-facing services. No direct client access.';
-comment on column public.customer_service_entitlements.enabled is
+comment on column public.wallet_service_entitlements.enabled is
   'Access is granted only when true and checked server-side on each service entry.';
 
 commit;
