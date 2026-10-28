@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { WalletSnapshotPanel } from './WalletSnapshotPanel';
 
-type Gate = 'checking' | 'signed-out' | 'checking-access' | 'activation-required' | 'denied' | 'ready' | 'offline';
+type Gate = 'checking' | 'signed-out' | 'checking-access' | 'activation-required' | 'denied' | 'step-up-required' | 'ready' | 'offline';
 type ActivationRequest = { id?: string; status?: string; requested_at?: string; decided_at?: string; rejection_reason?: string | null } | null;
 
 export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -28,6 +28,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
       'wallet-activation-status', {}, accessToken,
     );
     if (status.error === 'NETWORK_UNAVAILABLE') { setGate('offline'); return; }
+    if (status.error === 'STEP_UP_REQUIRED') { setGate('step-up-required'); return; }
     if (status.error || !status.data) { setGate('denied'); return; }
     setActivationRequest(status.data.request ?? null);
     if (status.data.wallet_management_enabled !== true) { setGate('activation-required'); return; }
@@ -35,6 +36,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
       'wallet-management-access', {}, accessToken,
     );
     if (result.error === 'NETWORK_UNAVAILABLE') { setGate('offline'); return; }
+    if (result.error === 'STEP_UP_REQUIRED') { setGate('step-up-required'); return; }
     if (result.error || result.data?.wallet_management_enabled !== true) { setGate('denied'); return; }
     setCustomerLabel(result.data.customer_name || '');
     setGate('ready');
@@ -135,6 +137,11 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             : <><p className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75">{t('قبل استخدام المحفظة، لازم تطلب تفعيلها. بعد موافقة الإدارة رح تفتح معك بشكل طبيعي.', 'Before using the wallet, request activation. Once approved, it will open normally.')}</p><button disabled={busy} onClick={() => void requestActivation()} className="mt-4 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('طلب تفعيل المحفظة', 'Request wallet activation')}</button></>}
           {error && <p role="alert" className="mt-3 text-sm text-rose-700 dark:text-rose-200">{error}</p>}
           <button onClick={() => { void customerAuth.auth.signOut(); setGate('signed-out'); }} className="mt-4 block rounded-xl border border-amber-400/50 px-4 py-2 text-sm font-bold">{t('تبديل الحساب', 'Switch account')}</button>
+        </div>}
+        {gate === 'step-up-required' && <div className="mt-8 rounded-2xl border border-teal-300/60 bg-teal-50 p-5 dark:border-teal-200/15 dark:bg-teal-200/5">
+          <div className="flex items-center gap-3 font-bold text-teal-900 dark:text-teal-100"><LockKeyhole size={20} />{t('يلزم تأكيد الهوية من جديد', 'Identity verification required')}</div>
+          <p className="mt-2 text-sm leading-7 text-teal-800 dark:text-teal-100/75">{t('انتهت مدة تأكيد الهوية الآمن. ارجع لخدمات المساعدة وأكّد هويتك بكلمة المرور أو البصمة قبل متابعة استخدام المحفظة.', 'Your recent identity verification has expired. Return to Assistance Services and verify again with your password or biometric before using the wallet.')}</p>
+          <button onClick={onBack} className="mt-4 rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white">{t('العودة لتأكيد الهوية', 'Return to identity verification')}</button>
         </div>}
         {gate === 'denied' && <div className="mt-8 rounded-2xl border border-amber-300/60 bg-amber-50 p-5 dark:border-amber-200/15 dark:bg-amber-200/5">
           <div className="flex items-center gap-3 font-bold text-amber-900 dark:text-amber-100"><ShieldCheck size={20} />{t('الخدمة غير مفعّلة لهذا الحساب', 'Service not enabled for this account')}</div>
