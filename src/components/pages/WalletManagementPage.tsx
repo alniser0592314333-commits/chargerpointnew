@@ -105,10 +105,10 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
     } finally { setBusy(false); }
   };
 
-  return <div className="min-h-screen bg-[#f5f7f8] text-slate-900 dark:bg-[#071a1d] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
+  return <div className="min-h-screen bg-[#f3f6f5] text-slate-900 dark:bg-[#071817] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#071a1d]/90">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-white/5">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:hover:bg-white/5">
           {isAr ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}{t('رجوع', 'Back')}
         </button>
         <div className="flex items-center gap-2">
@@ -117,15 +117,28 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         </div>
       </div>
     </header>
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-      <section className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#0b2427] sm:p-9">
-        <div className="flex items-start gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-teal-700 text-white"><Wallet size={27} /></div>
-          <div><p className="mb-2 text-xs font-bold tracking-widest text-teal-700 dark:text-teal-300">{t('خدمات مساعدة', 'ASSISTANCE SERVICES')}</p>
-            <h1 className="text-2xl font-extrabold sm:text-3xl">{t('إدارة المحفظة', 'Wallet management')}</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-300">{t('إدارة المحافظ والحركات المالية بمكان واحد.', 'Manage wallets and financial activity in one place.')}</p>
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+      <section className="relative overflow-hidden rounded-[1.75rem] border border-slate-200/90 bg-white shadow-[0_20px_70px_-42px_rgba(15,70,61,0.35)] dark:border-white/10 dark:bg-[#0b2420]">
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#103f36] via-[#14574a] to-[#1a6b59] px-6 py-7 text-white sm:px-9 sm:py-9">
+          <div aria-hidden="true" className="pointer-events-none absolute -left-10 -top-16 h-56 w-56 rounded-full border border-white/10" />
+          <div aria-hidden="true" className="pointer-events-none absolute -left-2 -top-8 h-40 w-40 rounded-full border border-white/10" />
+          <div className="relative flex flex-wrap items-start justify-between gap-5">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-inner"><Wallet size={27} /></div>
+              <div><p className="mb-2 text-[11px] font-bold tracking-[0.18em] text-emerald-100/80">{t('الخدمات المالية · بوابة العملاء', 'FINANCIAL SERVICES · CUSTOMER PORTAL')}</p>
+                <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{t('إدارة المحفظة', 'Wallet management')}</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-emerald-50/85">{t('مساحة مالية منظّمة لمتابعة محافظك وأرصدتك وحركاتك المالية بأمان.', 'A secure, organized space to manage your wallets, balances, and financial activity.')}</p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/10 px-3 py-2 text-xs font-semibold text-emerald-50"><ShieldCheck size={15} />{t('بوابة آمنة', 'Secure portal')}</span>
+          </div>
+          <div className="relative mt-7 grid grid-cols-2 gap-3 border-t border-white/15 pt-5 sm:grid-cols-3">
+            <div><p className="text-xs text-emerald-100/75">{t('الوصول', 'Access')}</p><p className="mt-1 text-sm font-bold">{t('مقيّد بالحساب', 'Account protected')}</p></div>
+            <div><p className="text-xs text-emerald-100/75">{t('تحديث البيانات', 'Data refresh')}</p><p className="mt-1 text-sm font-bold">{t('مباشر من الخادم', 'Live from server')}</p></div>
+            <div className="col-span-2 sm:col-span-1"><p className="text-xs text-emerald-100/75">{t('سجل الحركات', 'Transaction ledger')}</p><p className="mt-1 text-sm font-bold">{t('مرجع موحّد', 'Unified ledger')}</p></div>
           </div>
         </div>
+        <div className="px-5 pb-7 sm:px-9 sm:pb-9">
         {(gate === 'checking' || gate === 'checking-access') && <div className="mt-8 flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5"><RefreshCw className="animate-spin" size={18} />{t('بنتحقق من الجلسة وصلاحية الخدمة…', 'Checking your session and service access…')}</div>}
         {gate === 'signed-out' && <form onSubmit={signIn} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
           <div className="flex items-center gap-2 text-sm font-bold"><LockKeyhole size={17} className="text-teal-700 dark:text-teal-300" />{t('دخول آمن بحسابك الحالي', 'Secure sign-in with your existing account')}</div>
@@ -158,18 +171,28 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
           <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-300">{t('تعذّر تأكيد صلاحية الخدمة بأمان. لن نعرض بيانات مالية قبل التحقق من صلاحية الوصول.', 'Access could not be verified securely. Financial data remains hidden until access is confirmed.')}</p>
           <button onClick={() => window.location.reload()} className="mt-4 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white dark:bg-white dark:text-slate-900">{t('إعادة المحاولة', 'Retry')}</button>
         </div>}
-        {gate === 'ready' && <div className="mt-8 border-t border-slate-200 pt-7 dark:border-white/10">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-bold">{t('أهلًا', 'Welcome')}{customerLabel ? '، ' + customerLabel : ''}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('تم تأكيد صلاحية الخدمة من الخادم.', 'Service access verified by the server.')}</p></div><span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 dark:bg-emerald-300/10 dark:text-emerald-200"><ShieldCheck size={15} />{t('وصول مصرّح', 'Authorized')}</span></div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">{[
-            { icon: Wallet, title: t('محافظي', 'My wallets'), detail: t('عرض المحافظ والأرصدة', 'View wallets and balances') },
-            { icon: History, title: t('الحركات المالية', 'Transactions'), detail: t('متابعة الحركات الواردة والصادرة', 'Track incoming and outgoing activity') },
-            { icon: Search, title: t('البحث الموحد', 'Unified search'), detail: t('البحث بالاسم أو رقم المحفظة أو المرجع', 'Search by name, wallet number, or reference') },
-            { icon: Plus, title: t('تسجيل حركة', 'Record activity'), detail: t('إضافة حركة مرتبطة بالمحفظة', 'Record activity linked to a wallet') },
-          ].map(item => <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/[0.025]"><item.icon size={20} className="text-teal-700 dark:text-teal-300" /><h2 className="mt-3 text-sm font-bold">{item.title}</h2><p className="mt-1 text-xs leading-6 text-slate-600 dark:text-slate-400">{item.detail}</p></div>)}</div>
+        {gate === 'ready' && <div className="px-5 pb-7 sm:px-9 sm:pb-9">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-5 dark:border-white/10"><div><p className="text-lg font-extrabold">{t('أهلًا', 'Welcome')}{customerLabel ? '، ' + customerLabel : ''}</p><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('تم التحقق من حسابك. اختار القسم اللي بدك تفتحه.', 'Your account is verified. Choose a section to open.')}</p></div><span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 dark:bg-emerald-300/10 dark:text-emerald-200"><ShieldCheck size={15} />{t('وصول مصرّح', 'Authorized')}</span></div>
+          <div className="mt-5">
+            <h2 className="text-sm font-extrabold">{t('اختصارات المحفظة', 'Wallet shortcuts')}</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                { icon: Wallet, title: t('محافظي وأرصدتي', 'My wallets & balances'), detail: t('عرض المحافظ المسجلة', 'View registered wallets'), target: 'wallet-accounts' },
+                { icon: History, title: t('سجل الحركات', 'Transaction history'), detail: t('مراجعة الوارد والصادر', 'Review incoming and outgoing'), target: 'wallet-transactions' },
+                { icon: Plus, title: t('إضافة محفظة', 'Add a wallet'), detail: t('ربط محفظة بحسابك', 'Link a wallet to your account'), target: 'wallet-add' },
+                { icon: Search, title: t('تسجيل حركة', 'Record a transaction'), detail: t('إدخال حركة مالية جديدة', 'Enter a new financial transaction'), target: 'wallet-record' },
+              ].map(item => <button type="button" key={item.target} onClick={() => document.getElementById(item.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="group flex min-h-[112px] items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-start transition duration-200 hover:-translate-y-0.5 hover:border-emerald-700/50 hover:bg-emerald-50/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 dark:border-white/10 dark:bg-white/[0.025] dark:hover:bg-emerald-300/5">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-800 transition group-hover:bg-emerald-700 group-hover:text-white dark:bg-emerald-300/10 dark:text-emerald-200"><item.icon size={19} /></span>
+                <span><strong className="block text-sm">{item.title}</strong><span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{item.detail}</span></span>
+                <span className="ms-auto self-center text-slate-400 transition group-hover:text-emerald-700">{isAr ? <ArrowLeft size={16} /> : <ArrowRight size={16} />}</span>
+              </button>)}
+            </div>
+          </div>
           <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} />
         </div>}
+        </div>
       </section>
     </main>
-    <footer className="mx-auto max-w-5xl px-4 pb-8 text-center text-xs text-slate-500">{t('بياناتك لا تُعرض إلا بعد التحقق من الجلسة وصلاحية الخدمة.', 'Your data is shown only after session and service authorization checks.')}</footer>
+    <footer className="mx-auto max-w-6xl px-4 pb-8 text-center text-xs text-slate-500">{t('بياناتك لا تُعرض إلا بعد التحقق من الجلسة وصلاحية الخدمة.', 'Your data is shown only after session and service authorization checks.')}</footer>
   </div>;
 };
