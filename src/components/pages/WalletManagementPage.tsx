@@ -48,6 +48,10 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
     setBusy(true); setError('');
     try {
       const result = await callWalletService<{ status?: string; request?: ActivationRequest; wallet_management_enabled?: boolean }>('wallet-request-activation');
+      if (result.error === 'STEP_UP_REQUIRED') {
+        setGate('step-up-required');
+        return;
+      }
       if (result.error && result.error !== 'REQUEST_SAVED_NOTIFICATION_PENDING') {
         setError(t('تعذّر إرسال الطلب. تأكد من الاتصال وحاول مرة ثانية.', 'Could not submit the request. Check your connection and try again.'));
         return;
