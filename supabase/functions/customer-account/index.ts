@@ -762,8 +762,37 @@ Deno.serve(async (request: Request) => {
       const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
         .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name)")
         .order("created_at", { ascending: false }).limit(200);
-      if (requestError || eventError || accountsError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [], accounts: accounts ?? [] });
+      const { data: walletActivationRequests, error: walletRequestsError } = await admin.from("wallet_activation_requests")
+        .select("id,customer_id,status,requested_at,customers(name)")
+        .eq("status", "PENDING").order("requested_at", { ascending: true }).limit(100);
+      if (requestError || eventError || accountsError || walletRequestsError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [], accounts: accounts ?? [], walletActivationRequests: walletActivationRequests ?? [] });
+    }
+
+    if (action === "admin-review-wallet-activation") {
+      const administrator = await requireAdmin();
+      if (!administrator?.adminId) return respond(403, { ok: false, error: "FORBIDDEN" });
+      const requestId = normalize(input.requestId, 64);
+      const decision = normalize(input.decision, 16);
+      const rejectionReason = normalize(input.rejectionReason, 1000);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId) ||
+          !["APPROVE", "REJECT"].includes(decision) || (decision === "APPROVE" && rejectionReason)) {
+        return respond(400, { ok: false, error: "INVALID_REQUEST" });
+      }
+      const { data, error } = await admin.rpc("wallet_review_activation_request", {
+        p_request_id: requestId,
+        p_decision: decision,
+        p_rejection_reason: decision === "REJECT" ? rejectionReason || null : null,
+        p_admin_id: administrator.adminId,
+      });
+      if (error) {
+        console.error("Wallet activation review failed", error.code ?? "unknown");
+        return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      }
+      if (!data || data.ok !== true) {
+        return respond(409, { ok: false, error: typeof data?.error === "string" ? data.error : "REQUEST_NO_LONGER_PENDING" });
+      }
+      return respond(200, { ok: true, status: data.status });
     }
 
     if (action === "admin-reset") {
