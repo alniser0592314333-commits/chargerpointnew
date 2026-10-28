@@ -67,4 +67,13 @@ describe('Public wallet management access contract', () => {
     expect(walletSchema).toContain('revoke all on public.wallet_transactions from anon, authenticated');
     expect(snapshotRpc).toContain("where t.customer_id = p_customer_id");
   });
+
+  it('bounds snapshot reads and rejects reuse of an idempotency key with changed transaction data', () => {
+    const auth = fs.readFileSync(path.resolve(process.cwd(), 'src/services/customer/customerAuth.ts'), 'utf8');
+    expect(auth).toContain("'wallet-snapshot'].includes(action)");
+    expect(auth).toContain('setTimeout(() => controller.abort(), 10000)');
+    expect(walletSchema).toContain('p_currency is null');
+    expect(walletSchema).toContain('IDEMPOTENCY_KEY_REUSED');
+    expect(endpoint).toContain('code.includes("IDEMPOTENCY_KEY_REUSED")');
+  });
 });
