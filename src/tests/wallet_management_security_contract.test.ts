@@ -15,6 +15,12 @@ describe('Public wallet management access contract', () => {
     expect(page).not.toContain('admin-bin');
   });
 
+  it('bounds wallet access verification to avoid an indefinite loading state', () => {
+    const auth = fs.readFileSync(path.resolve(process.cwd(), 'src/services/customer/customerAuth.ts'), 'utf8');
+    expect(auth).toContain("'wallet-management-access'");
+    expect(auth).toContain('setTimeout(() => controller.abort(), 10000)');
+  });
+
   it('requires the existing customer credentials and fails closed when offline or unauthorized', () => {
     expect(page).toContain("callCustomerAccount");
     expect(page).toContain("'login'");
