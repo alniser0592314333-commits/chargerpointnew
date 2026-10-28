@@ -40,6 +40,31 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
     setGate('ready');
   };
 
+  const requestActivation = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const result = await callWalletService<{ status?: string; request?: ActivationRequest; wallet_management_enabled?: boolean }>('wallet-request-activation');
+      if (result.error && result.error !== 'REQUEST_SAVED_NOTIFICATION_PENDING') {
+        setError(t('تعذّر إرسال الطلب. تأكد من الاتصال وحاول مرة ثانية.', 'Could not submit the request. Check your connection and try again.'));
+        return;
+      }
+      if (result.data?.request) setActivationRequest(result.data.request);
+      else setActivationRequest((current) => current ? { ...current, status: result.data?.status ?? current.status } : { status: result.data?.status ?? 'PENDING' });
+      if (result.data?.wallet_management_enabled === true) {
+        const session = await customerAuth.auth.getSession();
+        if (session.data.session?.access_token) await verifyAccess(session.data.session.access_token);
+      } else {
+        setGate('activation-required');
+      }
+      if (result.error === 'REQUEST_SAVED_NOTIFICATION_PENDING') {
+        setError(t('تم حفظ الطلب، لكن تعذّر تسجيل إشعار الإدارة. الإدارة بحاجة لمراجعة قائمة الطلبات.', 'The request was saved, but the admin notification could not be recorded. An administrator must review the request queue.'));
+      }
+    } catch {
+      setError(t('صار خطأ غير متوقع. حاول مرة ثانية.', 'An unexpected error occurred. Please try again.'));
+    } finally { setBusy(false); }
+  };
+
   useEffect(() => {
     let alive = true;
     void customerAuth.auth.getSession().then(async ({ data }) => {
