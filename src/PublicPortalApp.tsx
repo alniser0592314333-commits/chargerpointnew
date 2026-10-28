@@ -7,6 +7,7 @@ import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import { WalletManagementPage } from './components/pages/WalletManagementPage';
 import { FirstVisitWelcomeIntro } from './components/pages/FirstVisitWelcomeIntro';
 import './public-portal.css';
 import { AppVersionGate } from './components/customer/CustomerAppVersionGate';
@@ -222,6 +223,8 @@ const PublicPortalApp: React.FC = () => {
 
   if (pathname === '/public/about') {
     content = <ThemeProvider><PublicAboutPage /></ThemeProvider>;
+  } else if (pathname === '/public/services/wallet') {
+    content = <ThemeProvider><WalletManagementPage onBack={() => { window.history.replaceState({ path: '/public/about' }, '', '/public/about'); setCurrentPath('/public/about'); }} /></ThemeProvider>;
   } else {
     const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
     if (route) {
