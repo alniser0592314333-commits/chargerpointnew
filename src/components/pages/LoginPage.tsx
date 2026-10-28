@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
+import { Download } from "lucide-react";
+import { getPWAInstallState, promptPWAInstall, subscribePWAInstall } from "../../services/pwaInstallService";
 import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from "../../services/auth/accountBiometric";
 import { useI18n } from "../../i18n/i18nContext";
 import { useTheme } from "../../theme/themeContext";
@@ -60,7 +62,34 @@ export type AuthUiState =
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapProgress }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, toggleTheme } = useTheme();
+  const [pwaInstallState, setPwaInstallState] = useState(() => getPWAInstallState());
   const isSupabase = authService.isSupabaseConfigured();
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+    setPwaInstallState(getPWAInstallState());
+    return subscribePWAInstall(() => setPwaInstallState(getPWAInstallState()));
+  }, []);
+
+  const handleInstallAdminPWA = async () => {
+    if (pwaInstallState.installable) {
+      try {
+        await promptPWAInstall();
+      } catch (error) {
+        console.warn("Admin PWA install prompt failed.", error);
+      }
+      return;
+    }
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    window.alert(isIOS
+      ? (locale === "en"
+          ? "To install Charging Point as an app, tap Share in Safari, then choose “Add to Home Screen”."
+          : "لتثبيت نقطة الشحن كتطبيق: اضغط مشاركة في Safari ثم اختر «إضافة إلى الشاشة الرئيسية».")
+      : (locale === "en"
+          ? "If the install prompt does not appear, open Chrome's menu and choose “Install app” (not “Create shortcut”)."
+          : "إذا لم تظهر نافذة التثبيت، افتح قائمة Chrome واختر «تثبيت التطبيق» وليس «إنشاء اختصار»."));
+  };
 
   const [uiState, setUiState] = useState<AuthUiState>("INITIALIZING");
   const [isBootstrapped, setIsBootstrapped] = useState<boolean | null>(null);
@@ -633,8 +662,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
         </div>
 
         <div className="flex items-center gap-1.5">
+          {!Capacitor.isNativePlatform() && !pwaInstallState.installed && (
+            <button
+              type="button"
+              onClick={() => void handleInstallAdminPWA()}
+              aria-label={locale === "en" ? "Install admin app" : "تثبيت تطبيق الإدارة"}
+              title={locale === "en" ? "Install admin app" : "تثبيت تطبيق الإدارة"}
+              data-testid="admin-pwa-install-login"
+              className="p-1.5 rounded-lg border border-gray-200 dark:border-[#194e44] text-gray-600 dark:text-[#daf1de] hover:bg-gray-100 dark:hover:bg-[#0a2e28] transition-colors"
+            >
+              <Download className="w-4 h-4" aria-hidden="true" />
+            </button>
+          )}
           <button
-            onClick={() => setLocale(locale === "en" ? "ar" : "en")}
+            onClick={() => setLocale(locale === "en" ? "ar" : "en")
             className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-[#80a89a] dark:hover:bg-[#0a2e28] transition-colors cursor-pointer text-xs flex items-center gap-1"
             title="Toggle Language"
           >
