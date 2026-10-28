@@ -16,6 +16,8 @@ as $$
 declare
   v_admin_id uuid;
   v_bin_hash text;
+  v_admin_role text;
+  v_admin_permissions text[];
   v_dates date[];
   v_day_count integer := 0;
   v_order_count integer := 0;
@@ -45,11 +47,15 @@ begin
     raise exception 'No valid business dates selected';
   end if;
 
-  select a.id, a.bin_hash into v_admin_id, v_bin_hash
+  select a.id, a.bin_hash, a.role, a.permissions into v_admin_id, v_bin_hash, v_admin_role, v_admin_permissions
   from public.admins a
   where a.auth_user_id = auth.uid() and a.is_active = true
   limit 1;
   if v_admin_id is null then raise exception 'Active admin session required'; end if;
+  if coalesce(v_admin_role,'') not in ('SUPER_ADMIN','ADMIN')
+     and not ('settings:manage' = any(coalesce(v_admin_permissions, array[]::text[]))) then
+    raise exception 'Permission denied: settings:manage required';
+  end if;
   if v_bin_hash is null or crypt(trim(p_bin), v_bin_hash) <> v_bin_hash then
     raise exception 'Invalid BIN credential';
   end if;
