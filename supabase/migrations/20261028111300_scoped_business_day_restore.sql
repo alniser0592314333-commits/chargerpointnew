@@ -54,7 +54,7 @@ begin
   where a.auth_user_id = auth.uid() and a.is_active = true
   limit 1;
   if v_admin_id is null then raise exception 'Active admin session required'; end if;
-  if v_admin_role not in ('SUPER_ADMIN', 'Super Admin')
+  if coalesce(v_admin_role,'') not in ('SUPER_ADMIN', 'Super Admin')
      and not exists (
        select 1 from public.get_effective_permissions(v_admin_id)
        where permission in ('settings:manage', 'admin:manage', 'SUPER_ADMIN')
@@ -218,31 +218,41 @@ begin
   delete from public.qr_tokens qt using public.orders o, public.business_days d
     where qt.target_id = o.id and o.day_id = d.id and d.business_date = any(v_dates)
       and qt.token_type = 'ORDER';
-  delete from public.order_number_reservations r using public.business_days d
-    where r.business_day_id = d.id and d.business_date = any(v_dates);
   delete from public.order_items oi using public.orders o, public.business_days d
     where oi.order_id = o.id and o.day_id = d.id and d.business_date = any(v_dates);
   delete from public.orders o using public.business_days d
     where o.day_id = d.id and d.business_date = any(v_dates);
-  delete from public.business_days where business_date = any(v_dates);
 
-  -- Insert restored days using their original IDs, then matching orders/items.
+  -- Upsert day metadata by business date while preserving existing live IDs.
+  -- Keeping the live ID preserves order-number reservations and offline references.
   insert into public.business_days
     (id,business_date,display_number,status,is_closed,opened_at,closed_at,closed_by,created_at,updated_at,version)
   select x.id,x.business_date,x.display_number,x.status,x.is_closed,x.opened_at,x.closed_at,x.closed_by,x.created_at,x.updated_at,coalesce(x.version,1)
   from jsonb_to_recordset(v_payload_days) as x(
     id uuid,business_date date,display_number integer,status text,is_closed boolean,
     opened_at timestamptz,closed_at timestamptz,closed_by uuid,created_at timestamptz,updated_at timestamptz,version integer)
-  where x.business_date = any(v_dates);
+  where x.business_date = any(v_dates)
+  on conflict (business_date) do update set
+    display_number = excluded.display_number,
+    status = excluded.status,
+    is_closed = excluded.is_closed,
+    opened_at = excluded.opened_at,
+    closed_at = excluded.closed_at,
+    closed_by = excluded.closed_by,
+    updated_at = excluded.updated_at,
+    version = greatest(public.business_days.version, excluded.version) + 1;
 
   insert into public.orders
     (id,day_id,customer_id,display_number,status,customer_balance_snapshot_minor,notes,qr_token_id,charging_at,delivered_at,cancelled_at,created_at,updated_at,deleted_at,version)
-  select x.id,x.day_id,x.customer_id,x.display_number,lower(coalesce(x.status,'pending')),x.customer_balance_snapshot_minor,x.notes,null::uuid,x.charging_at,x.delivered_at,x.cancelled_at,x.created_at,x.updated_at,x.deleted_at,coalesce(x.version,1)
+  select x.id,target_day.id,x.customer_id,x.display_number,lower(coalesce(x.status,'pending')),x.customer_balance_snapshot_minor,x.notes,null::uuid,x.charging_at,x.delivered_at,x.cancelled_at,x.created_at,x.updated_at,x.deleted_at,coalesce(x.version,1)
   from jsonb_to_recordset(v_payload_orders) as x(
     id uuid,day_id uuid,customer_id uuid,display_number integer,status text,customer_balance_snapshot_minor bigint,
     notes text,qr_token_id uuid,charging_at timestamptz,delivered_at timestamptz,cancelled_at timestamptz,
     created_at timestamptz,updated_at timestamptz,deleted_at timestamptz,version integer)
-  where x.day_id in (select id from public.business_days where business_date = any(v_dates));
+  join jsonb_to_recordset(v_payload_days) as backup_day(id uuid,business_date date)
+    on backup_day.id = x.day_id
+  join public.business_days target_day on target_day.business_date = backup_day.business_date
+  where backup_day.business_date = any(v_dates);
 
   -- Issue fresh QR capabilities for restored orders; never reactivate a
   -- stale token that may have been scanned or copied before the restore.
