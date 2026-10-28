@@ -1074,7 +1074,7 @@ export const BackupDataManagement: React.FC = () => {
                   {locale === 'ar' ? 'استعادة أيام محددة فقط' : 'Restore selected business days only'}
                 </span>
                 <span className="text-xs text-gray-500 dark:text-[#8eb698]">
-                  {locale === 'ar' ? 'استبدال الأيام المختارة فقط من البيانات المحلية مع إبقاء بقية البيانات دون تغيير.' : 'Replace only selected days from local data; leave all other data unchanged.'}
+                  {locale === 'ar' ? 'اختر نسخة احتياطية ثم استبدل الأيام المحددة منها فقط، دون تغيير بقية الأيام أو العملاء أو الإعدادات.' : 'Choose a backup and replace only its selected dates; other days, customers and settings remain unchanged.'}
                 </span>
               </div>
             </div>
