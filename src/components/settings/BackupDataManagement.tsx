@@ -82,6 +82,14 @@ export const BackupDataManagement: React.FC = () => {
   const [replaceOnlineSourceChecksum, setReplaceOnlineSourceChecksum] = useState<string | null>(null);
   const [replaceOnlineError, setReplaceOnlineError] = useState<string | null>(null);
 
+  // Scoped business-day restore state
+  const [isScopedRestoreOpen, setIsScopedRestoreOpen] = useState<boolean>(false);
+  const [scopedRestoreBin, setScopedRestoreBin] = useState<string>('');
+  const [scopedRestoreData, setScopedRestoreData] = useState<BackupSnapshotData | null>(null);
+  const [scopedRestoreSnapshotId, setScopedRestoreSnapshotId] = useState<string>('');
+  const [scopedRestoreDates, setScopedRestoreDates] = useState<string[]>([]);
+  const [scopedRestoreError, setScopedRestoreError] = useState<string | null>(null);
+
   // Clear Sync History State
   const [isClearSyncHistoryOpen, setIsClearSyncHistoryOpen] = useState<boolean>(false);
 
@@ -512,6 +520,94 @@ export const BackupDataManagement: React.FC = () => {
             ? 'فشل تصفير بيانات الأعمال السحابية'
             : 'Failed to reset online business data';
       }
+      showToast(msg, 'error');
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleOpenScopedRestore = async () => {
+    setScopedRestoreError(null);
+    setScopedRestoreBin('');
+    setScopedRestoreData(null);
+    setScopedRestoreSnapshotId('');
+    setScopedRestoreDates([]);
+    try {
+      const list = await backupService.listSnapshots();
+      const sorted = [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setSnapshots(sorted);
+      const latest = sorted.find((snapshot) => snapshot.status === 'COMPLETED' &&
+        Array.isArray(snapshot.data?.businessDays) && Array.isArray(snapshot.data?.orders) &&
+        Array.isArray(snapshot.data?.orderItems));
+      if (!latest) {
+        setScopedRestoreError(locale === 'ar'
+          ? 'لا توجد نسخة احتياطية مكتملة تحتوي على الأيام والطلبات. أنشئ نسخة احتياطية أولاً.'
+          : 'No completed backup with business days and orders was found. Create a backup first.');
+        setIsScopedRestoreOpen(true);
+        return;
+      }
+      const data = latest.data;
+      const dates = [...new Set((data.businessDays || []).map((day: any) =>
+        String(day.businessDate ?? day.business_date ?? '').slice(0, 10)
+      ).filter((date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)))] as string[];
+      setScopedRestoreSnapshotId(latest.snapshotId);
+      setScopedRestoreData(data);
+      setScopedRestoreDates(dates);
+      setIsScopedRestoreOpen(true);
+    } catch (err: any) {
+      showToast(locale === 'ar' ? 'تعذر تحميل النسخ الاحتياطية' : 'Could not load backups', 'error');
+    }
+  };
+
+  const handleScopedRestoreSnapshotChange = (snapshotId: string) => {
+    const snapshot = snapshots.find((entry) => entry.snapshotId === snapshotId &&
+      entry.status === 'COMPLETED' && Array.isArray(entry.data?.businessDays) &&
+      Array.isArray(entry.data?.orders) && Array.isArray(entry.data?.orderItems));
+    if (!snapshot) return;
+    const dates = [...new Set((snapshot.data.businessDays || []).map((day: any) =>
+      String(day.businessDate ?? day.business_date ?? '').slice(0, 10)
+    ).filter((date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date)))] as string[];
+    setScopedRestoreSnapshotId(snapshot.snapshotId);
+    setScopedRestoreData(snapshot.data);
+    setScopedRestoreDates(dates);
+    setScopedRestoreError(null);
+  };
+
+  const handleExecuteScopedRestore = async () => {
+    if (!scopedRestoreData || scopedRestoreDates.length === 0) {
+      setScopedRestoreError(locale === 'ar' ? 'اختر يوماً واحداً على الأقل' : 'Select at least one day');
+      return;
+    }
+    if (!/^\d{4,}$/.test(scopedRestoreBin.trim())) {
+      setScopedRestoreError(locale === 'ar' ? 'أدخل رمز BIN صحيحاً' : 'Enter a valid BIN');
+      return;
+    }
+    setIsActionLoading(true);
+    setScopedRestoreError(null);
+    try {
+      const auth = await getAuthContext();
+      const selectedSnapshot = snapshots.find((snapshot) =>
+        snapshot.snapshotId === scopedRestoreSnapshotId && snapshot.status === 'COMPLETED'
+      );
+      if (!selectedSnapshot) {
+        throw new Error(locale === 'ar' ? 'النسخة الاحتياطية المختارة غير متاحة' : 'Selected backup snapshot is unavailable');
+      }
+      const result = await backupService.restoreSelectedBusinessDays(
+        auth, scopedRestoreBin, selectedSnapshot, scopedRestoreDates
+      );
+      await reloadStoreFromLocal();
+      showToast(
+        locale === 'ar'
+          ? `تمت استعادة ${result.days} يوم و${result.orders} طلب بنجاح`
+          : `Restored ${result.days} days and ${result.orders} orders successfully`,
+        'success'
+      );
+      setIsScopedRestoreOpen(false);
+      setScopedRestoreData(null);
+      setScopedRestoreDates([]);
+    } catch (err: any) {
+      const msg = err?.message || (locale === 'ar' ? 'فشلت استعادة الأيام المحددة' : 'Selected-day restore failed');
+      setScopedRestoreError(msg);
       showToast(msg, 'error');
     } finally {
       setIsActionLoading(false);
@@ -973,6 +1069,28 @@ export const BackupDataManagement: React.FC = () => {
             </Button>
           </div>
 
+          {/* Row C: Restore selected business days only */}
+          <div className="p-4 sm:p-4.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-h-[52px]">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-sky-50 dark:bg-sky-950/40 flex items-center justify-center text-sky-700 dark:text-sky-300 shrink-0 border border-sky-200 dark:border-sky-800/40">
+                <History className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-gray-900 dark:text-[#daf1de] block">
+                  {locale === 'ar' ? 'استعادة أيام محددة فقط' : 'Restore selected business days only'}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-[#8eb698]">
+                  {locale === 'ar' ? 'اختر نسخة احتياطية ثم استبدل الأيام المحددة منها فقط، دون تغيير بقية الأيام أو العملاء أو الإعدادات.' : 'Choose a backup and replace only its selected dates; other days, customers and settings remain unchanged.'}
+                </span>
+              </div>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={handleOpenScopedRestore}
+              className="text-xs h-8 px-3.5 font-semibold text-sky-800 dark:text-sky-200 border-sky-300 dark:border-sky-700/60 shrink-0 self-start sm:self-auto">
+              <History className="w-3.5 h-3.5 mr-1.5" />
+              <span>{locale === 'ar' ? 'اختيار الأيام' : 'Choose days'}</span>
+            </Button>
+          </div>
+
           {/* Row C: Replace Online with Local Data */}
           <div className="p-4 sm:p-4.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-h-[52px]">
             <div className="flex items-center gap-3">
@@ -1358,6 +1476,59 @@ export const BackupDataManagement: React.FC = () => {
               isLoading={isActionLoading}
             >
               {t('restoreOnlineBtn')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={isScopedRestoreOpen}
+        onClose={() => !isActionLoading && setIsScopedRestoreOpen(false)}
+        title={locale === 'ar' ? 'استعادة أيام محددة فقط' : 'Restore selected business days only'}
+      >
+        <div className="space-y-4 text-xs">
+          <div className="rounded-xl border border-sky-200 dark:border-sky-800/50 bg-sky-50 dark:bg-sky-950/30 p-3 leading-relaxed">
+            {locale === 'ar'
+              ? 'سيتم استبدال الأيام المحددة فقط. الأيام الأخرى والعملاء والإعدادات لن تُستبدل. الأيام التي تحتوي على قيود مالية معترف بها أو توزيعات دفعات سيمنع النظام استبدالها لحماية الحسابات.'
+              : 'Only selected dates will be replaced. Other days, customers and settings remain unchanged. Days with recognized financial ledger entries or payment allocations are blocked to protect accounting.'}
+          </div>
+          {scopedRestoreError && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-700">{scopedRestoreError}</div>}
+          <div>
+            <label className="block font-semibold mb-1">{locale === 'ar' ? 'مصدر النسخة الاحتياطية' : 'Backup source'}</label>
+            <select value={scopedRestoreSnapshotId} onChange={(e) => handleScopedRestoreSnapshotChange(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 dark:border-[#28544c] bg-white dark:bg-[#092d29] px-3 py-2">
+              {snapshots.filter((snapshot) => snapshot.status === 'COMPLETED' &&
+                Array.isArray(snapshot.data?.businessDays) && Array.isArray(snapshot.data?.orders) &&
+                Array.isArray(snapshot.data?.orderItems)).map((snapshot) =>
+                <option key={snapshot.snapshotId} value={snapshot.snapshotId}>
+                  {snapshot.snapshotName} — {new Date(snapshot.createdAt).toLocaleString(locale === 'ar' ? 'ar' : 'en')}
+                </option>
+              )}
+            </select>
+          </div>
+          <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-[#14423b] p-3 space-y-2">
+            {(scopedRestoreData?.businessDays || []).map((day: any) => {
+              const date = String(day.businessDate ?? day.business_date ?? '').slice(0, 10);
+              if (!date) return null;
+              const checked = scopedRestoreDates.includes(date);
+              return <label key={day.id || date} className="flex items-center gap-2 py-1 cursor-pointer">
+                <input type="checkbox" checked={checked} onChange={(e) => setScopedRestoreDates((current) =>
+                  e.target.checked ? [...new Set([...current, date])].sort() : current.filter((d) => d !== date)
+                )} />
+                <span>{date}</span>
+                <span className="text-gray-500">{(day.status === 'CLOSED' || day.isClosed === true || day.isClosed === 1) ? (locale === 'ar' ? 'مغلق' : 'Closed') : (locale === 'ar' ? 'مفتوح' : 'Open')}</span>
+              </label>;
+            })}
+          </div>
+          <div>
+            <label className="block font-semibold mb-1">{locale === 'ar' ? 'رمز BIN للمسؤول' : 'Admin BIN'}</label>
+            <Input type="password" value={scopedRestoreBin} onChange={(e) => setScopedRestoreBin(e.target.value)} placeholder="••••" maxLength={12} />
+          </div>
+          <div className="flex justify-end gap-2 border-t border-gray-100 dark:border-[#123d37] pt-3">
+            <Button type="button" variant="outline" onClick={() => setIsScopedRestoreOpen(false)} disabled={isActionLoading}>{t('cancel')}</Button>
+            <Button type="button" variant="primary" onClick={handleExecuteScopedRestore} isLoading={isActionLoading}
+              disabled={isActionLoading || scopedRestoreDates.length === 0 || !scopedRestoreBin.trim()}>
+              {locale === 'ar' ? 'استعادة الأيام المحددة' : 'Restore selected days'}
             </Button>
           </div>
         </div>
