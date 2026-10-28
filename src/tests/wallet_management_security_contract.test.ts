@@ -73,6 +73,16 @@ describe('Public wallet management access contract', () => {
     expect(walletPanel).toContain('INSUFFICIENT_WALLET_BALANCE');
   });
 
+  it('reuses the existing customer identity and never creates a duplicate customer', () => {
+    expect(walletEndpoint).toContain('.from("customers")');
+    expect(walletEndpoint).toContain('.select("id,name,is_active,status,deleted_at").eq("id", link.customer_id)');
+    expect(walletEndpoint).toContain('customer_name: customer.name');
+    expect(walletEndpoint).toContain('customer_id: link.customer_id, provider, wallet_number');
+    expect(walletSchema).toContain('customer_id uuid not null references public.customers(id) on delete restrict');
+    expect(walletSchema).not.toMatch(/create table(?: if not exists)? public\.customers\b/i);
+    expect(walletEndpoint).not.toContain('admin.from("customers").insert');
+  });
+
   it('keeps wallet records customer-scoped and denies direct browser table access', () => {
     expect(walletEndpoint).toContain('p_customer_id: link.customer_id');
     expect(walletEndpoint).toContain('p_actor_auth_user_id: authData.user.id');
