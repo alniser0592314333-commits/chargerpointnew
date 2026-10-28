@@ -20,7 +20,7 @@ create table public.wallet_accounts (
 
 create table public.wallet_transactions (
   id uuid primary key default gen_random_uuid(),
-  customer_id uuid not null references public.customers(id) on delete restrict,
+  customer_id uuid not null,
   transaction_type text not null check (transaction_type in ('INCOME', 'EXPENSE', 'TRANSFER')),
   source_wallet_id uuid null,
   destination_wallet_id uuid null,
