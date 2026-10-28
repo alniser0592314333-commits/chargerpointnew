@@ -222,6 +222,7 @@ begin
     select o.id from public.orders o
     join public.business_days d on d.id = o.day_id
     where d.business_date = any(v_dates)
+      and o.cancelled_at is null and o.deleted_at is null
   loop
     v_order_qr_token := public.get_or_create_order_qr__session_guarded_impl(v_restored_order.id);
     select qt.id into v_order_qr_id
