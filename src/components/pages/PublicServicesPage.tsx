@@ -52,6 +52,30 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
           setError(t('تعذّر تحديث الجلسة الآمنة.', 'Could not update the secure session.'));
           return;
         }
+      } else {
+        if (!password) {
+          setError(t('أدخل كلمة المرور لتأكيد هويتك.', 'Enter your password to verify your identity.'));
+          return;
+        }
+        const current = await customerAuth.auth.getSession();
+        if (!current.data.session?.access_token) {
+          setHasSession(false);
+          setError(t('انتهت الجلسة. سجّل الدخول من جديد.', 'Your session expired. Sign in again.'));
+          return;
+        }
+        const reauthenticated = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string } }>(
+          'reauthenticate', { password }, current.data.session.access_token,
+        );
+        if (reauthenticated.error || !reauthenticated.data?.session) {
+          setError(t('كلمة المرور غير صحيحة أو انتهت صلاحية الجلسة.', 'The password is incorrect or the session is no longer valid.'));
+          return;
+        }
+        const sessionError = await setCustomerSession(reauthenticated.data.session);
+        if (sessionError) {
+          setError(t('تعذّر تحديث الجلسة الآمنة.', 'Could not update the secure session.'));
+          return;
+        }
+        setPassword('');
       }
       const session = await customerAuth.auth.getSession();
       if (!session.data.session?.access_token) {
