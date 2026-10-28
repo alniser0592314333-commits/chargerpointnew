@@ -343,20 +343,110 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "wallet-management-access") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "wallet-management-access" || action === "wallet-snapshot" || action === "wallet-create-account" || action === "wallet-record-transaction") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
       if (!link) return genericFailure();
 
-      if (action === "wallet-management-access") {
+      if (action === "wallet-management-access" || action === "wallet-snapshot" ||
+        action === "wallet-create-account" || action === "wallet-record-transaction") {
         if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims)) ||
-          link.account_status !== "ACTIVE" || link.must_change_password) return genericFailure();
+          link.account_status !== "ACTIVE" || link.must_change_password ||
+          link.terms_version !== TERMS_VERSION) return genericFailure();
         const { data: entitlement, error: entitlementError } = await admin.from("customer_service_entitlements")
           .select("enabled").eq("customer_id", link.customer_id).eq("service_key", "wallet_management").maybeSingle();
         if (entitlementError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         if (!entitlement || entitlement.enabled !== true) return respond(403, { ok: false, error: "SERVICE_NOT_ENABLED" });
-        return respond(200, { ok: true, wallet_management_enabled: true, customer_name: link.customer.name });
+
+        if (action === "wallet-management-access") {
+          return respond(200, { ok: true, wallet_management_enabled: true, customer_name: link.customer.name });
+        }
+
+        if (action === "wallet-snapshot") {
+          const requestedLimit = Number(input.limit ?? 50);
+          if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 100) {
+            return respond(400, { ok: false, error: "INVALID_WALLET_QUERY" });
+          }
+          const before = input.before == null ? null : normalize(input.before, 64);
+          if (before && !Number.isFinite(Date.parse(before))) {
+            return respond(400, { ok: false, error: "INVALID_WALLET_QUERY" });
+          }
+          const { data, error } = await admin.rpc("wallet_get_snapshot", {
+            p_customer_id: link.customer_id,
+            p_limit: requestedLimit,
+            p_before: before,
+          });
+          if (error || !data || data.ok !== true) {
+            console.error("Customer wallet snapshot unavailable", error?.code ?? "unknown");
+            return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+          }
+          return respond(200, { ok: true, snapshot: data });
+        }
+
+        if (action === "wallet-create-account") {
+          const provider = normalize(input.provider, 32);
+          const walletNumber = normalize(input.walletNumber, 64);
+          const displayName = normalize(input.displayName, 120);
+          const currency = normalize(input.currency ?? "ILS", 3).toUpperCase();
+          if (!["PalPay", "Jawwal Pay", "Bank of Palestine"].includes(provider) ||
+            !walletNumber || !displayName || !/^[A-Z]{3}$/.test(currency)) {
+            return respond(400, { ok: false, error: "INVALID_WALLET_ACCOUNT" });
+          }
+          const { data: created, error: createError } = await admin.from("wallet_accounts").insert({
+            customer_id: link.customer_id, provider, wallet_number: walletNumber,
+            display_name: displayName, currency, is_active: true,
+          }).select("id,provider,wallet_number,display_name,currency,is_active,created_at").single();
+          if (createError) {
+            if (createError.code === "23505") return respond(409, { ok: false, error: "WALLET_ACCOUNT_EXISTS" });
+            console.error("Customer wallet account creation failed", createError.code ?? "unknown");
+            return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+          }
+          return respond(200, { ok: true, account: created });
+        }
+
+        if (action === "wallet-record-transaction") {
+          const transactionType = normalize(input.transactionType, 16);
+          const sourceWalletId = input.sourceWalletId == null ? null : normalize(input.sourceWalletId, 36);
+          const destinationWalletId = input.destinationWalletId == null ? null : normalize(input.destinationWalletId, 36);
+          const amountMinor = Number(input.amountMinor);
+          const currency = normalize(input.currency, 3).toUpperCase();
+          const idempotencyKey = normalize(input.idempotencyKey, 36);
+          const reference = input.reference == null ? null : normalize(input.reference, 160);
+          const note = input.note == null ? null : normalize(input.note, 1000);
+          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          if (!["INCOME", "EXPENSE", "TRANSFER"].includes(transactionType) ||
+            (sourceWalletId !== null && !uuidPattern.test(sourceWalletId)) ||
+            (destinationWalletId !== null && !uuidPattern.test(destinationWalletId)) ||
+            !Number.isSafeInteger(amountMinor) || amountMinor <= 0 ||
+            !/^[A-Z]{3}$/.test(currency) || !uuidPattern.test(idempotencyKey) ||
+            (reference !== null && reference.length > 160) || (note !== null && note.length > 1000)) {
+            return respond(400, { ok: false, error: "INVALID_WALLET_TRANSACTION" });
+          }
+          const { data, error } = await admin.rpc("wallet_record_transaction", {
+            p_customer_id: link.customer_id,
+            p_actor_auth_user_id: authenticated.user.id,
+            p_transaction_type: transactionType,
+            p_source_wallet_id: sourceWalletId,
+            p_destination_wallet_id: destinationWalletId,
+            p_amount_minor: amountMinor,
+            p_currency: currency,
+            p_idempotency_key: idempotencyKey,
+            p_reference: reference,
+            p_note: note,
+          });
+          if (error || !data || data.ok !== true) {
+            const code = error?.message ?? "";
+            if (code.includes("INSUFFICIENT_WALLET_BALANCE")) return respond(409, { ok: false, error: "INSUFFICIENT_WALLET_BALANCE" });
+            if (code.includes("WALLET_SERVICE_NOT_ENABLED")) return respond(403, { ok: false, error: "SERVICE_NOT_ENABLED" });
+            if (code.includes("SOURCE_WALLET_UNAVAILABLE") || code.includes("DESTINATION_WALLET_UNAVAILABLE")) {
+              return respond(400, { ok: false, error: "WALLET_UNAVAILABLE" });
+            }
+            console.error("Customer wallet transaction failed", error?.code ?? "unknown");
+            return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+          }
+          return respond(200, { ok: true, transaction: data });
+        }
       }
 
       if (action === "register-session") {
