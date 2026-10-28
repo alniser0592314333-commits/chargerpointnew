@@ -82,6 +82,22 @@ begin
     end if;
   end loop;
 
+  -- Never let an incomplete/empty backup silently erase an existing day's orders.
+  if exists (
+    select 1 from public.business_days d
+    where d.business_date = any(v_dates)
+      and exists (select 1 from public.orders o where o.day_id = d.id)
+      and not exists (
+        select 1
+        from jsonb_to_recordset(v_payload_orders) as x(id uuid,day_id uuid)
+        join jsonb_to_recordset(v_payload_days) as bd(id uuid,business_date date)
+          on bd.id = x.day_id
+        where bd.business_date = d.business_date
+      )
+  ) then
+    raise exception 'Backup has no orders for a selected date that currently has orders; restore refused to prevent accidental data loss';
+  end if;
+
   -- Lock affected live days and protect accounting history from destructive edits.
   if exists (
     select 1 from public.financial_ledger fl
