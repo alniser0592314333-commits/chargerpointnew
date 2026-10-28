@@ -262,6 +262,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       ACCOUNT_CANCELLED: ['ألغى المشرف الحساب', 'Administrator cancelled the account'],
       TERMS_ACCEPTED: ['وافق العميل على الشروط المحدّثة', 'Customer accepted updated terms'],
       GOAL_REQUESTED: ['طلب العميل إنشاء هدف جديد', 'Customer requested a new goal'],
+      WALLET_ACTIVATION_REQUESTED: ['طلب العميل تفعيل المحفظة', 'Customer requested wallet activation'],
+      WALLET_ACTIVATION_APPROVED: ['تمت الموافقة على تفعيل المحفظة', 'Wallet activation approved'],
+      WALLET_ACTIVATION_REJECTED: ['تم رفض طلب تفعيل المحفظة', 'Wallet activation request rejected'],
     };
     return labels[event.event_type]?.[isAr ? 0 : 1] ?? event.event_type;
   };
