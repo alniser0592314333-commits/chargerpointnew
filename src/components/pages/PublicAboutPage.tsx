@@ -1322,7 +1322,7 @@ export const PublicAboutPage: React.FC = () => {
           </div>
           <button
             type="button"
-            onClick={() => { window.history.pushState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); window.dispatchEvent(new PopStateEvent('popstate')); }}
+            onClick={() => { window.location.assign('/public/services/wallet'); }}
             className="group about-card w-full p-5 sm:p-7 text-start transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50"
             aria-label={isAr ? 'فتح إدارة المحفظة' : 'Open wallet management'}
           >
