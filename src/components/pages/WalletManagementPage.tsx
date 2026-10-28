@@ -161,7 +161,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             { icon: Search, title: t('البحث الموحد', 'Unified search'), detail: t('البحث بالاسم أو رقم المحفظة أو المرجع', 'Search by name, wallet number, or reference') },
             { icon: Plus, title: t('تسجيل حركة', 'Record activity'), detail: t('إضافة حركة مرتبطة بالمحفظة', 'Record activity linked to a wallet') },
           ].map(item => <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/[0.025]"><item.icon size={20} className="text-teal-700 dark:text-teal-300" /><h2 className="mt-3 text-sm font-bold">{item.title}</h2><p className="mt-1 text-xs leading-6 text-slate-600 dark:text-slate-400">{item.detail}</p></div>)}</div>
-          <WalletSnapshotPanel />
+          <WalletSnapshotPanel onStepUpRequired={() => setGate('step-up-required')} />
         </div>}
       </section>
     </main>
