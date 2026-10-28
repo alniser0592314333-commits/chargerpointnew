@@ -46,7 +46,7 @@ describe('Wallet activation workflow security contract', () => {
   it('surfaces requests in the existing admin inbox and customer status UI', () => {
     expect(account).toContain('walletActivationRequests');
     expect(adminPanel).toContain('reviewWalletActivation');
-    expect(adminPanel).toContain('Request activation');
+    expect(adminPanel).toContain('Wallet activation requests');
     expect(servicesPage).toContain('verify-session');
     expect(publicRouter).toContain("pathname === '/public/services'");
     expect(publicRouter).toContain("pathname === '/public/services/wallet'");
