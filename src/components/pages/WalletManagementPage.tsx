@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, Refre
 import { callCustomerAccount, customerAuth, setCustomerSession } from '../../services/customer/customerAuth';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
+import { WalletSnapshotPanel } from './WalletSnapshotPanel';
 
 type Gate = 'checking' | 'signed-out' | 'checking-access' | 'denied' | 'ready' | 'offline';
 
@@ -110,7 +111,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             { icon: Search, title: t('البحث الموحد', 'Unified search'), detail: t('البحث بالاسم أو رقم المحفظة أو المرجع', 'Search by name, wallet number, or reference') },
             { icon: Plus, title: t('تسجيل حركة', 'Record activity'), detail: t('إضافة حركة مرتبطة بالمحفظة', 'Record activity linked to a wallet') },
           ].map(item => <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/[0.025]"><item.icon size={20} className="text-teal-700 dark:text-teal-300" /><h2 className="mt-3 text-sm font-bold">{item.title}</h2><p className="mt-1 text-xs leading-6 text-slate-600 dark:text-slate-400">{item.detail}</p></div>)}</div>
-          <div className="mt-5 rounded-xl border border-dashed border-slate-300 p-4 text-sm leading-7 text-slate-600 dark:border-white/15 dark:text-slate-300">{t('هذه مرحلة تأسيس واجهة الدخول فقط. لن تظهر أرصدة أو حركات حتى يكتمل ربط قاعدة البيانات والمزامنة واختبار عزل حسابات المشتركين.', 'This is the secure entry-page foundation only. Balances remain hidden until the data and sync layer is implemented and tenant isolation is tested.')}</div>
+          <WalletSnapshotPanel />
         </div>}
       </section>
     </main>
