@@ -343,11 +343,21 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "wallet-management-access") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
       if (!link) return genericFailure();
+
+      if (action === "wallet-management-access") {
+        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims)) ||
+          link.account_status !== "ACTIVE" || link.must_change_password) return genericFailure();
+        const { data: entitlement, error: entitlementError } = await admin.from("customer_service_entitlements")
+          .select("enabled").eq("customer_id", link.customer_id).eq("service_key", "wallet_management").maybeSingle();
+        if (entitlementError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        if (!entitlement || entitlement.enabled !== true) return respond(403, { ok: false, error: "SERVICE_NOT_ENABLED" });
+        return respond(200, { ok: true, wallet_management_enabled: true, customer_name: link.customer.name });
+      }
 
       if (action === "register-session") {
         const resolved = await resolveQr(input.token);
