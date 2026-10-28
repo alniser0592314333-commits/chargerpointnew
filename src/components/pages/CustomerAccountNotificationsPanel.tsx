@@ -33,7 +33,8 @@ type CustomerAccount = {
   customers?: { name?: string } | Array<{ name?: string }> | null;
 };
 type HistoryRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
-type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[] };
+type WalletActivationRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
+type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[]; walletActivationRequests?: WalletActivationRequest[] };
 
 const customerName = (value: ResetRequest['customers'] | AccountEvent['customers']) =>
   Array.isArray(value) ? value[0]?.name ?? '' : value?.name ?? '';
@@ -51,6 +52,8 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const [events, setEvents] = useState<AccountEvent[]>([]);
   const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
   const [historyRequests, setHistoryRequests] = useState<HistoryRequest[]>([]);
+  const [walletActivationRequests, setWalletActivationRequests] = useState<WalletActivationRequest[]>([]);
+  const [walletRejectionReasons, setWalletRejectionReasons] = useState<Record<string, string>>({});
   const [pendingStatus, setPendingStatus] = useState<{ customerId: string; status: 'ACTIVE' | 'FROZEN'; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -77,6 +80,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setRequests(Array.isArray(result.data.requests) ? result.data.requests : []);
       setEvents(Array.isArray(result.data.events) ? result.data.events : []);
       setAccounts(Array.isArray(result.data.accounts) ? result.data.accounts : []);
+      setWalletActivationRequests(Array.isArray(result.data.walletActivationRequests) ? result.data.walletActivationRequests : []);
       const historyUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
       const historyResponse = await fetch(historyUrl + '/functions/v1/customer-history', {
         method: 'POST',
@@ -190,6 +194,26 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
     } finally { setBusy(false); }
   };
 
+  const reviewWalletActivation = async (requestId: string, decision: 'APPROVE' | 'REJECT') => {
+    const token = getSupabaseAuthToken();
+    if (!token || busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const result = await callCustomerAccount('admin-review-wallet-activation', {
+        requestId, decision,
+        rejectionReason: decision === 'REJECT' ? (walletRejectionReasons[requestId] ?? '').trim() : '',
+      }, token);
+      if (result.error) throw new Error(result.error);
+      setWalletActivationRequests((items) => items.filter((item) => item.id !== requestId));
+      setMessage(decision === 'APPROVE'
+        ? t('تم تفعيل المحفظة للعميل.', 'Wallet access has been enabled for this customer.')
+        : t('تم رفض طلب تفعيل المحفظة.', 'The wallet activation request was rejected.'));
+      await load(true);
+    } catch {
+      setError(t('تعذّرت معالجة طلب المحفظة. حدّث القائمة وتأكد من حالته.', 'Could not process the wallet request. Refresh the list and verify its status.'));
+    } finally { setBusy(false); }
+  };
+
   const changeAccountStatus = async () => {
     if (!pendingStatus || busy) return;
     const token = getSupabaseAuthToken();
@@ -238,6 +262,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       ACCOUNT_CANCELLED: ['ألغى المشرف الحساب', 'Administrator cancelled the account'],
       TERMS_ACCEPTED: ['وافق العميل على الشروط المحدّثة', 'Customer accepted updated terms'],
       GOAL_REQUESTED: ['طلب العميل إنشاء هدف جديد', 'Customer requested a new goal'],
+      WALLET_ACTIVATION_REQUESTED: ['طلب العميل تفعيل المحفظة', 'Customer requested wallet activation'],
+      WALLET_ACTIVATION_APPROVED: ['تمت الموافقة على تفعيل المحفظة', 'Wallet activation approved'],
+      WALLET_ACTIVATION_REJECTED: ['تم رفض طلب تفعيل المحفظة', 'Wallet activation request rejected'],
     };
     return labels[event.event_type]?.[isAr ? 0 : 1] ?? event.event_type;
   };
@@ -315,6 +342,20 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
               <div className="flex gap-2">
                 <button type="button" disabled={busy} onClick={() => void reviewHistoryRequest(request.id, 'APPROVE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('موافقة 24 ساعة', 'Approve 24 hours')}</button>
                 <button type="button" disabled={busy} onClick={() => void reviewHistoryRequest(request.id, 'REJECT')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200">{t('رفض', 'Reject')}</button>
+              </div>
+            </article>)}
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="font-bold">{t('طلبات تفعيل المحفظة', 'Wallet activation requests')} <span className="text-sm font-normal text-gray-500">({walletActivationRequests.length})</span></h3>
+        {walletActivationRequests.length === 0
+          ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('ما في طلبات تفعيل محفظة معلّقة.', 'No pending wallet activation requests.')}</p>
+          : walletActivationRequests.map((request) => <article key={request.id} className="space-y-3 rounded-xl border border-emerald-200 p-3 dark:border-emerald-900">
+              <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('تاريخ الطلب: ', 'Requested: ')}{dateLabel(request.requested_at)}</p></div>
+              <label className="block text-xs font-semibold">{t('سبب الرفض (اختياري)', 'Rejection reason (optional)')}<textarea maxLength={1000} value={walletRejectionReasons[request.id] ?? ''} onChange={(event) => setWalletRejectionReasons((items) => ({ ...items, [request.id]: event.target.value }))} className="mt-2 w-full rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-[#315653] dark:bg-[#0b2928]" rows={2} /></label>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={busy} onClick={() => void reviewWalletActivation(request.id, 'APPROVE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{t('موافقة وتفعيل', 'Approve and enable')}</button>
+                <button type="button" disabled={busy} onClick={() => void reviewWalletActivation(request.id, 'REJECT')} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50 dark:border-rose-900 dark:text-rose-200">{t('رفض الطلب', 'Reject request')}</button>
               </div>
             </article>)}
       </div>

@@ -87,6 +87,12 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/public_order_page_redesign.test.ts src/tests/qr_payment_balance_and_receipt_integrity.test.ts
+      - name: Run public wallet management security contract tests
+        env:
+          # These tests inspect source contracts only; never connect to production.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/wallet_management_security_contract.test.ts src/tests/wallet_activation_flow_contract.test.ts
 
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
@@ -104,6 +110,8 @@ jobs:
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sign-in-by-username/index.ts
       - name: Type-check customer account authentication Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/customer-account/index.ts
+      - name: Type-check isolated wallet management Edge Function
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/wallet-service/index.ts
       - name: Type-check shared business-hours Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/business-hours/index.ts
       - name: Type-check authenticated debt reminder Edge Function
@@ -159,6 +167,43 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';"
+      - name: Apply wallet service migrations in an isolated PostgreSQL database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          createdb -h localhost -U postgres wallet_service_test
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028150000_wallet_management_entitlements.sql
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028160000_wallet_accounts_and_transactions.sql
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028161000_wallet_snapshot_rpc.sql
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028170000_wallet_activation_requests.sql
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261028171000_wallet_activation_review_rpc.sql
+          psql -h localhost -U postgres -d wallet_service_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $wallet_isolation$
+          BEGIN
+            IF EXISTS (
+              SELECT 1 FROM information_schema.referential_constraints rc
+              JOIN information_schema.table_constraints tc
+                ON tc.constraint_catalog = rc.constraint_catalog
+               AND tc.constraint_schema = rc.constraint_schema
+               AND tc.constraint_name = rc.constraint_name
+              WHERE tc.constraint_schema = 'public'
+                AND tc.table_name IN ('wallet_service_entitlements', 'wallet_accounts', 'wallet_transactions')
+                AND tc.constraint_type = 'FOREIGN KEY'
+                AND tc.constraint_name NOT IN ('wallet_tx_source_owner_fk', 'wallet_tx_destination_owner_fk')
+            ) THEN
+              RAISE EXCEPTION 'Wallet tables must not have foreign keys into admin-owned customer data';
+            END IF;
+            IF NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = 'public.wallet_accounts'::regclass)
+               OR NOT (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = 'public.wallet_transactions'::regclass) THEN
+              RAISE EXCEPTION 'Wallet ledger tables must enforce RLS';
+            END IF;
+            IF has_function_privilege('anon', 'public.wallet_record_transaction(uuid,uuid,text,uuid,uuid,bigint,text,uuid,text,text)', 'EXECUTE')
+               OR has_function_privilege('authenticated', 'public.wallet_record_transaction(uuid,uuid,text,uuid,uuid,bigint,text,uuid,text,text)', 'EXECUTE') THEN
+              RAISE EXCEPTION 'Browser roles must not execute wallet transaction RPC directly';
+            END IF;
+          END
+          $wallet_isolation$;
+          SQL
       - name: Create isolated database for account session management
         env:
           PGPASSWORD: postgres

@@ -343,11 +343,24 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "reauthenticate") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
       if (!link) return genericFailure();
+
+      if (action === "reauthenticate") {
+        const password = rawPassword(input.password);
+        if (!password || link.must_change_password || link.terms_version !== TERMS_VERSION ||
+            !(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+        const { data: refreshed, error: reauthError } = await authClient.auth.signInWithPassword({
+          email: link.login_email, password,
+        });
+        if (reauthError || !refreshed.session || refreshed.user?.id !== authenticated.user.id) return genericFailure();
+        const refreshedClaims = decodeClaims(refreshed.session.access_token);
+        if (!(await registerSession(link, authenticated.user.id, refreshedClaims))) return genericFailure();
+        return respond(200, { ok: true, session: refreshed.session });
+      }
 
       if (action === "register-session") {
         const resolved = await resolveQr(input.token);
@@ -762,8 +775,48 @@ Deno.serve(async (request: Request) => {
       const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
         .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name)")
         .order("created_at", { ascending: false }).limit(200);
-      if (requestError || eventError || accountsError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
-      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [], accounts: accounts ?? [] });
+      const { data: walletActivationRows, error: walletRequestsError } = await admin.from("wallet_activation_requests")
+        .select("id,customer_id,status,requested_at")
+        .eq("status", "PENDING").order("requested_at", { ascending: true }).limit(100);
+      if (requestError || eventError || accountsError || walletRequestsError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      const walletCustomerIds = [...new Set((walletActivationRows ?? []).map((row: { customer_id: string }) => row.customer_id))];
+      let walletCustomers: Array<{ id: string; name: string }> = [];
+      if (walletCustomerIds.length) {
+        const { data, error: walletCustomersError } = await admin.from("customers").select("id,name").in("id", walletCustomerIds);
+        if (walletCustomersError) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        walletCustomers = data ?? [];
+      }
+      const walletCustomerNames = new Map(walletCustomers.map((row) => [row.id, row.name]));
+      const walletActivationRequests = (walletActivationRows ?? []).map((row: { id: string; customer_id: string; status: string; requested_at: string }) => ({
+        ...row, customers: { name: walletCustomerNames.get(row.customer_id) ?? "" },
+      }));
+      return respond(200, { ok: true, requests: requests ?? [], events: events ?? [], accounts: accounts ?? [], walletActivationRequests });
+    }
+
+    if (action === "admin-review-wallet-activation") {
+      const administrator = await requireAdmin();
+      if (!administrator?.adminId) return respond(403, { ok: false, error: "FORBIDDEN" });
+      const requestId = normalize(input.requestId, 64);
+      const decision = normalize(input.decision, 16);
+      const rejectionReason = normalize(input.rejectionReason, 1000);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId) ||
+          !["APPROVE", "REJECT"].includes(decision) || (decision === "APPROVE" && rejectionReason)) {
+        return respond(400, { ok: false, error: "INVALID_REQUEST" });
+      }
+      const { data, error } = await admin.rpc("wallet_review_activation_request", {
+        p_request_id: requestId,
+        p_decision: decision,
+        p_rejection_reason: decision === "REJECT" ? rejectionReason || null : null,
+        p_admin_id: administrator.adminId,
+      });
+      if (error) {
+        console.error("Wallet activation review failed", error.code ?? "unknown");
+        return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      }
+      if (!data || data.ok !== true) {
+        return respond(409, { ok: false, error: typeof data?.error === "string" ? data.error : "REQUEST_NO_LONGER_PENDING" });
+      }
+      return respond(200, { ok: true, status: data.status });
     }
 
     if (action === "admin-reset") {
