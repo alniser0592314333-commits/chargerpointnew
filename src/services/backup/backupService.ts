@@ -2091,19 +2091,32 @@ export class BackupService {
   async restoreSelectedBusinessDays(
     auth: AuthorizationContext,
     bin: string,
-    snapshot: Partial<BackupSnapshotData>,
+    snapshot: BackupSnapshotRecord,
     businessDates: string[]
   ): Promise<{ success: boolean; business_dates: string[]; days: number; orders: number; order_items: number }> {
     assertOnlineForSensitiveOperation('Restoring selected business days');
     auth.requireAuth();
     auth.assertPermission('settings:manage');
 
+    if (!snapshot || snapshot.status !== 'COMPLETED') {
+      throw new SnapshotFormatError('Only completed backup snapshots can be used for scoped restore.');
+    }
+    if (snapshot.schemaVersion !== 1 || snapshot.snapshotVersion !== 1) {
+      throw new SnapshotFormatError('The selected backup snapshot version is not supported.');
+    }
+    const snapshotData = snapshot.data;
+    if (!snapshotData || !Array.isArray(snapshotData.businessDays) ||
+        !Array.isArray(snapshotData.orders) || !Array.isArray(snapshotData.orderItems)) {
+      throw new SnapshotFormatError('Backup is missing business days, orders, or order items.');
+    }
+    const expectedChecksum = snapshot.metadata?.checksum;
+    const legacyChecksum = computeSnapshotChecksum(snapshotData);
+    const sha256Checksum = await computeSnapshotSha256(snapshotData);
+    if (expectedChecksum !== sha256Checksum && expectedChecksum !== legacyChecksum) {
+      throw new SnapshotIntegrityError('Backup checksum validation failed; scoped restore was cancelled.');
+    }
     if (!bin || !/^\d{4,}$/.test(bin.trim())) {
       throw new AuthorizationError('BIN must contain at least 4 numeric digits.');
-    }
-    if (!snapshot || !Array.isArray(snapshot.businessDays) ||
-        !Array.isArray(snapshot.orders) || !Array.isArray(snapshot.orderItems)) {
-      throw new SnapshotFormatError('Backup is missing business days, orders, or order items.');
     }
     const dates = [...new Set((businessDates || []).filter((d) =>
       typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
@@ -2111,7 +2124,7 @@ export class BackupService {
     if (dates.length === 0) throw new SnapshotFormatError('Select at least one valid business date.');
 
     for (const date of dates) {
-      const matches = snapshot.businessDays.filter((day: any) =>
+      const matches = snapshotData.businessDays.filter((day: any) =>
         String(day.businessDate ?? day.business_date ?? '').slice(0, 10) === date
       );
       if (matches.length !== 1) {
@@ -2119,15 +2132,15 @@ export class BackupService {
       }
     }
 
-    const selectedDays = snapshot.businessDays.filter((day: any) =>
+    const selectedDays = snapshotData.businessDays.filter((day: any) =>
       dates.includes(String(day.businessDate ?? day.business_date ?? '').slice(0, 10))
     );
     const selectedDayIds = new Set(selectedDays.map((day: any) => day.id));
-    const selectedOrders = snapshot.orders.filter((order: any) =>
+    const selectedOrders = snapshotData.orders.filter((order: any) =>
       selectedDayIds.has(order.dayId ?? order.day_id)
     );
     const selectedOrderIds = new Set(selectedOrders.map((order: any) => order.id));
-    const selectedItems = snapshot.orderItems.filter((item: any) =>
+    const selectedItems = snapshotData.orderItems.filter((item: any) =>
       selectedOrderIds.has(item.orderId ?? item.order_id)
     );
 
