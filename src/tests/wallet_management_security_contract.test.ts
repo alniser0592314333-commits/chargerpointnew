@@ -38,7 +38,8 @@ describe('Public wallet management access contract', () => {
     expect(endpoint).toContain('sessionIsActive(link, authenticated.user.id, authenticated.claims)');
     expect(endpoint).toContain('link.account_status !== "ACTIVE"');
     expect(endpoint).toContain('link.must_change_password');
-    expect(endpoint).toContain('customer_service_entitlements');
+    expect(endpoint).toContain('wallet_service_entitlements');
+    expect(endpoint).not.toContain('customer_service_entitlements');
     expect(endpoint).toContain('entitlement.enabled !== true');
   });
 
@@ -46,7 +47,7 @@ describe('Public wallet management access contract', () => {
     expect(migration).toContain('enabled boolean not null default false');
     expect(migration).toContain('enable row level security');
     expect(migration).toContain('force row level security');
-    expect(migration).toContain('revoke all on table public.customer_service_entitlements from anon, authenticated');
+    expect(migration).toContain('revoke all on table public.wallet_service_entitlements from anon, authenticated');
     expect(migration).not.toMatch(/create policy/i);
   });
 
@@ -59,6 +60,8 @@ describe('Public wallet management access contract', () => {
     expect(walletPanel).toContain("'wallet-create-account'");
     expect(walletPanel).toContain("'wallet-record-transaction'");
     expect(walletPanel).toContain('transactionKey || crypto.randomUUID()');
+    expect(walletPanel).toContain('transactionConflict');
+    expect(walletPanel).toContain('IDEMPOTENCY_KEY_REUSED');
     expect(walletPanel).toContain('INSUFFICIENT_WALLET_BALANCE');
   });
 
@@ -92,7 +95,8 @@ describe('Public wallet management access contract', () => {
     expect((walletSchema.match(/^begin;$/gm) || [])).toHaveLength(1);
     expect((walletSchema.match(/^commit;$/gm) || [])).toHaveLength(1);
     expect((walletSchema.match(/create or replace function public\.wallet_record_transaction\(/g) || [])).toHaveLength(1);
-    expect(walletSchema).toContain("p_currency !~ '^[A-Z]{3}$'");
+    expect(walletSchema).toContain("p_currency not in ('ILS', 'USD', 'JOD')");
+    expect(walletSchema).toContain("currency in ('ILS', 'USD', 'JOD')");
     expect(walletSchema).toContain("p_transaction_type is null or p_transaction_type not in ('INCOME', 'EXPENSE', 'TRANSFER')");
     expect(walletSchema).not.toMatch(/p_currency !~ '\^\[A-Z\]\{3\}\s*\n/);
   });
