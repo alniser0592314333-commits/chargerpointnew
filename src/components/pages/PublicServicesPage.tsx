@@ -40,7 +40,7 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
         return;
       }
       if (biometricAvailable && biometricReady) {
-        const result = await loginWithAccountBiometric();
+        const result = await loginWithAccountBiometric('customer');
         if (!result) {
           setError(t('لم يتم تأكيد الهوية بالبصمة. حاول مرة ثانية.', 'Biometric verification was not completed. Try again.'));
           return;
@@ -52,17 +52,8 @@ export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) =>
         setError(t('انتهت الجلسة. سجّل الدخول من جديد.', 'Your session expired. Sign in again.'));
         return;
       }
-      const response = await fetch('/functions/v1/customer-account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.data.session.access_token },
-        body: JSON.stringify({ action: 'verify-session' }),
-      }).catch(() => null);
-      if (!response || !response.ok) {
-        setError(t('تعذّر تأكيد الجلسة من الخادم. حاول مرة ثانية.', 'Could not verify the session with the server. Try again.'));
-        return;
-      }
-      const data = await response.json().catch(() => null);
-      if (data?.ok !== true || data?.must_change_password) {
+      const response = await callCustomerAccount<{ must_change_password?: boolean }>('verify-session', {}, session.data.session.access_token);
+      if (response.error || !response.data || response.data.must_change_password) {
         setError(t('الجلسة غير صالحة لفتح الخدمات. سجّل الدخول مجددًا.', 'This session cannot access services. Sign in again.'));
         return;
       }
