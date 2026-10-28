@@ -33,7 +33,8 @@ type CustomerAccount = {
   customers?: { name?: string } | Array<{ name?: string }> | null;
 };
 type HistoryRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
-type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[] };
+type WalletActivationRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
+type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[]; walletActivationRequests?: WalletActivationRequest[] };
 
 const customerName = (value: ResetRequest['customers'] | AccountEvent['customers']) =>
   Array.isArray(value) ? value[0]?.name ?? '' : value?.name ?? '';
@@ -51,6 +52,8 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const [events, setEvents] = useState<AccountEvent[]>([]);
   const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
   const [historyRequests, setHistoryRequests] = useState<HistoryRequest[]>([]);
+  const [walletActivationRequests, setWalletActivationRequests] = useState<WalletActivationRequest[]>([]);
+  const [walletRejectionReasons, setWalletRejectionReasons] = useState<Record<string, string>>({});
   const [pendingStatus, setPendingStatus] = useState<{ customerId: string; status: 'ACTIVE' | 'FROZEN'; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -77,6 +80,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setRequests(Array.isArray(result.data.requests) ? result.data.requests : []);
       setEvents(Array.isArray(result.data.events) ? result.data.events : []);
       setAccounts(Array.isArray(result.data.accounts) ? result.data.accounts : []);
+      setWalletActivationRequests(Array.isArray(result.data.walletActivationRequests) ? result.data.walletActivationRequests : []);
       const historyUrl = config.supabaseUrl.endsWith('/') ? config.supabaseUrl.slice(0, -1) : config.supabaseUrl;
       const historyResponse = await fetch(historyUrl + '/functions/v1/customer-history', {
         method: 'POST',
@@ -187,6 +191,26 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setMessage(decision === 'APPROVE' ? t('تمت الموافقة لمدة 24 ساعة.', 'Approved for 24 hours.') : t('تم رفض الطلب.', 'Request rejected.'));
     } catch {
       setError(t('تعذّرت معالجة الطلب.', 'Could not process request.'));
+    } finally { setBusy(false); }
+  };
+
+  const reviewWalletActivation = async (requestId: string, decision: 'APPROVE' | 'REJECT') => {
+    const token = getSupabaseAuthToken();
+    if (!token || busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const result = await callCustomerAccount('admin-review-wallet-activation', {
+        requestId, decision,
+        rejectionReason: decision === 'REJECT' ? (walletRejectionReasons[requestId] ?? '').trim() : '',
+      }, token);
+      if (result.error) throw new Error(result.error);
+      setWalletActivationRequests((items) => items.filter((item) => item.id !== requestId));
+      setMessage(decision === 'APPROVE'
+        ? t('تم تفعيل المحفظة للعميل.', 'Wallet access has been enabled for this customer.')
+        : t('تم رفض طلب تفعيل المحفظة.', 'The wallet activation request was rejected.'));
+      await load(true);
+    } catch {
+      setError(t('تعذّرت معالجة طلب المحفظة. حدّث القائمة وتأكد من حالته.', 'Could not process the wallet request. Refresh the list and verify its status.'));
     } finally { setBusy(false); }
   };
 
