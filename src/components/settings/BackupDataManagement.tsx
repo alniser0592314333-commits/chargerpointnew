@@ -1467,7 +1467,7 @@ export const BackupDataManagement: React.FC = () => {
                   e.target.checked ? [...new Set([...current, date])].sort() : current.filter((d) => d !== date)
                 )} />
                 <span>{date}</span>
-                <span className="text-gray-500">{day.status || day.isClosed ? (locale === 'ar' ? 'مغلق' : 'Closed') : (locale === 'ar' ? 'مفتوح' : 'Open')}</span>
+                <span className="text-gray-500">{(day.status === 'CLOSED' || day.isClosed === true || day.isClosed === 1) ? (locale === 'ar' ? 'مغلق' : 'Closed') : (locale === 'ar' ? 'مفتوح' : 'Open')}</span>
               </label>;
             })}
           </div>
