@@ -6,7 +6,8 @@ import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { WalletSnapshotPanel } from './WalletSnapshotPanel';
 
-type Gate = 'checking' | 'signed-out' | 'checking-access' | 'denied' | 'ready' | 'offline';
+type Gate = 'checking' | 'signed-out' | 'checking-access' | 'activation-required' | 'denied' | 'ready' | 'offline';
+type ActivationRequest = { id?: string; status?: string; requested_at?: string; decided_at?: string; rejection_reason?: string | null } | null;
 
 export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const { locale, setLocale } = useI18n();
@@ -18,10 +19,18 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   const [gate, setGate] = useState<Gate>('checking');
   const [error, setError] = useState('');
   const [customerLabel, setCustomerLabel] = useState('');
+  const [activationRequest, setActivationRequest] = useState<ActivationRequest>(null);
   const t = (ar: string, en: string) => isAr ? ar : en;
 
   const verifyAccess = async (accessToken: string) => {
     setGate('checking-access');
+    const status = await callWalletService<{ wallet_management_enabled?: boolean; request?: ActivationRequest }>(
+      'wallet-activation-status', {}, accessToken,
+    );
+    if (status.error === 'NETWORK_UNAVAILABLE') { setGate('offline'); return; }
+    if (status.error || !status.data) { setGate('denied'); return; }
+    setActivationRequest(status.data.request ?? null);
+    if (status.data.wallet_management_enabled !== true) { setGate('activation-required'); return; }
     const result = await callWalletService<{ customer_name?: string; wallet_management_enabled?: boolean }>(
       'wallet-management-access', {}, accessToken,
     );
