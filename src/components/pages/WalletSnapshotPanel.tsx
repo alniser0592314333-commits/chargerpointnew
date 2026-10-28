@@ -43,7 +43,8 @@ export const WalletSnapshotPanel: React.FC = () => {
     } finally { setLoading(false); }
   }, [isAr]);
   useEffect(() => { void refresh(); }, [refresh]);
-  const money = (minor: number, currency: string) => (Number(minor || 0) / 100).toLocaleString(isAr ? 'ar-PS' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + currency;
+  const currencyScale = (currency: string) => currency === 'JOD' ? 1000 : 100;
+  const money = (minor: number, currency: string) => (Number(minor || 0) / currencyScale(currency)).toLocaleString(isAr ? 'ar-PS' : 'en-US', { minimumFractionDigits: currency === 'JOD' ? 3 : 2, maximumFractionDigits: currency === 'JOD' ? 3 : 2 }) + ' ' + currency;
 
   return <div className="mt-6 border-t border-slate-200 pt-6 dark:border-white/10">
     <div className="flex items-center justify-between gap-3">
@@ -84,8 +85,8 @@ export const WalletSnapshotPanel: React.FC = () => {
       <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving) return;
-        const amountMinor = Math.round(Number(amount) * 100);
-        if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) { setError(t('أدخل مبلغًا صحيحًا أكبر من صفر.', 'Enter a valid amount greater than zero.')); return; }
+        const enteredAmount = Number(amount);
+        if (!Number.isFinite(enteredAmount) || enteredAmount <= 0) { setError(t('أدخل مبلغًا صحيحًا أكبر من صفر.', 'Enter a valid amount greater than zero.')); return; }
         const accounts = snapshot?.accounts || [];
         const source = accounts.find(a => a.id === sourceWalletId && a.is_active);
         const destination = accounts.find(a => a.id === destinationWalletId && a.is_active);
@@ -94,6 +95,8 @@ export const WalletSnapshotPanel: React.FC = () => {
         if (transactionType === 'TRANSFER' && (source?.id === destination?.id || source?.currency !== destination?.currency)) { setError(t('التحويل يتطلب محفظتين مختلفتين بنفس العملة.', 'Transfer requires two different wallets in the same currency.')); return; }
         const selectedCurrency = transactionType === 'EXPENSE' ? source!.currency : destination!.currency;
         if (source && source.currency !== selectedCurrency) { setError(t('عملة المحافظ غير متطابقة.', 'Wallet currencies do not match.')); return; }
+        const amountMinor = Math.round(enteredAmount * currencyScale(selectedCurrency));
+        if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || Math.abs(enteredAmount * currencyScale(selectedCurrency) - amountMinor) > 1e-7) { setError(t('المبلغ يتجاوز الدقة المسموحة للعملة.', 'Amount exceeds the supported precision for this currency.')); return; }
         const idempotencyKey = transactionKey || crypto.randomUUID();
         setTransactionKey(idempotencyKey);
         setSaving(true); setError('');
@@ -117,7 +120,7 @@ export const WalletSnapshotPanel: React.FC = () => {
         <label className="grid gap-1 text-sm font-semibold">{t('نوع الحركة', 'Transaction type')}<select value={transactionType} onChange={e => setTransactionType(e.target.value as 'INCOME' | 'EXPENSE' | 'TRANSFER')} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="INCOME">{t('وارد', 'Income')}</option><option value="EXPENSE">{t('صادر', 'Expense')}</option><option value="TRANSFER">{t('تحويل بين محافظي', 'Transfer between my wallets')}</option></select></label>
         {transactionType !== 'INCOME' && <label className="grid gap-1 text-sm font-semibold">{t('من محفظة', 'From wallet')}<select required value={sourceWalletId} onChange={e => setSourceWalletId(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="">{t('اختار محفظة', 'Choose wallet')}</option>{(snapshot?.accounts || []).filter(a => a.is_active).map(a => <option key={a.id} value={a.id}>{a.display_name} — {a.currency}</option>)}</select></label>}
         {transactionType !== 'EXPENSE' && <label className="grid gap-1 text-sm font-semibold">{t('إلى محفظة', 'To wallet')}<select required value={destinationWalletId} onChange={e => setDestinationWalletId(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="">{t('اختار محفظة', 'Choose wallet')}</option>{(snapshot?.accounts || []).filter(a => a.is_active).map(a => <option key={a.id} value={a.id}>{a.display_name} — {a.currency}</option>)}</select></label>}
-        <label className="grid gap-1 text-sm font-semibold">{t('المبلغ', 'Amount')}<input required type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('المبلغ', 'Amount')}<input required type="number" min={transactionType === 'EXPENSE' ? (snapshot?.accounts.find(a => a.id === sourceWalletId)?.currency === 'JOD' ? '0.001' : '0.01') : (snapshot?.accounts.find(a => a.id === destinationWalletId)?.currency === 'JOD' ? '0.001' : '0.01')} step={transactionType === 'EXPENSE' ? (snapshot?.accounts.find(a => a.id === sourceWalletId)?.currency === 'JOD' ? '0.001' : '0.01') : (snapshot?.accounts.find(a => a.id === destinationWalletId)?.currency === 'JOD' ? '0.001' : '0.01')} value={amount} onChange={e => setAmount(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
         <label className="grid gap-1 text-sm font-semibold">{t('المرجع (اختياري)', 'Reference (optional)')}<input maxLength={160} value={reference} onChange={e => setReference(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
         <label className="grid gap-1 text-sm font-semibold sm:col-span-2">{t('ملاحظة (اختياري)', 'Note (optional)')}<textarea maxLength={1000} rows={2} value={note} onChange={e => setNote(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
         <button disabled={saving || !(snapshot?.accounts || []).some(a => a.is_active)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ التسجيل…', 'Recording…') : t('تأكيد الحركة', 'Record transaction')}</button>
