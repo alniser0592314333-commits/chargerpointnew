@@ -390,7 +390,7 @@ Deno.serve(async (request: Request) => {
           const displayName = normalize(input.displayName, 120);
           const currency = normalize(input.currency ?? "ILS", 3).toUpperCase();
           if (!["PalPay", "Jawwal Pay", "Bank of Palestine"].includes(provider) ||
-            !walletNumber || !displayName || !/^[A-Z]{3}$/.test(currency)) {
+            !walletNumber || !displayName || !["ILS", "USD", "JOD"].includes(currency)) {
             return respond(400, { ok: false, error: "INVALID_WALLET_ACCOUNT" });
           }
           const { data: created, error: createError } = await admin.from("wallet_accounts").insert({
@@ -419,7 +419,7 @@ Deno.serve(async (request: Request) => {
             (sourceWalletId !== null && !uuidPattern.test(sourceWalletId)) ||
             (destinationWalletId !== null && !uuidPattern.test(destinationWalletId)) ||
             !Number.isSafeInteger(amountMinor) || amountMinor <= 0 ||
-            !/^[A-Z]{3}$/.test(currency) || !uuidPattern.test(idempotencyKey) ||
+            !["ILS", "USD", "JOD"].includes(currency) || !uuidPattern.test(idempotencyKey) ||
             (reference !== null && reference.length > 160) || (note !== null && note.length > 1000)) {
             return respond(400, { ok: false, error: "INVALID_WALLET_TRANSACTION" });
           }
