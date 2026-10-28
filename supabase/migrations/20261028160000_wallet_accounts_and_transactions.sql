@@ -56,6 +56,7 @@ revoke all on public.wallet_transactions from anon, authenticated;
 grant select, insert, update on public.wallet_accounts to service_role;
 grant select, insert on public.wallet_transactions to service_role;
 
+
 create or replace function public.wallet_record_transaction(
   p_customer_id uuid,
   p_actor_auth_user_id uuid,
@@ -80,9 +81,18 @@ declare
   v_new public.wallet_transactions%rowtype;
 begin
   if p_customer_id is null or p_actor_auth_user_id is null or p_idempotency_key is null
+    or p_transaction_type is null or p_transaction_type not in ('INCOME', 'EXPENSE', 'TRANSFER')
     or p_amount_minor is null or p_amount_minor <= 0
-    or p_currency is null or p_currency !~ '^[A-Z]{3}
+    or p_currency is null or p_currency !~ '^[A-Z]{3}$'
     or coalesce(length(p_reference), 0) > 160 or coalesce(length(p_note), 0) > 1000 then
+    raise exception 'INVALID_WALLET_TRANSACTION' using errcode = '22023';
+  end if;
+
+  if (p_transaction_type = 'INCOME' and (p_source_wallet_id is not null or p_destination_wallet_id is null))
+    or (p_transaction_type = 'EXPENSE' and (p_source_wallet_id is null or p_destination_wallet_id is not null))
+    or (p_transaction_type = 'TRANSFER' and (
+      p_source_wallet_id is null or p_destination_wallet_id is null or p_source_wallet_id = p_destination_wallet_id
+    )) then
     raise exception 'INVALID_WALLET_TRANSACTION' using errcode = '22023';
   end if;
 
@@ -119,78 +129,15 @@ begin
     if not found or v_source.currency <> p_currency then
       raise exception 'SOURCE_WALLET_UNAVAILABLE' using errcode = '22023';
     end if;
+
     select coalesce(sum(
       case when destination_wallet_id = v_source.id then amount_minor else 0 end -
       case when source_wallet_id = v_source.id then amount_minor else 0 end
     ), 0)::bigint into v_balance
-    from public.wallet_transactions where customer_id = p_customer_id
+    from public.wallet_transactions
+    where customer_id = p_customer_id
       and (source_wallet_id = v_source.id or destination_wallet_id = v_source.id);
-    if v_balance < p_amount_minor then
-      raise exception 'INSUFFICIENT_WALLET_BALANCE' using errcode = '22023';
-    end if;
-  end if;
 
-  if p_transaction_type in ('INCOME', 'TRANSFER') then
-    select * into v_destination from public.wallet_accounts
-    where id = p_destination_wallet_id and customer_id = p_customer_id and is_active = true
-    for update;
-    if not found or v_destination.currency <> p_currency then
-      raise exception 'DESTINATION_WALLET_UNAVAILABLE' using errcode = '22023';
-    end if;
-  end if;
-
-  insert into public.wallet_transactions (
-    customer_id, transaction_type, source_wallet_id, destination_wallet_id,
-    amount_minor, currency, idempotency_key, reference, note, created_by_auth_user_id
-  ) values (
-    p_customer_id, p_transaction_type, p_source_wallet_id, p_destination_wallet_id,
-    p_amount_minor, p_currency, p_idempotency_key, nullif(trim(p_reference), ''),
-    nullif(trim(p_note), ''), p_actor_auth_user_id
-  ) returning * into v_new;
-
-  return jsonb_build_object('ok', true, 'duplicate', false, 'transaction_id', v_new.id);
-end;
-$$;
-
-revoke all on function public.wallet_record_transaction(uuid, uuid, text, uuid, uuid, bigint, text, uuid, text, text) from public, anon, authenticated;
-grant execute on function public.wallet_record_transaction(uuid, uuid, text, uuid, uuid, bigint, text, uuid, text, text) to service_role;
-
-commit;
-
-    or p_transaction_type is null or p_transaction_type not in ('INCOME', 'EXPENSE', 'TRANSFER')
-    or coalesce(length(p_reference), 0) > 160 or coalesce(length(p_note), 0) > 1000 then
-    raise exception 'INVALID_WALLET_TRANSACTION' using errcode = '22023';
-  end if;
-
-  if not exists (
-    select 1 from public.customer_service_entitlements e
-    where e.customer_id = p_customer_id and e.service_key = 'wallet_management' and e.enabled = true
-  ) then
-    raise exception 'WALLET_SERVICE_NOT_ENABLED' using errcode = '42501';
-  end if;
-
-  -- Serialize writes for this customer before checking the idempotency key or balance.
-  perform pg_advisory_xact_lock(hashtextextended(p_customer_id::text, 0));
-
-  select * into v_existing from public.wallet_transactions
-  where customer_id = p_customer_id and idempotency_key = p_idempotency_key;
-  if found then
-    return jsonb_build_object('ok', true, 'duplicate', true, 'transaction_id', v_existing.id);
-  end if;
-
-  if p_transaction_type in ('EXPENSE', 'TRANSFER') then
-    select * into v_source from public.wallet_accounts
-    where id = p_source_wallet_id and customer_id = p_customer_id and is_active = true
-    for update;
-    if not found or v_source.currency <> p_currency then
-      raise exception 'SOURCE_WALLET_UNAVAILABLE' using errcode = '22023';
-    end if;
-    select coalesce(sum(
-      case when destination_wallet_id = v_source.id then amount_minor else 0 end -
-      case when source_wallet_id = v_source.id then amount_minor else 0 end
-    ), 0)::bigint into v_balance
-    from public.wallet_transactions where customer_id = p_customer_id
-      and (source_wallet_id = v_source.id or destination_wallet_id = v_source.id);
     if v_balance < p_amount_minor then
       raise exception 'INSUFFICIENT_WALLET_BALANCE' using errcode = '22023';
     end if;
