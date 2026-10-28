@@ -190,6 +190,19 @@ begin
     raise exception 'Selected days have replacement items referenced by other days; restore refused';
   end if;
 
+  if exists (
+    select 1 from jsonb_to_recordset(v_payload_orders) as x(id uuid,day_id uuid)
+    join jsonb_to_recordset(v_payload_days) as bd(id uuid,business_date date)
+      on bd.id = x.day_id
+    where bd.business_date = any(v_dates)
+      and not exists (
+        select 1 from jsonb_to_recordset(v_payload_items) as i(id uuid,order_id uuid)
+        where i.order_id = x.id
+      )
+  ) then
+    raise exception 'Backup contains an order without any order items; restore refused to prevent incomplete records';
+  end if;
+
   -- Validate all references before mutating anything.
   if exists (
     select 1 from jsonb_to_recordset(v_payload_orders)
