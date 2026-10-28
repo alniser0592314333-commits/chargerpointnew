@@ -7,6 +7,8 @@ const pathname = window.location.pathname;
 const appVariant = import.meta.env.VITE_APP_VARIANT;
 const isPublicPortalRoute =
   pathname === '/public/about' ||
+  pathname === '/public/services' ||
+  pathname.startsWith('/public/services/') ||
   pathname.startsWith('/c/') ||
   pathname.startsWith('/o/') ||
   pathname.startsWith('/pay/') ||
