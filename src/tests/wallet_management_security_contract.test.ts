@@ -7,6 +7,9 @@ describe('Public wallet management access contract', () => {
   const portal = fs.readFileSync(path.resolve(process.cwd(), 'src/PublicPortalApp.tsx'), 'utf8');
   const endpoint = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/customer-account/index.ts'), 'utf8');
   const migration = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261028150000_wallet_management_entitlements.sql'), 'utf8');
+  const walletPanel = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/WalletSnapshotPanel.tsx'), 'utf8');
+  const walletSchema = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261028160000_wallet_accounts_and_transactions.sql'), 'utf8');
+  const snapshotRpc = fs.readFileSync(path.resolve(process.cwd(), 'supabase/migrations/20261028161000_wallet_snapshot_rpc.sql'), 'utf8');
 
   it('is reachable from the public portal, not the admin application', () => {
     expect(portal).toContain("pathname === '/public/services/wallet'");
@@ -45,5 +48,23 @@ describe('Public wallet management access contract', () => {
     expect(migration).toContain('force row level security');
     expect(migration).toContain('revoke all on table public.customer_service_entitlements from anon, authenticated');
     expect(migration).not.toMatch(/create policy/i);
+  });
+
+  it('renders wallet balances and activity only from the authenticated server snapshot', () => {
+    expect(page).toContain('<WalletSnapshotPanel />');
+    expect(walletPanel).toContain("callCustomerAccount<{ snapshot?: Snapshot }>('wallet-snapshot'");
+    expect(walletPanel).toContain('balance_minor');
+    expect(walletPanel).toContain('snapshot.transactions.map');
+    expect(walletPanel).toContain('setSnapshot(null)');
+  });
+
+  it('keeps wallet records customer-scoped and denies direct browser table access', () => {
+    expect(endpoint).toContain('p_customer_id: link.customer_id');
+    expect(endpoint).toContain('p_actor_auth_user_id: authenticated.user.id');
+    expect(walletSchema).toContain('foreign key (source_wallet_id, customer_id)');
+    expect(walletSchema).toContain('foreign key (destination_wallet_id, customer_id)');
+    expect(walletSchema).toContain('force row level security');
+    expect(walletSchema).toContain('revoke all on public.wallet_transactions from anon, authenticated');
+    expect(snapshotRpc).toContain("where t.customer_id = p_customer_id");
   });
 });
