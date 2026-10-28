@@ -8,6 +8,7 @@ import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
 import { WalletManagementPage } from './components/pages/WalletManagementPage';
+import { PublicServicesPage } from './components/pages/PublicServicesPage';
 import { FirstVisitWelcomeIntro } from './components/pages/FirstVisitWelcomeIntro';
 import './public-portal.css';
 import { AppVersionGate } from './components/customer/CustomerAppVersionGate';
@@ -223,6 +224,8 @@ const PublicPortalApp: React.FC = () => {
 
   if (pathname === '/public/about') {
     content = <ThemeProvider><PublicAboutPage /></ThemeProvider>;
+  } else if (pathname === '/public/services') {
+    content = <ThemeProvider><PublicServicesPage onBack={() => { window.history.replaceState({ path: '/public/about' }, '', '/public/about'); setCurrentPath('/public/about'); }} onOpenWallet={() => { window.history.replaceState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); setCurrentPath('/public/services/wallet'); }} /></ThemeProvider>;
   } else if (pathname === '/public/services/wallet') {
     content = <ThemeProvider><WalletManagementPage onBack={() => { window.history.replaceState({ path: '/public/about' }, '', '/public/about'); setCurrentPath('/public/about'); }} /></ThemeProvider>;
   } else {
