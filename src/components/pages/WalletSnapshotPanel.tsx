@@ -31,6 +31,8 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
   const [transactionConflict, setTransactionConflict] = useState(false);
   const [conflictReviewed, setConflictReviewed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [transactionSearch, setTransactionSearch] = useState('');
+  const [transactionFilter, setTransactionFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('ALL');
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try {
@@ -63,6 +65,16 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
   }, [isAr, onStepUpRequired]);
   useEffect(() => { void refresh(); }, [refresh]);
   const currencyScale = (currency: string) => currency === 'JOD' ? 1000 : 100;
+  const filteredTransactions = (snapshot?.transactions ?? []).filter(tx => {
+    const matchesType = transactionFilter === 'ALL' || tx.transaction_type === transactionFilter;
+    const query = transactionSearch.trim().toLocaleLowerCase();
+    const searchable = [tx.reference, tx.note, tx.source_wallet_name, tx.destination_wallet_name, tx.transaction_type, tx.currency].filter(Boolean).join(' ').toLocaleLowerCase();
+    return matchesType && (!query || searchable.includes(query));
+  });
+  const totalsByCurrency = (snapshot?.accounts ?? []).reduce<Record<string, number>>((totals, account) => {
+    totals[account.currency] = (totals[account.currency] ?? 0) + (account.balance_minor || 0);
+    return totals;
+  }, {});
   const money = (minor: number, currency: string) => (Number(minor || 0) / currencyScale(currency)).toLocaleString(isAr ? 'ar-PS' : 'en-US', { minimumFractionDigits: currency === 'JOD' ? 3 : 2, maximumFractionDigits: currency === 'JOD' ? 3 : 2 }) + ' ' + currency;
 
   return <div className="mt-6 border-t border-slate-200 pt-6 dark:border-white/10">
@@ -78,9 +90,11 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
       <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-bold text-teal-700 dark:text-teal-300">{account.provider}</p><h3 className="mt-1 font-bold">{account.display_name}</h3><p className="mt-1 text-xs text-slate-500">{account.wallet_number}</p></div><span className="text-xs text-slate-500">{account.currency}</span></div>
       <p className="mt-4 text-2xl font-extrabold tabular-nums">{money(account.balance_minor, account.currency)}</p>{!account.is_active && <p className="mt-2 text-xs text-amber-700">{t('غير نشطة', 'Inactive')}</p>}
     </article>)}</div>}
-    <div id="wallet-transactions" className="mt-7 scroll-mt-24 flex items-center gap-2"><History size={18} className="text-teal-700 dark:text-teal-300" /><h2 className="text-lg font-extrabold">{t('آخر الحركات', 'Recent transactions')}</h2></div>
-    {!loading && !error && snapshot?.transactions.length === 0 && <p className="mt-3 text-sm text-slate-500">{t('لسه ما في حركات مسجلة.', 'No transactions recorded yet.')}</p>}
-    {snapshot && <div className="mt-3 grid gap-2">{snapshot.transactions.map(tx => <article key={tx.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">
+    <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(totalsByCurrency).map(([currencyCode, total]) => <article key={currencyCode} className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-4 dark:border-emerald-200/10 dark:bg-emerald-300/5"><p className="text-xs font-semibold text-slate-500">{t('إجمالي الرصيد · ', 'Total balance · ')}{currencyCode}</p><p className="mt-2 text-xl font-extrabold tabular-nums">{money(total, currencyCode)}</p></article>)}</section>
+    <div id="wallet-transactions" className="mt-7 scroll-mt-24 flex items-center gap-2"><History size={18} className="text-teal-700 dark:text-teal-300" /><h2 className="text-lg font-extrabold">{t('سجل الحركات', 'Transaction history')}</h2></div>
+    <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]"><input aria-label={t('البحث في الحركات', 'Search transactions')} value={transactionSearch} onChange={e => setTransactionSearch(e.target.value)} placeholder={t('ابحث بالملاحظة أو المرجع أو اسم المحفظة…', 'Search notes, reference, or wallet…')} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm dark:border-white/15 dark:bg-[#071a1d]" /><select aria-label={t('تصفية نوع الحركة', 'Filter transaction type')} value={transactionFilter} onChange={e => setTransactionFilter(e.target.value as typeof transactionFilter)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm dark:border-white/15 dark:bg-[#071a1d]"><option value="ALL">{t('كل الحركات', 'All transactions')}</option><option value="INCOME">{t('الوارد', 'Income')}</option><option value="EXPENSE">{t('الصادر', 'Expense')}</option><option value="TRANSFER">{t('التحويلات', 'Transfers')}</option></select></div>
+    {!loading && !error && filteredTransactions.length === 0 && <p className="mt-3 text-sm text-slate-500">{snapshot?.transactions.length ? t('ما في حركات مطابقة للبحث.', 'No transactions match your search.') : t('لسه ما في حركات مسجلة.', 'No transactions recorded yet.')}</p>}
+    {snapshot && <div className="mt-3 grid gap-2">{filteredTransactions.map(tx => <article key={tx.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">
       <div><p className="text-sm font-bold">{tx.transaction_type === 'INCOME' ? t('وارد', 'Income') : tx.transaction_type === 'EXPENSE' ? t('صادر', 'Expense') : t('تحويل', 'Transfer')}</p><p className="mt-1 text-xs text-slate-500">{tx.source_wallet_name || tx.destination_wallet_name || tx.reference || '—'} · {new Date(tx.created_at).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>{tx.note && <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{tx.note}</p>}</div>
       <p className="font-bold tabular-nums">{money(tx.amount_minor, tx.currency)}</p>
     </article>)}</div>}
