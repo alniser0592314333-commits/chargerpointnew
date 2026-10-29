@@ -8,7 +8,7 @@ type WalletAccount = { id: string; provider: string; wallet_number: string; disp
 type WalletTransaction = { id: string; transaction_type: 'INCOME' | 'EXPENSE' | 'TRANSFER'; amount_minor: number; currency: string; created_at: string; reference?: string | null; note?: string | null; source_wallet_name?: string | null; destination_wallet_name?: string | null };
 type Snapshot = { accounts: WalletAccount[]; transactions: WalletTransaction[] };
 
-export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = ({ onStepUpRequired }) => {
+export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offlineReadOnly?: boolean }> = ({ onStepUpRequired, offlineReadOnly = false }) => {
   const { locale } = useI18n();
   const isAr = locale === 'ar';
   const t = (ar: string, en: string) => isAr ? ar : en;
@@ -98,7 +98,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
       <div><p className="text-sm font-bold">{tx.transaction_type === 'INCOME' ? t('وارد', 'Income') : tx.transaction_type === 'EXPENSE' ? t('صادر', 'Expense') : t('تحويل', 'Transfer')}</p><p className="mt-1 text-xs text-slate-500">{tx.source_wallet_name || tx.destination_wallet_name || tx.reference || '—'} · {new Date(tx.created_at).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>{tx.note && <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{tx.note}</p>}</div>
       <p className="font-bold tabular-nums">{money(tx.amount_minor, tx.currency)}</p>
     </article>)}</div>}
-    <section id="wallet-add" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
+    {!offlineReadOnly && !usingCachedSnapshot && <section id="wallet-add" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('إضافة محفظة', 'Add a wallet')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving) return; setSaving(true); setError('');
@@ -115,7 +115,8 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
         <button disabled={saving} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ المحفظة', 'Save wallet')}</button>
       </form>
     </section>
-    <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
+    </section>}
+    {!offlineReadOnly && !usingCachedSnapshot && <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving || transactionConflict) return;
@@ -171,7 +172,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
         <button disabled={saving || transactionConflict || !(snapshot?.accounts || []).some(a => a.is_active)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ التسجيل…', 'Recording…') : transactionConflict ? t('التسجيل متوقف للمراجعة', 'Recording paused for review') : t('تأكيد الحركة', 'Record transaction')}</button>
       </form>
       <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('لا يُقبل الصادر أو التحويل إذا كان الرصيد غير كافٍ؛ الخادم هو المرجع النهائي.', 'Expenses and transfers are rejected if funds are insufficient; the server is authoritative.')}</p>
-    </section>
+    </section>}
     <p className="mt-4 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('الأرصدة محسوبة من سجل الحركات على الخادم، وليست محفوظة بشكل منفصل في المتصفح.', 'Balances are derived from the server transaction journal, not stored separately in the browser.')}</p>
   </div>;
 };
