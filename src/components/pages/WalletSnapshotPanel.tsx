@@ -51,7 +51,6 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
           setSnapshot(null); setUsingCachedSnapshot(false); setCachedAt(null);
           setError(t('تعذّر تحميل بيانات المحفظة. تأكد أن الخدمة مفعّلة وأن قاعدة البيانات جاهزة.', 'Could not load wallet data. Confirm the service is enabled and the database is ready.'));
         }
-        if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired();
         return;
       }
       setSnapshot(result.data.snapshot); setUsingCachedSnapshot(false); setCachedAt(Date.now());
