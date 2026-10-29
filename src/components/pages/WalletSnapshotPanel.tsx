@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Wallet, History } from 'lucide-react';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
+import { readWalletSnapshot, saveWalletSnapshot } from '../../services/customer/walletLocalCache';
 
 type WalletAccount = { id: string; provider: string; wallet_number: string; display_name: string; currency: string; is_active: boolean; balance_minor: number };
 type WalletTransaction = { id: string; transaction_type: 'INCOME' | 'EXPENSE' | 'TRANSFER'; amount_minor: number; currency: string; created_at: string; reference?: string | null; note?: string | null; source_wallet_name?: string | null; destination_wallet_name?: string | null };
@@ -14,6 +15,8 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [usingCachedSnapshot, setUsingCachedSnapshot] = useState(false);
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
   const [provider, setProvider] = useState('PalPay');
   const [walletNumber, setWalletNumber] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -33,18 +36,30 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
     try {
       const result = await callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot', { limit: 50 });
       if (result.error || !result.data?.snapshot) {
-        setSnapshot(null);
+        if (result.error === 'STEP_UP_REQUIRED') {
+          setSnapshot(null); setUsingCachedSnapshot(false); setCachedAt(null); onStepUpRequired();
+        } else if (result.error === 'NETWORK_UNAVAILABLE') {
+          const cached = await readWalletSnapshot<Snapshot>();
+          if (cached?.snapshot) {
+            setSnapshot(cached.snapshot); setUsingCachedSnapshot(true); setCachedAt(cached.savedAt);
+            setError('');
+          } else {
+            setSnapshot(null); setUsingCachedSnapshot(false); setCachedAt(null);
+            setError(t('ما في نسخة محلية محفوظة بعد. اتصل بالإنترنت أول مرة لتحميل البيانات.', 'No local snapshot is saved yet. Connect once to load your data.'));
+          }
+        } else {
+          setSnapshot(null); setUsingCachedSnapshot(false); setCachedAt(null);
+          setError(t('تعذّر تحميل بيانات المحفظة. تأكد أن الخدمة مفعّلة وأن قاعدة البيانات جاهزة.', 'Could not load wallet data. Confirm the service is enabled and the database is ready.'));
+        }
         if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired();
-        setError(result.error === 'STEP_UP_REQUIRED'
-          ? t('انتهت مدة تأكيد الهوية. ارجع لخدمات المساعدة وأكّد هويتك من جديد.', 'Identity verification expired. Return to Assistance Services and verify again.')
-          : result.error === 'NETWORK_UNAVAILABLE'
-          ? t('الاتصال غير متاح؛ بيانات المحفظة مخفية.', 'Connection unavailable; wallet data is hidden.')
-          : t('تعذّر تحميل بيانات المحفظة. تأكد أن الخدمة مفعّلة وأن قاعدة البيانات جاهزة.', 'Could not load wallet data. Confirm the service is enabled and the database is ready.'));
         return;
       }
-      setSnapshot(result.data.snapshot);
+      setSnapshot(result.data.snapshot); setUsingCachedSnapshot(false); setCachedAt(Date.now());
+      await saveWalletSnapshot(result.data.snapshot);
     } catch {
-      setSnapshot(null); setError(t('تعذّر تحميل بيانات المحفظة.', 'Could not load wallet data.'));
+      const cached = await readWalletSnapshot<Snapshot>();
+      if (cached?.snapshot) { setSnapshot(cached.snapshot); setUsingCachedSnapshot(true); setCachedAt(cached.savedAt); setError(''); }
+      else { setSnapshot(null); setError(t('تعذّر تحميل بيانات المحفظة.', 'Could not load wallet data.')); }
     } finally { setLoading(false); }
   }, [isAr, onStepUpRequired]);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -57,6 +72,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void }> = (
       <button type="button" disabled={loading} onClick={() => { void refresh(); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50 dark:border-white/15"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />{t('تحديث', 'Refresh')}</button>
     </div>
     {loading && <p className="mt-4 text-sm text-slate-500">{t('جارٍ تحميل البيانات…', 'Loading data…')}</p>}
+    {usingCachedSnapshot && snapshot && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('وضع دون اتصال — نسخة محفوظة محليًا', 'Offline mode — locally saved snapshot')}</p><p>{t('الأرصدة والحركات المعروضة من آخر تحديث ناجح، وليست مضمونة أنها الأحدث. تسجيل الحركات وتعديل المحافظ يحتاج اتصالًا بالخادم.', 'Balances and transactions are from the last successful refresh and may be stale. Recording transactions and changing wallets still requires a server connection.')}</p>{cachedAt && <p className="mt-1 text-xs opacity-80">{t('آخر تحديث: ', 'Last refresh: ')}{new Date(cachedAt).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>}</div>}
     {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-sm leading-6 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
     {!loading && !error && snapshot && snapshot.accounts.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 dark:bg-white/5 dark:text-slate-300">{t('ما في محافظ مسجلة لهذا الحساب لحد الآن.', 'No wallets are registered for this account yet.')}</p>}
     {snapshot && <div id="wallet-accounts" className="mt-4 scroll-mt-24 grid gap-3 sm:grid-cols-2">{snapshot.accounts.map(account => <article key={account.id} className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
