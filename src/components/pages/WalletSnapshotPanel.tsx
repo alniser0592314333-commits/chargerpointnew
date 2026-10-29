@@ -14,8 +14,10 @@ function applyPending(snapshot: Snapshot, pending: PendingWalletTransaction[]): 
   for (const item of [...pending].sort((a, b) => a.queuedAt - b.queuedAt)) {
     const source = accounts.find(account => account.id === item.sourceWalletId);
     const destination = accounts.find(account => account.id === item.destinationWalletId);
-    if (item.transactionType !== 'INCOME' && source) source.balance_minor -= item.amountMinor;
-    if (item.transactionType !== 'EXPENSE' && destination) destination.balance_minor += item.amountMinor;
+    if (item.status !== 'blocked') {
+      if (item.transactionType !== 'INCOME' && source) source.balance_minor -= item.amountMinor;
+      if (item.transactionType !== 'EXPENSE' && destination) destination.balance_minor += item.amountMinor;
+    }
     transactions.unshift({
       id: 'pending:' + item.idempotencyKey,
       transaction_type: item.transactionType,
@@ -23,7 +25,7 @@ function applyPending(snapshot: Snapshot, pending: PendingWalletTransaction[]): 
       currency: item.currency,
       created_at: new Date(item.queuedAt).toISOString(),
       reference: item.reference,
-      note: (item.status === 'blocked' ? '[SYNC_BLOCKED] ' : '[PENDING_SYNC] ') + (item.note || ''),
+      note: (item.status === 'blocked' ? '[SYNC_BLOCKED: ' + (item.lastError || 'REJECTED') + '] ' : '[PENDING_SYNC] ') + (item.note || ''),
       source_wallet_name: source?.display_name ?? null,
       destination_wallet_name: destination?.display_name ?? null,
     });
