@@ -99,7 +99,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       setPendingQueue(queued); await saveWalletSnapshot(result.data.snapshot);
     } catch {
       const cached = await readWalletSnapshot<Snapshot>();
-      if (cached?.snapshot) { setSnapshot(cached.snapshot); setUsingCachedSnapshot(true); setCachedAt(cached.savedAt); setError(''); }
+      if (cached?.snapshot) { setSnapshot(applyPending(cached.snapshot, await listPendingWalletTransactions())); setPendingQueue(await listPendingWalletTransactions()); setUsingCachedSnapshot(true); setCachedAt(cached.savedAt); setError(''); }
       else { setSnapshot(null); setError(t('تعذّر تحميل بيانات المحفظة.', 'Could not load wallet data.')); }
     } finally { setLoading(false); }
   }, [isAr, onStepUpRequired]);
@@ -162,7 +162,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       </form>
     </section>
     </section>}
-    {!offlineReadOnly && <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
+    <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving || transactionConflict) return;
@@ -177,6 +177,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         const selectedCurrency = transactionType === 'EXPENSE' ? source!.currency : destination!.currency;
         if (source && source.currency !== selectedCurrency) { setError(t('عملة المحافظ غير متطابقة.', 'Wallet currencies do not match.')); return; }
         const amountMinor = Math.round(enteredAmount * currencyScale(selectedCurrency));
+        if (transactionType !== 'INCOME' && source && source.balance_minor < amountMinor) { setError(t('الرصيد المحلي الظاهر لا يكفي لهذه الحركة.', 'The displayed local balance is insufficient for this transaction.')); return; }
         if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0 || Math.abs(enteredAmount * currencyScale(selectedCurrency) - amountMinor) > 1e-7) { setError(t('المبلغ يتجاوز الدقة المسموحة للعملة.', 'Amount exceeds the supported precision for this currency.')); return; }
         const idempotencyKey = transactionKey || crypto.randomUUID();
         setTransactionKey(idempotencyKey);
@@ -239,7 +240,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         <button disabled={saving || transactionConflict || !(snapshot?.accounts || []).some(a => a.is_active)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ التسجيل…', 'Recording…') : transactionConflict ? t('التسجيل متوقف للمراجعة', 'Recording paused for review') : t('تأكيد الحركة', 'Record transaction')}</button>
       </form>
       <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('لا يُقبل الصادر أو التحويل إذا كان الرصيد غير كافٍ؛ الخادم هو المرجع النهائي.', 'Expenses and transfers are rejected if funds are insufficient; the server is authoritative.')}</p>
-    </section>}
+    </section>
     <p className="mt-4 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('الأرصدة محسوبة من سجل الحركات على الخادم، وليست محفوظة بشكل منفصل في المتصفح.', 'Balances are derived from the server journal plus clearly marked local pending transactions until sync is confirmed.')}</p>
   </div>;
 };
