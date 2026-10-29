@@ -2,11 +2,34 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Wallet, History } from 'lucide-react';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
-import { readWalletSnapshot, saveWalletSnapshot } from '../../services/customer/walletLocalCache';
+import { blockPendingWalletTransaction, enqueueWalletTransaction, listPendingWalletTransactions, readWalletSnapshot, removePendingWalletTransaction, saveWalletSnapshot, type PendingWalletTransaction } from '../../services/customer/walletLocalCache';
 
 type WalletAccount = { id: string; provider: string; wallet_number: string; display_name: string; currency: string; is_active: boolean; balance_minor: number };
 type WalletTransaction = { id: string; transaction_type: 'INCOME' | 'EXPENSE' | 'TRANSFER'; amount_minor: number; currency: string; created_at: string; reference?: string | null; note?: string | null; source_wallet_name?: string | null; destination_wallet_name?: string | null };
 type Snapshot = { accounts: WalletAccount[]; transactions: WalletTransaction[] };
+
+function applyPending(snapshot: Snapshot, pending: PendingWalletTransaction[]): Snapshot {
+  const accounts = snapshot.accounts.map(account => ({ ...account }));
+  const transactions = [...snapshot.transactions];
+  for (const item of [...pending].sort((a, b) => a.queuedAt - b.queuedAt)) {
+    const source = accounts.find(account => account.id === item.sourceWalletId);
+    const destination = accounts.find(account => account.id === item.destinationWalletId);
+    if (item.transactionType !== 'INCOME' && source) source.balance_minor -= item.amountMinor;
+    if (item.transactionType !== 'EXPENSE' && destination) destination.balance_minor += item.amountMinor;
+    transactions.unshift({
+      id: 'pending:' + item.idempotencyKey,
+      transaction_type: item.transactionType,
+      amount_minor: item.amountMinor,
+      currency: item.currency,
+      created_at: new Date(item.queuedAt).toISOString(),
+      reference: item.reference,
+      note: (item.status === 'blocked' ? '[SYNC_BLOCKED] ' : '[PENDING_SYNC] ') + (item.note || ''),
+      source_wallet_name: source?.display_name ?? null,
+      destination_wallet_name: destination?.display_name ?? null,
+    });
+  }
+  return { accounts, transactions };
+}
 
 export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offlineReadOnly?: boolean }> = ({ onStepUpRequired, offlineReadOnly = false }) => {
   const { locale } = useI18n();
@@ -31,11 +54,28 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
   const [transactionConflict, setTransactionConflict] = useState(false);
   const [conflictReviewed, setConflictReviewed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pendingQueue, setPendingQueue] = useState<PendingWalletTransaction[]>([]);
   const [transactionSearch, setTransactionSearch] = useState('');
   const [transactionFilter, setTransactionFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('ALL');
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try {
+      let queued = await listPendingWalletTransactions();
+      for (const item of queued) {
+        if (item.status === 'blocked') continue;
+        const synced = await callWalletService('wallet-record-transaction', {
+          transactionType: item.transactionType, sourceWalletId: item.sourceWalletId,
+          destinationWalletId: item.destinationWalletId, amountMinor: item.amountMinor,
+          currency: item.currency, idempotencyKey: item.idempotencyKey,
+          reference: item.reference, note: item.note,
+        });
+        if (!synced.error) await removePendingWalletTransaction(item);
+        else if (synced.error === 'NETWORK_UNAVAILABLE') break;
+        else if (synced.error === 'STEP_UP_REQUIRED') { onStepUpRequired(); break; }
+        else await blockPendingWalletTransaction(item, synced.error);
+      }
+      queued = await listPendingWalletTransactions();
+      setPendingQueue(queued);
       const result = await callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot', { limit: 50 });
       if (result.error || !result.data?.snapshot) {
         if (result.error === 'STEP_UP_REQUIRED') {
@@ -43,7 +83,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         } else if (result.error === 'NETWORK_UNAVAILABLE') {
           const cached = await readWalletSnapshot<Snapshot>();
           if (cached?.snapshot) {
-            setSnapshot(cached.snapshot); setUsingCachedSnapshot(true); setCachedAt(cached.savedAt);
+            setSnapshot(applyPending(cached.snapshot, await listPendingWalletTransactions())); setUsingCachedSnapshot(true); setCachedAt(cached.savedAt);
             setError('');
           } else {
             setSnapshot(null); setUsingCachedSnapshot(false); setCachedAt(null);
@@ -55,8 +95,8 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         }
         return;
       }
-      setSnapshot(result.data.snapshot); setUsingCachedSnapshot(false); setCachedAt(Date.now());
-      await saveWalletSnapshot(result.data.snapshot);
+      setSnapshot(applyPending(result.data.snapshot, queued)); setUsingCachedSnapshot(queued.length > 0); setCachedAt(Date.now());
+      setPendingQueue(queued); await saveWalletSnapshot(result.data.snapshot);
     } catch {
       const cached = await readWalletSnapshot<Snapshot>();
       if (cached?.snapshot) { setSnapshot(cached.snapshot); setUsingCachedSnapshot(true); setCachedAt(cached.savedAt); setError(''); }
@@ -83,7 +123,8 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       <button type="button" disabled={loading} onClick={() => { void refresh(); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50 dark:border-white/15"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />{t('تحديث', 'Refresh')}</button>
     </div>
     {loading && <p className="mt-4 text-sm text-slate-500">{t('جارٍ تحميل البيانات…', 'Loading data…')}</p>}
-    {usingCachedSnapshot && snapshot && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('وضع دون اتصال — نسخة محفوظة محليًا', 'Offline mode — locally saved snapshot')}</p><p>{t('الأرصدة والحركات المعروضة من آخر تحديث ناجح، وليست مضمونة أنها الأحدث. تسجيل الحركات وتعديل المحافظ يحتاج اتصالًا بالخادم.', 'Balances and transactions are from the last successful refresh and may be stale. Recording transactions and changing wallets still requires a server connection.')}</p>{cachedAt && <p className="mt-1 text-xs opacity-80">{t('آخر تحديث: ', 'Last refresh: ')}{new Date(cachedAt).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>}</div>}
+    {usingCachedSnapshot && snapshot && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('وضع دون اتصال — نسخة محفوظة محليًا', 'Offline mode — locally saved snapshot')}</p><p>{t('الأرصدة والحركات المعروضة من آخر تحديث ناجح، وليست مضمونة أنها الأحدث. تسجيل الحركات وتعديل المحافظ يحتاج اتصالًا بالخادم.', 'Balances include locally queued transactions and may be stale. Queued transactions sync when connection returns; rejected items need review.')}</p>{cachedAt && <p className="mt-1 text-xs opacity-80">{t('آخر تحديث: ', 'Last refresh: ')}{new Date(cachedAt).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>}</div>}
+    {pendingQueue.length > 0 && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('حركات محفوظة على الجهاز: ', 'Transactions saved on this device: ')}{pendingQueue.length}</p><p>{t('سيتم إرسال الحركات المعلّقة عند رجوع الاتصال. الحركات المتوقفة بسبب رفض الخادم لن تُرسل تلقائيًا مرة أخرى.', 'Pending transactions will sync when connection returns. Transactions rejected by the server will not be retried automatically.')}</p></div>}
     {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-sm leading-6 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
     {!loading && !error && snapshot && snapshot.accounts.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 dark:bg-white/5 dark:text-slate-300">{t('ما في محافظ مسجلة لهذا الحساب لحد الآن.', 'No wallets are registered for this account yet.')}</p>}
     {snapshot && <div id="wallet-accounts" className="mt-4 scroll-mt-24 grid gap-3 sm:grid-cols-2">{snapshot.accounts.map(account => <article key={account.id} className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
@@ -116,7 +157,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       </form>
     </section>
     </section>}
-    {!offlineReadOnly && !usingCachedSnapshot && <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
+    {!offlineReadOnly && <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving || transactionConflict) return;
@@ -136,12 +177,33 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         setTransactionKey(idempotencyKey);
         setSaving(true); setError('');
         try {
-          const result = await callWalletService('wallet-record-transaction', {
+          const transactionPayload = {
             transactionType, sourceWalletId: transactionType === 'INCOME' ? null : sourceWalletId,
             destinationWalletId: transactionType === 'EXPENSE' ? null : destinationWalletId,
             amountMinor, currency: selectedCurrency, idempotencyKey,
             reference: reference.trim() || null, note: note.trim() || null,
-          });
+          };
+          const result = await callWalletService('wallet-record-transaction', transactionPayload);
+          if (result.error === 'NETWORK_UNAVAILABLE') {
+            const saved = await enqueueWalletTransaction({
+              transactionType, sourceWalletId: transactionPayload.sourceWalletId,
+              destinationWalletId: transactionPayload.destinationWalletId, amountMinor,
+              currency: selectedCurrency, idempotencyKey,
+              reference: transactionPayload.reference, note: transactionPayload.note,
+            });
+            if (!saved) {
+              setError(t('تعذّر الحفظ المحلي. لا تغلق الصفحة قبل التأكد من الاتصال والمحاولة مجددًا.', 'Could not save locally. Keep this page open until you can reconnect and retry.'));
+              return;
+            }
+            const queued = await listPendingWalletTransactions();
+            setPendingQueue(queued);
+            const cached = await readWalletSnapshot<Snapshot>();
+            const base = cached?.snapshot ?? snapshot;
+            if (base) setSnapshot(applyPending(base, queued));
+            setUsingCachedSnapshot(true);
+            setAmount(''); setReference(''); setNote(''); setTransactionKey(''); setError('');
+            return;
+          }
           if (result.error) {
             if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired();
             if (result.error === 'IDEMPOTENCY_KEY_REUSED') {
@@ -173,6 +235,6 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       </form>
       <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('لا يُقبل الصادر أو التحويل إذا كان الرصيد غير كافٍ؛ الخادم هو المرجع النهائي.', 'Expenses and transfers are rejected if funds are insufficient; the server is authoritative.')}</p>
     </section>}
-    <p className="mt-4 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('الأرصدة محسوبة من سجل الحركات على الخادم، وليست محفوظة بشكل منفصل في المتصفح.', 'Balances are derived from the server transaction journal, not stored separately in the browser.')}</p>
+    <p className="mt-4 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('الأرصدة محسوبة من سجل الحركات على الخادم، وليست محفوظة بشكل منفصل في المتصفح.', 'Balances are derived from the server journal plus clearly marked local pending transactions until sync is confirmed.')}</p>
   </div>;
 };
