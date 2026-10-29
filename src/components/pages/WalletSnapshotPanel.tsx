@@ -74,7 +74,12 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         if (!synced.error) await removePendingWalletTransaction(item);
         else if (synced.error === 'NETWORK_UNAVAILABLE') break;
         else if (synced.error === 'STEP_UP_REQUIRED') { onStepUpRequired(); break; }
-        else await blockPendingWalletTransaction(item, synced.error);
+        else if (['INSUFFICIENT_WALLET_BALANCE', 'WALLET_UNAVAILABLE', 'SOURCE_WALLET_UNAVAILABLE', 'DESTINATION_WALLET_UNAVAILABLE', 'INVALID_WALLET_TRANSACTION', 'IDEMPOTENCY_KEY_REUSED'].includes(synced.error)) {
+          await blockPendingWalletTransaction(item, synced.error);
+        } else {
+          // Unknown/server errors may be temporary; keep the entry queued rather than risking loss.
+          break;
+        }
       }
       queued = await listPendingWalletTransactions();
       setPendingQueue(queued);
@@ -130,7 +135,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       <button type="button" disabled={loading} onClick={() => { void refresh(); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50 dark:border-white/15"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />{t('تحديث', 'Refresh')}</button>
     </div>
     {loading && <p className="mt-4 text-sm text-slate-500">{t('جارٍ تحميل البيانات…', 'Loading data…')}</p>}
-    {usingCachedSnapshot && snapshot && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('وضع دون اتصال — نسخة محفوظة محليًا', 'Offline mode — locally saved snapshot')}</p><p>{t('الأرصدة والحركات المعروضة من آخر تحديث ناجح، وليست مضمونة أنها الأحدث. تسجيل الحركات وتعديل المحافظ يحتاج اتصالًا بالخادم.', 'Balances include locally queued transactions and may be stale. Queued transactions sync when connection returns; rejected items need review.')}</p>{cachedAt && <p className="mt-1 text-xs opacity-80">{t('آخر تحديث: ', 'Last refresh: ')}{new Date(cachedAt).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>}</div>}
+    {usingCachedSnapshot && snapshot && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('وضع دون اتصال — نسخة محفوظة محليًا', 'Offline mode — locally saved snapshot')}</p><p>{t('الأرصدة الأساسية من آخر تحديث ناجح وقد تكون قديمة. يمكنك تسجيل الحركات محليًا؛ ستظهر معلّقة حتى يؤكد الخادم مزامنتها.', 'Base balances are from the last successful refresh and may be stale. Transactions can be recorded locally and remain pending until the server confirms sync.')}</p>{cachedAt && <p className="mt-1 text-xs opacity-80">{t('آخر تحديث: ', 'Last refresh: ')}{new Date(cachedAt).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>}</div>}
     {pendingQueue.length > 0 && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('حركات محفوظة على الجهاز: ', 'Transactions saved on this device: ')}{pendingQueue.length}</p><p>{t('سيتم إرسال الحركات المعلّقة عند رجوع الاتصال. الحركات المتوقفة بسبب رفض الخادم لن تُرسل تلقائيًا مرة أخرى.', 'Pending transactions will sync when connection returns. Transactions rejected by the server will not be retried automatically.')}</p></div>}
     {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-sm leading-6 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
     {!loading && !error && snapshot && snapshot.accounts.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 dark:bg-white/5 dark:text-slate-300">{t('ما في محافظ مسجلة لهذا الحساب لحد الآن.', 'No wallets are registered for this account yet.')}</p>}
