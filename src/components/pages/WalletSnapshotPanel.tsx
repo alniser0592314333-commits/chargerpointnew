@@ -162,7 +162,6 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         <label className="grid gap-1 text-sm font-semibold">{t('العملة', 'Currency')}<select value={currency} onChange={e => setCurrency(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="ILS">ILS — شيكل</option><option value="USD">USD — دولار</option><option value="JOD">JOD — دينار</option></select></label>
         <button disabled={saving} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ المحفظة', 'Save wallet')}</button>
       </form>
-    </section>
     </section>}
     <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
