@@ -95,7 +95,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         }
         return;
       }
-      setSnapshot(applyPending(result.data.snapshot, queued)); setUsingCachedSnapshot(queued.length > 0); setCachedAt(Date.now());
+      setSnapshot(applyPending(result.data.snapshot, queued)); setUsingCachedSnapshot(false); setCachedAt(Date.now());
       setPendingQueue(queued); await saveWalletSnapshot(result.data.snapshot);
     } catch {
       const cached = await readWalletSnapshot<Snapshot>();
@@ -104,6 +104,11 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
     } finally { setLoading(false); }
   }, [isAr, onStepUpRequired]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const handleOnline = () => { void refresh(); };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [refresh]);
   const currencyScale = (currency: string) => currency === 'JOD' ? 1000 : 100;
   const filteredTransactions = (snapshot?.transactions ?? []).filter(tx => {
     const matchesType = transactionFilter === 'ALL' || tx.transaction_type === transactionFilter;
