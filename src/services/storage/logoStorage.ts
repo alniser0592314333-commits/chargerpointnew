@@ -247,16 +247,24 @@ export const getCachedGlobalIdentity = (): GlobalAppIdentity | null => {
   }
 };
 
-export const setCachedGlobalIdentity = (identity: GlobalAppIdentity | null) => {
+export const setCachedGlobalIdentity = (identity: GlobalAppIdentity | null): boolean => {
   const storage = getStorage();
-  if (!storage) return;
+  if (!storage) return false;
   try {
     if (identity) {
-      storage.setItem(GLOBAL_IDENTITY_CACHE_KEY, JSON.stringify(identity));
-    } else {
-      storage.removeItem(GLOBAL_IDENTITY_CACHE_KEY);
+      const serialized = JSON.stringify(identity);
+      // Keep the localStorage payload bounded; optimized logo assets should fit
+      // comfortably while avoiding quota exhaustion on mobile browsers.
+      if (serialized.length > 3_500_000) return false;
+      storage.setItem(GLOBAL_IDENTITY_CACHE_KEY, serialized);
+      const persisted = storage.getItem(GLOBAL_IDENTITY_CACHE_KEY);
+      return persisted === serialized;
     }
-  } catch {}
+    storage.removeItem(GLOBAL_IDENTITY_CACHE_KEY);
+    return storage.getItem(GLOBAL_IDENTITY_CACHE_KEY) === null;
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -374,9 +382,22 @@ const cacheIdentityLogoAssets = async (identity: GlobalAppIdentity): Promise<Glo
     whiteCached || fetchLogoDataUrl(identity.whiteLogoUrl),
     darkCached || fetchLogoDataUrl(identity.darkLogoUrl),
   ]);
+
+  // Never replace a working offline identity with metadata whose image bytes
+  // could not be downloaded. This avoids a new URL paired with a missing image.
+  const whiteReady = !identity.whiteLogoUrl || Boolean(whiteLogoDataUrl);
+  const darkReady = !identity.darkLogoUrl || Boolean(darkLogoDataUrl);
+  if (!whiteReady || !darkReady) {
+    console.warn("[LOGO_STORAGE] Logo refresh incomplete; preserving previous offline cache.");
+    return current || { ...identity, whiteLogoDataUrl: null, darkLogoDataUrl: null };
+  }
+
   const cached = { ...identity, whiteLogoDataUrl, darkLogoDataUrl };
-  setCachedGlobalIdentity(cached);
-  return cached;
+  if (setCachedGlobalIdentity(cached)) return cached;
+
+  // If storage is full/unavailable, retain the previous known-good cached mark.
+  console.warn("[LOGO_STORAGE] Could not persist logo bytes locally; preserving previous offline cache.");
+  return current || cached;
 };
 
 /**
