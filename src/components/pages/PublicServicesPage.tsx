@@ -8,10 +8,9 @@ type Props = { onBack?: () => void; onOpenWallet?: () => void };
 
 /**
  * Public catalogue of customer-facing assistance services.
- * Intentionally presentation-only: the wallet card is not connected to
- * authentication, wallet APIs, routes, or any financial operation.
+ * The wallet card delegates navigation to the host app; authentication and wallet operations remain in their existing flows.
  */
-export const PublicServicesPage: React.FC<Props> = () => {
+export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
@@ -84,7 +83,7 @@ export const PublicServicesPage: React.FC<Props> = () => {
                   {t('خدمة مخصصة لإدارة المحفظة الإلكترونية ومتابعة تفاصيلها. سيتم توفير وظائف الخدمة لاحقاً.', 'A dedicated service for managing an electronic wallet and viewing its details. Service functionality will be introduced later.')}
                 </p>
                 <div className="mt-5">
-                  <button type="button" disabled aria-disabled="true" className="public-wallet-action inline-flex cursor-not-allowed items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold opacity-85">
+                  <button type="button" onClick={() => onOpenWallet?.()} className="public-wallet-action inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition hover:-translate-y-0.5">
                     <Wallet size={17} />
                     {t('إدارة المحافظ', 'Wallet Management')}
                   </button>
