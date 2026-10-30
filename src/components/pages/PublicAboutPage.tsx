@@ -632,7 +632,7 @@ export const PublicAboutPage: React.FC = () => {
                       </span>
                     </div>
                   </div>
-                  <ArrowUpRight className="h-4 w-4 text-gray-400" />
+                  {isRTL ? <ChevronLeft className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
                 </a>
 
                 {/* App download and web-install options: plain navigation rows with inline details. */}
@@ -654,7 +654,7 @@ export const PublicAboutPage: React.FC = () => {
                             </span>
                           </div>
                         </div>
-                        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expandedInstallDetails === 'apk' ? 'rotate-180' : ''}`} />
+                        {isRTL ? <ChevronLeft className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
                       </button>
                       {expandedInstallDetails === 'apk' && (
                         <div className="px-4 pb-4 pt-1 text-[11px] leading-6 text-gray-600 dark:text-[#a8cec5]">
@@ -705,9 +705,7 @@ export const PublicAboutPage: React.FC = () => {
                             </span>
                           </div>
                         </div>
-                        {isPwaInstalled
-                          ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                          : <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expandedInstallDetails === 'pwa' ? 'rotate-180' : ''}`} />}
+                        {isRTL ? <ChevronLeft className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
                       </button>
                       {!isPwaInstalled && expandedInstallDetails === 'pwa' && (
                         <div className="px-4 pb-4 pt-1 text-[11px] leading-6 text-gray-600 dark:text-[#a8cec5]">
