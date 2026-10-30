@@ -241,3 +241,47 @@ html.dark .cp-wallet-help__back { color:#a8dfd7; }
   .cp-auth--wallet .cp-auth__header { padding-top:8px; padding-bottom:8px; }
   .cp-auth--wallet .cp-auth__form { padding:25px 20px 22px; }
 }
+
+
+/* Explicitly remove the complete promotional/illustration column in wallet login. */
+.cp-auth.cp-auth--wallet {
+  min-height:100svh !important;
+  width:100%;
+  align-items:stretch;
+}
+.cp-auth.cp-auth--wallet > .flex.flex-1.items-center {
+  flex:1 0 auto;
+  width:100%;
+  justify-content:center;
+  align-items:center;
+  padding:22px 16px 38px !important;
+}
+.cp-auth.cp-auth--wallet .cp-auth__card {
+  display:block !important;
+  width:min(100%,440px) !important;
+  max-width:440px !important;
+  min-height:0 !important;
+  margin-inline:auto;
+  padding:0 !important;
+  overflow:visible;
+  border:1px solid rgba(255,255,255,.52);
+  border-radius:25px !important;
+}
+.cp-auth.cp-auth--wallet .cp-auth__card > div:first-child { display:none !important; }
+.cp-auth.cp-auth--wallet .cp-auth__form {
+  display:block !important;
+  width:100%;
+  padding:30px 28px 26px !important;
+}
+.cp-auth.cp-auth--wallet .cp-auth__form > div { max-width:100% !important; }
+.cp-auth.cp-auth--wallet .cp-auth__form > div > .mt-6 { margin-top:20px !important; }
+.cp-auth.cp-auth--wallet .cp-wallet-heading { margin-bottom:20px; }
+.cp-auth.cp-auth--wallet .cp-wallet-heading__mark { width:48px; height:48px; margin-bottom:10px; }
+.cp-auth.cp-auth--wallet .cp-auth__label { margin-bottom:2px; }
+.cp-auth.cp-auth--wallet .cp-auth__input { min-height:48px; border-radius:12px; }
+.cp-auth.cp-auth--wallet .cp-auth__btn { min-height:48px; border-radius:13px; }
+.cp-auth.cp-auth--wallet .cp-wallet-help { margin-top:14px; }
+@media (max-width:520px) {
+  .cp-auth.cp-auth--wallet > .flex.flex-1.items-center { padding:16px 14px 28px !important; }
+  .cp-auth.cp-auth--wallet .cp-auth__form { padding:25px 20px 22px !important; }
+}
