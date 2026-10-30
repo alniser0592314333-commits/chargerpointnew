@@ -15,6 +15,7 @@ type HoursConfig = {
   todayCloseTime: string;
   tomorrowOpenTime: string;
   tomorrowCloseTime: string;
+  tomorrowDescription: string;
   chargerFeeMinor: number;
   lastUpdated: string;
 };
@@ -37,6 +38,7 @@ const defaults = (): HoursConfig => ({
   todayCloseTime: "22:00",
   tomorrowOpenTime: "08:00",
   tomorrowCloseTime: "22:00",
+  tomorrowDescription: "",
   chargerFeeMinor: 50,
   lastUpdated: new Date().toISOString(),
 });
@@ -75,10 +77,13 @@ Deno.serve(async (req: Request) => {
     }
     const today = dateInBusinessTimezone();
     const shared = { ...defaults(), ...data.value_json } as HoursConfig;
+    shared.tomorrowDescription = typeof shared.tomorrowDescription === "string" ? shared.tomorrowDescription.slice(0, 300) : "";
     // Preserve the app's established midnight rollover rule using the business timezone.
     if (typeof shared.todayDate === "string" && shared.todayDate < today) {
       shared.todayOpenTime = shared.tomorrowOpenTime || "08:00";
       shared.todayCloseTime = shared.tomorrowCloseTime || "22:00";
+      // The custom note belongs to tomorrow only; expire it at the business-day rollover.
+      shared.tomorrowDescription = "";
       shared.todayDate = today;
       shared.lastUpdated = new Date().toISOString();
     }
@@ -161,6 +166,9 @@ Deno.serve(async (req: Request) => {
     todayCloseTime: incoming.todayCloseTime,
     tomorrowOpenTime: incoming.tomorrowOpenTime,
     tomorrowCloseTime: incoming.tomorrowCloseTime,
+    tomorrowDescription: typeof incoming.tomorrowDescription === "string"
+      ? incoming.tomorrowDescription.slice(0, 300)
+      : (existing?.value_json?.todayDate === dateInBusinessTimezone() && typeof existing?.value_json?.tomorrowDescription === "string" ? existing.value_json.tomorrowDescription.slice(0, 300) : ""),
     chargerFeeMinor: Number.isSafeInteger(existing?.value_json?.chargerFeeMinor)
       ? existing?.value_json?.chargerFeeMinor ?? 50
       : 50,

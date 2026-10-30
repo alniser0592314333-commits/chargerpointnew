@@ -19,6 +19,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
   const [todayCloseTime, setTodayCloseTime] = useState<string>(config.todayCloseTime || '22:00');
   const [tomorrowOpenTime, setTomorrowOpenTime] = useState<string>(config.tomorrowOpenTime || '08:00');
   const [tomorrowCloseTime, setTomorrowCloseTime] = useState<string>(config.tomorrowCloseTime || '22:00');
+  const [tomorrowDescription, setTomorrowDescription] = useState<string>(config.tomorrowDescription || '');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [savedError, setSavedError] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
       todayCloseTime,
       tomorrowOpenTime,
       tomorrowCloseTime,
+      tomorrowDescription,
     }).catch(() => setSavedError('SYNC_FAILED'));
   };
 
@@ -84,6 +86,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
       setTodayCloseTime(current.todayCloseTime || '22:00');
       setTomorrowOpenTime(current.tomorrowOpenTime || '08:00');
       setTomorrowCloseTime(current.tomorrowCloseTime || '22:00');
+      setTomorrowDescription(current.tomorrowDescription || '');
     };
     applyConfig(getBusinessHoursConfig());
     refreshBusinessHoursConfigFromServer().then(applyConfig).catch(() => {});
@@ -101,6 +104,7 @@ export const BusinessHoursSettingsCard: React.FC = () => {
         todayCloseTime,
         tomorrowOpenTime,
         tomorrowCloseTime,
+        tomorrowDescription,
       });
     } catch {
       setSavedError('SYNC_FAILED');
@@ -238,6 +242,23 @@ export const BusinessHoursSettingsCard: React.FC = () => {
                   required
                 />
               </div>
+            </div>
+            <div className="space-y-1.5 pt-1">
+              <label htmlFor="tomorrow-public-description" className="block text-[11px] font-semibold text-gray-600 dark:text-[#8eb698]">
+                {isAr ? 'الوصف الظاهر تحت دوام اليوم التالي (اختياري)' : "Description shown under tomorrow's hours (optional)"}
+              </label>
+              <textarea
+                id="tomorrow-public-description"
+                value={tomorrowDescription}
+                onChange={(e) => { hasUserEditedRef.current = true; setTomorrowDescription(e.target.value.slice(0, 300)); setSavedSuccess(false); setSavedError(null); }}
+                maxLength={300}
+                rows={3}
+                placeholder={isAr ? 'مثال: غدًا الدوام يبدأ متأخرًا لظرف خاص' : 'Example: Tomorrow, opening will be later than usual'}
+                className="w-full resize-y rounded-lg border border-gray-300 dark:border-[#1c4b48] bg-gray-50 dark:bg-[#081f1e] px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="text-[10px] leading-relaxed text-gray-500 dark:text-[#8eb698]">
+                {isAr ? 'هذا النص يظهر للزوار تحت وقت الغد فقط، ويُمسح تلقائيًا عندما يصبح الغد هو اليوم الحالي. اتركه فارغًا لاستخدام النص الافتراضي.' : "This note appears publicly under tomorrow's hours only and expires when tomorrow becomes today. Leave it blank to use the default text."}
+              </p>
             </div>
           </div>
         </div>

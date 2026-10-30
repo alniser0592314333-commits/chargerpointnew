@@ -21,6 +21,7 @@ export interface BusinessHoursConfig {
   todayCloseTime: string; // "HH:mm" 24h
   tomorrowOpenTime: string; // "HH:mm" 24h
   tomorrowCloseTime: string; // "HH:mm" 24h
+  tomorrowDescription?: string; // Optional public note displayed only under tomorrow's hours
   chargerFeeMinor: number; // in minor units (50 = 0.50 ILS)
   lastUpdated: string;
 }
@@ -84,6 +85,7 @@ export const DEFAULT_BUSINESS_HOURS: BusinessHoursConfig = {
   todayCloseTime: '22:00',
   tomorrowOpenTime: '08:00',
   tomorrowCloseTime: '22:00',
+  tomorrowDescription: '',
   chargerFeeMinor: 50, // 0.50 ILS
   lastUpdated: new Date().toISOString(),
 };
@@ -132,6 +134,7 @@ export async function refreshBusinessHoursConfigFromServer(): Promise<BusinessHo
       todayCloseTime: typeof raw.todayCloseTime === 'string' ? raw.todayCloseTime : DEFAULT_BUSINESS_HOURS.todayCloseTime,
       tomorrowOpenTime: typeof raw.tomorrowOpenTime === 'string' ? raw.tomorrowOpenTime : DEFAULT_BUSINESS_HOURS.tomorrowOpenTime,
       tomorrowCloseTime: typeof raw.tomorrowCloseTime === 'string' ? raw.tomorrowCloseTime : DEFAULT_BUSINESS_HOURS.tomorrowCloseTime,
+      tomorrowDescription: typeof raw.tomorrowDescription === 'string' ? raw.tomorrowDescription.slice(0, 300) : '',
       isActive: typeof raw.isActive === 'boolean' ? raw.isActive : DEFAULT_BUSINESS_HOURS.isActive,
     };
 
@@ -233,6 +236,8 @@ export function getBusinessHoursConfig(): BusinessHoursConfig {
       // Tomorrow's operating hours roll over into today's operating hours
       config.todayOpenTime = config.tomorrowOpenTime || '08:00';
       config.todayCloseTime = config.tomorrowCloseTime || '22:00';
+      // A note written specifically for tomorrow expires when that day becomes today.
+      config.tomorrowDescription = '';
       config.todayDate = todayStr;
       config.lastUpdated = new Date().toISOString();
       // Persist the rolled-over state

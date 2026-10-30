@@ -1049,9 +1049,9 @@ export const PublicAboutPage: React.FC = () => {
                 {operationalStatus.tomorrowOpenFormatted} — {operationalStatus.tomorrowCloseFormatted}
               </div>
               <p className="text-xs text-gray-500 dark:text-[#88d2c4]">
-                {isAr
+                {hoursConfig.tomorrowDescription?.trim() || (isAr
                   ? 'تنتقل أوقات الغد تلقائياً عند حلول اليوم التالي'
-                  : 'Tomorrow’s schedule rolls over automatically at midnight'}
+                  : 'Tomorrow’s schedule rolls over automatically at midnight')}
               </p>
             </div>
           </div>
