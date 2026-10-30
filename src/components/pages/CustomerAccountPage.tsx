@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
 import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
