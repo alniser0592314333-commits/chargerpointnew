@@ -15,6 +15,7 @@ const pathname = window.location.pathname;
 const appVariant = import.meta.env.VITE_APP_VARIANT;
 const isCustomerPortalRoute =
   pathname === '/public/about' ||
+  pathname === '/download' ||
   pathname === '/public/services' ||
   pathname.startsWith('/public/services/') ||
   pathname.startsWith('/c/') ||
