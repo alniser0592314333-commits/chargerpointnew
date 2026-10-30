@@ -611,6 +611,56 @@ export const CustomerAccountPage: React.FC<{ token: string; search?: string }> =
     );
   }
 
+  if (walletManagementFlow && mode === 'login') {
+    return (
+      <main dir={isAr ? 'rtl' : 'ltr'} className="cp-wallet-screen min-h-screen flex flex-col">
+        <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-3 text-white">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15"><AppLogo size={28} variant="auto" /></span>
+            <span className="font-extrabold">{t('نقطة الشحن', 'Charging Point')}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-full border border-white/30 px-3 py-2 text-xs font-bold text-white">{isAr ? 'English' : 'العربية'}</button>
+            <button type="button" onClick={toggleTheme} aria-label={t('تغيير المظهر', 'Toggle appearance')} className="grid h-9 w-9 place-items-center rounded-full border border-white/30 text-white">{resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
+          </div>
+        </header>
+        <div className="flex flex-1 items-center justify-center px-4 py-8">
+          <section className="w-full max-w-md rounded-[26px] border border-white/60 bg-white p-6 shadow-2xl sm:p-8 dark:border-[#31505a] dark:bg-[#102c37]">
+            <div className="mb-6 text-center">
+              <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-[#e7f5f2] text-[#167d76] dark:bg-[#193f45] dark:text-[#8de0d0]"><Wallet className="h-7 w-7" /></span>
+              <h1 className="text-2xl font-extrabold text-[#183c45] dark:text-[#e3f4f2]">{t('إدارة المحافظ', 'Wallet Management')}</h1>
+              <p className="mt-1 text-sm text-[#71878b] dark:text-[#a7c0c3]">{t('تسجيل الدخول', 'Sign in')}</p>
+            </div>
+            {walletRegistrationNotice && <div role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">{t('تم إنشاء الحساب بنجاح، سجّل الدخول الآن.', 'Account created successfully. Sign in now.')}</div>}
+            {walletRegistrationComplete && <button type="button" onClick={() => { window.history.replaceState({}, '', '/c/portal?source=wallet-management'); setWalletRegistrationNotice(false); }} className="mb-4 w-full rounded-xl bg-[#167d76] px-4 py-3 font-bold text-white">{t('استمر', 'Continue')}</button>}
+            {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{error}</div>}
+            {message && <div role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">{message}</div>}
+            {directEntry && showSavedCustomerAccounts && savedCustomerAccounts.length > 0 ? (
+              <div className="space-y-3" data-testid="saved-customer-accounts">
+                <p className="text-sm font-bold text-[#244b55] dark:text-[#daf1de]">{t('اختر حسابًا محفوظًا', 'Choose a saved account')}</p>
+                {savedCustomerAccounts.map((account) => <button key={account.token} type="button" onClick={() => { setUsername(account.token); setSelectedSavedCustomerAccountLabel(account.label); setShowSavedCustomerAccounts(false); setError(''); setPassword(''); }} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 text-start dark:border-slate-700"><ShieldCheck className="h-5 w-5 text-[#167d76]" /><span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700 dark:text-slate-100">{account.label}</span></button>)}
+                <button type="button" onClick={() => { setUsername(''); setPassword(''); setShowSavedCustomerAccounts(false); }} className="w-full py-2 text-sm font-semibold text-[#167d76]">{t('الدخول بحساب آخر', 'Sign in with another account')}</button>
+              </div>
+            ) : (
+              <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
+                {(customerIdFromQuery || directEntry) && !selectedSavedCustomerAccountLabel && <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{t('رقم العميل أو المعرّف', 'Customer ID or username')}<input value={directEntry ? username : customerIdFromQuery} onChange={directEntry ? (event) => setUsername(event.target.value) : undefined} readOnly={!directEntry} required={directEntry} maxLength={128} autoComplete="username" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 outline-none focus:border-[#27978b] focus:ring-2 focus:ring-[#27978b]/15 dark:border-slate-700 dark:bg-[#0b2029] dark:text-white" placeholder={t('أدخل رقم العميل', 'Enter customer ID')} /></label>}
+                {selectedSavedCustomerAccountLabel && <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-100"><span className="truncate">{selectedSavedCustomerAccountLabel}</span><button type="button" onClick={() => { setSelectedSavedCustomerAccountLabel(''); setUsername(''); }} className="text-xs text-[#167d76]">{t('تغيير', 'Change')}</button></div>}
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{t('كلمة المرور', 'Password')}<div className="relative mt-2"><input required maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 pe-12 text-base text-slate-900 outline-none focus:border-[#27978b] focus:ring-2 focus:ring-[#27978b]/15 dark:border-slate-700 dark:bg-[#0b2029] dark:text-white" placeholder={t('أدخل كلمة المرور', 'Enter your password')} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 end-2 my-auto grid h-9 w-9 place-items-center text-slate-500" aria-label={showPassword ? t('إخفاء كلمة المرور', 'Hide password') : t('إظهار كلمة المرور', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></label>
+                <div className="flex justify-end"><button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="text-xs font-bold text-[#167d76]">{t('نسيت كلمة المرور؟', 'Forgot password?')}</button></div>
+                <button disabled={busy} type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#167d76] px-4 py-3 font-bold text-white transition hover:bg-[#116a64] disabled:opacity-60">{busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}{busy ? t('جارٍ تسجيل الدخول…', 'Signing in…') : t('تسجيل الدخول', 'Sign in')}</button>
+                {directEntry && savedCustomerAccounts.length > 0 && <button type="button" onClick={() => { setSelectedSavedCustomerAccountLabel(''); setShowSavedCustomerAccounts(true); setUsername(''); setPassword(''); }} className="w-full py-2 text-sm font-semibold text-[#167d76]">{t('اختيار حساب محفوظ', 'Choose a saved account')}</button>}
+              </form>
+            )}
+            <div className="mt-6 border-t border-slate-100 pt-4 dark:border-slate-700">
+              <button type="button" aria-expanded={walletSetupHelpOpen} aria-controls="cp-wallet-help-card" onClick={() => setWalletSetupHelpOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#c8e2dd] bg-[#f3faf8] px-3 text-sm font-bold text-[#176d70] dark:border-[#31565a] dark:bg-[#15373b] dark:text-[#a8dfd7]"><CircleHelp className="h-4 w-4" />{t('ليس لديك حساب؟', 'Don’t have an account?')}<span className={walletSetupHelpOpen ? 'rotate-180' : ''}>⌄</span></button>
+              {walletSetupHelpOpen && <div id="cp-wallet-help-card" className="mt-3 rounded-xl border border-[#d6e9e5] bg-[#f7fbfa] p-4 text-sm leading-7 text-slate-600 dark:border-slate-700 dark:bg-[#0b2029] dark:text-slate-300"><p>{t('هذه الخدمة مخصصة لمشتركي نقطة الشحن، وتستخدم بيانات حساب العميل الحالية.', 'This service is for Charging Point subscribers and uses your existing customer account credentials.')}</p><div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700"><strong className="block text-[#176d70] dark:text-[#a8dfd7]">{t('لم تنشئ حسابك بعد؟', 'Haven’t created your account yet?')}</strong><p>{t('افتح رابط QR الخاص بالعميل لإكمال إنشاء كلمة المرور بالطريقة المعتمدة.', 'Open your customer QR link to complete password setup through the existing process.')}</p></div><button type="button" onClick={() => window.location.assign('/public/services')} className="mt-3 text-xs font-bold text-[#176d70] underline">{t('العودة إلى الخدمات المساعدة', 'Back to assistance services')}</button></div>}
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   const showTerms = mode === 'activate';
   const showPasswordForm = mode === 'activate' || mode === 'force-change' || mode === 'recovery';
   const title = mode === 'activate' || mode === 'login'
