@@ -87,8 +87,20 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
     if (busy) return;
     setBusy(true); setError('');
     try {
+      const identifier = username.trim();
+      const entry = await callCustomerAccount<{ valid?: boolean; activated?: boolean }>('entry', { token: identifier });
+      if (entry.error || !entry.data?.valid) {
+        setError(entry.error === 'NETWORK_UNAVAILABLE'
+          ? t('الاتصال غير متاح. جرّب لما يرجع الإنترنت.', 'Connection unavailable. Try again when online.')
+          : t('اسم المستخدم أو كلمة المرور غير صحيحة.', 'Incorrect username or password.'));
+        return;
+      }
+      if (entry.data.activated !== true) {
+        setError(t('هذا الحساب لم يُفعّل بعد. استخدم رمز QR الخاص بالعميل لإكمال إنشاء كلمة المرور بالطريقة المعتمدة.', 'This account is not activated yet. Use the customer QR code to complete the existing password setup.'));
+        return;
+      }
       const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string } }>(
-        'login', { token: username.trim(), password },
+        'login', { token: identifier, password },
       );
       if (result.error || !result.data?.session) {
         setError(result.error === 'NETWORK_UNAVAILABLE'
@@ -118,29 +130,18 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
       </div>
     </header>
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
-      <section className="relative overflow-hidden rounded-[1.75rem] border border-slate-200/90 bg-white shadow-[0_20px_70px_-42px_rgba(15,70,61,0.35)] dark:border-white/10 dark:bg-[#0b2420]">
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#103f36] via-[#14574a] to-[#1a6b59] px-6 py-7 text-white sm:px-9 sm:py-9">
-          <div aria-hidden="true" className="pointer-events-none absolute -left-10 -top-16 h-56 w-56 rounded-full border border-white/10" />
-          <div aria-hidden="true" className="pointer-events-none absolute -left-2 -top-8 h-40 w-40 rounded-full border border-white/10" />
-          <div className="relative flex flex-wrap items-start justify-between gap-5">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-inner"><Wallet size={27} /></div>
-              <div><p className="mb-2 text-[11px] font-bold tracking-[0.18em] text-emerald-100/80">{t('الخدمات المالية · بوابة العملاء', 'FINANCIAL SERVICES · CUSTOMER PORTAL')}</p>
-                <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">{t('إدارة المحفظة', 'Wallet management')}</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-7 text-emerald-50/85">{t('مساحة مالية منظّمة لمتابعة محافظك وأرصدتك وحركاتك المالية بأمان.', 'A secure, organized space to manage your wallets, balances, and financial activity.')}</p>
-              </div>
-            </div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/10 px-3 py-2 text-xs font-semibold text-emerald-50"><ShieldCheck size={15} />{t('بوابة آمنة', 'Secure portal')}</span>
-          </div>
-          <div className="relative mt-7 grid grid-cols-2 gap-3 border-t border-white/15 pt-5 sm:grid-cols-3">
-            <div><p className="text-xs text-emerald-100/75">{t('الوصول', 'Access')}</p><p className="mt-1 text-sm font-bold">{t('مقيّد بالحساب', 'Account protected')}</p></div>
-            <div><p className="text-xs text-emerald-100/75">{t('تحديث البيانات', 'Data refresh')}</p><p className="mt-1 text-sm font-bold">{t('مباشر من الخادم', 'Live from server')}</p></div>
-            <div className="col-span-2 sm:col-span-1"><p className="text-xs text-emerald-100/75">{t('سجل الحركات', 'Transaction ledger')}</p><p className="mt-1 text-sm font-bold">{t('مرجع موحّد', 'Unified ledger')}</p></div>
+      <section className="rounded-2xl border border-slate-200/90 bg-white px-5 py-5 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-7">
+        <div className="flex items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-800 dark:bg-emerald-300/10 dark:text-emerald-200"><Wallet size={22} /></span>
+          <div>
+            <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">{t('إدارة المحفظة', 'Wallet management')}</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('محافظك وأرصدتك وحركاتك المالية.', 'Your wallets, balances, and transactions.')}</p>
           </div>
         </div>
-        <div className="px-5 pb-7 sm:px-9 sm:pb-9">
+        <div className="px-0 pb-1 pt-5 sm:px-1">
         {(gate === 'checking' || gate === 'checking-access') && <div className="mt-8 flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5"><RefreshCw className="animate-spin" size={18} />{t('بنتحقق من الجلسة وصلاحية الخدمة…', 'Checking your session and service access…')}</div>}
-        {gate === 'signed-out' && <form onSubmit={signIn} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
+        {(gate === 'signed-out' || gate === 'step-up-required') && <form onSubmit={signIn} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
+          {gate === 'step-up-required' && <div role="status" className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-6 text-teal-900 dark:border-teal-200/15 dark:bg-teal-200/5 dark:text-teal-100">{t('انتهت صلاحية تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور هنا للمتابعة إلى المحفظة مباشرة.', 'Your identity verification expired. Enter your username and password here to continue directly to the wallet.')}</div>}
           <div className="flex items-center gap-2 text-sm font-bold"><LockKeyhole size={17} className="text-teal-700 dark:text-teal-300" />{t('دخول آمن بحسابك الحالي', 'Secure sign-in with your existing account')}</div>
           <label className="grid gap-2 text-sm font-semibold">{t('اسم المستخدم', 'Username')}<input autoComplete="username" required maxLength={64} value={username} onChange={e => setUsername(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>
           <label className="grid gap-2 text-sm font-semibold">{t('كلمة المرور', 'Password')}<input type="password" autoComplete="current-password" required maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>
@@ -155,11 +156,6 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             : <><p className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75">{t('قبل استخدام المحفظة، لازم تطلب تفعيلها. بعد موافقة الإدارة رح تفتح معك بشكل طبيعي.', 'Before using the wallet, request activation. Once approved, it will open normally.')}</p><button disabled={busy} onClick={() => void requestActivation()} className="mt-4 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('طلب تفعيل المحفظة', 'Request wallet activation')}</button></>}
           {error && <p role="alert" className="mt-3 text-sm text-rose-700 dark:text-rose-200">{error}</p>}
           <button onClick={() => { void customerAuth.auth.signOut(); setGate('signed-out'); }} className="mt-4 block rounded-xl border border-amber-400/50 px-4 py-2 text-sm font-bold">{t('تبديل الحساب', 'Switch account')}</button>
-        </div>}
-        {gate === 'step-up-required' && <div className="mt-8 rounded-2xl border border-teal-300/60 bg-teal-50 p-5 dark:border-teal-200/15 dark:bg-teal-200/5">
-          <div className="flex items-center gap-3 font-bold text-teal-900 dark:text-teal-100"><LockKeyhole size={20} />{t('يلزم تأكيد الهوية من جديد', 'Identity verification required')}</div>
-          <p className="mt-2 text-sm leading-7 text-teal-800 dark:text-teal-100/75">{t('انتهت مدة تأكيد الهوية الآمن. ارجع لخدمات المساعدة وأكّد هويتك بكلمة المرور أو البصمة قبل متابعة استخدام المحفظة.', 'Your recent identity verification has expired. Return to Assistance Services and verify again with your password or biometric before using the wallet.')}</p>
-          <button onClick={onBack} className="mt-4 rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white">{t('العودة لتأكيد الهوية', 'Return to identity verification')}</button>
         </div>}
         {gate === 'denied' && <div className="mt-8 rounded-2xl border border-amber-300/60 bg-amber-50 p-5 dark:border-amber-200/15 dark:bg-amber-200/5">
           <div className="flex items-center gap-3 font-bold text-amber-900 dark:text-amber-100"><ShieldCheck size={20} />{t('الخدمة غير مفعّلة لهذا الحساب', 'Service not enabled for this account')}</div>
