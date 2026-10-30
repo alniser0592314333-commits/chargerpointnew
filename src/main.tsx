@@ -5,8 +5,9 @@ import { isCustomerPortalPath } from './services/publicPortalOrigin';
 
 const hostname = window.location.hostname.toLowerCase();
 const isAdminHost = hostname === 'admin.monther.work';
+const isAdminPreviewHost = hostname === 'admin-preview.monther.work';
 const isCustomerHost = hostname === 'www.monther.work' || hostname === 'monther.work';
-if (isAdminHost && window.location.pathname === '/') {
+if ((isAdminHost || isAdminPreviewHost) && window.location.pathname === '/') {
   window.history.replaceState(
     { path: '/app' },
     '',
