@@ -130,5 +130,5 @@ export async function removePendingWalletTransaction(item: PendingWalletTransact
 export async function blockPendingWalletTransaction(item: PendingWalletTransaction, error: string): Promise<void> {
   if (item.ownerId !== await currentUserId()) return;
   const updated = { ...item, status: 'blocked' as const, lastError: error };
-  await withStore<undefined>('readwrite', store => store.put(updated, 'wallet-queue:' + item.ownerId + ':' + item.queueId));
+  await withStore<IDBValidKey>('readwrite', store => store.put(updated, 'wallet-queue:' + item.ownerId + ':' + item.queueId));
 }
