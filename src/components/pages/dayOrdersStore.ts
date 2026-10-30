@@ -24,6 +24,7 @@ import {
 import { ClosedDayError, InactiveCustomerError, NotFoundError, ConflictError, OrderNumberReservationExhaustedError, presentError } from '../../domain/errors';
 import { localDb, OutboxRecord, OptimisticOverlayRecord } from '../../infrastructure/localDb/localDb';
 import { generateSecurePublicToken, computeTokenHash } from '../../services/supabase/qrSecurity';
+import { getPublicPortalOrigin } from '../../services/publicPortalOrigin';
 import {
   rpcResolveCustomerQr,
   rpcResolveOrderQr,
@@ -5186,10 +5187,7 @@ export const getOrderQrCardData = async (
   const customerName = customer ? customer.name : order.customerId;
 
   const publicToken = await getOrCreateOrderQrToken(orderId);
-  const origin =
-    typeof window !== 'undefined' && window.location.origin
-      ? window.location.origin
-      : '';
+  const origin = getPublicPortalOrigin();
   const publicUrl = `${origin}/o/${publicToken}`;
 
   return {
