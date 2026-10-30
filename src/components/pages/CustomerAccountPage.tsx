@@ -106,7 +106,6 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const walletRegistrationComplete = customerQuery.get('walletRegistrationComplete') === '1';
   const [walletRegistrationNotice, setWalletRegistrationNotice] = useState(walletRegistrationComplete);
   const [walletSetupHelpOpen, setWalletSetupHelpOpen] = useState(false);
-  const [walletSetupCustomerId, setWalletSetupCustomerId] = useState('');
   useEffect(() => {
     if (!walletRegistrationNotice) return;
     const timer = window.setTimeout(() => setWalletRegistrationNotice(false), 3000);
