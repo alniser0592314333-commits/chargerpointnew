@@ -24,6 +24,8 @@ export interface GlobalAppIdentity {
   appName: string;
   whiteLogoUrl: string | null;
   darkLogoUrl: string | null;
+  whiteLogoDataUrl?: string | null;
+  darkLogoDataUrl?: string | null;
   version: number;
   updatedAt: string;
   updatedBy?: string | null;
@@ -233,6 +235,8 @@ export const getCachedGlobalIdentity = (): GlobalAppIdentity | null => {
       appName: parsed.appName || 'نظام إدارة شحن الأجهزة',
       whiteLogoUrl: parsed.whiteLogoUrl || parsed.lightLogoUrl || parsed.qrWhiteLogoUrl || null,
       darkLogoUrl: parsed.darkLogoUrl || null,
+      whiteLogoDataUrl: typeof parsed.whiteLogoDataUrl === "string" ? parsed.whiteLogoDataUrl : null,
+      darkLogoDataUrl: typeof parsed.darkLogoDataUrl === "string" ? parsed.darkLogoDataUrl : null,
       version: parsed.version || 1,
       updatedAt: parsed.updatedAt || new Date().toISOString(),
       updatedBy: parsed.updatedBy,
@@ -319,8 +323,8 @@ export const getActiveLogo = (): AppLogoItem => {
     return {
       id: "global",
       name: globalIdentity.appName || "الهوية المركزية للتطبيق",
-      whiteDataUrl: whiteUrl,
-      darkDataUrl: darkUrl,
+      whiteDataUrl: globalIdentity.whiteLogoDataUrl || whiteUrl,
+      darkDataUrl: globalIdentity.darkLogoDataUrl || darkUrl,
       lightDataUrl: whiteUrl, // Backwards-compatible alias
       dataUrl: whiteUrl,
       isDefault: false,
@@ -342,6 +346,37 @@ export const getActiveLogo = (): AppLogoItem => {
   }
 
   return DEFAULT_APP_LOGO;
+};
+
+/** Cache downloaded logo bytes locally; the database stores URLs only. */
+const fetchLogoDataUrl = async (url: string | null): Promise<string | null> => {
+  if (!url) return null;
+  if (url.startsWith("data:image/")) return url;
+  try {
+    const response = await fetch(url, { cache: "force-cache" });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) return null;
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Invalid logo data"));
+      reader.onerror = () => reject(new Error("Unable to cache logo"));
+      reader.readAsDataURL(blob);
+    });
+  } catch { return null; }
+};
+
+const cacheIdentityLogoAssets = async (identity: GlobalAppIdentity): Promise<GlobalAppIdentity> => {
+  const current = getCachedGlobalIdentity();
+  const whiteCached = current?.whiteLogoUrl === identity.whiteLogoUrl ? current.whiteLogoDataUrl : null;
+  const darkCached = current?.darkLogoUrl === identity.darkLogoUrl ? current.darkLogoDataUrl : null;
+  const [whiteLogoDataUrl, darkLogoDataUrl] = await Promise.all([
+    whiteCached || fetchLogoDataUrl(identity.whiteLogoUrl),
+    darkCached || fetchLogoDataUrl(identity.darkLogoUrl),
+  ]);
+  const cached = { ...identity, whiteLogoDataUrl, darkLogoDataUrl };
+  setCachedGlobalIdentity(cached);
+  return cached;
 };
 
 /**
@@ -376,14 +411,13 @@ export const fetchGlobalAppIdentity = async (force: boolean = false): Promise<Gl
       serverIdentity.version > currentCached.version ||
       serverIdentity.updatedAt !== currentCached.updatedAt;
 
-    if (shouldUpdate) {
-      setCachedGlobalIdentity(serverIdentity);
+    const identityToUse = await cacheIdentityLogoAssets(serverIdentity);
+    if (shouldUpdate || identityToUse.whiteLogoDataUrl || identityToUse.darkLogoDataUrl) {
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent(LOGO_CHANGE_EVENT, { detail: { id: "global", identity: serverIdentity } }));
+        window.dispatchEvent(new CustomEvent(LOGO_CHANGE_EVENT, { detail: { id: "global", identity: identityToUse } }));
       }
     }
-
-    return serverIdentity;
+    return identityToUse;
   } catch (err) {
     console.warn("[LOGO_STORAGE] Failed to fetch central global identity, using cached", err);
     return getCachedGlobalIdentity();
@@ -484,20 +518,22 @@ export const saveGlobalAppIdentity = async (
       appName: data.app_name || params.appName || 'نظام إدارة شحن الأجهزة',
       whiteLogoUrl: data.white_logo_url || whiteLogoUrl,
       darkLogoUrl: data.dark_logo_url || darkLogoUrl,
+      whiteLogoDataUrl: null,
+      darkLogoDataUrl: null,
       version: data.version,
       updatedAt: data.updated_at,
       isDefault: false,
     };
 
-    // 4. Update local cache
-    setCachedGlobalIdentity(updatedIdentity);
+    // 4. Cache the exact uploaded image bytes for offline rendering.
+    const identityWithCachedAssets = await cacheIdentityLogoAssets(updatedIdentity);
 
     // 5. Broadcast reactive event
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(LOGO_CHANGE_EVENT, { detail: { id: "global", identity: updatedIdentity } }));
+      window.dispatchEvent(new CustomEvent(LOGO_CHANGE_EVENT, { detail: { id: "global", identity: identityWithCachedAssets } }));
     }
 
-    return { success: true, data: updatedIdentity };
+    return { success: true, data: identityWithCachedAssets };
   } catch (err: any) {
     // Transactional rollback: Clean up newly uploaded storage objects if DB update failed
     if (newlyUploadedWhiteUrl) {
