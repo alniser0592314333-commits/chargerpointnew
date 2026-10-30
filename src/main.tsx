@@ -2,10 +2,18 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 
+const isAdminHost = window.location.hostname.toLowerCase() === 'admin.monther.work';
+if (isAdminHost && window.location.pathname === '/') {
+  window.history.replaceState(
+    { path: '/app' },
+    '',
+    '/app' + window.location.search + window.location.hash,
+  );
+}
 const root = createRoot(document.getElementById('root')!);
 const pathname = window.location.pathname;
 const appVariant = import.meta.env.VITE_APP_VARIANT;
-const isPublicPortalRoute =
+const isCustomerPortalRoute =
   pathname === '/public/about' ||
   pathname === '/public/services' ||
   pathname.startsWith('/public/services/') ||
@@ -15,6 +23,10 @@ const isPublicPortalRoute =
   pathname.startsWith('/public/order/') ||
   pathname.startsWith('/public/qr/customer/') ||
   pathname.startsWith('/public/qr/order/');
+if (isAdminHost && isCustomerPortalRoute) {
+  window.location.replace('https://www.monther.work' + pathname + window.location.search + window.location.hash);
+}
+const isPublicPortalRoute = !isAdminHost && isCustomerPortalRoute;
 
 const prepareCustomerIdentity = (preserveWebPwa = false) => {
   document.title = 'نقطة الشحن';
