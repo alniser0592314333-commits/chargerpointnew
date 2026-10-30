@@ -285,3 +285,8 @@ html.dark .cp-wallet-help__back { color:#a8dfd7; }
   .cp-auth.cp-auth--wallet > .flex.flex-1.items-center { padding:16px 14px 28px !important; }
   .cp-auth.cp-auth--wallet .cp-auth__form { padding:25px 20px 22px !important; }
 }
+
+
+/* Dedicated standalone wallet-management sign-in screen */
+.cp-wallet-screen { background:radial-gradient(ellipse at 50% 0%,rgba(255,255,255,.16),transparent 38rem),linear-gradient(145deg,#0b4a55 0%,#126c70 58%,#164f69 100%); }
+html.dark .cp-wallet-screen { background:radial-gradient(ellipse at 50% 0%,rgba(55,145,137,.16),transparent 38rem),linear-gradient(145deg,#071f29 0%,#0b3943 58%,#0b2d3d 100%); }
