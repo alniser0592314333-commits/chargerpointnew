@@ -157,6 +157,7 @@ describe('Business Hours & Operational Status Service', () => {
         todayCloseTime: '19:00',
         tomorrowOpenTime: '10:00',
         tomorrowCloseTime: '23:00',
+        tomorrowDescription: 'دوام استثنائي غدًا',
         chargerFeeMinor: 50,
       })
     );
@@ -167,5 +168,6 @@ describe('Business Hours & Operational Status Service', () => {
     expect(loaded.todayDate).toBe(todayStr);
     expect(loaded.todayOpenTime).toBe('10:00'); // rolled over from tomorrowOpenTime
     expect(loaded.todayCloseTime).toBe('23:00'); // rolled over from tomorrowCloseTime
+    expect(loaded.tomorrowDescription).toBe(''); // yesterday's tomorrow-only note expires
   });
 });
