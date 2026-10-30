@@ -18,3 +18,17 @@ export function getPublicPortalOrigin(locationLike?: PublicOriginLocation): stri
   }
   return current.origin;
 }
+
+/** True only for explicitly public/customer-facing SPA routes. */
+export function isCustomerPortalPath(pathname: string): boolean {
+  return pathname === '/public/about' ||
+    pathname === '/download' ||
+    pathname === '/public/services' ||
+    pathname.startsWith('/public/services/') ||
+    pathname.startsWith('/c/') ||
+    pathname.startsWith('/o/') ||
+    pathname.startsWith('/pay/') ||
+    pathname.startsWith('/public/order/') ||
+    pathname.startsWith('/public/qr/customer/') ||
+    pathname.startsWith('/public/qr/order/');
+}
