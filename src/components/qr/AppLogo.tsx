@@ -124,9 +124,46 @@ export const AppLogo: React.FC<AppLogoProps> = ({
       aria-label="Charging Point"
       data-testid="app-logo-default-container"
     >
+      {isQrVariant ? (
+      <svg
+        viewBox="0 0 128 128"
+        width={size}
+        height={size}
+        role="img"
+        aria-label="Charging Point mountain and moon logo"
+        focusable="false"
+      >
+        <defs>
+          <linearGradient id={`${brandId}-sky`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor={sky} />
+            <stop offset="1" stopColor={isDark ? '#124d55' : '#bfe8df'} />
+          </linearGradient>
+          <linearGradient id={`${brandId}-warm`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#f5b567" />
+            <stop offset="1" stopColor={warm} />
+          </linearGradient>
+        </defs>
+        <rect width="128" height="128" rx="28" fill={`url(#${brandId}-sky)`} />
+        <circle cx="84" cy="34" r="17" fill="#f6bd68" />
+        <circle cx="89" cy="29" r="16" fill={sky} opacity=".72" />
+        <g fill={distant} opacity=".85">
+          <path d="M0 76 24 53 39 68 62 42 88 72 105 55 128 74V128H0Z" />
+        </g>
+        <path d="M8 110 44 52 61 73 79 40 122 110Z" fill={mountain} />
+        <path d="M79 40 122 110H95L82 77 75 59Z" fill={`url(#${brandId}-warm)`} />
+        <path d="M79 40 68 56 76 57 72 68 84 60 88 72 93 55Z" fill={snow} />
+        <path d="M44 52 34 68 42 66 39 78 49 66 61 73Z" fill={snow} />
+        <path d="M0 105Q28 91 55 103T128 100V128H0Z" fill={isDark ? '#082d34' : '#23646a'} />
+        <g fill={isDark ? '#082d34' : '#16494e'}>
+          <path d="M17 110 23 96 29 110Z M22 115 29 98 36 115Z" />
+          <path d="M99 112 105 97 111 112Z M106 116 113 99 120 116Z" />
+        </g>
+      </svg>
+      ) : (
       <svg viewBox="0 0 1254 1254" width={size} height={size} role="img" aria-label="Charging Point logo" focusable="false" style={{ color: isDark ? "#ffffff" : "#000000" }}>
         <path d={OFFICIAL_LOGO_PATH} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
       </svg>
+      )}
     </div>
   );
 };
