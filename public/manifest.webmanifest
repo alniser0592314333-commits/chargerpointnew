@@ -1,8 +1,8 @@
 {
   "id": "/public/about",
-  "name": "نقطة الشحن | Charging Point",
-  "short_name": "نقطة الشحن",
-  "description": "تطبيق نقطة الشحن لمتابعة طلبات الشحن وحساب العميل.",
+  "name": "نقطة الشحن — بوابة الزبائن",
+  "short_name": "بوابة الزبائن",
+  "description": "بوابة الزبائن العامة لنقطة الشحن لعرض الطلبات والخدمات والحساب.",
   "start_url": "/public/about",
   "scope": "/",
   "display": "standalone",
