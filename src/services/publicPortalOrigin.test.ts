@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getPublicPortalOrigin } from './publicPortalOrigin';
+import { getPublicPortalOrigin, isCustomerPortalPath } from './publicPortalOrigin';
 
 describe('getPublicPortalOrigin', () => {
   it('routes customer QR links from the admin origin to the customer portal', () => {
@@ -22,8 +22,7 @@ describe('getPublicPortalOrigin', () => {
 });
 
 describe('isCustomerPortalPath', () => {
-  it('recognizes public customer routes', async () => {
-    const { isCustomerPortalPath } = await import('./publicPortalOrigin');
+  it('recognizes public customer routes', () => {
     for (const path of [
       '/public/about',
       '/public/services',
@@ -40,8 +39,7 @@ describe('isCustomerPortalPath', () => {
     }
   });
 
-  it('does not classify admin entry routes as customer routes', async () => {
-    const { isCustomerPortalPath } = await import('./publicPortalOrigin');
+  it('does not classify admin entry routes as customer routes', () => {
     for (const path of ['/', '/app', '/app/settings', '/login', '/reset-password', '/customers']) {
       expect(isCustomerPortalPath(path), path).toBe(false);
     }
