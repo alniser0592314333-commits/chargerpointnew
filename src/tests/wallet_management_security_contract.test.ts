@@ -122,4 +122,22 @@ describe('Public wallet management access contract', () => {
     expect(walletSchema).not.toMatch(/p_currency !~ '\^\[A-Z\]\{3\}\s*\n/);
   });
 
+
+  it('keeps reauthentication inside the wallet page and uses the existing customer account login flow', () => {
+    expect(page).toContain("(gate === 'signed-out' || gate === 'step-up-required')");
+    expect(page).toContain("'entry', { token: identifier }");
+    expect(page).toContain("'login', { token: identifier, password }");
+    expect(page).toContain("setCustomerSession(result.data.session)");
+    expect(page).toContain('انتهت صلاحية تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور هنا');
+    expect(page).not.toContain('Return to identity verification');
+    expect(page).not.toContain('العودة لتأكيد الهوية');
+  });
+
+  it('keeps the wallet page introduction compact without the old metadata panel', () => {
+    expect(page).toContain('محافظك وأرصدتك وحركاتك المالية.');
+    expect(page).not.toContain('مساحة مالية منظّمة لمتابعة محافظك');
+    expect(page).not.toContain('بوابة آمنة');
+    expect(page).not.toContain('مرجع موحّد');
+  });
+
 });
