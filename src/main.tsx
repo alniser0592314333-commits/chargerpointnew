@@ -2,12 +2,21 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 
-const isAdminHost = window.location.hostname.toLowerCase() === 'admin.monther.work';
+const hostname = window.location.hostname.toLowerCase();
+const isAdminHost = hostname === 'admin.monther.work';
+const isCustomerHost = hostname === 'www.monther.work' || hostname === 'monther.work';
 if (isAdminHost && window.location.pathname === '/') {
   window.history.replaceState(
     { path: '/app' },
     '',
     '/app' + window.location.search + window.location.hash,
+  );
+}
+if (isCustomerHost && window.location.pathname === '/') {
+  window.history.replaceState(
+    { path: '/public/about' },
+    '',
+    '/public/about' + window.location.search + window.location.hash,
   );
 }
 const root = createRoot(document.getElementById('root')!);
@@ -26,6 +35,9 @@ const isCustomerPortalRoute =
   pathname.startsWith('/public/qr/order/');
 if (isAdminHost && isCustomerPortalRoute) {
   window.location.replace('https://www.monther.work' + pathname + window.location.search + window.location.hash);
+}
+if (isCustomerHost && !isCustomerPortalRoute) {
+  window.location.replace('https://admin.monther.work' + pathname + window.location.search + window.location.hash);
 }
 const isPublicPortalRoute = !isAdminHost && isCustomerPortalRoute;
 
