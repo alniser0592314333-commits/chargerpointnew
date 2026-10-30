@@ -2,6 +2,7 @@ import React from 'react';
 import { CircleHelp, Languages, Moon, Sun, Wallet } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
+import './public-services.css';
 
 type Props = { onBack?: () => void; onOpenWallet?: () => void };
 
