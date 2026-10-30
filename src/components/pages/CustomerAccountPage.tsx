@@ -433,7 +433,8 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
       else {
         setMode('portal');
-        if (Capacitor.isNativePlatform()) {
+        if (walletManagementFlow) setMessage(t('تم تسجيل الدخول بنجاح.', 'Signed in successfully.'));
+        if (Capacitor.isNativePlatform() && !walletManagementFlow) {
           try {
             const { data: authState } = await customerAuth.auth.getSession();
             if (authState.session?.access_token) {
