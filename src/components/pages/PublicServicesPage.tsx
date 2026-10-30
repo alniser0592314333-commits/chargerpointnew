@@ -22,35 +22,35 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
       dir={isAr ? 'rtl' : 'ltr'}
     >
       <div className="public-services-shell mx-auto max-w-5xl">
-        <header className="public-services-header flex flex-wrap items-center justify-between gap-4 rounded-2xl px-4 py-4 sm:px-6">
+        <header className="public-services-header flex flex-nowrap items-center justify-between gap-3 rounded-2xl px-3 py-2.5 sm:px-5 sm:py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="public-services-header-icon grid h-11 w-11 shrink-0 place-items-center rounded-2xl" aria-hidden="true">
-              <CircleHelp size={23} strokeWidth={1.9} />
+            <span className="public-services-header-icon grid h-9 w-9 shrink-0 place-items-center rounded-xl" aria-hidden="true">
+              <CircleHelp size={19} strokeWidth={1.9} />
             </span>
             <div className="min-w-0">
-              <h1 className="text-lg font-extrabold tracking-tight sm:text-xl">{t('خدمات مساعدة', 'Assistance Services')}</h1>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t('خدمات إضافية متاحة لك', 'Additional services available to you')}</p>
+              <h1 className="text-base font-extrabold tracking-tight sm:text-lg">{t('خدمات مساعدة', 'Assistance Services')}</h1>
+              <p className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:block">{t('خدمات إضافية متاحة لك', 'Additional services available to you')}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2" aria-label={t('إعدادات العرض', 'Display settings')}>
             <button
               type="button"
               onClick={() => setLocale(isAr ? 'en' : 'ar')}
-              className="public-services-control inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition hover:-translate-y-0.5"
+              className="public-services-control inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition hover:-translate-y-0.5"
               aria-label={t('Switch language to English', 'تغيير اللغة إلى العربية')}
               title={t('English', 'العربية')}
             >
-              <Languages size={17} />
+              <Languages size={15} />
               <span>{isAr ? 'EN' : 'عربي'}</span>
             </button>
             <button
               type="button"
               onClick={toggleTheme}
-              className="public-services-control grid h-10 w-10 place-items-center rounded-xl transition hover:-translate-y-0.5"
+              className="public-services-control grid h-9 w-9 place-items-center rounded-lg transition hover:-translate-y-0.5"
               aria-label={resolvedTheme === 'dark' ? t('التبديل للوضع النهاري', 'Switch to light mode') : t('التبديل للوضع الليلي', 'Switch to dark mode')}
               title={resolvedTheme === 'dark' ? t('الوضع النهاري', 'Light mode') : t('الوضع الليلي', 'Dark mode')}
             >
-              {resolvedTheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+              {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
         </header>
