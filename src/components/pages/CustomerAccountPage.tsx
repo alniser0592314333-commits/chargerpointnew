@@ -586,7 +586,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </div>
         )}
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
-        <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />
+        {walletManagementFlow ? <main dir={isAr ? 'rtl' : 'ltr'} className="min-h-screen bg-[#f5faf9] px-5 py-16 text-center text-[#244b55] dark:bg-[#071d27] dark:text-[#daf1de]"><section className="mx-auto max-w-lg rounded-3xl border border-[#b9d9d8] bg-white/80 p-8 shadow-xl dark:border-[#2b5267] dark:bg-[#0b2935]"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#1a8a94]/10"><Wallet className="h-7 w-7 text-[#1a8a94]" /></div><h1 className="mt-4 text-2xl font-extrabold">{t('إدارة المحافظ', 'Wallet Management')}</h1><p className="mt-3 text-sm leading-7">{t('تم تسجيل الدخول بنجاح. خدمات المحفظة ستظهر هنا.', 'You are signed in. Wallet services will appear here.')}</p><button type="button" onClick={() => void logout()} className="cp-auth__btn mt-6">{t('تسجيل الخروج', 'Sign out')}</button></section></main> : <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />}
         {pendingRememberCustomerAccount && (
           <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="remember-customer-title" dir="rtl">
             <div className="w-full max-w-sm space-y-4 rounded-3xl border border-[#b9d9d8] bg-[#f7fbfa] p-5 text-[#244b55] shadow-2xl dark:border-[#2b5267] dark:bg-[#0b2935] dark:text-[#daf1de]">
@@ -692,8 +692,10 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
           <div className="cp-auth__form">
             <div className="mx-auto w-full max-w-[400px]">
-              <h1 className="cp-auth__title">{title}</h1>
-              <p className="cp-auth__sub">{subtitle}</p>
+              <h1 className="cp-auth__title">{walletManagementFlow && mode === 'login' ? t('إدارة المحافظ', 'Wallet Management') : title}</h1>
+              <p className="cp-auth__sub">{walletManagementFlow && mode === 'login' ? t('سجّل الدخول ببيانات حساب نقطة الشحن للوصول إلى الخدمة.', 'Sign in with your Charging Point account to access this service.') : subtitle}</p>
+              {walletRegistrationNotice && walletManagementFlow && <div role="status" className="mb-4 mt-3 rounded-2xl border border-[#b9e0dd] bg-[#e9f7f6] px-4 py-3 text-sm text-[#146069] dark:border-[#2b5267] dark:bg-[#142b38] dark:text-[#a8dff5]">{t('تم إنشاء الحساب بنجاح، سجّل الدخول الآن.', 'Account created successfully. Sign in now.')}</div>}
+              {walletManagementFlow && mode === 'login' && <div className="mt-4 mb-5 rounded-2xl border border-[#b9d9d8] bg-white/70 p-4 text-sm leading-6 text-[#5d7782] dark:border-[#2b5267] dark:bg-[#0b2935] dark:text-[#9bb8bf]">{t('الخدمة مخصصة لمشتركي نقطة الشحن. إذا لم يكن لديك حساب، أنشئه من بوابة العميل باستخدام رمز QR أو رقم العميل.', 'This service is available to Charging Point subscribers. If you do not have an account yet, create one through the customer portal using your QR code or Customer ID.')} <button type="button" onClick={() => window.location.assign('/c/portal')} className="mt-2 block font-bold text-sky-600 underline dark:text-sky-300">{t('ليس لديك حساب؟', 'Don’t have an account?')}</button></div>}
 
               <div className="mt-6">
                 {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3 text-sm leading-6 text-[#963f35] dark:border-[#71313c] dark:bg-[#301b22] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}
