@@ -635,82 +635,106 @@ export const PublicAboutPage: React.FC = () => {
                   <ArrowUpRight className="h-4 w-4 text-gray-400" />
                 </a>
 
-                {/* The native APK is already installed; keep the PWA install option on the website only. */}
+                {/* App download and web-install options: plain navigation rows with inline details. */}
                 {!Capacitor.isNativePlatform() && (
-                  <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => { setIsDrawerOpen(false); void startDirectApkDownload(); }}
-                      className="w-full flex items-center justify-between gap-3 p-3.5 text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                        <div>
-                          <span className="block">{isAr ? 'تطبيق الهاتف (APK)' : 'Phone App (APK)'}</span>
-                          <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                            {isAr ? 'تنزيل التطبيق الأصلي وتثبيته' : 'Download and install the native app'}
-                          </span>
+                  <>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedInstallDetails(expandedInstallDetails === 'apk' ? null : 'apk')}
+                        aria-expanded={expandedInstallDetails === 'apk'}
+                        className="w-full flex items-center justify-between gap-3 p-3.5 text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                          <div>
+                            <span className="block">{isAr ? 'تطبيق الهاتف (APK)' : 'Phone App (APK)'}</span>
+                            <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
+                              {isAr ? 'تنزيل التطبيق الأصلي وتثبيته' : 'Download and install the native app'}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <ArrowUpRight className="h-4 w-4 text-gray-400" />
-                    </button>
-                    <button type="button" onClick={() => setExpandedInstallDetails(expandedInstallDetails === 'apk' ? null : 'apk')} aria-expanded={expandedInstallDetails === 'apk'} className="w-full flex items-center justify-between gap-2 px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] font-medium text-gray-500 dark:text-[#88d2c4] hover:bg-gray-50 dark:hover:bg-white/5">
-                      <span>{isAr ? 'مميزات وقيود تطبيق الهاتف' : 'Phone app benefits & limitations'}</span>
-                      <ChevronDown className={`h-4 w-4 transition-transform ${expandedInstallDetails === 'apk' ? 'rotate-180' : ''}`} />
-                    </button>
-                    {expandedInstallDetails === 'apk' && <div className="px-4 pb-4 pt-2 text-[11px] leading-6 text-gray-600 dark:text-[#a8cec5]">
-                      <p className="font-bold text-gray-800 dark:text-white">{isAr ? 'المميزات' : 'Benefits'}</p>
-                      <ul className="list-disc ps-5">
-                        <li>{isAr ? 'تجربة مستقلة من أيقونة التطبيق، بدون شريط المتصفح.' : 'Launches independently from its app icon without browser chrome.'}</li>
-                        <li>{isAr ? 'يدعم وظائف الهاتف التي يوفّرها إصدار APK، مثل البصمة والإشعارات الأصلية عندما تكون مهيأة ومفعّلة.' : 'Supports APK-specific phone features such as biometrics and native notifications when configured and enabled.'}</li>
-                        <li>{isAr ? 'يمكنه عرض البيانات المخزنة محليًا وفق آلية التخزين والمزامنة في التطبيق.' : 'Can display locally cached data according to the app’s storage and sync design.'}</li>
-                      </ul>
-                      <p className="font-bold text-gray-800 dark:text-white mt-2">{isAr ? 'القيود' : 'Limitations'}</p>
-                      <ul className="list-disc ps-5">
-                        <li>{isAr ? 'التثبيت يحتاج تنزيل ملف APK ثم موافقة أندرويد على التثبيت.' : 'Installation requires downloading the APK and confirming installation in Android.'}</li>
-                        <li>{isAr ? 'إجراءات الدفع وتعديل الحسابات تحتاج اتصالًا بالإنترنت حسب قواعد الأمان.' : 'Payments and account changes require internet where security rules demand it.'}</li>
-                        <li>{isAr ? 'بعض الميزات تعتمد على صلاحيات الجهاز وإعدادات التطبيق.' : 'Some features depend on device permissions and app configuration.'}</li>
-                      </ul>
-                    </div>}
-                  </div>
-                )}
-                {!Capacitor.isNativePlatform() && (
-                  <div className="rounded-xl border border-gray-200 dark:border-white/10 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => { if (!isPwaInstalled) { setIsDrawerOpen(false); void installWebsiteAsPwa(); } else { window.alert(isAr ? 'تطبيق الويب مثبت بالفعل على هذا الجهاز. افتحه من أيقونته على الشاشة الرئيسية.' : 'The Web App is already installed. Open it from its home-screen icon.'); } }}
-                      className="w-full flex items-center justify-between gap-3 p-3.5 text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Smartphone className="h-5 w-5 text-[#0f766e] dark:text-[#6ee7b7]" />
-                        <div>
-                          <span className="block">{isPwaInstalled ? (isAr ? 'تطبيق الويب — مثبّت بالفعل' : 'Web App — Already installed') : (isAr ? 'تثبيت تطبيق الويب (PWA)' : 'Install Web App (PWA)')}</span>
-                          <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                            {isPwaInstalled ? (isAr ? 'افتحه من أيقونة الشاشة الرئيسية' : 'Open it from your home-screen icon') : (isAr ? 'وصول سريع من الشاشة الرئيسية' : 'Quick access from your home screen')}
-                          </span>
+                        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expandedInstallDetails === 'apk' ? 'rotate-180' : ''}`} />
+                      </button>
+                      {expandedInstallDetails === 'apk' && (
+                        <div className="px-4 pb-4 pt-1 text-[11px] leading-6 text-gray-600 dark:text-[#a8cec5]">
+                          <p className="font-bold text-gray-800 dark:text-white">{isAr ? 'المميزات' : 'Benefits'}</p>
+                          <ul className="list-disc ps-5">
+                            <li>{isAr ? 'تجربة مستقلة من أيقونة التطبيق، بدون شريط المتصفح.' : 'Launches independently from its app icon without browser chrome.'}</li>
+                            <li>{isAr ? 'يدعم وظائف الهاتف التي يوفّرها إصدار APK، مثل البصمة والإشعارات الأصلية عندما تكون مهيأة ومفعّلة.' : 'Supports APK-specific phone features such as biometrics and native notifications when configured and enabled.'}</li>
+                            <li>{isAr ? 'يمكنه عرض البيانات المخزنة محليًا وفق آلية التخزين والمزامنة في التطبيق.' : 'Can display locally cached data according to the app’s storage and sync design.'}</li>
+                          </ul>
+                          <p className="font-bold text-gray-800 dark:text-white mt-2">{isAr ? 'القيود' : 'Limitations'}</p>
+                          <ul className="list-disc ps-5">
+                            <li>{isAr ? 'التثبيت يحتاج تنزيل ملف APK ثم موافقة أندرويد على التثبيت.' : 'Installation requires downloading the APK and confirming installation in Android.'}</li>
+                            <li>{isAr ? 'إجراءات الدفع وتعديل الحسابات تحتاج اتصالًا بالإنترنت حسب قواعد الأمان.' : 'Payments and account changes require internet where security rules demand it.'}</li>
+                            <li>{isAr ? 'بعض الميزات تعتمد على صلاحيات الجهاز وإعدادات التطبيق.' : 'Some features depend on device permissions and app configuration.'}</li>
+                          </ul>
+                          <button
+                            type="button"
+                            onClick={() => { setIsDrawerOpen(false); void startDirectApkDownload(); }}
+                            disabled={isStartingDownload}
+                            className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#0f766e] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0d665f] disabled:opacity-60 transition-colors"
+                          >
+                            <Download className="h-4 w-4" />
+                            {isStartingDownload ? (isAr ? 'جارٍ تجهيز التنزيل…' : 'Preparing download…') : (isAr ? 'تنزيل تطبيق الهاتف (APK)' : 'Download Phone App (APK)')}
+                          </button>
                         </div>
-                      </div>
-                      {isPwaInstalled ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <ArrowUpRight className="h-4 w-4 text-gray-400" />}
-                    </button>
-                    <button type="button" onClick={() => setExpandedInstallDetails(expandedInstallDetails === 'pwa' ? null : 'pwa')} aria-expanded={expandedInstallDetails === 'pwa'} className="w-full flex items-center justify-between gap-2 px-4 py-2 border-t border-gray-100 dark:border-white/10 text-[11px] font-medium text-gray-500 dark:text-[#88d2c4] hover:bg-gray-50 dark:hover:bg-white/5">
-                      <span>{isAr ? 'مميزات وقيود تطبيق الويب' : 'Web app benefits & limitations'}</span>
-                      <ChevronDown className={`h-4 w-4 transition-transform ${expandedInstallDetails === 'pwa' ? 'rotate-180' : ''}`} />
-                    </button>
-                    {expandedInstallDetails === 'pwa' && <div className="px-4 pb-4 pt-2 text-[11px] leading-6 text-gray-600 dark:text-[#a8cec5]">
-                      <p className="font-bold text-gray-800 dark:text-white">{isAr ? 'المميزات' : 'Benefits'}</p>
-                      <ul className="list-disc ps-5">
-                        <li>{isAr ? 'تثبيت سريع من المتصفح دون تنزيل ملف APK.' : 'Quick browser-based installation without downloading an APK.'}</li>
-                        <li>{isAr ? 'أيقونة مستقلة على الشاشة الرئيسية وفتح بواجهة تطبيق عند دعم المتصفح.' : 'A home-screen icon and app-like window where supported by the browser.'}</li>
-                        <li>{isAr ? 'التحديثات تصل عبر الموقع دون إعادة تثبيت ملف APK.' : 'Updates arrive through the website without reinstalling an APK.'}</li>
-                      </ul>
-                      <p className="font-bold text-gray-800 dark:text-white mt-2">{isAr ? 'القيود' : 'Limitations'}</p>
-                      <ul className="list-disc ps-5">
-                        <li>{isAr ? 'البصمة الأصلية وبعض وظائف الهاتف ليست متاحة بنفس طريقة APK، وقد تختلف حسب الجهاز والمتصفح.' : 'Native biometrics and some phone features are not available in the same way as APK and vary by device/browser.'}</li>
-                        <li>{isAr ? 'الإشعارات والعمل دون إنترنت يعتمدان على دعم النظام والمتصفح وإعداد التطبيق.' : 'Notifications and offline behavior depend on OS/browser support and app configuration.'}</li>
-                        <li>{isAr ? 'على الآيفون، التثبيت يتم من قائمة المشاركة ثم «إضافة إلى الشاشة الرئيسية».' : 'On iPhone, install from Share → Add to Home Screen.'}</li>
-                      </ul>
-                    </div>}
-                  </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isPwaInstalled) {
+                            window.alert(isAr ? 'تطبيق الويب مثبت بالفعل على هذا الجهاز. افتحه من أيقونته على الشاشة الرئيسية.' : 'The Web App is already installed. Open it from its home-screen icon.');
+                          } else {
+                            setExpandedInstallDetails(expandedInstallDetails === 'pwa' ? null : 'pwa');
+                          }
+                        }}
+                        aria-expanded={!isPwaInstalled && expandedInstallDetails === 'pwa'}
+                        className="w-full flex items-center justify-between gap-3 p-3.5 text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Smartphone className="h-5 w-5 text-[#0f766e] dark:text-[#6ee7b7]" />
+                          <div>
+                            <span className="block">{isPwaInstalled ? (isAr ? 'تطبيق الويب — مثبّت بالفعل' : 'Web App — Already installed') : (isAr ? 'تطبيق الويب' : 'Web App')}</span>
+                            <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
+                              {isPwaInstalled ? (isAr ? 'افتحه من أيقونة الشاشة الرئيسية' : 'Open it from your home-screen icon') : (isAr ? 'وصول سريع من الشاشة الرئيسية' : 'Quick access from your home screen')}
+                            </span>
+                          </div>
+                        </div>
+                        {isPwaInstalled
+                          ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                          : <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${expandedInstallDetails === 'pwa' ? 'rotate-180' : ''}`} />}
+                      </button>
+                      {!isPwaInstalled && expandedInstallDetails === 'pwa' && (
+                        <div className="px-4 pb-4 pt-1 text-[11px] leading-6 text-gray-600 dark:text-[#a8cec5]">
+                          <p className="font-bold text-gray-800 dark:text-white">{isAr ? 'المميزات' : 'Benefits'}</p>
+                          <ul className="list-disc ps-5">
+                            <li>{isAr ? 'تثبيت سريع من المتصفح دون تنزيل ملف APK.' : 'Quick browser-based installation without downloading an APK.'}</li>
+                            <li>{isAr ? 'أيقونة مستقلة على الشاشة الرئيسية وفتح بواجهة تطبيق عند دعم المتصفح.' : 'A home-screen icon and app-like window where supported by the browser.'}</li>
+                            <li>{isAr ? 'التحديثات تصل عبر الموقع دون إعادة تثبيت ملف APK.' : 'Updates arrive through the website without reinstalling an APK.'}</li>
+                          </ul>
+                          <p className="font-bold text-gray-800 dark:text-white mt-2">{isAr ? 'القيود' : 'Limitations'}</p>
+                          <ul className="list-disc ps-5">
+                            <li>{isAr ? 'البصمة الأصلية وبعض وظائف الهاتف ليست متاحة بنفس طريقة APK، وقد تختلف حسب الجهاز والمتصفح.' : 'Native biometrics and some phone features are not available in the same way as APK and vary by device/browser.'}</li>
+                            <li>{isAr ? 'الإشعارات والعمل دون إنترنت يعتمدان على دعم النظام والمتصفح وإعداد التطبيق.' : 'Notifications and offline behavior depend on OS/browser support and app configuration.'}</li>
+                            <li>{isAr ? 'على الآيفون، التثبيت يتم من قائمة المشاركة ثم «إضافة إلى الشاشة الرئيسية».' : 'On iPhone, install from Share → Add to Home Screen.'}</li>
+                          </ul>
+                          <button
+                            type="button"
+                            onClick={() => { setIsDrawerOpen(false); void installWebsiteAsPwa(); }}
+                            className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#0f766e] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0d665f] transition-colors"
+                          >
+                            <Smartphone className="h-4 w-4" />
+                            {isAr ? 'تثبيت تطبيق الويب' : 'Install Web App'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 {/* Contact Us: keep contact choices accessible from the More menu. */}
