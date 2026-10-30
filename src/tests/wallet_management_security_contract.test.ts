@@ -63,7 +63,7 @@ describe('Public wallet management access contract', () => {
     expect(page).toContain('<WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} />');
     expect(walletPanel).toContain("callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot'");
     expect(walletPanel).toContain('balance_minor');
-    expect(walletPanel).toContain('snapshot.transactions.map');
+    expect(walletPanel).toContain('(snapshot?.transactions ?? []).filter(tx => {');
     expect(walletPanel).toContain('setSnapshot(null)');
     expect(walletPanel).toContain("'wallet-create-account'");
     expect(walletPanel).toContain("'wallet-record-transaction'");
