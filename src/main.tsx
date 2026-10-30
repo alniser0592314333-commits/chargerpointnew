@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import { isCustomerPortalPath } from './services/publicPortalOrigin';
 
 const hostname = window.location.hostname.toLowerCase();
 const isAdminHost = hostname === 'admin.monther.work';
@@ -22,17 +23,7 @@ if (isCustomerHost && window.location.pathname === '/') {
 const root = createRoot(document.getElementById('root')!);
 const pathname = window.location.pathname;
 const appVariant = import.meta.env.VITE_APP_VARIANT;
-const isCustomerPortalRoute =
-  pathname === '/public/about' ||
-  pathname === '/download' ||
-  pathname === '/public/services' ||
-  pathname.startsWith('/public/services/') ||
-  pathname.startsWith('/c/') ||
-  pathname.startsWith('/o/') ||
-  pathname.startsWith('/pay/') ||
-  pathname.startsWith('/public/order/') ||
-  pathname.startsWith('/public/qr/customer/') ||
-  pathname.startsWith('/public/qr/order/');
+const isCustomerPortalRoute = isCustomerPortalPath(pathname);
 if (isAdminHost && isCustomerPortalRoute) {
   window.location.replace('https://www.monther.work' + pathname + window.location.search + window.location.hash);
 }
