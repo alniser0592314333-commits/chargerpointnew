@@ -2,6 +2,8 @@ import React from "react";
 import { useActiveLogo, getCanonicalQrLogo } from "../../services/storage/logoStorage";
 import { useTheme } from "../../theme/themeContext";
 
+const OFFICIAL_LOGO_PATH = "M 555 1094 L 599 1121 L 667 1155 L 731 1180 L 794 1199 L 846 1210 L 897 1217 L 946 1219 L 996 1216 L 987 1216 L 946 1210 L 903 1200 L 855 1185 L 806 1165 L 754 1139 L 697 1105 L 655 1076 L 622 1050 Z M 479 915 L 424 871 L 373 898 L 309 928 L 297 971 L 292 1005 L 334 990 L 392 964 L 431 944 Z M 888 811 L 837 862 L 839 869 L 848 887 L 880 967 L 910 978 L 962 992 L 948 941 L 931 896 L 903 837 Z M 181 609 L 179 610 L 160 639 L 128 699 L 105 754 L 87 810 L 73 871 L 65 926 L 62 966 L 62 1022 L 64 1047 L 68 1017 L 84 947 L 102 891 L 114 860 L 136 811 L 162 763 L 194 712 L 226 668 L 222 660 Z M 614 557 L 593 563 L 580 570 L 567 580 L 556 593 L 546 612 L 542 627 L 541 656 L 544 670 L 551 687 L 564 705 L 583 720 L 605 729 L 615 731 L 639 731 L 649 729 L 667 722 L 683 711 L 696 697 L 705 682 L 711 664 L 713 649 L 712 631 L 710 620 L 703 602 L 691 585 L 679 574 L 669 567 L 649 559 L 640 557 Z M 271 313 L 284 362 L 302 412 L 322 460 L 349 514 L 400 455 L 399 451 L 390 433 L 390 430 L 373 392 L 354 343 L 312 325 L 285 316 Z M 960 302 L 915 316 L 869 334 L 805 363 L 772 380 L 766 385 L 815 430 L 818 430 L 873 404 L 939 376 L 944 367 L 952 342 L 959 313 Z M 1183 294 L 1177 337 L 1167 381 L 1153 425 L 1136 467 L 1126 486 L 1124 493 L 1089 555 L 1060 599 L 1024 648 L 1072 716 L 1089 689 L 1122 624 L 1149 557 L 1164 511 L 1169 489 L 1171 486 L 1181 435 L 1187 384 L 1187 336 Z M 1099 158 L 1087 154 L 1056 149 L 999 148 L 964 152 L 915 162 L 870 176 L 807 202 L 742 236 L 677 277 L 646 299 L 612 326 L 541 276 L 487 244 L 418 210 L 375 193 L 344 183 L 289 170 L 231 164 L 197 165 L 172 168 L 143 174 L 127 180 L 120 228 L 121 287 L 131 347 L 146 399 L 166 450 L 196 511 L 232 571 L 289 651 L 259 695 L 217 768 L 189 828 L 178 855 L 162 902 L 147 967 L 140 1024 L 141 1084 L 146 1117 L 151 1134 L 170 1139 L 196 1143 L 255 1144 L 305 1138 L 362 1124 L 398 1112 L 430 1099 L 497 1066 L 563 1025 L 626 978 L 693 1026 L 747 1058 L 807 1087 L 852 1104 L 911 1121 L 953 1129 L 1015 1135 L 1071 1133 L 1106 1127 L 1121 1122 L 1126 1089 L 1126 1032 L 1124 1010 L 1114 955 L 1107 928 L 1093 885 L 1068 825 L 1041 773 L 1007 718 L 957 650 L 957 648 L 979 617 L 1008 571 L 1044 503 L 1057 475 L 1075 430 L 1091 380 L 1105 316 L 1110 266 L 1109 207 L 1105 179 Z M 349 720 L 397 774 L 457 834 L 507 879 L 530 898 L 555 916 L 559 921 L 531 942 L 473 979 L 410 1012 L 382 1024 L 334 1041 L 297 1051 L 265 1057 L 234 1059 L 233 1026 L 239 975 L 248 933 L 260 892 L 281 838 L 307 785 L 331 744 L 345 723 Z M 693 920 L 744 878 L 813 811 L 865 753 L 895 716 L 915 740 L 946 785 L 967 821 L 992 873 L 1012 927 L 1023 967 L 1030 1004 L 1033 1048 L 1030 1050 L 1012 1050 L 956 1044 L 920 1036 L 872 1021 L 831 1004 L 783 980 L 741 955 L 706 931 Z M 611 424 L 634 441 L 684 484 L 744 543 L 803 609 L 834 649 L 834 651 L 785 709 L 723 774 L 673 821 L 624 862 L 615 857 L 582 830 L 516 771 L 455 710 L 401 649 L 403 644 L 440 596 L 497 531 L 553 475 L 581 449 Z M 204 250 L 209 248 L 234 248 L 265 251 L 308 259 L 363 276 L 411 296 L 462 322 L 521 359 L 544 376 L 546 379 L 499 419 L 451 464 L 392 525 L 346 578 L 344 578 L 319 544 L 289 497 L 263 450 L 245 412 L 229 372 L 213 319 L 206 281 Z M 1023 223 L 1025 225 L 1024 261 L 1018 302 L 1008 345 L 992 393 L 972 440 L 944 495 L 916 541 L 894 573 L 889 578 L 833 516 L 767 451 L 721 411 L 677 376 L 712 347 L 761 313 L 815 282 L 862 260 L 917 240 L 950 231 L 998 223 Z M 256 52 L 305 64 L 365 84 L 421 108 L 466 131 L 503 153 L 543 181 L 577 209 L 610 242 L 648 211 L 682 186 L 641 160 L 583 130 L 527 106 L 466 85 L 414 71 L 352 59 L 335 58 L 319 55 Z";
+
 /**
  * App Logo Primitive & Configuration
  * Provides raw, pristine brand logo rendering across QR codes, system headers, and settings.
@@ -70,20 +72,18 @@ export const AppLogo: React.FC<AppLogoProps> = ({
   // ALWAYS use the canonical White Logo from Logo Manager, strictly ignoring current UI theme.
   const isQrVariant = isQr || variant === 'qr' || variant === 'white';
 
-  // Dynamic/custom logo overrides are online-only. As soon as connectivity is
-  // lost, every AppLogo instance switches to the bundled official brand mark.
+  // QR selection stays unchanged. Other UI instances use the cached image bytes
+  // while offline instead of switching to a different built-in mark.
   let logoUrl: string | undefined = isOnline ? customUrl : undefined;
-  if (isOnline && !logoUrl && !activeLogo.isDefault) {
+  if (!logoUrl && !activeLogo.isDefault) {
     if (isQrVariant) {
-      logoUrl = getCanonicalQrLogo(activeLogo);
+      if (isOnline) logoUrl = getCanonicalQrLogo(activeLogo);
     } else {
       const effectiveVariant = variant === 'auto' ? resolvedTheme : variant;
-      if (effectiveVariant === 'dark') {
-        logoUrl = activeLogo.darkDataUrl;
-      } else {
-        // Light Theme UI strictly uses the canonical White Logo
-        logoUrl = activeLogo.whiteDataUrl || activeLogo.lightDataUrl || activeLogo.dataUrl;
-      }
+      const candidate = effectiveVariant === 'dark'
+        ? activeLogo.darkDataUrl
+        : (activeLogo.whiteDataUrl || activeLogo.lightDataUrl || activeLogo.dataUrl);
+      if (candidate && (isOnline || candidate.startsWith('data:image/'))) logoUrl = candidate;
     }
   }
 
@@ -124,39 +124,8 @@ export const AppLogo: React.FC<AppLogoProps> = ({
       aria-label="Charging Point"
       data-testid="app-logo-default-container"
     >
-      <svg
-        viewBox="0 0 128 128"
-        width={size}
-        height={size}
-        role="img"
-        aria-label="Charging Point mountain and moon logo"
-        focusable="false"
-      >
-        <defs>
-          <linearGradient id={`${brandId}-sky`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor={sky} />
-            <stop offset="1" stopColor={isDark ? '#124d55' : '#bfe8df'} />
-          </linearGradient>
-          <linearGradient id={`${brandId}-warm`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#f5b567" />
-            <stop offset="1" stopColor={warm} />
-          </linearGradient>
-        </defs>
-        <rect width="128" height="128" rx="28" fill={`url(#${brandId}-sky)`} />
-        <circle cx="84" cy="34" r="17" fill="#f6bd68" />
-        <circle cx="89" cy="29" r="16" fill={sky} opacity=".72" />
-        <g fill={distant} opacity=".85">
-          <path d="M0 76 24 53 39 68 62 42 88 72 105 55 128 74V128H0Z" />
-        </g>
-        <path d="M8 110 44 52 61 73 79 40 122 110Z" fill={mountain} />
-        <path d="M79 40 122 110H95L82 77 75 59Z" fill={`url(#${brandId}-warm)`} />
-        <path d="M79 40 68 56 76 57 72 68 84 60 88 72 93 55Z" fill={snow} />
-        <path d="M44 52 34 68 42 66 39 78 49 66 61 73Z" fill={snow} />
-        <path d="M0 105Q28 91 55 103T128 100V128H0Z" fill={isDark ? '#082d34' : '#23646a'} />
-        <g fill={isDark ? '#082d34' : '#16494e'}>
-          <path d="M17 110 23 96 29 110Z M22 115 29 98 36 115Z" />
-          <path d="M99 112 105 97 111 112Z M106 116 113 99 120 116Z" />
-        </g>
+      <svg viewBox="0 0 1254 1254" width={size} height={size} role="img" aria-label="Charging Point logo" focusable="false" style={{ color: isDark ? "#ffffff" : "#000000" }}>
+        <path d={OFFICIAL_LOGO_PATH} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
       </svg>
     </div>
   );
