@@ -635,6 +635,23 @@ export const PublicAboutPage: React.FC = () => {
                   {isRTL ? <ChevronLeft className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
                 </a>
 
+                {/* Public help services entry — visual/menu foundation for the next step. */}
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Wallet className="h-5 w-5 shrink-0 text-[#0f766e] dark:text-[#6ee7b7]" />
+                    <div className="min-w-0">
+                      <span className="block">{isAr ? 'خدمات مساعدة' : 'Support Services'}</span>
+                      <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
+                        {isAr ? 'خدمات إضافية تساعدك في إدارة حسابك ومدفوعاتك' : 'Helpful services for managing your account and payments'}
+                      </span>
+                    </div>
+                  </div>
+                  {isRTL ? <ChevronLeft className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
+                </button>
+
                 {/* App download and web-install options: plain navigation rows with inline details. */}
                 {!Capacitor.isNativePlatform() && (
                   <>
