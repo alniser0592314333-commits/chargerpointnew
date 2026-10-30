@@ -100,8 +100,8 @@ const passwordStrength = (value: string) => {
   return score;
 };
 
-export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
-  const customerQuery = new URLSearchParams(window.location.search);
+export const CustomerAccountPage: React.FC<{ token: string; search?: string }> = ({ token, search = window.location.search }) => {
+  const customerQuery = new URLSearchParams(search);
   const walletManagementFlow = customerQuery.get('source') === 'wallet-management';
   const walletRegistrationComplete = customerQuery.get('walletRegistrationComplete') === '1';
   const [walletRegistrationNotice, setWalletRegistrationNotice] = useState(walletRegistrationComplete);
