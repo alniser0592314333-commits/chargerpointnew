@@ -34,6 +34,7 @@ import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
 import { PublicAppDownloadPage } from './components/pages/PublicAppDownloadPage';
+import { PublicServicesPage } from './components/pages/PublicServicesPage';
 import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
@@ -81,6 +82,7 @@ function isPublicPortalPath(pathname: string): boolean {
   return import.meta.env.VITE_APP_VARIANT !== 'admin' && (
     pathname === '/' ||
     pathname === '/public/about' ||
+    pathname === '/public/services' ||
     pathname === '/download' ||
     pathname.startsWith('/c/') ||
     pathname.startsWith('/o/') ||
@@ -467,6 +469,9 @@ export default function App() {
       }
       if (pathname === '/download') {
         return <PublicAppDownloadPage />;
+      }
+      if (pathname === '/public/services') {
+        return <PublicServicesPage onOpenWallet={() => navigate('/c/portal?source=wallet-management')} />;
       }
       if (pathname.startsWith('/c/')) {
         const token = pathname.replace('/c/', '');
