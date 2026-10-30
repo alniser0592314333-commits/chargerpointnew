@@ -129,8 +129,8 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         </div>
       </div>
     </header>
-    <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
-      <section className="rounded-2xl border border-slate-200/90 bg-white px-5 py-5 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-7">
+    <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+      <section className="rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-5">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-800 dark:bg-emerald-300/10 dark:text-emerald-200"><Wallet size={22} /></span>
           <div>
