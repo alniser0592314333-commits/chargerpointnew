@@ -77,6 +77,7 @@ Deno.serve(async (req: Request) => {
     }
     const today = dateInBusinessTimezone();
     const shared = { ...defaults(), ...data.value_json } as HoursConfig;
+    shared.tomorrowDescription = typeof shared.tomorrowDescription === "string" ? shared.tomorrowDescription.slice(0, 300) : "";
     // Preserve the app's established midnight rollover rule using the business timezone.
     if (typeof shared.todayDate === "string" && shared.todayDate < today) {
       shared.todayOpenTime = shared.tomorrowOpenTime || "08:00";
@@ -167,7 +168,7 @@ Deno.serve(async (req: Request) => {
     tomorrowCloseTime: incoming.tomorrowCloseTime,
     tomorrowDescription: typeof incoming.tomorrowDescription === "string"
       ? incoming.tomorrowDescription.slice(0, 300)
-      : (typeof existing?.value_json?.tomorrowDescription === "string" ? existing.value_json.tomorrowDescription.slice(0, 300) : ""),
+      : (existing?.value_json?.todayDate === dateInBusinessTimezone() && typeof existing?.value_json?.tomorrowDescription === "string" ? existing.value_json.tomorrowDescription.slice(0, 300) : ""),
     chargerFeeMinor: Number.isSafeInteger(existing?.value_json?.chargerFeeMinor)
       ? existing?.value_json?.chargerFeeMinor ?? 50
       : 50,
