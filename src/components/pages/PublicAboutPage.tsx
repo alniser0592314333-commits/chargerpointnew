@@ -638,6 +638,8 @@ export const PublicAboutPage: React.FC = () => {
                 {/* Public help services entry — visual/menu foundation for the next step. */}
                 <button
                   type="button"
+                  onClick={() => window.location.assign('/public/services')}
+                  aria-label={isAr ? 'فتح خدمات المساعدة' : 'Open assistance services'}
                   className="w-full flex items-center justify-between gap-3 p-3.5 rounded-xl text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">

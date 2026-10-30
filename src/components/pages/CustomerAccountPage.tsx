@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
 import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CircleHelp, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
@@ -100,8 +100,17 @@ const passwordStrength = (value: string) => {
   return score;
 };
 
-export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
-  const customerQuery = new URLSearchParams(window.location.search);
+export const CustomerAccountPage: React.FC<{ token: string; search?: string }> = ({ token, search = window.location.search }) => {
+  const customerQuery = new URLSearchParams(search);
+  const walletManagementFlow = customerQuery.get('source') === 'wallet-management';
+  const walletRegistrationComplete = customerQuery.get('walletRegistrationComplete') === '1';
+  const [walletRegistrationNotice, setWalletRegistrationNotice] = useState(walletRegistrationComplete);
+  const [walletSetupHelpOpen, setWalletSetupHelpOpen] = useState(false);
+  useEffect(() => {
+    if (!walletRegistrationNotice) return;
+    const timer = window.setTimeout(() => setWalletRegistrationNotice(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [walletRegistrationNotice]);
   const customerIdFromQuery = customerQuery.get('customerId')?.trim() ?? '';
   const orderQrToken = customerQuery.get('orderQrToken')?.trim() ?? '';
   const directEntry = token === 'portal' && !customerIdFromQuery && !orderQrToken;
@@ -345,6 +354,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         : accountToken;
       try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
       if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, result.data.session_expires_at);
+      if (walletManagementFlow) {
+        try { await customerAuth.auth.signOut(); } catch {}
+        setPassword(''); setConfirmPassword('');
+        window.location.assign('/c/portal?source=wallet-management&walletRegistrationComplete=1');
+        return;
+      }
       const customerLoginIdentifier = entry?.customer_code || accountToken;
       if (!savedCustomerAccounts.some((account) => account.token === customerLoginIdentifier)) {
         setPendingRememberCustomerAccount({ token: customerLoginIdentifier, label: entry?.customer_name || customerLoginIdentifier });
@@ -419,7 +434,8 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
       else if (loginData.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setMode('terms-update'); }
       else {
         setMode('portal');
-        if (Capacitor.isNativePlatform()) {
+        if (walletManagementFlow) setMessage(t('تم تسجيل الدخول بنجاح.', 'Signed in successfully.'));
+        if (Capacitor.isNativePlatform() && !walletManagementFlow) {
           try {
             const { data: authState } = await customerAuth.auth.getSession();
             if (authState.session?.access_token) {
@@ -572,7 +588,7 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </div>
         )}
         {message && <p role="status" className="mx-auto max-w-3xl px-4 pt-2 text-sm text-[#9a6712] dark:text-slate-200">{message}</p>}
-        <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />
+        {walletManagementFlow ? <main dir={isAr ? 'rtl' : 'ltr'} className="min-h-screen bg-[#f5faf9] px-5 py-16 text-center text-[#244b55] dark:bg-[#071d27] dark:text-[#daf1de]"><section className="mx-auto max-w-lg rounded-3xl border border-[#b9d9d8] bg-white/80 p-8 shadow-xl dark:border-[#2b5267] dark:bg-[#0b2935]"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#1a8a94]/10"><Wallet className="h-7 w-7 text-[#1a8a94]" /></div><h1 className="mt-4 text-2xl font-extrabold">{t('إدارة المحافظ', 'Wallet Management')}</h1><p className="mt-3 text-sm leading-7">{t('تم تسجيل الدخول بنجاح. خدمات المحفظة ستظهر هنا.', 'You are signed in. Wallet services will appear here.')}</p><button type="button" onClick={() => void logout()} className="cp-auth__btn mt-6">{t('تسجيل الخروج', 'Sign out')}</button></section></main> : <PublicCustomerPortalPage token={portalToken} onLogout={() => void logout()} />}
         {pendingRememberCustomerAccount && (
           <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4" role="dialog" aria-modal="true" aria-labelledby="remember-customer-title" dir="rtl">
             <div className="w-full max-w-sm space-y-4 rounded-3xl border border-[#b9d9d8] bg-[#f7fbfa] p-5 text-[#244b55] shadow-2xl dark:border-[#2b5267] dark:bg-[#0b2935] dark:text-[#daf1de]">
@@ -592,6 +608,56 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
           </div>
         )}
       </div>
+    );
+  }
+
+  if (walletManagementFlow && mode === 'login') {
+    return (
+      <main dir={isAr ? 'rtl' : 'ltr'} className="cp-wallet-screen min-h-screen flex flex-col">
+        <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-3 text-white">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15"><AppLogo size={28} variant="auto" /></span>
+            <span className="font-extrabold">{t('نقطة الشحن', 'Charging Point')}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-full border border-white/30 px-3 py-2 text-xs font-bold text-white">{isAr ? 'English' : 'العربية'}</button>
+            <button type="button" onClick={toggleTheme} aria-label={t('تغيير المظهر', 'Toggle appearance')} className="grid h-9 w-9 place-items-center rounded-full border border-white/30 text-white">{resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
+          </div>
+        </header>
+        <div className="flex flex-1 items-center justify-center px-4 py-8">
+          <section className="w-full max-w-md rounded-[26px] border border-white/60 bg-white p-6 shadow-2xl sm:p-8 dark:border-[#31505a] dark:bg-[#102c37]">
+            <div className="mb-6 text-center">
+              <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-[#e7f5f2] text-[#167d76] dark:bg-[#193f45] dark:text-[#8de0d0]"><Wallet className="h-7 w-7" /></span>
+              <h1 className="text-2xl font-extrabold text-[#183c45] dark:text-[#e3f4f2]">{t('إدارة المحافظ', 'Wallet Management')}</h1>
+              <p className="mt-1 text-sm text-[#71878b] dark:text-[#a7c0c3]">{t('تسجيل الدخول', 'Sign in')}</p>
+            </div>
+            {walletRegistrationNotice && <div role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">{t('تم إنشاء الحساب بنجاح، سجّل الدخول الآن.', 'Account created successfully. Sign in now.')}</div>}
+            {walletRegistrationComplete && <button type="button" onClick={() => { window.history.replaceState({}, '', '/c/portal?source=wallet-management'); setWalletRegistrationNotice(false); }} className="mb-4 w-full rounded-xl bg-[#167d76] px-4 py-3 font-bold text-white">{t('استمر', 'Continue')}</button>}
+            {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{error}</div>}
+            {message && <div role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">{message}</div>}
+            {directEntry && showSavedCustomerAccounts && savedCustomerAccounts.length > 0 ? (
+              <div className="space-y-3" data-testid="saved-customer-accounts">
+                <p className="text-sm font-bold text-[#244b55] dark:text-[#daf1de]">{t('اختر حسابًا محفوظًا', 'Choose a saved account')}</p>
+                {savedCustomerAccounts.map((account) => <button key={account.token} type="button" onClick={() => { setUsername(account.token); setSelectedSavedCustomerAccountLabel(account.label); setShowSavedCustomerAccounts(false); setError(''); setPassword(''); }} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 text-start dark:border-slate-700"><ShieldCheck className="h-5 w-5 text-[#167d76]" /><span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700 dark:text-slate-100">{account.label}</span></button>)}
+                <button type="button" onClick={() => { setUsername(''); setPassword(''); setShowSavedCustomerAccounts(false); }} className="w-full py-2 text-sm font-semibold text-[#167d76]">{t('الدخول بحساب آخر', 'Sign in with another account')}</button>
+              </div>
+            ) : (
+              <form className="space-y-4" onSubmit={(event) => void submitLogin(event)}>
+                {(customerIdFromQuery || directEntry) && !selectedSavedCustomerAccountLabel && <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{t('رقم العميل أو المعرّف', 'Customer ID or username')}<input value={directEntry ? username : customerIdFromQuery} onChange={directEntry ? (event) => setUsername(event.target.value) : undefined} readOnly={!directEntry} required={directEntry} maxLength={128} autoComplete="username" className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-slate-900 outline-none focus:border-[#27978b] focus:ring-2 focus:ring-[#27978b]/15 dark:border-slate-700 dark:bg-[#0b2029] dark:text-white" placeholder={t('أدخل رقم العميل', 'Enter customer ID')} /></label>}
+                {selectedSavedCustomerAccountLabel && <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-100"><span className="truncate">{selectedSavedCustomerAccountLabel}</span><button type="button" onClick={() => { setSelectedSavedCustomerAccountLabel(''); setUsername(''); }} className="text-xs text-[#167d76]">{t('تغيير', 'Change')}</button></div>}
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">{t('كلمة المرور', 'Password')}<div className="relative mt-2"><input required maxLength={128} type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" className="min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 pe-12 text-base text-slate-900 outline-none focus:border-[#27978b] focus:ring-2 focus:ring-[#27978b]/15 dark:border-slate-700 dark:bg-[#0b2029] dark:text-white" placeholder={t('أدخل كلمة المرور', 'Enter your password')} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 end-2 my-auto grid h-9 w-9 place-items-center text-slate-500" aria-label={showPassword ? t('إخفاء كلمة المرور', 'Hide password') : t('إظهار كلمة المرور', 'Show password')}>{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></label>
+                <div className="flex justify-end"><button type="button" onClick={() => { setError(''); setMessage(''); setMode('forgot'); }} className="text-xs font-bold text-[#167d76]">{t('نسيت كلمة المرور؟', 'Forgot password?')}</button></div>
+                <button disabled={busy} type="submit" className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#167d76] px-4 py-3 font-bold text-white transition hover:bg-[#116a64] disabled:opacity-60">{busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}{busy ? t('جارٍ تسجيل الدخول…', 'Signing in…') : t('تسجيل الدخول', 'Sign in')}</button>
+                {directEntry && savedCustomerAccounts.length > 0 && <button type="button" onClick={() => { setSelectedSavedCustomerAccountLabel(''); setShowSavedCustomerAccounts(true); setUsername(''); setPassword(''); }} className="w-full py-2 text-sm font-semibold text-[#167d76]">{t('اختيار حساب محفوظ', 'Choose a saved account')}</button>}
+              </form>
+            )}
+            <div className="mt-6 border-t border-slate-100 pt-4 dark:border-slate-700">
+              <button type="button" aria-expanded={walletSetupHelpOpen} aria-controls="cp-wallet-help-card" onClick={() => setWalletSetupHelpOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#c8e2dd] bg-[#f3faf8] px-3 text-sm font-bold text-[#176d70] dark:border-[#31565a] dark:bg-[#15373b] dark:text-[#a8dfd7]"><CircleHelp className="h-4 w-4" />{t('ليس لديك حساب؟', 'Don’t have an account?')}<span className={walletSetupHelpOpen ? 'rotate-180' : ''}>⌄</span></button>
+              {walletSetupHelpOpen && <div id="cp-wallet-help-card" className="mt-3 rounded-xl border border-[#d6e9e5] bg-[#f7fbfa] p-4 text-sm leading-7 text-slate-600 dark:border-slate-700 dark:bg-[#0b2029] dark:text-slate-300"><p>{t('هذه الخدمة مخصصة لمشتركي نقطة الشحن، وتستخدم بيانات حساب العميل الحالية.', 'This service is for Charging Point subscribers and uses your existing customer account credentials.')}</p><div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700"><strong className="block text-[#176d70] dark:text-[#a8dfd7]">{t('لم تنشئ حسابك بعد؟', 'Haven’t created your account yet?')}</strong><p>{t('افتح رابط QR الخاص بالعميل لإكمال إنشاء كلمة المرور بالطريقة المعتمدة.', 'Open your customer QR link to complete password setup through the existing process.')}</p></div><button type="button" onClick={() => window.location.assign('/public/services')} className="mt-3 text-xs font-bold text-[#176d70] underline">{t('العودة إلى الخدمات المساعدة', 'Back to assistance services')}</button></div>}
+            </div>
+          </section>
+        </div>
+      </main>
     );
   }
 
@@ -640,13 +706,13 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             : t('أكمل الخطوة التالية لحماية حسابك ومتابعة طلباتك.', 'Complete the next step to protect your account and continue to your orders.');
 
   return (
-    <main dir={isAr ? 'rtl' : 'ltr'} className="cp-auth flex flex-col">
+    <main dir={isAr ? 'rtl' : 'ltr'} className={`cp-auth flex flex-col ${walletManagementFlow ? 'cp-auth--wallet' : ''}`}>
       <CustomerAuthClipDefs />
       <div aria-hidden="true" className="cp-auth__backdrop"><CustomerAuthScene uid="cp-bg" /></div>
       <span aria-hidden="true" className="cp-auth__blob cp-auth__blob--tl" />
       <span aria-hidden="true" className="cp-auth__blob cp-auth__blob--br" />
 
-      <header className="mx-auto flex w-full max-w-[1080px] items-center justify-between gap-4 px-4 py-4 sm:py-5">
+      <header className="cp-auth__header mx-auto flex w-full max-w-[1080px] items-center justify-between gap-4 px-4 py-4 sm:py-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/95 shadow-md dark:bg-[#0c2e3a]">
             <AppLogo size={30} variant="auto" />
@@ -678,8 +744,24 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
           <div className="cp-auth__form">
             <div className="mx-auto w-full max-w-[400px]">
-              <h1 className="cp-auth__title">{title}</h1>
-              <p className="cp-auth__sub">{subtitle}</p>
+              {walletManagementFlow && mode === 'login' ? <div className="cp-wallet-heading"><span className="cp-wallet-heading__mark"><Wallet className="h-6 w-6" /></span><h1 className="cp-auth__title">{t('إدارة المحافظ', 'Wallet Management')}</h1><p className="cp-auth__sub">{t('تسجيل الدخول', 'Sign in')}</p></div> : <><h1 className="cp-auth__title">{title}</h1><p className="cp-auth__sub">{subtitle}</p></>}
+              {walletRegistrationNotice && walletManagementFlow && <div role="status" className="mb-4 mt-3 rounded-2xl border border-[#b9e0dd] bg-[#e9f7f6] px-4 py-3 text-sm text-[#146069] dark:border-[#2b5267] dark:bg-[#142b38] dark:text-[#a8dff5]">{t('تم إنشاء الحساب بنجاح، سجّل الدخول الآن.', 'Account created successfully. Sign in now.')}</div>}
+              {walletManagementFlow && walletRegistrationComplete && <button type="button" onClick={() => { window.history.replaceState({}, '', '/c/portal?source=wallet-management'); setWalletRegistrationNotice(false); }} className="mb-3 w-full rounded-xl bg-[#1a8a94] px-4 py-3 font-bold text-white">{t('استمر', 'Continue')}</button>}
+              {walletManagementFlow && mode === 'login' && <div className="cp-wallet-help">
+                <button type="button" aria-expanded={walletSetupHelpOpen} aria-controls="cp-wallet-help-card" onClick={() => setWalletSetupHelpOpen((open) => !open)} className="cp-wallet-help__toggle">
+                  <CircleHelp className="h-4 w-4" />
+                  {t('ليس لديك حساب؟', 'Don’t have an account?')}
+                  <span aria-hidden="true" className={walletSetupHelpOpen ? 'cp-wallet-help__chevron is-open' : 'cp-wallet-help__chevron'}>⌄</span>
+                </button>
+                {walletSetupHelpOpen && <div id="cp-wallet-help-card" className="cp-wallet-help__card">
+                  <p>{t('خدمة إدارة المحافظ مخصصة لمشتركي نقطة الشحن. استخدم نفس رقم العميل وكلمة المرور الخاصة بحسابك الحالي.', 'Wallet Management is available to Charging Point subscribers. Use the same customer ID and password as your existing account.')}</p>
+                  <div className="cp-wallet-help__setup">
+                    <strong>{t('لم تنشئ حسابك بعد؟', 'Haven’t created your account yet?')}</strong>
+                    <p>{t('امسح رمز QR الخاص بحساب العميل لفتح صفحة إنشاء كلمة المرور بالطريقة المعتمدة.', 'Scan your customer account QR code to open the existing password setup process.')}</p>
+                  </div>
+                  <button type="button" onClick={() => window.location.assign('/public/services')} className="cp-wallet-help__back">{t('العودة إلى الخدمات المساعدة', 'Back to assistance services')}</button>
+                </div>}
+              </div>}
 
               <div className="mt-6">
                 {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3 text-sm leading-6 text-[#963f35] dark:border-[#71313c] dark:bg-[#301b22] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}

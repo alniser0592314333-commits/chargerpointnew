@@ -1,144 +1,108 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Fingerprint, ShieldCheck, Wallet, LoaderCircle, LockKeyhole } from 'lucide-react';
+import React from 'react';
+import { CircleHelp, Languages, Moon, Sun, Wallet } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
-import { callCustomerAccount, customerAuth, setCustomerSession } from '../../services/customer/customerAuth';
-import { getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
+import './public-services.css';
 
-type Props = { onBack: () => void; onOpenWallet: () => void };
-export const PublicServicesPage: React.FC<Props> = ({ onBack, onOpenWallet }) => {
+type Props = { onBack?: () => void; onOpenWallet?: () => void };
+
+/**
+ * Public catalogue of customer-facing assistance services.
+ * The wallet card delegates navigation to the host app; authentication and wallet operations remain in their existing flows.
+ */
+export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
-  const [hasSession, setHasSession] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [biometricReady, setBiometricReady] = useState(false);
-  const [preferPassword, setPreferPassword] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [verified, setVerified] = useState(false);
-  const [error, setError] = useState('');
   const t = (ar: string, en: string) => isAr ? ar : en;
 
-  useEffect(() => {
-    let active = true;
-    void customerAuth.auth.getSession().then(async (session) => {
-      const token = session.data.session?.access_token || '';
-      const [available, status] = await Promise.all([isNativeBiometricAvailable(), token ? getAccountBiometricStatus(token).catch(() => ({ enrolled: false })) : Promise.resolve({ enrolled: false })]);
-        if (!active) return;
-        setHasSession(Boolean(session.data.session?.access_token));
-        setBiometricAvailable(available);
-      setBiometricReady(Boolean(status.enrolled));
-    }).catch(() => { if (active) setHasSession(false); });
-    return () => { active = false; };
-  }, []);
+  return (
+    <main
+      className="public-services-page min-h-screen px-4 pb-12 pt-5 text-slate-800 transition-colors duration-300 dark:text-slate-100 sm:px-6 sm:pt-8"
+      dir={isAr ? 'rtl' : 'ltr'}
+    >
+      <div className="public-services-shell mx-auto max-w-5xl">
+        <header className="public-services-header flex flex-nowrap items-center justify-between gap-3 rounded-2xl px-3 py-2.5 sm:px-5 sm:py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="public-services-header-icon grid h-9 w-9 shrink-0 place-items-center rounded-xl" aria-hidden="true">
+              <CircleHelp size={19} strokeWidth={1.9} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-base font-extrabold tracking-tight sm:text-lg">{t('خدمات مساعدة', 'Assistance Services')}</h1>
+              <p className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:block">{t('خدمات إضافية متاحة لك', 'Additional services available to you')}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2" aria-label={t('إعدادات العرض', 'Display settings')}>
+            <button
+              type="button"
+              onClick={() => setLocale(isAr ? 'en' : 'ar')}
+              className="public-services-control inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition hover:-translate-y-0.5"
+              aria-label={t('Switch language to English', 'تغيير اللغة إلى العربية')}
+              title={t('English', 'العربية')}
+            >
+              <Languages size={15} />
+              <span>{isAr ? 'EN' : 'عربي'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="public-services-control grid h-9 w-9 place-items-center rounded-lg transition hover:-translate-y-0.5"
+              aria-label={resolvedTheme === 'dark' ? t('التبديل للوضع النهاري', 'Switch to light mode') : t('التبديل للوضع الليلي', 'Switch to dark mode')}
+              title={resolvedTheme === 'dark' ? t('الوضع النهاري', 'Light mode') : t('الوضع الليلي', 'Dark mode')}
+            >
+              {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
+        </header>
 
-  const verify = async () => {
-    if (busy) return;
-    setBusy(true); setError('');
-    try {
-      if (!hasSession) {
-        if (!username.trim() || !password) {
-          setError(t('أدخل اسم المستخدم وكلمة المرور لتسجيل الدخول.', 'Enter your username and password to sign in.'));
-          return;
-        }
-        const login = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string } }>(
-          'login', { token: username.trim(), password },
-        );
-        if (login.error || !login.data?.session) {
-          setError(t('اسم المستخدم أو كلمة المرور غير صحيحة.', 'The username or password is incorrect.'));
-          return;
-        }
-        const saveError = await setCustomerSession(login.data.session);
-        if (saveError) {
-          setError(t('تعذّر إنشاء جلسة آمنة. حاول مرة ثانية.', 'Could not establish a secure session. Try again.'));
-          return;
-        }
-        const freshCheck = await callCustomerAccount<{ must_change_password?: boolean }>(
-          'verify-session', {}, login.data.session.access_token,
-        );
-        if (freshCheck.error || !freshCheck.data || freshCheck.data.must_change_password) {
-          setError(t('الحساب يحتاج إجراءً إضافيًا قبل فتح الخدمات.', 'Your account needs additional action before opening services.'));
-          return;
-        }
-        setHasSession(true);
-        setPassword('');
-        setVerified(true);
-        return;
-      }
-      if (biometricAvailable && biometricReady && !preferPassword) {
-        const result = await loginWithAccountBiometric('customer');
-        const biometricSession = result.session as { access_token: string; refresh_token: string } | undefined;
-        if (!biometricSession?.access_token || !biometricSession.refresh_token) {
-          setError(t('لم يتم تأكيد الهوية بالبصمة. حاول مرة ثانية.', 'Biometric verification was not completed. Try again.'));
-          return;
-        }
-        const sessionError = await setCustomerSession(biometricSession);
-        if (sessionError) {
-          setError(t('تعذّر تحديث الجلسة الآمنة.', 'Could not update the secure session.'));
-          return;
-        }
-      } else {
-        if (!password) {
-          setError(t('أدخل كلمة المرور لتأكيد هويتك.', 'Enter your password to verify your identity.'));
-          return;
-        }
-        const current = await customerAuth.auth.getSession();
-        if (!current.data.session?.access_token) {
-          setHasSession(false);
-          setError(t('انتهت الجلسة. سجّل الدخول من جديد.', 'Your session expired. Sign in again.'));
-          return;
-        }
-        const reauthenticated = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string } }>(
-          'reauthenticate', { password }, current.data.session.access_token,
-        );
-        if (reauthenticated.error || !reauthenticated.data?.session) {
-          setError(t('كلمة المرور غير صحيحة أو انتهت صلاحية الجلسة.', 'The password is incorrect or the session is no longer valid.'));
-          return;
-        }
-        const sessionError = await setCustomerSession(reauthenticated.data.session);
-        if (sessionError) {
-          setError(t('تعذّر تحديث الجلسة الآمنة.', 'Could not update the secure session.'));
-          return;
-        }
-        setPassword('');
-      }
-      const session = await customerAuth.auth.getSession();
-      if (!session.data.session?.access_token) {
-        setHasSession(false);
-        setError(t('انتهت الجلسة. سجّل الدخول من جديد.', 'Your session expired. Sign in again.'));
-        return;
-      }
-      const response = await callCustomerAccount<{ must_change_password?: boolean }>('verify-session', {}, session.data.session.access_token);
-      if (response.error || !response.data || response.data.must_change_password) {
-        setError(t('الجلسة غير صالحة لفتح الخدمات. سجّل الدخول مجددًا.', 'This session cannot access services. Sign in again.'));
-        return;
-      }
-      setVerified(true);
-    } catch {
-      setError(t('تعذّر التحقق الآن. تأكد من الاتصال وحاول مجددًا.', 'Could not verify right now. Check your connection and try again.'));
-    } finally { setBusy(false); }
-  };
+        <section className="mt-8 sm:mt-12" aria-labelledby="public-services-title">
+          <div className="mb-5 max-w-2xl">
+            <p className="public-services-eyebrow text-xs font-bold uppercase tracking-[0.18em]">{t('بوابتك للخدمات', 'YOUR SERVICE HUB')}</p>
+            <h2 id="public-services-title" className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
+              {t('اختَر الخدمة التي تحتاجها', 'Choose the service you need')}
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
+              {t('نعمل على توفير خدمات مساعدة إضافية في مكان واحد. الخدمات المعروضة هنا للتعريف بها فقط حالياً.', 'We are bringing helpful services together in one place. The service shown here is currently for information only.')}
+            </p>
+          </div>
 
-  return <div className="min-h-screen bg-[#f5f7f8] text-slate-900 dark:bg-[#071a1d] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
-    <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#071a1d]/90"><div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-      <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold">{isAr ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}{t('رجوع', 'Back')}</button>
-      <div className="flex items-center gap-2"><button onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-xl px-3 py-2 text-xs font-bold">{isAr ? 'EN' : 'عربي'}</button><button onClick={toggleTheme} className="rounded-xl px-3 py-2 text-xs font-bold">{resolvedTheme === 'dark' ? '☀️' : '🌙'}</button></div>
-    </div></header>
-    <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12"><section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#0b2427] sm:p-9">
-      <p className="text-xs font-bold tracking-[0.2em] text-teal-700 dark:text-teal-300">{t('بوابة العملاء', 'CUSTOMER SERVICES')}</p><h1 className="mt-3 text-3xl font-extrabold">{t('خدمات مساعدة', 'Assistance services')}</h1>
-      <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-300">{t('منطقة مستقلة لخدماتك الإضافية. لازم نتحقق من جلسة حسابك قبل عرض الخدمات.', 'A separate area for additional services. We verify your customer session before displaying services.')}</p>
-      {!verified && <div className="mt-7 max-w-lg border-t border-slate-200 pt-6 dark:border-white/10"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-teal-50 text-teal-800 dark:bg-teal-300/10 dark:text-teal-200">{biometricAvailable && biometricReady ? <Fingerprint size={22} /> : <LockKeyhole size={22} />}</span><div><h2 className="font-bold">{t('تأكيد الهوية', 'Verify your identity')}</h2><p className="mt-1 text-xs text-slate-500">{biometricAvailable && biometricReady ? t('استخدم البصمة المسجلة على جهازك.', 'Use the biometric method enrolled on this device.') : t('يلزم تسجيل الدخول إلى حساب العميل بجلسة فعّالة.', 'An active customer account session is required.')}</p></div></div>
-        {!hasSession && <label className="mt-4 grid gap-2 text-sm font-semibold">{t('اسم المستخدم', 'Username')}<input autoComplete="username" maxLength={64} value={username} onChange={(event) => setUsername(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>}
-        {((hasSession && !(biometricAvailable && biometricReady)) || preferPassword || !hasSession) && <label className="mt-4 grid gap-2 text-sm font-semibold">{hasSession ? t('كلمة المرور الحالية', 'Current password') : t('كلمة المرور', 'Password')}<input type="password" autoComplete="current-password" maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>}
-        {biometricAvailable && biometricReady && <button type="button" onClick={() => { setPreferPassword((value) => !value); setPassword(''); setError(''); }} className="mt-3 block rounded-lg px-1 py-2 text-sm font-semibold text-teal-800 underline dark:text-teal-200">{preferPassword ? t('استخدم البصمة بدل كلمة المرور', 'Use fingerprint instead') : t('استخدم كلمة المرور بدل البصمة', 'Use password instead of fingerprint')}</button>}
-        {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
-        <button onClick={() => void verify()} disabled={busy || (!hasSession && (!username.trim() || !password)) || (hasSession && !(biometricAvailable && biometricReady) && !password) || (hasSession && preferPassword && !password)} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle size={17} className="animate-spin" /> : <ShieldCheck size={17} />}{busy ? t('جارٍ التحقق…', 'Verifying…') : t('تأكيد وفتح الخدمات', 'Verify and continue')}</button>
-      </div>}
-      {verified && <div className="mt-7 border-t border-slate-200 pt-6 dark:border-white/10"><div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-300"><ShieldCheck size={18} />{t('تم تأكيد الجلسة', 'Session verified')}</div><h2 className="mt-5 text-lg font-bold">{t('الخدمات المتاحة', 'Available services')}</h2>
-        <button onClick={onOpenWallet} className="mt-4 flex w-full items-center gap-4 rounded-2xl border border-slate-200 p-4 text-start transition hover:border-teal-500 hover:bg-teal-50/60 dark:border-white/10 dark:hover:bg-teal-300/5"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-teal-700 text-white"><Wallet size={23} /></span><span className="min-w-0 flex-1"><strong className="block">{t('إدارة المحفظة', 'Wallet management')}</strong><span className="mt-1 block text-sm leading-6 text-slate-500 dark:text-slate-400">{t('عرض المحافظ والحركات المالية بعد تفعيل الخدمة.', 'Manage wallets and transactions after activation.')}</span></span>{isAr ? <ArrowLeft size={18} /> : <ArrowRight size={18} />}</button>
-      </div>}
-    </section></main>
-  </div>;
+          <article className="public-wallet-card group relative overflow-hidden rounded-3xl p-5 sm:p-7">
+            <div className="public-wallet-orb public-wallet-orb-one" aria-hidden="true" />
+            <div className="public-wallet-orb public-wallet-orb-two" aria-hidden="true" />
+            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:gap-7">
+              <div className="public-wallet-mark grid h-20 w-20 shrink-0 place-items-center rounded-[1.65rem] sm:h-24 sm:w-24" aria-hidden="true">
+                <Wallet size={43} strokeWidth={1.55} />
+                <span className="public-wallet-mark-dot" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-extrabold sm:text-2xl">{t('إدارة المحافظ', 'Wallet Management')}</h3>
+                  <span className="public-services-coming rounded-full px-3 py-1 text-[11px] font-bold">{t('قريباً', 'Coming soon')}</span>
+                </div>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
+                  {t('خدمة مخصصة لإدارة المحفظة الإلكترونية ومتابعة تفاصيلها. سيتم توفير وظائف الخدمة لاحقاً.', 'A dedicated service for managing an electronic wallet and viewing its details. Service functionality will be introduced later.')}
+                </p>
+                <div className="mt-5">
+                  <button type="button" onClick={() => onOpenWallet?.()} className="public-wallet-action inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition hover:-translate-y-0.5">
+                    <Wallet size={17} />
+                    {t('إدارة المحافظ', 'Wallet Management')}
+                  </button>
+                </div>
+              </div>
+              <div className="public-wallet-decoration hidden shrink-0 sm:grid" aria-hidden="true">
+                <div className="public-wallet-mini-card"><span /><span /><span /></div>
+                <div className="public-wallet-mini-line" />
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <footer className="mt-10 text-center text-xs text-slate-500 dark:text-slate-400">
+          {t('نقطة الشحن · خدمات مساعدة', 'Charging Point · Assistance Services')}
+        </footer>
+      </div>
+    </main>
+  );
 };
+
+export default PublicServicesPage;

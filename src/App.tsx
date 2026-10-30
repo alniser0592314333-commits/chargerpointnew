@@ -34,6 +34,7 @@ import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
 import { PublicAppDownloadPage } from './components/pages/PublicAppDownloadPage';
+import { PublicServicesPage } from './components/pages/PublicServicesPage';
 import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
@@ -81,6 +82,7 @@ function isPublicPortalPath(pathname: string): boolean {
   return import.meta.env.VITE_APP_VARIANT !== 'admin' && (
     pathname === '/' ||
     pathname === '/public/about' ||
+    pathname === '/public/services' ||
     pathname === '/download' ||
     pathname.startsWith('/c/') ||
     pathname.startsWith('/o/') ||
@@ -157,9 +159,10 @@ export default function App() {
   });
   const [currentPath, setCurrentPathState] = useState(() => {
     const pathname = window.location.pathname || '/';
+    const locationSuffix = window.location.search + window.location.hash;
     // Web root is the public customer landing page; admin/native builds retain /app.
-    if (pathname === '/' && import.meta.env.VITE_APP_VARIANT !== 'admin') return '/';
-    return pathname !== '/' ? pathname : '/app';
+    if (pathname === '/' && import.meta.env.VITE_APP_VARIANT !== 'admin') return '/' + locationSuffix;
+    return (pathname !== '/' ? pathname : '/app') + locationSuffix;
   });
 
   // Public QR links must load the isolated customer entry point, never remain inside the admin SPA.
@@ -457,7 +460,7 @@ export default function App() {
   }, [currentPath]);
 
   const renderContent = () => {
-    const { pathname } = parseRoute(currentPath);
+    const { pathname, search } = parseRoute(currentPath);
 
     // Public customer routes remain part of the web app, but are compiled out
     // of the dedicated administrator APK.
@@ -468,9 +471,12 @@ export default function App() {
       if (pathname === '/download') {
         return <PublicAppDownloadPage />;
       }
+      if (pathname === '/public/services') {
+        return <PublicServicesPage onOpenWallet={() => navigate('/c/portal?source=wallet-management')} />;
+      }
       if (pathname.startsWith('/c/')) {
         const token = pathname.replace('/c/', '');
-        return <CustomerAccountPage token={token} />;
+        return <CustomerAccountPage token={token} search={search} />;
       }
       if (pathname.startsWith('/public/qr/customer/')) {
         const token = pathname.replace('/public/qr/customer/', '');
