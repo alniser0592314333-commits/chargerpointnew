@@ -20,3 +20,30 @@ describe('getPublicPortalOrigin', () => {
     expect(getPublicPortalOrigin()).toBe('');
   });
 });
+
+describe('isCustomerPortalPath', () => {
+  it('recognizes public customer routes', async () => {
+    const { isCustomerPortalPath } = await import('./publicPortalOrigin');
+    for (const path of [
+      '/public/about',
+      '/public/services',
+      '/public/services/help',
+      '/download',
+      '/c/customer-token',
+      '/o/order-token',
+      '/pay/payment-token',
+      '/public/order/order-token',
+      '/public/qr/customer/customer-token',
+      '/public/qr/order/order-token',
+    ]) {
+      expect(isCustomerPortalPath(path), path).toBe(true);
+    }
+  });
+
+  it('does not classify admin entry routes as customer routes', async () => {
+    const { isCustomerPortalPath } = await import('./publicPortalOrigin');
+    for (const path of ['/', '/app', '/app/settings', '/login', '/reset-password', '/customers']) {
+      expect(isCustomerPortalPath(path), path).toBe(false);
+    }
+  });
+});
