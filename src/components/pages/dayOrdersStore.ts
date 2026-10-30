@@ -5447,10 +5447,7 @@ export const getCustomerQrCardData = async (
   if (!customer) return null;
 
   const publicToken = await getOrCreateCustomerQrToken(customerId);
-  const origin =
-    typeof window !== 'undefined' && window.location.origin
-      ? window.location.origin
-      : '';
+  const origin = getPublicPortalOrigin();
   const publicUrl = `${origin}/c/${publicToken}`;
 
   return {
