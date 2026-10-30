@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, History, Search, Plus } from 'lucide-react';
-import { callCustomerAccount, customerAuth, setCustomerSession } from '../../services/customer/customerAuth';
+import { callCustomerAccount, customerAuth, CUSTOMER_TERMS_VERSION, setCustomerSession } from '../../services/customer/customerAuth';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { WalletSnapshotPanel } from './WalletSnapshotPanel';
 
-type Gate = 'checking' | 'signed-out' | 'checking-access' | 'activation-required' | 'denied' | 'step-up-required' | 'ready' | 'offline';
+type Gate = 'checking' | 'signed-out' | 'checking-access' | 'activation-required' | 'denied' | 'step-up-required' | 'force-change' | 'terms-update' | 'ready' | 'offline';
 type ActivationRequest = { id?: string; status?: string; requested_at?: string; decided_at?: string; rejection_reason?: string | null } | null;
 
 export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -15,6 +15,8 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   const isAr = locale === 'ar';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [gate, setGate] = useState<Gate>('checking');
   const [error, setError] = useState('');
@@ -99,7 +101,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         setError(t('هذا الحساب لم يُفعّل بعد. استخدم رمز QR الخاص بالعميل لإكمال إنشاء كلمة المرور بالطريقة المعتمدة.', 'This account is not activated yet. Use the customer QR code to complete the existing password setup.'));
         return;
       }
-      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string } }>(
+      const result = await callCustomerAccount<{ session?: { access_token: string; refresh_token: string }; must_change_password?: boolean; terms_version?: string | null }>(
         'login', { token: identifier, password },
       );
       if (result.error || !result.data?.session) {
@@ -111,10 +113,44 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
       const sessionError = await setCustomerSession(result.data.session);
       if (sessionError) { setError(t('تعذّر إنشاء جلسة آمنة. حاول مرة ثانية.', 'Could not establish a secure session. Try again.')); return; }
       setPassword('');
+      if (result.data.must_change_password) { setGate('force-change'); return; }
+      if (result.data.terms_version !== CUSTOMER_TERMS_VERSION) { setTermsAccepted(false); setGate('terms-update'); return; }
       await verifyAccess(result.data.session.access_token);
     } catch {
       setError(t('صار خطأ غير متوقع. حاول مرة ثانية.', 'An unexpected error occurred. Please try again.'));
     } finally { setBusy(false); }
+  };
+
+  const finishRequiredPasswordChange = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (password.length < 8 || password.length > 128 || password !== confirmPassword || new Set(['password','password123','12345678','qwerty123','11111111','123456789','1234567890','qwertyuiop','abc12345','letmein123','iloveyou','admin123','welcome1','monkey123','dragon123']).has(password.trim().toLowerCase()) || /^(.)\\1{7,}$/.test(password)) {
+      setError(t('كلمة المرور يجب أن تكون 8 أحرف على الأقل، غير شائعة، ومتطابقة في الحقلين.', 'Use a non-common password of 8–128 characters and make sure both fields match.'));
+      return;
+    }
+    setBusy(true); setError('');
+    try {
+      const { error: updateError } = await customerAuth.auth.updateUser({ password });
+      if (updateError) { setError(t('تعذّر تحديث كلمة المرور. حاول مرة ثانية.', 'Could not update your password. Please try again.')); return; }
+      const completed = await callCustomerAccount('complete-password-change', { token: username.trim() });
+      if (completed.error) { setError(t('تم تحديث كلمة المرور لكن تعذّر إكمال خطوة تأكيد الحساب. أعد المحاولة.', 'Password updated, but account confirmation could not be completed. Please retry.')); return; }
+      setPassword(''); setConfirmPassword('');
+      const session = await customerAuth.auth.getSession();
+      if (session.data.session?.access_token) await verifyAccess(session.data.session.access_token);
+    } catch { setError(t('صار خطأ غير متوقع. حاول مرة ثانية.', 'An unexpected error occurred. Please try again.')); }
+    finally { setBusy(false); }
+  };
+
+  const acceptUpdatedTerms = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!termsAccepted) { setError(t('لازم توافق على الشروط للمتابعة.', 'You must accept the terms to continue.')); return; }
+    setBusy(true); setError('');
+    try {
+      const accepted = await callCustomerAccount('accept-terms', { token: username.trim(), termsAccepted: true, termsVersion: CUSTOMER_TERMS_VERSION });
+      if (accepted.error) { setError(t('تعذّر حفظ موافقتك. حاول مرة ثانية.', 'Could not save your acceptance. Please try again.')); return; }
+      const session = await customerAuth.auth.getSession();
+      if (session.data.session?.access_token) await verifyAccess(session.data.session.access_token);
+    } catch { setError(t('صار خطأ غير متوقع. حاول مرة ثانية.', 'An unexpected error occurred. Please try again.')); }
+    finally { setBusy(false); }
   };
 
   return <div className="min-h-screen bg-[#f3f6f5] text-slate-900 dark:bg-[#071817] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
@@ -140,6 +176,19 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         </div>
         <div className="px-0 pb-1 pt-5 sm:px-1">
         {(gate === 'checking' || gate === 'checking-access') && <div className="mt-8 flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5"><RefreshCw className="animate-spin" size={18} />{t('بنتحقق من الجلسة وصلاحية الخدمة…', 'Checking your session and service access…')}</div>}
+        {gate === 'force-change' && <form onSubmit={finishRequiredPasswordChange} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
+          <p className="text-sm leading-6">{t('يجب تغيير كلمة المرور قبل متابعة حسابك. اختر كلمة مرور جديدة.', 'You must change your password before continuing. Choose a new password.')}</p>
+          <label className="grid gap-2 text-sm font-semibold">{t('كلمة المرور الجديدة', 'New password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+          <label className="grid gap-2 text-sm font-semibold">{t('تأكيد كلمة المرور', 'Confirm password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+          {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+          <button disabled={busy} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('تغيير كلمة المرور والمتابعة', 'Change password and continue')}</button>
+        </form>}
+        {gate === 'terms-update' && <form onSubmit={acceptUpdatedTerms} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
+          <p className="text-sm leading-6">{t('تم تحديث شروط استخدام حساب العميل. راجعها ووافق عليها للمتابعة إلى المحفظة.', 'Customer account terms have been updated. Review and accept them to continue to your wallet.')}</p>
+          <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} className="mt-1 h-4 w-4" /><span>{t('أوافق على الشروط والأحكام المحدّثة.', 'I accept the updated terms and conditions.')}</span></label>
+          {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+          <button disabled={busy || !termsAccepted} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
+        </form>}
         {(gate === 'signed-out' || gate === 'step-up-required') && <form onSubmit={signIn} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
           {gate === 'step-up-required' && <div role="status" className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-6 text-teal-900 dark:border-teal-200/15 dark:bg-teal-200/5 dark:text-teal-100">{t('انتهت صلاحية تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور هنا للمتابعة إلى المحفظة مباشرة.', 'Your identity verification expired. Enter your username and password here to continue directly to the wallet.')}</div>}
           <div className="flex items-center gap-2 text-sm font-bold"><LockKeyhole size={17} className="text-teal-700 dark:text-teal-300" />{t('دخول آمن بحسابك الحالي', 'Secure sign-in with your existing account')}</div>
