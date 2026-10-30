@@ -32,8 +32,16 @@
           window.history.replaceState({ path: '/app' }, '', '/app' + window.location.search + window.location.hash);
           path = '/app';
         }
+        if (!isAdminHost && path === '/') {
+          window.history.replaceState({ path: '/public/about' }, '', '/public/about' + window.location.search + window.location.hash);
+          path = '/public/about';
+        }
         if (isAdminHost && isCustomerRoute) {
           window.location.replace('https://www.monther.work' + path + window.location.search + window.location.hash);
+          return;
+        }
+        if (!isAdminHost && !isCustomerRoute) {
+          window.location.replace('https://admin.monther.work' + path + window.location.search + window.location.hash);
           return;
         }
         var isAdminRoute = isAdminHost || path === '/app' || path.indexOf('/app/') === 0 ||
