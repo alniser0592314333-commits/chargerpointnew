@@ -40,7 +40,8 @@
           window.location.replace('https://www.monther.work' + path + window.location.search + window.location.hash);
           return;
         }
-        if (!isAdminHost && !isCustomerRoute) {
+        var isCustomerHost = host === 'www.monther.work' || host === 'monther.work';
+        if (isCustomerHost && !isCustomerRoute) {
           window.location.replace('https://admin.monther.work' + path + window.location.search + window.location.hash);
           return;
         }
