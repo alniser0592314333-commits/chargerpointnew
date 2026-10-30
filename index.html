@@ -17,11 +17,26 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <script>
-      // Choose a distinct install identity for the administrator PWA. Public
-      // customer routes retain the existing customer manifest and start URL.
+      // Keep the two install identities on separate origins. The admin host
+      // defaults to /app; customer capability URLs are always served by www.
       (function() {
+        var host = window.location.hostname.toLowerCase();
+        var isAdminHost = host === 'admin.monther.work';
         var path = window.location.pathname;
-        var isAdminRoute = path === '/app' || path.indexOf('/app/') === 0 ||
+        var isCustomerRoute = path === '/public/about' || path === '/public/services' ||
+          path.indexOf('/public/services/') === 0 || path.indexOf('/c/') === 0 ||
+          path.indexOf('/o/') === 0 || path.indexOf('/pay/') === 0 ||
+          path.indexOf('/public/order/') === 0 || path.indexOf('/public/qr/customer/') === 0 ||
+          path.indexOf('/public/qr/order/') === 0;
+        if (isAdminHost && path === '/') {
+          window.history.replaceState({ path: '/app' }, '', '/app' + window.location.search + window.location.hash);
+          path = '/app';
+        }
+        if (isAdminHost && isCustomerRoute) {
+          window.location.replace('https://www.monther.work' + path + window.location.search + window.location.hash);
+          return;
+        }
+        var isAdminRoute = isAdminHost || path === '/app' || path.indexOf('/app/') === 0 ||
           path === '/login' || path === '/reset-password';
         var manifestLink = document.createElement('link');
         manifestLink.rel = 'manifest';
