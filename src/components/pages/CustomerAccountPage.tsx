@@ -102,6 +102,14 @@ const passwordStrength = (value: string) => {
 
 export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
   const customerQuery = new URLSearchParams(window.location.search);
+  const walletManagementFlow = customerQuery.get('source') === 'wallet-management';
+  const walletRegistrationComplete = customerQuery.get('walletRegistrationComplete') === '1';
+  const [walletRegistrationNotice, setWalletRegistrationNotice] = useState(walletRegistrationComplete);
+  useEffect(() => {
+    if (!walletRegistrationNotice) return;
+    const timer = window.setTimeout(() => setWalletRegistrationNotice(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [walletRegistrationNotice]);
   const customerIdFromQuery = customerQuery.get('customerId')?.trim() ?? '';
   const orderQrToken = customerQuery.get('orderQrToken')?.trim() ?? '';
   const directEntry = token === 'portal' && !customerIdFromQuery && !orderQrToken;
@@ -345,6 +353,12 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
         : accountToken;
       try { localStorage.setItem('last_customer_token', rememberedToken); } catch {}
       if (rememberedToken !== accountToken) await saveSessionExpiry(rememberedToken, result.data.session_expires_at);
+      if (walletManagementFlow) {
+        try { await customerAuth.auth.signOut(); } catch {}
+        setPassword(''); setConfirmPassword('');
+        window.location.assign('/c/portal?source=wallet-management&walletRegistrationComplete=1');
+        return;
+      }
       const customerLoginIdentifier = entry?.customer_code || accountToken;
       if (!savedCustomerAccounts.some((account) => account.token === customerLoginIdentifier)) {
         setPendingRememberCustomerAccount({ token: customerLoginIdentifier, label: entry?.customer_name || customerLoginIdentifier });
