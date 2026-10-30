@@ -128,6 +128,12 @@ describe('Public wallet management access contract', () => {
     expect(page).toContain("'entry', { token: identifier }");
     expect(page).toContain("'login', { token: identifier, password }");
     expect(page).toContain("setCustomerSession(result.data.session)");
+    expect(page).toContain("result.data.must_change_password");
+    expect(page).toContain("result.data.terms_version !== CUSTOMER_TERMS_VERSION");
+    expect(page).toContain("'complete-password-change'");
+    expect(page).toContain("'accept-terms'");
+    expect(page).toContain("gate === 'force-change'");
+    expect(page).toContain("gate === 'terms-update'");
     expect(page).toContain('انتهت صلاحية تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور هنا');
     expect(page).not.toContain('Return to identity verification');
     expect(page).not.toContain('العودة لتأكيد الهوية');
