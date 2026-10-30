@@ -123,7 +123,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
 
   const finishRequiredPasswordChange = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (password.length < 8 || password.length > 128 || password !== confirmPassword || new Set(['password','password123','12345678','qwerty123','11111111','123456789','1234567890','qwertyuiop','abc12345','letmein123','iloveyou','admin123','welcome1','monkey123','dragon123']).has(password.trim().toLowerCase()) || /^(.)\\1{7,}$/.test(password)) {
+    if (password.length < 8 || password.length > 128 || password !== confirmPassword || new Set(['password','password123','12345678','qwerty123','11111111','123456789','1234567890','qwertyuiop','abc12345','letmein123','iloveyou','admin123','welcome1','monkey123','dragon123']).has(password.trim().toLowerCase()) || /^(.)\1{7,}$/.test(password)) {
       setError(t('كلمة المرور يجب أن تكون 8 أحرف على الأقل، غير شائعة، ومتطابقة في الحقلين.', 'Use a non-common password of 8–128 characters and make sure both fields match.'));
       return;
     }
