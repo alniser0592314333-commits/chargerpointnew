@@ -3,35 +3,19 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import { isCustomerPortalPath } from './services/publicPortalOrigin';
 
-const hostname = window.location.hostname.toLowerCase();
-const isAdminHost = hostname === 'admin.monther.work';
-const isAdminPreviewHost = hostname === 'admin-preview.monther.work';
-const isCustomerHost = hostname === 'www.monther.work' || hostname === 'monther.work';
-if ((isAdminHost || isAdminPreviewHost) && window.location.pathname === '/') {
-  window.history.replaceState(
-    { path: '/app' },
-    '',
-    '/app' + window.location.search + window.location.hash,
-  );
-}
-if (isCustomerHost && window.location.pathname === '/') {
-  window.history.replaceState(
-    { path: '/public/about' },
-    '',
-    '/public/about' + window.location.search + window.location.hash,
-  );
-}
 const root = createRoot(document.getElementById('root')!);
-const pathname = window.location.pathname;
 const appVariant = import.meta.env.VITE_APP_VARIANT;
+let pathname = window.location.pathname;
+
+// On the shared web origin the root is the public landing page. The admin PWA
+// has an explicit /app start URL; native admin builds also default to /app.
+if (pathname === '/') {
+  const startPath = appVariant === 'admin' ? '/app' : '/public/about';
+  window.history.replaceState({ path: startPath }, '', startPath + window.location.search + window.location.hash);
+  pathname = startPath;
+}
 const isCustomerPortalRoute = isCustomerPortalPath(pathname);
-if (isAdminHost && isCustomerPortalRoute) {
-  window.location.replace('https://www.monther.work' + pathname + window.location.search + window.location.hash);
-}
-if (isCustomerHost && !isCustomerPortalRoute) {
-  window.location.replace('https://admin.monther.work' + pathname + window.location.search + window.location.hash);
-}
-const isPublicPortalRoute = !isAdminHost && isCustomerPortalRoute;
+const isPublicPortalRoute = appVariant !== 'admin' && isCustomerPortalRoute;
 
 const prepareCustomerIdentity = (preserveWebPwa = false) => {
   document.title = 'نقطة الشحن';
@@ -39,8 +23,7 @@ const prepareCustomerIdentity = (preserveWebPwa = false) => {
   description?.setAttribute('content', 'بوابة آمنة لعرض تفاصيل الطلب وإرسال إشعار الدفع.');
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#082622');
   // Native APK shells manage their own installation identity. The public web
-  // customer portal must keep its manifest and web-app metadata so browsers can
-  // install it as a real standalone PWA rather than only offering a home shortcut.
+  // customer portal keeps its manifest so it remains independently installable.
   if (!preserveWebPwa) {
     document.querySelector('link[rel="manifest"]')?.remove();
     document.querySelector('link[rel="apple-touch-icon"]')?.remove();
@@ -54,16 +37,12 @@ const prepareCustomerIdentity = (preserveWebPwa = false) => {
   document.documentElement.dir = 'rtl';
 };
 
-// Customer APK: its only application entry is the customer portal. Opening the
-// installed app starts at the public landing page, never the administrator login.
+// Customer APK: its only application entry is the customer portal.
 if (appVariant === 'customer') {
-  if (pathname === '/' || pathname === '/app' || pathname === '/login') {
+  if (pathname === '/app' || pathname === '/login') {
     window.history.replaceState({ path: '/public/about' }, '', '/public/about');
   }
   prepareCustomerIdentity();
-  // Native push setup is deliberately non-blocking: permission prompts, Firebase
-  // registration, or a transient native-plugin failure must never leave the app on
-  // a blank screen. Render the customer portal independently, then initialize push.
   void import('./PublicPortalApp')
     .then(({ default: PublicPortalApp }) => {
       root.render(<StrictMode><PublicPortalApp /></StrictMode>);
@@ -73,10 +52,8 @@ if (appVariant === 'customer') {
     .then(({ initializeNativePushNotificationListeners }) =>
       initializeNativePushNotificationListeners('customer', document.documentElement.lang))
     .catch((error) => console.warn('Customer push initialization failed; portal remains available.', error));
-} else if (appVariant !== 'admin' && isPublicPortalRoute) {
-  // Public customer routes are a first-class installable PWA entry. Keep the
-  // manifest metadata and capture the browser's native install prompt here too;
-  // this branch previously removed the manifest and skipped PWA prompt capture.
+} else if (isPublicPortalRoute) {
+  // Public customer routes are a first-class installable PWA on the shared origin.
   prepareCustomerIdentity(true);
   void import('./services/pwaInstallService').then(({ initializePWAInstallCapture }) => {
     initializePWAInstallCapture();
@@ -85,16 +62,12 @@ if (appVariant === 'customer') {
     root.render(<StrictMode><PublicPortalApp /></StrictMode>);
   }).catch((error) => console.error('Public customer portal failed to load.', error));
 } else {
-  // The admin APK intentionally does not route into the public customer portal.
-  if (appVariant === 'admin' && isPublicPortalRoute) {
-    window.history.replaceState({ path: '/app' }, '', '/app');
-  }
+  // The admin PWA starts at /app and shares the same origin without redirecting
+  // customer routes to a separate hostname.
   void import('./services/pwaInstallService').then(({ initializePWAInstallCapture }) => {
     initializePWAInstallCapture();
   });
   if (appVariant === 'admin') {
-    // Do not gate first paint on native push registration. A rejected permission
-    // request or FCM/native bridge failure must not suppress the entire admin UI.
     void import('./App.tsx')
       .then(async ({ default: App }) => {
         const { AppVersionGate } = await import('./components/customer/CustomerAppVersionGate');
