@@ -327,14 +327,38 @@ export const downloadQrCard = async ({
           }
         }
 
-        // Trigger download
+        // Trigger download using a real, attached anchor. Mobile Chrome and
+        // installed PWAs can silently ignore clicks on detached anchors, which
+        // made both customer and order QR buttons appear to do nothing.
         const codeSuffix = customerContent?.customerCode || orderContent?.orderNumber || 'qr';
         const finalFilename = filename || `qr-${codeSuffix}.png`;
-        const link = document.createElement('a');
-        link.download = finalFilename;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        resolve(true);
+
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('QR_IMAGE_EXPORT_FAILED'));
+            return;
+          }
+
+          const objectUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.download = finalFilename;
+          link.setAttribute('aria-hidden', 'true');
+          link.style.position = 'fixed';
+          link.style.left = '-10000px';
+          document.body.appendChild(link);
+
+          try {
+            link.click();
+            resolve(true);
+          } catch (downloadError) {
+            reject(downloadError);
+          } finally {
+            link.remove();
+            // Keep the Blob URL alive briefly so the browser can start the download.
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+          }
+        }, 'image/png');
       } catch (err) {
         reject(err);
       }
