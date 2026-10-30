@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { startCustomerNativePushNotifications } from '../../services/customer/nativeCustomerPush';
 import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from '../../services/auth/accountBiometric';
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun, Wallet } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CircleHelp, Eye, EyeOff, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Mail, Moon, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { AppLogo } from '../qr/AppLogo';
@@ -657,13 +657,13 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
             : t('أكمل الخطوة التالية لحماية حسابك ومتابعة طلباتك.', 'Complete the next step to protect your account and continue to your orders.');
 
   return (
-    <main dir={isAr ? 'rtl' : 'ltr'} className="cp-auth flex flex-col">
+    <main dir={isAr ? 'rtl' : 'ltr'} className={`cp-auth flex flex-col ${walletManagementFlow ? 'cp-auth--wallet' : ''}`}>
       <CustomerAuthClipDefs />
       <div aria-hidden="true" className="cp-auth__backdrop"><CustomerAuthScene uid="cp-bg" /></div>
       <span aria-hidden="true" className="cp-auth__blob cp-auth__blob--tl" />
       <span aria-hidden="true" className="cp-auth__blob cp-auth__blob--br" />
 
-      <header className="mx-auto flex w-full max-w-[1080px] items-center justify-between gap-4 px-4 py-4 sm:py-5">
+      <header className="cp-auth__header mx-auto flex w-full max-w-[1080px] items-center justify-between gap-4 px-4 py-4 sm:py-5">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/95 shadow-md dark:bg-[#0c2e3a]">
             <AppLogo size={30} variant="auto" />
@@ -695,11 +695,24 @@ export const CustomerAccountPage: React.FC<{ token: string }> = ({ token }) => {
 
           <div className="cp-auth__form">
             <div className="mx-auto w-full max-w-[400px]">
-              <h1 className="cp-auth__title">{walletManagementFlow && mode === 'login' ? t('إدارة المحافظ', 'Wallet Management') : title}</h1>
-              <p className="cp-auth__sub">{walletManagementFlow && mode === 'login' ? t('سجّل الدخول ببيانات حساب نقطة الشحن للوصول إلى الخدمة.', 'Sign in with your Charging Point account to access this service.') : subtitle}</p>
+              {walletManagementFlow && mode === 'login' ? <div className="cp-wallet-heading"><span className="cp-wallet-heading__mark"><Wallet className="h-6 w-6" /></span><h1 className="cp-auth__title">{t('إدارة المحافظ', 'Wallet Management')}</h1><p className="cp-auth__sub">{t('تسجيل الدخول', 'Sign in')}</p></div> : <><h1 className="cp-auth__title">{title}</h1><p className="cp-auth__sub">{subtitle}</p></>}
               {walletRegistrationNotice && walletManagementFlow && <div role="status" className="mb-4 mt-3 rounded-2xl border border-[#b9e0dd] bg-[#e9f7f6] px-4 py-3 text-sm text-[#146069] dark:border-[#2b5267] dark:bg-[#142b38] dark:text-[#a8dff5]">{t('تم إنشاء الحساب بنجاح، سجّل الدخول الآن.', 'Account created successfully. Sign in now.')}</div>}
               {walletManagementFlow && walletRegistrationComplete && <button type="button" onClick={() => { window.history.replaceState({}, '', '/c/portal?source=wallet-management'); setWalletRegistrationNotice(false); }} className="mb-3 w-full rounded-xl bg-[#1a8a94] px-4 py-3 font-bold text-white">{t('استمر', 'Continue')}</button>}
-              {walletManagementFlow && mode === 'login' && <div className="mt-4 mb-5 rounded-2xl border border-[#b9d9d8] bg-white/70 p-4 text-sm leading-6 text-[#5d7782] dark:border-[#2b5267] dark:bg-[#0b2935] dark:text-[#9bb8bf]">{t('الخدمة مخصصة لمشتركي نقطة الشحن وتستخدم نفس بيانات حساب العميل.', 'This service is for Charging Point subscribers and uses your existing customer account.')} <button type="button" onClick={() => setWalletSetupHelpOpen((open) => !open)} className="mt-2 block font-bold text-sky-600 underline dark:text-sky-300">{t('ليس لديك حساب؟', 'Don’t have an account?')}</button>{walletSetupHelpOpen && <div className="mt-3 border-t border-[#b9d9d8] pt-3 dark:border-[#2b5267]"><p>{t('أنشئ حسابك من رمز QR الخاص بالعميل أو أدخل رقم العميل للمتابعة عبر مسار إنشاء كلمة السر الحالي.', 'Start the existing account setup flow with your customer QR or enter your Customer ID.')}</p><label className="mt-3 block font-semibold" htmlFor="wallet-setup-customer-id">{t('رقم العميل', 'Customer ID')}</label><input id="wallet-setup-customer-id" value={walletSetupCustomerId} onChange={(event) => setWalletSetupCustomerId(event.target.value)} autoComplete="username" className="mt-1 w-full rounded-xl border border-[#b9d9d8] bg-white px-3 py-3 text-[#244b55] dark:border-[#2b5267] dark:bg-[#071d27] dark:text-white"/><button type="button" disabled={!walletSetupCustomerId.trim()} onClick={() => window.location.assign(`/c/${encodeURIComponent(walletSetupCustomerId.trim())}?source=wallet-management`)} className="mt-3 w-full rounded-xl bg-[#1a8a94] px-4 py-3 font-bold text-white disabled:opacity-40">{t('لم تنشئ حسابك بعد؟ متابعة إنشاء الحساب', 'Set up your account')}</button><button type="button" onClick={() => window.location.assign('/public/services')} className="mt-2 block font-semibold text-sky-600 underline dark:text-sky-300">{t('العودة للخدمات المساعدة', 'Back to assistance services')}</button></div>}</div>}
+              {walletManagementFlow && mode === 'login' && <div className="cp-wallet-help">
+                <button type="button" aria-expanded={walletSetupHelpOpen} aria-controls="cp-wallet-help-card" onClick={() => setWalletSetupHelpOpen((open) => !open)} className="cp-wallet-help__toggle">
+                  <CircleHelp className="h-4 w-4" />
+                  {t('ليس لديك حساب؟', 'Don’t have an account?')}
+                  <span aria-hidden="true" className={walletSetupHelpOpen ? 'cp-wallet-help__chevron is-open' : 'cp-wallet-help__chevron'}>⌄</span>
+                </button>
+                {walletSetupHelpOpen && <div id="cp-wallet-help-card" className="cp-wallet-help__card">
+                  <p>{t('خدمة إدارة المحافظ مخصصة لمشتركي نقطة الشحن. استخدم نفس رقم العميل وكلمة المرور الخاصة بحسابك الحالي.', 'Wallet Management is available to Charging Point subscribers. Use the same customer ID and password as your existing account.')}</p>
+                  <div className="cp-wallet-help__setup">
+                    <strong>{t('لم تنشئ حسابك بعد؟', 'Haven’t created your account yet?')}</strong>
+                    <p>{t('امسح رمز QR الخاص بحساب العميل لفتح صفحة إنشاء كلمة المرور بالطريقة المعتمدة.', 'Scan your customer account QR code to open the existing password setup process.')}</p>
+                  </div>
+                  <button type="button" onClick={() => window.location.assign('/public/services')} className="cp-wallet-help__back">{t('العودة إلى الخدمات المساعدة', 'Back to assistance services')}</button>
+                </div>}
+              </div>}
 
               <div className="mt-6">
                 {error && <div role="alert" className="mb-4 flex items-start gap-2.5 rounded-2xl border border-[#efc7c0] bg-[#fff1ee] px-4 py-3 text-sm leading-6 text-[#963f35] dark:border-[#71313c] dark:bg-[#301b22] dark:text-[#fecaca]"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" />{error}</div>}
