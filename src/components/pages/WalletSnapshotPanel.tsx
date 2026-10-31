@@ -157,7 +157,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         event.preventDefault(); if (saving) return; setSaving(true); setError('');
         try {
           const result = await callWalletService('wallet-create-account', { provider, walletNumber, displayName, currency });
-          if (result.error) { if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired(); setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. ارجع لخدمات المساعدة وأكّد هويتك من جديد.', 'Identity verification expired. Return to Assistance Services and verify again.') : result.error === 'WALLET_ACCOUNT_EXISTS' ? t('المحفظة مسجلة من قبل.', 'Wallet already registered.') : t('تعذّرت إضافة المحفظة.', 'Could not add wallet.')); return; }
+          if (result.error) { if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired(); setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور في هذه الصفحة للمتابعة.', 'Identity verification expired. Enter your username and password on this page to continue.') : result.error === 'WALLET_ACCOUNT_EXISTS' ? t('المحفظة مسجلة من قبل.', 'Wallet already registered.') : t('تعذّرت إضافة المحفظة.', 'Could not add wallet.')); return; }
           setWalletNumber(''); setDisplayName(''); await refresh();
         } finally { setSaving(false); }
       }}>
@@ -222,7 +222,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
               setTransactionConflict(true);
               setConflictReviewed(false);
             }
-            setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. ارجع لخدمات المساعدة وأكّد هويتك من جديد.', 'Identity verification expired. Return to Assistance Services and verify again.')
+            setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور في هذه الصفحة للمتابعة.', 'Identity verification expired. Enter your username and password on this page to continue.')
               : result.error === 'INSUFFICIENT_WALLET_BALANCE' ? t('الرصيد غير كافٍ.', 'Insufficient balance.')
               : result.error === 'IDEMPOTENCY_KEY_REUSED' ? t('تعارض في مفتاح الحركة؛ لم يتم تأكيد التسجيل.', 'Transaction key conflict; recording was not confirmed.')
               : result.error === 'WALLET_UNAVAILABLE' ? t('المحفظة غير متاحة أو العملة غير متطابقة.', 'Wallet unavailable or currency mismatch.')
