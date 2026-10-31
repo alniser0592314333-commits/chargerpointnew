@@ -209,42 +209,45 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
           <button disabled={busy || !termsAccepted} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
         </form>}
-        {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative isolate mt-5 overflow-hidden rounded-[2rem] border border-black/5 bg-[#e9e9e9] p-3 shadow-[0_30px_90px_-38px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-[#202020] sm:p-6">
-          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[285px] overflow-hidden rounded-t-[1.7rem] bg-[#080808]">
-            <div className="absolute -bottom-24 -left-8 h-52 w-[115%] rotate-[-7deg] rounded-[48%] bg-[#171717]" />
-            <div className="absolute -bottom-32 -left-10 h-52 w-[115%] rotate-[5deg] rounded-[48%] bg-[#303030]" />
-            <svg className="absolute -bottom-1 left-0 h-32 w-full" viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true"><path d="M0 52 C85 -5 112 0 180 76 S310 158 395 82 S520 8 600 48 L600 150 L0 150 Z" fill="#e9e9e9" /></svg>
+        {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative mx-auto mt-5 w-full max-w-xl overflow-hidden rounded-[1.75rem] bg-[#f3f3f3] text-[#111] shadow-[0_24px_70px_-30px_rgba(0,0,0,0.45)]">
+          <div aria-hidden="true" className="relative h-36 overflow-hidden bg-[#080808] sm:h-44">
+            <div className="absolute -bottom-16 -left-8 h-32 w-[115%] rotate-[-7deg] rounded-[48%] bg-[#202020]" />
+            <div className="absolute -bottom-24 -left-8 h-32 w-[115%] rotate-[5deg] rounded-[48%] bg-[#343434]" />
+            <svg className="absolute -bottom-px left-0 h-16 w-full" viewBox="0 0 600 100" preserveAspectRatio="none"><path d="M0 42 C85 -5 112 0 180 54 S310 110 395 58 S520 8 600 38 L600 100 L0 100 Z" fill="#f3f3f3" /></svg>
+            <div className="absolute left-5 top-5 grid h-12 w-12 place-items-center rounded-2xl bg-white text-black shadow-lg sm:left-7 sm:top-6 sm:h-14 sm:w-14"><Wallet size={27} strokeWidth={1.8} /></div>
           </div>
-          <div className="relative z-10 mx-auto mt-36 max-w-lg rounded-[1.6rem] border border-black/5 bg-[#f8f8f8] p-5 shadow-[0_24px_50px_-25px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-[#f2f2f2] sm:mt-40 sm:p-7">
-            <div className="mb-6 flex items-start justify-between gap-4">
-              <div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-bold text-black shadow-sm"><ShieldCheck size={14} />{t('دخول محمي وآمن', 'Protected secure access')}</span>
-                <h2 className="mt-4 text-3xl font-black tracking-tight text-[#111] sm:text-4xl">{t('محافظك، بمكان واحد', 'Your wallets, in one place')}</h2>
-                <p className="mt-2 max-w-sm text-sm leading-7 text-[#555]">{t('سجّل دخولك لمتابعة أرصدتك وحركاتك المالية ضمن تجربة خاصة وآمنة.', 'Sign in to view your balances and financial activity in a private, secure space.')}</p>
-              </div>
-              <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-[#090909] text-white shadow-lg shadow-black/20 sm:h-20 sm:w-20 sm:rounded-3xl"><Wallet size={34} strokeWidth={1.7} /></div>
+          <div className="px-5 pb-6 pt-2 sm:px-9 sm:pb-9">
+            <div className="mb-6">
+              <div className="inline-flex items-center gap-2 text-xs font-bold text-[#555]"><ShieldCheck size={15} />{t('دخول محمي وآمن', 'Protected secure access')}</div>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-[#111] sm:text-4xl">{t('أهلًا بعودتك', 'Welcome back')}</h2>
+              <p className="mt-2 text-sm leading-6 text-[#555]">{t('سجّل الدخول إلى حساب العميل للوصول إلى محفظتك.', 'Sign in with your customer account to access your wallet.')}</p>
             </div>
-            {gate === 'step-up-required' && <div role="status" className="mb-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-6 text-teal-900 dark:border-teal-200/15 dark:bg-teal-200/5 dark:text-teal-100">{t('انتهت صلاحية تأكيد الهوية. أدخل رقم العميل وكلمة المرور للمتابعة إلى المحفظة.', 'Your identity verification expired. Enter your customer ID and password to continue to the wallet.')}</div>}
-            <form onSubmit={signIn} className="grid gap-4 rounded-3xl border border-black/5 bg-white p-4 shadow-[0_12px_32px_-25px_rgba(0,0,0,0.4)] sm:p-6">
-              <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4 dark:border-white/10"><div className="grid h-10 w-10 place-items-center rounded-xl bg-[#ededed] text-black"><LockKeyhole size={19} /></div><div><p className="font-extrabold">{t('تسجيل الدخول', 'Sign in')}</p><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t('استخدم بيانات حساب العميل', 'Use your customer account details')}</p></div></div>
-              <label className="grid gap-2 text-sm font-bold">{t('رقم العميل (ID)', 'Customer ID')}<input autoComplete="username" required maxLength={64} value={username} onChange={e => setUsername(e.target.value)} placeholder={t('أدخل رقم العميل', 'Enter your customer ID')} className="rounded-2xl border border-[#dedede] bg-[#f2f2f2] px-4 py-3.5 text-[#111] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.06)] outline-none transition focus:border-black focus:ring-4 focus:ring-black/10" /></label>
-              <label className="grid gap-2 text-sm font-bold">{t('كلمة المرور', 'Password')}<input type="password" autoComplete="current-password" required maxLength={128} value={password} onChange={e => setPassword(e.target.value)} placeholder={t('أدخل كلمة المرور', 'Enter your password')} className="rounded-2xl border border-[#dedede] bg-[#f2f2f2] px-4 py-3.5 text-[#111] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.06)] outline-none transition focus:border-black focus:ring-4 focus:ring-black/10" /></label>
-              {error && <p role="alert" className="rounded-2xl bg-rose-50 p-3 text-sm leading-6 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
-              <button disabled={busy} className="group mt-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#090909] px-5 py-4 text-sm font-extrabold text-white shadow-lg shadow-black/20 transition duration-200 hover:-translate-y-0.5 hover:bg-[#292929] hover:shadow-xl disabled:translate-y-0 disabled:opacity-60">{busy ? <><RefreshCw size={17} className="animate-spin" />{t('جارٍ التحقق…', 'Checking…')}</> : <>{t('الدخول إلى المحفظة', 'Enter wallet')}<ArrowUpRight size={17} className="transition-transform group-hover:-translate-y-0.5" /></>}</button>
-              <p className="text-center text-xs leading-6 text-[#666]">{t('بياناتك المالية لا تظهر إلا بعد التحقق من الحساب والصلاحية.', 'Your financial information stays hidden until your account and access are verified.')}</p>
+            {gate === 'step-up-required' && <div role="status" className="mb-4 rounded-xl border border-[#d2d2d2] bg-white px-4 py-3 text-sm leading-6 text-[#333]">{t('انتهت صلاحية تأكيد الهوية. أدخل رقم العميل وكلمة المرور للمتابعة.', 'Your identity verification expired. Enter your customer ID and password to continue.')}</div>}
+            <form onSubmit={signIn} className="grid gap-4">
+              <label className="grid gap-2 text-sm font-bold text-[#222]">{t('رقم العميل (ID)', 'Customer ID')}
+                <input autoComplete="username" required maxLength={64} value={username} onChange={e => setUsername(e.target.value)} placeholder={t('أدخل رقم العميل', 'Enter your customer ID')} className="w-full rounded-xl border border-[#d8d8d8] bg-white px-4 py-3.5 text-base text-[#111] placeholder:text-[#858585] shadow-[0_3px_12px_rgba(0,0,0,0.05)] outline-none transition focus:border-[#222] focus:ring-4 focus:ring-black/10" />
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-[#222]">{t('كلمة المرور', 'Password')}
+                <input type="password" autoComplete="current-password" required maxLength={128} value={password} onChange={e => setPassword(e.target.value)} placeholder={t('أدخل كلمة المرور', 'Enter your password')} className="w-full rounded-xl border border-[#d8d8d8] bg-white px-4 py-3.5 text-base text-[#111] placeholder:text-[#858585] shadow-[0_3px_12px_rgba(0,0,0,0.05)] outline-none transition focus:border-[#222] focus:ring-4 focus:ring-black/10" />
+              </label>
+              {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm leading-6 text-rose-700">{error}</p>}
+              <button disabled={busy} className="mt-1 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#080808] px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#292929] disabled:opacity-60">{busy ? <><RefreshCw size={17} className="animate-spin" />{t('جارٍ التحقق…', 'Checking…')}</> : <>{t('تسجيل الدخول', 'Sign in')}<ArrowUpRight size={17} /></>}</button>
             </form>
-            <button type="button" onClick={() => setAccountHelpOpen(true)} className="mx-auto mt-5 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 hover:text-blue-900 focus:outline-none focus:ring-4 focus:ring-blue-500/15">{t('ليس لديك حساب؟', 'Don’t have an account?')}<CircleHelp size={19} /></button>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-1 text-sm">
+              <span className="text-[#555]">{t('ليس لديك حساب؟', 'Don’t have an account?')}</span>
+              <button type="button" onClick={() => setAccountHelpOpen(true)} className="inline-flex items-center gap-1 rounded-md px-1 py-1 font-bold text-blue-700 underline decoration-blue-300 underline-offset-4 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30">{t('كيف أنشئ حسابًا؟', 'How do I create one?')}<CircleHelp size={16} /></button>
+            </div>
+            <p className="mt-4 text-center text-xs leading-5 text-[#666]">{t('تظهر بياناتك المالية بعد التحقق من الحساب والصلاحية.', 'Your financial data appears after your account and access are verified.')}</p>
           </div>
         </div>}
-        {accountHelpOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md" role="presentation" onClick={() => setAccountHelpOpen(false)}>
-          <section role="dialog" aria-modal="true" aria-labelledby="wallet-account-help-title" dir={isAr ? 'rtl' : 'ltr'} onClick={event => event.stopPropagation()} className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-[#10242a] sm:p-8">
-            <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-teal-500" />
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-700 dark:bg-blue-300/10 dark:text-sky-300"><CircleHelp size={28} /></div>
+        {accountHelpOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="presentation" onClick={() => setAccountHelpOpen(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="wallet-account-help-title" dir={isAr ? 'rtl' : 'ltr'} onClick={event => event.stopPropagation()} className="relative w-full max-w-md rounded-2xl bg-white p-6 text-[#111] shadow-2xl sm:p-8">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-[#f0f0f0] text-[#111]"><CircleHelp size={25} /></div>
             <h3 id="wallet-account-help-title" className="mt-4 text-center text-xl font-black">{t('كيف أفتح حساب عميل؟', 'How do I create a customer account?')}</h3>
-            <p className="mt-3 text-center text-sm leading-7 text-slate-600 dark:text-slate-300">{t('إنشاء الحساب يتم من صفحة تسجيل دخول العميل، وليس من صفحة المحفظة. افتحها وأدخل رقم العميل (ID)، ثم أنشئ كلمة مرور وأكّدها. بعد إكمال التسجيل ارجع إلى المحفظة وسجّل دخولك بنفس البيانات.', 'Create your account from the customer sign-in page, not from the wallet page. Enter your customer ID, create a password and confirm it. Then return here and sign in with those details.')}</p>
+            <p className="mt-3 text-center text-sm leading-7 text-[#555]">{t('إنشاء الحساب يتم من صفحة تسجيل دخول العميل، وليس من صفحة المحفظة. افتحها وأدخل رقم العميل (ID)، ثم أنشئ كلمة مرور وأكّدها. بعد إكمال التسجيل ارجع إلى المحفظة وسجّل دخولك بنفس البيانات.', 'Create your account from the customer sign-in page, not from the wallet page. Enter your customer ID, create a password and confirm it. Then return here and sign in with those details.')}</p>
             <div className="mt-6 grid gap-3">
-              <button type="button" onClick={() => { window.location.assign('/c/portal?source=wallet-management'); }} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-700 px-4 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-blue-900/15 transition hover:bg-blue-800">{t('توجّه إلى تسجيل دخول العميل', 'Go to customer sign-in')}<ArrowUpRight size={17} /></button>
-              <button type="button" onClick={() => { setAccountHelpOpen(false); window.location.assign('/public/about'); }} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">{t('تم، إلى الصفحة الرئيسية', 'Done, go to home')}</button>
+              <button type="button" onClick={() => { window.location.assign('/c/portal?source=wallet-management'); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800">{t('توجّه إلى تسجيل دخول العميل', 'Go to customer sign-in')}<ArrowUpRight size={17} /></button>
+              <button type="button" onClick={() => { setAccountHelpOpen(false); window.location.assign('/public/about'); }} className="min-h-11 w-full rounded-xl border border-[#d8d8d8] px-4 py-3 text-sm font-bold text-[#222] hover:bg-[#f5f5f5]">{t('تم، إلى الصفحة الرئيسية', 'Done, go to home')}</button>
             </div>
           </section>
         </div>}
