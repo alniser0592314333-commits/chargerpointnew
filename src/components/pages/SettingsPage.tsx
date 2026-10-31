@@ -64,7 +64,7 @@ export interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, setTheme } = useTheme();
-  const [activeSettingsSection, setActiveSettingsSection] = useState<"general" | "orders" | "backup" | "sync" | "account" | "about" | null>(null);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | null>(null);
 
   const [session, setSession] = useState<UserSession | null>(null);
   useEffect(() => {
@@ -456,6 +456,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
       <div className="pt-2 pb-4 border-b border-gray-200/80 dark:border-[#123832] text-start">
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-[#daf1de]">
           {!activeSettingsSection ? t("settingsTitle") : ({
+            personal: locale === "ar" ? "التفضيلات الشخصية" : "Personal Preferences",
             general: locale === "ar" ? "التفضيلات العامة" : "General Preferences",
             orders: locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices",
             backup: locale === "ar" ? "النسخ الاحتياطية وإدارة البيانات" : "Backups & Data Management",
@@ -474,6 +475,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
         {!activeSettingsSection && (
           <div className="space-y-5">
             <div className="divide-y divide-gray-200/80 dark:divide-[#123832]">
+              <button type="button" onClick={() => setActiveSettingsSection("personal")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Languages className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "التفضيلات الشخصية" : "Personal Preferences"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "اللغة والوضع الفاتح أو الداكن" : "Language and light or dark appearance"}</span></span>
+                <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+              </button>
               <button type="button" onClick={() => setActiveSettingsSection("general")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
                 <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Settings2 className="w-5 h-5" /></span>
                 <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "التفضيلات العامة" : "General Preferences"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "المظهر واللغة وهوية وشعار وإشعارات التطبيق" : "Appearance, language, app identity, branding and notifications"}</span></span>
