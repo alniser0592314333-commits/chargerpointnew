@@ -137,3 +137,40 @@ html.dark .public-services-coming {
     scroll-behavior: auto !important;
   }
 }
+
+
+/* Compact service shortcut: the whole row is the navigation target. */
+.public-wallet-shortcut {
+  border: 1px solid rgba(70, 142, 132, 0.2);
+  background: rgba(255, 255, 255, 0.78);
+  color: #203b3a;
+  box-shadow: 0 8px 24px rgba(26, 84, 78, 0.045);
+  cursor: pointer;
+  text-align: start;
+}
+.public-wallet-shortcut:hover {
+  border-color: rgba(48, 142, 130, 0.42);
+  background: rgba(255, 255, 255, 0.96);
+  transform: translateY(-1px);
+}
+.public-wallet-shortcut:focus-visible {
+  outline: 3px solid rgba(35, 135, 125, 0.35);
+  outline-offset: 3px;
+}
+.public-wallet-shortcut-icon {
+  color: #f3fffc;
+  background: linear-gradient(145deg, #278f82 0%, #176e70 55%, #245f7b 100%);
+  box-shadow: 0 7px 16px rgba(24, 117, 107, 0.16);
+}
+.public-wallet-shortcut-arrow { color: #438a82; transition: transform 180ms ease; }
+.public-wallet-shortcut:hover .public-wallet-shortcut-arrow { transform: translateX(-2px); }
+html.dark .public-wallet-shortcut {
+  color: #e4f2ef;
+  border-color: rgba(129, 199, 188, 0.18);
+  background: rgba(17, 46, 47, 0.72);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+html.dark .public-wallet-shortcut:hover {
+  border-color: rgba(129, 199, 188, 0.36);
+  background: rgba(17, 46, 47, 0.95);
+}
