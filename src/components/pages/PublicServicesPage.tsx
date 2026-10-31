@@ -4,7 +4,9 @@ import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import './public-services.css';
 
-type Props = { onBack?: () => void; onOpenWallet?: () => void };\nconst DEVELOPMENT_ACCESS_CODE = 'CPN-DEV-7264';\nconst DEVELOPMENT_ACCESS_KEY = 'cpn-services-dev-access';
+type Props = { onBack?: () => void; onOpenWallet?: () => void };
+const DEVELOPMENT_ACCESS_CODE = 'CPN-DEV-7264';
+const DEVELOPMENT_ACCESS_KEY = 'cpn-services-dev-access';
 
 /**
  * Public catalogue of customer-facing assistance services.
