@@ -528,10 +528,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
 
         {activeSettingsSection && <div className="space-y-6">
         {/* GROUP 1: General Preferences (التفضيلات العامة) */}
-        {activeSettingsSection === "general" && (
+        {activeSettingsSection === "personal" && (
         <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832] space-y-3">
           <div className="px-0.5 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-[#8eb698]">
-            {locale === "ar" ? "التفضيلات العامة" : "General Preferences"}
+            {locale === "ar" ? "التفضيلات الشخصية" : "Personal Preferences"}
           </div>
           <div className="divide-y divide-gray-100 dark:divide-[#0f302b]">
             {/* Row 1: Appearance / Theme */}
