@@ -248,7 +248,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             <h3 id="wallet-account-help-title" className="mt-4 text-center text-xl font-black">{t('كيف أفتح حساب عميل؟', 'How do I create a customer account?')}</h3>
             <p className="mt-3 text-center text-sm leading-7 text-[#555]">{t('إنشاء الحساب يتم من صفحة تسجيل دخول العميل، وليس من صفحة المحفظة. افتحها وأدخل رقم العميل (ID)، ثم أنشئ كلمة مرور وأكّدها. بعد إكمال التسجيل ارجع إلى المحفظة وسجّل دخولك بنفس البيانات.', 'Create your account from the customer sign-in page, not from the wallet page. Enter your customer ID, create a password and confirm it. Then return here and sign in with those details.')}</p>
             <div className="mt-6 grid gap-3">
-              <button type="button" onClick={() => { window.location.assign('/c/portal'); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800">{t('تسجيل دخول العميل', 'Customer sign-in')}<ArrowUpRight size={17} /></button>
+              <button type="button" onClick={() => { window.location.assign('/c/portal?source=wallet-management'); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800">{t('تسجيل دخول العميل', 'Customer sign-in')}<ArrowUpRight size={17} /></button>
               <button type="button" onClick={() => setAccountHelpOpen(false)} className="min-h-11 w-full rounded-xl border border-[#d8d8d8] px-4 py-3 text-sm font-bold text-[#222] hover:bg-[#f5f5f5]">{t('تم', 'Done')}</button>
             </div>
           </section>
