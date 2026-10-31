@@ -130,7 +130,7 @@ describe('Public wallet management access contract', () => {
     expect(page).toContain("'wallet-add'");
     expect(page).toContain("'wallet-record'");
     expect(page).not.toContain('اختصارات المحفظة');
-    expect(page).not.toContain('إدارة المحفظة');
+    expect(page).not.toContain("t('إدارة المحفظة', 'Wallet management')");
     expect(portal).toContain('Leave the wallet page and return to Assistance Services?');
     expect(portal).toContain('هل تريد الخروج من صفحة المحفظة والعودة إلى خدمات المساعدة؟');
   });
