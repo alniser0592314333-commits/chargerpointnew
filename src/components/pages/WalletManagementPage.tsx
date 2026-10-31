@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, History, Search, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X } from 'lucide-react';
 import { callCustomerAccount, customerAuth, CUSTOMER_TERMS_VERSION, setCustomerSession } from '../../services/customer/customerAuth';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
@@ -22,6 +22,8 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   const [error, setError] = useState('');
   const [customerLabel, setCustomerLabel] = useState('');
   const [activationRequest, setActivationRequest] = useState<ActivationRequest>(null);
+  const [activeSection, setActiveSection] = useState<'wallet-accounts' | 'wallet-transactions' | 'wallet-add' | 'wallet-record'>('wallet-accounts');
+  const [menuOpen, setMenuOpen] = useState(false);
   const t = (ar: string, en: string) => isAr ? ar : en;
   const handleStepUpRequired = useCallback(() => setGate('step-up-required'), []);
 
@@ -156,24 +158,41 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   return <div className="min-h-screen bg-[#f3f6f5] text-slate-900 dark:bg-[#071817] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#071a1d]/90">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:hover:bg-white/5">
-          {isAr ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}{t('رجوع', 'Back')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:hover:bg-white/5">
+            {isAr ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}{t('رجوع', 'Back')}
+          </button>
+          {gate === 'ready' && <button type="button" aria-expanded={menuOpen} aria-controls="wallet-side-menu" onClick={() => setMenuOpen(value => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5">
+            {menuOpen ? <X size={18} /> : <Menu size={18} />}{t('القائمة', 'Menu')}
+          </button>}
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5">{isAr ? 'EN' : 'عربي'}</button>
           <button onClick={toggleTheme} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5">{resolvedTheme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
       </div>
     </header>
+    {menuOpen && gate === 'ready' && <div className="fixed inset-0 z-40">
+      <button type="button" aria-label={t('إغلاق القائمة', 'Close menu')} onClick={() => setMenuOpen(false)} className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
+      <aside id="wallet-side-menu" dir={isAr ? 'rtl' : 'ltr'} className={`absolute inset-y-0 ${isAr ? 'right-0 border-l' : 'left-0 border-r'} flex w-[min(84vw,320px)] flex-col border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#0b2420]`}>
+        <div className="flex items-center justify-between border-b border-slate-200 pb-4 dark:border-white/10">
+          <div><p className="text-base font-extrabold">{t('المحفظة', 'Wallet')}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{customerLabel || t('حساب العميل', 'Customer account')}</p></div>
+          <button type="button" onClick={() => setMenuOpen(false)} aria-label={t('إغلاق القائمة', 'Close menu')} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-slate-100 dark:hover:bg-white/5"><X size={18} /></button>
+        </div>
+        <nav className="mt-4 grid gap-2" aria-label={t('أقسام المحفظة', 'Wallet sections')}>
+          {([
+            { id: 'wallet-accounts', icon: Wallet, label: t('محافظي وأرصدتي', 'My wallets & balances') },
+            { id: 'wallet-transactions', icon: RefreshCw, label: t('سجل الحركات', 'Transaction history') },
+            { id: 'wallet-add', icon: ShieldCheck, label: t('إضافة محفظة', 'Add a wallet') },
+            { id: 'wallet-record', icon: LockKeyhole, label: t('تسجيل حركة', 'Record a transaction') },
+          ] as const).map(item => <button key={item.id} type="button" onClick={() => { setActiveSection(item.id); setMenuOpen(false); }} aria-current={activeSection === item.id ? 'page' : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold transition ${activeSection === item.id ? 'bg-teal-700 text-white shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}>
+            <item.icon size={18} /><span>{item.label}</span>
+          </button>)}
+        </nav>
+      </aside>
+    </div>}
     <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
       <section className="rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-5">
-        <div className="flex items-center gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-800 dark:bg-emerald-300/10 dark:text-emerald-200"><Wallet size={22} /></span>
-          <div>
-            <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">{t('إدارة المحفظة', 'Wallet management')}</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('محافظك وأرصدتك وحركاتك المالية.', 'Your wallets, balances, and transactions.')}</p>
-          </div>
-        </div>
         <div className="px-0 pb-1 pt-5 sm:px-1">
         {(gate === 'checking' || gate === 'checking-access') && <div className="mt-8 flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5"><RefreshCw className="animate-spin" size={18} />{t('بنتحقق من الجلسة وصلاحية الخدمة…', 'Checking your session and service access…')}</div>}
         {gate === 'force-change' && <form onSubmit={finishRequiredPasswordChange} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
@@ -218,26 +237,9 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
           <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('إذا سبق فتح المحفظة على هذا الجهاز، ستظهر أدناه النسخة المحلية للقراءة فقط عند توفرها.', 'If the wallet was previously opened on this device, its locally saved snapshot will appear below in read-only mode when available.')}</p>
           <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} offlineReadOnly />
         </div>}
-        {gate === 'ready' && <div className="px-5 pb-7 sm:px-9 sm:pb-9">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-5 dark:border-white/10"><div><p className="text-lg font-extrabold">{t('أهلًا', 'Welcome')}{customerLabel ? '، ' + customerLabel : ''}</p><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('تم التحقق من حسابك. اختار القسم اللي بدك تفتحه.', 'Your account is verified. Choose a section to open.')}</p></div><span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 dark:bg-emerald-300/10 dark:text-emerald-200"><ShieldCheck size={15} />{t('وصول مصرّح', 'Authorized')}</span></div>
-          <div className="mt-5">
-            <h2 className="text-sm font-extrabold">{t('اختصارات المحفظة', 'Wallet shortcuts')}</h2>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                { icon: Wallet, title: t('محافظي وأرصدتي', 'My wallets & balances'), detail: t('عرض المحافظ المسجلة', 'View registered wallets'), target: 'wallet-accounts' },
-                { icon: History, title: t('سجل الحركات', 'Transaction history'), detail: t('مراجعة الوارد والصادر', 'Review incoming and outgoing'), target: 'wallet-transactions' },
-                { icon: Plus, title: t('إضافة محفظة', 'Add a wallet'), detail: t('ربط محفظة بحسابك', 'Link a wallet to your account'), target: 'wallet-add' },
-                { icon: Search, title: t('تسجيل حركة', 'Record a transaction'), detail: t('إدخال حركة مالية جديدة', 'Enter a new financial transaction'), target: 'wallet-record' },
-              ].map(item => <button type="button" key={item.target} onClick={() => document.getElementById(item.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="group flex min-h-[112px] items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-start transition duration-200 hover:-translate-y-0.5 hover:border-emerald-700/50 hover:bg-emerald-50/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 dark:border-white/10 dark:bg-white/[0.025] dark:hover:bg-emerald-300/5">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-800 transition group-hover:bg-emerald-700 group-hover:text-white dark:bg-emerald-300/10 dark:text-emerald-200"><item.icon size={19} /></span>
-                <span><strong className="block text-sm">{item.title}</strong><span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{item.detail}</span></span>
-                <span className="ms-auto self-center text-slate-400 transition group-hover:text-emerald-700">{isAr ? <ArrowLeft size={16} /> : <ArrowRight size={16} />}</span>
-              </button>)}
-            </div>
-          </div>
-          <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} />
+        {gate === 'ready' && <div className="px-4 pb-7 sm:px-7 sm:pb-9">
+          <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} activeSection={activeSection} />
         </div>}
-        </div>
       </section>
     </main>
     <footer className="mx-auto max-w-6xl px-4 pb-8 text-center text-xs text-slate-500">{t('بياناتك لا تُعرض إلا بعد التحقق من الجلسة وصلاحية الخدمة.', 'Your data is shown only after session and service authorization checks.')}</footer>
