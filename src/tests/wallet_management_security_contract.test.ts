@@ -158,4 +158,36 @@ describe('Public wallet management access contract', () => {
     expect(page).not.toContain('مرجع موحّد');
   });
 
+  it('uses provider-and-currency wallet accounts with optional opening balance and no manual refresh control', () => {
+    expect(walletPanel).toContain("value=\"PalPay\"");
+    expect(walletPanel).toContain("value=\"Jawwal Pay\"");
+    expect(walletPanel).toContain("value=\"Bank of Palestine\"");
+    expect(walletPanel).toContain("رصيد البداية الحالي");
+    expect(walletPanel).toContain("رصيد افتتاحي عند إضافة الحساب");
+    expect(walletPanel).toContain("destinationWalletId: result.data.account.id");
+    expect(walletPanel).not.toContain("t('رقم المحفظة', 'Wallet number')");
+    expect(walletPanel).not.toContain("t('اسم المحفظة', 'Wallet name')");
+    expect(walletPanel).not.toContain("t('تحديث', 'Refresh')");
+    expect(walletPanel).toContain("internal-");
+  });
+
+  it('places language and theme controls under personal preferences and removes wallet header back control', () => {
+    const settings = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/SettingsPage.tsx'), 'utf8');
+    expect(settings).toContain('activeSettingsSection === "personal"');
+    expect(settings).toContain('Personal Preferences');
+    expect(page).toContain("t('التفضيلات الشخصية', 'Personal Preferences')");
+    expect(page).not.toContain("t('رجوع', 'Back')");
+    expect(page).not.toContain('onClick={onBack}');
+    expect(page).not.toContain("t('تحديث', 'Refresh')");
+  });
+
+  it('gates the public assistance page and direct wallet route behind the development entry screen', () => {
+    const services = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/PublicServicesPage.tsx'), 'utf8');
+    expect(services).toContain("DEVELOPMENT_ACCESS_CODE = 'CPN-DEV-7264'");
+    expect(services).toContain('خدمات مساعدة — قيد التطوير');
+    expect(services).toContain("window.sessionStorage.setItem(DEVELOPMENT_ACCESS_KEY, '1')");
+    expect(portal).toContain("window.sessionStorage.getItem('cpn-services-dev-access') === '1'");
+    expect(services).toContain("t('التفضيلات الشخصية', 'Personal Preferences')");
+  });
+
 });
