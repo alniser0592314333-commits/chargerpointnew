@@ -9,7 +9,7 @@ import { WalletSnapshotPanel } from './WalletSnapshotPanel';
 type Gate = 'checking' | 'signed-out' | 'checking-access' | 'activation-required' | 'denied' | 'step-up-required' | 'force-change' | 'terms-update' | 'ready' | 'offline';
 type ActivationRequest = { id?: string; status?: string; requested_at?: string; decided_at?: string; rejection_reason?: string | null } | null;
 
-export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+export const WalletManagementPage: React.FC<{ onBack: () => void }> = () => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
