@@ -16,6 +16,12 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
+  const [code, setCode] = React.useState('');
+  const [codeError, setCodeError] = React.useState('');
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [unlocked, setUnlocked] = React.useState(() => {
+    try { return window.sessionStorage.getItem(DEVELOPMENT_ACCESS_KEY) === '1'; } catch { return false; }
+  });
   const t = (ar: string, en: string) => isAr ? ar : en;
 
   if (!unlocked) {
