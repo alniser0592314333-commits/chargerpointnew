@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X, History, Plus, ReceiptText } from 'lucide-react';
+import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X, History, Plus, ReceiptText, BookOpen } from 'lucide-react';
 import { callCustomerAccount, customerAuth, CUSTOMER_TERMS_VERSION, setCustomerSession } from '../../services/customer/customerAuth';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import { WalletSnapshotPanel } from './WalletSnapshotPanel';
+import { DebtLedgerPage } from './DebtLedgerPage';
 
 type Gate = 'checking' | 'signed-out' | 'checking-access' | 'activation-required' | 'denied' | 'step-up-required' | 'force-change' | 'terms-update' | 'ready' | 'offline';
 type ActivationRequest = { id?: string; status?: string; requested_at?: string; decided_at?: string; rejection_reason?: string | null } | null;
@@ -22,7 +23,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   const [error, setError] = useState('');
   const [customerLabel, setCustomerLabel] = useState('');
   const [activationRequest, setActivationRequest] = useState<ActivationRequest>(null);
-  const [activeSection, setActiveSection] = useState<'wallet-accounts' | 'wallet-transactions' | 'wallet-add' | 'wallet-record'>('wallet-accounts');
+  const [activeSection, setActiveSection] = useState<'wallet-accounts' | 'wallet-transactions' | 'wallet-add' | 'wallet-record' | 'debt-ledger'>('wallet-accounts');
   const [menuOpen, setMenuOpen] = useState(false);
   const t = (ar: string, en: string) => isAr ? ar : en;
   const handleStepUpRequired = useCallback(() => setGate('step-up-required'), []);
@@ -174,7 +175,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
     </header>
     {menuOpen && gate === 'ready' && <div className="fixed inset-0 z-40">
       <button type="button" aria-label={t('إغلاق القائمة', 'Close menu')} onClick={() => setMenuOpen(false)} className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
-      <aside id="wallet-side-menu" dir={isAr ? 'rtl' : 'ltr'} className={`absolute inset-y-0 ${isAr ? 'right-0 border-l' : 'left-0 border-r'} flex w-[min(84vw,320px)] flex-col border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#0b2420]`}>
+      <aside id="wallet-side-menu" dir={isAr ? 'rtl' : 'ltr'} className={`absolute inset-y-0 ${isAr ? 'right-0 border-l' : 'left-0 border-r'} flex w-[min(84vw,320px)] flex-col border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#171717]`}>
         <div className="flex items-center justify-between border-b border-slate-200 pb-4 dark:border-white/10">
           <div><p className="text-base font-extrabold">{t('المحفظة', 'Wallet')}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{customerLabel || t('حساب العميل', 'Customer account')}</p></div>
           <button type="button" onClick={() => setMenuOpen(false)} aria-label={t('إغلاق القائمة', 'Close menu')} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-slate-100 dark:hover:bg-white/5"><X size={18} /></button>
@@ -185,7 +186,8 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             { id: 'wallet-transactions', icon: History, label: t('سجل الحركات', 'Transaction history') },
             { id: 'wallet-add', icon: Plus, label: t('إضافة محفظة', 'Add a wallet') },
             { id: 'wallet-record', icon: ReceiptText, label: t('تسجيل حركة', 'Record a transaction') },
-          ] as const).map(item => <button key={item.id} type="button" onClick={() => { setActiveSection(item.id); setMenuOpen(false); }} aria-current={activeSection === item.id ? 'page' : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold transition ${activeSection === item.id ? 'bg-teal-700 text-white shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}>
+            { id: 'debt-ledger', icon: BookOpen, label: t('دفتر الديون', 'Debt ledger') },
+          ] as const).map(item => <button key={item.id} type="button" onClick={() => { setActiveSection(item.id); setMenuOpen(false); }} aria-current={activeSection === item.id ? 'page' : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold transition ${activeSection === item.id ? 'bg-black text-white shadow-sm dark:bg-black' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}>
             <item.icon size={18} /><span>{item.label}</span>
           </button>)}
         </nav>
@@ -238,7 +240,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
           <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} offlineReadOnly />
         </div>}
         {gate === 'ready' && <div className="px-4 pb-7 sm:px-7 sm:pb-9">
-          <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} activeSection={activeSection} />
+          {activeSection === 'debt-ledger' ? <DebtLedgerPage /> : <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} activeSection={activeSection} />}
         </div>}
         </div>
       </section>
