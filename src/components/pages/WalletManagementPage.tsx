@@ -236,8 +236,8 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
               <button disabled={busy} className="mt-1 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#080808] px-5 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#292929] disabled:opacity-60">{busy ? <><RefreshCw size={17} className="animate-spin" />{t('جارٍ التحقق…', 'Checking…')}</> : <>{t('تسجيل الدخول', 'Sign in')}<ArrowUpRight size={17} /></>}</button>
             </form>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-1 text-sm">
-              <span className="text-[#555]">{t('ليس لديك حساب؟', 'Don’t have an account?')}</span>
-              <button type="button" onClick={() => setAccountHelpOpen(true)} className="inline-flex items-center rounded-md px-1 py-1 font-bold text-blue-700 underline decoration-blue-300 underline-offset-4 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30">{t('ليس لديك حساب', 'Don’t have an account')}</button>
+              <span className="text-[#555]">{t('ليس لديك حساب', 'Don’t have an account')}</span>
+              <button type="button" onClick={() => setAccountHelpOpen(true)} className="inline-flex items-center rounded-md px-1 py-1 font-bold text-blue-700 underline decoration-blue-300 underline-offset-4 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30">{t('إنشاء حساب', 'Create an account')}</button>
             </div>
             <p className="mt-4 text-center text-xs leading-5 text-[#666]">{t('تظهر بياناتك المالية بعد التحقق من الحساب والصلاحية.', 'Your financial data appears after your account and access are verified.')}</p>
           </div>
@@ -248,7 +248,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             <h3 id="wallet-account-help-title" className="mt-4 text-center text-xl font-black">{t('كيف أفتح حساب عميل؟', 'How do I create a customer account?')}</h3>
             <p className="mt-3 text-center text-sm leading-7 text-[#555]">{t('إنشاء الحساب يتم من صفحة تسجيل دخول العميل، وليس من صفحة المحفظة. افتحها وأدخل رقم العميل (ID)، ثم أنشئ كلمة مرور وأكّدها. بعد إكمال التسجيل ارجع إلى المحفظة وسجّل دخولك بنفس البيانات.', 'Create your account from the customer sign-in page, not from the wallet page. Enter your customer ID, create a password and confirm it. Then return here and sign in with those details.')}</p>
             <div className="mt-6 grid gap-3">
-              <button type="button" onClick={() => { const customerId = username.trim(); if (customerId) window.location.assign('/c/' + encodeURIComponent(customerId)); else { setAccountHelpOpen(false); setError(t('أدخل رقم العميل أولًا، ثم اضغط «ليس لديك حساب» للانتقال إلى صفحة تسجيل دخول العميل.', 'Enter your customer ID first, then select “Don’t have an account” to open customer sign-in.')); } }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800">{t('تسجيل دخول العميل', 'Customer sign-in')}<ArrowUpRight size={17} /></button>
+              <button type="button" onClick={() => { window.location.assign('/c/portal'); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-sm font-bold text-white hover:bg-blue-800">{t('تسجيل دخول العميل', 'Customer sign-in')}<ArrowUpRight size={17} /></button>
               <button type="button" onClick={() => setAccountHelpOpen(false)} className="min-h-11 w-full rounded-xl border border-[#d8d8d8] px-4 py-3 text-sm font-bold text-[#222] hover:bg-[#f5f5f5]">{t('تم', 'Done')}</button>
             </div>
           </section>
