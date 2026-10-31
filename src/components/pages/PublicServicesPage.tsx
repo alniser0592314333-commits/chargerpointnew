@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircleHelp, Languages, Moon, Sun, Wallet } from 'lucide-react';
+import { CircleHelp, Languages, Moon, Sun, Wallet, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import './public-services.css';
@@ -7,8 +7,8 @@ import './public-services.css';
 type Props = { onBack?: () => void; onOpenWallet?: () => void };
 
 /**
- * Public catalogue of customer-facing assistance services.
- * The wallet card delegates navigation to the host app; authentication and wallet operations remain in their existing flows.
+ * Compact public catalogue of customer-facing assistance services.
+ * Wallet navigation stays delegated to the host app and its existing guarded route.
  */
 export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
   const { locale, setLocale } = useI18n();
@@ -18,7 +18,7 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
 
   return (
     <main
-      className="public-services-page min-h-screen px-4 pb-12 pt-5 text-slate-800 transition-colors duration-300 dark:text-slate-100 sm:px-6 sm:pt-8"
+      className="public-services-page min-h-screen px-4 pb-10 pt-4 text-slate-800 transition-colors duration-300 dark:text-slate-100 sm:px-6 sm:pt-6"
       dir={isAr ? 'rtl' : 'ltr'}
     >
       <div className="public-services-shell mx-auto max-w-5xl">
@@ -55,49 +55,35 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
           </div>
         </header>
 
-        <section className="mt-8 sm:mt-12" aria-labelledby="public-services-title">
+        <section className="mt-5 sm:mt-7" aria-labelledby="public-services-title">
           <div className="mb-5 max-w-2xl">
-            <p className="public-services-eyebrow text-xs font-bold uppercase tracking-[0.18em]">{t('بوابتك للخدمات', 'YOUR SERVICE HUB')}</p>
-            <h2 id="public-services-title" className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">
-              {t('اختَر الخدمة التي تحتاجها', 'Choose the service you need')}
+            <h2 id="public-services-title" className="text-2xl font-extrabold tracking-tight sm:text-3xl">
+              {t('اختر الخدمة التي تحتاجها', 'Choose the service you need')}
             </h2>
-            <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
+            <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
               {t('نعمل على توفير خدمات مساعدة إضافية في مكان واحد. الخدمات المعروضة هنا للتعريف بها فقط حالياً.', 'We are bringing helpful services together in one place. The service shown here is currently for information only.')}
             </p>
           </div>
 
-          <article className="public-wallet-card group relative overflow-hidden rounded-3xl p-5 sm:p-7">
-            <div className="public-wallet-orb public-wallet-orb-one" aria-hidden="true" />
-            <div className="public-wallet-orb public-wallet-orb-two" aria-hidden="true" />
-            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:gap-7">
-              <div className="public-wallet-mark grid h-20 w-20 shrink-0 place-items-center rounded-[1.65rem] sm:h-24 sm:w-24" aria-hidden="true">
-                <Wallet size={43} strokeWidth={1.55} />
-                <span className="public-wallet-mark-dot" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-extrabold sm:text-2xl">{t('إدارة المحافظ', 'Wallet Management')}</h3>
-                  <span className="public-services-coming rounded-full px-3 py-1 text-[11px] font-bold">{t('قريباً', 'Coming soon')}</span>
-                </div>
-                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
-                  {t('خدمة مخصصة لإدارة المحفظة الإلكترونية ومتابعة تفاصيلها. سيتم توفير وظائف الخدمة لاحقاً.', 'A dedicated service for managing an electronic wallet and viewing its details. Service functionality will be introduced later.')}
-                </p>
-                <div className="mt-5">
-                  <button type="button" onClick={() => onOpenWallet?.()} className="public-wallet-action inline-flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition hover:-translate-y-0.5">
-                    <Wallet size={17} />
-                    {t('إدارة المحافظ', 'Wallet Management')}
-                  </button>
-                </div>
-              </div>
-              <div className="public-wallet-decoration hidden shrink-0 sm:grid" aria-hidden="true">
-                <div className="public-wallet-mini-card"><span /><span /><span /></div>
-                <div className="public-wallet-mini-line" />
-              </div>
-            </div>
-          </article>
+          <button
+            type="button"
+            onClick={() => onOpenWallet?.()}
+            className="public-wallet-shortcut group flex w-full items-center gap-3 rounded-2xl p-3 text-start transition sm:max-w-md sm:gap-4 sm:p-4"
+            aria-label={t('فتح إدارة المحافظ', 'Open Wallet Management')}
+          >
+            <span className="public-wallet-shortcut-icon grid h-12 w-12 shrink-0 place-items-center rounded-xl sm:h-14 sm:w-14" aria-hidden="true">
+              <Wallet size={26} strokeWidth={1.7} />
+            </span>
+            <span className="min-w-0 flex-1 text-base font-bold sm:text-lg">
+              {t('إدارة المحافظ', 'Wallet Management')}
+            </span>
+            {isAr
+              ? <ChevronLeft className="public-wallet-shortcut-arrow shrink-0" size={19} aria-hidden="true" />
+              : <ChevronRight className="public-wallet-shortcut-arrow shrink-0" size={19} aria-hidden="true" />}
+          </button>
         </section>
 
-        <footer className="mt-10 text-center text-xs text-slate-500 dark:text-slate-400">
+        <footer className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
           {t('نقطة الشحن · خدمات مساعدة', 'Charging Point · Assistance Services')}
         </footer>
       </div>
