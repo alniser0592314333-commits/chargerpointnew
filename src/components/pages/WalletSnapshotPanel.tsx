@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Wallet, History } from 'lucide-react';
+import { Wallet, History } from 'lucide-react';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
 import { blockPendingWalletTransaction, enqueueWalletTransaction, listPendingWalletTransactions, readWalletSnapshot, removePendingWalletTransaction, saveWalletSnapshot, type PendingWalletTransaction } from '../../services/customer/walletLocalCache';
@@ -43,9 +43,8 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
   const [usingCachedSnapshot, setUsingCachedSnapshot] = useState(false);
   const [cachedAt, setCachedAt] = useState<number | null>(null);
   const [provider, setProvider] = useState('PalPay');
-  const [walletNumber, setWalletNumber] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [currency, setCurrency] = useState('ILS');
+  const [openingBalance, setOpeningBalance] = useState('0');
   const [transactionType, setTransactionType] = useState<'INCOME' | 'EXPENSE' | 'TRANSFER'>('INCOME');
   const [sourceWalletId, setSourceWalletId] = useState('');
   const [destinationWalletId, setDestinationWalletId] = useState('');
@@ -141,7 +140,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
     {!loading && !error && snapshot && snapshot.accounts.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 dark:bg-white/5 dark:text-slate-300">{t('ما في محافظ مسجلة لهذا الحساب لحد الآن.', 'No wallets are registered for this account yet.')}</p>}
     {activeSection === 'wallet-accounts' && <>
     {snapshot && <div id="wallet-accounts" className="mt-4 scroll-mt-24 grid gap-3 sm:grid-cols-2">{snapshot.accounts.map(account => <article key={account.id} className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-      <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-bold text-teal-700 dark:text-teal-300">{account.provider}</p><h3 className="mt-1 font-bold">{account.display_name}</h3><p className="mt-1 text-xs text-slate-500">{account.wallet_number}</p></div><span className="text-xs text-slate-500">{account.currency}</span></div>
+      <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-bold text-teal-700 dark:text-teal-300">{account.provider}</p><h3 className="mt-1 font-bold">{account.provider}</h3></div><span className="text-xs text-slate-500">{account.currency}</span></div>
       <p className="mt-4 text-2xl font-extrabold tabular-nums">{money(account.balance_minor, account.currency)}</p>{!account.is_active && <p className="mt-2 text-xs text-amber-700">{t('غير نشطة', 'Inactive')}</p>}
     </article>)}</div>}
     <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(totalsByCurrency).map(([currencyCode, total]) => <article key={currencyCode} className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-4 dark:border-emerald-200/10 dark:bg-emerald-300/5"><p className="text-xs font-semibold text-slate-500">{t('إجمالي الرصيد · ', 'Total balance · ')}{currencyCode}</p><p className="mt-2 text-xl font-extrabold tabular-nums">{money(total, currencyCode)}</p></article>)}</section>
@@ -160,15 +159,31 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving) return; setSaving(true); setError('');
         try {
-          const result = await callWalletService('wallet-create-account', { provider, walletNumber, displayName, currency });
-          if (result.error) { if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired(); setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور في هذه الصفحة للمتابعة.', 'Identity verification expired. Enter your username and password on this page to continue.') : result.error === 'WALLET_ACCOUNT_EXISTS' ? t('المحفظة مسجلة من قبل.', 'Wallet already registered.') : t('تعذّرت إضافة المحفظة.', 'Could not add wallet.')); return; }
-          setWalletNumber(''); setDisplayName(''); await refresh();
+          const openingAmount = Number(openingBalance);
+          const scale = currencyScale(currency);
+          if (!Number.isFinite(openingAmount) || openingAmount < 0 || !Number.isSafeInteger(Math.round(openingAmount * scale))) {
+            setError(t('أدخل رصيد بداية صحيحًا (صفر أو أكثر).', 'Enter a valid opening balance (zero or more).')); return;
+          }
+          const walletNumber = `internal-${provider.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${currency.toLowerCase()}`;
+          const result = await callWalletService<{ account?: { id?: string } }>('wallet-create-account', { provider, walletNumber, displayName: provider, currency });
+          if (result.error || !result.data?.account?.id) { if (result.error === 'STEP_UP_REQUIRED') onStepUpRequired(); setError(result.error === 'STEP_UP_REQUIRED' ? t('انتهت مدة تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور في هذه الصفحة للمتابعة.', 'Identity verification expired. Enter your username and password on this page to continue.') : result.error === 'WALLET_ACCOUNT_EXISTS' ? t('هذا الحساب بنفس العملة مسجل من قبل.', 'This provider account with this currency is already registered.') : t('تعذّرت إضافة الحساب.', 'Could not add the account.')); return; }
+          if (openingAmount > 0) {
+            const opening = await callWalletService('wallet-record-transaction', {
+              transactionType: 'INCOME', sourceWalletId: null, destinationWalletId: result.data.account.id,
+              amountMinor: Math.round(openingAmount * scale), currency, idempotencyKey: crypto.randomUUID(),
+              reference: null, note: t('رصيد افتتاحي عند إضافة الحساب', 'Opening balance when account was added'),
+            });
+            if (opening.error) {
+              setError(t('تم إنشاء الحساب، لكن تعذّر تسجيل رصيد البداية. الحساب موجود ورصيده لم يُضف؛ سجّل الرصيد من «تسجيل حركة مالية».', 'The account was created, but the opening balance could not be recorded. The account exists without that balance; add it from “Record a transaction”.'));
+              await refresh(); return;
+            }
+          }
+          setOpeningBalance('0'); await refresh();
         } finally { setSaving(false); }
       }}>
-        <label className="grid gap-1 text-sm font-semibold">{t('المزوّد', 'Provider')}<select value={provider} onChange={e => setProvider(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option>PalPay</option><option>Jawwal Pay</option><option>Bank of Palestine</option></select></label>
-        <label className="grid gap-1 text-sm font-semibold">{t('اسم المحفظة', 'Wallet name')}<input required maxLength={120} value={displayName} onChange={e => setDisplayName(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
-        <label className="grid gap-1 text-sm font-semibold">{t('رقم المحفظة', 'Wallet number')}<input required maxLength={64} value={walletNumber} onChange={e => setWalletNumber(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
-        <label className="grid gap-1 text-sm font-semibold">{t('العملة', 'Currency')}<select value={currency} onChange={e => setCurrency(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="ILS">ILS — شيكل</option><option value="USD">USD — دولار</option><option value="JOD">JOD — دينار</option></select></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('مزود المحفظة', 'Wallet provider')}<select value={provider} onChange={e => setProvider(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="PalPay">PalPay (بال بي)</option><option value="Jawwal Pay">Jawwal Pay (جوال باي)</option><option value="Bank of Palestine">Bank of Palestine (بنك فلسطين)</option></select></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('عملة الحساب', 'Account currency')}<select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]"><option value="ILS">ILS — شيكل</option><option value="USD">USD — دولار</option><option value="JOD">JOD — دينار</option></select></label>
+        <label className="grid gap-1 text-sm font-semibold">{t('رصيد البداية الحالي', 'Current opening balance')}<input type="number" min="0" step={currency === 'JOD' ? '0.001' : '0.01'} inputMode="decimal" required value={openingBalance} onChange={e => setOpeningBalance(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 dark:border-white/15 dark:bg-[#071a1d]" /><span className="text-xs font-normal text-slate-500">{t('إذا الحساب فيه رصيد مسبقًا، اكتبه هون عشان يبدأ الرصيد منه.', 'If this account already has funds, enter the current amount so its balance starts there.')}</span></label>
         <button disabled={saving} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ المحفظة', 'Save wallet')}</button>
       </form>
     </section>}
