@@ -6,10 +6,7 @@ import './public-services.css';
 
 type Props = { onBack?: () => void; onOpenWallet?: () => void };
 
-/**
- * Compact public catalogue of customer-facing assistance services.
- * Wallet navigation stays delegated to the host app and its existing guarded route.
- */
+/** Compact public services list. Navigation remains delegated to the guarded host route. */
 export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
@@ -29,7 +26,6 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
             </span>
             <div className="min-w-0">
               <h1 className="text-base font-extrabold tracking-tight sm:text-lg">{t('خدمات مساعدة', 'Assistance Services')}</h1>
-              <p className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:block">{t('خدمات إضافية متاحة لك', 'Additional services available to you')}</p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2" aria-label={t('إعدادات العرض', 'Display settings')}>
@@ -56,14 +52,9 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
         </header>
 
         <section className="mt-5 sm:mt-7" aria-labelledby="public-services-title">
-          <div className="mb-5 max-w-2xl">
-            <h2 id="public-services-title" className="text-2xl font-extrabold tracking-tight sm:text-3xl">
-              {t('اختر الخدمة التي تحتاجها', 'Choose the service you need')}
-            </h2>
-            <p className="mt-2 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
-              {t('نعمل على توفير خدمات مساعدة إضافية في مكان واحد. الخدمات المعروضة هنا للتعريف بها فقط حالياً.', 'We are bringing helpful services together in one place. The service shown here is currently for information only.')}
-            </p>
-          </div>
+          <h2 id="public-services-title" className="mb-5 text-2xl font-extrabold tracking-tight sm:text-3xl">
+            {t('اختر الخدمة التي تحتاجها', 'Choose the service you need')}
+          </h2>
 
           <button
             type="button"
@@ -82,10 +73,6 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
               : <ChevronRight className="public-wallet-shortcut-arrow shrink-0" size={19} aria-hidden="true" />}
           </button>
         </section>
-
-        <footer className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
-          {t('نقطة الشحن · خدمات مساعدة', 'Charging Point · Assistance Services')}
-        </footer>
       </div>
     </main>
   );
