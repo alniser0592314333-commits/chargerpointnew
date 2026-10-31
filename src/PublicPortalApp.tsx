@@ -165,7 +165,17 @@ const PublicPortalApp: React.FC = () => {
   }, [pathname]);
 
   useEffect(() => {
+    const exitWalletToServices = () => {
+      window.history.replaceState({ path: '/public/services' }, '', '/public/services');
+      setCurrentPath('/public/services');
+    };
+    const confirmWalletExit = () => {
+      const isAr = document.documentElement.lang !== 'en';
+      const message = isAr ? 'هل تريد الخروج من صفحة المحفظة والعودة إلى خدمات المساعدة؟' : 'Leave the wallet page and return to Assistance Services?';
+      if (window.confirm(message)) exitWalletToServices();
+    };
     const handleBack = () => {
+      if (pathname === '/public/services/wallet') { confirmWalletExit(); return; }
       if (scrollPublicViewToTop()) return;
       // The public portal has one landing page. Detail QR/payment routes return
       // to that landing page; at the landing page Back never exits the app.
@@ -194,6 +204,18 @@ const PublicPortalApp: React.FC = () => {
       if (Math.abs(dx) >= 60 && dy <= 80) handleBack();
     };
     const handlePopState = () => {
+      if (pathname === '/public/services/wallet') {
+        const isAr = document.documentElement.lang !== 'en';
+        const message = isAr ? 'هل تريد الخروج من صفحة المحفظة والعودة إلى خدمات المساعدة؟' : 'Leave the wallet page and return to Assistance Services?';
+        if (window.confirm(message)) {
+          window.history.replaceState({ path: '/public/services' }, '', '/public/services');
+          setCurrentPath('/public/services');
+        } else {
+          window.history.pushState({ path: pathname }, '', pathname);
+          setCurrentPath(pathname);
+        }
+        return;
+      }
       if (scrollPublicViewToTop()) {
         window.history.replaceState({ path: pathname }, '', pathname);
         return;
