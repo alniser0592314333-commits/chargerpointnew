@@ -19,7 +19,7 @@ function validCookie(cookieHeader: string | undefined, secret: string): boolean 
     ?.slice(COOKIE_NAME.length + 1);
   if (!token) return false;
   const [issuedAtText, suppliedSignature] = token.split('.');
-  if (!issuedAtText || !suppliedSignature || !/^\\d+$/.test(issuedAtText)) return false;
+  if (!issuedAtText || !suppliedSignature || !/^\d+$/.test(issuedAtText)) return false;
   const issuedAt = Number(issuedAtText);
   const now = Math.floor(Date.now() / 1000);
   if (!Number.isSafeInteger(issuedAt) || issuedAt > now + 30 || now - issuedAt > MAX_AGE_SECONDS) return false;
