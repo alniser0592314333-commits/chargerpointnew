@@ -173,8 +173,9 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
               reference: null, note: t('رصيد افتتاحي عند إضافة الحساب', 'Opening balance when account was added'),
             });
             if (opening.error) {
+              await refresh();
               setError(t('تم إنشاء الحساب، لكن تعذّر تسجيل رصيد البداية. الحساب موجود ورصيده لم يُضف؛ سجّل الرصيد من «تسجيل حركة مالية».', 'The account was created, but the opening balance could not be recorded. The account exists without that balance; add it from “Record a transaction”.'));
-              await refresh(); return;
+              return;
             }
           }
           setOpeningBalance('0'); await refresh();
