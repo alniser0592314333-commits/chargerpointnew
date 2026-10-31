@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X, History, Plus, ReceiptText } from 'lucide-react';
+import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X, History, Plus, ReceiptText, CircleHelp, ArrowUpRight } from 'lucide-react';
 import { callCustomerAccount, customerAuth, CUSTOMER_TERMS_VERSION, setCustomerSession } from '../../services/customer/customerAuth';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
@@ -24,6 +24,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   const [activationRequest, setActivationRequest] = useState<ActivationRequest>(null);
   const [activeSection, setActiveSection] = useState<'wallet-accounts' | 'wallet-transactions' | 'wallet-add' | 'wallet-record'>('wallet-accounts');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountHelpOpen, setAccountHelpOpen] = useState(false);
   const t = (ar: string, en: string) => isAr ? ar : en;
   const handleStepUpRequired = useCallback(() => setGate('step-up-required'), []);
 
@@ -208,15 +209,42 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
           <button disabled={busy || !termsAccepted} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
         </form>}
-        {(gate === 'signed-out' || gate === 'step-up-required') && <form onSubmit={signIn} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
-          {gate === 'step-up-required' && <div role="status" className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-6 text-teal-900 dark:border-teal-200/15 dark:bg-teal-200/5 dark:text-teal-100">{t('انتهت صلاحية تأكيد الهوية. أدخل اسم المستخدم وكلمة المرور هنا للمتابعة إلى المحفظة مباشرة.', 'Your identity verification expired. Enter your username and password here to continue directly to the wallet.')}</div>}
-          <div className="flex items-center gap-2 text-sm font-bold"><LockKeyhole size={17} className="text-teal-700 dark:text-teal-300" />{t('دخول آمن بحسابك الحالي', 'Secure sign-in with your existing account')}</div>
-          <label className="grid gap-2 text-sm font-semibold">{t('اسم المستخدم', 'Username')}<input autoComplete="username" required maxLength={64} value={username} onChange={e => setUsername(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>
-          <label className="grid gap-2 text-sm font-semibold">{t('كلمة المرور', 'Password')}<input type="password" autoComplete="current-password" required maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none focus:border-teal-600 dark:border-white/15 dark:bg-[#071a1d]" /></label>
-          {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
-          <button disabled={busy} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ التحقق…', 'Checking…') : t('تسجيل الدخول', 'Sign in')}</button>
-          <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">{t('الخدمة للمشتركين المصرّح لهم فقط. تسجيل الدخول وحده لا يمنح صلاحية الوصول.', 'For authorized subscribers only. Signing in alone does not grant access.')}</p>
-        </form>}
+        {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative isolate mt-5 overflow-hidden rounded-[2rem] border border-white/70 bg-gradient-to-br from-[#f8fcff] via-white to-[#e8f7f5] p-4 shadow-[0_28px_80px_-38px_rgba(13,88,104,0.38)] dark:border-white/10 dark:from-[#102a32] dark:via-[#0a2028] dark:to-[#0b302d] sm:p-7">
+          <div aria-hidden="true" className="pointer-events-none absolute -left-12 -top-14 -z-10 h-44 w-44 rounded-full bg-cyan-300/25 blur-3xl" />
+          <div aria-hidden="true" className="pointer-events-none absolute -bottom-16 -right-10 -z-10 h-48 w-48 rounded-full bg-emerald-300/20 blur-3xl" />
+          <div className="mx-auto max-w-lg">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full border border-teal-700/15 bg-white/75 px-3 py-1.5 text-xs font-bold text-teal-800 shadow-sm dark:border-teal-200/15 dark:bg-white/5 dark:text-teal-200"><ShieldCheck size={14} />{t('دخول محمي وآمن', 'Protected secure access')}</span>
+                <h2 className="mt-4 text-3xl font-black tracking-tight text-slate-900 dark:text-white sm:text-4xl">{t('محافظك، بمكان واحد', 'Your wallets, in one place')}</h2>
+                <p className="mt-2 max-w-sm text-sm leading-7 text-slate-600 dark:text-slate-300">{t('سجّل دخولك لمتابعة أرصدتك وحركاتك المالية ضمن تجربة خاصة وآمنة.', 'Sign in to view your balances and financial activity in a private, secure space.')}</p>
+              </div>
+              <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-teal-700 to-cyan-600 text-white shadow-lg shadow-teal-900/20 sm:h-20 sm:w-20 sm:rounded-3xl"><Wallet size={34} strokeWidth={1.7} /></div>
+            </div>
+            {gate === 'step-up-required' && <div role="status" className="mb-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-6 text-teal-900 dark:border-teal-200/15 dark:bg-teal-200/5 dark:text-teal-100">{t('انتهت صلاحية تأكيد الهوية. أدخل رقم العميل وكلمة المرور للمتابعة إلى المحفظة.', 'Your identity verification expired. Enter your customer ID and password to continue to the wallet.')}</div>}
+            <form onSubmit={signIn} className="grid gap-4 rounded-3xl border border-white/80 bg-white/80 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-black/10 sm:p-6">
+              <div className="flex items-center gap-3 border-b border-slate-200/80 pb-4 dark:border-white/10"><div className="grid h-10 w-10 place-items-center rounded-xl bg-teal-50 text-teal-800 dark:bg-teal-200/10 dark:text-teal-200"><LockKeyhole size={19} /></div><div><p className="font-extrabold">{t('تسجيل الدخول', 'Sign in')}</p><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t('استخدم بيانات حساب العميل', 'Use your customer account details')}</p></div></div>
+              <label className="grid gap-2 text-sm font-bold">{t('رقم العميل (ID)', 'Customer ID')}<input autoComplete="username" required maxLength={64} value={username} onChange={e => setUsername(e.target.value)} placeholder={t('أدخل رقم العميل', 'Enter your customer ID')} className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3.5 outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10 dark:border-white/15 dark:bg-[#071a1d]/80" /></label>
+              <label className="grid gap-2 text-sm font-bold">{t('كلمة المرور', 'Password')}<input type="password" autoComplete="current-password" required maxLength={128} value={password} onChange={e => setPassword(e.target.value)} placeholder={t('أدخل كلمة المرور', 'Enter your password')} className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3.5 outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10 dark:border-white/15 dark:bg-[#071a1d]/80" /></label>
+              {error && <p role="alert" className="rounded-2xl bg-rose-50 p-3 text-sm leading-6 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
+              <button disabled={busy} className="group mt-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-teal-800 via-teal-700 to-cyan-700 px-5 py-4 text-sm font-extrabold text-white shadow-lg shadow-teal-900/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-xl disabled:translate-y-0 disabled:opacity-60">{busy ? <><RefreshCw size={17} className="animate-spin" />{t('جارٍ التحقق…', 'Checking…')}</> : <>{t('الدخول إلى المحفظة', 'Enter wallet')}<ArrowUpRight size={17} className="transition-transform group-hover:-translate-y-0.5" /></>}</button>
+              <p className="text-center text-xs leading-6 text-slate-500 dark:text-slate-400">{t('بياناتك المالية لا تظهر إلا بعد التحقق من الحساب والصلاحية.', 'Your financial information stays hidden until your account and access are verified.')}</p>
+            </form>
+            <button type="button" onClick={() => setAccountHelpOpen(true)} className="mx-auto mt-5 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50 hover:text-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-500/15 dark:text-sky-300 dark:hover:bg-sky-300/10">{t('ليس لديك حساب؟', 'Don’t have an account?')}<CircleHelp size={19} /></button>
+          </div>
+        </div>}
+        {accountHelpOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md" role="presentation" onClick={() => setAccountHelpOpen(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="wallet-account-help-title" dir={isAr ? 'rtl' : 'ltr'} onClick={event => event.stopPropagation()} className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-[#10242a] sm:p-8">
+            <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-teal-500" />
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-700 dark:bg-blue-300/10 dark:text-sky-300"><CircleHelp size={28} /></div>
+            <h3 id="wallet-account-help-title" className="mt-4 text-center text-xl font-black">{t('كيف أفتح حساب عميل؟', 'How do I create a customer account?')}</h3>
+            <p className="mt-3 text-center text-sm leading-7 text-slate-600 dark:text-slate-300">{t('إنشاء الحساب يتم من صفحة تسجيل دخول العميل، وليس من صفحة المحفظة. افتحها وأدخل رقم العميل (ID)، ثم أنشئ كلمة مرور وأكّدها. بعد إكمال التسجيل ارجع إلى المحفظة وسجّل دخولك بنفس البيانات.', 'Create your account from the customer sign-in page, not from the wallet page. Enter your customer ID, create a password and confirm it. Then return here and sign in with those details.')}</p>
+            <div className="mt-6 grid gap-3">
+              <button type="button" onClick={() => { window.location.assign('/c/portal?source=wallet-management'); }} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-700 px-4 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-blue-900/15 transition hover:bg-blue-800">{t('توجّه إلى تسجيل دخول العميل', 'Go to customer sign-in')}<ArrowUpRight size={17} /></button>
+              <button type="button" onClick={() => { setAccountHelpOpen(false); window.location.assign('/public/about'); }} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">{t('تم، إلى الصفحة الرئيسية', 'Done, go to home')}</button>
+            </div>
+          </section>
+        </div>}
         {gate === 'activation-required' && <div className="mt-8 rounded-2xl border border-amber-300/60 bg-amber-50 p-5 dark:border-amber-200/15 dark:bg-amber-200/5">
           <div className="flex items-center gap-3 font-bold text-amber-900 dark:text-amber-100"><ShieldCheck size={20} />{t('تفعيل المحفظة مطلوب', 'Wallet activation required')}</div>
           {activationRequest?.status === 'PENDING' ? <p className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75">{t('طلبك قيد مراجعة الإدارة. ما في داعي تبعث طلب ثاني؛ ارجع لهون لاحقًا لتحديث الحالة.', 'Your request is waiting for administrator review. Do not submit another request; revisit this page later to check its status.')}</p>
