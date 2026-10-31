@@ -240,6 +240,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         {gate === 'ready' && <div className="px-4 pb-7 sm:px-7 sm:pb-9">
           <WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} activeSection={activeSection} />
         </div>}
+        </div>
       </section>
     </main>
     <footer className="mx-auto max-w-6xl px-4 pb-8 text-center text-xs text-slate-500">{t('بياناتك لا تُعرض إلا بعد التحقق من الجلسة وصلاحية الخدمة.', 'Your data is shown only after session and service authorization checks.')}</footer>
