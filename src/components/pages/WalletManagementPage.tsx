@@ -158,29 +158,29 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
 
   return <div className="min-h-screen bg-[#f3f3f3] text-slate-900 dark:bg-[#111111] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
     {!(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') && <>
-    <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#071a1d]/90">
+    <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#111111]/90">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:hover:bg-white/5">
+          <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:hover:bg-white/10">
             {isAr ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}{t('رجوع', 'Back')}
           </button>
-          {gate === 'ready' && <button type="button" aria-expanded={menuOpen} aria-controls="wallet-side-menu" onClick={() => setMenuOpen(value => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5">
+          {gate === 'ready' && <button type="button" aria-expanded={menuOpen} aria-controls="wallet-side-menu" onClick={() => setMenuOpen(value => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10">
             {menuOpen ? <X size={18} /> : <Menu size={18} />}{t('القائمة', 'Menu')}
           </button>}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5">{isAr ? 'EN' : 'عربي'}</button>
-          <button onClick={toggleTheme} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5">{resolvedTheme === 'dark' ? '☀️' : '🌙'}</button>
+          <button onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/10">{isAr ? 'EN' : 'عربي'}</button>
+          <button onClick={toggleTheme} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/10">{resolvedTheme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
       </div>
     </header>
     </>}
     {menuOpen && gate === 'ready' && <div className="fixed inset-0 z-40">
       <button type="button" aria-label={t('إغلاق القائمة', 'Close menu')} onClick={() => setMenuOpen(false)} className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
-      <aside id="wallet-side-menu" dir={isAr ? 'rtl' : 'ltr'} className={`absolute inset-y-0 ${isAr ? 'right-0 border-l' : 'left-0 border-r'} flex w-[min(84vw,320px)] flex-col border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#0b2420]`}>
+      <aside id="wallet-side-menu" dir={isAr ? 'rtl' : 'ltr'} className={`absolute inset-y-0 ${isAr ? 'right-0 border-l' : 'left-0 border-r'} flex w-[min(84vw,320px)] flex-col border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#171717]`}>
         <div className="flex items-center justify-between border-b border-slate-200 pb-4 dark:border-white/10">
           <div><p className="text-base font-extrabold">{t('المحفظة', 'Wallet')}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{customerLabel || t('حساب العميل', 'Customer account')}</p></div>
-          <button type="button" onClick={() => setMenuOpen(false)} aria-label={t('إغلاق القائمة', 'Close menu')} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-slate-100 dark:hover:bg-white/5"><X size={18} /></button>
+          <button type="button" onClick={() => setMenuOpen(false)} aria-label={t('إغلاق القائمة', 'Close menu')} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-slate-100 dark:hover:bg-white/10"><X size={18} /></button>
         </div>
         <nav className="mt-4 grid gap-2" aria-label={t('أقسام المحفظة', 'Wallet sections')}>
           {([
@@ -188,28 +188,28 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             { id: 'wallet-transactions', icon: History, label: t('سجل الحركات', 'Transaction history') },
             { id: 'wallet-add', icon: Plus, label: t('إضافة محفظة', 'Add a wallet') },
             { id: 'wallet-record', icon: ReceiptText, label: t('تسجيل حركة', 'Record a transaction') },
-          ] as const).map(item => <button key={item.id} type="button" onClick={() => { setActiveSection(item.id); setMenuOpen(false); }} aria-current={activeSection === item.id ? 'page' : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold transition ${activeSection === item.id ? 'bg-teal-700 text-white shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}>
+          ] as const).map(item => <button key={item.id} type="button" onClick={() => { setActiveSection(item.id); setMenuOpen(false); }} aria-current={activeSection === item.id ? 'page' : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold transition ${activeSection === item.id ? 'bg-[#080808] text-white shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-white/10'}`}>
             <item.icon size={18} /><span>{item.label}</span>
           </button>)}
         </nav>
       </aside>
     </div>}
     <main className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'w-full max-w-none p-0' : 'mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6'}>
-      <section className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'min-h-[100dvh] w-full rounded-none border-0 bg-[#f3f3f3] p-0 shadow-none dark:bg-[#111111]' : 'rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-5'}>
+      <section className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'min-h-[100dvh] w-full rounded-none border-0 bg-[#f3f3f3] p-0 shadow-none dark:bg-[#111111]' : 'rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#171717] sm:px-5'}>
         <div className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'p-0' : 'px-0 pb-1 pt-5 sm:px-1'}>
         {(gate === 'checking' || gate === 'checking-access') && <div className="mt-8 flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5"><RefreshCw className="animate-spin" size={18} />{t('بنتحقق من الجلسة وصلاحية الخدمة…', 'Checking your session and service access…')}</div>}
         {gate === 'force-change' && <form onSubmit={finishRequiredPasswordChange} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
           <p className="text-sm leading-6">{t('يجب تغيير كلمة المرور قبل متابعة حسابك. اختر كلمة مرور جديدة.', 'You must change your password before continuing. Choose a new password.')}</p>
-          <label className="grid gap-2 text-sm font-semibold">{t('كلمة المرور الجديدة', 'New password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
-          <label className="grid gap-2 text-sm font-semibold">{t('تأكيد كلمة المرور', 'Confirm password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+          <label className="grid gap-2 text-sm font-semibold">{t('كلمة المرور الجديدة', 'New password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#111111]" /></label>
+          <label className="grid gap-2 text-sm font-semibold">{t('تأكيد كلمة المرور', 'Confirm password')}<input type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#111111]" /></label>
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
-          <button disabled={busy} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('تغيير كلمة المرور والمتابعة', 'Change password and continue')}</button>
+          <button disabled={busy} className="rounded-xl bg-[#080808] px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('تغيير كلمة المرور والمتابعة', 'Change password and continue')}</button>
         </form>}
         {gate === 'terms-update' && <form onSubmit={acceptUpdatedTerms} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
           <p className="text-sm leading-6">{t('تم تحديث شروط استخدام حساب العميل. راجعها ووافق عليها للمتابعة إلى المحفظة.', 'Customer account terms have been updated. Review and accept them to continue to your wallet.')}</p>
           <label className="flex items-start gap-3 text-sm leading-6"><input type="checkbox" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} className="mt-1 h-4 w-4" /><span>{t('أوافق على الشروط والأحكام المحدّثة.', 'I accept the updated terms and conditions.')}</span></label>
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
-          <button disabled={busy || !termsAccepted} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
+          <button disabled={busy || !termsAccepted} className="rounded-xl bg-[#080808] px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
         </form>}
         {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative mt-0 min-h-[100dvh] w-full overflow-hidden rounded-none bg-[#f3f3f3] text-[#111] shadow-none">
           <div aria-hidden="true" className="relative h-32 overflow-hidden bg-[#080808] sm:h-40">
@@ -256,8 +256,8 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         {gate === 'activation-required' && <div className="mt-8 rounded-2xl border border-amber-300/60 bg-amber-50 p-5 dark:border-amber-200/15 dark:bg-amber-200/5">
           <div className="flex items-center gap-3 font-bold text-amber-900 dark:text-amber-100"><ShieldCheck size={20} />{t('تفعيل المحفظة مطلوب', 'Wallet activation required')}</div>
           {activationRequest?.status === 'PENDING' ? <p className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75">{t('طلبك قيد مراجعة الإدارة. ما في داعي تبعث طلب ثاني؛ ارجع لهون لاحقًا لتحديث الحالة.', 'Your request is waiting for administrator review. Do not submit another request; revisit this page later to check its status.')}</p>
-            : activationRequest?.status === 'REJECTED' ? <div className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75"><p>{t('تم رفض الطلب السابق.', 'Your previous request was rejected.')}</p>{activationRequest.rejection_reason && <p>{t('السبب: ', 'Reason: ')}{activationRequest.rejection_reason}</p>}<button disabled={busy} onClick={() => void requestActivation()} className="mt-4 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('إعادة طلب التفعيل', 'Request activation again')}</button></div>
-            : <><p className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75">{t('قبل استخدام المحفظة، لازم تطلب تفعيلها. بعد موافقة الإدارة رح تفتح معك بشكل طبيعي.', 'Before using the wallet, request activation. Once approved, it will open normally.')}</p><button disabled={busy} onClick={() => void requestActivation()} className="mt-4 rounded-xl bg-teal-700 px-4 py-3 font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('طلب تفعيل المحفظة', 'Request wallet activation')}</button></>}
+            : activationRequest?.status === 'REJECTED' ? <div className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75"><p>{t('تم رفض الطلب السابق.', 'Your previous request was rejected.')}</p>{activationRequest.rejection_reason && <p>{t('السبب: ', 'Reason: ')}{activationRequest.rejection_reason}</p>}<button disabled={busy} onClick={() => void requestActivation()} className="mt-4 rounded-xl bg-[#080808] px-4 py-3 font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('إعادة طلب التفعيل', 'Request activation again')}</button></div>
+            : <><p className="mt-2 text-sm leading-7 text-amber-800 dark:text-amber-100/75">{t('قبل استخدام المحفظة، لازم تطلب تفعيلها. بعد موافقة الإدارة رح تفتح معك بشكل طبيعي.', 'Before using the wallet, request activation. Once approved, it will open normally.')}</p><button disabled={busy} onClick={() => void requestActivation()} className="mt-4 rounded-xl bg-[#080808] px-4 py-3 font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الإرسال…', 'Submitting…') : t('طلب تفعيل المحفظة', 'Request wallet activation')}</button></>}
           {error && <p role="alert" className="mt-3 text-sm text-rose-700 dark:text-rose-200">{error}</p>}
           <button onClick={() => { void customerAuth.auth.signOut(); setGate('signed-out'); }} className="mt-4 block rounded-xl border border-amber-400/50 px-4 py-2 text-sm font-bold">{t('تبديل الحساب', 'Switch account')}</button>
         </div>}
