@@ -1,10 +1,10 @@
 import React from 'react';
-import { CircleHelp, Languages, Moon, Sun, Wallet } from 'lucide-react';
+import { CircleHelp, Languages, Moon, Sun, Wallet, LockKeyhole } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import './public-services.css';
 
-type Props = { onBack?: () => void; onOpenWallet?: () => void };
+type Props = { onBack?: () => void; onOpenWallet?: () => void };\nconst DEVELOPMENT_ACCESS_CODE = 'CPN-DEV-7264';\nconst DEVELOPMENT_ACCESS_KEY = 'cpn-services-dev-access';
 
 /**
  * Public catalogue of customer-facing assistance services.
@@ -15,6 +15,24 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
   const t = (ar: string, en: string) => isAr ? ar : en;
+
+  if (!unlocked) {
+    return (
+      <main className="public-services-page flex min-h-screen items-center justify-center px-4 py-10 text-slate-800 dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
+        <section className="public-services-shell w-full max-w-md rounded-3xl p-6 sm:p-8">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-teal-700/10 text-teal-800 dark:text-teal-200"><LockKeyhole size={25} /></div>
+          <p className="mt-5 text-center text-xs font-extrabold uppercase tracking-[0.18em] text-teal-700 dark:text-teal-300">{t('وضع التطوير', 'DEVELOPMENT MODE')}</p>
+          <h1 className="mt-2 text-center text-2xl font-extrabold">{t('خدمات مساعدة — قيد التطوير', 'Assistance Services — Under Development')}</h1>
+          <p className="mt-3 text-center text-sm leading-7 text-slate-600 dark:text-slate-300">{t('هذه الصفحة قيد التطوير وغير متاحة للزوار حاليًا. أدخل كود التطوير للمتابعة.', 'This page is under development and is not available to visitors yet. Enter the development code to continue.')}</p>
+          <form className="mt-6 grid gap-3" onSubmit={event => { event.preventDefault(); if (code.trim() !== DEVELOPMENT_ACCESS_CODE) { setCodeError(t('كود التطوير غير صحيح.', 'Incorrect development code.')); return; } try { window.sessionStorage.setItem(DEVELOPMENT_ACCESS_KEY, '1'); } catch {} setCodeError(''); setUnlocked(true); }}>
+            <label className="grid gap-2 text-sm font-semibold">{t('كود التطوير', 'Development code')}<input type="password" autoComplete="off" required value={code} onChange={event => setCode(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+            {codeError && <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">{codeError}</p>}
+            <button type="submit" className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white">{t('دخول إلى وضع التطوير', 'Enter development mode')}</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main
