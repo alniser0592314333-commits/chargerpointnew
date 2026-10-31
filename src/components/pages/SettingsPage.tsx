@@ -482,7 +482,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
               </button>
               <button type="button" onClick={() => setActiveSettingsSection("general")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
                 <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Settings2 className="w-5 h-5" /></span>
-                <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "التفضيلات العامة" : "General Preferences"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "المظهر واللغة وهوية وشعار وإشعارات التطبيق" : "Appearance, language, app identity, branding and notifications"}</span></span>
+                <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "التفضيلات العامة" : "General Preferences"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "هوية وشعار وإشعارات التطبيق والإعدادات العامة" : "App identity, branding, notifications and general options"}</span></span>
                 <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
               </button>
               {(hasPermission("orders:renumber-day") || hasPermission("devices:manage") || hasPermission("settings:manage")) && (
