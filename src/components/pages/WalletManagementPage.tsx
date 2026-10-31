@@ -157,6 +157,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   };
 
   return <div className="min-h-screen bg-[#f3f3f3] text-slate-900 dark:bg-[#111111] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
+    {!(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') && <>
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#071a1d]/90">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2">
@@ -173,6 +174,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         </div>
       </div>
     </header>
+    </>}
     {menuOpen && gate === 'ready' && <div className="fixed inset-0 z-40">
       <button type="button" aria-label={t('إغلاق القائمة', 'Close menu')} onClick={() => setMenuOpen(false)} className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]" />
       <aside id="wallet-side-menu" dir={isAr ? 'rtl' : 'ltr'} className={`absolute inset-y-0 ${isAr ? 'right-0 border-l' : 'left-0 border-r'} flex w-[min(84vw,320px)] flex-col border-slate-200 bg-white p-4 shadow-2xl dark:border-white/10 dark:bg-[#0b2420]`}>
@@ -193,7 +195,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
       </aside>
     </div>}
     <main className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'w-full max-w-none p-0' : 'mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6'}>
-      <section className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'min-h-[calc(100dvh-57px)] w-full rounded-none border-0 bg-[#f3f3f3] p-0 shadow-none dark:bg-[#111111]' : 'rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-5'}>
+      <section className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'min-h-[100dvh] w-full rounded-none border-0 bg-[#f3f3f3] p-0 shadow-none dark:bg-[#111111]' : 'rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-5'}>
         <div className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'p-0' : 'px-0 pb-1 pt-5 sm:px-1'}>
         {(gate === 'checking' || gate === 'checking-access') && <div className="mt-8 flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5"><RefreshCw className="animate-spin" size={18} />{t('بنتحقق من الجلسة وصلاحية الخدمة…', 'Checking your session and service access…')}</div>}
         {gate === 'force-change' && <form onSubmit={finishRequiredPasswordChange} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
@@ -209,7 +211,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
           <button disabled={busy || !termsAccepted} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
         </form>}
-        {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative mt-0 min-h-[calc(100dvh-57px)] w-full overflow-hidden rounded-none bg-[#f3f3f3] text-[#111] shadow-none">
+        {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative mt-0 min-h-[100dvh] w-full overflow-hidden rounded-none bg-[#f3f3f3] text-[#111] shadow-none">
           <div aria-hidden="true" className="relative h-32 overflow-hidden bg-[#080808] sm:h-40">
             <div className="absolute -bottom-16 -left-8 h-32 w-[115%] rotate-[-7deg] rounded-[48%] bg-[#202020]" />
             <div className="absolute -bottom-24 -left-8 h-32 w-[115%] rotate-[5deg] rounded-[48%] bg-[#343434]" />
