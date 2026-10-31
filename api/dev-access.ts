@@ -1,5 +1,11 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+
+type Request = { method?: string; headers: { cookie?: string }; body?: { code?: unknown } };
+type Response = {
+  setHeader(name: string, value: string | string[]): void;
+  status(code: number): Response;
+  json(value: unknown): void;
+};
 
 const COOKIE_NAME = 'cpn_dev_access';
 const MAX_AGE_SECONDS = 60 * 60;
@@ -13,7 +19,7 @@ function validCookie(cookieHeader: string | undefined, secret: string): boolean 
     ?.slice(COOKIE_NAME.length + 1);
   if (!token) return false;
   const [issuedAtText, suppliedSignature] = token.split('.');
-  if (!issuedAtText || !suppliedSignature || !/^\d+$/.test(issuedAtText)) return false;
+  if (!issuedAtText || !suppliedSignature || !/^\\d+$/.test(issuedAtText)) return false;
   const issuedAt = Number(issuedAtText);
   const now = Math.floor(Date.now() / 1000);
   if (!Number.isSafeInteger(issuedAt) || issuedAt > now + 30 || now - issuedAt > MAX_AGE_SECONDS) return false;
@@ -23,7 +29,7 @@ function validCookie(cookieHeader: string | undefined, secret: string): boolean 
   return supplied.length === actual.length && timingSafeEqual(supplied, actual);
 }
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export default function handler(req: Request, res: Response) {
   res.setHeader('Cache-Control', 'no-store, private');
   res.setHeader('Vary', 'Cookie');
   const expectedCode = process.env.DEV_GATE_CODE;
