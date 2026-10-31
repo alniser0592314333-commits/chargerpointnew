@@ -60,7 +60,7 @@ describe('Public wallet management access contract', () => {
   });
 
   it('renders wallet balances and activity only from the authenticated server snapshot', () => {
-    expect(page).toContain('<WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} />');
+    expect(page).toContain('<WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} activeSection={activeSection} />');
     expect(walletPanel).toContain("callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot'");
     expect(walletPanel).toContain('balance_minor');
     expect(walletPanel).toContain('(snapshot?.transactions ?? []).filter(tx => {');
@@ -123,6 +123,18 @@ describe('Public wallet management access contract', () => {
   });
 
 
+  it('uses a side menu for distinct wallet sections and removes the shortcut dashboard', () => {
+    expect(page).toContain('aria-controls="wallet-side-menu"');
+    expect(page).toContain("setActiveSection(item.id)");
+    expect(page).toContain("'wallet-transactions'");
+    expect(page).toContain("'wallet-add'");
+    expect(page).toContain("'wallet-record'");
+    expect(page).not.toContain('اختصارات المحفظة');
+    expect(page).not.toContain("t('إدارة المحفظة', 'Wallet management')");
+    expect(portal).toContain('Leave the wallet page and return to Assistance Services?');
+    expect(portal).toContain('هل تريد الخروج من صفحة المحفظة والعودة إلى خدمات المساعدة؟');
+  });
+
   it('keeps reauthentication inside the wallet page and uses the existing customer account login flow', () => {
     expect(page).toContain("(gate === 'signed-out' || gate === 'step-up-required')");
     expect(page).toContain("'entry', { token: identifier }");
@@ -140,10 +152,42 @@ describe('Public wallet management access contract', () => {
   });
 
   it('keeps the wallet page introduction compact without the old metadata panel', () => {
-    expect(page).toContain('محافظك وأرصدتك وحركاتك المالية.');
+    expect(page).not.toContain('محافظك وأرصدتك وحركاتك المالية.');
     expect(page).not.toContain('مساحة مالية منظّمة لمتابعة محافظك');
     expect(page).not.toContain('بوابة آمنة');
     expect(page).not.toContain('مرجع موحّد');
+  });
+
+  it('uses provider-and-currency wallet accounts with optional opening balance and no manual refresh control', () => {
+    expect(walletPanel).toContain("value=\"PalPay\"");
+    expect(walletPanel).toContain("value=\"Jawwal Pay\"");
+    expect(walletPanel).toContain("value=\"Bank of Palestine\"");
+    expect(walletPanel).toContain("رصيد البداية الحالي");
+    expect(walletPanel).toContain("رصيد افتتاحي عند إضافة الحساب");
+    expect(walletPanel).toContain("destinationWalletId: result.data.account.id");
+    expect(walletPanel).not.toContain("t('رقم المحفظة', 'Wallet number')");
+    expect(walletPanel).not.toContain("t('اسم المحفظة', 'Wallet name')");
+    expect(walletPanel).not.toContain("t('تحديث', 'Refresh')");
+    expect(walletPanel).toContain("internal-");
+  });
+
+  it('places language and theme controls under personal preferences and removes wallet header back control', () => {
+    const settings = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/SettingsPage.tsx'), 'utf8');
+    expect(settings).toContain('activeSettingsSection === "personal"');
+    expect(settings).toContain('Personal Preferences');
+    expect(page).toContain("t('التفضيلات الشخصية', 'Personal Preferences')");
+    expect(page).not.toContain("t('رجوع', 'Back')");
+    expect(page).not.toContain('onClick={onBack}');
+    expect(page).not.toContain("t('تحديث', 'Refresh')");
+  });
+
+  it('gates the public assistance page and direct wallet route behind the development entry screen', () => {
+    const services = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/PublicServicesPage.tsx'), 'utf8');
+    expect(services).toContain("DEVELOPMENT_ACCESS_CODE = 'CPN-DEV-7264'");
+    expect(services).toContain('خدمات مساعدة — قيد التطوير');
+    expect(services).toContain("window.sessionStorage.setItem(DEVELOPMENT_ACCESS_KEY, '1')");
+    expect(portal).toContain("window.sessionStorage.getItem('cpn-services-dev-access') === '1'");
+    expect(services).toContain("t('التفضيلات الشخصية', 'Personal Preferences')");
   });
 
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircleHelp, Languages, Moon, Sun, Wallet } from 'lucide-react';
+import { CircleHelp, Languages, Moon, Sun, Wallet, LockKeyhole, Settings, X } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import './public-services.css';
@@ -14,7 +14,67 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
   const { locale, setLocale } = useI18n();
   const { resolvedTheme, toggleTheme } = useTheme();
   const isAr = locale === 'ar';
+  const [code, setCode] = React.useState('');
+  const [codeError, setCodeError] = React.useState('');
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [unlocked, setUnlocked] = React.useState(false);
+  const [checkingAccess, setCheckingAccess] = React.useState(true);
+  React.useEffect(() => {
+    let active = true;
+    fetch('/api/dev-access', { method: 'GET', credentials: 'same-origin', cache: 'no-store' })
+      .then(response => response.ok ? response.json() : { ok: false })
+      .then(result => { if (active) setUnlocked(result.ok === true); })
+      .catch(() => { if (active) setUnlocked(false); })
+      .finally(() => { if (active) setCheckingAccess(false); });
+    return () => { active = false; };
+  }, []);
   const t = (ar: string, en: string) => isAr ? ar : en;
+
+  if (checkingAccess) {
+    return <main className="public-services-page flex min-h-screen items-center justify-center px-4 text-slate-800 dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}><p>{t('جارٍ التحقق من صلاحية الدخول…', 'Checking access…')}</p></main>;
+  }
+
+  if (!unlocked) {
+    return (
+      <main className="public-services-page flex min-h-screen items-center justify-center px-4 py-10 text-slate-800 dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
+        <section className="public-services-shell w-full max-w-md rounded-3xl p-6 sm:p-8">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-teal-700/10 text-teal-800 dark:text-teal-200"><LockKeyhole size={25} /></div>
+          <p className="mt-5 text-center text-xs font-extrabold uppercase tracking-[0.18em] text-teal-700 dark:text-teal-300">{t('وضع التطوير', 'DEVELOPMENT MODE')}</p>
+          <h1 className="mt-2 text-center text-2xl font-extrabold">{t('خدمات مساعدة — قيد التطوير', 'Assistance Services — Under Development')}</h1>
+          <p className="mt-3 text-center text-sm leading-7 text-slate-600 dark:text-slate-300">{t('هذه الصفحة قيد التطوير وغير متاحة للزوار حاليًا. أدخل كود التطوير للمتابعة.', 'This page is under development and is not available to visitors yet. Enter the development code to continue.')}</p>
+          <form className="mt-6 grid gap-3" onSubmit={async event => {
+            event.preventDefault();
+            setCodeError('');
+            try {
+              const response = await fetch('/api/dev-access', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code.trim() }),
+                cache: 'no-store',
+              });
+              if (!response.ok) {
+                setCodeError(t('كود التطوير غير صحيح أو خدمة التحقق غير متاحة.', 'Incorrect code or access verification is unavailable.'));
+                return;
+              }
+              const result = await response.json();
+              if (result.ok !== true) {
+                setCodeError(t('تعذر التحقق من كود التطوير.', 'Could not verify development code.'));
+                return;
+              }
+              setUnlocked(true);
+            } catch {
+              setCodeError(t('تعذر الاتصال بخدمة التحقق. حاول مرة أخرى.', 'Could not reach the verification service. Please try again.'));
+            }
+          }}>
+            <label className="grid gap-2 text-sm font-semibold">{t('كود التطوير', 'Development code')}<input type="password" autoComplete="off" required value={code} onChange={event => setCode(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 dark:border-white/15 dark:bg-[#071a1d]" /></label>
+            {codeError && <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">{codeError}</p>}
+            <button type="submit" className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white">{t('دخول إلى وضع التطوير', 'Enter development mode')}</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main
@@ -32,26 +92,17 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
               <p className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:block">{t('خدمات إضافية متاحة لك', 'Additional services available to you')}</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2" aria-label={t('إعدادات العرض', 'Display settings')}>
-            <button
-              type="button"
-              onClick={() => setLocale(isAr ? 'en' : 'ar')}
-              className="public-services-control inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition hover:-translate-y-0.5"
-              aria-label={t('Switch language to English', 'تغيير اللغة إلى العربية')}
-              title={t('English', 'العربية')}
-            >
-              <Languages size={15} />
-              <span>{isAr ? 'EN' : 'عربي'}</span>
+          <div className="relative shrink-0">
+            <button type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(value => !value)} className="public-services-control inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold transition hover:-translate-y-0.5">
+              {settingsOpen ? <X size={15} /> : <Settings size={15} />}<span>{t('الإعدادات', 'Settings')}</span>
             </button>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="public-services-control grid h-9 w-9 place-items-center rounded-lg transition hover:-translate-y-0.5"
-              aria-label={resolvedTheme === 'dark' ? t('التبديل للوضع النهاري', 'Switch to light mode') : t('التبديل للوضع الليلي', 'Switch to dark mode')}
-              title={resolvedTheme === 'dark' ? t('الوضع النهاري', 'Light mode') : t('الوضع الليلي', 'Dark mode')}
-            >
-              {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            {settingsOpen && <section className="absolute end-0 top-11 z-30 w-64 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-[#0b2420]">
+              <h2 className="mb-3 text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('التفضيلات الشخصية', 'Personal Preferences')}</h2>
+              <div className="grid gap-2">
+                <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><Languages size={16} />{t('اللغة', 'Language')}<span className="ms-auto text-xs">{isAr ? 'EN' : 'عربي'}</span></button>
+                <button type="button" onClick={toggleTheme} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-white/5">{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}{resolvedTheme === 'dark' ? t('الوضع الفاتح', 'Light mode') : t('الوضع الداكن', 'Dark mode')}</button>
+              </div>
+            </section>}
           </div>
         </header>
 
