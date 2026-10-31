@@ -152,7 +152,7 @@ describe('Public wallet management access contract', () => {
   });
 
   it('keeps the wallet page introduction compact without the old metadata panel', () => {
-    expect(page).toContain('محافظك وأرصدتك وحركاتك المالية.');
+    expect(page).not.toContain('محافظك وأرصدتك وحركاتك المالية.');
     expect(page).not.toContain('مساحة مالية منظّمة لمتابعة محافظك');
     expect(page).not.toContain('بوابة آمنة');
     expect(page).not.toContain('مرجع موحّد');
