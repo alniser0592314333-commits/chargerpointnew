@@ -192,9 +192,9 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         </nav>
       </aside>
     </div>}
-    <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
-      <section className="rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-5">
-        <div className="px-0 pb-1 pt-5 sm:px-1">
+    <main className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'w-full max-w-none p-0' : 'mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6'}>
+      <section className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'min-h-[calc(100dvh-57px)] w-full rounded-none border-0 bg-[#f3f3f3] p-0 shadow-none dark:bg-[#111111]' : 'rounded-2xl border border-slate-200/90 bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#0b2420] sm:px-5'}>
+        <div className={(gate === 'signed-out' || gate === 'step-up-required' || gate === 'checking') ? 'p-0' : 'px-0 pb-1 pt-5 sm:px-1'}>
         {(gate === 'checking' || gate === 'checking-access') && <div className="mt-8 flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-white/5"><RefreshCw className="animate-spin" size={18} />{t('بنتحقق من الجلسة وصلاحية الخدمة…', 'Checking your session and service access…')}</div>}
         {gate === 'force-change' && <form onSubmit={finishRequiredPasswordChange} className="mt-8 grid gap-4 border-t border-slate-200 pt-7 dark:border-white/10 sm:max-w-md">
           <p className="text-sm leading-6">{t('يجب تغيير كلمة المرور قبل متابعة حسابك. اختر كلمة مرور جديدة.', 'You must change your password before continuing. Choose a new password.')}</p>
