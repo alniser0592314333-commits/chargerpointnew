@@ -33,7 +33,7 @@ function applyPending(snapshot: Snapshot, pending: PendingWalletTransaction[]): 
   return { accounts, transactions };
 }
 
-export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offlineReadOnly?: boolean }> = ({ onStepUpRequired, offlineReadOnly = false }) => {
+export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offlineReadOnly?: boolean; activeSection?: 'wallet-accounts' | 'wallet-transactions' | 'wallet-add' | 'wallet-record' }> = ({ onStepUpRequired, offlineReadOnly = false, activeSection = 'wallet-accounts' }) => {
   const { locale } = useI18n();
   const isAr = locale === 'ar';
   const t = (ar: string, en: string) => isAr ? ar : en;
@@ -139,11 +139,14 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
     {pendingQueue.length > 0 && <div role="status" className="mt-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900 dark:border-amber-200/20 dark:bg-amber-200/5 dark:text-amber-100"><p className="font-bold">{t('حركات محفوظة على الجهاز: ', 'Transactions saved on this device: ')}{pendingQueue.length}</p><p>{t('سيتم إرسال الحركات المعلّقة عند رجوع الاتصال. الحركات المتوقفة بسبب رفض الخادم لن تُرسل تلقائيًا مرة أخرى.', 'Pending transactions will sync when connection returns. Transactions rejected by the server will not be retried automatically.')}</p></div>}
     {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-sm leading-6 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{error}</p>}
     {!loading && !error && snapshot && snapshot.accounts.length === 0 && <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 dark:bg-white/5 dark:text-slate-300">{t('ما في محافظ مسجلة لهذا الحساب لحد الآن.', 'No wallets are registered for this account yet.')}</p>}
+    {activeSection === 'wallet-accounts' && <>
     {snapshot && <div id="wallet-accounts" className="mt-4 scroll-mt-24 grid gap-3 sm:grid-cols-2">{snapshot.accounts.map(account => <article key={account.id} className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
       <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-bold text-teal-700 dark:text-teal-300">{account.provider}</p><h3 className="mt-1 font-bold">{account.display_name}</h3><p className="mt-1 text-xs text-slate-500">{account.wallet_number}</p></div><span className="text-xs text-slate-500">{account.currency}</span></div>
       <p className="mt-4 text-2xl font-extrabold tabular-nums">{money(account.balance_minor, account.currency)}</p>{!account.is_active && <p className="mt-2 text-xs text-amber-700">{t('غير نشطة', 'Inactive')}</p>}
     </article>)}</div>}
     <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(totalsByCurrency).map(([currencyCode, total]) => <article key={currencyCode} className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-4 dark:border-emerald-200/10 dark:bg-emerald-300/5"><p className="text-xs font-semibold text-slate-500">{t('إجمالي الرصيد · ', 'Total balance · ')}{currencyCode}</p><p className="mt-2 text-xl font-extrabold tabular-nums">{money(total, currencyCode)}</p></article>)}</section>
+    </>}
+    {activeSection === 'wallet-transactions' && <>
     <div id="wallet-transactions" className="mt-7 scroll-mt-24 flex items-center gap-2"><History size={18} className="text-teal-700 dark:text-teal-300" /><h2 className="text-lg font-extrabold">{t('سجل الحركات', 'Transaction history')}</h2></div>
     <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]"><input aria-label={t('البحث في الحركات', 'Search transactions')} value={transactionSearch} onChange={e => setTransactionSearch(e.target.value)} placeholder={t('ابحث بالملاحظة أو المرجع أو اسم المحفظة…', 'Search notes, reference, or wallet…')} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm dark:border-white/15 dark:bg-[#071a1d]" /><select aria-label={t('تصفية نوع الحركة', 'Filter transaction type')} value={transactionFilter} onChange={e => setTransactionFilter(e.target.value as typeof transactionFilter)} className="rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm dark:border-white/15 dark:bg-[#071a1d]"><option value="ALL">{t('كل الحركات', 'All transactions')}</option><option value="INCOME">{t('الوارد', 'Income')}</option><option value="EXPENSE">{t('الصادر', 'Expense')}</option><option value="TRANSFER">{t('التحويلات', 'Transfers')}</option></select></div>
     {!loading && !error && filteredTransactions.length === 0 && <p className="mt-3 text-sm text-slate-500">{snapshot?.transactions.length ? t('ما في حركات مطابقة للبحث.', 'No transactions match your search.') : t('لسه ما في حركات مسجلة.', 'No transactions recorded yet.')}</p>}
@@ -151,7 +154,8 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
       <div><p className="text-sm font-bold">{tx.transaction_type === 'INCOME' ? t('وارد', 'Income') : tx.transaction_type === 'EXPENSE' ? t('صادر', 'Expense') : t('تحويل', 'Transfer')}</p><p className="mt-1 text-xs text-slate-500">{tx.source_wallet_name || tx.destination_wallet_name || tx.reference || '—'} · {new Date(tx.created_at).toLocaleString(isAr ? 'ar-PS' : 'en-US')}</p>{tx.note && <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{tx.note}</p>}</div>
       <p className="font-bold tabular-nums">{money(tx.amount_minor, tx.currency)}</p>
     </article>)}</div>}
-    {!offlineReadOnly && !usingCachedSnapshot && <section id="wallet-add" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
+    </>}
+    {activeSection === 'wallet-add' && !offlineReadOnly && !usingCachedSnapshot && <section id="wallet-add" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('إضافة محفظة', 'Add a wallet')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving) return; setSaving(true); setError('');
@@ -168,7 +172,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         <button disabled={saving} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ الحفظ…', 'Saving…') : t('حفظ المحفظة', 'Save wallet')}</button>
       </form>
     </section>}
-    <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
+    {activeSection === 'wallet-record' && <section id="wallet-record" className="mt-8 scroll-mt-24 border-t border-slate-200 pt-6 dark:border-white/10">
       <h2 className="text-lg font-extrabold">{t('تسجيل حركة مالية', 'Record a transaction')}</h2>
       <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={async event => {
         event.preventDefault(); if (saving || transactionConflict) return;
@@ -246,7 +250,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
         <button disabled={saving || transactionConflict || !(snapshot?.accounts || []).some(a => a.is_active)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">{saving ? t('جارٍ التسجيل…', 'Recording…') : transactionConflict ? t('التسجيل متوقف للمراجعة', 'Recording paused for review') : t('تأكيد الحركة', 'Record transaction')}</button>
       </form>
       <p className="mt-3 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('لا يُقبل الصادر أو التحويل إذا كان الرصيد غير كافٍ؛ الخادم هو المرجع النهائي.', 'Expenses and transfers are rejected if funds are insufficient; the server is authoritative.')}</p>
-    </section>
+    </section>}
     <p className="mt-4 text-xs leading-6 text-slate-500 dark:text-slate-400">{t('الأرصدة محسوبة من سجل الحركات على الخادم، وليست محفوظة بشكل منفصل في المتصفح.', 'Balances are derived from the server journal plus clearly marked local pending transactions until sync is confirmed.')}</p>
   </div>;
 };
