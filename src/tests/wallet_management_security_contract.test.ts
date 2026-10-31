@@ -171,23 +171,24 @@ describe('Public wallet management access contract', () => {
     expect(walletPanel).toContain("internal-");
   });
 
-  it('places language and theme controls under personal preferences and removes wallet header back control', () => {
-    const settings = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/SettingsPage.tsx'), 'utf8');
-    expect(settings).toContain('activeSettingsSection === "personal"');
-    expect(settings).toContain('Personal Preferences');
-    expect(page).toContain("t('التفضيلات الشخصية', 'Personal Preferences')");
-    expect(page).not.toContain("t('رجوع', 'Back')");
-    expect(page).not.toContain('onClick={onBack}');
+  it('keeps language/theme controls and return navigation available on the wallet page', () => {
+    expect(page).toContain('setLocale(isAr ? \'en\' : \'ar\')');
+    expect(page).toContain('toggleTheme');
+    expect(page).toContain('onClick={onBack}');
+    expect(page).toContain("t('رجوع', 'Back')");
     expect(page).not.toContain("t('تحديث', 'Refresh')");
   });
 
-  it('gates the public assistance page and direct wallet route behind the development entry screen', () => {
+  it('shows the public services shortcut without a development gate and routes to the protected wallet page', () => {
     const services = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/PublicServicesPage.tsx'), 'utf8');
-    expect(services).toContain("DEVELOPMENT_ACCESS_CODE = 'CPN-DEV-7264'");
-    expect(services).toContain('خدمات مساعدة — قيد التطوير');
-    expect(services).toContain("window.sessionStorage.setItem(DEVELOPMENT_ACCESS_KEY, '1')");
-    expect(portal).toContain("window.sessionStorage.getItem('cpn-services-dev-access') === '1'");
-    expect(services).toContain("t('التفضيلات الشخصية', 'Personal Preferences')");
+    expect(services).toContain("t('اختر الخدمة التي تحتاجها', 'Choose the service you need')");
+    expect(services).toContain("t('إدارة المحافظ', 'Wallet Management')");
+    expect(services).toContain('onClick={() => onOpenWallet?.()}');
+    expect(services).not.toContain('DEVELOPMENT_ACCESS_CODE');
+    expect(services).not.toContain('قيد التطوير');
+    expect(portal).toContain("pathname === '/public/services/wallet'");
+    expect(portal).toContain('<WalletManagementPage');
+    expect(portal).not.toContain('walletAccessVerified');
   });
 
 });

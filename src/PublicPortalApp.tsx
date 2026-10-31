@@ -104,20 +104,6 @@ const PublicPortalApp: React.FC = () => {
   const initialPath = useRef(window.location.pathname);
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
   const pathname = currentPath.split(/[?#]/, 1)[0];
-  const [walletAccessVerified, setWalletAccessVerified] = useState(false);
-  useEffect(() => {
-    let active = true;
-    if (pathname !== '/public/services/wallet') {
-      setWalletAccessVerified(false);
-      return () => { active = false; };
-    }
-    setWalletAccessVerified(false);
-    fetch('/api/dev-access', { method: 'GET', credentials: 'same-origin', cache: 'no-store' })
-      .then(response => response.ok ? response.json() : { ok: false })
-      .then(result => { if (active) setWalletAccessVerified(result.ok === true); })
-      .catch(() => { if (active) setWalletAccessVerified(false); });
-    return () => { active = false; };
-  }, [pathname]);
   const nativeInitialIntro = useRef<boolean | null>(null);
   if (nativeInitialIntro.current === null) nativeInitialIntro.current = getNativeInitialIntroEnabled(pathname);
   const [introKey, setIntroKey] = useState(0);
@@ -263,9 +249,7 @@ const PublicPortalApp: React.FC = () => {
   } else if (pathname === '/public/services') {
     content = <ThemeProvider><PublicServicesPage onBack={() => { window.history.replaceState({ path: '/public/about' }, '', '/public/about'); setCurrentPath('/public/about'); }} onOpenWallet={() => { window.history.replaceState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); setCurrentPath('/public/services/wallet'); }} /></ThemeProvider>;
   } else if (pathname === '/public/services/wallet') {
-    content = <ThemeProvider>{walletAccessVerified
-      ? <WalletManagementPage onBack={() => { window.history.replaceState({ path: '/public/services' }, '', '/public/services'); setCurrentPath('/public/services'); }} />
-      : <PublicServicesPage onOpenWallet={() => { window.history.replaceState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); setCurrentPath('/public/services/wallet'); }} />}</ThemeProvider>;
+    content = <ThemeProvider><WalletManagementPage onBack={() => { window.history.replaceState({ path: '/public/services' }, '', '/public/services'); setCurrentPath('/public/services'); }} /></ThemeProvider>;
   } else {
     const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
     if (route) {
