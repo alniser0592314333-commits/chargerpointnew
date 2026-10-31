@@ -137,6 +137,14 @@ export const CustomerAccountPage: React.FC<{ token: string; search?: string }> =
   const [message, setMessage] = useState('');
   const initialized = useRef(false);
 
+  useEffect(() => {
+    if (!walletManagementFlow || mode !== 'portal') return;
+    // Only return to the wallet after the customer portal has established its
+    // authenticated session; WalletManagementPage performs its own server-side
+    // step-up and wallet-entitlement checks before showing financial data.
+    window.location.replace('/public/services/wallet');
+  }, [walletManagementFlow, mode]);
+
   const t = useCallback((ar: string, en: string) => isAr ? ar : en, [isAr]);
   const setErrorMessage = (value: string) => {
     const messages: Record<string, [string, string]> = {
