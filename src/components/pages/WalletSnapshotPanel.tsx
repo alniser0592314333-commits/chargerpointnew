@@ -131,7 +131,7 @@ export const WalletSnapshotPanel: React.FC<{ onStepUpRequired: () => void; offli
 
   return <div className="mt-6 border-t border-slate-200 pt-6 dark:border-white/10">
     <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2"><Wallet size={19} className="text-teal-700 dark:text-teal-300" /><h2 className="text-lg font-extrabold">{t('محافظي وأرصدتي', 'My wallets and balances')}</h2></div>
+      <div className="flex items-center gap-2"><Wallet size={19} className="text-teal-700 dark:text-teal-300" /><h2 className="text-lg font-extrabold">{activeSection === 'wallet-accounts' ? t('محافظي وأرصدتي', 'My wallets and balances') : activeSection === 'wallet-transactions' ? t('سجل الحركات', 'Transaction history') : activeSection === 'wallet-add' ? t('إضافة محفظة', 'Add a wallet') : t('تسجيل حركة مالية', 'Record a transaction')}</h2></div>
       <button type="button" disabled={loading} onClick={() => { void refresh(); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50 dark:border-white/15"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />{t('تحديث', 'Refresh')}</button>
     </div>
     {loading && <p className="mt-4 text-sm text-slate-500">{t('جارٍ تحميل البيانات…', 'Loading data…')}</p>}
