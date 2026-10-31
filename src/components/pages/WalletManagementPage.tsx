@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X, History, Plus, ReceiptText } from 'lucide-react';
+import { LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X, History, Plus, ReceiptText, Settings, Languages, Sun, Moon } from 'lucide-react';
 import { callCustomerAccount, customerAuth, CUSTOMER_TERMS_VERSION, setCustomerSession } from '../../services/customer/customerAuth';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
@@ -24,6 +24,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
   const [activationRequest, setActivationRequest] = useState<ActivationRequest>(null);
   const [activeSection, setActiveSection] = useState<'wallet-accounts' | 'wallet-transactions' | 'wallet-add' | 'wallet-record'>('wallet-accounts');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const t = (ar: string, en: string) => isAr ? ar : en;
   const handleStepUpRequired = useCallback(() => setGate('step-up-required'), []);
 
@@ -159,17 +160,11 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#071a1d]/90">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:hover:bg-white/5">
-            {isAr ? <ArrowRight size={18} /> : <ArrowLeft size={18} />}{t('رجوع', 'Back')}
-          </button>
           {gate === 'ready' && <button type="button" aria-expanded={menuOpen} aria-controls="wallet-side-menu" onClick={() => setMenuOpen(value => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5">
             {menuOpen ? <X size={18} /> : <Menu size={18} />}{t('القائمة', 'Menu')}
           </button>}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setLocale(isAr ? 'en' : 'ar')} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5">{isAr ? 'EN' : 'عربي'}</button>
-          <button onClick={toggleTheme} className="rounded-xl px-3 py-2 text-xs font-bold hover:bg-slate-100 dark:hover:bg-white/5">{resolvedTheme === 'dark' ? '☀️' : '🌙'}</button>
-        </div>
+        <div className="text-sm font-bold">{t('إدارة المحافظ', 'Wallet Management')}</div>
       </div>
     </header>
     {menuOpen && gate === 'ready' && <div className="fixed inset-0 z-40">
@@ -189,6 +184,18 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
             <item.icon size={18} /><span>{item.label}</span>
           </button>)}
         </nav>
+          <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
+            <button type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(value => !value)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold hover:bg-slate-100 dark:hover:bg-white/5">
+              <Settings size={18} /><span>{t('الإعدادات', 'Settings')}</span><span className="ms-auto">{settingsOpen ? '−' : '+'}</span>
+            </button>
+            {settingsOpen && <section className="mt-2 rounded-xl bg-slate-50 p-3 dark:bg-white/5">
+              <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('التفضيلات الشخصية', 'Personal Preferences')}</h3>
+              <div className="grid gap-2">
+                <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold hover:bg-white dark:hover:bg-white/5"><Languages size={16} />{t('اللغة: العربية', 'Language: English')} <span className="ms-auto text-xs">{isAr ? 'EN' : 'عربي'}</span></button>
+                <button type="button" onClick={toggleTheme} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold hover:bg-white dark:hover:bg-white/5">{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}{resolvedTheme === 'dark' ? t('الوضع الفاتح', 'Light mode') : t('الوضع الداكن', 'Dark mode')}</button>
+              </div>
+            </section>}
+          </div>
       </aside>
     </div>}
     <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
