@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, LockKeyhole, ShieldCheck, Wallet, WifiOff, RefreshCw, Menu, X, History, Plus, ReceiptText } from 'lucide-react';
 import { callCustomerAccount, customerAuth, CUSTOMER_TERMS_VERSION, setCustomerSession } from '../../services/customer/customerAuth';
 import { callWalletService } from '../../services/customer/walletService';
 import { useI18n } from '../../i18n/i18nContext';
@@ -182,9 +182,9 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
         <nav className="mt-4 grid gap-2" aria-label={t('أقسام المحفظة', 'Wallet sections')}>
           {([
             { id: 'wallet-accounts', icon: Wallet, label: t('محافظي وأرصدتي', 'My wallets & balances') },
-            { id: 'wallet-transactions', icon: RefreshCw, label: t('سجل الحركات', 'Transaction history') },
-            { id: 'wallet-add', icon: ShieldCheck, label: t('إضافة محفظة', 'Add a wallet') },
-            { id: 'wallet-record', icon: LockKeyhole, label: t('تسجيل حركة', 'Record a transaction') },
+            { id: 'wallet-transactions', icon: History, label: t('سجل الحركات', 'Transaction history') },
+            { id: 'wallet-add', icon: Plus, label: t('إضافة محفظة', 'Add a wallet') },
+            { id: 'wallet-record', icon: ReceiptText, label: t('تسجيل حركة', 'Record a transaction') },
           ] as const).map(item => <button key={item.id} type="button" onClick={() => { setActiveSection(item.id); setMenuOpen(false); }} aria-current={activeSection === item.id ? 'page' : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-start text-sm font-bold transition ${activeSection === item.id ? 'bg-teal-700 text-white shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-white/5'}`}>
             <item.icon size={18} /><span>{item.label}</span>
           </button>)}
