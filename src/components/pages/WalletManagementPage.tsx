@@ -156,7 +156,7 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
     finally { setBusy(false); }
   };
 
-  return <div className="min-h-screen bg-[#f3f6f5] text-slate-900 dark:bg-[#071817] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
+  return <div className="min-h-screen bg-[#f3f3f3] text-slate-900 dark:bg-[#111111] dark:text-slate-100" dir={isAr ? 'rtl' : 'ltr'}>
     <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#071a1d]/90">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2">
@@ -209,14 +209,14 @@ export const WalletManagementPage: React.FC<{ onBack: () => void }> = ({ onBack 
           {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
           <button disabled={busy || !termsAccepted} className="rounded-xl bg-teal-700 px-5 py-3.5 text-sm font-bold text-white disabled:opacity-60">{busy ? t('جارٍ الحفظ…', 'Saving…') : t('الموافقة والمتابعة', 'Accept and continue')}</button>
         </form>}
-        {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative mx-auto mt-5 w-full max-w-xl overflow-hidden rounded-[1.75rem] bg-[#f3f3f3] text-[#111] shadow-[0_24px_70px_-30px_rgba(0,0,0,0.45)]">
-          <div aria-hidden="true" className="relative h-36 overflow-hidden bg-[#080808] sm:h-44">
+        {(gate === 'signed-out' || gate === 'step-up-required') && <div className="relative mt-0 min-h-[calc(100dvh-57px)] w-full overflow-hidden rounded-none bg-[#f3f3f3] text-[#111] shadow-none">
+          <div aria-hidden="true" className="relative h-32 overflow-hidden bg-[#080808] sm:h-40">
             <div className="absolute -bottom-16 -left-8 h-32 w-[115%] rotate-[-7deg] rounded-[48%] bg-[#202020]" />
             <div className="absolute -bottom-24 -left-8 h-32 w-[115%] rotate-[5deg] rounded-[48%] bg-[#343434]" />
             <svg className="absolute -bottom-px left-0 h-16 w-full" viewBox="0 0 600 100" preserveAspectRatio="none"><path d="M0 42 C85 -5 112 0 180 54 S310 110 395 58 S520 8 600 38 L600 100 L0 100 Z" fill="#f3f3f3" /></svg>
             <div className="absolute left-5 top-5 grid h-12 w-12 place-items-center rounded-2xl bg-white text-black shadow-lg sm:left-7 sm:top-6 sm:h-14 sm:w-14"><Wallet size={27} strokeWidth={1.8} /></div>
           </div>
-          <div className="px-5 pb-6 pt-2 sm:px-9 sm:pb-9">
+          <div className="px-5 pb-8 pt-2 sm:px-8 sm:pb-10">
             <div className="mb-6">
               <div className="inline-flex items-center gap-2 text-xs font-bold text-[#555]"><ShieldCheck size={15} />{t('دخول محمي وآمن', 'Protected secure access')}</div>
               <h2 className="mt-3 text-3xl font-black tracking-tight text-[#111] sm:text-4xl">{t('أهلًا بعودتك', 'Welcome back')}</h2>
