@@ -60,7 +60,7 @@ describe('Public wallet management access contract', () => {
   });
 
   it('renders wallet balances and activity only from the authenticated server snapshot', () => {
-    expect(page).toContain('<WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} />');
+    expect(page).toContain('<WalletSnapshotPanel onStepUpRequired={handleStepUpRequired} activeSection={activeSection} />');
     expect(walletPanel).toContain("callWalletService<{ snapshot?: Snapshot }>('wallet-snapshot'");
     expect(walletPanel).toContain('balance_minor');
     expect(walletPanel).toContain('(snapshot?.transactions ?? []).filter(tx => {');
@@ -123,6 +123,18 @@ describe('Public wallet management access contract', () => {
   });
 
 
+  it('uses a side menu for distinct wallet sections and removes the shortcut dashboard', () => {
+    expect(page).toContain('aria-controls="wallet-side-menu"');
+    expect(page).toContain("setActiveSection(item.id)");
+    expect(page).toContain("'wallet-transactions'");
+    expect(page).toContain("'wallet-add'");
+    expect(page).toContain("'wallet-record'");
+    expect(page).not.toContain('اختصارات المحفظة');
+    expect(page).not.toContain("t('إدارة المحفظة', 'Wallet management')");
+    expect(portal).toContain('Leave the wallet page and return to Assistance Services?');
+    expect(portal).toContain('هل تريد الخروج من صفحة المحفظة والعودة إلى خدمات المساعدة؟');
+  });
+
   it('keeps reauthentication inside the wallet page and uses the existing customer account login flow', () => {
     expect(page).toContain("(gate === 'signed-out' || gate === 'step-up-required')");
     expect(page).toContain("'entry', { token: identifier }");
@@ -140,7 +152,7 @@ describe('Public wallet management access contract', () => {
   });
 
   it('keeps the wallet page introduction compact without the old metadata panel', () => {
-    expect(page).toContain('محافظك وأرصدتك وحركاتك المالية.');
+    expect(page).not.toContain('محافظك وأرصدتك وحركاتك المالية.');
     expect(page).not.toContain('مساحة مالية منظّمة لمتابعة محافظك');
     expect(page).not.toContain('بوابة آمنة');
     expect(page).not.toContain('مرجع موحّد');
