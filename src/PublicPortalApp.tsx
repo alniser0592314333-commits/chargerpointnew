@@ -249,7 +249,11 @@ const PublicPortalApp: React.FC = () => {
   } else if (pathname === '/public/services') {
     content = <ThemeProvider><PublicServicesPage onBack={() => { window.history.replaceState({ path: '/public/about' }, '', '/public/about'); setCurrentPath('/public/about'); }} onOpenWallet={() => { window.history.replaceState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); setCurrentPath('/public/services/wallet'); }} /></ThemeProvider>;
   } else if (pathname === '/public/services/wallet') {
-    content = <ThemeProvider><WalletManagementPage onBack={() => { window.history.replaceState({ path: '/public/services' }, '', '/public/services'); setCurrentPath('/public/services'); }} /></ThemeProvider>;
+    let servicesUnlocked = false;
+    try { servicesUnlocked = window.sessionStorage.getItem('cpn-services-dev-access') === '1'; } catch {}
+    content = <ThemeProvider>{servicesUnlocked
+      ? <WalletManagementPage onBack={() => { window.history.replaceState({ path: '/public/services' }, '', '/public/services'); setCurrentPath('/public/services'); }} />
+      : <PublicServicesPage onOpenWallet={() => { window.history.replaceState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); setCurrentPath('/public/services/wallet'); }} />}</ThemeProvider>;
   } else {
     const route = publicRoutes.find((item) => pathname.startsWith(item.prefix));
     if (route) {
