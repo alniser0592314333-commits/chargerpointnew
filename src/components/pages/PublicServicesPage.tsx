@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircleHelp, Languages, Moon, Sun, Wallet, LockKeyhole } from 'lucide-react';
+import { CircleHelp, Languages, Moon, Sun, Wallet, LockKeyhole, Settings, X } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
 import './public-services.css';
@@ -52,26 +52,17 @@ export const PublicServicesPage: React.FC<Props> = ({ onOpenWallet }) => {
               <p className="hidden text-[11px] text-slate-500 dark:text-slate-400 sm:block">{t('خدمات إضافية متاحة لك', 'Additional services available to you')}</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2" aria-label={t('إعدادات العرض', 'Display settings')}>
-            <button
-              type="button"
-              onClick={() => setLocale(isAr ? 'en' : 'ar')}
-              className="public-services-control inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition hover:-translate-y-0.5"
-              aria-label={t('Switch language to English', 'تغيير اللغة إلى العربية')}
-              title={t('English', 'العربية')}
-            >
-              <Languages size={15} />
-              <span>{isAr ? 'EN' : 'عربي'}</span>
+          <div className="relative shrink-0">
+            <button type="button" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(value => !value)} className="public-services-control inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-bold transition hover:-translate-y-0.5">
+              {settingsOpen ? <X size={15} /> : <Settings size={15} />}<span>{t('الإعدادات', 'Settings')}</span>
             </button>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="public-services-control grid h-9 w-9 place-items-center rounded-lg transition hover:-translate-y-0.5"
-              aria-label={resolvedTheme === 'dark' ? t('التبديل للوضع النهاري', 'Switch to light mode') : t('التبديل للوضع الليلي', 'Switch to dark mode')}
-              title={resolvedTheme === 'dark' ? t('الوضع النهاري', 'Light mode') : t('الوضع الليلي', 'Dark mode')}
-            >
-              {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            {settingsOpen && <section className="absolute end-0 top-11 z-30 w-64 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-[#0b2420]">
+              <h2 className="mb-3 text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400">{t('التفضيلات الشخصية', 'Personal Preferences')}</h2>
+              <div className="grid gap-2">
+                <button type="button" onClick={() => setLocale(isAr ? 'en' : 'ar')} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-white/5"><Languages size={16} />{t('اللغة', 'Language')}<span className="ms-auto text-xs">{isAr ? 'EN' : 'عربي'}</span></button>
+                <button type="button" onClick={toggleTheme} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-white/5">{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}{resolvedTheme === 'dark' ? t('الوضع الفاتح', 'Light mode') : t('الوضع الداكن', 'Dark mode')}</button>
+              </div>
+            </section>}
           </div>
         </header>
 
