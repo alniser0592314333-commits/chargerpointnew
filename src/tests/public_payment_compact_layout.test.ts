@@ -33,6 +33,12 @@ describe('Public payment page compact layout', () => {
     expect(source).toContain('Simple single-card payment form');
   });
 
+  it('shows an inline APK-only notice instead of the Jawwal Pay action on web', () => {
+    expect(source).toContain("Capacitor.isNativePlatform() ? (");
+    expect(source).toContain('لاستخدام أتمتة الدفع حمّل تطبيق APK.');
+    expect(source).toContain("isAr ? 'فهمت' : 'Got it'");
+  });
+
   it('keeps receipt validation and optional note in the payment card', () => {
     expect(source).toContain('Attach payment receipt');
     expect(source).toContain('id="payment-note"');

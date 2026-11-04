@@ -27,6 +27,7 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode, onSubmissionCr
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [successToast, setSuccessToast] = useState('');
+  const [webNoticeDismissed, setWebNoticeDismissed] = useState(false);
   const [lockedUntil, setLockedUntil] = useState('');
   const [clockNow, setClockNow] = useState(Date.now());
   const t = (ar: string, en: string) => isAr ? ar : en;
@@ -211,6 +212,21 @@ export const CustomerJawwalAutomation: React.FC<Props> = ({ mode, onSubmissionCr
       window.removeEventListener('resize', update);
     };
   }, [open]);
+
+  // Jawwal Pay automation relies on Android-native secure storage and the dialer.
+  // On web/PWA, replace setup/reconfiguration with a compact APK-only notice and
+  // omit the payment action entirely instead of letting users hit an unavailable flow.
+  if (!Capacitor.isNativePlatform()) {
+    if (mode === 'setup' || mode === 'reconfigure') {
+      if (webNoticeDismissed) return null;
+      return <div role="note" className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-sm text-slate-800 dark:border-amber-400/20 dark:bg-amber-500/[0.07] dark:text-slate-100">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300" aria-hidden="true"><AlertTriangle size={15} strokeWidth={2.5}/></span>
+        <span>{t('لاستخدام أتمتة الدفع حمّل تطبيق APK.', 'To use payment automation, install the APK app.')}</span>
+        <button type="button" onClick={() => setWebNoticeDismissed(true)} className="inline font-bold text-blue-700 underline-offset-2 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-sky-300">{t('فهمت', 'Got it')}</button>
+      </div>;
+    }
+    return null;
+  }
 
   if (mode === 'payment' && !isOnline) return null;
 
