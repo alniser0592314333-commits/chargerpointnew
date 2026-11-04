@@ -79,11 +79,13 @@ const readSavedCampaign = (): SavedCampaign | null => {
   }
 };
 
-const persistCampaign = (campaign: SavedCampaign): void => {
+const persistCampaign = (campaign: SavedCampaign): boolean => {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(campaign));
+    return true;
   } catch (error) {
     console.error('Unable to persist bulk SMS campaign locally:', error);
+    return false;
   }
 };
 
@@ -137,14 +139,26 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
     uncertain: recipients.filter((recipient) => recipient.status === 'uncertain').length,
   }), [recipients]);
 
-  const saveCurrentCampaign = (nextRecipients: CampaignRecipient[], nextMessage = message) => {
+  const saveCurrentCampaign = (nextRecipients: CampaignRecipient[], nextMessage = message): boolean => {
     const campaign: SavedCampaign = {
       message: nextMessage,
       updatedAt: new Date().toISOString(),
       recipients: nextRecipients,
     };
-    persistCampaign(campaign);
+    const persisted = persistCampaign(campaign);
     setSavedCampaign(campaign);
+    return persisted;
+  };
+
+  const retryFailedRecipients = () => {
+    const nextRecipients = recipients.map((recipient) =>
+      recipient.status === 'failed'
+        ? { ...recipient, status: 'pending' as const, error: undefined }
+        : recipient
+    );
+    setRecipients(nextRecipients);
+    setNotice('');
+    saveCurrentCampaign(nextRecipients, message);
   };
 
   const startNewCampaign = () => {
@@ -178,7 +192,13 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
     stopRequestedRef.current = false;
     setNotice('');
     let current = recipients.map((recipient) => ({ ...recipient }));
-    saveCurrentCampaign(current, trimmedMessage);
+    if (!saveCurrentCampaign(current, trimmedMessage)) {
+      setNotice(isArabic
+        ? 'تعذر حفظ حالة الحملة على الجهاز؛ أوقفنا الإرسال لتجنب التكرار.'
+        : 'Could not save campaign state locally, so sending was stopped to avoid duplicates.');
+      setIsSending(false);
+      return;
+    }
 
     try {
       for (let index = 0; index < current.length; index += 1) {
@@ -187,7 +207,14 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
 
         current[index] = { ...current[index], status: 'sending', error: undefined };
         setRecipients([...current]);
-        saveCurrentCampaign(current, trimmedMessage);
+        if (!saveCurrentCampaign(current, trimmedMessage)) {
+          current[index] = { ...current[index], status: 'pending', error: undefined };
+          setRecipients([...current]);
+          setNotice(isArabic
+            ? 'تعذر حفظ تقدم الحملة محليًا؛ أوقفنا الإرسال لتجنب التكرار.'
+            : 'Could not persist campaign progress locally, so sending was stopped to avoid duplicates.');
+          break;
+        }
 
         try {
           await sendSmsUsingSystemDefaultSim(current[index].phone, trimmedMessage);
@@ -370,6 +397,11 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
             {isArabic ? 'حملة جديدة' : 'New campaign'}
           </Button>
           <div className="flex items-center gap-2">
+            {!isSending && counts.failed > 0 && (
+              <Button variant="outline" size="sm" onClick={retryFailedRecipients}>
+                {isArabic ? 'إعادة محاولة الفاشلة فقط' : 'Retry failed only'}
+              </Button>
+            )}
             {isSending && (
               <Button variant="secondary" size="sm" onClick={() => { stopRequestedRef.current = true; }}>
                 {isArabic ? 'إيقاف بعد الرسالة الحالية' : 'Stop after current'}
