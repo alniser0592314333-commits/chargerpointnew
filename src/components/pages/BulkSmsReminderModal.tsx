@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, LoaderCircle, MessageSquareText, Send, Users, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../i18n/i18nContext';
@@ -94,17 +94,31 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
   const [recipients, setRecipients] = useState<CampaignRecipient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [stopRequested, setStopRequested] = useState(false);
+  const stopRequestedRef = useRef(false);
   const [loadError, setLoadError] = useState('');
   const [notice, setNotice] = useState('');
   const [savedCampaign, setSavedCampaign] = useState<SavedCampaign | null>(null);
 
   useEffect(() => {
     let active = true;
-    setSavedCampaign(readSavedCampaign());
+    const previousCampaign = readSavedCampaign();
+    setSavedCampaign(previousCampaign);
+    if (previousCampaign) setMessage(previousCampaign.message);
     getSmsCustomerRecipients()
       .then((customers) => {
-        if (active) setRecipients(buildRecipients(customers));
+        if (!active) return;
+        const freshRecipients = buildRecipients(customers);
+        if (!previousCampaign) {
+          setRecipients(freshRecipients);
+          return;
+        }
+        const previousByPhone = new Map(previousCampaign.recipients.map((recipient) => [recipient.phone, recipient]));
+        setRecipients(freshRecipients.map((recipient) => {
+          const previous = previousByPhone.get(recipient.phone);
+          return previous
+            ? { ...recipient, status: previous.status, error: previous.error }
+            : recipient;
+        }));
       })
       .catch((error) => {
         console.error('Failed to prepare bulk SMS recipients:', error);
@@ -134,9 +148,12 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
   };
 
   const startNewCampaign = () => {
-    setRecipients((current) => current.map((recipient) => ({ ...recipient, status: 'pending', error: undefined })));
+    const nextRecipients = recipients.map((recipient) => ({ ...recipient, status: 'pending' as const, error: undefined }));
+    setRecipients(nextRecipients);
     setMessage('');
     setNotice('');
+    setSavedCampaign(null);
+    persistCampaign({ message: '', updatedAt: new Date().toISOString(), recipients: nextRecipients });
   };
 
   const startSending = async () => {
@@ -158,14 +175,14 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
     if (!confirmed) return;
 
     setIsSending(true);
-    setStopRequested(false);
+    stopRequestedRef.current = false;
     setNotice('');
     let current = recipients.map((recipient) => ({ ...recipient }));
     saveCurrentCampaign(current, trimmedMessage);
 
     try {
       for (let index = 0; index < current.length; index += 1) {
-        if (stopRequested) break;
+        if (stopRequestedRef.current) break;
         if (current[index].status !== 'pending') continue;
 
         current[index] = { ...current[index], status: 'sending', error: undefined };
@@ -194,7 +211,7 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
         saveCurrentCampaign(current, trimmedMessage);
       }
 
-      if (stopRequested) {
+      if (stopRequestedRef.current) {
         setNotice(isArabic ? 'تم إيقاف الحملة بعد معالجة الرسالة الحالية.' : 'Campaign stopped after the current submission.');
       } else if (!current.some((recipient) => recipient.status === 'pending' || recipient.status === 'sending')) {
         setNotice(
@@ -354,7 +371,7 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
           </Button>
           <div className="flex items-center gap-2">
             {isSending && (
-              <Button variant="secondary" size="sm" onClick={() => setStopRequested(true)}>
+              <Button variant="secondary" size="sm" onClick={() => { stopRequestedRef.current = true; }}>
                 {isArabic ? 'إيقاف بعد الرسالة الحالية' : 'Stop after current'}
               </Button>
             )}
