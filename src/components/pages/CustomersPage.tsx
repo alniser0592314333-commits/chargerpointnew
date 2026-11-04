@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Button } from '../ui/Button';
-import { Search, Plus, X, ChevronLeft, ChevronRight, User, ShoppingBag } from 'lucide-react';
+import { Search, Plus, X, ChevronLeft, ChevronRight, User, ShoppingBag, MessageSquareText } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import {
   searchCustomersAndOrders,
@@ -10,6 +11,7 @@ import {
   useStoreSubscription,
 } from './dayOrdersStore';
 import { authService, UserSession } from '../../services/auth/authService';
+import { BulkSmsReminderModal } from './BulkSmsReminderModal';
 
 export interface CustomersPageProps {
   onSelectCustomer?: (customerId: string) => void;
@@ -49,6 +51,8 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
   const [isOrderSearch, setIsOrderSearch] = useState(false);
   const [totalStoreCount, setTotalStoreCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBulkSmsOpen, setIsBulkSmsOpen] = useState(false);
+  const canUseBulkSms = Capacitor.getPlatform() === 'android' && import.meta.env.VITE_APP_VARIANT === 'admin';
 
   // Add Customer Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -163,17 +167,30 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
             </span>
           )}
         </div>
-        {hasPermission('customers:create') && (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleOpenAddModal}
-            className="shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{t('addCustomer')}</span>
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {canUseBulkSms && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsBulkSmsOpen(true)}
+              className="shrink-0"
+            >
+              <MessageSquareText className="w-4 h-4" />
+              <span>{locale === 'ar' ? 'رسالة جماعية' : 'Bulk SMS'}</span>
+            </Button>
+          )}
+          {hasPermission('customers:create') && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleOpenAddModal}
+              className="shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t('addCustomer')}</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 2. Directly Underneath: Search Input (Direction-Aware & Theme Token Compliant) */}
@@ -435,6 +452,9 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {isBulkSmsOpen && canUseBulkSms && (
+        <BulkSmsReminderModal onClose={() => setIsBulkSmsOpen(false)} />
       )}
     </div>
   );
