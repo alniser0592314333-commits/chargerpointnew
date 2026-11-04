@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import './public-payment-page.css';
 import { AppLogo } from '../qr/AppLogo';
 import {
@@ -170,6 +171,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [jawwalWebNoticeDismissed, setJawwalWebNoticeDismissed] = useState(false);
   const [validationError, setValidationError] = useState<'method' | 'receipt' | null>(null);
 
   const methodSectionRef = useRef<HTMLElement | null>(null);
@@ -893,7 +895,7 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
             <div className="payment-portal-visual-points"><span><CheckCircle2 className="h-4 w-4" />{isAr ? "ثلاث وسائل تحويل متاحة" : "Three transfer methods"}</span><span><ShieldCheck className="h-4 w-4" />{isAr ? "اعتماد بعد مراجعة الإيصال" : "Receipt review before approval"}</span></div>
           </aside>
           </div>
-          {customer && !order && (
+          {customer && !order && (Capacitor.isNativePlatform() ? (
             <section aria-labelledby="jawwal-payment-method-title" className="mx-auto mt-6 w-full max-w-xl overflow-hidden rounded-[1.75rem] border border-sky-200/80 bg-white/90 shadow-xl shadow-slate-900/5 backdrop-blur-xl dark:border-sky-900/60 dark:bg-[#101e21]/95 dark:shadow-black/25">
               <div className="flex items-start gap-3 border-b border-sky-100/80 bg-sky-50/70 px-4 py-4 dark:border-sky-900/50 dark:bg-sky-950/25 sm:px-6">
                 <span className="flex h-9 min-w-9 items-center justify-center rounded-full bg-sky-100 px-2 text-xs font-extrabold text-sky-800 dark:bg-sky-900/70 dark:text-sky-200">2</span>
@@ -906,7 +908,13 @@ export const PublicPaymentPage: React.FC<PublicPaymentPageProps> = ({ token }) =
                 <CustomerJawwalAutomation mode="payment" />
               </div>
             </section>
-          )}
+          ) : !jawwalWebNoticeDismissed ? (
+            <div role="note" className="mx-auto mt-6 flex w-full max-w-xl flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-sm text-slate-800 dark:border-amber-400/20 dark:bg-amber-500/[0.07] dark:text-slate-100">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300" aria-hidden="true"><AlertCircle size={15} strokeWidth={2.5}/></span>
+              <span>{isAr ? 'لاستخدام أتمتة الدفع حمّل تطبيق APK.' : 'To use payment automation, install the APK app.'}</span>
+              <button type="button" onClick={() => setJawwalWebNoticeDismissed(true)} className="inline font-bold text-blue-700 underline-offset-2 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-sky-300">{isAr ? 'فهمت' : 'Got it'}</button>
+            </div>
+          ) : null)}
           </>
         )}
       </main>
