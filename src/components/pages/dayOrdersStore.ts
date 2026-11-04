@@ -4160,23 +4160,28 @@ export interface SmsCustomerRecipient {
   id: string;
   name: string;
   phone: string;
+  /** Negative customer balance represents an outstanding debt. */
+  hasDebt: boolean;
 }
 
 /**
- * Reads all locally hydrated customer records for bulk SMS preparation.
- * This is intentionally local-only: no balance queries and no Supabase request.
- * Inactive records are included because the requested campaign targets every
- * stored customer with a phone number, not only the currently active list.
+ * Reads recipients and their balances from the already hydrated local store.
+ * No Supabase/network request is made. Inactive customers remain included.
  */
 export const getSmsCustomerRecipients = async (): Promise<SmsCustomerRecipient[]> => {
   await ensureStoreHydrated();
-  return Array.from(customersMap.values())
-    .filter((customer) => Boolean(customer.phone && customer.phone.trim()))
-    .map((customer) => ({
+  const customersWithPhone = Array.from(customersMap.values())
+    .filter((customer) => Boolean(customer.phone && customer.phone.trim()));
+
+  return Promise.all(customersWithPhone.map(async (customer) => {
+    const balanceMinor = await repoContext.customerRepo.getBalance(customer.id);
+    return {
       id: customer.id,
       name: customer.name,
       phone: customer.phone || '',
-    }));
+      hasDebt: balanceMinor < 0,
+    };
+  }));
 };
 
 export interface UICustomerListItem {
