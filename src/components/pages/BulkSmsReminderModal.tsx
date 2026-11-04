@@ -198,7 +198,7 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
 
     const confirmed = window.confirm(
       isArabic
-        ? `سيتم إرسال SMS إلى ${recipients.filter((recipient) => recipient.status === 'pending').length} رقم. قد تُحتسب تكلفة على الشريحة. هل تريد المتابعة؟`
+        ? `سيتم إرسال SMS إلى ${selectedPendingCount} رقم. قد تُحتسب تكلفة على الشريحة. هل تريد المتابعة؟`
         : `SMS will be submitted to ${selectedPendingCount} numbers. Your carrier may charge for them. Continue?`
     );
     if (!confirmed) return;
