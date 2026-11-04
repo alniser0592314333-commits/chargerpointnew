@@ -12,6 +12,8 @@ interface CampaignRecipient {
   name: string;
   phone: string;
   status: RecipientStatus;
+  selected: boolean;
+  hasDebt: boolean;
   error?: string;
 }
 
@@ -55,6 +57,8 @@ const buildRecipients = (customers: SmsCustomerRecipient[]): CampaignRecipient[]
       name: customer.name,
       phone: normalized.phone,
       status: 'pending',
+      selected: customer.hasDebt,
+      hasDebt: customer.hasDebt,
     });
   }
 
@@ -118,7 +122,7 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
         setRecipients(freshRecipients.map((recipient) => {
           const previous = previousByPhone.get(recipient.phone);
           return previous
-            ? { ...recipient, status: previous.status, error: previous.error }
+            ? { ...recipient, status: previous.status, error: previous.error, selected: previous.selected ?? recipient.selected }
             : recipient;
         }));
       })
@@ -131,6 +135,17 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
       });
     return () => { active = false; };
   }, [isArabic]);
+
+  const selectedPendingCount = recipients.filter((recipient) => recipient.selected && recipient.status === 'pending').length;
+
+  const toggleRecipient = (id: string) => {
+    if (isSending) return;
+    setRecipients((current) => current.map((recipient) =>
+      recipient.id === id && recipient.status === 'pending'
+        ? { ...recipient, selected: !recipient.selected }
+        : recipient
+    ));
+  };
 
   const counts = useMemo(() => ({
     pending: recipients.filter((recipient) => recipient.status === 'pending').length,
@@ -176,15 +191,15 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
       setNotice(isArabic ? 'اكتب نص الرسالة أولًا.' : 'Enter the message first.');
       return;
     }
-    if (recipients.length === 0) {
-      setNotice(isArabic ? 'لا يوجد رقم هاتف صالح للإرسال.' : 'There are no valid phone numbers to send to.');
+    if (selectedPendingCount === 0) {
+      setNotice(isArabic ? 'حدد زبونًا واحدًا على الأقل للإرسال.' : 'Select at least one recipient to send.');
       return;
     }
 
     const confirmed = window.confirm(
       isArabic
-        ? `سيتم إرسال SMS إلى ${recipients.filter((recipient) => recipient.status === 'pending').length} رقم. قد تُحتسب تكلفة على الشريحة. هل تريد المتابعة؟`
-        : `SMS will be submitted to ${recipients.filter((recipient) => recipient.status === 'pending').length} numbers. Your carrier may charge for them. Continue?`
+        ? `سيتم إرسال SMS إلى ${selectedPendingCount} رقم. قد تُحتسب تكلفة على الشريحة. هل تريد المتابعة؟`
+        : `SMS will be submitted to ${selectedPendingCount} numbers. Your carrier may charge for them. Continue?`
     );
     if (!confirmed) return;
 
@@ -203,7 +218,7 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
     try {
       for (let index = 0; index < current.length; index += 1) {
         if (stopRequestedRef.current) break;
-        if (current[index].status !== 'pending') continue;
+        if (current[index].status !== 'pending' || !current[index].selected) continue;
 
         current[index] = { ...current[index], status: 'sending', error: undefined };
         setRecipients([...current]);
@@ -356,8 +371,9 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
           )}
 
           <div className="rounded-xl border border-gray-200 dark:border-[#14423b]">
-            <div className="border-b border-gray-100 px-3 py-2 text-sm font-semibold text-gray-800 dark:border-[#14423b] dark:text-[#daf1de]">
-              {isArabic ? 'قائمة المستلمين' : 'Recipient list'}
+            <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 dark:border-[#14423b]">
+              <span className="text-sm font-semibold text-gray-800 dark:text-[#daf1de]">{isArabic ? 'قائمة المستلمين' : 'Recipient list'}</span>
+              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{isArabic ? `محدد للإرسال: ${selectedPendingCount}` : `Selected: ${selectedPendingCount}`}</span>
             </div>
             <div className="max-h-48 divide-y divide-gray-100 overflow-y-auto dark:divide-[#14423b]">
               {isLoading ? (
@@ -368,10 +384,23 @@ export const BulkSmsReminderModal: React.FC<{ onClose: () => void }> = ({ onClos
                 <p className="p-5 text-center text-sm text-gray-500">{isArabic ? 'لا توجد أرقام هواتف صالحة.' : 'No valid phone numbers found.'}</p>
               ) : recipients.map((recipient) => (
                 <div key={recipient.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-gray-900 dark:text-[#daf1de]">{recipient.name}</p>
-                    <p dir="ltr" className="text-xs text-gray-500 dark:text-[#8eb698]">{recipient.phone}</p>
-                  </div>
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={recipient.selected}
+                      onChange={() => toggleRecipient(recipient.id)}
+                      disabled={isSending || recipient.status !== 'pending'}
+                      aria-label={isArabic ? `اختيار ${recipient.name}` : `Select ${recipient.name}`}
+                      className="h-4 w-4 shrink-0 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600 disabled:opacity-50"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-gray-900 dark:text-[#daf1de]">{recipient.name}</span>
+                      <span dir="ltr" className="block text-xs text-gray-500 dark:text-[#8eb698]">{recipient.phone}</span>
+                      <span className={`block text-[11px] ${recipient.hasDebt ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-[#8eb698]'}`}>
+                        {recipient.hasDebt ? (isArabic ? 'عليه دين' : 'Has outstanding debt') : (isArabic ? 'بدون دين' : 'No outstanding debt')}
+                      </span>
+                    </span>
+                  </label>
                   <span className={`shrink-0 text-xs ${
                     recipient.status === 'submitted' ? 'text-emerald-600 dark:text-emerald-400' :
                     recipient.status === 'failed' ? 'text-red-600 dark:text-red-400' :
