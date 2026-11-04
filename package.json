@@ -35,8 +35,7 @@
     "@capacitor/app": "^7.0.1",
     "@capacitor/push-notifications": "^7.0.2",
     "@capacitor/local-notifications": "^7.0.2",
-    "@capacitor/splash-screen": "^7.0.1",
-    "@chargerpoint/native-sms": "file:./native-sms"
+    "@capacitor/splash-screen": "^7.0.1"
   },
   "devDependencies": {
     "@capacitor/android": "^7.4.3",
