@@ -4156,6 +4156,29 @@ export const findExistingCustomerOrderOnDay = async (
   );
 };
 
+export interface SmsCustomerRecipient {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+/**
+ * Reads all locally hydrated customer records for bulk SMS preparation.
+ * This is intentionally local-only: no balance queries and no Supabase request.
+ * Inactive records are included because the requested campaign targets every
+ * stored customer with a phone number, not only the currently active list.
+ */
+export const getSmsCustomerRecipients = async (): Promise<SmsCustomerRecipient[]> => {
+  await ensureStoreHydrated();
+  return Array.from(customersMap.values())
+    .filter((customer) => Boolean(customer.phone && customer.phone.trim()))
+    .map((customer) => ({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone || '',
+    }));
+};
+
 export interface UICustomerListItem {
   id: string;
   name: string;
