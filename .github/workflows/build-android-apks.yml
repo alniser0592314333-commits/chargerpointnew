@@ -242,7 +242,7 @@ jobs:
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           content = manifest.read_text()
           if "android.permission.SEND_SMS" not in content:
-              content = content.replace("<application", '    <uses-permission android:name="android.permission.SEND_SMS" />\\n    <application', 1)
+              content = content.replace("<application", '    <uses-permission android:name="android.permission.SEND_SMS" />\n    <application', 1)
               manifest.write_text(content)
 
           activities = list(java_root.rglob("MainActivity.java"))
@@ -252,12 +252,12 @@ jobs:
           code = main.read_text()
           import_line = "import com.chargerpointnew.sms.NativeSmsPlugin;"
           if import_line not in code:
-              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\n" + import_line, 1)
+              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + import_line, 1)
           if "registerPlugin(NativeSmsPlugin.class)" not in code:
               if "void onCreate(" in code:
-                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(NativeSmsPlugin.class);", code, count=1)
+                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(NativeSmsPlugin.class);", code, count=1)
               else:
-                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(NativeSmsPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(NativeSmsPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
           main.write_text(code)
           print("Installed the default-SIM SMS plugin only in the admin APK.")
           PY
