@@ -1188,14 +1188,24 @@ export class FinalUseCases {
   ): Promise<Result<CustomerEntity>> {
     auth.requireAuth();
     auth.assertPermission('customers:edit');
-    if (updates.debtLimitMinor !== undefined) {
+    const changesDebtLimit = updates.debtLimitMinor !== undefined;
+    const changesChargerFeeExemption = updates.chargerFeeExempt !== undefined;
+    const requiresProtectedCustomerBin = changesDebtLimit || changesChargerFeeExemption;
+
+    if (changesDebtLimit) {
       auth.assertPermission('customers:debt-limit');
       if (!Number.isInteger(updates.debtLimitMinor)) {
         throw new BusinessRuleViolation('Debt limit must be an integer in minor units');
       }
-      // A debt-limit mutation is a protected operation. Verify the credential
-      // before creating the optimistic local update and carry it only with the
-      // corresponding outbox command so the canonical RPC can verify it too.
+    }
+    if (changesChargerFeeExemption) {
+      auth.assertPermission('customers:charger-exemption');
+    }
+    // The canonical RPC protects both debt-limit and charger-fee-exemption
+    // changes with BIN verification. Enforce the same boundary before applying
+    // the optimistic local mutation, then carry the verified BIN in this
+    // exact outbox command.
+    if (requiresProtectedCustomerBin) {
       await auth.verifyBin(bin || '');
     }
     const customer = await this.deps.customerRepo.findById(customerId);
@@ -1216,7 +1226,7 @@ export class FinalUseCases {
         ...updates,
         updatedAt: updatedCustomer.updatedAt,
         version: updatedCustomer.version,
-        ...(updates.debtLimitMinor !== undefined ? { bin: bin!.trim() } : {}),
+        ...(requiresProtectedCustomerBin ? { bin: bin!.trim() } : {}),
       };
       ctx.commandRepo.record(commandId, 'UPDATE_CUSTOMER', commandPayload, customer.version);
       return { success: true, data: updatedCustomer };
