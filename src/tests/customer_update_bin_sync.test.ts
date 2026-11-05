@@ -44,7 +44,7 @@ const admin = (verifier?: (bin: string) => boolean | Promise<boolean>) =>
       username: 'admin',
       fullName: 'Admin',
       role: 'ADMIN',
-      permissions: ['customers:edit', 'customers:debt-limit'],
+      permissions: ['customers:edit', 'customers:debt-limit', 'customers:charger-exemption'],
       isSuperAdmin: false,
     },
     verifier ? (bin) => verifier(bin) : undefined
@@ -90,4 +90,31 @@ describe('Customer update BIN sync contract', () => {
     expect(fixture.getRecorded()).toBeNull();
     expect(fixture.getSaved()).toBeNull();
   });
+  it('includes the verified BIN when changing charger-fee exemption', async () => {
+    const fixture = makeUseCases();
+    await fixture.useCases.updateCustomer(
+      admin((bin) => bin === validBin),
+      customer.id,
+      { chargerFeeExempt: true },
+      validBin
+    );
+
+    const command = fixture.getRecorded();
+    expect(command?.[1]).toBe('UPDATE_CUSTOMER');
+    expect(command?.[2]).toMatchObject({
+      id: customer.id,
+      chargerFeeExempt: true,
+      bin: validBin,
+    });
+  });
+
+  it('rejects a charger-fee exemption change without a valid BIN before writing or queueing', async () => {
+    const fixture = makeUseCases();
+    await expect(
+      fixture.useCases.updateCustomer(admin(), customer.id, { chargerFeeExempt: true })
+    ).rejects.toThrow(/BIN/i);
+    expect(fixture.getRecorded()).toBeNull();
+    expect(fixture.getSaved()).toBeNull();
+  });
+
 });
