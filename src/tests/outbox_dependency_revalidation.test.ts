@@ -481,4 +481,62 @@ describe('Outbox Dependency Revalidation & Automated Unblocking (Phase 2)', () =
     expect(result.blocked.has('cmd_new_renumber_after_server_fix')).toBe(false);
   });
 
+  it('serializes customer updates and keeps later versions blocked when an earlier update fails', async () => {
+    const executed: string[] = [];
+    const transport: ServerSyncTransport = {
+      pushCommand: async (req: SyncCommandRequest): Promise<SyncCommandResponse> => {
+        executed.push(req.commandId);
+        return req.commandId === 'customer_update_1'
+          ? { success: false, error: 'Authorization required: BIN is required for UPDATE_CUSTOMER', code: 'AUTH_REQUIRED', errorClass: 'AUTHORIZATION', rpcReached: true }
+          : { success: true, serverVersion: 4, rpcReached: true };
+      },
+      pullChanges: async (cursor: number): Promise<SyncPullResponse> => ({
+        changes: [],
+        latestSequence: cursor,
+        serverResetGeneration: 1,
+      }),
+    };
+
+    const engine = new SyncEngine(transport);
+    await localDb.set('customers', 'customer-1', { id: 'customer-1', name: 'Before', version: 2 });
+    await engine.queueCommand(
+      'customer_update_1',
+      'UPDATE_CUSTOMER',
+      'customers',
+      'customer-1',
+      { id: 'customer-1', name: 'First edit' },
+      'dev_1',
+      'admin_1',
+      2,
+    );
+    await engine.queueCommand(
+      'customer_update_2',
+      'UPDATE_CUSTOMER',
+      'customers',
+      'customer-1',
+      { id: 'customer-1', name: 'Second edit' },
+      'dev_1',
+      'admin_1',
+      3,
+    );
+
+    await engine.synchronize();
+
+    expect(executed).toEqual(['customer_update_1']);
+    const second = await localDb.getHistoryByCommandId('customer_update_2');
+    expect(second?.state).toBe('BLOCKED');
+  });
+
+  it('does not serialize updates belonging to different customers', async () => {
+    const engine = new SyncEngine(new MockServerSyncTransport());
+    await engine.queueCommand('customer_a_update', 'UPDATE_CUSTOMER', 'customers', 'customer-a', { id: 'customer-a' }, 'dev_1', 'admin_1', 1);
+    await engine.queueCommand('customer_b_update', 'UPDATE_CUSTOMER', 'customers', 'customer-b', { id: 'customer-b' }, 'dev_1', 'admin_1', 1);
+
+    const outbox = await localDb.listOutbox();
+    const result = await new OutboxScheduler().schedule(outbox, outbox, async (id) => localDb.getHistoryByCommandId(id));
+
+    expect(result.ready.map(item => item.commandId)).toEqual(['customer_a_update', 'customer_b_update']);
+    expect(result.blocked.size).toBe(0);
+  });
+
 });
