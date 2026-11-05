@@ -220,6 +220,49 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
     }
   }
 
+  // 6. Serialize mutations within the same customer aggregate.
+  // Customer updates use an optimistic server version. If an earlier local
+  // update is rejected (for example, because its protected BIN was missing),
+  // a later update must not overtake it with a version that assumes the earlier
+  // command committed. Keep the chain scoped to customer mutations only.
+  const customerMutationTypes = new Set([
+    'CREATE_CUSTOMER',
+    'UPDATE_CUSTOMER',
+    'EDIT_CUSTOMER',
+    'SOFT_DELETE_CUSTOMER',
+  ]);
+  const currentCustomerId =
+    item.aggregateType === 'customers' && typeof item.aggregateId === 'string'
+      ? item.aggregateId
+      : typeof payload.id === 'string'
+        ? payload.id
+        : undefined;
+
+  if (currentCustomerId && customerMutationTypes.has(item.commandType)) {
+    const currentCreatedAt = new Date(item.createdAt || 0).getTime();
+    const previousCustomerMutations = allOutbox
+      .filter(other => {
+        if (other.commandId === item.commandId || !customerMutationTypes.has(other.commandType)) return false;
+        const otherPayload = (other.payload || {}) as any;
+        const otherCustomerId =
+          other.aggregateType === 'customers' && typeof other.aggregateId === 'string'
+            ? other.aggregateId
+            : typeof otherPayload.id === 'string'
+              ? otherPayload.id
+              : undefined;
+        if (otherCustomerId !== currentCustomerId) return false;
+        return new Date(other.createdAt || 0).getTime() < currentCreatedAt;
+      })
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    // Only the immediately preceding customer mutation is a dependency.
+    // Accepted predecessors release the next command; failed/conflicted ones
+    // keep later versions blocked until the earlier edit is repaired.
+    if (previousCustomerMutations.length > 0) {
+      deps.add(previousCustomerMutations[0].commandId);
+    }
+  }
+
   // Remove self-references
   deps.delete(item.commandId);
   return Array.from(deps);
