@@ -17,9 +17,9 @@ const renderMessageTemplate = (template: string, recipient: Recipient, link = ''
     ? `${(Math.abs(recipient.balanceMinor) / 100).toLocaleString('ar', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`
     : 'لا يوجد';
   return template
-    .replace(/\\{name\\}/g, recipient.name)
-    .replace(/\\{debt\\}/g, debt)
-    .replace(/\\{link\\}/g, link);
+    .replace(/\{name\}/g, recipient.name)
+    .replace(/\{debt\}/g, debt)
+    .replace(/\{link\}/g, link);
 };
 
 const normalizePhone = (value: string): string | null => {
@@ -154,13 +154,15 @@ export const CustomerLinkSmsPage: React.FC = () => {
           break;
         }
         try {
-          // Use the canonical token returned by the same QR service as the customer QR card.
-          // Every customer is resolved independently; no customer ID is used as a public token.
-          const qr = await getCustomerQrCardData(recipient.id);
-          if (!qr?.publicUrl || !qr.token) throw new Error('CUSTOMER_QR_LINK_UNAVAILABLE');
-          const message = isArabic
-            ? `مرحباً ${recipient.name}، هذا رابط حسابك الشخصي في نقطة الشحن: ${qr.publicUrl}\nافتح الرابط للاطلاع على حسابك.`
-            : `Hello ${recipient.name}, this is your personal Charging Point account link: ${qr.publicUrl}\nOpen it to view your account.`;
+          let personalLink = '';
+          if (messageTemplate.includes('{link}')) {
+            // Resolve the canonical personal QR only when the editable template asks for it.
+            const qr = await getCustomerQrCardData(recipient.id);
+            if (!qr?.publicUrl || !qr.token) throw new Error('CUSTOMER_QR_LINK_UNAVAILABLE');
+            personalLink = qr.publicUrl;
+          }
+          const message = renderMessageTemplate(messageTemplate, recipient, personalLink).trim();
+          if (!message) throw new Error('SMS_MESSAGE_EMPTY');
           await sendSmsUsingSystemDefaultSim(recipient.phone, message);
           current[index] = { ...current[index], status: 'submitted' };
         } catch (error) {
