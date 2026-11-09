@@ -158,7 +158,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
   };
   const startNewCampaign = () => {
     if (isSending) return;
-    updateRecipients(recipients.map((r) => ({ ...r, status: 'pending' as const, selected: true, error: undefined })));
+    updateRecipients(recipients.map((r) => ({ ...r, status: 'pending' as const, selected: r.hasDebt, error: undefined })));
     setNotice('');
   };
 
@@ -247,7 +247,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="text-xs font-semibold text-gray-600 dark:text-[#a9c9b1]">{isArabic ? 'نوع الرسالة' : 'Message type'}
-          <select defaultValue="debt" onChange={(e) => { if (e.target.value !== 'custom') applyPreset(e.target.value as keyof typeof MESSAGE_PRESETS); }} disabled={isSending} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]">
+          <select value={Object.entries(MESSAGE_PRESETS).find(([, content]) => content === messageTemplate)?.[0] || 'custom'} onChange={(e) => { if (e.target.value !== 'custom') applyPreset(e.target.value as keyof typeof MESSAGE_PRESETS); }} disabled={isSending} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]">
             <option value="debt">{isArabic ? 'تذكير بالدين' : 'Debt reminder'}</option>
             <option value="link">{isArabic ? 'رسالة رابط QR' : 'QR link message'}</option>
             <option value="general">{isArabic ? 'رسالة عامة' : 'General message'}</option>
