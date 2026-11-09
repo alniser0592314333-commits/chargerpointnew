@@ -207,6 +207,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
   };
   const startNewCampaign = () => {
     if (isSending) return;
+    if (!window.confirm(isArabic ? 'بدء حملة جديدة سيعيد حالات الإرسال السابقة وقد يرسل رسائل مكررة. هل أنت متأكد؟' : 'Starting a new campaign resets previous statuses and may send duplicate messages. Continue?')) return;
     updateRecipients(recipients.map((r) => ({ ...r, status: 'pending' as const, selected: r.hasDebt, error: undefined })));
     setNotice('');
   };
