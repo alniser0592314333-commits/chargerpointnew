@@ -20,7 +20,7 @@ const normalizePhone = (value: string): string | null => {
     return e >= 0 ? String(e) : digit;
   });
   const compact = ascii.trim().replace(/[^+\d]/g, '');
-  const digits = compact.replace(/\\D/g, '');
+  const digits = compact.replace(/\D/g, '');
   if (digits.length < 7 || digits.length > 15) return null;
   return compact.startsWith('+') ? `+${digits}` : digits;
 };
