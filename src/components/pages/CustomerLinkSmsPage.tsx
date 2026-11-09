@@ -33,7 +33,10 @@ const renderMessageTemplate = (template: string, recipient: Recipient, link = ''
   return template
     .replace(/\{name\}/g, recipient.name)
     .replace(/\{debt\}/g, debt)
-    .replace(/\{link\}/g, link);
+    .replace(/\{link\}/g, link)
+    .replace(/\{phone\}/g, recipient.phone)
+    .replace(/\{date\}/g, new Date().toLocaleDateString('ar'))
+    .replace(/\{due_date\}/g, 'الخميس');
 };
 
 const normalizePhone = (value: string): string | null => {
