@@ -122,9 +122,12 @@ export const CustomerLinkSmsPage: React.FC = () => {
   const hasLinkToken = messageTemplate.includes('{link}');
   // One generic preview for the whole campaign; never expose or switch to an individual customer's data.
   const previewMessage = messageTemplate
-    .replace(/\\{name\\}/g, isArabic ? 'اسم الزبون' : 'Customer name')
-    .replace(/\\{debt\\}/g, isArabic ? '50.00 شيكل' : '50.00 ILS')
-    .replace(/\\{link\\}/g, isArabic ? 'رابط الزبون الشخصي' : 'Customer personal link');
+    .replace(/\{name\}/g, isArabic ? 'اسم الزبون' : 'Customer name')
+    .replace(/\{debt\}/g, isArabic ? '50.00 شيكل' : '50.00 ILS')
+    .replace(/\{link\}/g, isArabic ? 'رابط الزبون الشخصي' : 'Customer personal link')
+    .replace(/\{phone\}/g, '059XXXXXXX')
+    .replace(/\{date\}/g, new Date().toLocaleDateString(isArabic ? 'ar' : 'en'))
+    .replace(/\{due_date\}/g, isArabic ? 'الخميس' : 'Thursday');
   const updateTemplate = (value: string) => {
     setMessageTemplate(value);
     try { localStorage.setItem(TEMPLATE_KEY, value); } catch (error) {
