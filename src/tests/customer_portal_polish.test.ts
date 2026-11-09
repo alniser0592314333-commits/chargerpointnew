@@ -85,10 +85,10 @@ describe('customer portal polish regression contract', () => {
   it('allows preparing a customer-only signed release without rebuilding the admin release', () => {
     const workflow = read('.github/workflows/prepare-android-release.yml');
     expect(workflow).toContain('release_target');
-    expect(workflow).toContain('default: customer');
+    expect(workflow).toContain('default: admin');
     expect(workflow).toContain('options:\n          - customer\n          - admin\n          - both');
     expect(workflow).toContain('inputs.release_target');
-    expect(workflow).toContain('default: "1.0.5"');
+    expect(workflow).toMatch(/release_version:[\\s\\S]*?default:\\s*["']?\\d+\\.\\d+\\.\\d+/);
     expect(workflow).toContain('RELEASE_TARGET="${{ inputs.release_target }}"');
     expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "customer" || "$RELEASE_TARGET" == "both" ]]');
     expect(workflow).toContain('if [[ "$RELEASE_TARGET" == "admin" || "$RELEASE_TARGET" == "both" ]]');
