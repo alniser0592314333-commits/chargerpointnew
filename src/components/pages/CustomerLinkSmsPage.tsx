@@ -185,7 +185,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
   const smsLength = useMemo(() => {
     const gsmBasic = /^[A-Za-z0-9 @£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,-.\/:;<=>?¡ÄÖÑÜ§¿äöñüà]*$/;
     const extension = new Set(['^', '{', '}', '\\', '[', ']', '~', '|', '€']);
-    const gsm = gsmBasic.test(messageTemplate);
+    const gsm = [...messageTemplate].every((char) => gsmBasic.test(char) || extension.has(char));
     const units = gsm ? [...messageTemplate].reduce((n, c) => n + (extension.has(c) ? 2 : 1), 0) : [...messageTemplate].length * 2;
     const one = gsm ? 160 : 70;
     const joined = gsm ? 153 : 67;
