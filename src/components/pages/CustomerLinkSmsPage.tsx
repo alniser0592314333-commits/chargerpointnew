@@ -16,7 +16,7 @@ const SAVED_TEMPLATES_KEY = 'chargerpoint.customerLinkSmsSavedTemplates.v1';
 const MESSAGE_PRESETS = {
   debt: 'مرحباً {name} 🌹\nنذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. بنكون شاكرين إلك لو بتقدر تسدده يوم الخميس. يعطيك العافية.',
   link: 'مرحباً {name} 🌹\nهذا رابط حسابك الشخصي لمتابعة طلباتك ومعلوماتك: {link}\nيسعدنا خدمتك دائماً.',
-  general: 'مرحباً {name} 🌹\\nنتمنى تكون بخير. شكراً لثقتك بنا، إحنا دائماً بخدمتك.',
+  general: 'مرحباً {name} 🌹\nنتمنى تكون بخير. شكراً لثقتك بنا، إحنا دائماً بخدمتك.',
 } as const;
 const readSavedTemplates = (): SavedMessageTemplate[] => {
   try {
@@ -136,6 +136,10 @@ export const CustomerLinkSmsPage: React.FC = () => {
   };
   const applyPreset = (kind: keyof typeof MESSAGE_PRESETS) => {
     updateTemplate(MESSAGE_PRESETS[kind]);
+    setSelectedSavedTemplate('');
+  };
+  const startCustomMessage = () => {
+    updateTemplate('');
     setSelectedSavedTemplate('');
   };
   const counts = useMemo(() => ({
@@ -265,12 +269,16 @@ export const CustomerLinkSmsPage: React.FC = () => {
         <button type="button" onClick={saveCurrentTemplate} disabled={isSending || !messageTemplate.trim()} className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:border-[#28665a] dark:text-[#a9d9b7]">{isArabic ? 'حفظ كقالب جديد' : 'Save as template'}</button>
         <span className="text-[11px] text-gray-500 dark:text-[#8eb698]">{isArabic ? 'القوالب تُحفظ على هذا الجهاز فقط.' : 'Templates are stored on this device only.'}</span>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={startCustomMessage} disabled={isSending} className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50 dark:border-blue-900 dark:text-blue-300">{isArabic ? 'إنشاء رسالة مخصصة بالكامل' : 'Create a fully custom message'}</button>
+        <span className="text-[11px] text-gray-500 dark:text-[#8eb698]">{isArabic ? 'اكتب أي نص تريده وعدّله بحرية؛ المتغيرات اختيارية وليست إلزامية.' : 'Write and edit any text freely; tokens are optional.'}</span>
+      </div>
       <div className="flex flex-wrap gap-2 text-xs">
         {['{name}', '{debt}', '{link}'].map((token) => <button key={token} type="button" onClick={() => updateTemplate(messageTemplate + (messageTemplate && !messageTemplate.endsWith(' ') ? ' ' : '') + token)} className="rounded-lg border border-emerald-200 px-3 py-1.5 font-semibold text-emerald-800 hover:bg-emerald-50 dark:border-[#28665a] dark:text-[#a9d9b7]">{token === '{name}' ? (isArabic ? 'اسم الزبون' : 'Customer name') : token === '{debt}' ? (isArabic ? 'مبلغ الدين' : 'Debt amount') : (isArabic ? 'الرابط الشخصي' : 'Personal link')}</button>)}
       </div>
       <textarea value={messageTemplate} onChange={(e) => updateTemplate(e.target.value)} rows={5} maxLength={2000} disabled={isSending} placeholder={isArabic ? 'اكتب نص الرسالة هنا…' : 'Write your message here…'} className="w-full resize-y rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'وجود {link} فقط هو ما ينشئ الرابط؛ احذفه لإرسال رسالة نصية عادية.' : 'Only {link} generates a personal link. Remove it for a plain SMS.'}</p>
+        <p className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'النص بالكامل قابل للتعديل. تقدر ترسل رسالة عادية بدون رصيد أو اسم أو رابط؛ أضف المتغيرات فقط إذا احتجتها.' : 'The entire message is editable. Send plain text without balance, name, or link; add tokens only when needed.'}</p>
         <button type="button" onClick={() => updateTemplate(DEFAULT_TEMPLATE)} disabled={isSending} className="text-xs font-semibold text-emerald-700 underline dark:text-emerald-400">{isArabic ? 'استعادة النص الافتراضي' : 'Restore default text'}</button>
       </div>
       <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#061f1c]">
