@@ -211,6 +211,14 @@ export const CustomerLinkSmsPage: React.FC = () => {
     setNotice('');
   };
 
+  const togglePause = () => {
+    pauseRef.current = !pauseRef.current;
+    setIsPaused(pauseRef.current);
+    setNotice(pauseRef.current
+      ? (isArabic ? 'تم إيقاف الحملة مؤقتاً. الرسالة الحالية ستكتمل أولاً.' : 'Campaign paused. The current SMS will finish first.')
+      : (isArabic ? 'تم استئناف الحملة.' : 'Campaign resumed.'));
+  };
+
   const sendSelected = async () => {
     if (!isAndroidAdmin) { setNotice(isArabic ? 'إرسال SMS متاح من تطبيق الأدمن APK فقط.' : 'SMS sending is available from the Admin APK only.'); return; }
     if (messageTemplate.includes('{link}') && !navigator.onLine) { setNotice(isArabic ? 'يلزم الإنترنت فقط عند استخدام متغير الرابط الشخصي.' : 'Internet is required only when the personal-link variable is used.'); return; }
@@ -228,11 +236,16 @@ export const CustomerLinkSmsPage: React.FC = () => {
     let current = recipients.map((r) => ({ ...r }));
     if (!saveCampaign(current)) { setNotice(isArabic ? 'تعذر حفظ الحملة؛ أوقفنا الإرسال لتجنب التكرار.' : 'Could not save the campaign; sending was stopped to avoid duplicates.'); return; }
     setIsSending(true);
+    pauseRef.current = false;
+    setIsPaused(false);
+    setCampaignStartedAt(new Date().toISOString());
+    setCampaignFinishedAt('');
     setNotice('');
     try {
       for (let index = 0; index < current.length; index += 1) {
         const recipient = current[index];
         if (!recipient.selected || recipient.status !== 'pending') continue;
+        while (pauseRef.current) await new Promise((resolve) => window.setTimeout(resolve, 250));
         current[index] = { ...recipient, status: 'sending', error: undefined };
         setRecipients([...current]);
         if (!saveCampaign(current)) {
@@ -263,13 +276,27 @@ export const CustomerLinkSmsPage: React.FC = () => {
         }
         setRecipients([...current]);
         saveCampaign(current);
+        const delayMs = Number(sendDelay) * 1000;
+        if (delayMs > 0 && current.some((r, i) => i > index && r.selected && r.status === 'pending')) {
+          const deadline = Date.now() + delayMs;
+          while (Date.now() < deadline) {
+            while (pauseRef.current) await new Promise((resolve) => window.setTimeout(resolve, 250));
+            await new Promise((resolve) => window.setTimeout(resolve, Math.min(250, deadline - Date.now())));
+          }
+        }
       }
       if (!current.some((r) => r.selected && r.status === 'pending')) {
         setNotice(isArabic
           ? `انتهت الحملة: ${current.filter((r) => r.status === 'submitted').length} قُبلت للإرسال، ${current.filter((r) => r.status === 'failed').length} فشلت، ${current.filter((r) => r.status === 'uncertain').length} غير محسومة.`
           : `Campaign finished: ${current.filter((r) => r.status === 'submitted').length} submitted, ${current.filter((r) => r.status === 'failed').length} failed, ${current.filter((r) => r.status === 'uncertain').length} uncertain.`);
       }
-    } finally { setIsSending(false); saveCampaign(current); }
+    } finally {
+      setIsSending(false);
+      pauseRef.current = false;
+      setIsPaused(false);
+      setCampaignFinishedAt(new Date().toISOString());
+      saveCampaign(current);
+    }
   };
 
   const statusLabel = (status: Recipient['status']) => isArabic
