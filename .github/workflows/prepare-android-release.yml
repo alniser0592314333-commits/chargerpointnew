@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Version to build (X.Y.Z, for example 1.0.5)"
+        description: "Version to build (X.Y.Z; must be newer than the installed app)"
         required: true
-        default: "1.0.5"
+        default: "1.0.31"
         type: string
       release_target:
         description: "Which APK to release"
