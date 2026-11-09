@@ -12,7 +12,7 @@ export interface MobileNavProps {
 }
 
 export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPath, userSession, notificationCount = 0, onNavigate }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   if (!isOpen) return null;
 
@@ -23,6 +23,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
     { id: '/app', label: t('navHome') },
     { id: '/app/days', label: t('navDaysOrders') },
     { id: '/app/customers', label: t('navCustomers') },
+    { id: '/app/messages', label: locale === 'ar' ? 'الرسائل والتواصل' : 'Messages & Communication' },
     { id: '/app/financials', label: t('navFinancials') },
     ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
     { id: '/app/notifications', label: t('navNotificationsRequests'), badge: notificationCount },

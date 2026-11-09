@@ -25,6 +25,7 @@ import { AddOrderPage } from './components/pages/AddOrderPage';
 import { EditOrderPage } from './components/pages/EditOrderPage';
 import { FeaturePlaceholderPage } from './components/pages/FeaturePlaceholderPage';
 import { CustomersPage } from './components/pages/CustomersPage';
+import { CustomerLinkSmsPage } from './components/pages/CustomerLinkSmsPage';
 import { CustomerDetailPage } from './components/pages/CustomerDetailPage';
 import { CustomerQrDesignPage } from './components/pages/CustomerQrDesignPage';
 import { CustomerQrPage } from './components/pages/CustomerQrPage';
@@ -696,6 +697,8 @@ export default function App() {
             onSelectDay={(dayId) => navigate(`/app/days/${dayId}`)}
           />
         );
+      case '/app/messages':
+        return <CustomerLinkSmsPage />;
       case '/app/customers':
         return (
           <CustomersPage

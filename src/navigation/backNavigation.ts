@@ -23,6 +23,7 @@ export function resolveLogicalBackPath(pathAndHash: string): string | null {
 
   if (/^\/app\/days\/[^/]+$/.test(pathname)) return '/app/days';
   if (pathname === '/app/days') return '/app';
+  if (pathname === '/app/messages') return '/app';
 
   const customerQrRoute = pathname.match(/^\/app\/qr\/customer\/([^/]+)$/);
   if (customerQrRoute) return `/app/customers/${customerQrRoute[1]}`;

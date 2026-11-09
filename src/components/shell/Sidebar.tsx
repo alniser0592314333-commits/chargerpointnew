@@ -11,7 +11,7 @@ export interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNavigate, className = '', notificationCount = 0 }) => {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
   const hasAdminManage = isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage'));
@@ -20,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
     { id: '/app', label: t('navHome') },
     { id: '/app/days', label: t('navDaysOrders') },
     { id: '/app/customers', label: t('navCustomers') },
+    { id: '/app/messages', label: locale === 'ar' ? 'الرسائل والتواصل' : 'Messages & Communication' },
     { id: '/app/financials', label: t('navFinancials') },
     ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
     { id: '/app/notifications', label: t('navNotificationsRequests'), badge: notificationCount },
