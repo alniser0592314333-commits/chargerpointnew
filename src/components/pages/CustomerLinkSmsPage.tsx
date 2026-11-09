@@ -66,7 +66,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
         const old = previousById.get(customer.id);
         return [old
           ? { ...customer, phone, selected: old.selected, status: old.status, error: old.error }
-          : { ...customer, phone, selected: true, status: 'pending' as const }];
+          : { ...customer, phone, selected: customer.hasDebt, status: 'pending' as const }];
       }));
     }).catch((error) => {
       console.error('Failed to load customer link recipients:', error);
