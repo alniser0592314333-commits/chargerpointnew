@@ -11,7 +11,7 @@ on:
       release_target:
         description: "Which APK to release"
         required: true
-        default: customer
+        default: admin
         type: choice
         options:
           - customer
@@ -39,8 +39,10 @@ jobs:
       matrix:
         variant: ${{ fromJSON(inputs.release_target == 'both' && '["customer","admin"]' || format('["{0}"]', inputs.release_target)) }}
     steps:
-      - name: Check out source
+      - name: Check out latest merged production source
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
