@@ -4160,6 +4160,8 @@ export interface SmsCustomerRecipient {
   id: string;
   name: string;
   phone: string;
+  /** Signed balance in the local store's minor currency units; negative means debt. */
+  balanceMinor: number;
   /** Negative customer balance represents an outstanding debt. */
   hasDebt: boolean;
 }
@@ -4179,6 +4181,7 @@ export const getSmsCustomerRecipients = async (): Promise<SmsCustomerRecipient[]
       id: customer.id,
       name: customer.name,
       phone: customer.phone || '',
+      balanceMinor,
       hasDebt: balanceMinor < 0,
     };
   }));
