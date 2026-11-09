@@ -334,6 +334,21 @@ export const CustomerLinkSmsPage: React.FC = () => {
         {hasLinkToken && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{isArabic ? 'سيُدرج رابط QR الشخصي الصحيح لكل زبون وقت إرسال رسالته.' : 'Each recipient’s actual personal QR link is inserted when their individual SMS is sent.'}</p>}
       </div>
     </section>
+    <section className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-[#14423b] dark:bg-[#082622] sm:grid-cols-3">
+      <label className="text-xs font-semibold text-gray-600 dark:text-[#a9c9b1]">{isArabic ? 'تصفية الزبائن' : 'Filter recipients'}
+        <select value={recipientFilter} onChange={(e) => setRecipientFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]">
+          <option value="all">{isArabic ? 'الكل' : 'All'}</option><option value="debt">{isArabic ? 'عليهم دين' : 'Has debt'}</option><option value="no-debt">{isArabic ? 'بدون دين' : 'No debt'}</option><option value="selected">{isArabic ? 'المحددون' : 'Selected'}</option><option value="unselected">{isArabic ? 'غير المحددين' : 'Unselected'}</option>
+        </select>
+      </label>
+      <label className="text-xs font-semibold text-gray-600 dark:text-[#a9c9b1]">{isArabic ? 'أقل مبلغ دين (شيكل)' : 'Minimum debt (ILS)'}
+        <input type="number" min="0" step="1" value={minimumDebt} onChange={(e) => setMinimumDebt(e.target.value)} disabled={recipientFilter !== 'debt'} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm disabled:opacity-50 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" />
+      </label>
+      <label className="text-xs font-semibold text-gray-600 dark:text-[#a9c9b1]">{isArabic ? 'فاصل بين الرسائل' : 'Delay between SMS'}
+        <select value={sendDelay} onChange={(e) => setSendDelay(e.target.value)} disabled={isSending} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]">
+          <option value="0">{isArabic ? 'بدون تأخير' : 'No delay'}</option><option value="2">2 {isArabic ? 'ثانية' : 'seconds'}</option><option value="5">5 {isArabic ? 'ثوانٍ' : 'seconds'}</option><option value="10">10 {isArabic ? 'ثوانٍ' : 'seconds'}</option>
+        </select>
+      </label>
+    </section>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-[#daf1de]"><input type="checkbox" checked={recipients.length > 0 && recipients.filter((r) => r.status === 'pending').every((r) => r.selected)} onChange={(e) => toggleAll(e.target.checked)} disabled={isSending || isLoading} className="h-4 w-4 rounded" />{isArabic ? 'تحديد الكل' : 'Select all'}<span className="text-xs font-normal text-gray-500 dark:text-[#8eb698]">({selectedCount})</span></label>
       <div className="flex gap-2">
