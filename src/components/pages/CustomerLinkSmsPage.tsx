@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, LoaderCircle, MessageSquareText, Search, Send, Users } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useI18n } from '../../i18n/i18nContext';
@@ -85,6 +85,14 @@ export const CustomerLinkSmsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [recipientFilter, setRecipientFilter] = useState('all');
+  const [minimumDebt, setMinimumDebt] = useState('0');
+  const [sendDelay, setSendDelay] = useState('0');
+  const [isPaused, setIsPaused] = useState(false);
+  const pauseRef = useRef(false);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const [campaignStartedAt, setCampaignStartedAt] = useState('');
+  const [campaignFinishedAt, setCampaignFinishedAt] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -147,7 +155,13 @@ export const CustomerLinkSmsPage: React.FC = () => {
     failed: recipients.filter((r) => r.status === 'failed').length,
     uncertain: recipients.filter((r) => r.status === 'uncertain').length,
   }), [recipients]);
-  const visibleRecipients = recipients.filter((r) => !search.trim() || r.name.toLowerCase().includes(search.trim().toLowerCase()) || r.phone.includes(search.trim()));
+  const minDebtMinor = Math.max(0, Number(minimumDebt || 0)) * 100;
+  const visibleRecipients = recipients.filter((r) => {
+    const matchesSearch = !search.trim() || r.name.toLowerCase().includes(search.trim().toLowerCase()) || r.phone.includes(search.trim());
+    const debtMinor = Math.max(0, -r.balanceMinor);
+    const matchesFilter = recipientFilter === 'all' || (recipientFilter === 'debt' && r.hasDebt && debtMinor >= minDebtMinor) || (recipientFilter === 'no-debt' && !r.hasDebt) || (recipientFilter === 'selected' && r.selected) || (recipientFilter === 'unselected' && !r.selected);
+    return matchesSearch && matchesFilter;
+  });
   const updateRecipients = (next: Recipient[]) => {
     setRecipients(next);
     if (!saveCampaign(next)) setNotice(isArabic ? 'تعذر حفظ تقدم الحملة على الجهاز.' : 'Could not save campaign progress on this device.');
