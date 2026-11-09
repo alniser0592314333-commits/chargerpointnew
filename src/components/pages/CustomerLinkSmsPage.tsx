@@ -133,8 +133,12 @@ export const CustomerLinkSmsPage: React.FC = () => {
     if (!messageTemplate.trim()) { setNotice(isArabic ? 'اكتب محتوى الرسالة أولاً.' : 'Enter the message content first.'); return; }
     if (!selectedCount) { setNotice(isArabic ? 'حدد زبوناً واحداً على الأقل.' : 'Select at least one customer.'); return; }
     const confirmed = window.confirm(isArabic
-      ? `سيتم إنشاء/استخدام رابط QR الشخصي لكل زبون وإرسال SMS إلى ${selectedCount} رقم. قد تُحتسب تكلفة الرسائل. هل تريد المتابعة؟`
-      : `A personal QR link will be created or reused for each customer and sent by SMS to ${selectedCount} numbers. Carrier charges may apply. Continue?`);
+      ? hasLinkToken
+        ? `سيتم إنشاء/استخدام رابط QR الشخصي لكل زبون وإرسال الرسالة المخصصة إلى ${selectedCount} رقم. قد تُحتسب تكلفة الرسائل. هل تريد المتابعة؟`
+        : `سيتم إرسال نص الرسالة الذي كتبته إلى ${selectedCount} رقم دون إنشاء روابط QR. قد تُحتسب تكلفة الرسائل. هل تريد المتابعة؟`
+      : hasLinkToken
+        ? `A personal QR link will be created or reused for each customer and your message sent to ${selectedCount} numbers. Carrier charges may apply. Continue?`
+        : `Your custom text message will be sent to ${selectedCount} numbers without creating QR links. Carrier charges may apply. Continue?`);
     if (!confirmed) return;
 
     let current = recipients.map((r) => ({ ...r }));
@@ -191,7 +195,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
   return <div className="mx-auto max-w-3xl space-y-5 px-1 py-2 sm:px-0">
     <div className="flex items-center gap-3 border-b border-gray-200 pb-4 dark:border-[#14423b]">
       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-[#0c312b] dark:text-[#8eb698]"><MessageSquareText className="h-5 w-5" /></div>
-      <div><h1 className="text-xl font-bold text-gray-900 dark:text-[#daf1de]">{isArabic ? 'الرسائل والتواصل' : 'Messages & Communication'}</h1><p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'إرسال رابط QR الشخصي لكل زبون عبر SMS' : 'Send each customer their own QR link by SMS'}</p></div>
+      <div><h1 className="text-xl font-bold text-gray-900 dark:text-[#daf1de]">{isArabic ? 'الرسائل والتواصل' : 'Messages & Communication'}</h1><p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'رسائل SMS مخصصة لكل زبون' : 'Personalized SMS messages for customers'}</p></div>
     </div>
     {!isAndroidAdmin && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">{isArabic ? 'إرسال الرسائل يعمل من تطبيق الأدمن APK فقط، ويستخدم شريحة SMS الافتراضية في Android.' : 'SMS sending works only in the Admin APK and uses Android’s default SMS SIM.'}</div>}
     {!navigator.onLine && hasLinkToken && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">{isArabic ? 'إنشاء الروابط الشخصية يحتاج اتصال إنترنت؛ احذف {link} لإرسال رسالة نصية عادية دون إنترنت.' : 'Personal links require internet; remove {link} to send a plain SMS offline.'}</div>}
