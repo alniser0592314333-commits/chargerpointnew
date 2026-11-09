@@ -9,6 +9,18 @@ type RecipientStatus = 'pending' | 'sending' | 'submitted' | 'failed' | 'uncerta
 interface Recipient extends SmsCustomerRecipient { selected: boolean; status: RecipientStatus; error?: string; }
 interface SavedCampaign { updatedAt: string; recipients: Recipient[]; }
 const STORAGE_KEY = 'chargerpoint.customerLinkSmsCampaign.v1';
+const TEMPLATE_KEY = 'chargerpoint.customerLinkSmsTemplate.v1';
+const DEFAULT_TEMPLATE = 'مرحباً {name}، نذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. نرجو تسديده يوم الخميس إن أمكن، وشكراً لثقتك بنا.';
+
+const renderMessageTemplate = (template: string, recipient: Recipient, link = ''): string => {
+  const debt = recipient.balanceMinor < 0
+    ? `${(Math.abs(recipient.balanceMinor) / 100).toLocaleString('ar', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`
+    : 'لا يوجد';
+  return template
+    .replace(/\\{name\\}/g, recipient.name)
+    .replace(/\\{debt\\}/g, debt)
+    .replace(/\\{link\\}/g, link);
+};
 
 const normalizePhone = (value: string): string | null => {
   const ascii = value.replace(/[٠-٩۰-۹]/g, (digit) => {
@@ -48,6 +60,10 @@ export const CustomerLinkSmsPage: React.FC = () => {
   const isArabic = locale === 'ar';
   const isAndroidAdmin = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && import.meta.env.VITE_APP_VARIANT === 'admin';
   const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [messageTemplate, setMessageTemplate] = useState(() => {
+    try { return localStorage.getItem(TEMPLATE_KEY) || DEFAULT_TEMPLATE; }
+    catch { return DEFAULT_TEMPLATE; }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [search, setSearch] = useState('');
@@ -76,6 +92,17 @@ export const CustomerLinkSmsPage: React.FC = () => {
   }, [isArabic]);
 
   const selectedCount = recipients.filter((r) => r.selected && r.status === 'pending').length;
+  const previewRecipient = recipients.find((r) => r.selected) || recipients[0];
+  const hasLinkToken = messageTemplate.includes('{link}');
+  const previewMessage = previewRecipient
+    ? renderMessageTemplate(messageTemplate, previewRecipient, hasLinkToken ? 'https://رابط-الزبون-الشخصي' : '')
+    : messageTemplate;
+  const updateTemplate = (value: string) => {
+    setMessageTemplate(value);
+    try { localStorage.setItem(TEMPLATE_KEY, value); } catch (error) {
+      console.error('Could not save SMS template locally:', error);
+    }
+  };
   const counts = useMemo(() => ({
     submitted: recipients.filter((r) => r.status === 'submitted').length,
     failed: recipients.filter((r) => r.status === 'failed').length,
@@ -103,6 +130,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
   const sendSelected = async () => {
     if (!isAndroidAdmin) { setNotice(isArabic ? 'إرسال SMS متاح من تطبيق الأدمن APK فقط.' : 'SMS sending is available from the Admin APK only.'); return; }
     if (!navigator.onLine) { setNotice(isArabic ? 'يلزم الاتصال بالإنترنت لإنشاء روابط QR الشخصية والتحقق منها.' : 'An internet connection is required to create and verify each personal QR link.'); return; }
+    if (!messageTemplate.trim()) { setNotice(isArabic ? 'اكتب محتوى الرسالة أولاً.' : 'Enter the message content first.'); return; }
     if (!selectedCount) { setNotice(isArabic ? 'حدد زبوناً واحداً على الأقل.' : 'Select at least one customer.'); return; }
     const confirmed = window.confirm(isArabic
       ? `سيتم إنشاء/استخدام رابط QR الشخصي لكل زبون وإرسال SMS إلى ${selectedCount} رقم. قد تُحتسب تكلفة الرسائل. هل تريد المتابعة؟`
@@ -171,11 +199,30 @@ export const CustomerLinkSmsPage: React.FC = () => {
       <div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><AlertTriangle className="mb-1 h-4 w-4 text-red-600" /><p className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'فشلت' : 'Failed'}</p><p className="text-xl font-bold">{counts.failed}</p></div>
       <div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><AlertTriangle className="mb-1 h-4 w-4 text-orange-600" /><p className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'غير محسومة' : 'Uncertain'}</p><p className="text-xl font-bold">{counts.uncertain}</p></div>
     </div>
+    <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#14423b] dark:bg-[#082622]">
+      <div>
+        <h2 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{isArabic ? 'محتوى الرسالة والتخصيص' : 'Message content & personalization'}</h2>
+        <p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'اكتب رسالتك بحرية. استخدم المتغيرات لإدراج بيانات كل زبون تلقائياً.' : 'Write freely and use variables to insert each customer’s details automatically.'}</p>
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs">
+        {['{name}', '{debt}', '{link}'].map((token) => <button key={token} type="button" onClick={() => updateTemplate(messageTemplate + (messageTemplate && !messageTemplate.endsWith(' ') ? ' ' : '') + token)} className="rounded-lg border border-emerald-200 px-3 py-1.5 font-semibold text-emerald-800 hover:bg-emerald-50 dark:border-[#28665a] dark:text-[#a9d9b7]">{token === '{name}' ? (isArabic ? 'اسم الزبون' : 'Customer name') : token === '{debt}' ? (isArabic ? 'مبلغ الدين' : 'Debt amount') : (isArabic ? 'الرابط الشخصي' : 'Personal link')}</button>)}
+      </div>
+      <textarea value={messageTemplate} onChange={(e) => updateTemplate(e.target.value)} rows={5} maxLength={2000} disabled={isSending} placeholder={isArabic ? 'اكتب نص الرسالة هنا…' : 'Write your message here…'} className="w-full resize-y rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'وجود {link} فقط هو ما ينشئ الرابط؛ احذفه لإرسال رسالة نصية عادية.' : 'Only {link} generates a personal link. Remove it for a plain SMS.'}</p>
+        <button type="button" onClick={() => updateTemplate(DEFAULT_TEMPLATE)} disabled={isSending} className="text-xs font-semibold text-emerald-700 underline dark:text-emerald-400">{isArabic ? 'استعادة النص الافتراضي' : 'Restore default text'}</button>
+      </div>
+      {previewRecipient && <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#061f1c]">
+        <p className="mb-2 text-xs font-bold text-gray-600 dark:text-[#a9c9b1]">{isArabic ? `معاينة الرسالة — ${previewRecipient.name}` : `Message preview — ${previewRecipient.name}`}</p>
+        <p dir="auto" className="whitespace-pre-wrap break-words text-sm text-gray-800 dark:text-[#daf1de]">{previewMessage}</p>
+        {hasLinkToken && <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">{isArabic ? 'سيظهر الرابط الشخصي الحقيقي لهذا الزبون عند الإرسال.' : 'The customer’s actual personal link is inserted at send time.'}</p>}
+      </div>}
+    </section>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-[#daf1de]"><input type="checkbox" checked={recipients.length > 0 && recipients.filter((r) => r.status === 'pending').every((r) => r.selected)} onChange={(e) => toggleAll(e.target.checked)} disabled={isSending || isLoading} className="h-4 w-4 rounded" />{isArabic ? 'تحديد الكل' : 'Select all'}<span className="text-xs font-normal text-gray-500 dark:text-[#8eb698]">({selectedCount})</span></label>
       <div className="flex gap-2">
         <button type="button" onClick={startNewCampaign} disabled={isSending || isLoading} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-[#14423b] dark:text-[#daf1de]">{isArabic ? 'حملة جديدة' : 'New campaign'}</button>
-        <button type="button" onClick={sendSelected} disabled={isSending || isLoading || selectedCount === 0 || !navigator.onLine} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"><Send className="h-4 w-4" />{isSending ? (isArabic ? 'جارٍ الإرسال…' : 'Sending…') : (isArabic ? 'إرسال الروابط المحددة' : 'Send selected links')}</button>
+        <button type="button" onClick={sendSelected} disabled={isSending || isLoading || selectedCount === 0 || !navigator.onLine || !messageTemplate.trim()} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"><Send className="h-4 w-4" />{isSending ? (isArabic ? 'جارٍ الإرسال…' : 'Sending…') : (isArabic ? 'إرسال الروابط المحددة' : 'Send selected links')}</button>
       </div>
     </div>
     <div className="relative"><Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={isArabic ? 'ابحث باسم الزبون أو رقم الهاتف' : 'Search by customer name or phone'} className="w-full rounded-xl border border-gray-200 bg-white py-2.5 ps-9 pe-3 text-sm dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" /></div>
