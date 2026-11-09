@@ -16,7 +16,7 @@ const SAVED_TEMPLATES_KEY = 'chargerpoint.customerLinkSmsSavedTemplates.v1';
 const MESSAGE_PRESETS = {
   debt: 'مرحباً {name} 🌹\nنذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. بنكون شاكرين إلك لو بتقدر تسدده يوم الخميس. يعطيك العافية.',
   link: 'مرحباً {name} 🌹\nهذا رابط حسابك الشخصي لمتابعة طلباتك ومعلوماتك: {link}\nيسعدنا خدمتك دائماً.',
-  general: 'مرحباً {name} 🌹\nنتمنى تكون بخير. {link}',
+  general: 'مرحباً {name} 🌹\\nنتمنى تكون بخير. شكراً لثقتك بنا، إحنا دائماً بخدمتك.',
 } as const;
 const readSavedTemplates = (): SavedMessageTemplate[] => {
   try {
