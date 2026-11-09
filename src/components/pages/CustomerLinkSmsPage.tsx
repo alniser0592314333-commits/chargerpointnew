@@ -10,6 +10,21 @@ interface Recipient extends SmsCustomerRecipient { selected: boolean; status: Re
 interface SavedCampaign { updatedAt: string; recipients: Recipient[]; }
 const STORAGE_KEY = 'chargerpoint.customerLinkSmsCampaign.v1';
 
+const normalizePhone = (value: string): string | null => {
+  const ascii = value.replace(/[٠-٩۰-۹]/g, (digit) => {
+    const ar = '٠١٢٣٤٥٦٧٨٩';
+    const east = '۰۱۲۳۴۵۶۷۸۹';
+    const a = ar.indexOf(digit);
+    if (a >= 0) return String(a);
+    const e = east.indexOf(digit);
+    return e >= 0 ? String(e) : digit;
+  });
+  const compact = ascii.trim().replace(/[^+\\d]/g, '');
+  const digits = compact.replace(/\\D/g, '');
+  if (digits.length < 7 || digits.length > 15) return null;
+  return compact.startsWith('+') ? `+${digits}` : digits;
+};
+
 const readCampaign = (): SavedCampaign | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -45,10 +60,13 @@ export const CustomerLinkSmsPage: React.FC = () => {
     getSmsCustomerRecipients().then((customers: SmsCustomerRecipient[]) => {
       if (!active) return;
       const previousById = new Map((previous?.recipients || []).map((r) => [r.id, r]));
-      setRecipients(customers.map((customer) => {
+      setRecipients(customers.flatMap((customer): Recipient[] => {
+        const phone = normalizePhone(customer.phone);
+        if (!phone) return [];
         const old = previousById.get(customer.id);
-        return old ? { ...customer, selected: old.selected, status: old.status, error: old.error }
-          : { ...customer, selected: true, status: 'pending' as const };
+        return [old
+          ? { ...customer, phone, selected: old.selected, status: old.status, error: old.error }
+          : { ...customer, phone, selected: true, status: 'pending' as const }];
       }));
     }).catch((error) => {
       console.error('Failed to load customer link recipients:', error);
