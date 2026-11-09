@@ -162,6 +162,34 @@ export const CustomerLinkSmsPage: React.FC = () => {
     const matchesFilter = recipientFilter === 'all' || (recipientFilter === 'debt' && r.hasDebt && debtMinor >= minDebtMinor) || (recipientFilter === 'no-debt' && !r.hasDebt) || (recipientFilter === 'selected' && r.selected) || (recipientFilter === 'unselected' && !r.selected);
     return matchesSearch && matchesFilter;
   });
+  const tokenLabels: Record<string, string> = isArabic
+    ? { name: 'اسم الزبون', debt: 'مبلغ الدين', link: 'الرابط الشخصي', phone: 'رقم الهاتف', date: 'تاريخ اليوم', due_date: 'موعد التسديد' }
+    : { name: 'Customer name', debt: 'Debt amount', link: 'Personal link', phone: 'Phone number', date: "Today's date", due_date: 'Due date' };
+  const insertToken = (token: string) => {
+    const editor = editorRef.current;
+    const start = editor?.selectionStart ?? messageTemplate.length;
+    const end = editor?.selectionEnd ?? messageTemplate.length;
+    const next = messageTemplate.slice(0, start) + token + messageTemplate.slice(end);
+    updateTemplate(next);
+    window.setTimeout(() => {
+      editorRef.current?.focus();
+      editorRef.current?.setSelectionRange(start + token.length, start + token.length);
+    }, 0);
+  };
+  const smsLength = useMemo(() => {
+    const gsmBasic = /^[A-Za-z0-9 @£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,-.\/:;<=>?¡ÄÖÑÜ§¿äöñüà]*$/;
+    const extension = new Set(['^', '{', '}', '\\', '[', ']', '~', '|', '€']);
+    const gsm = gsmBasic.test(messageTemplate);
+    const units = gsm ? [...messageTemplate].reduce((n, c) => n + (extension.has(c) ? 2 : 1), 0) : [...messageTemplate].length * 2;
+    const one = gsm ? 160 : 70;
+    const joined = gsm ? 153 : 67;
+    return { units, parts: units <= one ? 1 : Math.ceil(units / joined), encoding: gsm ? 'GSM-7' : 'Unicode' };
+  }, [messageTemplate]);
+  const campaignProgress = useMemo(() => {
+    const selected = recipients.filter((r) => r.selected);
+    return { total: selected.length, done: selected.filter((r) => ['submitted', 'failed', 'uncertain'].includes(r.status)).length };
+  }, [recipients]);
+
   const updateRecipients = (next: Recipient[]) => {
     setRecipients(next);
     if (!saveCampaign(next)) setNotice(isArabic ? 'تعذر حفظ تقدم الحملة على الجهاز.' : 'Could not save campaign progress on this device.');
