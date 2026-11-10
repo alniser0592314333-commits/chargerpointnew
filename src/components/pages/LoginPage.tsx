@@ -246,7 +246,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       await onLoginSuccess();
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
-      if (code === "BIOMETRIC_KEY_MISSING" || code === "BIOMETRIC_NOT_ENROLLED" || code === "BIOMETRIC_UNAVAILABLE") {
+      if (code === "MULTIPLE_ADMIN_BIOMETRIC_KEYS") {
+        setError(locale === "en"
+          ? "More than one administrator fingerprint key exists on this device. Sign in with your password and register one administrator account fingerprint again."
+          : "يوجد أكثر من مفتاح بصمة إداري على هذا الجهاز. سجّل الدخول بكلمة المرور وأعد تسجيل بصمة لحساب إداري واحد فقط.");
+      } else if (code === "BIOMETRIC_KEY_MISSING" || code === "BIOMETRIC_NOT_ENROLLED" || code === "BIOMETRIC_UNAVAILABLE") {
         setError(locale === "en"
           ? "No administrator fingerprint is registered on this device. Sign in with your password, then enable fingerprint in account security settings."
           : "لا توجد بصمة إدارية مسجلة على هذا الجهاز. سجّل الدخول بكلمة المرور ثم فعّل البصمة من إعدادات أمان الحساب.");
