@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Download } from "lucide-react";
 import { getPWAInstallState, promptPWAInstall, subscribePWAInstall } from "../../services/pwaInstallService";
-import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, loginWithAccountBiometric } from "../../services/auth/accountBiometric";
+import { loginWithAccountBiometric } from "../../services/auth/accountBiometric";
 import { useI18n } from "../../i18n/i18nContext";
 import { useTheme } from "../../theme/themeContext";
 import { authService } from "../../services/auth/authService";
@@ -217,89 +217,51 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       setSavedAdminAccounts(readSavedAdminAccounts());
     }
     setPendingRememberIdentifier(null);
-    setPassword('');
+    setPassword("");
     try {
-      if (Capacitor.isNativePlatform() && await isNativeBiometricAvailable()) {
-        const currentAuth = await authService.getSupabaseAuthSession();
-        if (currentAuth?.access_token) {
-          try {
-            const status = await getAccountBiometricStatus(currentAuth.access_token);
-            let localAlias = "";
-            try { localAlias = localStorage.getItem("cp_biometric_alias_admin") || ""; } catch {}
-            if ((!status.enrolled || !status.keyAlias || localAlias !== status.keyAlias) && window.confirm(locale === "en"
-              ? "Enable fingerprint sign-in for this administrator account on this device?"
-              : "هل تريد تفعيل الدخول بالبصمة لحساب الإدارة على هذا الجهاز؟")) {
-              await enrollAccountBiometric(currentAuth.access_token, "ChargerPoint administrator");
-            }
-            // The account identifier is not a secret. Remember it locally only to
-            // select the correct server-side biometric credential after logout.
-            // Passwords and BIN values are never stored here.
-            const finalStatus = await getAccountBiometricStatus(currentAuth.access_token);
-            const finalAlias = localStorage.getItem("cp_biometric_alias_admin") || "";
-            if (finalStatus.enrolled && finalStatus.keyAlias && finalAlias === finalStatus.keyAlias) {
-              localStorage.setItem("cp_biometric_login_identifier_admin", identifier.trim());
-              setUsername(identifier.trim());
-            }
-          } catch (biometricError) {
-            console.warn("Biometric enrollment was not completed; password sign-in remains available.", biometricError);
-          }
-        }
-      }
+      // Biometric enrollment is managed explicitly in account security settings.
+      // Normal login and declining account saving must never trigger enrollment.
       await onLoginSuccess();
     } catch (finishError: any) {
-      setError(finishError?.message || (locale === 'en' ? 'Could not finish opening the app.' : 'تعذر إكمال فتح التطبيق.'));
+      setError(finishError?.message || (locale === "en" ? "Could not finish opening the app." : "تعذر إكمال فتح التطبيق."));
     }
   };
 
   const handleBiometricLogin = async () => {
-    const identifier = username.trim() || (() => {
-      try { return localStorage.getItem("cp_biometric_login_identifier_admin")?.trim() || ""; } catch { return ""; }
-    })();
-    let localBiometricAlias = "";
-    try { localBiometricAlias = localStorage.getItem("cp_biometric_alias_admin") || localStorage.getItem("cp_biometric_alias_undefined") || ""; } catch {}
-    if ((!identifier && !/^[a-f0-9]{32}$/.test(localBiometricAlias)) || isSubmitting) {
-      setError(locale === "en"
-        ? "Fingerprint sign-in is not enabled on this device yet. Sign in once and enable it first."
-        : "الدخول بالبصمة غير مفعّل على هذا الجهاز بعد. سجّل الدخول مرة واحدة وفعّله أولًا.");
-      return;
-    }
-    setIsSubmitting(true); setError(""); setSuccessMessage("");
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setError("");
+    setSuccessMessage("");
     try {
-      const result = await loginWithAccountBiometric("admin", identifier || undefined);
+      // The device is configured for one administrator biometric identity.
+      // The registered credential alias resolves the account; no username or BIN.
+      const result = await loginWithAccountBiometric("admin");
       const authSession = result.session as SupabaseAuthSession | undefined;
       if (!authSession?.access_token || !authSession.refresh_token) throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
       await authService.acceptBiometricSession(authSession);
-      setBin(""); setShowBiometricBin(false); setPassword("");
-      // Biometric sign-in is already explicit consent to remember this non-secret
-      // account identifier on this device; it does not save a password or BIN.
-      if (identifier) {
-        saveAdminAccountIdentifier(identifier);
-        setSavedAdminAccounts(readSavedAdminAccounts());
-        setShowSavedAccounts(false);
-        localStorage.setItem("cp_biometric_login_identifier_admin", identifier);
-      }
-      await finishSuccessfulLogin(identifier, false);
+      setBin("");
+      setShowBiometricBin(false);
+      setPassword("");
+      setPendingRememberIdentifier(null);
+      await onLoginSuccess();
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
-      if (code === "BIN_REQUIRED") {
-        setShowBiometricBin(true);
-        setError(locale === "en" ? "Enter your Super Admin BIN, then use fingerprint again." : "أدخل رمز BIN الخاص بالسوبر أدمن، ثم اضغط البصمة مجددًا.");
-      } else if (code === "BIOMETRIC_NOT_ENROLLED" || code === "BIOMETRIC_UNAVAILABLE") {
-        setError(locale === "en" ? "Fingerprint sign-in is not enabled for this account. Sign in with your password first." : "البصمة غير مفعّلة لهذا الحساب. سجّل الدخول بكلمة السر أولًا.");
-      } else if (code === "WRONG_BIN" || code === "BIN_LOCKED_FROZEN") {
-        setError(locale === "en" ? "The BIN is incorrect or locked." : "رمز BIN غير صحيح أو تم تجميده.");
+      if (code === "BIOMETRIC_KEY_MISSING" || code === "BIOMETRIC_NOT_ENROLLED" || code === "BIOMETRIC_UNAVAILABLE") {
+        setError(locale === "en"
+          ? "No administrator fingerprint is registered on this device. Sign in with your password, then enable fingerprint in account security settings."
+          : "لا توجد بصمة إدارية مسجلة على هذا الجهاز. سجّل الدخول بكلمة المرور ثم فعّل البصمة من إعدادات أمان الحساب.");
       } else if (code === "BIOMETRIC_CANCELLED") {
         setError(locale === "en" ? "Fingerprint verification was cancelled." : "تم إلغاء التحقق بالبصمة.");
-      } else if (code === "STALE_BIOMETRIC_SESSION") {
-        setError(locale === "en" ? "The previous sign-in session is still being finalized. Wait a moment and try fingerprint sign-in again." : "ما زال النظام ينهي جلسة الدخول السابقة. انتظر لحظة ثم حاول الدخول بالبصمة مجددًا.");
       } else if (code === "BIOMETRIC_PROOF_INVALID") {
-        setError(locale === "en" ? "This fingerprint key is no longer valid. Sign in with your password and enable fingerprint again." : "مفتاح البصمة لم يعد صالحًا. سجّل الدخول بكلمة السر ثم فعّل البصمة مجددًا.");
+        setError(locale === "en" ? "This fingerprint key is no longer valid. Sign in with your password and register it again." : "مفتاح البصمة لم يعد صالحًا. سجّل الدخول بكلمة المرور وسجّل البصمة مجددًا.");
       } else if (code === "BIOMETRIC_SESSION_UNAVAILABLE" || code === "BIOMETRIC_SERVICE_UNAVAILABLE") {
-        setError(locale === "en" ? "The secure sign-in service is temporarily unavailable. Your password remains available." : "خدمة الدخول الآمن غير متاحة مؤقتًا. يمكنك الدخول بكلمة السر.");
+        setError(locale === "en" ? "The secure sign-in service is temporarily unavailable. Use your password for now." : "خدمة الدخول الآمن غير متاحة مؤقتًا. استخدم كلمة المرور حاليًا.");
       } else {
-        setError(locale === "en" ? "Biometric sign-in failed. Use your password and try again." : "فشل الدخول بالبصمة. استخدم كلمة السر وحاول مرة أخرى.");
+        setError(locale === "en" ? "Fingerprint sign-in failed. Use your password and try again." : "فشل الدخول بالبصمة. استخدم كلمة المرور وحاول مرة أخرى.");
       }
-    } finally { setIsSubmitting(false); }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Submit Handler
@@ -812,9 +774,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
               {/* ============================================================ */}
               {uiState === "NORMAL_LOGIN" && (
                 <>
-                  {Capacitor.isNativePlatform() && (username.trim() || (() => {
-                    try { return localStorage.getItem("cp_biometric_login_identifier_admin") || localStorage.getItem("cp_biometric_alias_admin") || localStorage.getItem("cp_biometric_alias_undefined") || ""; } catch { return ""; }
-                  })()) && (
+                  {Capacitor.isNativePlatform() && (
                     <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => void handleBiometricLogin()}
                       className="w-full text-xs py-2.5 rounded-xl font-bold border-emerald-500/40 text-emerald-700 dark:text-emerald-300">
                       <Fingerprint className="w-4 h-4 mr-1.5" />
