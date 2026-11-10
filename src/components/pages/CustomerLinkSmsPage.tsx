@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Archive, CheckCircle2, FileText, LoaderCircle, MessageSquareText, Search, Send, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Archive, CheckCircle2, LoaderCircle, MessageSquareText, Search, Send, Users } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useI18n } from '../../i18n/i18nContext';
 import { getCustomerQrCardData, getSmsCustomerRecipients, SmsCustomerRecipient } from './dayOrdersStore';
