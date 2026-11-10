@@ -11,13 +11,15 @@ interface SavedMessageTemplate { id: string; name: string; content: string; }
 interface SavedCampaign {
   id: string; updatedAt: string; startedAt?: string; finishedAt?: string;
   status?: 'draft' | 'sending' | 'paused' | 'stopped' | 'completed' | 'ended';
-  messageTemplate?: string; recipients: Recipient[];
+  messageTemplate?: string; dueDateText?: string; sendDelay?: string; recipients: Recipient[];
 }
 type Section = 'compose' | 'templates' | 'recipients' | 'campaigns' | 'archive';
 const STORAGE_KEY = 'chargerpoint.customerLinkSmsCampaign.v1';
 const ARCHIVE_KEY = 'chargerpoint.customerLinkSmsCampaignArchive.v1';
 const TEMPLATE_KEY = 'chargerpoint.customerLinkSmsTemplate.v1';
 const SAVED_TEMPLATES_KEY = 'chargerpoint.customerLinkSmsSavedTemplates.v1';
+const DUE_DATE_KEY = 'chargerpoint.customerLinkSmsDueDate.v1';
+const DEFAULT_DUE_DATE = 'الخميس';
 const DEFAULT_TEMPLATE = 'مرحباً {name}، نذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. نرجو تسديده يوم الخميس إن أمكن، وشكراً لثقتك بنا.';
 const MESSAGE_PRESETS = {
   debt: 'مرحباً {name} 🌹\nنذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. بنكون شاكرين إلك لو بتقدر تسدده يوم الخميس. يعطيك العافية.',
@@ -57,7 +59,7 @@ const normalizePhone = (value: string): string | null => {
   if (digits.length < 7 || digits.length > 15) return null;
   return compact.startsWith('+') ? `+${digits}` : digits;
 };
-const renderMessageTemplate = (template: string, recipient: Recipient, link = ''): string => {
+const renderMessageTemplate = (template: string, recipient: Recipient, link = '', dueDate = DEFAULT_DUE_DATE, locale = 'ar'): string => {
   const debt = recipient.balanceMinor < 0
     ? `${(Math.abs(recipient.balanceMinor) / 100).toLocaleString('ar', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`
     : 'لا يوجد';
@@ -75,6 +77,7 @@ export const CustomerLinkSmsPage: React.FC<{
   const ar = locale === 'ar';
   const isAndroidAdmin = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && import.meta.env.VITE_APP_VARIANT === 'admin';
   const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [dueDateText, setDueDateText] = useState(() => { try { return localStorage.getItem(DUE_DATE_KEY) || DEFAULT_DUE_DATE; } catch { return DEFAULT_DUE_DATE; } });
   const [messageTemplate, setMessageTemplate] = useState(() => {
     try { return localStorage.getItem(TEMPLATE_KEY) || DEFAULT_TEMPLATE; } catch { return DEFAULT_TEMPLATE; }
   });
@@ -105,6 +108,8 @@ export const CustomerLinkSmsPage: React.FC<{
         finishedAt: metadata.finishedAt ?? previous?.finishedAt ?? campaignFinishedAt,
         status: metadata.status ?? previous?.status ?? 'draft',
         messageTemplate: metadata.messageTemplate ?? messageTemplate,
+        dueDateText: metadata.dueDateText ?? dueDateText,
+        sendDelay: metadata.sendDelay ?? sendDelay,
         recipients: next,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -120,6 +125,8 @@ export const CustomerLinkSmsPage: React.FC<{
       setCampaignStartedAt(previous.startedAt || '');
       setCampaignFinishedAt(previous.finishedAt || '');
       if (typeof previous.messageTemplate === 'string') setMessageTemplate(previous.messageTemplate);
+      if (typeof previous.dueDateText === 'string') setDueDateText(previous.dueDateText);
+      if (typeof previous.sendDelay === 'string') setSendDelay(previous.sendDelay);
     }
     getSmsCustomerRecipients().then((customers: SmsCustomerRecipient[]) => {
       if (!active) return;
@@ -144,6 +151,14 @@ export const CustomerLinkSmsPage: React.FC<{
     return () => { active = false; };
   }, [ar]);
 
+  const updateDueDate = (value: string) => {
+    setDueDateText(value);
+    try {
+      localStorage.setItem(DUE_DATE_KEY, value);
+      const previous = readCampaign();
+      if (previous) localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...previous, dueDateText: value, updatedAt: new Date().toISOString() }));
+    } catch (error) { console.error('Could not save campaign due date:', error); }
+  };
   const updateTemplate = (value: string) => {
     setMessageTemplate(value);
     try {
@@ -190,6 +205,7 @@ export const CustomerLinkSmsPage: React.FC<{
     const extension = new Set(['^', '{', '}', '\\', '[', ']', '~', '|', '€']);
     const gsm = [...messageTemplate].every((char) => gsmBasic.test(char) || extension.has(char));
     const units = gsm ? [...messageTemplate].reduce((n, char) => n + (extension.has(char) ? 2 : 1), 0) : [...messageTemplate].length * 2;
+    const units = gsm ? [...messageTemplate].reduce((n, char) => n + (extension.has(char) ? 2 : 1), 0) : messageTemplate.length;
     return { units, parts: units <= (gsm ? 160 : 70) ? 1 : Math.ceil(units / (gsm ? 153 : 67)), encoding: gsm ? 'GSM-7' : 'Unicode' };
   }, [messageTemplate]);
 
@@ -300,7 +316,7 @@ export const CustomerLinkSmsPage: React.FC<{
             if (!qr?.publicUrl || !qr.token) throw new Error('CUSTOMER_QR_LINK_UNAVAILABLE');
             personalLink = qr.publicUrl;
           }
-          const sms = renderMessageTemplate(messageTemplate, recipient, personalLink).trim();
+          const sms = renderMessageTemplate(messageTemplate, recipient, personalLink, dueDateText, ar ? 'ar' : 'en').trim();
           if (!sms) throw new Error('SMS_MESSAGE_EMPTY');
           await sendSmsUsingSystemDefaultSim(recipient.phone, sms);
           current[index] = { ...current[index], status: 'submitted' };
@@ -355,6 +371,7 @@ export const CustomerLinkSmsPage: React.FC<{
 
     {section === 'compose' && <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#14423b] dark:bg-[#082622]">
       <div><h2 className="text-sm font-bold">{ar ? 'محتوى الرسالة والتخصيص' : 'Message content & personalization'}</h2><p className="mt-1 text-xs text-gray-500">{ar ? 'اكتب بحرية وأضف المتغيرات التي تحتاجها فقط.' : 'Write freely and add only the variables you need.'}</p></div>
+      <label className="block text-xs font-semibold">{ar ? 'موعد التسديد الذي سيظهر مكان {due_date}' : 'Due date used for {due_date}'}<input value={dueDateText} onChange={(e) => updateDueDate(e.target.value)} disabled={isSending} maxLength={60} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2.5 text-sm dark:border-[#14423b] dark:bg-[#061f1c]" placeholder={ar ? 'مثلاً: الخميس القادم' : 'e.g. next Thursday'} /></label>
       <textarea ref={editorRef} value={messageTemplate} onChange={(e) => updateTemplate(e.target.value)} rows={7} maxLength={2000} disabled={isSending} placeholder={ar ? 'اكتب نص الرسالة هنا…' : 'Write your message…'} className="w-full resize-y rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" />
       <div className="flex flex-wrap gap-2 text-xs">{Object.entries({ name: ar ? 'اسم الزبون' : 'Customer name', debt: ar ? 'مبلغ الدين' : 'Debt amount', link: ar ? 'الرابط الشخصي' : 'Personal link', phone: ar ? 'رقم الهاتف' : 'Phone number', date: ar ? 'تاريخ اليوم' : 'Today', due_date: ar ? 'موعد التسديد' : 'Due date' }).map(([key, label]) => <button key={key} type="button" onClick={() => insertToken(`{${key}}`)} disabled={isSending} className="rounded-lg border border-emerald-200 px-3 py-1.5 font-semibold text-emerald-800 dark:border-[#28665a] dark:text-[#a9d9b7]">+ {label}</button>)}</div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500"><span>{ar ? `الأحرف: ${smsLength.units} • الترميز: ${smsLength.encoding} • أجزاء SMS المقدرة: ${smsLength.parts}` : `Units: ${smsLength.units} • ${smsLength.encoding} • Estimated parts: ${smsLength.parts}`}</span><button type="button" onClick={() => updateTemplate(DEFAULT_TEMPLATE)} className="font-semibold text-emerald-700 underline">{ar ? 'استعادة النص الافتراضي' : 'Restore default'}</button></div>
