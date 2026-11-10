@@ -26,6 +26,8 @@ import { EditOrderPage } from './components/pages/EditOrderPage';
 import { FeaturePlaceholderPage } from './components/pages/FeaturePlaceholderPage';
 import { CustomersPage } from './components/pages/CustomersPage';
 import { CustomerLinkSmsPage } from './components/pages/CustomerLinkSmsPage';
+import { MessageCenterHomePage } from './components/pages/MessageCenterHomePage';
+import { SmsCampaignArchivePage } from './components/pages/SmsCampaignArchivePage';
 import { CustomerDetailPage } from './components/pages/CustomerDetailPage';
 import { CustomerQrDesignPage } from './components/pages/CustomerQrDesignPage';
 import { CustomerQrPage } from './components/pages/CustomerQrPage';
@@ -585,6 +587,15 @@ export default function App() {
       );
     }
 
+    // Message center routes: a focused landing page and dedicated task pages.
+    if (pathname === '/app/messages/archive') {
+      return <SmsCampaignArchivePage onBack={() => navigate('/app/messages')} />;
+    }
+    const messageSection = pathname.startsWith('/app/messages/') ? pathname.slice('/app/messages/'.length) : '';
+    if (['compose', 'templates', 'recipients', 'campaigns'].includes(messageSection)) {
+      return <CustomerLinkSmsPage section={messageSection as 'compose' | 'templates' | 'recipients' | 'campaigns'} onBack={() => navigate('/app/messages')} onNavigate={(section) => navigate(section === 'archive' ? '/app/messages/archive' : `/app/messages/${section}`)} />;
+    }
+
     // 1. Authenticated Customer QR Route
     if (pathname.startsWith('/app/qr/customer/')) {
       const customerId = pathname.replace('/app/qr/customer/', '');
@@ -698,7 +709,7 @@ export default function App() {
           />
         );
       case '/app/messages':
-        return <CustomerLinkSmsPage />;
+        return <MessageCenterHomePage onNavigate={(section) => navigate(`/app/messages/${section}`)} />;
       case '/app/customers':
         return (
           <CustomersPage
