@@ -593,7 +593,7 @@ export default function App() {
     }
     const messageSectionMatch = pathname.match(/^\\/app\\/messages\\/(compose|templates|recipients|campaigns)$/);
     if (messageSectionMatch) {
-      return <CustomerLinkSmsPage section={messageSectionMatch[1] as 'compose' | 'templates' | 'recipients' | 'campaigns'} onBack={() => navigate('/app/messages')} />;
+      return <CustomerLinkSmsPage section={messageSectionMatch[1] as 'compose' | 'templates' | 'recipients' | 'campaigns'} onBack={() => navigate('/app/messages')} onNavigate={(section) => navigate(section === 'archive' ? '/app/messages/archive' : `/app/messages/${section}`)} />;
     }
 
     // 1. Authenticated Customer QR Route
