@@ -142,7 +142,7 @@ export const CustomerLinkSmsPage: React.FC<{
       if (!previous) {
         const id = `sms-${Date.now()}`;
         setCampaignId(id);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id, updatedAt: new Date().toISOString(), status: 'draft', messageTemplate, dueDateText, sendDelay, recipients: next })); } catch { /* sending remains disabled until persistence succeeds */ }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id, updatedAt: new Date().toISOString(), status: 'draft', messageTemplate: localStorage.getItem(TEMPLATE_KEY) || DEFAULT_TEMPLATE, dueDateText: localStorage.getItem(DUE_DATE_KEY) || DEFAULT_DUE_DATE, sendDelay: '0', recipients: next })); } catch { /* sending remains disabled until persistence succeeds */ }
       }
     }).catch((error) => {
       console.error('Failed to load SMS recipients:', error);
