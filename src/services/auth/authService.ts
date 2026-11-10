@@ -740,7 +740,7 @@ class DefaultAuthService implements AuthService {
     const vault = await import("./accountBiometric");
     const refreshToken = await vault.getAdminQuickLoginToken(cleanIdentifier);
     if (!refreshToken) throw new Error("SAVED_LOGIN_NOT_AVAILABLE");
-    const response = await fetch(config.supabaseUrl.replace(/\\/+$/, "") + "/auth/v1/token?grant_type=refresh_token", {
+    const response = await fetch(config.supabaseUrl.replace(/\/+$/, "") + "/auth/v1/token?grant_type=refresh_token", {
       method: "POST",
       cache: "no-store",
       headers: { apikey: config.supabaseAnonKey, "Content-Type": "application/json" },
