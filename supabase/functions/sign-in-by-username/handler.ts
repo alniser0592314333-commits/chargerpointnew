@@ -44,6 +44,10 @@ const invalidCredentials = () => {
  */
 export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
   return async (request: Request): Promise<Response> => {
+    const unavailable = (stage: string) => respond(503, {
+      error: "Username sign-in is temporarily unavailable",
+      ...(deps.getEnv("username_signin_diagnostics") === "true" ? { diagnostic: stage } : {}),
+    });
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (request.method !== "POST") return respond(405, { error: "Method not allowed" });
 
@@ -61,7 +65,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         hasRateLimitSecret: Boolean(rateLimitSecret),
         rateLimitSecretLength: rateLimitSecret?.length ?? 0,
       });
-      return respond(503, { error: "Username sign-in is temporarily unavailable" });
+      return unavailable("configuration");
     }
 
     // Supabase's Cloudflare edge supplies this header. Do not fall back to any
@@ -71,7 +75,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       console.error("Username sign-in rejected missing or invalid trusted client IP", {
         headerPresent: Boolean(clientIp),
       });
-      return respond(503, { error: "Username sign-in is temporarily unavailable" });
+      return unavailable("trusted-client-ip");
     }
 
     const input = await request.json().catch(() => null) as
@@ -97,7 +101,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
           errorCode: rateLimitError?.code ?? null,
           errorMessage: rateLimitError?.message ?? null,
         });
-        return respond(503, { error: "Username sign-in is temporarily unavailable" });
+        return unavailable("rate-limit");
       }
       if (!rateLimit.allowed) {
         const retryAfter = Math.max(1, Math.min(900, Number(rateLimit.retry_after_seconds) || 900));
@@ -119,7 +123,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
           errorCode: lookupError?.code ?? null,
           errorMessage: lookupError?.message ?? null,
         });
-        return respond(503, { error: "Username sign-in is temporarily unavailable" });
+        return unavailable("identity-lookup");
       }
 
       // Always invoke Supabase Auth, including unknown/ambiguous usernames, to avoid
@@ -149,7 +153,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
 
       const session = await authResponse.json().catch(() => null);
       if (!session || typeof session.access_token !== "string" || !session.user) {
-        return respond(502, { error: "Username sign-in is temporarily unavailable" });
+        return unavailable("invalid-auth-session");
       }
       return respond(200, { session, error: null });
     } catch (error) {
@@ -157,7 +161,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         errorName: error instanceof Error ? error.name : "UnknownError",
         errorMessage: error instanceof Error ? error.message : "Unknown error",
       });
-      return respond(503, { error: "Username sign-in is temporarily unavailable" });
+      return unavailable("unexpected-error");
     }
   };
 }
