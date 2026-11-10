@@ -384,8 +384,8 @@ export const PublicAboutPage: React.FC = () => {
         nameEn: titleEn,
         descriptionAr: descAr,
         descriptionEn: descEn,
-        minPrice: id === 'cat-phones' ? 100 : id === 'cat-power' ? 200 : id === 'cat-tablets' ? 100 : (isFinite(min) ? min : 200),
-        maxPrice: id === 'cat-phones' ? 200 : id === 'cat-power' ? 300 : id === 'cat-tablets' ? 200 : (isFinite(max) ? max : 400),
+        minPrice: isFinite(min) ? min : 0,
+        maxPrice: isFinite(max) ? max : 0,
         count: source.length,
         icon: IconComponent,
       };
@@ -1282,7 +1282,7 @@ export const PublicAboutPage: React.FC = () => {
                         <CatIcon className="h-5 w-5" />
                       </div>
                       <span className="text-[11px] font-semibold text-gray-500 dark:text-[#88d2c4] bg-gray-100 dark:bg-white/5 px-2.5 py-1 rounded-full">
-                        {isAr ? `${cat.count} فئات` : `${cat.count} categories`}
+                        {isAr ? `${cat.count} أنواع` : `${cat.count} device types`}
                       </span>
                     </div>
 
@@ -1296,7 +1296,7 @@ export const PublicAboutPage: React.FC = () => {
 
                   <div className="pt-4 border-t border-gray-100 dark:border-white/10 flex items-baseline justify-between">
                     <span className="text-xs text-gray-500 dark:text-[#88d2c4]">
-                      {isAr ? 'السعر التقديري:' : 'Estimated Rate:'}
+                      {isAr ? 'نطاق السعر المسجل:' : 'Recorded price range:'}
                     </span>
                     <div className="font-mono font-extrabold text-base sm:text-lg text-emerald-800 dark:text-[#6ee7b7]">
                       {formatCurrency(cat.minPrice)}
@@ -1501,6 +1501,15 @@ export const PublicAboutPage: React.FC = () => {
 
             {/* Direct WhatsApp & Call Buttons */}
             <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="https://www.google.com/maps/search/?api=1&query=%D9%86%D9%82%D8%B7%D8%A9%20%D8%A7%D9%84%D8%B4%D8%AD%D9%86%2C%20%D8%BA%D8%B2%D8%A9%2C%20%D8%A7%D9%84%D9%81%D8%A7%D9%84%D9%88%D8%AC%D8%A9"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 px-5 py-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-colors"
+              >
+                <MapPin className="h-4 w-4" />
+                <span>{isAr ? 'الاتجاهات إلى نقطة الشحن' : 'Get directions'}</span>
+              </a>
               <a
                 href="https://wa.me/970592369875"
                 target="_blank"
