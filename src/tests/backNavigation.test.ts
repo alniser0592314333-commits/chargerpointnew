@@ -19,6 +19,13 @@ describe('logical edge-swipe back navigation', () => {
     expect(resolveLogicalBackPath('/app/qr/customer/customer-9')).toBe('/app/customers/customer-9');
   });
 
+  it('returns each message-center section to the message-center home and then app home', () => {
+    for (const section of ['compose', 'templates', 'recipients', 'campaigns', 'archive']) {
+      expect(resolveLogicalBackPath(`/app/messages/${section}`)).toBe('/app/messages');
+    }
+    expect(resolveLogicalBackPath('/app/messages')).toBe('/app');
+  });
+
   it('returns detail pages to their collection and settings subpages to settings', () => {
     expect(resolveLogicalBackPath('/app/customers/customer-9')).toBe('/app/customers');
     expect(resolveLogicalBackPath('/app/customers')).toBe('/app');
