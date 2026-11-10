@@ -9,6 +9,7 @@ import { AdminBiometricSettings } from "../settings/AdminBiometricSettings";
 import { PWASettingsCard } from "../settings/PWASettingsCard";
 import { AppReleaseSettingsCard } from "../settings/AppReleaseSettingsCard";
 import { BusinessHoursSettingsCard } from "../settings/BusinessHoursSettingsCard";
+import { PublicAnnouncementsSettings } from "../settings/PublicAnnouncementsSettings";
 import { JawwalPayRecipientSettings } from "../settings/JawwalPayRecipientSettings";
 import { authService, UserSession } from "../../services/auth/authService";
 import {
@@ -54,6 +55,7 @@ import {
   Database,
   RefreshCw,
   Settings2,
+  Megaphone,
 } from "lucide-react";
 
 export interface SettingsPageProps {
@@ -64,7 +66,7 @@ export interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, setTheme } = useTheme();
-  const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | null>(null);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | "ads" | null>(null);
 
   const [session, setSession] = useState<UserSession | null>(null);
   useEffect(() => {
@@ -463,6 +465,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
             sync: locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status",
             account: locale === "ar" ? "الحسابات" : "Accounts",
             about: locale === "ar" ? "حول التطبيق" : "About the App",
+            ads: locale === "ar" ? "الإعلانات" : "Announcements",
           } as const)[activeSettingsSection]}
         </h1>
         <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">
@@ -489,6 +492,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                 <button type="button" onClick={() => setActiveSettingsSection("orders")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
                   <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ListOrdered className="w-5 h-5" /></span>
                   <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "أرقام الطلبات وترتيبها وأنواع الأجهزة وتصميم QR" : "Order numbering, device types and QR design"}</span></span>
+                  <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                </button>
+              )}
+              {hasPermission("settings:manage") && (
+                <button type="button" onClick={() => setActiveSettingsSection("ads")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                  <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Megaphone className="w-5 h-5" /></span>
+                  <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "الإعلانات" : "Announcements"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "إنشاء وجدولة إعلانات الصفحة العامة بالنص والصورة" : "Create and schedule public-page text and image announcements"}</span></span>
                   <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
                 </button>
               )}
@@ -641,6 +651,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
           </div>
         </section>
         )}
+
+        {activeSettingsSection === "ads" && hasPermission("settings:manage") && <PublicAnnouncementsSettings locale={locale} />}
 
         {/* GROUP 1.5: Business Hours & Operational Status */}
         {activeSettingsSection === "general" && hasPermission("settings:manage") && (

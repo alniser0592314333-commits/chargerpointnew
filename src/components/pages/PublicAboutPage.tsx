@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Flame,
   Info,
+  Megaphone,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -42,6 +43,7 @@ import {
   OperationalStatusDetail,
 } from '../../services/businessHoursService';
 import { getAllDeviceTypes, UIDeviceTypeItem } from './dayOrdersStore';
+import { fetchPublicAnnouncements, PublicAnnouncement } from '../../services/publicAnnouncements';
 import './public-about.css';
 
 type DeferredPwaInstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }> };
@@ -162,6 +164,16 @@ export const PublicAboutPage: React.FC = () => {
   const [operationalStatus, setOperationalStatus] = useState<OperationalStatusDetail>(() =>
     computeOperationalStatus(getInitialHoursConfig())
   );
+
+  const [announcements, setAnnouncements] = useState<PublicAnnouncement[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    const refresh = () => { void fetchPublicAnnouncements().then(items => { if (mounted) setAnnouncements(items); }).catch(error => console.warn('Public announcements unavailable:', error)); };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('online', refresh);
+    return () => { mounted = false; window.clearInterval(timer); window.removeEventListener('online', refresh); };
+  }, []);
 
   // Real Database Device Types State
   const [deviceTypes, setDeviceTypes] = useState<UIDeviceTypeItem[]>([]);
@@ -451,6 +463,36 @@ export const PublicAboutPage: React.FC = () => {
       qEn: 'Is my device safe during charging?',
       aAr: 'أجهزتكم في أمان تام ومسؤولية كاملة. يتم حفظ كل جهاز في حجيرة مخصصة ومحمية، والشحن مراقب بنظام أمان إلكتروني يمنع ارتفاع الحرارة أو زيادة التيار الكهربائي.',
       aEn: 'Your devices are completely secure. Each device is kept in a designated protected bay, and charging is monitored with electronic safety mechanisms preventing power surges or overheating.',
+    },
+    {
+      qAr: 'هل يمكنني استلام الجهاز قبل اكتمال الشحن؟',
+      qEn: 'Can I collect my device before charging is complete?',
+      aAr: 'تواصل معنا أو راجع المشرف لتأكيد حالة الجهاز والمبلغ المستحق قبل الاستلام.',
+      aEn: 'Contact us or ask the attendant to confirm the device status and amount due before collection.',
+    },
+    {
+      qAr: 'ماذا أفعل إذا فقدت بطاقة QR؟',
+      qEn: 'What should I do if I lose my QR receipt?',
+      aAr: 'تواصل معنا مباشرة، وسنساعدك في الوصول إلى طلبك والتحقق من بياناتك قبل تسليمه.',
+      aEn: 'Contact us directly. We can help locate your order and verify your details before release.',
+    },
+    {
+      qAr: 'هل يمكن لشخص آخر استلام جهازي؟',
+      qEn: 'Can someone else collect my device?',
+      aAr: 'يرجى التواصل معنا مسبقاً لترتيب ذلك والتحقق من هوية الشخص المفوض.',
+      aEn: 'Please contact us in advance so we can arrange this and verify the authorized person.',
+    },
+    {
+      qAr: 'ماذا أفعل إذا تأخرت عن موعد الاستلام؟',
+      qEn: 'What if I am late for collection?',
+      aAr: 'تواصل معنا لإبلاغنا بالتأخير والتأكد من إمكانية الاستلام في وقت لاحق.',
+      aEn: 'Contact us to let us know and confirm a suitable later collection time.',
+    },
+    {
+      qAr: 'كيف أقدم استفساراً أو شكوى؟',
+      qEn: 'How can I ask a question or submit a complaint?',
+      aAr: 'يمكنك التواصل معنا عبر واتساب أو الاتصال المباشر من قسم التواصل في هذه الصفحة.',
+      aEn: 'You can reach us through WhatsApp or the direct call option in the contact section.',
     },
   ];
 
@@ -995,6 +1037,13 @@ export const PublicAboutPage: React.FC = () => {
           MAIN BODY CONTAINER
           ===================================================================== */}
       <main className="relative z-10 mx-auto max-w-5xl px-4 sm:px-6 pb-20 space-y-16 sm:space-y-24">
+        {announcements.length > 0 && <section aria-label={isAr ? "الإعلانات الحالية" : "Current announcements"} className="space-y-4">
+          <div className="flex items-center gap-2"><Megaphone className="w-5 h-5 text-emerald-600"/><h2 className="text-lg sm:text-xl font-bold text-white">{isAr ? "آخر الإعلانات والعروض" : "Latest announcements & offers"}</h2></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{announcements.map(ad => <article key={ad.id} className="overflow-hidden rounded-2xl border border-white/15 bg-white/95 dark:bg-[#0a2423]/95 text-gray-900 dark:text-[#e7f5f2] shadow-lg">
+            {ad.image_url && <img src={ad.image_url} alt={ad.title || (isAr ? "صورة الإعلان" : "Announcement image")} loading="lazy" className="w-full max-h-64 object-cover"/>}
+            <div className="p-4 space-y-2">{ad.title && <h3 className="font-bold text-base">{ad.title}</h3>}{ad.body && <p className="text-sm leading-7 whitespace-pre-wrap">{ad.body}</p>}<p className="text-[10px] text-gray-500">{isAr ? "ينتهي الإعلان:" : "Ends:"} {new Date(ad.ends_at).toLocaleString(isAr ? "ar-PS" : "en-US")}</p></div>
+          </article>)}</div>
+        </section>}
         {/* ===================================================================
             SECTION 1: OPERATIONAL STATUS & WORKING HOURS (حالة العمل وأوقات الدوام)
             =================================================================== */}

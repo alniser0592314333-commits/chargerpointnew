@@ -51,3 +51,6 @@ verify_jwt = false
 
 [functions.account-biometric]
 verify_jwt = false
+
+[functions.public-announcements]
+verify_jwt = false
