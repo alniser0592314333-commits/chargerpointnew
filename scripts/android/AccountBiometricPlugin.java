@@ -3,6 +3,11 @@ package com.chargerpointnew.biometric;
 import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import java.security.SecureRandom;
 import android.util.Base64;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,6 +20,7 @@ import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import org.json.JSONObject;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
@@ -28,6 +34,8 @@ import java.util.concurrent.Executor;
 @CapacitorPlugin(name = "AccountBiometric")
 public class AccountBiometricPlugin extends Plugin {
   private static final String STORE = "AndroidKeyStore";
+  private static final String VAULT_KEY_ALIAS = "chargerpoint_admin_quick_login_v1";
+  private static final String VAULT_PREFS = "cp_admin_secure_vault_v1";
 
   @PluginMethod
   public void isAvailable(PluginCall call) {
@@ -172,6 +180,81 @@ public class AccountBiometricPlugin extends Plugin {
       store.deleteEntry(alias);
       JSObject ret = new JSObject(); ret.put("deleted", true); call.resolve(ret);
     } catch (Exception ex) { call.reject("Could not remove biometric key", ex); }
+  }
+
+
+  // Device-bound encrypted storage for saved-admin refresh tokens. The AES key
+  // never leaves Android Keystore; SharedPreferences contains ciphertext only.
+  @PluginMethod
+  public void setSecureValue(PluginCall call) {
+    String key = call.getString("key");
+    String value = call.getString("value");
+    if (!validVaultKey(key) || value == null || value.length() > 8192) {
+      call.reject("Invalid secure storage input"); return;
+    }
+    try {
+      SecretKey secret = getOrCreateVaultKey();
+      byte[] iv = new byte[12];
+      new SecureRandom().nextBytes(iv);
+      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+      cipher.init(Cipher.ENCRYPT_MODE, secret, new GCMParameterSpec(128, iv));
+      cipher.updateAAD(key.getBytes(StandardCharsets.UTF_8));
+      byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
+      String packed = Base64.encodeToString(iv, Base64.NO_WRAP) + ":" +
+        Base64.encodeToString(encrypted, Base64.NO_WRAP);
+      getContext().getSharedPreferences(VAULT_PREFS, Context.MODE_PRIVATE)
+        .edit().putString("v_" + key, packed).commit();
+      JSObject ret = new JSObject(); ret.put("saved", true); call.resolve(ret);
+    } catch (Exception ex) { call.reject("Secure storage write failed", ex); }
+  }
+
+  @PluginMethod
+  public void getSecureValue(PluginCall call) {
+    String key = call.getString("key");
+    if (!validVaultKey(key)) { call.reject("Invalid secure storage key"); return; }
+    try {
+      String packed = getContext().getSharedPreferences(VAULT_PREFS, Context.MODE_PRIVATE)
+        .getString("v_" + key, null);
+      if (packed == null) { JSObject ret = new JSObject(); ret.put("value", JSONObject.NULL); call.resolve(ret); return; }
+      String[] parts = packed.split(":", 2);
+      if (parts.length != 2) throw new IllegalStateException("Invalid encrypted value");
+      byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
+      byte[] encrypted = Base64.decode(parts[1], Base64.NO_WRAP);
+      Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+      cipher.init(Cipher.DECRYPT_MODE, getOrCreateVaultKey(), new GCMParameterSpec(128, iv));
+      cipher.updateAAD(key.getBytes(StandardCharsets.UTF_8));
+      String value = new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
+      JSObject ret = new JSObject(); ret.put("value", value); call.resolve(ret);
+    } catch (Exception ex) { call.reject("Secure storage read failed", ex); }
+  }
+
+  @PluginMethod
+  public void deleteSecureValue(PluginCall call) {
+    String key = call.getString("key");
+    if (!validVaultKey(key)) { call.reject("Invalid secure storage key"); return; }
+    boolean removed = getContext().getSharedPreferences(VAULT_PREFS, Context.MODE_PRIVATE)
+      .edit().remove("v_" + key).commit();
+    JSObject ret = new JSObject(); ret.put("deleted", removed); call.resolve(ret);
+  }
+
+  private SecretKey getOrCreateVaultKey() throws Exception {
+    KeyStore store = KeyStore.getInstance(STORE);
+    store.load(null);
+    if (store.containsAlias(VAULT_KEY_ALIAS)) {
+      return (SecretKey) store.getKey(VAULT_KEY_ALIAS, null);
+    }
+    KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, STORE);
+    KeyGenParameterSpec.Builder spec = new KeyGenParameterSpec.Builder(
+      VAULT_KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+      .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+      .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+      .setRandomizedEncryptionRequired(true);
+    generator.init(spec.build());
+    return generator.generateKey();
+  }
+
+  private boolean validVaultKey(String key) {
+    return key != null && key.matches("[a-f0-9]{64}");
   }
 
   private boolean validAlias(String alias) {

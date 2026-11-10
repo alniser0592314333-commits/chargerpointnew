@@ -6,6 +6,9 @@ export interface AccountBiometricNativePlugin {
   signChallenge(options: { alias: string; challenge: string; title: string; subtitle: string; negativeButtonText: string }): Promise<{ signature: string }>;
   deleteKey(options: { alias: string }): Promise<{ deleted: boolean }>;
   listAliases(): Promise<{ aliases: string[] }>;
+  setSecureValue(options: { key: string; value: string }): Promise<{ saved: boolean }>;
+  getSecureValue(options: { key: string }): Promise<{ value: string | null }>;
+  deleteSecureValue(options: { key: string }): Promise<{ deleted: boolean }>;
 }
 const NativeBiometric = registerPlugin<AccountBiometricNativePlugin>('AccountBiometric');
 const b64url = (value: Uint8Array) => {
@@ -56,6 +59,35 @@ export const isNativeBiometricAvailable = async () => {
   }
   return false;
 };
+
+const quickLoginVaultKey = async (identifier: string) => {
+  const clean = identifier.trim().toLowerCase();
+  if (!clean || clean.length > 160 || !globalThis.crypto?.subtle) throw new Error('SECURE_STORAGE_UNAVAILABLE');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('chargerpoint-admin-quick-login-v1:' + clean));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+};
+
+export async function saveAdminQuickLoginToken(identifier: string, refreshToken: string) {
+  if (!Capacitor.isNativePlatform()) throw new Error('SECURE_STORAGE_NATIVE_ONLY');
+  if (!refreshToken || refreshToken.length > 8192) throw new Error('SECURE_STORAGE_INVALID_TOKEN');
+  const key = await quickLoginVaultKey(identifier);
+  const result = await NativeBiometric.setSecureValue({ key, value: refreshToken });
+  if (result.saved !== true) throw new Error('SECURE_STORAGE_WRITE_FAILED');
+}
+
+export async function getAdminQuickLoginToken(identifier: string): Promise<string | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  const key = await quickLoginVaultKey(identifier);
+  const result = await NativeBiometric.getSecureValue({ key });
+  return typeof result.value === 'string' && result.value.length <= 8192 ? result.value : null;
+}
+
+export async function deleteAdminQuickLoginToken(identifier: string) {
+  if (!Capacitor.isNativePlatform()) return;
+  const key = await quickLoginVaultKey(identifier);
+  await NativeBiometric.deleteSecureValue({ key });
+}
+
 export async function enrollAccountBiometric(
   accessToken: string,
   deviceLabel = 'Android device',
@@ -146,7 +178,12 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
     if (/^[a-f0-9]{32}$/.test(localKeyAlias)) keyAliases = [localKeyAlias];
   }
   if (/^[a-f0-9]{32}$/.test(localKeyAlias) && keyAliases.includes(localKeyAlias)) {
-    keyAliases = [localKeyAlias, ...keyAliases.filter((alias) => alias !== localKeyAlias)];
+    // A single administrator account is bound to this device. Never cycle
+    // through several account keys: Android cannot identify which finger was used.
+    keyAliases = [localKeyAlias];
+  }
+  if (!normalizedIdentifier && keyAliases.length > 1) {
+    throw new Error('MULTIPLE_ADMIN_BIOMETRIC_KEYS');
   }
   if (!normalizedIdentifier && keyAliases.length === 0) throw new Error('BIOMETRIC_KEY_MISSING');
 

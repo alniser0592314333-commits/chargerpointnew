@@ -44,6 +44,10 @@ const invalidCredentials = () => {
  */
 export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
   return async (request: Request): Promise<Response> => {
+    const unavailable = (stage: string) => respond(503, {
+      error: "Username sign-in is temporarily unavailable",
+      ...(deps.getEnv("username_signin_diagnostics") === "true" ? { diagnostic: stage } : {}),
+    });
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (request.method !== "POST") return respond(405, { error: "Method not allowed" });
 
@@ -54,14 +58,24 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       || !rateLimitSecret || rateLimitSecret.length < 32) {
       // Fail closed unless modern server-only API credentials and a strong rate-limit
       // secret are configured. Never trust the shared Edge egress IP.
-      return respond(503, { error: "Username sign-in is temporarily unavailable" });
+      console.error("Username sign-in configuration unavailable", {
+        hasUrl: Boolean(url),
+        hasSecretKey: Boolean(secretKey),
+        hasExpectedSecretKey: Boolean(secretKey?.startsWith("sb_secret_")),
+        hasRateLimitSecret: Boolean(rateLimitSecret),
+        rateLimitSecretLength: rateLimitSecret?.length ?? 0,
+      });
+      return unavailable("configuration");
     }
 
     // Supabase's Cloudflare edge supplies this header. Do not fall back to any
     // client-controlled X-Forwarded-For value for authentication throttling.
     const clientIp = request.headers.get("cf-connecting-ip")?.trim() ?? "";
     if (!isTrustedClientIp(clientIp)) {
-      return respond(503, { error: "Username sign-in is temporarily unavailable" });
+      console.error("Username sign-in rejected missing or invalid trusted client IP", {
+        headerPresent: Boolean(clientIp),
+      });
+      return unavailable("trusted-client-ip");
     }
 
     const input = await request.json().catch(() => null) as
@@ -83,8 +97,11 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         { p_ip_key: ipKey, p_username_key: usernameKey },
       );
       if (rateLimitError || !rateLimit || typeof rateLimit.allowed !== "boolean") {
-        console.error("Username sign-in rate limit check failed");
-        return respond(503, { error: "Username sign-in is temporarily unavailable" });
+        console.error("Username sign-in rate limit check failed", {
+          errorCode: rateLimitError?.code ?? null,
+          errorMessage: rateLimitError?.message ?? null,
+        });
+        return unavailable("rate-limit");
       }
       if (!rateLimit.allowed) {
         const retryAfter = Math.max(1, Math.min(900, Number(rateLimit.retry_after_seconds) || 900));
@@ -102,8 +119,11 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         .limit(2);
 
       if (lookupError) {
-        console.error("Username sign-in identity lookup failed");
-        return respond(503, { error: "Username sign-in is temporarily unavailable" });
+        console.error("Username sign-in identity lookup failed", {
+          errorCode: lookupError?.code ?? null,
+          errorMessage: lookupError?.message ?? null,
+        });
+        return unavailable("identity-lookup");
       }
 
       // Always invoke Supabase Auth, including unknown/ambiguous usernames, to avoid
@@ -133,12 +153,15 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
 
       const session = await authResponse.json().catch(() => null);
       if (!session || typeof session.access_token !== "string" || !session.user) {
-        return respond(502, { error: "Username sign-in is temporarily unavailable" });
+        return unavailable("invalid-auth-session");
       }
       return respond(200, { session, error: null });
-    } catch {
-      console.error("Username sign-in request failed");
-      return respond(503, { error: "Username sign-in is temporarily unavailable" });
+    } catch (error) {
+      console.error("Username sign-in request failed", {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      });
+      return unavailable("unexpected-error");
     }
   };
 }

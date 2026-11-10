@@ -28,12 +28,8 @@
           path.indexOf('/public/qr/order/') === 0;
         var isAdminRoute = path === '/app' || path.indexOf('/app/') === 0 ||
           path === '/login' || path === '/reset-password';
-        if (path === '/') {
-          window.history.replaceState({ path: '/public/about' }, '', '/public/about' + window.location.search + window.location.hash);
-          path = '/public/about';
-          isCustomerRoute = true;
-          isAdminRoute = false;
-        }
+        // Do not redirect "/" before the app variant is known. main.tsx
+        // routes admin builds to /app and customer builds to /public/about.
         var manifestLink = document.createElement('link');
         manifestLink.rel = 'manifest';
         manifestLink.href = isAdminRoute && !isCustomerRoute ? '/manifest-admin.webmanifest' : '/manifest.webmanifest';
