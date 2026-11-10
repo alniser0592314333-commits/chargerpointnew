@@ -851,7 +851,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
                           <button key={account} type="button" onClick={() => void handleSavedAdminAccount(account)}
                             className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-start transition hover:border-emerald-500 hover:bg-emerald-50 dark:border-[#244746] dark:bg-[#06201c] dark:hover:bg-[#0b352e]">
                             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"><User className="h-5 w-5" /></span>
-                            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{account}</span><span className="mt-0.5 block text-xs text-gray-500 dark:text-[#80a89a]">{locale === "en" ? "Sign in with password" : "الدخول باستخدام كلمة المرور"}</span></span>
+                            <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{account}</span><span className="mt-0.5 block text-xs text-gray-500 dark:text-[#80a89a]">{Capacitor.isNativePlatform() ? (locale === "en" ? "Secure quick sign-in" : "دخول سريع آمن") : (locale === "en" ? "Sign in with password" : "الدخول باستخدام كلمة المرور")}</span></span>
                             <Lock className="h-4 w-4 shrink-0 text-gray-400" />
                           </button>
                         ))}
