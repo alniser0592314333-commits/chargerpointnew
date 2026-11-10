@@ -591,9 +591,9 @@ export default function App() {
     if (pathname === '/app/messages/archive') {
       return <SmsCampaignArchivePage onBack={() => navigate('/app/messages')} />;
     }
-    const messageSectionMatch = pathname.match(/^\\/app\\/messages\\/(compose|templates|recipients|campaigns)$/);
-    if (messageSectionMatch) {
-      return <CustomerLinkSmsPage section={messageSectionMatch[1] as 'compose' | 'templates' | 'recipients' | 'campaigns'} onBack={() => navigate('/app/messages')} onNavigate={(section) => navigate(section === 'archive' ? '/app/messages/archive' : `/app/messages/${section}`)} />;
+    const messageSection = pathname.startsWith('/app/messages/') ? pathname.slice('/app/messages/'.length) : '';
+    if (['compose', 'templates', 'recipients', 'campaigns'].includes(messageSection)) {
+      return <CustomerLinkSmsPage section={messageSection as 'compose' | 'templates' | 'recipients' | 'campaigns'} onBack={() => navigate('/app/messages')} onNavigate={(section) => navigate(section === 'archive' ? '/app/messages/archive' : `/app/messages/${section}`)} />;
     }
 
     // 1. Authenticated Customer QR Route
