@@ -172,6 +172,7 @@ const getLocalStorage = () => {
 export interface AuthService {
   login(email: string, passOrPin: string, bin?: string): Promise<UserSession | null>;
   acceptBiometricSession(session: SupabaseAuthSession): Promise<UserSession>;
+  loginWithSavedAccount(identifier: string): Promise<UserSession | null>;
   logout(): Promise<void>;
   getCurrentSession(forceRefresh?: boolean): Promise<UserSession | null>;
   getSupabaseAuthSession(): Promise<SupabaseAuthSession | null>;
@@ -731,6 +732,66 @@ class DefaultAuthService implements AuthService {
     }
 
     return null;
+  }
+
+  async loginWithSavedAccount(identifier: string): Promise<UserSession | null> {
+    const cleanIdentifier = identifier.trim();
+    if (!cleanIdentifier || !this.isSupabaseConfigured()) throw new Error("SAVED_LOGIN_UNAVAILABLE");
+    const vault = await import("./accountBiometric");
+    const refreshToken = await vault.getAdminQuickLoginToken(cleanIdentifier);
+    if (!refreshToken) throw new Error("SAVED_LOGIN_NOT_AVAILABLE");
+    const response = await fetch(config.supabaseUrl.replace(/\\/+$/, "") + "/auth/v1/token?grant_type=refresh_token", {
+      method: "POST",
+      cache: "no-store",
+      headers: { apikey: config.supabaseAnonKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.access_token || !data?.refresh_token || !data?.user?.id) {
+      await vault.deleteAdminQuickLoginToken(cleanIdentifier).catch(() => undefined);
+      throw new Error("SAVED_LOGIN_EXPIRED");
+    }
+    const refreshed: SupabaseAuthSession = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      token_type: data.token_type || "bearer",
+      expires_in: data.expires_in || 3600,
+      user: data.user,
+    };
+    // Persist rotation immediately: Supabase refresh tokens are single-use/rotating.
+    await vault.saveAdminQuickLoginToken(cleanIdentifier, refreshed.refresh_token!);
+    const profile = await this.getAdminProfile(refreshed.access_token);
+    if (!profile || !profile.authenticated) throw new Error("PROFILE_RPC_FAILED");
+    if (!profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
+    if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
+    const role = (profile.role || "OPERATOR") as UserRole;
+    if (role === "SUPER_ADMIN") {
+      pendingSuperAdminContext = {
+        token: refreshed.access_token,
+        session: refreshed,
+        profile,
+        resolvedEmail: profile.email || refreshed.user.email || cleanIdentifier,
+        userRole: "SUPER_ADMIN",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+      throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+    }
+    pendingSuperAdminContext = null;
+    pendingBinChangeSession = null;
+    saveStoredSupabaseAuthSession(refreshed);
+    setSupabaseAuthToken(refreshed.access_token);
+    const session: UserSession = {
+      userId: profile.admin_id || refreshed.user.id,
+      email: profile.email || refreshed.user.email || cleanIdentifier,
+      fullName: profile.full_name || profile.username || cleanIdentifier,
+      role,
+      permissions: profile.permissions || [],
+      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+    inMemorySession = session;
+    const storage = getLocalStorage();
+    if (storage) storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    return session;
   }
 
   async acceptBiometricSession(authSession: SupabaseAuthSession): Promise<UserSession> {
