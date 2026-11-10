@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n/i18nContext';
 
 const ARCHIVE_KEY = 'chargerpoint.customerLinkSmsCampaignArchive.v1';
 type ArchiveRecipient = { id: string; name: string; phone: string; status: string; error?: string; selected: boolean };
-type ArchivedCampaign = { id: string; archivedAt: string; startedAt?: string; finishedAt?: string; messageTemplate: string; recipients: ArchiveRecipient[] };
+type ArchivedCampaign = { id: string; archivedAt: string; startedAt?: string; finishedAt?: string; messageTemplate: string; dueDateText?: string; sendDelay?: string; recipients: ArchiveRecipient[] };
 
 export const SmsCampaignArchivePage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const { locale } = useI18n();
@@ -32,7 +32,7 @@ export const SmsCampaignArchivePage: React.FC<{ onBack: () => void }> = ({ onBac
           <span className="flex gap-3 text-xs"><span className="text-emerald-600">{count(item,'submitted')}</span><span className="text-red-600">{count(item,'failed')}</span><span className="text-orange-600">{count(item,'uncertain')}</span></span>
         </button>
         {expanded === item.id && <div className="space-y-3 border-t border-gray-100 p-4 dark:border-[#14423b]">
-          <div className="rounded-lg bg-gray-50 p-3 text-sm whitespace-pre-wrap dark:bg-[#061f1c]">{item.messageTemplate}</div>
+          <div className="rounded-lg bg-gray-50 p-3 text-sm whitespace-pre-wrap dark:bg-[#061f1c]">{item.messageTemplate}</div><p className="text-xs text-gray-500 dark:text-[#8eb698]">{ar ? 'موعد التسديد المستخدم: ' : 'Due date used: '}{item.dueDateText || (ar ? 'الخميس' : 'Thursday')} · {ar ? 'الفاصل: ' : 'Delay: '}{item.sendDelay || '0'} {ar ? 'ثانية' : 'seconds'}</p>
           <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-[#8eb698]"><span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{ar ? 'انتهت: ' : 'Ended: '}{date(item.finishedAt || item.archivedAt)}</span><span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />{ar ? 'قُبلت: ' : 'Submitted: '}{count(item,'submitted')}</span><span className="inline-flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5 text-red-600" />{ar ? 'فشلت: ' : 'Failed: '}{count(item,'failed')}</span></div>
           <div className="max-h-64 divide-y divide-gray-100 overflow-y-auto dark:divide-[#14423b]">{item.recipients.filter(r => r.selected).map(r => <div key={r.id} className="flex justify-between gap-3 py-2 text-xs"><span className="min-w-0"><strong className="block">{r.name}</strong><span dir="ltr" className="text-gray-500">{r.phone}</span></span><span className="shrink-0">{r.status}{r.error ? ' · '+r.error : ''}</span></div>)}</div>
         </div>}
