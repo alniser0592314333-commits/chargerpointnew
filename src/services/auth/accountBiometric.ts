@@ -146,7 +146,12 @@ export async function loginWithAccountBiometric(accountType: 'customer' | 'admin
     if (/^[a-f0-9]{32}$/.test(localKeyAlias)) keyAliases = [localKeyAlias];
   }
   if (/^[a-f0-9]{32}$/.test(localKeyAlias) && keyAliases.includes(localKeyAlias)) {
-    keyAliases = [localKeyAlias, ...keyAliases.filter((alias) => alias !== localKeyAlias)];
+    // A single administrator account is bound to this device. Never cycle
+    // through several account keys: Android cannot identify which finger was used.
+    keyAliases = [localKeyAlias];
+  }
+  if (!normalizedIdentifier && keyAliases.length > 1) {
+    throw new Error('MULTIPLE_ADMIN_BIOMETRIC_KEYS');
   }
   if (!normalizedIdentifier && keyAliases.length === 0) throw new Error('BIOMETRIC_KEY_MISSING');
 
