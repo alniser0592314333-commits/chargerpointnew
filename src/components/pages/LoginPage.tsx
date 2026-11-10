@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Download } from "lucide-react";
 import { getPWAInstallState, promptPWAInstall, subscribePWAInstall } from "../../services/pwaInstallService";
-import { loginWithAccountBiometric } from "../../services/auth/accountBiometric";
+import { loginWithAccountBiometric, saveAdminQuickLoginToken } from "../../services/auth/accountBiometric";
 import { useI18n } from "../../i18n/i18nContext";
 import { useTheme } from "../../theme/themeContext";
 import { authService } from "../../services/auth/authService";
@@ -123,7 +123,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     } catch {}
     return readSavedAdminAccounts().length > 0;
   });
-  const [pendingRememberIdentifier, setPendingRememberIdentifier] = useState<string | null>(null);
+  const [pendingRememberIdentifier, setPendingRememberIdentifier] = useState<string | null>(null);\n  const [isSavedQuickLogin, setIsSavedQuickLogin] = useState(false);
 
   // Initialize and check Supabase bootstrap & auth callback on mount
   useEffect(() => {
@@ -212,18 +212,67 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
   };
 
   const finishSuccessfulLogin = async (identifier: string, remember: boolean) => {
-    if (remember) {
-      saveAdminAccountIdentifier(identifier);
-      setSavedAdminAccounts(readSavedAdminAccounts());
-    }
-    setPendingRememberIdentifier(null);
-    setPassword("");
     try {
+      if (remember) {
+        if (Capacitor.isNativePlatform()) {
+          const currentAuth = await authService.getSupabaseAuthSession();
+          if (!currentAuth?.refresh_token) throw new Error("SECURE_QUICK_LOGIN_UNAVAILABLE");
+          await saveAdminQuickLoginToken(identifier, currentAuth.refresh_token);
+        }
+        saveAdminAccountIdentifier(identifier);
+        setSavedAdminAccounts(readSavedAdminAccounts());
+      }
+      setPendingRememberIdentifier(null);
+      setPassword("");
+      setIsSavedQuickLogin(false);
       // Biometric enrollment is managed explicitly in account security settings.
       // Normal login and declining account saving must never trigger enrollment.
       await onLoginSuccess();
     } catch (finishError: any) {
-      setError(finishError?.message || (locale === "en" ? "Could not finish opening the app." : "تعذر إكمال فتح التطبيق."));
+      setError(finishError?.message === "SECURE_QUICK_LOGIN_UNAVAILABLE"
+        ? (locale === "en" ? "Secure quick sign-in could not be saved on this device. Your account is still signed in." : "تعذر حفظ الدخول السريع الآمن على هذا الجهاز. حسابك ما زال مسجل الدخول.")
+        : finishError?.message || (locale === "en" ? "Could not finish opening the app." : "تعذر إكمال فتح التطبيق."));
+    }
+  };
+
+  const handleSavedAdminAccount = async (account: string) => {
+    if (!Capacitor.isNativePlatform()) {
+      setUsername(account);
+      setPassword("");
+      setShowSavedAccounts(false);
+      setError("");
+      return;
+    }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setError("");
+    setSuccessMessage("");
+    setIsSavedQuickLogin(true);
+    try {
+      const session = await authService.loginWithSavedAccount(account);
+      if (!session) throw new Error("SAVED_LOGIN_EXPIRED");
+      setPendingRememberIdentifier(null);
+      setPassword("");
+      setShowSavedAccounts(false);
+      setIsSavedQuickLogin(false);
+      await onLoginSuccess();
+    } catch (loginError) {
+      const code = loginError instanceof Error ? loginError.message : "";
+      if (code === "SUPER_ADMIN_BIN_REQUIRED") {
+        setInternalEmail(account);
+        setUsername(account);
+        setBin("");
+        setShowSavedAccounts(false);
+        setError("");
+        setUiState("SUPER_ADMIN_BIN_REQUIRED");
+      } else {
+        setIsSavedQuickLogin(false);
+        setError(code === "SAVED_LOGIN_NOT_AVAILABLE" || code === "SAVED_LOGIN_EXPIRED"
+          ? (locale === "en" ? "Saved secure sign-in expired. Sign in with your password and save this account again." : "انتهت صلاحية الدخول المحفوظ. سجّل الدخول بكلمة المرور واحفظ الحساب مجددًا.")
+          : (locale === "en" ? "Could not sign in with this saved account. Use your password." : "تعذر الدخول بهذا الحساب المحفوظ. استخدم كلمة المرور."));
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -420,7 +469,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
           if (session) {
             setBin("");
             setIsBinLocked(false);
-            setPendingRememberIdentifier(internalEmail || username.trim());
+            if (isSavedQuickLogin) {
+              setIsSavedQuickLogin(false);
+              setPendingRememberIdentifier(null);
+              await onLoginSuccess();
+            } else {
+              setPendingRememberIdentifier(internalEmail || username.trim());
+            }
           }
         } catch (binErr: any) {
           const msg = binErr?.message || String(binErr);
@@ -792,7 +847,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
                       </p>
                       <div className="space-y-2">
                         {savedAdminAccounts.map((account) => (
-                          <button key={account} type="button" onClick={() => { setUsername(account); setPassword(""); setShowSavedAccounts(false); setError(""); }}
+                          <button key={account} type="button" onClick={() => void handleSavedAdminAccount(account)}
                             className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-start transition hover:border-emerald-500 hover:bg-emerald-50 dark:border-[#244746] dark:bg-[#06201c] dark:hover:bg-[#0b352e]">
                             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"><User className="h-5 w-5" /></span>
                             <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{account}</span><span className="mt-0.5 block text-xs text-gray-500 dark:text-[#80a89a]">{locale === "en" ? "Sign in with password" : "الدخول باستخدام كلمة المرور"}</span></span>
