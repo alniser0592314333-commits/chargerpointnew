@@ -77,6 +77,8 @@ if [[ -z "$API_URL" || -z "$DB_URL" || -z "$ANON_KEY" || -z "$SECRET_KEY" ]]; th
 fi
 
 cat > "$WORKDIR/supabase/functions/.env" <<ENV
+SUPABASE_URL=$API_URL
+SUPABASE_ANON_KEY=$ANON_KEY
 auth_supabase_secret_key=$SECRET_KEY
 username_signin_rate_limit_secret=$(openssl rand -hex 32)
 ENV
