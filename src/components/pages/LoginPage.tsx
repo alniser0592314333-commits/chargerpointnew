@@ -123,7 +123,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     } catch {}
     return readSavedAdminAccounts().length > 0;
   });
-  const [pendingRememberIdentifier, setPendingRememberIdentifier] = useState<string | null>(null);\n  const [isSavedQuickLogin, setIsSavedQuickLogin] = useState(false);
+  const [pendingRememberIdentifier, setPendingRememberIdentifier] = useState<string | null>(null);
+  const [isSavedQuickLogin, setIsSavedQuickLogin] = useState(false);
 
   // Initialize and check Supabase bootstrap & auth callback on mount
   useEffect(() => {
