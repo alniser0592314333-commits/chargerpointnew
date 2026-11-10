@@ -20,9 +20,9 @@ const TEMPLATE_KEY = 'chargerpoint.customerLinkSmsTemplate.v1';
 const SAVED_TEMPLATES_KEY = 'chargerpoint.customerLinkSmsSavedTemplates.v1';
 const DUE_DATE_KEY = 'chargerpoint.customerLinkSmsDueDate.v1';
 const DEFAULT_DUE_DATE = 'الخميس';
-const DEFAULT_TEMPLATE = 'مرحباً {name}، نذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. نرجو تسديده يوم الخميس إن أمكن، وشكراً لثقتك بنا.';
+const DEFAULT_TEMPLATE = 'مرحباً {name}، نذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. نرجو تسديده يوم {due_date} إن أمكن، وشكراً لثقتك بنا.';
 const MESSAGE_PRESETS = {
-  debt: 'مرحباً {name} 🌹\nنذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. بنكون شاكرين إلك لو بتقدر تسدده يوم الخميس. يعطيك العافية.',
+  debt: 'مرحباً {name} 🌹\nنذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. بنكون شاكرين إلك لو بتقدر تسدده يوم {due_date}. يعطيك العافية.',
   link: 'مرحباً {name} 🌹\nهذا رابط حسابك الشخصي لمتابعة طلباتك ومعلوماتك: {link}\nيسعدنا خدمتك دائماً.',
   general: 'مرحباً {name} 🌹\nنتمنى تكون بخير. شكراً لثقتك بنا، إحنا دائماً بخدمتك.',
 } as const;
