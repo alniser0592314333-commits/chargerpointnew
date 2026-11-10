@@ -72,7 +72,7 @@ const saveCampaign = (recipients: Recipient[]): boolean => {
   } catch (error) { console.error('Could not persist customer-link SMS campaign:', error); return false; }
 };
 
-export const CustomerLinkSmsPage: React.FC = () => {
+export const CustomerLinkSmsPage: React.FC<{ section: 'compose' | 'templates' | 'recipients' | 'campaigns'; onBack: () => void }> = ({ section, onBack }) => {
   const { locale } = useI18n();
   const isArabic = locale === 'ar';
   const isAndroidAdmin = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && import.meta.env.VITE_APP_VARIANT === 'admin';
@@ -320,6 +320,7 @@ export const CustomerLinkSmsPage: React.FC = () => {
       <div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><AlertTriangle className="mb-1 h-4 w-4 text-red-600" /><p className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'فشلت' : 'Failed'}</p><p className="text-xl font-bold">{counts.failed}</p></div>
       <div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><AlertTriangle className="mb-1 h-4 w-4 text-orange-600" /><p className="text-xs text-gray-500 dark:text-[#8eb698]">{isArabic ? 'غير محسومة' : 'Uncertain'}</p><p className="text-xl font-bold">{counts.uncertain}</p></div>
     </div>
+{(section === 'compose' || section === 'templates') && (
     <section className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#14423b] dark:bg-[#082622]">
       <div>
         <h2 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{isArabic ? 'محتوى الرسالة والتخصيص' : 'Message content & personalization'}</h2>
@@ -365,6 +366,9 @@ export const CustomerLinkSmsPage: React.FC = () => {
         {hasLinkToken && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{isArabic ? 'سيُدرج رابط QR الشخصي الصحيح لكل زبون وقت إرسال رسالته.' : 'Each recipient’s actual personal QR link is inserted when their individual SMS is sent.'}</p>}
       </div>
     </section>
+{(section === 'recipients') && (
+
+)}
     <section className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-[#14423b] dark:bg-[#082622] sm:grid-cols-3">
       <label className="text-xs font-semibold text-gray-600 dark:text-[#a9c9b1]">{isArabic ? 'تصفية الزبائن' : 'Filter recipients'}
         <select value={recipientFilter} onChange={(e) => setRecipientFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]">
@@ -380,6 +384,8 @@ export const CustomerLinkSmsPage: React.FC = () => {
         </select>
       </label>
     </section>
+
+)}
     <div className="flex flex-wrap items-center justify-between gap-3">
       <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-[#daf1de]"><input type="checkbox" checked={recipients.length > 0 && recipients.filter((r) => r.status === 'pending').every((r) => r.selected)} onChange={(e) => toggleAll(e.target.checked)} disabled={isSending || isLoading} className="h-4 w-4 rounded" />{isArabic ? 'تحديد الكل' : 'Select all'}<span className="text-xs font-normal text-gray-500 dark:text-[#8eb698]">({selectedCount})</span></label>
       <div className="flex gap-2">
@@ -388,9 +394,13 @@ export const CustomerLinkSmsPage: React.FC = () => {
         <button type="button" onClick={sendSelected} disabled={isSending || isLoading || selectedCount === 0 || (hasLinkToken && !navigator.onLine) || !messageTemplate.trim()} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"><Send className="h-4 w-4" />{isSending ? (isArabic ? 'جارٍ الإرسال…' : 'Sending…') : (isArabic ? 'إرسال بالتتابع' : 'Send one by one')}</button>
       </div>
     </div>
+{(section === 'recipients') && (
     <div className="relative"><Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={isArabic ? 'ابحث باسم الزبون أو رقم الهاتف' : 'Search by customer name or phone'} className="w-full rounded-xl border border-gray-200 bg-white py-2.5 ps-9 pe-3 text-sm dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" /></div>
+
+)}
     {notice && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">{notice}</div>}
     {loadError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-200">{loadError}</div>}
+{(section === 'campaigns') && (
     <section className="rounded-xl border border-gray-200 bg-white p-3 dark:border-[#14423b] dark:bg-[#082622]">
       <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{isArabic ? 'تقرير الحملة' : 'Campaign report'}</strong><span className="text-xs text-gray-500 dark:text-[#8eb698]">{campaignProgress.done}/{campaignProgress.total} {isArabic ? 'اكتمل' : 'processed'}</span></div>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-[#061f1c]"><div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: campaignProgress.total ? (campaignProgress.done / campaignProgress.total * 100) + '%' : '0%' }} /></div>
@@ -398,6 +408,9 @@ export const CustomerLinkSmsPage: React.FC = () => {
       {(campaignStartedAt || campaignFinishedAt) && <p className="mt-1 text-[11px] text-gray-500 dark:text-[#8eb698]">{campaignStartedAt ? (isArabic ? 'بدأت: ' : 'Started: ') + new Date(campaignStartedAt).toLocaleString() : ''}{campaignFinishedAt ? ' • ' + (isArabic ? 'انتهت/توقفت: ' : 'Finished/stopped: ') + new Date(campaignFinishedAt).toLocaleString() : ''}</p>}
       <div className="mt-3 max-h-48 space-y-1 overflow-y-auto">{recipients.filter((r) => r.selected).map((r) => <div key={'report-' + r.id} className="flex items-center justify-between gap-2 text-xs"><span className="min-w-0 truncate">{r.name}</span><span className="shrink-0">{statusLabel(r.status)}{r.error ? ' — ' + r.error : ''}</span></div>)}</div>
     </section>
+{(section === 'recipients') && (
+
+)}
     <section className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-[#14423b] dark:bg-[#082622]">
       <div className="flex items-center justify-between border-b border-gray-100 px-3 py-3 dark:border-[#14423b]"><span className="text-sm font-semibold">{isArabic ? 'قائمة الإرسال بالتتابع' : 'Sequential sending list'}</span><span className="text-xs text-emerald-700 dark:text-emerald-400">{isArabic ? `محدد: ${selectedCount}` : `Selected: ${selectedCount}`}</span></div>
       <div className="max-h-[55vh] divide-y divide-gray-100 overflow-y-auto dark:divide-[#14423b]">
@@ -409,6 +422,8 @@ export const CustomerLinkSmsPage: React.FC = () => {
           </label>)}
       </div>
     </section>
+
+)}
     <p className="text-[11px] leading-5 text-gray-500 dark:text-[#8eb698]">{isArabic ? 'يتم إرسال رسالة واحدة وانتظار نتيجة Android قبل الانتقال للرقم التالي. عند الفشل يتوقف التسلسل. «قُبلت للإرسال» تعني أن Android قبل الرسالة ولا تؤكد وصولها.' : 'Each SMS is sent individually; the app waits for Android’s result before moving to the next number. A failure stops the sequence. “Submitted” does not confirm delivery.'}</p>
   </div>;
 };
