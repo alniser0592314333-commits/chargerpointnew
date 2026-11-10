@@ -245,11 +245,12 @@ export const CustomerLinkSmsPage: React.FC<{
       const archive = Array.isArray(old) ? old : [];
       const archivedAt = new Date().toISOString();
       const previous = readCampaign();
+      const archivedRecipients = nextRecipients.filter((recipient) => recipient.selected).map(({ id, name, phone, status, error, selected }) => ({ id, name, phone, status, error, selected }));
       const item = {
         ...(previous || {}), id: campaignId, archivedAt,
         startedAt: campaignStartedAt || previous?.startedAt || undefined,
         finishedAt: campaignFinishedAt || archivedAt, status: 'ended',
-        messageTemplate, dueDateText, sendDelay, recipients: nextRecipients,
+        messageTemplate, dueDateText, sendDelay, recipients: archivedRecipients,
       };
       localStorage.setItem(ARCHIVE_KEY, JSON.stringify([item, ...archive.filter((x: any) => x?.id !== campaignId)].slice(0, 100)));
       localStorage.removeItem(STORAGE_KEY);
