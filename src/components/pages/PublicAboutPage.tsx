@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Flame,
   Info,
+  Megaphone,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
@@ -42,6 +43,7 @@ import {
   OperationalStatusDetail,
 } from '../../services/businessHoursService';
 import { getAllDeviceTypes, UIDeviceTypeItem } from './dayOrdersStore';
+import { fetchPublicAnnouncements, PublicAnnouncement } from '../../services/publicAnnouncements';
 import './public-about.css';
 
 type DeferredPwaInstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }> };
@@ -162,6 +164,16 @@ export const PublicAboutPage: React.FC = () => {
   const [operationalStatus, setOperationalStatus] = useState<OperationalStatusDetail>(() =>
     computeOperationalStatus(getInitialHoursConfig())
   );
+
+  const [announcements, setAnnouncements] = useState<PublicAnnouncement[]>([]);
+  useEffect(() => {
+    let mounted = true;
+    const refresh = () => { void fetchPublicAnnouncements().then(items => { if (mounted) setAnnouncements(items); }).catch(error => console.warn('Public announcements unavailable:', error)); };
+    refresh();
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('online', refresh);
+    return () => { mounted = false; window.clearInterval(timer); window.removeEventListener('online', refresh); };
+  }, []);
 
   // Real Database Device Types State
   const [deviceTypes, setDeviceTypes] = useState<UIDeviceTypeItem[]>([]);
@@ -306,9 +318,9 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Smartphones',
           descriptionAr: 'شحن فائق السرعة مع مراقبة حرارية لجميع هواتف أبل وسامسونج وشاومي',
           descriptionEn: 'High-speed monitored charging for Apple, Samsung, Xiaomi & all phones',
-          minPrice: 100,
-          maxPrice: 200,
-          count: 4,
+          minPrice: 0,
+          maxPrice: 0,
+          count: 0,
           icon: Smartphone,
         },
         {
@@ -317,9 +329,9 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Power Banks & Accessories',
           descriptionAr: 'شحن مكثف للبطاريات المحمولة وأجهزة الشحن السريع بقدرات حتى 65W',
           descriptionEn: 'High-wattage charging for portable battery packs up to 65W',
-          minPrice: 200,
-          maxPrice: 300,
-          count: 3,
+          minPrice: 0,
+          maxPrice: 0,
+          count: 0,
           icon: BatteryCharging,
         },
         {
@@ -328,9 +340,9 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Tablets & Portables',
           descriptionAr: 'شحن آمن لأجهزة الآيباد والتابلت وأجهزة الألعاب المحمولة',
           descriptionEn: 'Safe charging for iPads, tablets and handheld portable consoles',
-          minPrice: 100,
-          maxPrice: 200,
-          count: 2,
+          minPrice: 0,
+          maxPrice: 0,
+          count: 0,
           icon: Zap,
         },
       ];
@@ -362,7 +374,7 @@ export const PublicAboutPage: React.FC = () => {
       descEn: string,
       IconComponent: any
     ) => {
-      const source = items.length > 0 ? items : deviceTypes;
+      const source = items;
       const prices = source.map((d) => d.basePriceMinor);
       const min = Math.min(...prices);
       const max = Math.max(...prices);
@@ -372,8 +384,8 @@ export const PublicAboutPage: React.FC = () => {
         nameEn: titleEn,
         descriptionAr: descAr,
         descriptionEn: descEn,
-        minPrice: id === 'cat-phones' ? 100 : id === 'cat-power' ? 200 : id === 'cat-tablets' ? 100 : (isFinite(min) ? min : 200),
-        maxPrice: id === 'cat-phones' ? 200 : id === 'cat-power' ? 300 : id === 'cat-tablets' ? 200 : (isFinite(max) ? max : 400),
+        minPrice: isFinite(min) ? min : 0,
+        maxPrice: isFinite(max) ? max : 0,
         count: source.length,
         icon: IconComponent,
       };
@@ -451,6 +463,36 @@ export const PublicAboutPage: React.FC = () => {
       qEn: 'Is my device safe during charging?',
       aAr: 'أجهزتكم في أمان تام ومسؤولية كاملة. يتم حفظ كل جهاز في حجيرة مخصصة ومحمية، والشحن مراقب بنظام أمان إلكتروني يمنع ارتفاع الحرارة أو زيادة التيار الكهربائي.',
       aEn: 'Your devices are completely secure. Each device is kept in a designated protected bay, and charging is monitored with electronic safety mechanisms preventing power surges or overheating.',
+    },
+    {
+      qAr: 'هل يمكنني استلام الجهاز قبل اكتمال الشحن؟',
+      qEn: 'Can I collect my device before charging is complete?',
+      aAr: 'تواصل معنا أو راجع المشرف لتأكيد حالة الجهاز والمبلغ المستحق قبل الاستلام.',
+      aEn: 'Contact us or ask the attendant to confirm the device status and amount due before collection.',
+    },
+    {
+      qAr: 'ماذا أفعل إذا فقدت بطاقة QR؟',
+      qEn: 'What should I do if I lose my QR receipt?',
+      aAr: 'تواصل معنا مباشرة، وسنساعدك في الوصول إلى طلبك والتحقق من بياناتك قبل تسليمه.',
+      aEn: 'Contact us directly. We can help locate your order and verify your details before release.',
+    },
+    {
+      qAr: 'هل يمكن لشخص آخر استلام جهازي؟',
+      qEn: 'Can someone else collect my device?',
+      aAr: 'يرجى التواصل معنا مسبقاً لترتيب ذلك والتحقق من هوية الشخص المفوض.',
+      aEn: 'Please contact us in advance so we can arrange this and verify the authorized person.',
+    },
+    {
+      qAr: 'ماذا أفعل إذا تأخرت عن موعد الاستلام؟',
+      qEn: 'What if I am late for collection?',
+      aAr: 'تواصل معنا لإبلاغنا بالتأخير والتأكد من إمكانية الاستلام في وقت لاحق.',
+      aEn: 'Contact us to let us know and confirm a suitable later collection time.',
+    },
+    {
+      qAr: 'كيف أقدم استفساراً أو شكوى؟',
+      qEn: 'How can I ask a question or submit a complaint?',
+      aAr: 'يمكنك التواصل معنا عبر واتساب أو الاتصال المباشر من قسم التواصل في هذه الصفحة.',
+      aEn: 'You can reach us through WhatsApp or the direct call option in the contact section.',
     },
   ];
 
@@ -995,6 +1037,13 @@ export const PublicAboutPage: React.FC = () => {
           MAIN BODY CONTAINER
           ===================================================================== */}
       <main className="relative z-10 mx-auto max-w-5xl px-4 sm:px-6 pb-20 space-y-16 sm:space-y-24">
+        {announcements.length > 0 && <section aria-label={isAr ? "الإعلانات الحالية" : "Current announcements"} className="space-y-4">
+          <div className="flex items-center gap-2"><Megaphone className="w-5 h-5 text-emerald-600"/><h2 className="text-lg sm:text-xl font-bold text-white">{isAr ? "آخر الإعلانات والعروض" : "Latest announcements & offers"}</h2></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{announcements.map(ad => <article key={ad.id} className="overflow-hidden rounded-2xl border border-white/15 bg-white/95 dark:bg-[#0a2423]/95 text-gray-900 dark:text-[#e7f5f2] shadow-lg">
+            {ad.image_url && <img src={ad.image_url} alt={ad.title || (isAr ? "صورة الإعلان" : "Announcement image")} loading="lazy" className="w-full max-h-64 object-cover"/>}
+            <div className="p-4 space-y-2">{ad.title && <h3 className="font-bold text-base">{ad.title}</h3>}{ad.body && <p className="text-sm leading-7 whitespace-pre-wrap">{ad.body}</p>}<p className="text-[10px] text-gray-500">{isAr ? "ينتهي الإعلان:" : "Ends:"} {new Date(ad.ends_at).toLocaleString(isAr ? "ar-PS" : "en-US")}</p></div>
+          </article>)}</div>
+        </section>}
         {/* ===================================================================
             SECTION 1: OPERATIONAL STATUS & WORKING HOURS (حالة العمل وأوقات الدوام)
             =================================================================== */}
@@ -1233,7 +1282,7 @@ export const PublicAboutPage: React.FC = () => {
                         <CatIcon className="h-5 w-5" />
                       </div>
                       <span className="text-[11px] font-semibold text-gray-500 dark:text-[#88d2c4] bg-gray-100 dark:bg-white/5 px-2.5 py-1 rounded-full">
-                        {isAr ? `${cat.count} فئات` : `${cat.count} categories`}
+                        {cat.count > 0 ? (isAr ? `${cat.count} أنواع` : `${cat.count} device types`) : (isAr ? 'السعر عند الاستفسار' : 'Price on request')}
                       </span>
                     </div>
 
@@ -1247,11 +1296,10 @@ export const PublicAboutPage: React.FC = () => {
 
                   <div className="pt-4 border-t border-gray-100 dark:border-white/10 flex items-baseline justify-between">
                     <span className="text-xs text-gray-500 dark:text-[#88d2c4]">
-                      {isAr ? 'السعر التقديري:' : 'Estimated Rate:'}
+                      {isAr ? 'نطاق السعر المسجل:' : 'Recorded price range:'}
                     </span>
                     <div className="font-mono font-extrabold text-base sm:text-lg text-emerald-800 dark:text-[#6ee7b7]">
-                      {formatCurrency(cat.minPrice)}
-                      {cat.minPrice !== cat.maxPrice && ` — ${formatCurrency(cat.maxPrice)}`}
+                      {cat.count > 0 ? <>{formatCurrency(cat.minPrice)}{cat.minPrice !== cat.maxPrice && ` — ${formatCurrency(cat.maxPrice)}`}</> : (isAr ? 'تواصل معنا لتحديد السعر' : 'Contact us for pricing')}
                     </div>
                   </div>
                 </div>
@@ -1452,6 +1500,15 @@ export const PublicAboutPage: React.FC = () => {
 
             {/* Direct WhatsApp & Call Buttons */}
             <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="https://www.google.com/maps/search/?api=1&query=%D9%86%D9%82%D8%B7%D8%A9%20%D8%A7%D9%84%D8%B4%D8%AD%D9%86%2C%20%D8%BA%D8%B2%D8%A9%2C%20%D8%A7%D9%84%D9%81%D8%A7%D9%84%D9%88%D8%AC%D8%A9"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 px-5 py-3 text-xs font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-colors"
+              >
+                <MapPin className="h-4 w-4" />
+                <span>{isAr ? 'الاتجاهات إلى نقطة الشحن' : 'Get directions'}</span>
+              </a>
               <a
                 href="https://wa.me/970592369875"
                 target="_blank"
