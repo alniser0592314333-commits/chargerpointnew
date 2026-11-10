@@ -318,9 +318,9 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Smartphones',
           descriptionAr: 'شحن فائق السرعة مع مراقبة حرارية لجميع هواتف أبل وسامسونج وشاومي',
           descriptionEn: 'High-speed monitored charging for Apple, Samsung, Xiaomi & all phones',
-          minPrice: 100,
-          maxPrice: 200,
-          count: 4,
+          minPrice: 0,
+          maxPrice: 0,
+          count: 0,
           icon: Smartphone,
         },
         {
@@ -329,9 +329,9 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Power Banks & Accessories',
           descriptionAr: 'شحن مكثف للبطاريات المحمولة وأجهزة الشحن السريع بقدرات حتى 65W',
           descriptionEn: 'High-wattage charging for portable battery packs up to 65W',
-          minPrice: 200,
-          maxPrice: 300,
-          count: 3,
+          minPrice: 0,
+          maxPrice: 0,
+          count: 0,
           icon: BatteryCharging,
         },
         {
@@ -340,9 +340,9 @@ export const PublicAboutPage: React.FC = () => {
           nameEn: 'Tablets & Portables',
           descriptionAr: 'شحن آمن لأجهزة الآيباد والتابلت وأجهزة الألعاب المحمولة',
           descriptionEn: 'Safe charging for iPads, tablets and handheld portable consoles',
-          minPrice: 100,
-          maxPrice: 200,
-          count: 2,
+          minPrice: 0,
+          maxPrice: 0,
+          count: 0,
           icon: Zap,
         },
       ];
@@ -374,7 +374,7 @@ export const PublicAboutPage: React.FC = () => {
       descEn: string,
       IconComponent: any
     ) => {
-      const source = items.length > 0 ? items : deviceTypes;
+      const source = items;
       const prices = source.map((d) => d.basePriceMinor);
       const min = Math.min(...prices);
       const max = Math.max(...prices);
@@ -1282,7 +1282,7 @@ export const PublicAboutPage: React.FC = () => {
                         <CatIcon className="h-5 w-5" />
                       </div>
                       <span className="text-[11px] font-semibold text-gray-500 dark:text-[#88d2c4] bg-gray-100 dark:bg-white/5 px-2.5 py-1 rounded-full">
-                        {isAr ? `${cat.count} أنواع` : `${cat.count} device types`}
+                        {cat.count > 0 ? (isAr ? `${cat.count} أنواع` : `${cat.count} device types`) : (isAr ? 'السعر عند الاستفسار' : 'Price on request')}
                       </span>
                     </div>
 
@@ -1299,8 +1299,7 @@ export const PublicAboutPage: React.FC = () => {
                       {isAr ? 'نطاق السعر المسجل:' : 'Recorded price range:'}
                     </span>
                     <div className="font-mono font-extrabold text-base sm:text-lg text-emerald-800 dark:text-[#6ee7b7]">
-                      {formatCurrency(cat.minPrice)}
-                      {cat.minPrice !== cat.maxPrice && ` — ${formatCurrency(cat.maxPrice)}`}
+                      {cat.count > 0 ? <>{formatCurrency(cat.minPrice)}{cat.minPrice !== cat.maxPrice && ` — ${formatCurrency(cat.maxPrice)}`}</> : (isAr ? 'تواصل معنا لتحديد السعر' : 'Contact us for pricing')}
                     </div>
                   </div>
                 </div>
