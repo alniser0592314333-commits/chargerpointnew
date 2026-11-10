@@ -146,7 +146,11 @@ export const CustomerLinkSmsPage: React.FC<{
 
   const updateTemplate = (value: string) => {
     setMessageTemplate(value);
-    try { localStorage.setItem(TEMPLATE_KEY, value); } catch (error) { console.error('Could not save SMS template:', error); }
+    try {
+      localStorage.setItem(TEMPLATE_KEY, value);
+      const previous = readCampaign();
+      if (previous) localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...previous, messageTemplate: value, updatedAt: new Date().toISOString() }));
+    } catch (error) { console.error('Could not save SMS template:', error); }
   };
   const saveCurrentTemplate = () => {
     const name = window.prompt(ar ? 'اكتب اسماً للقالب' : 'Name this template');
@@ -248,7 +252,7 @@ export const CustomerLinkSmsPage: React.FC<{
     if ((campaignStartedAt || recipients.some((r) => r.status !== 'pending')) && !archiveCurrentCampaign()) {
       setNotice(ar ? 'تعذر أرشفة الحملة؛ لم نغيّر بياناتها.' : 'Could not archive the campaign; no data was changed.'); return;
     }
-    createFreshCampaign(recipients.map((r) => ({ ...r, status: 'pending', selected: r.hasDebt, error: undefined })));
+    createFreshCampaign(recipients.map((r) => ({ ...r, status: 'pending' as const, selected: r.hasDebt, error: undefined })));
     setNotice(ar ? 'بدأت حملة جديدة. الحملة السابقة محفوظة في الأرشيف.' : 'New campaign started; previous campaign is archived.');
   };
   const endCampaign = () => {
