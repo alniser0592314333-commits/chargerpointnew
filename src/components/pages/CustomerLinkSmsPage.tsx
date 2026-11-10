@@ -65,7 +65,7 @@ const renderMessageTemplate = (template: string, recipient: Recipient, link = ''
     : 'لا يوجد';
   return template.replace(/\{name\}/g, recipient.name).replace(/\{debt\}/g, debt)
     .replace(/\{link\}/g, link).replace(/\{phone\}/g, recipient.phone)
-    .replace(/\\{date\\}/g, new Date().toLocaleDateString(locale)).replace(/\\{due_date\\}/g, dueDate);
+    .replace(/\{date\}/g, new Date().toLocaleDateString(locale)).replace(/\{due_date\}/g, dueDate);
 };
 
 export const CustomerLinkSmsPage: React.FC<{
@@ -199,7 +199,7 @@ export const CustomerLinkSmsPage: React.FC<{
     .replace(/\{debt\}/g, ar ? '50.00 شيكل' : '50.00 ILS')
     .replace(/\{link\}/g, ar ? 'رابط الزبون الشخصي' : 'Customer personal link')
     .replace(/\{phone\}/g, '059XXXXXXX').replace(/\{date\}/g, new Date().toLocaleDateString(ar ? 'ar' : 'en'))
-    .replace(/\\{due_date\\}/g, dueDateText);
+    .replace(/\{due_date\}/g, dueDateText);
   const smsLength = useMemo(() => {
     const gsmBasic = /^[A-Za-z0-9 @£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,-.\/:;<=>?¡ÄÖÑÜ§¿äöñüà]*$/;
     const extension = new Set(['^', '{', '}', '\\', '[', ']', '~', '|', '€']);
@@ -249,7 +249,7 @@ export const CustomerLinkSmsPage: React.FC<{
         ...(previous || {}), id: campaignId, archivedAt,
         startedAt: campaignStartedAt || previous?.startedAt || undefined,
         finishedAt: campaignFinishedAt || archivedAt, status: 'ended',
-        messageTemplate, recipients: nextRecipients,
+        messageTemplate, dueDateText, sendDelay, recipients: nextRecipients,
       };
       localStorage.setItem(ARCHIVE_KEY, JSON.stringify([item, ...archive.filter((x: any) => x?.id !== campaignId)].slice(0, 100)));
       localStorage.removeItem(STORAGE_KEY);
@@ -370,7 +370,7 @@ export const CustomerLinkSmsPage: React.FC<{
 
     {section === 'compose' && <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#14423b] dark:bg-[#082622]">
       <div><h2 className="text-sm font-bold">{ar ? 'محتوى الرسالة والتخصيص' : 'Message content & personalization'}</h2><p className="mt-1 text-xs text-gray-500">{ar ? 'اكتب بحرية وأضف المتغيرات التي تحتاجها فقط.' : 'Write freely and add only the variables you need.'}</p></div>
-    .replace(/\\{due_date\\}/g, dueDateText);
+    .replace(/\{due_date\}/g, dueDateText);
       <textarea ref={editorRef} value={messageTemplate} onChange={(e) => updateTemplate(e.target.value)} rows={7} maxLength={2000} disabled={isSending} placeholder={ar ? 'اكتب نص الرسالة هنا…' : 'Write your message…'} className="w-full resize-y rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" />
       <div className="flex flex-wrap gap-2 text-xs">{Object.entries({ name: ar ? 'اسم الزبون' : 'Customer name', debt: ar ? 'مبلغ الدين' : 'Debt amount', link: ar ? 'الرابط الشخصي' : 'Personal link', phone: ar ? 'رقم الهاتف' : 'Phone number', date: ar ? 'تاريخ اليوم' : 'Today', due_date: ar ? 'موعد التسديد' : 'Due date' }).map(([key, label]) => <button key={key} type="button" onClick={() => insertToken(`{${key}}`)} disabled={isSending} className="rounded-lg border border-emerald-200 px-3 py-1.5 font-semibold text-emerald-800 dark:border-[#28665a] dark:text-[#a9d9b7]">+ {label}</button>)}</div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500"><span>{ar ? `الأحرف: ${smsLength.units} • الترميز: ${smsLength.encoding} • أجزاء SMS المقدرة: ${smsLength.parts}` : `Units: ${smsLength.units} • ${smsLength.encoding} • Estimated parts: ${smsLength.parts}`}</span><button type="button" onClick={() => updateTemplate(DEFAULT_TEMPLATE)} className="font-semibold text-emerald-700 underline">{ar ? 'استعادة النص الافتراضي' : 'Restore default'}</button></div>
@@ -391,7 +391,7 @@ export const CustomerLinkSmsPage: React.FC<{
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="text-xs font-semibold">{ar ? 'تصفية الزبائن' : 'Filter customers'}<select value={recipientFilter} onChange={(e) => setRecipientFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c]"><option value="all">{ar ? 'الكل' : 'All'}</option><option value="debt">{ar ? 'عليهم دين' : 'Has debt'}</option><option value="no-debt">{ar ? 'بدون دين' : 'No debt'}</option><option value="selected">{ar ? 'المحددون' : 'Selected'}</option><option value="unselected">{ar ? 'غير المحددين' : 'Unselected'}</option></select></label>
         <label className="text-xs font-semibold">{ar ? 'أقل مبلغ دين (شيكل)' : 'Minimum debt (ILS)'}<input type="number" min="0" value={minimumDebt} onChange={(e) => setMinimumDebt(e.target.value)} disabled={recipientFilter !== 'debt'} className="mt-1 w-full rounded-lg border border-gray-200 p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c]" /></label>
-        <label className="text-xs font-semibold">{ar ? 'الفاصل بين الرسائل' : 'Delay between SMS'}<select value={sendDelay} onChange={(e) => setSendDelay(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c]"><option value="0">{ar ? 'بدون تأخير' : 'No delay'}</option><option value="2">2 {ar ? 'ثانية' : 'seconds'}</option><option value="5">5 {ar ? 'ثوانٍ' : 'seconds'}</option><option value="10">10 {ar ? 'ثوانٍ' : 'seconds'}</option></select></label>
+        <label className="text-xs font-semibold">{ar ? 'الفاصل بين الرسائل' : 'Delay between SMS'}<select value={sendDelay} onChange={(e) => { setSendDelay(e.target.value); saveCampaign(recipients, { sendDelay: e.target.value }); }} className="mt-1 w-full rounded-lg border border-gray-200 p-2 text-sm dark:border-[#14423b] dark:bg-[#061f1c]"><option value="0">{ar ? 'بدون تأخير' : 'No delay'}</option><option value="2">2 {ar ? 'ثانية' : 'seconds'}</option><option value="5">5 {ar ? 'ثوانٍ' : 'seconds'}</option><option value="10">10 {ar ? 'ثوانٍ' : 'seconds'}</option></select></label>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={recipients.length > 0 && recipients.filter(r => r.status === 'pending').every(r => r.selected)} onChange={(e) => toggleAll(e.target.checked)} disabled={isSending || isLoading} />{ar ? 'تحديد كل المعلّقين' : 'Select all pending'} ({selectedCount})</label><div className="relative w-full sm:max-w-xs"><Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={ar ? 'ابحث بالاسم أو الهاتف' : 'Search name or phone'} className="w-full rounded-xl border border-gray-200 py-2.5 ps-9 pe-3 text-sm dark:border-[#14423b] dark:bg-[#061f1c]" /></div></div>
       <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-[#14423b]"><div className="flex justify-between border-b border-gray-100 p-3 text-xs dark:border-[#14423b]"><strong>{ar ? 'قائمة الزبائن' : 'Customer list'}</strong><span>{ar ? `محدد: ${selectedCount}` : `Selected: ${selectedCount}`}</span></div><div className="max-h-[60vh] divide-y divide-gray-100 overflow-y-auto dark:divide-[#14423b]">
