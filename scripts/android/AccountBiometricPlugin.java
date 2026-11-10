@@ -3,7 +3,6 @@ package com.chargerpointnew.biometric;
 import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
-import android.content.SharedPreferences;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -21,6 +20,7 @@ import com.getcapacitor.JSArray;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import org.json.JSONObject;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
@@ -215,7 +215,7 @@ public class AccountBiometricPlugin extends Plugin {
     try {
       String packed = getContext().getSharedPreferences(VAULT_PREFS, Context.MODE_PRIVATE)
         .getString("v_" + key, null);
-      if (packed == null) { JSObject ret = new JSObject(); ret.put("value", JSObject.NULL); call.resolve(ret); return; }
+      if (packed == null) { JSObject ret = new JSObject(); ret.put("value", JSONObject.NULL); call.resolve(ret); return; }
       String[] parts = packed.split(":", 2);
       if (parts.length != 2) throw new IllegalStateException("Invalid encrypted value");
       byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
