@@ -81,6 +81,7 @@ SUPABASE_URL=$API_URL
 SUPABASE_ANON_KEY=$ANON_KEY
 auth_supabase_secret_key=$SECRET_KEY
 username_signin_rate_limit_secret=$(openssl rand -hex 32)
+username_signin_diagnostics=true
 ENV
 
 curl -fsS -X POST "$API_URL/auth/v1/signup" \
