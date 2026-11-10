@@ -142,7 +142,7 @@ export const CustomerLinkSmsPage: React.FC<{
       if (!previous) {
         const id = `sms-${Date.now()}`;
         setCampaignId(id);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id, updatedAt: new Date().toISOString(), status: 'draft', messageTemplate, recipients: next })); } catch { /* sending remains disabled until persistence succeeds */ }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ id, updatedAt: new Date().toISOString(), status: 'draft', messageTemplate, dueDateText, sendDelay, recipients: next })); } catch { /* sending remains disabled until persistence succeeds */ }
       }
     }).catch((error) => {
       console.error('Failed to load SMS recipients:', error);
@@ -204,7 +204,6 @@ export const CustomerLinkSmsPage: React.FC<{
     const gsmBasic = /^[A-Za-z0-9 @£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,-.\/:;<=>?¡ÄÖÑÜ§¿äöñüà]*$/;
     const extension = new Set(['^', '{', '}', '\\', '[', ']', '~', '|', '€']);
     const gsm = [...messageTemplate].every((char) => gsmBasic.test(char) || extension.has(char));
-    const units = gsm ? [...messageTemplate].reduce((n, char) => n + (extension.has(char) ? 2 : 1), 0) : [...messageTemplate].length * 2;
     const units = gsm ? [...messageTemplate].reduce((n, char) => n + (extension.has(char) ? 2 : 1), 0) : messageTemplate.length;
     return { units, parts: units <= (gsm ? 160 : 70) ? 1 : Math.ceil(units / (gsm ? 153 : 67)), encoding: gsm ? 'GSM-7' : 'Unicode' };
   }, [messageTemplate]);
