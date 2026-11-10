@@ -54,6 +54,13 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       || !rateLimitSecret || rateLimitSecret.length < 32) {
       // Fail closed unless modern server-only API credentials and a strong rate-limit
       // secret are configured. Never trust the shared Edge egress IP.
+      console.error("Username sign-in configuration unavailable", {
+        hasUrl: Boolean(url),
+        hasSecretKey: Boolean(secretKey),
+        hasExpectedSecretKey: Boolean(secretKey?.startsWith("sb_secret_")),
+        hasRateLimitSecret: Boolean(rateLimitSecret),
+        rateLimitSecretLength: rateLimitSecret?.length ?? 0,
+      });
       return respond(503, { error: "Username sign-in is temporarily unavailable" });
     }
 
@@ -61,6 +68,9 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
     // client-controlled X-Forwarded-For value for authentication throttling.
     const clientIp = request.headers.get("cf-connecting-ip")?.trim() ?? "";
     if (!isTrustedClientIp(clientIp)) {
+      console.error("Username sign-in rejected missing or invalid trusted client IP", {
+        headerPresent: Boolean(clientIp),
+      });
       return respond(503, { error: "Username sign-in is temporarily unavailable" });
     }
 
@@ -83,7 +93,10 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         { p_ip_key: ipKey, p_username_key: usernameKey },
       );
       if (rateLimitError || !rateLimit || typeof rateLimit.allowed !== "boolean") {
-        console.error("Username sign-in rate limit check failed");
+        console.error("Username sign-in rate limit check failed", {
+          errorCode: rateLimitError?.code ?? null,
+          errorMessage: rateLimitError?.message ?? null,
+        });
         return respond(503, { error: "Username sign-in is temporarily unavailable" });
       }
       if (!rateLimit.allowed) {
@@ -102,7 +115,10 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         .limit(2);
 
       if (lookupError) {
-        console.error("Username sign-in identity lookup failed");
+        console.error("Username sign-in identity lookup failed", {
+          errorCode: lookupError?.code ?? null,
+          errorMessage: lookupError?.message ?? null,
+        });
         return respond(503, { error: "Username sign-in is temporarily unavailable" });
       }
 
@@ -136,8 +152,11 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         return respond(502, { error: "Username sign-in is temporarily unavailable" });
       }
       return respond(200, { session, error: null });
-    } catch {
-      console.error("Username sign-in request failed");
+    } catch (error) {
+      console.error("Username sign-in request failed", {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+      });
       return respond(503, { error: "Username sign-in is temporarily unavailable" });
     }
   };
