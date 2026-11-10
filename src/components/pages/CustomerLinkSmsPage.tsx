@@ -61,7 +61,7 @@ const normalizePhone = (value: string): string | null => {
 };
 const renderMessageTemplate = (template: string, recipient: Recipient, link = '', dueDate = DEFAULT_DUE_DATE, locale = 'ar'): string => {
   const debt = recipient.balanceMinor < 0
-    ? `${(Math.abs(recipient.balanceMinor) / 100).toLocaleString('ar', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`
+    ? `${(Math.abs(recipient.balanceMinor) / 100).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`
     : 'لا يوجد';
   return template.replace(/\{name\}/g, recipient.name).replace(/\{debt\}/g, debt)
     .replace(/\{link\}/g, link).replace(/\{phone\}/g, recipient.phone)
@@ -199,6 +199,7 @@ export const CustomerLinkSmsPage: React.FC<{
     .replace(/\{debt\}/g, ar ? '50.00 شيكل' : '50.00 ILS')
     .replace(/\{link\}/g, ar ? 'رابط الزبون الشخصي' : 'Customer personal link')
     .replace(/\{phone\}/g, '059XXXXXXX').replace(/\{date\}/g, new Date().toLocaleDateString(ar ? 'ar' : 'en'))
+    .replace(/\{due_date\}/g, dueDateText);
   const smsLength = useMemo(() => {
     const gsmBasic = /^[A-Za-z0-9 @£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,-.\/:;<=>?¡ÄÖÑÜ§¿äöñüà]*$/;
     const extension = new Set(['^', '{', '}', '\\', '[', ']', '~', '|', '€']);
@@ -369,6 +370,7 @@ export const CustomerLinkSmsPage: React.FC<{
 
     {section === 'compose' && <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#14423b] dark:bg-[#082622]">
       <div><h2 className="text-sm font-bold">{ar ? 'محتوى الرسالة والتخصيص' : 'Message content & personalization'}</h2><p className="mt-1 text-xs text-gray-500">{ar ? 'اكتب بحرية وأضف المتغيرات التي تحتاجها فقط.' : 'Write freely and add only the variables you need.'}</p></div>
+      <label className="block text-xs font-semibold">{ar ? 'موعد التسديد المستخدم في {due_date}' : 'Due date used for {due_date}'}<input value={dueDateText} onChange={(e) => updateDueDate(e.target.value)} disabled={isSending} maxLength={60} className="mt-1 w-full rounded-lg border border-gray-200 bg-white p-2.5 text-sm dark:border-[#14423b] dark:bg-[#061f1c]" placeholder={ar ? 'مثلاً: الخميس القادم' : 'e.g. next Thursday'} /></label>
       <textarea ref={editorRef} value={messageTemplate} onChange={(e) => updateTemplate(e.target.value)} rows={7} maxLength={2000} disabled={isSending} placeholder={ar ? 'اكتب نص الرسالة هنا…' : 'Write your message…'} className="w-full resize-y rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" />
       <div className="flex flex-wrap gap-2 text-xs">{Object.entries({ name: ar ? 'اسم الزبون' : 'Customer name', debt: ar ? 'مبلغ الدين' : 'Debt amount', link: ar ? 'الرابط الشخصي' : 'Personal link', phone: ar ? 'رقم الهاتف' : 'Phone number', date: ar ? 'تاريخ اليوم' : 'Today', due_date: ar ? 'موعد التسديد' : 'Due date' }).map(([key, label]) => <button key={key} type="button" onClick={() => insertToken(`{${key}}`)} disabled={isSending} className="rounded-lg border border-emerald-200 px-3 py-1.5 font-semibold text-emerald-800 dark:border-[#28665a] dark:text-[#a9d9b7]">+ {label}</button>)}</div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500"><span>{ar ? `الأحرف: ${smsLength.units} • الترميز: ${smsLength.encoding} • أجزاء SMS المقدرة: ${smsLength.parts}` : `Units: ${smsLength.units} • ${smsLength.encoding} • Estimated parts: ${smsLength.parts}`}</span><button type="button" onClick={() => updateTemplate(DEFAULT_TEMPLATE)} className="font-semibold text-emerald-700 underline">{ar ? 'استعادة النص الافتراضي' : 'Restore default'}</button></div>
