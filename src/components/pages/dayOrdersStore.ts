@@ -1383,6 +1383,16 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       return false;
     }
 
+    // These collections were added by the purchase-book migration. Older
+    // deployments may not expose them yet, so treat them as empty until the
+    // migration is installed rather than blocking the whole app bootstrap.
+    for (const collection of [
+      'system_settings','purchase_suppliers','purchase_items','purchase_payment_methods',
+      'purchase_months','purchase_weeks','purchase_days','purchase_orders',
+    ]) {
+      if (!Array.isArray(snapshot[collection])) snapshot[collection] = [];
+    }
+
     const requiredCollections: Record<string, unknown> = {
       business_days: snapshot.business_days,
       customers: snapshot.customers,
@@ -1468,7 +1478,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const systemSettingsRes = { data: Array.isArray(snapshot.system_settings) ? snapshot.system_settings as any[] : [], error: null };
     const purchaseSuppliersRes = { data: Array.isArray(snapshot.purchase_suppliers) ? snapshot.purchase_suppliers as any[] : [], error: null };
     const purchaseItemsRes = { data: Array.isArray(snapshot.purchase_items) ? snapshot.purchase_items as any[] : [], error: null };
-    const purchaseMethodsRes = { data: snapshot.purchase_payment_methods as any[], error: null };
+    const purchaseMethodsRes = { data: Array.isArray(snapshot.purchase_payment_methods) ? snapshot.purchase_payment_methods as any[] : [], error: null };
     const purchaseMonthsRes = { data: Array.isArray(snapshot.purchase_months) ? snapshot.purchase_months as any[] : [], error: null };
     const purchaseWeeksRes = { data: Array.isArray(snapshot.purchase_weeks) ? snapshot.purchase_weeks as any[] : [], error: null };
     const purchaseDaysRes = { data: Array.isArray(snapshot.purchase_days) ? snapshot.purchase_days as any[] : [], error: null };
