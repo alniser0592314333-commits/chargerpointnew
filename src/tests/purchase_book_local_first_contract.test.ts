@@ -50,8 +50,9 @@ describe('Purchase book local-first architecture contract', () => {
     expect(service).toContain('stableCalendarId(`purchase-day:${date}`)');
     expect(service).toContain('days.find(day=>day.purchaseDate===date)');
     expect(service).toContain('weeks.filter(row=>!row.isClosed');
-    expect(service).toContain("localStorage.getItem('purchase_week_start_day')");
-    expect(service).toContain('localValue!==null');
+    expect(service).toContain('PURCHASE_WEEK_OVERLAP');
+    expect(service).toContain('nextAfterLast');
+    expect(service).toContain('PURCHASE_UUID_UNAVAILABLE');
     expect(service).toContain('PURCHASE_DAY_MISSING');
   });
 
