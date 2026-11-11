@@ -82,6 +82,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   },[]);
   useEffect(()=>{void reload();},[reload,version]);
   useEffect(()=>{getPurchaseWeekStartDay().then(setWeekStartDay).catch(e=>setError(e.message));},[]);
+  useEffect(()=>{setSupplierIdValue(supplierId || '');},[supplierId]);
 
   const activeSuppliers=suppliers.filter(x=>x.isActive);
   const activeItems=items.filter(x=>x.isActive);
@@ -98,7 +99,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const debt=totalsFor(visibleOrders,true);
   const summaryRows=(totals:CurrencyTotals)=>currencies.filter(c=>totals[c]!==0).map(c=>({currency:c,amount:totals[c]}));
 
-  const openOrderForm=()=>{setError('');setNotice('');setShowOrderForm(true);};
+  const openOrderForm=()=>{setError('');setNotice('');setSupplierIdValue(supplierId || '');setShowOrderForm(true);};
   const submitOrder=async()=>{
     try{
       if(!supplierIdValue||!itemIdValue||!amount){setError('أكمل الجهة والعنصر والسعر أولاً.');return;}
@@ -248,7 +249,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
           <div className="flex items-center justify-between"><h2 className="font-bold text-base">إضافة طلب شراء</h2><button onClick={()=>setShowOrderForm(false)}><X className="w-5 h-5"/></button></div>
           {error&&<p className="text-xs text-rose-600">{error}</p>}
           <div className="space-y-3">
-            <label className="block text-xs font-semibold">الجهة <select value={supplierIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('suppliers');setQuickName('');}else setSupplierIdValue(e.target.value);}} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="">اختر الجهة</option>{activeSuppliers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة جهة جديدة</option></select></label>
+            {supplierId ? <div className="text-xs font-semibold">الجهة <div className="mt-1 rounded-lg border border-gray-200 dark:border-[#28564d] p-3">{nameOf(suppliers,supplierId)}</div></div> : <label className="block text-xs font-semibold">الجهة <select value={supplierIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('suppliers');setQuickName('');}else setSupplierIdValue(e.target.value);}} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="">اختر الجهة</option>{activeSuppliers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة جهة جديدة</option></select></label>}
             <label className="block text-xs font-semibold">العنصر المشترى <select value={itemIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('items');setQuickName('');}else setItemIdValue(e.target.value);}} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="">اختر العنصر</option>{activeItems.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة عنصر جديد</option></select></label>
             <label className="block text-xs font-semibold">طريقة الدفع {paymentStatus==='PAID'?'(مطلوبة)':'(اختيارية)'} <select value={methodIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('methods');setQuickName('');}else setMethodIdValue(e.target.value);}} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="">اختر طريقة الدفع</option>{activeMethods.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة طريقة دفع</option></select></label>
             <div className="grid grid-cols-2 gap-3"><label className="block text-xs font-semibold">السعر<input type="number" min="0.001" step={currency==='JOD'?'0.001':'0.01'} value={amount} onChange={e=>setAmount(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"/></label><label className="block text-xs font-semibold">العملة<select value={currency} onChange={e=>setCurrency(e.target.value as PurchaseCurrency)} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="ILS">شيكل (ILS)</option><option value="USD">دولار (USD)</option><option value="JOD">دينار (JOD)</option></select></label></div>
