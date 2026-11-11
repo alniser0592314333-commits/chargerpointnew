@@ -163,6 +163,9 @@ export interface PurchaseOrderEntity extends BaseEntity {
   purchasedAt: Timestamp; paidAt?: Timestamp;
 }
 
+export type PurchaseBookTable = 'suppliers' | 'items' | 'methods' | 'months' | 'weeks' | 'days' | 'orders';
+export type PurchaseBookEntity = PurchaseCatalogEntity | PurchaseMonthEntity | PurchaseWeekEntity | PurchaseDayEntity | PurchaseOrderEntity;
+
 export interface GoalEntity extends BaseEntity {
   customerId: ID;
   targetQuantity: number;
