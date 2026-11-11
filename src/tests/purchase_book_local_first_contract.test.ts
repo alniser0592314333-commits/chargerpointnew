@@ -51,7 +51,7 @@ describe('Purchase book local-first architecture contract', () => {
     expect(service).toContain('days.find(day=>day.purchaseDate===date)');
     expect(service).toContain('weeks.filter(row=>!row.isClosed');
     expect(service).toContain("localStorage.getItem('purchase_week_start_day')");
-    expect(service).toContain('return Number(raw) : 6');
+    expect(service).toContain('localValue!==null');
     expect(service).toContain('PURCHASE_DAY_MISSING');
   });
 
