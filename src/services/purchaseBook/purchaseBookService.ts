@@ -140,12 +140,17 @@ export async function getPurchaseWeekStartDay():Promise<number>{
 export async function setPurchaseWeekStartDay(day:number):Promise<void>{
   return runPurchaseOperation('تغيير بداية الأسبوع',async()=>{
     if(!Number.isInteger(day)||day<0||day>6) throw new PurchaseBookOperationError('PURCHASE_WEEK_START_INVALID','يوم بداية الأسبوع غير صالح.');
-    if(typeof localStorage!=='undefined') localStorage.setItem('purchase_week_start_day',String(day));
     await repoContext.transactionManager.runInTransaction((ctx)=>{
       ctx.commandRepo.record(uuid(),'SET_SYSTEM_SETTING',{
         key:'purchase_week_start_day',valueType:'string',valueString:String(day),entityId:'purchase_week_start_day',
       });
     });
+    const setting={key:'purchase_week_start_day',valueType:'string',valueString:String(day),updatedAt:nowIso()};
+    if(typeof localStorage!=='undefined') localStorage.setItem('purchase_week_start_day',String(day));
+    // Update the local read model immediately; do not wait for the delta sync
+    // round-trip before the next offline-created week uses the new setting.
+    await localDb.set('system_settings','purchase_week_start_day',setting);
+    await localDb.set('systemSettings','purchase_week_start_day',setting);
   });
 }
 
