@@ -121,6 +121,13 @@ export interface BackupSnapshotData {
   deviceTypes: any[];
   goals?: any[];
   goalRequests?: any[];
+  purchaseSuppliers?: any[];
+  purchaseItems?: any[];
+  purchasePaymentMethods?: any[];
+  purchaseMonths?: any[];
+  purchaseWeeks?: any[];
+  purchaseDays?: any[];
+  purchaseOrders?: any[];
   qrTokens?: any[];
   orderNumberReservations?: any[];
   // Exact local outbox checkpoint. Required to restore an offline snapshot
@@ -595,7 +602,7 @@ export class IndexedDBLocalDatabase {
     const tableNames = [
       'customers','businessDays','orders','orderItems','financialLedger','payments',
       'paymentAllocations','deviceTypes','goals','goalRequests','qr_tokens','qrTokens',
-      'orderNumberReservations','deletedDeviceTypeMarkers','changeLog'
+      'orderNumberReservations','deletedDeviceTypeMarkers','changeLog','purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders'
     ];
     const tables: Record<string, any[]> = {};
     for (const name of tableNames) {
