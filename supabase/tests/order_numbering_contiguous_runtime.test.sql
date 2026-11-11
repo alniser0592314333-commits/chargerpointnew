@@ -1,11 +1,11 @@
 BEGIN;
 
 -- Model the Supabase Auth helpers used by the production canonical processor.
-CREATE SCHEMA auth;
-CREATE FUNCTION auth.uid()
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS uuid LANGUAGE sql STABLE
 AS 'SELECT ''11111111-1111-4111-8111-111111111111''::uuid';
-CREATE FUNCTION auth.role()
+CREATE OR REPLACE FUNCTION auth.role()
 RETURNS text LANGUAGE sql STABLE
 AS 'SELECT ''authenticated''::text';
 
