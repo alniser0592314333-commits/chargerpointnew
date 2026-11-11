@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, CalendarDays, ShoppingBasket, Store, Wallet, X, Check, ChevronDown, ChevronUp, Settings2, Pencil, EyeOff, CircleAlert } from 'lucide-react';
+import { Plus, CalendarDays, X, ChevronDown, Settings2, Pencil, EyeOff, CircleAlert } from 'lucide-react';
 import {
-  PurchaseBookEntity, PurchaseBookTable, PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
+  PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
 } from '../../domain/models';
-import { useStoreSubscription, repoContext } from './dayOrdersStore';
+import { useStoreSubscription } from './dayOrdersStore';
 import {
-  addPurchaseOrder, createCurrentPurchaseDay, createPurchaseWeek, getCurrentPurchaseDay, hidePurchaseCatalog,
+  addPurchaseOrder, createCurrentPurchaseDay, createPurchaseWeek, hidePurchaseCatalog,
   listPurchaseRows, markPurchaseOrderPaid, purchaseMinorToAmount, savePurchaseCatalog, PurchaseBookOperationError,
 } from '../../services/purchaseBook/purchaseBookService';
 
@@ -16,7 +16,6 @@ const emptyTotals = ():CurrencyTotals => ({ILS:0,USD:0,JOD:0});
 const money = (minor:number,currency:PurchaseCurrency) => new Intl.NumberFormat('ar', {
   minimumFractionDigits: currency==='JOD'?3:2, maximumFractionDigits: currency==='JOD'?3:2,
 }).format(purchaseMinorToAmount(minor,currency)) + ' ' + (currency==='ILS'?'₪':currency==='USD'?'$':'د.أ');
-const dateKey = (value:string) => value.slice(0,10);
 const localToday = () => {
   const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
@@ -45,9 +44,6 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const [catalogType,setCatalogType]=useState<'suppliers'|'items'|'methods'>('suppliers');
   const [catalogName,setCatalogName]=useState('');
   const [editingCatalog,setEditingCatalog]=useState<PurchaseCatalogEntity|null>(null);
-  const [draftSupplier,setDraftSupplier]=useState('');
-  const [draftItem,setDraftItem]=useState('');
-  const [draftMethod,setDraftMethod]=useState('');
   const [amount,setAmount]=useState('');
   const [currency,setCurrency]=useState<PurchaseCurrency>('ILS');
   const [paymentStatus,setPaymentStatus]=useState<'PAID'|'UNPAID'>('UNPAID');
@@ -111,9 +107,9 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
     if(!quickAdd||!quickName.trim())return;
     try{
       const created=await savePurchaseCatalog(quickAdd,quickName);
-      if(quickAdd==='suppliers'){setSupplierIdValue(created.id);setDraftSupplier('');}
-      if(quickAdd==='items'){setItemIdValue(created.id);setDraftItem('');}
-      if(quickAdd==='methods'){setMethodIdValue(created.id);setDraftMethod('');}
+      if(quickAdd==='suppliers')setSupplierIdValue(created.id);
+      if(quickAdd==='items')setItemIdValue(created.id);
+      if(quickAdd==='methods')setMethodIdValue(created.id);
       setQuickAdd(null);setQuickName('');await reload();
     }catch(e){setError(e instanceof Error?e.message:'تعذّرت إضافة الخيار.');}
   };
@@ -167,7 +163,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
       </summary>
       <div className="pb-3">
         {periodOrders(day).sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard)}
-        {isCurrentDay(day)&&<button onClick={openOrderForm} className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-300"><Plus className="w-4 h-4"/>إضافة طلب</button>}
+        {!supplierId&&isCurrentDay(day)&&<button onClick={openOrderForm} className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-300"><Plus className="w-4 h-4"/>إضافة طلب</button>}
       </div>
     </details>
   );
@@ -206,20 +202,18 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
           <div className="divide-y divide-gray-100 dark:divide-[#123d37]">{(catalogType==='suppliers'?suppliers:catalogType==='items'?items:methods).map(row=><div key={row.id} className="flex items-center justify-between py-2 text-xs"><span className={row.isActive?'':'line-through text-gray-400'}>{row.name}</span><div className="flex gap-3"><button onClick={()=>{setEditingCatalog(row);setCatalogName(row.name);}} className="text-emerald-700 dark:text-emerald-300"><Pencil className="w-4 h-4"/></button>{row.isActive&&<button onClick={()=>hideCatalogItem(row)} className="text-gray-400"><EyeOff className="w-4 h-4"/></button>}</div></div>)}</div>
         </section>}
 
-        {supplierId&&<div className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] p-4"><h2 className="text-sm font-bold mb-3">طلبات الجهة</h2>{supplierOrders.length?supplierOrders.sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard):<p className="text-xs text-gray-400">لا توجد مشتريات مسجلة لهذه الجهة.</p>}</div>}
-
-        {!supplierId&&<section className="space-y-3">
-          {groupedMonths.length===0?<div className="rounded-xl border border-dashed border-gray-300 dark:border-[#28564d] p-8 text-center text-xs text-gray-500">لا توجد أيام مشتريات بعد. اضغط «إضافة يوم» للبدء.</div>:groupedMonths.map(month=>{
+        <section className="space-y-3">
+          {groupedMonths.length===0?<div className="rounded-xl border border-dashed border-gray-300 dark:border-[#28564d] p-8 text-center text-xs text-gray-500">لا توجد مشتريات مسجلة لهذه الجهة بعد.</div>:groupedMonths.map(month=>{
             const monthWeeks=weeks.filter(w=>w.monthId===month.id).sort((a,b)=>b.startDate.localeCompare(a.startDate));
-            const monthOrders=orders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
+            const monthOrders=supplierOrders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
             const monthTotal=totalsFor(monthOrders);
             return <details key={month.id} open={month.startDate.slice(0,7)===today.slice(0,7)} className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] overflow-hidden">
               <summary className="cursor-pointer list-none p-4 flex items-center justify-between gap-3"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-xs font-mono text-gray-500">{summaryRows(monthTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</div></summary>
               <div className="px-3 sm:px-4 pb-4 space-y-3">
-                <div className="flex justify-end"><button onClick={()=>createPurchaseWeek(month.id).then(reload).catch(e=>setError(e.message))} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>إضافة أسبوع</button></div>
+                {!supplierId&&<div className="flex justify-end"><button onClick={()=>createPurchaseWeek(month.id).then(reload).catch(e=>setError(e.message))} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>إضافة أسبوع</button></div>}
                 {monthWeeks.map(week=>{
                   const weekDays=days.filter(d=>d.weekId===week.id).sort((a,b)=>b.purchaseDate.localeCompare(a.purchaseDate));
-                  const weekOrders=orders.filter(o=>weekDays.some(d=>d.id===o.purchaseDayId));
+                  const weekOrders=supplierOrders.filter(o=>weekDays.some(d=>d.id===o.purchaseDayId));
                   const weekTotal=totalsFor(weekOrders);
                   return <details key={week.id} open={weekDays.some(isCurrentDay)} className="rounded-lg border border-gray-100 dark:border-[#123d37] p-3">
                     <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1"><span className="text-xs font-bold">الأسبوع {dateLabel(week.startDate)} — {dateLabel(week.endDate)}{week.isClosed?' • مغلق':''}</span><span className="text-[11px] font-mono text-gray-500">{summaryRows(weekTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></summary>
@@ -229,7 +223,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
               </div>
             </details>;
           })}
-        </section>}
+        </section>
       </>}
       
       {showOrderForm&&<div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={()=>setShowOrderForm(false)}>
