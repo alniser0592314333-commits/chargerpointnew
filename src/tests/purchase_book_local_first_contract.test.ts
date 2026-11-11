@@ -89,6 +89,14 @@ describe('Purchase book local-first architecture contract', () => {
     expect(sidebar).toContain('/app/purchases/supplier/');
   });
 
+  it('does not erase the independent purchase book during operational-data reset', () => {
+    const localDb = read('src/infrastructure/localDb/localDb.ts');
+    const resetList = localDb.slice(localDb.indexOf('const operationalTables = ['), localDb.indexOf('];', localDb.indexOf('const operationalTables = [')));
+    for (const table of ['purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders']) {
+      expect(resetList).not.toContain(table);
+    }
+  });
+
   it('keeps all purchase data in the existing backup and restore lifecycle', () => {
     for (const key of ['purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders']) {
       expect(backup).toContain(key);
