@@ -736,8 +736,9 @@ export class IndexedDBLocalDatabase {
       'orderNumberReservations',
       'changeLog',
       'deletedDeviceTypeMarkers',
-      'systemSettings','system_settings',
-      'purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders'
+      'systemSettings','system_settings'
+      // The personal purchase book is deliberately not operational order data;
+      // preserve it across the app's operational-data reset flow.
     ];
 
     for (const table of operationalTables) {
