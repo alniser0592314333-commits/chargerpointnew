@@ -12,6 +12,7 @@ import {
   resetStoreMemory,
   applyRemoteChange,
   getCustomerFinancialHistory,
+  getPurchaseBookRowsSync,
   globalSyncEngine,
   subscribeStoreBootstrapProgress,
 } from '../components/pages/dayOrdersStore';
@@ -93,6 +94,39 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
     expect(after).toHaveLength(1);
     expect(after[0].amountMinor).toBe(-1000);
     expect(await localDb.get('financialLedger', ledgerId)).toMatchObject({ amountMinor: -1000 });
+  });
+
+  it('rolls back purchase read models when an incoming purchase delta transaction aborts', async () => {
+    const orderId = '00000000-0000-4000-8000-000000000701';
+    const changedAt = '2026-11-11T08:00:00.000Z';
+
+    await expect(localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+      applyRemoteChange({
+        sequenceId: 1,
+        entityType: 'purchase_orders',
+        entityId: orderId,
+        action: 'INSERT',
+        payload: {
+          id: orderId,
+          purchaseDayId: '00000000-0000-4000-8000-000000000702',
+          supplierId: '00000000-0000-4000-8000-000000000703',
+          itemId: '00000000-0000-4000-8000-000000000704',
+          amountMinor: 2500,
+          currency: 'ILS',
+          paymentStatus: 'UNPAID',
+          purchasedAt: changedAt,
+          createdAt: changedAt,
+          updatedAt: changedAt,
+          version: 1,
+        },
+        version: 1,
+        changedAt,
+      }, tx);
+      throw new Error('abort purchase delta transaction');
+    })).rejects.toThrow('abort purchase delta transaction');
+
+    expect(getPurchaseBookRowsSync('orders')).toHaveLength(0);
+    expect(await localDb.get('purchaseOrders', orderId)).toBeFalsy();
   });
 
   it('1. Fresh local-only client: localDb starts empty and initializes without cloud bootstrap', async () => {
