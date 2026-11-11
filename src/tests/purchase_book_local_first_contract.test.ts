@@ -52,6 +52,8 @@ describe('Purchase book local-first architecture contract', () => {
     expect(store).toContain('purchaseOrdersRes');
     expect(backup).toContain("localDb.list('purchaseOrders')");
     expect(backup).toContain("localDb.setWithTx(tx, 'purchaseOrders'");
+    expect(backup).toContain("for (const row of onlineData.purchaseOrders || [])");
+    expect(backup).toContain("for (const row of d.purchaseOrders || [])");
   });
 
   it('uses deterministic date identities, prevents duplicate current days, and closes the previous week', () => {
