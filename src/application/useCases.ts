@@ -127,6 +127,10 @@ export interface RepositoryContext {
     findAllByCustomerId(customerId: ID): Promise<GoalRequestEntity[]> | GoalRequestEntity[];
     save(request: GoalRequestEntity): Promise<void> | void;
   };
+  purchaseRepo: {
+    findAll(table: 'suppliers' | 'items' | 'methods' | 'months' | 'weeks' | 'days' | 'orders'): Promise<any[]> | any[];
+    save(table: 'suppliers' | 'items' | 'methods' | 'months' | 'weeks' | 'days' | 'orders', entity: any): Promise<void> | void;
+  };
   transactionManager: {
     runInTransaction<T>(work: (ctx: RepositoryContext) => T): Promise<T>;
   };
