@@ -42,6 +42,7 @@ import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
 import { FinancialPendingPaymentsPage } from './components/pages/FinancialPendingPaymentsPage';
+import { PurchaseBookPage } from './components/pages/PurchaseBookPage';
 import { GoalsPage } from './components/pages/GoalsPage';
 import { NotificationsRequestsPage } from './components/pages/NotificationsRequestsPage';
 import { SettingsPage } from './components/pages/SettingsPage';
@@ -668,6 +669,11 @@ export default function App() {
       );
     }
 
+    if (pathname.startsWith('/app/purchases/supplier/')) {
+      const purchaseSupplierId = pathname.replace('/app/purchases/supplier/', '');
+      return <PurchaseBookPage supplierId={purchaseSupplierId} onNavigate={(path) => navigate(path)} />;
+    }
+
     if (pathname.startsWith('/app/customers/') && pathname !== '/app/customers') {
       const customerId = pathname.replace('/app/customers/', '');
       return (
@@ -708,6 +714,8 @@ export default function App() {
             onSelectDay={(dayId) => navigate(`/app/days/${dayId}`)}
           />
         );
+      case '/app/purchases':
+        return <PurchaseBookPage onNavigate={(path) => navigate(path)} />;
       case '/app/messages':
         return <MessageCenterHomePage onNavigate={(section) => navigate(`/app/messages/${section}`)} />;
       case '/app/customers':
