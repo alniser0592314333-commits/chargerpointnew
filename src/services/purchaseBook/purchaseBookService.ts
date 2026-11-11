@@ -271,10 +271,20 @@ export async function addPurchaseOrder(input:{
     if(input.paymentStatus==='PAID'&&!input.paymentMethodId) throw new PurchaseBookOperationError('PURCHASE_METHOD_REQUIRED','اختر طريقة الدفع للطلب المدفوع.');
     const precision=input.currency==='JOD'?1000:100;
     const amountMinor=Math.round(input.amount*precision);
+    if(!Number.isSafeInteger(amountMinor)||amountMinor<=0) throw new PurchaseBookOperationError('PURCHASE_AMOUNT_PRECISION_INVALID','المبلغ أقل من دقة العملة المسموحة.');
+    const [suppliers,items,methods,days]=await Promise.all([
+      repoContext.purchaseRepo!.findAll('suppliers') as Promise<PurchaseCatalogEntity[]>,
+      repoContext.purchaseRepo!.findAll('items') as Promise<PurchaseCatalogEntity[]>,
+      repoContext.purchaseRepo!.findAll('methods') as Promise<PurchaseCatalogEntity[]>,
+      repoContext.purchaseRepo!.findAll('days') as Promise<PurchaseDayEntity[]>,
+    ]);
+    if(!suppliers.some(row=>row.id===input.supplierId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_SUPPLIER_INVALID','الجهة غير موجودة أو مخفية.');
+    if(!items.some(row=>row.id===input.itemId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_ITEM_INVALID','العنصر غير موجود أو مخفي.');
+    if(input.paymentMethodId&&!methods.some(row=>row.id===input.paymentMethodId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_METHOD_INVALID','طريقة الدفع غير موجودة أو مخفية.');
     const purchasedAt=nowIso();
-    const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
     const day=days.find(row=>row.purchaseDate===getLocalBusinessDateStr());
     if(!day) throw new PurchaseBookOperationError('PURCHASE_DAY_MISSING','لا يوجد يوم حالي. أنشئ اليوم ثم أعد إضافة الطلب.');
+    if(day.isClosed) throw new PurchaseBookOperationError('PURCHASE_DAY_CLOSED','يوم المشتريات الحالي مغلق ولا يمكن إضافة طلب جديد.');
     const order:PurchaseOrderEntity={
       id:uuid(),purchaseDayId:day.id,supplierId:input.supplierId,itemId:input.itemId,paymentMethodId:input.paymentMethodId,
       amountMinor,currency:input.currency,paymentStatus:input.paymentStatus,purchasedAt,
