@@ -354,6 +354,8 @@ const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
   }
 };
 
+export const getPurchaseBookRowsSync = (table: PurchaseBookTable): PurchaseBookEntity[] => Array.from(purchaseMaps[table].values());
+
 export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number {
   const [version, setVersion] = useState(0);
 
