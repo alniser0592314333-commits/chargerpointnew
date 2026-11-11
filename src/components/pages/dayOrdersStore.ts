@@ -477,6 +477,9 @@ export const applyRemoteChange = (change: {
   const purchaseTable = purchaseTypeMap[entityType];
   if (purchaseTable) {
     const localKey = purchaseTableKeys[purchaseTable];
+    // Keep the in-memory read model consistent with IndexedDB if the enclosing
+    // delta transaction aborts before the cursor can advance.
+    snapshotRemoteMapEntry(tx, `purchase:${purchaseTable}`, purchaseMaps[purchaseTable], change.entityId);
     if (isDelete) {
       purchaseMaps[purchaseTable].delete(change.entityId);
       localDb.removeWithTx(tx as any, localKey, change.entityId);
