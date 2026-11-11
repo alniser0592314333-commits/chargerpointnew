@@ -177,10 +177,9 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
   let end=dateString(endDate);
   if(end>range.end) end=range.end;
   const weekId=stableCalendarId(`purchase-week:${monthId}:${start}`);
-  let targetWeek=weeks.find(row=>row.id===weekId && !row.isClosed) || null;
+  let targetWeek=weeks.find(row=>!row.isClosed && row.monthId===monthId && date>=row.startDate && date<=row.endDate) || null;
   const openWeeks=weeks.filter(row=>!row.isClosed && row.id!==targetWeek?.id);
-  const dayFits=targetWeek && date>=targetWeek.startDate && date<=targetWeek.endDate;
-  if(!targetWeek || !dayFits){
+  if(!targetWeek){
     let nextId=weekId;
     let suffix=2;
     while(weeks.some(row=>row.id===nextId)) nextId=stableCalendarId(`purchase-week:${monthId}:${start}:${suffix++}`);
