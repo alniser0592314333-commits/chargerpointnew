@@ -272,12 +272,10 @@ export async function addPurchaseOrder(input:{
     const precision=input.currency==='JOD'?1000:100;
     const amountMinor=Math.round(input.amount*precision);
     if(!Number.isSafeInteger(amountMinor)||amountMinor<=0) throw new PurchaseBookOperationError('PURCHASE_AMOUNT_PRECISION_INVALID','المبلغ أقل من دقة العملة المسموحة.');
-    const [suppliers,items,methods,days]=await Promise.all([
-      repoContext.purchaseRepo!.findAll('suppliers') as Promise<PurchaseCatalogEntity[]>,
-      repoContext.purchaseRepo!.findAll('items') as Promise<PurchaseCatalogEntity[]>,
-      repoContext.purchaseRepo!.findAll('methods') as Promise<PurchaseCatalogEntity[]>,
-      repoContext.purchaseRepo!.findAll('days') as Promise<PurchaseDayEntity[]>,
-    ]);
+    const suppliers=await repoContext.purchaseRepo!.findAll('suppliers') as PurchaseCatalogEntity[];
+    const items=await repoContext.purchaseRepo!.findAll('items') as PurchaseCatalogEntity[];
+    const methods=await repoContext.purchaseRepo!.findAll('methods') as PurchaseCatalogEntity[];
+    const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
     if(!suppliers.some(row=>row.id===input.supplierId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_SUPPLIER_INVALID','الجهة غير موجودة أو مخفية.');
     if(!items.some(row=>row.id===input.itemId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_ITEM_INVALID','العنصر غير موجود أو مخفي.');
     if(input.paymentMethodId&&!methods.some(row=>row.id===input.paymentMethodId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_METHOD_INVALID','طريقة الدفع غير موجودة أو مخفية.');
