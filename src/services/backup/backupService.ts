@@ -1042,6 +1042,7 @@ function hasRecoverableSnapshotData(data: Partial<BackupSnapshotData>): boolean 
     'paymentAllocations','deviceTypes','goals','goalRequests','qrTokens',
     'orderNumberReservations','outbox','syncHistory','mutationSnapshots',
     'optimisticOverlays','deletedDeviceTypeMarkers','changeLog','systemSettings',
+    'purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders',
   ];
   return collections.some((key) => Array.isArray(data[key]) && (data[key] as any[]).length > 0)
     || Boolean(data.syncState);
@@ -1076,7 +1077,6 @@ export class BackupService {
       deletedDeviceTypeMarkers,
       changeLog,
       systemSettings,
-      purchaseSuppliers, purchaseItems, purchasePaymentMethods, purchaseMonths, purchaseWeeks, purchaseDays, purchaseOrders,
     ] = await Promise.all([
       localDb.list('customers'),
       localDb.list('businessDays'),
@@ -1099,7 +1099,6 @@ export class BackupService {
       localDb.listIntentionalDeviceTypeDeletions(),
       localDb.list('changeLog'),
       localDb.list('systemSettings'),
-      localDb.list('purchaseSuppliers'), localDb.list('purchaseItems'), localDb.list('purchasePaymentMethods'), localDb.list('purchaseMonths'), localDb.list('purchaseWeeks'), localDb.list('purchaseDays'), localDb.list('purchaseOrders'),
     ]);
 
     return {
@@ -1124,7 +1123,6 @@ export class BackupService {
       deletedDeviceTypeMarkers: deletedDeviceTypeMarkers.map(sanitizeEntity),
       changeLog: changeLog.map(sanitizeEntity),
       systemSettings: systemSettings.map(sanitizeEntity),
-      purchaseSuppliers: purchaseSuppliers.map(sanitizeEntity), purchaseItems: purchaseItems.map(sanitizeEntity), purchasePaymentMethods: purchasePaymentMethods.map(sanitizeEntity), purchaseMonths: purchaseMonths.map(sanitizeEntity), purchaseWeeks: purchaseWeeks.map(sanitizeEntity), purchaseDays: purchaseDays.map(sanitizeEntity), purchaseOrders: purchaseOrders.map(sanitizeEntity),
     };
   }
 
