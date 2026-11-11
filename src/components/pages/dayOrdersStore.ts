@@ -3380,7 +3380,7 @@ export const repoContext: RepositoryContext = {
       const commandId = previous ? crypto.randomUUID() : entity.id;
       await repoContext.transactionManager.runInTransaction((ctx) => {
         ctx.purchaseRepo.save(table, entity);
-        ctx.commandRepo.record(commandId, type, paidTransition ? { id: entity.id, paymentMethodId: (entity as PurchaseOrderEntity).paymentMethodId } : entity);
+        ctx.commandRepo.record(commandId, type, paidTransition ? { id: entity.id, paymentMethodId: (entity as PurchaseOrderEntity).paymentMethodId } : entity, previous?.version);
       });
     },
   },
