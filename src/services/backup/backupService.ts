@@ -1154,7 +1154,6 @@ export class BackupService {
       deletedDeviceTypeMarkers: (data.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
       changeLog: (data.changeLog || []).map(sanitizeEntity),
       systemSettings: (data.systemSettings || []).map(sanitizeEntity),
-      purchaseSuppliers: (data.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (data.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (data.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (data.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (data.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (data.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (data.purchaseOrders || []).map(sanitizeEntity),
       consolidationMetadata: data.consolidationMetadata
         ? sanitizeEntity(data.consolidationMetadata)
         : undefined,
