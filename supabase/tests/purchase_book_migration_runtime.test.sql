@@ -102,6 +102,29 @@ SELECT public.execute_canonical_sync_command_unlocked(
   'paid-hash','purchase-test-device',NULL
 );
 
+SELECT public.execute_canonical_sync_command_unlocked(
+  '20000000-0000-4000-8000-000000000011','SAVE_PURCHASE_ORDER',
+  jsonb_build_object(
+    'id','50000000-0000-4000-8000-000000000002',
+    'purchaseDayId','40000000-0000-4000-8000-000000000003',
+    'supplierId','30000000-0000-4000-8000-000000000001',
+    'itemId','30000000-0000-4000-8000-000000000002',
+    'amountMinor',12345,'currency','USD','paymentStatus','UNPAID'
+  ),
+  'usd-order-hash','purchase-test-device',NULL
+);
+SELECT public.execute_canonical_sync_command_unlocked(
+  '20000000-0000-4000-8000-000000000012','SAVE_PURCHASE_ORDER',
+  jsonb_build_object(
+    'id','50000000-0000-4000-8000-000000000003',
+    'purchaseDayId','40000000-0000-4000-8000-000000000003',
+    'supplierId','30000000-0000-4000-8000-000000000001',
+    'itemId','30000000-0000-4000-8000-000000000002',
+    'amountMinor',12345,'currency','JOD','paymentStatus','UNPAID'
+  ),
+  'jod-order-hash','purchase-test-device',NULL
+);
+
 DO $purchase_assertions$
 DECLARE v_events integer;
 BEGIN
@@ -111,8 +134,11 @@ BEGIN
     RAISE EXCEPTION 'Purchase order save/payment transition failed';
   END IF;
   SELECT COUNT(*) INTO v_events FROM public.purchase_test_change_events;
-  IF v_events <> 8 THEN
-    RAISE EXCEPTION 'Expected eight canonical purchase change events, got %',v_events;
+  IF v_events <> 10 THEN
+    RAISE EXCEPTION 'Expected ten canonical purchase change events, got %',v_events;
+  END IF;
+  IF (SELECT COUNT(*) FROM public.purchase_orders WHERE currency IN ('ILS','USD','JOD')) <> 3 THEN
+    RAISE EXCEPTION 'ILS, USD and JOD purchases were not all accepted';
   END IF;
   IF has_table_privilege('anon','public.purchase_orders','SELECT')
      OR has_table_privilege('authenticated','public.purchase_orders','SELECT') THEN
