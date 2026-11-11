@@ -177,12 +177,15 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
   let end=dateString(endDate);
   if(end>range.end) end=range.end;
   const weekId=stableCalendarId(`purchase-week:${monthId}:${start}`);
-  let targetWeek=weeks.find(row=>row.id===weekId) || null;
-  const openWeeks=weeks.filter(row=>row.monthId===monthId && !row.isClosed && row.id!==weekId);
+  let targetWeek=weeks.find(row=>row.id===weekId && !row.isClosed) || null;
+  const openWeeks=weeks.filter(row=>!row.isClosed && row.id!==targetWeek?.id);
   const dayFits=targetWeek && date>=targetWeek.startDate && date<=targetWeek.endDate;
   if(!targetWeek || !dayFits){
+    let nextId=weekId;
+    let suffix=2;
+    while(weeks.some(row=>row.id===nextId)) nextId=stableCalendarId(`purchase-week:${monthId}:${start}:${suffix++}`);
     targetWeek={
-      id:weekId,monthId,startDate:start,endDate:end,isClosed:false,
+      id:nextId,monthId,startDate:start,endDate:end,isClosed:false,
       createdAt:nowIso(),updatedAt:nowIso(),version:1,
     };
   }
@@ -220,10 +223,18 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
     const month=months.find(row=>row.id===monthId);
     if(!month) throw new PurchaseBookOperationError('PURCHASE_MONTH_NOT_FOUND','الشهر غير موجود.');
     const timestamp=nowIso();
-    const openWeeks=weeks.filter(row=>row.monthId===monthId && !row.isClosed);
-    const start=getLocalBusinessDateStr();
+    const openWeeks=weeks.filter(row=>!row.isClosed);
+    const today=getLocalBusinessDateStr();
+    const lastWeek=weeks.filter(row=>row.monthId===monthId).sort((a,b)=>b.endDate.localeCompare(a.endDate))[0];
+    const fallbackStart=lastWeek?dateString(new Date(parseDate(lastWeek.endDate).getTime()+86400000)):month.startDate;
+    const start=today>=month.startDate&&today<=month.endDate?today:fallbackStart;
+    if(start>month.endDate) throw new PurchaseBookOperationError('PURCHASE_MONTH_FULL','لا توجد مساحة لبدء أسبوع جديد داخل هذا الشهر.');
+    const endCandidate=parseDate(start);endCandidate.setDate(endCandidate.getDate()+6);
+    const weekEnd=dateString(endCandidate)>month.endDate?month.endDate:dateString(endCandidate);
+    let weekId=stableCalendarId(`purchase-week:${monthId}:${start}`);
+    let suffix=2;while(weeks.some(row=>row.id===weekId)) weekId=stableCalendarId(`purchase-week:${monthId}:${start}:${suffix++}`);
     const week:PurchaseWeekEntity={
-      id:stableCalendarId(`purchase-week:${monthId}:${start}`),monthId,startDate:start,endDate:month.endDate,isClosed:false,
+      id:weekId,monthId,startDate:start,endDate:weekEnd,isClosed:false,
       createdAt:timestamp,updatedAt:timestamp,version:1,
     };
     await repoContext.transactionManager.runInTransaction((ctx)=>{
