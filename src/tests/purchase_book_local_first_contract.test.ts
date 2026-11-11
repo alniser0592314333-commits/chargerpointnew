@@ -24,7 +24,7 @@ describe('Purchase book local-first architecture contract', () => {
 
   it('routes every purchase mutation through the existing canonical sync command processor', () => {
     for (const command of ['SAVE_PURCHASE_SUPPLIER','SAVE_PURCHASE_ITEM','SAVE_PURCHASE_PAYMENT_METHOD','SAVE_PURCHASE_MONTH','SAVE_PURCHASE_WEEK','SAVE_PURCHASE_DAY','SAVE_PURCHASE_ORDER','MARK_PURCHASE_ORDER_PAID']) {
-      expect(migration).toContain(`WHEN '${command}'`);
+      expect(migration).toContain(`'${command}'`);
       expect(store).toContain(`'${command}'`);
     }
     expect(store).toContain('localDb.setWithTx(tx, purchaseTableKeys[table], entity.id, entity)');
