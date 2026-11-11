@@ -129,7 +129,7 @@ export async function getPurchaseWeekStartDay():Promise<number>{
   const raw=setting?.valueString ?? setting?.value_string;
   if(raw!==undefined && Number.isInteger(Number(raw)) && Number(raw)>=0 && Number(raw)<=6) return Number(raw);
   const localValue=typeof localStorage!=='undefined'?localStorage.getItem('purchase_week_start_day'):null;
-  return raw!==undefined && Number.isInteger(Number(raw)) ? Number(raw) : 6;
+  return localValue!==null && Number.isInteger(Number(localValue)) && Number(localValue)>=0 && Number(localValue)<=6 ? Number(localValue) : 6;
 }
 
 export async function setPurchaseWeekStartDay(day:number):Promise<void>{
