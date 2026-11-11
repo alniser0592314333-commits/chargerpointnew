@@ -1050,6 +1050,7 @@ export const resetCanonicalReadModelsForReplay = (): void => {
   reservationsMap.clear();
   goalsMap.clear();
   goalRequestsMap.clear();
+  Object.values(purchaseMaps).forEach((map) => map.clear());
 };
 
 export const resetStoreMemory = () => {
@@ -1067,6 +1068,7 @@ export const resetStoreMemory = () => {
   reservationsMap.clear();
   goalsMap.clear();
   goalRequestsMap.clear();
+  Object.values(purchaseMaps).forEach((map) => map.clear());
   storeListeners.clear();
 };
 
@@ -1188,6 +1190,7 @@ export const clearAllOperationalData = async (): Promise<void> => {
   paymentsMap.clear();
   allocationsList.length = 0;
   devicesMap.clear();
+  Object.values(purchaseMaps).forEach((map) => map.clear());
 
   await localDb.clearOperationalTables({ clearOutbox: true, clearSyncState: true });
   await localDb.setLocalResetMarker(true);
@@ -1499,6 +1502,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     goalsMap.clear();
     goalRequestsMap.clear();
     reservationsMap.clear();
+    Object.values(purchaseMaps).forEach((map) => map.clear());
 
     // Only replace the local read model after the complete remote snapshot has
     // been fetched successfully. Partial table hydration is unsafe because it
@@ -1897,6 +1901,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       allocationsList.length = 0;
       goalsMap.clear();
       goalRequestsMap.clear();
+      Object.values(purchaseMaps).forEach((map) => map.clear());
       await localDb.clearOperationalTables({ clearOutbox: true, clearSyncState: true });
       await localDb.setInitialHydrationCompleted(false);
 
