@@ -524,6 +524,7 @@ export const applyRemoteChange = (change: {
       key === 'app_qr_design_config_ORDER' ? 'ORDER' : null;
     if (!designType) {
       localDb.setWithTx(tx, 'system_settings', key || change.entityId, p);
+      localDb.setWithTx(tx, 'systemSettings', key || change.entityId, p);
       notifyStoreAfterTransaction('all', key || change.entityId, tx);
       return;
     }
@@ -538,6 +539,7 @@ export const applyRemoteChange = (change: {
       return;
     }
     localDb.setWithTx(tx, 'system_settings', key, p);
+    localDb.setWithTx(tx, 'systemSettings', key, p);
     const applyDesign = () => setActiveQrDesign(designType, incoming as QRDesignConfig, 'remote');
     if (tx && typeof tx.addEventListener === 'function') {
       tx.addEventListener('complete', applyDesign, { once: true });
