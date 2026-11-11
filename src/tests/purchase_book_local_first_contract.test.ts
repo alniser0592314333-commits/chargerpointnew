@@ -62,6 +62,7 @@ describe('Purchase book local-first architecture contract', () => {
     expect(service).toContain('weeks.filter(row=>!row.isClosed');
     expect(service).toContain('PURCHASE_WEEK_OVERLAP');
     expect(service).toContain('nextAfterLast');
+    expect(service).toContain('const start=isCurrentMonth?today:(nextAfterLast || month.startDate)');
     expect(service).toContain('PURCHASE_UUID_UNAVAILABLE');
     expect(service).toContain('PURCHASE_DAY_MISSING');
   });
