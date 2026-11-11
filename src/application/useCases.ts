@@ -129,7 +129,7 @@ export interface RepositoryContext {
     findAllByCustomerId(customerId: ID): Promise<GoalRequestEntity[]> | GoalRequestEntity[];
     save(request: GoalRequestEntity): Promise<void> | void;
   };
-  purchaseRepo: {
+  purchaseRepo?: {
     findAll(table: PurchaseBookTable): Promise<PurchaseBookEntity[]> | PurchaseBookEntity[];
     save(table: PurchaseBookTable, entity: PurchaseBookEntity): Promise<void> | void;
   };
