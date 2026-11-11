@@ -16,7 +16,12 @@ export class PurchaseBookOperationError extends Error {
 }
 
 const nowIso = () => new Date().toISOString();
-const uuid = () => globalThis.crypto?.randomUUID?.() || `purchase-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const uuid = () => {
+  if (typeof globalThis.crypto?.randomUUID !== 'function') {
+    throw new PurchaseBookOperationError('PURCHASE_UUID_UNAVAILABLE', 'تعذّر إنشاء معرّف آمن لهذا السجل على هذا الجهاز.');
+  }
+  return globalThis.crypto.randomUUID();
+};
 const pad = (value: number) => String(value).padStart(2, '0');
 const dateString = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
 const parseDate = (value: string) => new Date(`${value}T12:00:00`);
@@ -225,9 +230,14 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
     const openWeeks=weeks.filter(row=>!row.isClosed);
     const today=getLocalBusinessDateStr();
     const lastWeek=weeks.filter(row=>row.monthId===monthId).sort((a,b)=>b.endDate.localeCompare(a.endDate))[0];
-    const fallbackStart=lastWeek?dateString(new Date(parseDate(lastWeek.endDate).getTime()+86400000)):month.startDate;
-    const start=today>=month.startDate&&today<=month.endDate?today:fallbackStart;
+    const nextAfterLast=lastWeek?dateString(new Date(parseDate(lastWeek.endDate).getTime()+86400000)):null;
+    // A new week always starts after the last week in that month. This prevents
+    // overlapping ranges when the user adds a week manually mid-month.
+    const start=nextAfterLast || (today>=month.startDate&&today<=month.endDate?today:month.startDate);
     if(start>month.endDate) throw new PurchaseBookOperationError('PURCHASE_MONTH_FULL','لا توجد مساحة لبدء أسبوع جديد داخل هذا الشهر.');
+    if(weeks.some(row=>row.monthId===monthId && start<=row.endDate && row.startDate<=start)) {
+      throw new PurchaseBookOperationError('PURCHASE_WEEK_OVERLAP','يوجد أسبوع يغطي هذا التاريخ بالفعل.');
+    }
     const endCandidate=parseDate(start);endCandidate.setDate(endCandidate.getDate()+6);
     const weekEnd=dateString(endCandidate)>month.endDate?month.endDate:dateString(endCandidate);
     let weekId=stableCalendarId(`purchase-week:${monthId}:${start}`);
