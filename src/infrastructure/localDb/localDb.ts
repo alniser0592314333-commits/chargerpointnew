@@ -736,7 +736,8 @@ export class IndexedDBLocalDatabase {
       'orderNumberReservations',
       'changeLog',
       'deletedDeviceTypeMarkers',
-      'systemSettings'
+      'systemSettings',
+      'purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders'
     ];
 
     for (const table of operationalTables) {
