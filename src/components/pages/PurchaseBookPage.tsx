@@ -186,7 +186,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
       <header className="border-b border-gray-200 dark:border-[#14423b] pb-4">
         <div className="flex items-start justify-between gap-3">
           <div><h1 className="text-xl font-bold tracking-tight">{supplierId?(supplier?.name||'الجهة'): 'دفتر المشتريات'}</h1><p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">تسجيل المشتريات ومتابعة المستحقات حسب الجهة والعملة</p></div>
-          {supplierId&&<button onClick={()=>onNavigate?.('/app/purchases')} className="text-xs text-emerald-700 dark:text-emerald-300">كل المشتريات</button>}
+          {supplierId&&<div className="flex items-center gap-3 shrink-0"><button onClick={openOrderForm} className="text-xs font-bold text-white bg-emerald-700 rounded-lg px-3 py-2">إضافة طلب</button><button onClick={()=>onNavigate?.('/app/purchases')} className="text-xs text-emerald-700 dark:text-emerald-300">كل المشتريات</button></div>}
         </div>
       </header>
 
