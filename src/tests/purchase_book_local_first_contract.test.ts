@@ -58,6 +58,9 @@ describe('Purchase book local-first architecture contract', () => {
 
   it('requires a payment method when a purchase is paid and preserves the unpaid debt until paid', () => {
     expect(service).toContain("input.paymentStatus==='PAID'&&!input.paymentMethodId");
+    expect(service).toContain('PURCHASE_SUPPLIER_INVALID');
+    expect(service).toContain('PURCHASE_DAY_CLOSED');
+    expect(migration).toContain('Purchase supplier is missing or inactive');
     expect(service).toContain("paymentStatus:'PAID'");
     expect(service).toContain("'MARK_PURCHASE_ORDER_PAID'");
     expect(page).toContain('تحويل إلى مدفوع');
