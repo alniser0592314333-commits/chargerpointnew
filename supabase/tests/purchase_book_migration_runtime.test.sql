@@ -5,7 +5,13 @@ RETURNS uuid LANGUAGE sql STABLE
 AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 CREATE OR REPLACE FUNCTION auth.role()
 RETURNS text LANGUAGE sql STABLE
-AS $$ SELECT current_setting('request.jwt.claim.role', true) $$;
+AS $ SELECT current_setting('request.jwt.claim.role', true) $;
+
+-- The production canonical processor depends on the existing BIN verifier.
+-- This isolated migration fixture supplies its authenticated-success contract.
+CREATE OR REPLACE FUNCTION public.verify_admin_bin(p_bin text)
+RETURNS boolean LANGUAGE sql STABLE
+AS $ SELECT p_bin IS NOT NULL AND length(trim(p_bin)) >= 4 $;
 
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY,
