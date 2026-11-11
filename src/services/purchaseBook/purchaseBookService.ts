@@ -231,9 +231,11 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
     const today=getLocalBusinessDateStr();
     const lastWeek=weeks.filter(row=>row.monthId===monthId).sort((a,b)=>b.endDate.localeCompare(a.endDate))[0];
     const nextAfterLast=lastWeek?dateString(new Date(parseDate(lastWeek.endDate).getTime()+86400000)):null;
-    // A new week always starts after the last week in that month. This prevents
-    // overlapping ranges when the user adds a week manually mid-month.
-    const start=nextAfterLast || (today>=month.startDate&&today<=month.endDate?today:month.startDate);
+    // When starting a new week in the current month, anchor it to today so
+    // today's purchase day can immediately belong to the newly opened week.
+    // For historical months, continue after the last recorded week.
+    const isCurrentMonth=today>=month.startDate&&today<=month.endDate;
+    const start=isCurrentMonth?today:(nextAfterLast || month.startDate);
     if(start>month.endDate) throw new PurchaseBookOperationError('PURCHASE_MONTH_FULL','لا توجد مساحة لبدء أسبوع جديد داخل هذا الشهر.');
     if(weeks.some(row=>row.monthId===monthId && start<=row.endDate && row.startDate<=start)) {
       throw new PurchaseBookOperationError('PURCHASE_WEEK_OVERLAP','يوجد أسبوع يغطي هذا التاريخ بالفعل.');
