@@ -1775,3 +1775,61 @@ BEGIN
 END;
 $function$
 
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_admin_id uuid;
+  v_admin_role text;
+  v_is_active boolean;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required: caller must be signed in'; END IF;
+  SELECT a.id, a.role, a.is_active INTO v_admin_id, v_admin_role, v_is_active
+  FROM public.admins a WHERE a.auth_user_id = auth.uid() LIMIT 1;
+  IF v_admin_id IS NULL THEN RAISE EXCEPTION 'Unauthorized: active admin profile not found'; END IF;
+  IF v_is_active IS NOT TRUE THEN RAISE EXCEPTION 'Forbidden: admin account is inactive or disabled'; END IF;
+  IF v_admin_role NOT IN ('SUPER_ADMIN', 'Super Admin')
+     AND NOT EXISTS (
+       SELECT 1 FROM public.get_effective_permissions(v_admin_id)
+       WHERE permission IN ('settings:manage', 'admin:manage', 'SUPER_ADMIN')
+     )
+  THEN RAISE EXCEPTION 'Forbidden: settings:manage permission required for authoritative backup'; END IF;
+
+  RETURN (
+    SELECT jsonb_build_object(
+      'schema_version', 1,
+      'captured_at', now(),
+      'server_reset_generation',
+        COALESCE((SELECT s.value_number FROM public.system_settings s WHERE s.key = 'server_reset_generation' LIMIT 1), 0),
+      'change_log_count', (SELECT count(*) FROM public.change_log),
+      'max_change_sequence', COALESCE((SELECT max(t.sequence_id) FROM public.change_log t), 0),
+      'change_log_fingerprint', (SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text), '' ORDER BY t.sequence_id), '')) FROM public.change_log t),
+      'customers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.customers t), '[]'::jsonb),
+      'business_days', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.business_days t), '[]'::jsonb),
+      'orders', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.orders t), '[]'::jsonb),
+      'order_items', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.order_items t), '[]'::jsonb),
+      'financial_ledger', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.financial_ledger t), '[]'::jsonb),
+      'payments', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.payments t), '[]'::jsonb),
+      'payment_allocations', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.payment_allocations t), '[]'::jsonb),
+      'device_types', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.device_types t), '[]'::jsonb),
+      'qr_tokens', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.qr_tokens t), '[]'::jsonb),
+      'order_number_reservations', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.order_number_reservations t), '[]'::jsonb),
+      'goals', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.goals t), '[]'::jsonb),
+      'goal_requests', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.goal_requests t), '[]'::jsonb),
+      'purchase_suppliers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_suppliers t), '[]'::jsonb),
+      'purchase_items', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_items t), '[]'::jsonb),
+      'purchase_payment_methods', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_payment_methods t), '[]'::jsonb),
+      'purchase_months', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_months t), '[]'::jsonb),
+      'purchase_weeks', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_weeks t), '[]'::jsonb),
+      'purchase_days', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_days t), '[]'::jsonb),
+      'purchase_orders', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_orders t), '[]'::jsonb),
+      'system_settings', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.key) FROM public.system_settings t), '[]'::jsonb)
+    )
+  );
+END;
+$function$
+
