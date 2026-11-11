@@ -81,7 +81,7 @@ async function runPurchaseOperation<T>(label: string, work: () => Promise<T>): P
 
 export async function listPurchaseRows(table: PurchaseBookTable): Promise<PurchaseBookEntity[]> {
   return runPurchaseOperation('قراءة بيانات دفتر المشتريات', async () => {
-    return [...await repoContext.purchaseRepo.findAll(table)];
+    return [...await repoContext.purchaseRepo!.findAll(table)];
   });
 }
 
@@ -94,7 +94,7 @@ export async function savePurchaseCatalog(
     const cleanName=name.trim();
     if (!cleanName) throw new PurchaseBookOperationError('PURCHASE_NAME_REQUIRED','الاسم مطلوب.');
     if (cleanName.length>120) throw new PurchaseBookOperationError('PURCHASE_NAME_TOO_LONG','الاسم طويل جداً.');
-    const rows=await repoContext.purchaseRepo.findAll(table) as PurchaseCatalogEntity[];
+    const rows=await repoContext.purchaseRepo!.findAll(table) as PurchaseCatalogEntity[];
     if (rows.some(row=>row.id!==existing?.id && row.isActive && row.name.trim().toLocaleLowerCase()===cleanName.toLocaleLowerCase())) {
       throw new PurchaseBookOperationError('PURCHASE_NAME_DUPLICATE','هذا الاسم موجود مسبقاً.');
     }
@@ -146,9 +146,9 @@ function monthRange(year:number,month:number){
 }
 
 async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseDayEntity|null>{
-  const months=await repoContext.purchaseRepo.findAll('months') as PurchaseMonthEntity[];
-  const weeks=await repoContext.purchaseRepo.findAll('weeks') as PurchaseWeekEntity[];
-  const days=await repoContext.purchaseRepo.findAll('days') as PurchaseDayEntity[];
+  const months=await repoContext.purchaseRepo!.findAll('months') as PurchaseMonthEntity[];
+  const weeks=await repoContext.purchaseRepo!.findAll('weeks') as PurchaseWeekEntity[];
+  const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
   const existingDay=days.find(day=>day.purchaseDate===date);
   if(existingDay) return existingDay;
 
@@ -210,8 +210,8 @@ export async function createCurrentPurchaseDay():Promise<PurchaseDayEntity>{
 
 export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEntity>{
   return runPurchaseOperation('إنشاء أسبوع المشتريات',async()=>{
-    const months=await repoContext.purchaseRepo.findAll('months') as PurchaseMonthEntity[];
-    const weeks=await repoContext.purchaseRepo.findAll('weeks') as PurchaseWeekEntity[];
+    const months=await repoContext.purchaseRepo!.findAll('months') as PurchaseMonthEntity[];
+    const weeks=await repoContext.purchaseRepo!.findAll('weeks') as PurchaseWeekEntity[];
     const month=months.find(row=>row.id===monthId);
     if(!month) throw new PurchaseBookOperationError('PURCHASE_MONTH_NOT_FOUND','الشهر غير موجود.');
     const timestamp=nowIso();
@@ -233,7 +233,7 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
 export async function getCurrentPurchaseDay():Promise<PurchaseDayEntity|null>{
   return runPurchaseOperation('التحقق من يوم المشتريات الحالي',async()=>{
     const today=getLocalBusinessDateStr();
-    const days=await repoContext.purchaseRepo.findAll('days') as PurchaseDayEntity[];
+    const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
     return days.find(day=>day.purchaseDate===today) || null;
   });
 }
@@ -247,7 +247,7 @@ export async function addPurchaseOrder(input:{
     const precision=input.currency==='JOD'?1000:100;
     const amountMinor=Math.round(input.amount*precision);
     const purchasedAt=nowIso();
-    const days=await repoContext.purchaseRepo.findAll('days') as PurchaseDayEntity[];
+    const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
     const day=days.find(row=>row.purchaseDate===getLocalBusinessDateStr());
     if(!day) throw new PurchaseBookOperationError('PURCHASE_DAY_MISSING','لا يوجد يوم حالي. أنشئ اليوم ثم أعد إضافة الطلب.');
     const order:PurchaseOrderEntity={
