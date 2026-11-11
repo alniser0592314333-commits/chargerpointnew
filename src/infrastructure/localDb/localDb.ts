@@ -1132,6 +1132,7 @@ export class IndexedDBLocalDatabase {
       'goals',
       'goalRequests',
       'systemSettings',
+      'purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders',
     ];
 
     for (const table of operationalTables) {
