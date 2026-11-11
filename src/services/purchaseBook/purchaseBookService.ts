@@ -54,10 +54,15 @@ function saveInTransaction(
 ): void {
   ctx.purchaseRepo!.save(table, entity);
   const type = forcedCommand || commandTypeFor(table);
+  const basePayload = forcedPayload || entity;
+  const stableCalendarCreate = !previous && (table === 'months' || table === 'weeks' || table === 'days');
+  const commandPayload = stableCalendarCreate
+    ? Object.fromEntries(Object.entries(basePayload).filter(([key]) => key !== 'createdAt' && key !== 'updatedAt'))
+    : previous ? { ...basePayload, expectedVersion: previous.version } : basePayload;
   ctx.commandRepo.record(
     previous ? uuid() : entity.id,
     type,
-    forcedPayload || entity,
+    commandPayload,
     previous?.version,
   );
 }
