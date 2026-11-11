@@ -7,7 +7,7 @@ import {
 import { useStoreSubscription } from './dayOrdersStore';
 import {
   addPurchaseOrder, createCurrentPurchaseDay, createPurchaseWeek, hidePurchaseCatalog,
-  listPurchaseRows, markPurchaseOrderPaid, purchaseMinorToAmount, savePurchaseCatalog, PurchaseBookOperationError,
+  listPurchaseRows, markPurchaseOrderPaid, purchaseMinorToAmount, savePurchaseCatalog, PurchaseBookOperationError, getPurchaseWeekStartDay, setPurchaseWeekStartDay,
 } from '../../services/purchaseBook/purchaseBookService';
 
 type CurrencyTotals = Record<PurchaseCurrency, number>;
@@ -41,6 +41,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const [payMethodId,setPayMethodId]=useState('');
   const [showNoDayDialog,setShowNoDayDialog]=useState(false);
   const [showAdditions,setShowAdditions]=useState(false);
+  const [weekStartDay,setWeekStartDay]=useState(6);
   const [catalogType,setCatalogType]=useState<'suppliers'|'items'|'methods'>('suppliers');
   const [catalogName,setCatalogName]=useState('');
   const [editingCatalog,setEditingCatalog]=useState<PurchaseCatalogEntity|null>(null);
@@ -67,6 +68,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
     finally{setLoading(false);}
   },[]);
   useEffect(()=>{void reload();},[reload,version]);
+  useEffect(()=>{getPurchaseWeekStartDay().then(setWeekStartDay).catch(e=>setError(e.message));},[]);
 
   const activeSuppliers=suppliers.filter(x=>x.isActive);
   const activeItems=items.filter(x=>x.isActive);
@@ -197,6 +199,11 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
 
         {showAdditions&&!supplierId&&<section className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] p-4 space-y-4">
           <h2 className="text-sm font-bold">إدارة الإضافات</h2>
+          <label className="block text-xs font-semibold">بداية الأسبوع
+            <select value={weekStartDay} onChange={e=>{const value=Number(e.target.value);setWeekStartDay(value);setPurchaseWeekStartDay(value).catch(err=>setError(err.message));}} className="mt-1 w-full sm:w-64 rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-2.5">
+              <option value={6}>السبت</option><option value={0}>الأحد</option><option value={1}>الاثنين</option><option value={2}>الثلاثاء</option><option value={3}>الأربعاء</option><option value={4}>الخميس</option><option value={5}>الجمعة</option>
+            </select>
+          </label>
           <div className="flex flex-wrap gap-2">{([{id:'suppliers',label:'الجهات'},{id:'items',label:'العناصر'},{id:'methods',label:'طرق الدفع'}] as const).map(t=><button key={t.id} onClick={()=>{setCatalogType(t.id);setEditingCatalog(null);setCatalogName('');}} className={`rounded-lg px-3 py-2 text-xs font-bold ${catalogType===t.id?'bg-emerald-700 text-white':'bg-gray-100 dark:bg-[#0c312b]'}`}>{t.label}</button>)}</div>
           <div className="flex gap-2"><input value={catalogName} onChange={e=>setCatalogName(e.target.value)} placeholder={editingCatalog?'تعديل الاسم':'اسم جديد'} className="min-w-0 flex-1 rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent px-3 py-2 text-xs"/><button onClick={saveCatalogForm} className="rounded-lg bg-emerald-700 text-white px-4 text-xs font-bold">{editingCatalog?'حفظ':'إضافة'}</button></div>
           <div className="divide-y divide-gray-100 dark:divide-[#123d37]">{(catalogType==='suppliers'?suppliers:catalogType==='items'?items:methods).map(row=><div key={row.id} className="flex items-center justify-between py-2 text-xs"><span className={row.isActive?'':'line-through text-gray-400'}>{row.name}</span><div className="flex gap-3"><button onClick={()=>{setEditingCatalog(row);setCatalogName(row.name);}} className="text-emerald-700 dark:text-emerald-300"><Pencil className="w-4 h-4"/></button>{row.isActive&&<button onClick={()=>hideCatalogItem(row)} className="text-gray-400"><EyeOff className="w-4 h-4"/></button>}</div></div>)}</div>
