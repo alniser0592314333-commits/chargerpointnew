@@ -1396,6 +1396,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       qr_tokens: snapshot.qr_tokens,
       goals: snapshot.goals,
       goal_requests: snapshot.goal_requests,
+      system_settings: snapshot.system_settings,
       purchase_suppliers: snapshot.purchase_suppliers,
       purchase_items: snapshot.purchase_items,
       purchase_payment_methods: snapshot.purchase_payment_methods,
