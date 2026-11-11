@@ -736,7 +736,7 @@ export class IndexedDBLocalDatabase {
       'orderNumberReservations',
       'changeLog',
       'deletedDeviceTypeMarkers',
-      'systemSettings',
+      'systemSettings','system_settings',
       'purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders'
     ];
 
