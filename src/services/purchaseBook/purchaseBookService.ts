@@ -119,7 +119,7 @@ export async function hidePurchaseCatalog(table:'suppliers'|'items'|'methods', e
   });
 }
 
-async function getWeekStartDay():Promise<number>{
+export async function getPurchaseWeekStartDay():Promise<number>{
   const setting=await localDb.get<any>('system_settings','purchase_week_start_day');
   const raw=setting?.valueString ?? setting?.value_string;
   if(raw!==undefined && Number.isInteger(Number(raw)) && Number(raw)>=0 && Number(raw)<=6) return Number(raw);
@@ -146,11 +146,9 @@ function monthRange(year:number,month:number){
 }
 
 async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseDayEntity|null>{
-  const [months,weeks,days]=await Promise.all([
-    repoContext.purchaseRepo.findAll('months') as Promise<PurchaseMonthEntity[]>,
-    repoContext.purchaseRepo.findAll('weeks') as Promise<PurchaseWeekEntity[]>,
-    repoContext.purchaseRepo.findAll('days') as Promise<PurchaseDayEntity[]>,
-  ]);
+  const months=await repoContext.purchaseRepo.findAll('months') as PurchaseMonthEntity[];
+  const weeks=await repoContext.purchaseRepo.findAll('weeks') as PurchaseWeekEntity[];
+  const days=await repoContext.purchaseRepo.findAll('days') as PurchaseDayEntity[];
   const existingDay=days.find(day=>day.purchaseDate===date);
   if(existingDay) return existingDay;
 
@@ -163,7 +161,7 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
     createdAt:nowIso(),updatedAt:nowIso(),version:1,
   } as PurchaseMonthEntity;
 
-  const weekStartDay=await getWeekStartDay();
+  const weekStartDay=await getPurchaseWeekStartDay();
   const offset=(parsed.getDay()-weekStartDay+7)%7;
   const calculatedStart=parseDate(date);
   calculatedStart.setDate(calculatedStart.getDate()-offset);
@@ -212,10 +210,8 @@ export async function createCurrentPurchaseDay():Promise<PurchaseDayEntity>{
 
 export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEntity>{
   return runPurchaseOperation('إنشاء أسبوع المشتريات',async()=>{
-    const [months,weeks]=await Promise.all([
-      repoContext.purchaseRepo.findAll('months') as Promise<PurchaseMonthEntity[]>,
-      repoContext.purchaseRepo.findAll('weeks') as Promise<PurchaseWeekEntity[]>,
-    ]);
+    const months=await repoContext.purchaseRepo.findAll('months') as PurchaseMonthEntity[];
+    const weeks=await repoContext.purchaseRepo.findAll('weeks') as PurchaseWeekEntity[];
     const month=months.find(row=>row.id===monthId);
     if(!month) throw new PurchaseBookOperationError('PURCHASE_MONTH_NOT_FOUND','الشهر غير موجود.');
     const timestamp=nowIso();
