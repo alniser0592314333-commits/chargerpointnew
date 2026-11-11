@@ -1464,6 +1464,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const qrTokensRes = { data: snapshot.qr_tokens as any[], error: null };
     const goalsRes = { data: snapshot.goals as any[], error: null };
     const goalRequestsRes = { data: snapshot.goal_requests as any[], error: null };
+    const systemSettingsRes = { data: snapshot.system_settings as any[], error: null };
     const purchaseSuppliersRes = { data: snapshot.purchase_suppliers as any[], error: null };
     const purchaseItemsRes = { data: snapshot.purchase_items as any[], error: null };
     const purchaseMethodsRes = { data: snapshot.purchase_payment_methods as any[], error: null };
@@ -1473,7 +1474,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const purchaseOrdersRes = { data: snapshot.purchase_orders as any[], error: null };
     const remoteReads = [
       daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes,
-      reservationsRes, qrTokensRes, goalsRes, goalRequestsRes,
+      reservationsRes, qrTokensRes, goalsRes, goalRequestsRes, systemSettingsRes,
       purchaseSuppliersRes, purchaseItemsRes, purchaseMethodsRes, purchaseMonthsRes, purchaseWeeksRes, purchaseDaysRes, purchaseOrdersRes,
     ];
     const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
@@ -1807,6 +1808,12 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // been persisted. The next incremental pull starts strictly after this
     // exact snapshot; it must not treat the new device as generation -1 and
     // clear the just-hydrated data for a redundant full change-log replay.
+    for (const row of systemSettingsRes.data as any[]) {
+      if (!row?.key) continue;
+      installWrites.push({ table: 'systemSettings', id: String(row.key), item: row });
+      reportInstalledRow();
+    }
+
     for (const [table, rows] of [
       ['suppliers', purchaseSuppliersRes.data], ['items', purchaseItemsRes.data], ['methods', purchaseMethodsRes.data],
       ['months', purchaseMonthsRes.data], ['weeks', purchaseWeeksRes.data], ['days', purchaseDaysRes.data], ['orders', purchaseOrdersRes.data],
