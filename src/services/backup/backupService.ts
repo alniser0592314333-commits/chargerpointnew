@@ -2062,6 +2062,13 @@ export class BackupService {
         for (const dev of onlineData.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
         for (const goal of onlineData.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
         for (const request of onlineData.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
+        for (const row of onlineData.purchaseSuppliers || []) localDb.setWithTx(tx, 'purchaseSuppliers', row.id, row);
+        for (const row of onlineData.purchaseItems || []) localDb.setWithTx(tx, 'purchaseItems', row.id, row);
+        for (const row of onlineData.purchasePaymentMethods || []) localDb.setWithTx(tx, 'purchasePaymentMethods', row.id, row);
+        for (const row of onlineData.purchaseMonths || []) localDb.setWithTx(tx, 'purchaseMonths', row.id, row);
+        for (const row of onlineData.purchaseWeeks || []) localDb.setWithTx(tx, 'purchaseWeeks', row.id, row);
+        for (const row of onlineData.purchaseDays || []) localDb.setWithTx(tx, 'purchaseDays', row.id, row);
+        for (const row of onlineData.purchaseOrders || []) localDb.setWithTx(tx, 'purchaseOrders', row.id, row);
         for (const row of onlineData.changeLog || []) {
           const key = row?.sequence_id ?? row?.sequenceId;
           if (key !== undefined && key !== null) localDb.setWithTx(tx, 'changeLog', String(key), row);
@@ -2111,6 +2118,13 @@ export class BackupService {
       onlineData.deviceTypes.length +
       (onlineData.goals || []).length +
       (onlineData.goalRequests || []).length +
+      (onlineData.purchaseSuppliers || []).length +
+      (onlineData.purchaseItems || []).length +
+      (onlineData.purchasePaymentMethods || []).length +
+      (onlineData.purchaseMonths || []).length +
+      (onlineData.purchaseWeeks || []).length +
+      (onlineData.purchaseDays || []).length +
+      (onlineData.purchaseOrders || []).length +
       (onlineData.qrTokens || []).length +
       (onlineData.orderNumberReservations || []).length +
       (onlineData.changeLog || []).length +
