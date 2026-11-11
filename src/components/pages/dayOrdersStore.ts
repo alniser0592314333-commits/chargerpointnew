@@ -486,6 +486,25 @@ export const applyRemoteChange = (change: {
       else if (purchaseTable === 'weeks') entity = { ...base, monthId: p.monthId || p.month_id, startDate: p.startDate || p.start_date, endDate: p.endDate || p.end_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseWeekEntity;
       else if (purchaseTable === 'days') entity = { ...base, weekId: p.weekId || p.week_id, purchaseDate: p.purchaseDate || p.purchase_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseDayEntity;
       else entity = { ...base, purchaseDayId: p.purchaseDayId || p.purchase_day_id, supplierId: p.supplierId || p.supplier_id, itemId: p.itemId || p.item_id, paymentMethodId: p.paymentMethodId || p.payment_method_id || undefined, amountMinor: Number(p.amountMinor ?? p.amount_minor), currency: p.currency, paymentStatus: p.paymentStatus || p.payment_status, purchasedAt: p.purchasedAt || p.purchased_at || base.createdAt, paidAt: p.paidAt || p.paid_at || undefined } as PurchaseOrderEntity;
+      if (purchaseTable === 'orders') {
+        const prior = purchaseMaps.orders.get(change.entityId) as PurchaseOrderEntity | undefined;
+        const incoming = entity as PurchaseOrderEntity;
+        if (prior) {
+          entity = {
+            ...prior,
+            ...incoming,
+            amountMinor: Number(p.amountMinor ?? p.amount_minor ?? prior.amountMinor),
+            currency: p.currency || prior.currency,
+            paymentStatus: p.paymentStatus || p.payment_status || prior.paymentStatus,
+            supplierId: p.supplierId || p.supplier_id || prior.supplierId,
+            itemId: p.itemId || p.item_id || prior.itemId,
+            purchaseDayId: p.purchaseDayId || p.purchase_day_id || prior.purchaseDayId,
+            paymentMethodId: p.paymentMethodId || p.payment_method_id || prior.paymentMethodId,
+            purchasedAt: p.purchasedAt || p.purchased_at || prior.purchasedAt,
+            paidAt: p.paidAt || p.paid_at || prior.paidAt,
+          } as PurchaseOrderEntity;
+        }
+      }
       purchaseMaps[purchaseTable].set(entity.id, entity);
       localDb.setWithTx(tx, localKey, entity.id, entity);
     }
