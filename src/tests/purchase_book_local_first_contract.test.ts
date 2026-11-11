@@ -64,6 +64,7 @@ describe('Purchase book local-first architecture contract', () => {
     expect(service).toContain('nextAfterLast');
     expect(service).toContain('const start=isCurrentMonth?today:(nextAfterLast || month.startDate)');
     expect(service).toContain('PURCHASE_UUID_UNAVAILABLE');
+    expect(service).toContain("await localDb.set('system_settings','purchase_week_start_day',setting)");
     expect(service).toContain('PURCHASE_DAY_MISSING');
   });
 
