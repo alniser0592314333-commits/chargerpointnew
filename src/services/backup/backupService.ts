@@ -753,6 +753,7 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
     orderNumberReservations: (data.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity),
     goals: (data.goals || []).map(normalizeGoalEntity),
     goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
+    purchaseSuppliers: (data.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (data.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (data.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (data.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (data.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (data.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (data.purchaseOrders || []).map(sanitizeEntity),
     outbox: (data.outbox || []).map(sanitizeEntity),
     syncHistory: (data.syncHistory || []).map(sanitizeEntity),
     mutationSnapshots: (data.mutationSnapshots || []).map(sanitizeEntity),
@@ -1066,6 +1067,7 @@ export class BackupService {
       orderNumberReservations,
       goals,
       goalRequests,
+      purchaseSuppliers, purchaseItems, purchasePaymentMethods, purchaseMonths, purchaseWeeks, purchaseDays, purchaseOrders,
       outbox,
       syncHistory,
       mutationSnapshots,
@@ -1088,6 +1090,7 @@ export class BackupService {
       localDb.list('orderNumberReservations'),
       localDb.list('goals'),
       localDb.list('goalRequests'),
+      localDb.list('purchaseSuppliers'), localDb.list('purchaseItems'), localDb.list('purchasePaymentMethods'), localDb.list('purchaseMonths'), localDb.list('purchaseWeeks'), localDb.list('purchaseDays'), localDb.list('purchaseOrders'),
       localDb.listOutbox(),
       localDb.listHistory(),
       localDb.listMutationSnapshots(),
@@ -1110,6 +1113,7 @@ export class BackupService {
       deviceTypes: deviceTypes.map(sanitizeEntity).map(normalizeDeviceTypeEntity),
       goals: goals.map(normalizeGoalEntity),
       goalRequests: goalRequests.map(normalizeGoalRequestEntity),
+      purchaseSuppliers: purchaseSuppliers.map(sanitizeEntity), purchaseItems: purchaseItems.map(sanitizeEntity), purchasePaymentMethods: purchasePaymentMethods.map(sanitizeEntity), purchaseMonths: purchaseMonths.map(sanitizeEntity), purchaseWeeks: purchaseWeeks.map(sanitizeEntity), purchaseDays: purchaseDays.map(sanitizeEntity), purchaseOrders: purchaseOrders.map(sanitizeEntity),
       qrTokens: qrTokens.map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: orderNumberReservations.map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
       outbox: outbox.map(sanitizeEntity),
@@ -1141,6 +1145,7 @@ export class BackupService {
       deviceTypes: (data.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
       goals: (data.goals || []).map(normalizeGoalEntity),
       goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
+      purchaseSuppliers: (data.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (data.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (data.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (data.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (data.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (data.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (data.purchaseOrders || []).map(sanitizeEntity),
       qrTokens: (data.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
       outbox: (data.outbox || []).map(sanitizeEntity),
@@ -1187,6 +1192,7 @@ export class BackupService {
         orderNumberReservations: (customOnlineData.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
         goals: (customOnlineData.goals || []).map(normalizeGoalEntity),
         goalRequests: (customOnlineData.goalRequests || []).map(normalizeGoalRequestEntity),
+        purchaseSuppliers: (customOnlineData.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (customOnlineData.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (customOnlineData.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (customOnlineData.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (customOnlineData.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (customOnlineData.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (customOnlineData.purchaseOrders || []).map(sanitizeEntity),
         outbox: (customOnlineData.outbox || []).map(sanitizeEntity),
         syncHistory: (customOnlineData.syncHistory || []).map(sanitizeEntity),
         mutationSnapshots: (customOnlineData.mutationSnapshots || []).map(sanitizeEntity),
@@ -1225,6 +1231,13 @@ export class BackupService {
     const orderNumberReservations = (authoritative.order_number_reservations || authoritative.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity);
     const goals = (authoritative.goals || []).map(normalizeGoalEntity);
     const goalRequests = (authoritative.goal_requests || authoritative.goalRequests || []).map(normalizeGoalRequestEntity);
+    const purchaseSuppliers = (authoritative.purchase_suppliers || []).map((r: any) => ({ id:r.id,name:r.name,isActive:r.is_active,deletedAt:r.deleted_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
+    const purchaseItems = (authoritative.purchase_items || []).map((r: any) => ({ id:r.id,name:r.name,isActive:r.is_active,deletedAt:r.deleted_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
+    const purchasePaymentMethods = (authoritative.purchase_payment_methods || []).map((r: any) => ({ id:r.id,name:r.name,isActive:r.is_active,deletedAt:r.deleted_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
+    const purchaseMonths = (authoritative.purchase_months || []).map((r: any) => ({ id:r.id,year:r.year,month:r.month_number,startDate:r.start_date,endDate:r.end_date,isClosed:r.is_closed,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
+    const purchaseWeeks = (authoritative.purchase_weeks || []).map((r: any) => ({ id:r.id,monthId:r.month_id,startDate:r.start_date,endDate:r.end_date,isClosed:r.is_closed,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
+    const purchaseDays = (authoritative.purchase_days || []).map((r: any) => ({ id:r.id,weekId:r.week_id,purchaseDate:r.purchase_date,isClosed:r.is_closed,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
+    const purchaseOrders = (authoritative.purchase_orders || []).map((r: any) => ({ id:r.id,purchaseDayId:r.purchase_day_id,supplierId:r.supplier_id,itemId:r.item_id,paymentMethodId:r.payment_method_id,amountMinor:Number(r.amount_minor),currency:r.currency,paymentStatus:r.payment_status,purchasedAt:r.purchased_at,paidAt:r.paid_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
     const systemSettings = (authoritative.system_settings || authoritative.systemSettings || []).map(sanitizeEntity);
 
     const serverResetGeneration = Number(
@@ -1324,6 +1337,7 @@ export class BackupService {
       orderNumberReservations,
       goals,
       goalRequests,
+      purchaseSuppliers, purchaseItems, purchasePaymentMethods, purchaseMonths, purchaseWeeks, purchaseDays, purchaseOrders,
       systemSettings,
       changeLog,
       syncState: {
@@ -1629,6 +1643,7 @@ export class BackupService {
       orderNumberReservations: (rawData.orderNumberReservations || []).map(sanitizeEntity),
       goals: (rawData.goals || []).map(normalizeGoalEntity),
       goalRequests: (rawData.goalRequests || []).map(normalizeGoalRequestEntity),
+      purchaseSuppliers: (rawData.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (rawData.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (rawData.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (rawData.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (rawData.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (rawData.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (rawData.purchaseOrders || []).map(sanitizeEntity),
       outbox: (rawData.outbox || []).map(sanitizeEntity),
       syncHistory: (rawData.syncHistory || []).map(sanitizeEntity),
       mutationSnapshots: (rawData.mutationSnapshots || []).map(sanitizeEntity),
@@ -1655,6 +1670,7 @@ export class BackupService {
       orderNumberReservations: (sanitizedData.orderNumberReservations || []).length,
       goals: (sanitizedData.goals || []).length,
       goalRequests: (sanitizedData.goalRequests || []).length,
+      purchaseSuppliers: (sanitizedData.purchaseSuppliers || []).length, purchaseItems: (sanitizedData.purchaseItems || []).length, purchasePaymentMethods: (sanitizedData.purchasePaymentMethods || []).length, purchaseMonths: (sanitizedData.purchaseMonths || []).length, purchaseWeeks: (sanitizedData.purchaseWeeks || []).length, purchaseDays: (sanitizedData.purchaseDays || []).length, purchaseOrders: (sanitizedData.purchaseOrders || []).length,
       outbox: (sanitizedData.outbox || []).length,
       syncHistory: (sanitizedData.syncHistory || []).length,
       mutationSnapshots: (sanitizedData.mutationSnapshots || []).length,
@@ -1861,6 +1877,13 @@ export class BackupService {
         for (const dev of d.deviceTypes || []) localDb.setWithTx(tx, 'deviceTypes', dev.id, dev);
         for (const goal of d.goals || []) localDb.setWithTx(tx, 'goals', goal.id, goal);
         for (const request of d.goalRequests || []) localDb.setWithTx(tx, 'goalRequests', request.id, request);
+        for (const row of d.purchaseSuppliers || []) localDb.setWithTx(tx, 'purchaseSuppliers', row.id, row);
+        for (const row of d.purchaseItems || []) localDb.setWithTx(tx, 'purchaseItems', row.id, row);
+        for (const row of d.purchasePaymentMethods || []) localDb.setWithTx(tx, 'purchasePaymentMethods', row.id, row);
+        for (const row of d.purchaseMonths || []) localDb.setWithTx(tx, 'purchaseMonths', row.id, row);
+        for (const row of d.purchaseWeeks || []) localDb.setWithTx(tx, 'purchaseWeeks', row.id, row);
+        for (const row of d.purchaseDays || []) localDb.setWithTx(tx, 'purchaseDays', row.id, row);
+        for (const row of d.purchaseOrders || []) localDb.setWithTx(tx, 'purchaseOrders', row.id, row);
         for (const q of d.qrTokens || []) {
           const normalizedQr = normalizeQrTokenEntity(q);
           localDb.setWithTx(tx, 'qr_tokens', normalizedQr.id, normalizedQr);
