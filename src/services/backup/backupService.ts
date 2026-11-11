@@ -1553,6 +1553,17 @@ export class BackupService {
     const onlineRecordCount = countEntities(online);
     const offlineRecordCount = countEntities(offline);
 
+    const mergePurchaseRows = (remoteRows: any[] = [], localRows: any[] = []) => {
+      const byId = new Map<string, any>();
+      for (const row of remoteRows) if (row?.id) byId.set(String(row.id), row);
+      for (const row of localRows) {
+        if (!row?.id) continue;
+        const key=String(row.id), remote=byId.get(key);
+        if (!remote || Number(row.version ?? 0) >= Number(remote.version ?? 0)) byId.set(key,row);
+      }
+      return Array.from(byId.values());
+    };
+
     const consolidatedData: BackupSnapshotData = {
       customers: consolidatedCustomers,
       businessDays: consolidatedDays,
@@ -1569,6 +1580,13 @@ export class BackupService {
       // can disappear and be resurrected by the next sync.
       goals: consolidatedGoals,
       goalRequests: consolidatedGoalRequests,
+      purchaseSuppliers: mergePurchaseRows(online.purchaseSuppliers,offline.purchaseSuppliers),
+      purchaseItems: mergePurchaseRows(online.purchaseItems,offline.purchaseItems),
+      purchasePaymentMethods: mergePurchaseRows(online.purchasePaymentMethods,offline.purchasePaymentMethods),
+      purchaseMonths: mergePurchaseRows(online.purchaseMonths,offline.purchaseMonths),
+      purchaseWeeks: mergePurchaseRows(online.purchaseWeeks,offline.purchaseWeeks),
+      purchaseDays: mergePurchaseRows(online.purchaseDays,offline.purchaseDays),
+      purchaseOrders: mergePurchaseRows(online.purchaseOrders,offline.purchaseOrders),
       outbox: offline.outbox || [],
       syncHistory: offline.syncHistory || [],
       mutationSnapshots: offline.mutationSnapshots || [],
