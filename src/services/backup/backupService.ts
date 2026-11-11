@@ -100,6 +100,7 @@ export function canonicalizeSnapshotForComparison(data: any): any {
     'orderNumberReservations',
     'goals',
     'goalRequests',
+    'purchaseSuppliers', 'purchaseItems', 'purchasePaymentMethods', 'purchaseMonths', 'purchaseWeeks', 'purchaseDays', 'purchaseOrders',
     'outbox',
     'syncHistory',
     'mutationSnapshots',
@@ -1073,6 +1074,7 @@ export class BackupService {
       deletedDeviceTypeMarkers,
       changeLog,
       systemSettings,
+      purchaseSuppliers, purchaseItems, purchasePaymentMethods, purchaseMonths, purchaseWeeks, purchaseDays, purchaseOrders,
     ] = await Promise.all([
       localDb.list('customers'),
       localDb.list('businessDays'),
@@ -1094,6 +1096,7 @@ export class BackupService {
       localDb.listIntentionalDeviceTypeDeletions(),
       localDb.list('changeLog'),
       localDb.list('systemSettings'),
+      localDb.list('purchaseSuppliers'), localDb.list('purchaseItems'), localDb.list('purchasePaymentMethods'), localDb.list('purchaseMonths'), localDb.list('purchaseWeeks'), localDb.list('purchaseDays'), localDb.list('purchaseOrders'),
     ]);
 
     return {
@@ -1117,6 +1120,7 @@ export class BackupService {
       deletedDeviceTypeMarkers: deletedDeviceTypeMarkers.map(sanitizeEntity),
       changeLog: changeLog.map(sanitizeEntity),
       systemSettings: systemSettings.map(sanitizeEntity),
+      purchaseSuppliers: purchaseSuppliers.map(sanitizeEntity), purchaseItems: purchaseItems.map(sanitizeEntity), purchasePaymentMethods: purchasePaymentMethods.map(sanitizeEntity), purchaseMonths: purchaseMonths.map(sanitizeEntity), purchaseWeeks: purchaseWeeks.map(sanitizeEntity), purchaseDays: purchaseDays.map(sanitizeEntity), purchaseOrders: purchaseOrders.map(sanitizeEntity),
     };
   }
 
@@ -1147,6 +1151,7 @@ export class BackupService {
       deletedDeviceTypeMarkers: (data.deletedDeviceTypeMarkers || []).map(sanitizeEntity),
       changeLog: (data.changeLog || []).map(sanitizeEntity),
       systemSettings: (data.systemSettings || []).map(sanitizeEntity),
+      purchaseSuppliers: (data.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (data.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (data.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (data.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (data.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (data.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (data.purchaseOrders || []).map(sanitizeEntity),
       consolidationMetadata: data.consolidationMetadata
         ? sanitizeEntity(data.consolidationMetadata)
         : undefined,
