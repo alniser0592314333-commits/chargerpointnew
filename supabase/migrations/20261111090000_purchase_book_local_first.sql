@@ -1708,6 +1708,20 @@ BEGIN
                 IF COALESCE(p_payload->>'paymentStatus','UNPAID')='PAID' AND NULLIF(p_payload->>'paymentMethodId','') IS NULL THEN
                     RAISE EXCEPTION 'Payment method is required for a paid purchase' USING ERRCODE='22023';
                 END IF;
+                IF NOT EXISTS (SELECT 1 FROM public.purchase_days d WHERE d.id=(p_payload->>'purchaseDayId')::UUID AND d.is_closed IS FALSE) THEN
+                    RAISE EXCEPTION 'Purchase day is missing or closed' USING ERRCODE='P0001';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM public.purchase_suppliers s WHERE s.id=(p_payload->>'supplierId')::UUID AND s.is_active IS TRUE) THEN
+                    RAISE EXCEPTION 'Purchase supplier is missing or inactive' USING ERRCODE='P0001';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM public.purchase_items i WHERE i.id=(p_payload->>'itemId')::UUID AND i.is_active IS TRUE) THEN
+                    RAISE EXCEPTION 'Purchase item is missing or inactive' USING ERRCODE='P0001';
+                END IF;
+                IF NULLIF(p_payload->>'paymentMethodId','') IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM public.purchase_payment_methods m WHERE m.id=(p_payload->>'paymentMethodId')::UUID AND m.is_active IS TRUE
+                ) THEN
+                    RAISE EXCEPTION 'Purchase payment method is missing or inactive' USING ERRCODE='P0001';
+                END IF;
                 SELECT version INTO v_current_version FROM public.purchase_orders WHERE id=v_entity_uuid FOR UPDATE;
                 IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
                     RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
@@ -1723,6 +1737,9 @@ BEGIN
             ELSE
                 IF NULLIF(p_payload->>'paymentMethodId','') IS NULL THEN
                     RAISE EXCEPTION 'Payment method is required before marking a purchase paid' USING ERRCODE='22023';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM public.purchase_payment_methods m WHERE m.id=(p_payload->>'paymentMethodId')::UUID AND m.is_active IS TRUE) THEN
+                    RAISE EXCEPTION 'Purchase payment method is missing or inactive' USING ERRCODE='P0001';
                 END IF;
                 SELECT version INTO v_current_version FROM public.purchase_orders WHERE id=v_entity_uuid AND payment_status='UNPAID' FOR UPDATE;
                 IF NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
