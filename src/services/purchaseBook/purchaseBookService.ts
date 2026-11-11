@@ -236,11 +236,17 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
     const today=getLocalBusinessDateStr();
     const lastWeek=weeks.filter(row=>row.monthId===monthId).sort((a,b)=>b.endDate.localeCompare(a.endDate))[0];
     const nextAfterLast=lastWeek?dateString(new Date(parseDate(lastWeek.endDate).getTime()+86400000)):null;
-    // When starting a new week in the current month, anchor it to today so
-    // today's purchase day can immediately belong to the newly opened week.
-    // For historical months, continue after the last recorded week.
+    // Respect the configured week-start day (Saturday by default). If this
+    // month already has a week, continue after its end so a manual "add week"
+    // never overlaps an existing range or silently moves today's recorded day.
+    const weekStartDay=await getPurchaseWeekStartDay();
+    const current=parseDate(today);
+    current.setDate(current.getDate()-((current.getDay()-weekStartDay+7)%7));
+    const alignedCurrentStart=dateString(current)<month.startDate?month.startDate:dateString(current);
     const isCurrentMonth=today>=month.startDate&&today<=month.endDate;
-    const start=isCurrentMonth?today:(nextAfterLast || month.startDate);
+    const start=isCurrentMonth
+      ? (nextAfterLast && nextAfterLast>alignedCurrentStart ? nextAfterLast : alignedCurrentStart)
+      : (nextAfterLast || month.startDate);
     if(start>month.endDate) throw new PurchaseBookOperationError('PURCHASE_MONTH_FULL','لا توجد مساحة لبدء أسبوع جديد داخل هذا الشهر.');
     if(weeks.some(row=>row.monthId===monthId && start<=row.endDate && row.startDate<=start)) {
       throw new PurchaseBookOperationError('PURCHASE_WEEK_OVERLAP','يوجد أسبوع يغطي هذا التاريخ بالفعل.');
