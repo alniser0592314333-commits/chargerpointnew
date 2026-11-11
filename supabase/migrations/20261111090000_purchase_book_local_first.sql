@@ -1815,7 +1815,7 @@ BEGIN
   'purchase_orders',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_orders t),'[]'::jsonb)
  ));
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
@@ -1873,5 +1873,5 @@ BEGIN
     )
   );
 END;
-$function$
+$function$;
 
