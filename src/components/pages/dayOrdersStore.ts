@@ -468,6 +468,31 @@ export const applyRemoteChange = (change: {
   const entityType = change.entityType;
   const isDelete = change.action === 'DELETE' || change.action === 'TOMBSTONE';
 
+  const purchaseTypeMap: Record<string, PurchaseBookTable> = {
+    purchase_suppliers: 'suppliers', purchase_items: 'items', purchase_payment_methods: 'methods',
+    purchase_months: 'months', purchase_weeks: 'weeks', purchase_days: 'days', purchase_orders: 'orders',
+  };
+  const purchaseTable = purchaseTypeMap[entityType];
+  if (purchaseTable) {
+    const localKey = purchaseTableKeys[purchaseTable];
+    if (isDelete) {
+      purchaseMaps[purchaseTable].delete(change.entityId);
+      localDb.removeWithTx(tx as any, localKey, change.entityId);
+    } else {
+      const base = { id: p.id || change.entityId, createdAt: p.createdAt || p.created_at || new Date().toISOString(), updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(), version: Number(change.version ?? p.version ?? 1) };
+      let entity: PurchaseBookEntity;
+      if (purchaseTable === 'suppliers' || purchaseTable === 'items' || purchaseTable === 'methods') entity = { ...base, name: p.name, isActive: Boolean(p.isActive ?? p.is_active ?? true), deletedAt: p.deletedAt ?? p.deleted_at ?? undefined } as PurchaseCatalogEntity;
+      else if (purchaseTable === 'months') entity = { ...base, year: Number(p.year), month: Number(p.month ?? p.monthNumber ?? p.month_number), startDate: p.startDate || p.start_date, endDate: p.endDate || p.end_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseMonthEntity;
+      else if (purchaseTable === 'weeks') entity = { ...base, monthId: p.monthId || p.month_id, startDate: p.startDate || p.start_date, endDate: p.endDate || p.end_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseWeekEntity;
+      else if (purchaseTable === 'days') entity = { ...base, weekId: p.weekId || p.week_id, purchaseDate: p.purchaseDate || p.purchase_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseDayEntity;
+      else entity = { ...base, purchaseDayId: p.purchaseDayId || p.purchase_day_id, supplierId: p.supplierId || p.supplier_id, itemId: p.itemId || p.item_id, paymentMethodId: p.paymentMethodId || p.payment_method_id || undefined, amountMinor: Number(p.amountMinor ?? p.amount_minor), currency: p.currency, paymentStatus: p.paymentStatus || p.payment_status, purchasedAt: p.purchasedAt || p.purchased_at || base.createdAt, paidAt: p.paidAt || p.paid_at || undefined } as PurchaseOrderEntity;
+      purchaseMaps[purchaseTable].set(entity.id, entity);
+      localDb.setWithTx(tx, localKey, entity.id, entity);
+    }
+    notifyStoreAfterTransaction('purchaseBook', change.entityId, tx);
+    return;
+  }
+
   if (entityType === 'system_settings') {
     const key = String(p.key || '');
     const designType: QRDesignType | null =
@@ -1425,7 +1450,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const remoteReads = [
       daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes,
       reservationsRes, qrTokensRes, goalsRes, goalRequestsRes,
-      purchaseSuppliersRes, purchaseItemsRes, purchaseMethodsRes, purchaseMonthsRes, purchaseDaysRes, purchaseOrdersRes,
+      purchaseSuppliersRes, purchaseItemsRes, purchaseMethodsRes, purchaseMonthsRes, purchaseWeeksRes, purchaseDaysRes, purchaseOrdersRes,
     ];
     const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
     if (failedRemoteRead) {
@@ -2590,10 +2615,19 @@ function createTransactionalRepoContext(
               ? 'goal_requests'
               : type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
               ? 'financial_ledger'
+              : type === 'SAVE_PURCHASE_SUPPLIER' ? 'purchase_suppliers'
+              : type === 'SAVE_PURCHASE_ITEM' ? 'purchase_items'
+              : type === 'SAVE_PURCHASE_PAYMENT_METHOD' ? 'purchase_payment_methods'
+              : type === 'SAVE_PURCHASE_MONTH' ? 'purchase_months'
+              : type === 'SAVE_PURCHASE_WEEK' ? 'purchase_weeks'
+              : type === 'SAVE_PURCHASE_DAY' ? 'purchase_days'
+              : type === 'SAVE_PURCHASE_ORDER' || type === 'MARK_PURCHASE_ORDER_PAID' ? 'purchase_orders'
               : 'COMMAND',
           aggregateId,
           mutationKey:
-            type === 'RENUMBER_DAY_ORDERS'
+            type.startsWith('SAVE_PURCHASE_') || type === 'MARK_PURCHASE_ORDER_PAID'
+              ? `purchase:${aggregateId}`
+              : type === 'RENUMBER_DAY_ORDERS'
               ? `renumber-day:${payloadRecord.dayId || aggregateId}`
               : type === 'ADD_ORDER_ITEM' || type === 'UPDATE_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
                 ? `order:${payloadRecord.orderId || aggregateId}`
@@ -3342,6 +3376,7 @@ export const repoContext: RepositoryContext = {
       const snapReservations = cloneForTransactionRollback(new Map(reservationsMap));
       const snapGoals = cloneForTransactionRollback(new Map(goalsMap));
       const snapGoalRequests = cloneForTransactionRollback(new Map(goalRequestsMap));
+      const snapPurchase = Object.fromEntries(Object.entries(purchaseMaps).map(([key,map]) => [key, cloneForTransactionRollback(new Map(map))])) as Record<PurchaseBookTable, Map<string, PurchaseBookEntity>>;
       const snapLedger = cloneForTransactionRollback(ledgerList);
       const snapAllocations = cloneForTransactionRollback(allocationsList);
 
@@ -3356,6 +3391,7 @@ export const repoContext: RepositoryContext = {
         reservationsMap.clear(); for (const [k, v] of snapReservations) reservationsMap.set(k, cloneForTransactionRollback(v));
         goalsMap.clear(); for (const [k, v] of snapGoals) goalsMap.set(k, cloneForTransactionRollback(v));
         goalRequestsMap.clear(); for (const [k, v] of snapGoalRequests) goalRequestsMap.set(k, cloneForTransactionRollback(v));
+        (Object.keys(purchaseMaps) as PurchaseBookTable[]).forEach((key) => { purchaseMaps[key].clear(); for (const [id, value] of snapPurchase[key]) purchaseMaps[key].set(id, cloneForTransactionRollback(value)); });
         ledgerList.length = 0; ledgerList.push(...cloneForTransactionRollback(snapLedger));
         allocationsList.length = 0; allocationsList.push(...cloneForTransactionRollback(snapAllocations));
       };
