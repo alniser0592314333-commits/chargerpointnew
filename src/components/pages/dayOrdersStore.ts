@@ -1465,14 +1465,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const qrTokensRes = { data: snapshot.qr_tokens as any[], error: null };
     const goalsRes = { data: snapshot.goals as any[], error: null };
     const goalRequestsRes = { data: snapshot.goal_requests as any[], error: null };
-    const systemSettingsRes = { data: snapshot.system_settings as any[], error: null };
-    const purchaseSuppliersRes = { data: snapshot.purchase_suppliers as any[], error: null };
-    const purchaseItemsRes = { data: snapshot.purchase_items as any[], error: null };
+    const systemSettingsRes = { data: Array.isArray(snapshot.system_settings) ? snapshot.system_settings as any[] : [], error: null };
+    const purchaseSuppliersRes = { data: Array.isArray(snapshot.purchase_suppliers) ? snapshot.purchase_suppliers as any[] : [], error: null };
+    const purchaseItemsRes = { data: Array.isArray(snapshot.purchase_items) ? snapshot.purchase_items as any[] : [], error: null };
     const purchaseMethodsRes = { data: snapshot.purchase_payment_methods as any[], error: null };
-    const purchaseMonthsRes = { data: snapshot.purchase_months as any[], error: null };
-    const purchaseWeeksRes = { data: snapshot.purchase_weeks as any[], error: null };
-    const purchaseDaysRes = { data: snapshot.purchase_days as any[], error: null };
-    const purchaseOrdersRes = { data: snapshot.purchase_orders as any[], error: null };
+    const purchaseMonthsRes = { data: Array.isArray(snapshot.purchase_months) ? snapshot.purchase_months as any[] : [], error: null };
+    const purchaseWeeksRes = { data: Array.isArray(snapshot.purchase_weeks) ? snapshot.purchase_weeks as any[] : [], error: null };
+    const purchaseDaysRes = { data: Array.isArray(snapshot.purchase_days) ? snapshot.purchase_days as any[] : [], error: null };
+    const purchaseOrdersRes = { data: Array.isArray(snapshot.purchase_orders) ? snapshot.purchase_orders as any[] : [], error: null };
     const remoteReads = [
       daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes,
       reservationsRes, qrTokensRes, goalsRes, goalRequestsRes, systemSettingsRes,
