@@ -1619,6 +1619,9 @@ BEGIN
 
             IF p_command_type = 'SAVE_PURCHASE_SUPPLIER' THEN
                 SELECT version INTO v_current_version FROM public.purchase_suppliers WHERE id=v_entity_uuid FOR UPDATE;
+                IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     INSERT INTO public.purchase_suppliers(id,name,is_active,deleted_at,version)
                     VALUES(v_entity_uuid,TRIM(p_payload->>'name'),COALESCE((p_payload->>'isActive')::BOOLEAN,TRUE),(p_payload->>'deletedAt')::TIMESTAMPTZ,1);
@@ -1629,6 +1632,9 @@ BEGIN
                 PERFORM public.record_canonical_change('purchase_suppliers',v_entity_uuid,CASE WHEN v_current_version=1 THEN 'INSERT' ELSE 'UPDATE' END,p_payload,v_current_version);
             ELSIF p_command_type = 'SAVE_PURCHASE_ITEM' THEN
                 SELECT version INTO v_current_version FROM public.purchase_items WHERE id=v_entity_uuid FOR UPDATE;
+                IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     INSERT INTO public.purchase_items(id,name,is_active,deleted_at,version)
                     VALUES(v_entity_uuid,TRIM(p_payload->>'name'),COALESCE((p_payload->>'isActive')::BOOLEAN,TRUE),(p_payload->>'deletedAt')::TIMESTAMPTZ,1);
@@ -1639,6 +1645,9 @@ BEGIN
                 PERFORM public.record_canonical_change('purchase_items',v_entity_uuid,CASE WHEN v_current_version=1 THEN 'INSERT' ELSE 'UPDATE' END,p_payload,v_current_version);
             ELSIF p_command_type = 'SAVE_PURCHASE_PAYMENT_METHOD' THEN
                 SELECT version INTO v_current_version FROM public.purchase_payment_methods WHERE id=v_entity_uuid FOR UPDATE;
+                IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     INSERT INTO public.purchase_payment_methods(id,name,is_active,deleted_at,version)
                     VALUES(v_entity_uuid,TRIM(p_payload->>'name'),COALESCE((p_payload->>'isActive')::BOOLEAN,TRUE),(p_payload->>'deletedAt')::TIMESTAMPTZ,1);
@@ -1649,6 +1658,9 @@ BEGIN
                 PERFORM public.record_canonical_change('purchase_payment_methods',v_entity_uuid,CASE WHEN v_current_version=1 THEN 'INSERT' ELSE 'UPDATE' END,p_payload,v_current_version);
             ELSIF p_command_type = 'SAVE_PURCHASE_MONTH' THEN
                 SELECT version INTO v_current_version FROM public.purchase_months WHERE id=v_entity_uuid FOR UPDATE;
+                IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     INSERT INTO public.purchase_months(id,year,month_number,start_date,end_date,is_closed,version)
                     VALUES(v_entity_uuid,(p_payload->>'year')::INTEGER,(p_payload->>'month')::INTEGER,(p_payload->>'startDate')::DATE,(p_payload->>'endDate')::DATE,COALESCE((p_payload->>'isClosed')::BOOLEAN,FALSE),1);
@@ -1659,6 +1671,9 @@ BEGIN
                 PERFORM public.record_canonical_change('purchase_months',v_entity_uuid,CASE WHEN v_current_version=1 THEN 'INSERT' ELSE 'UPDATE' END,p_payload,v_current_version);
             ELSIF p_command_type = 'SAVE_PURCHASE_WEEK' THEN
                 SELECT version INTO v_current_version FROM public.purchase_weeks WHERE id=v_entity_uuid FOR UPDATE;
+                IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     INSERT INTO public.purchase_weeks(id,month_id,start_date,end_date,is_closed,version)
                     VALUES(v_entity_uuid,(p_payload->>'monthId')::UUID,(p_payload->>'startDate')::DATE,(p_payload->>'endDate')::DATE,COALESCE((p_payload->>'isClosed')::BOOLEAN,FALSE),1);
@@ -1669,6 +1684,9 @@ BEGIN
                 PERFORM public.record_canonical_change('purchase_weeks',v_entity_uuid,CASE WHEN v_current_version=1 THEN 'INSERT' ELSE 'UPDATE' END,p_payload,v_current_version);
             ELSIF p_command_type = 'SAVE_PURCHASE_DAY' THEN
                 SELECT version INTO v_current_version FROM public.purchase_days WHERE id=v_entity_uuid FOR UPDATE;
+                IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     INSERT INTO public.purchase_days(id,week_id,purchase_date,is_closed,version)
                     VALUES(v_entity_uuid,(p_payload->>'weekId')::UUID,(p_payload->>'purchaseDate')::DATE,COALESCE((p_payload->>'isClosed')::BOOLEAN,FALSE),1);
@@ -1691,6 +1709,9 @@ BEGIN
                     RAISE EXCEPTION 'Payment method is required for a paid purchase' USING ERRCODE='22023';
                 END IF;
                 SELECT version INTO v_current_version FROM public.purchase_orders WHERE id=v_entity_uuid FOR UPDATE;
+                IF v_current_version IS NOT NULL AND NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase entity version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     INSERT INTO public.purchase_orders(id,purchase_day_id,supplier_id,item_id,payment_method_id,amount_minor,currency,payment_status,purchased_at,paid_at,version)
                     VALUES(v_entity_uuid,(p_payload->>'purchaseDayId')::UUID,(p_payload->>'supplierId')::UUID,(p_payload->>'itemId')::UUID,NULLIF(p_payload->>'paymentMethodId','')::UUID,(p_payload->>'amountMinor')::BIGINT,p_payload->>'currency',COALESCE(p_payload->>'paymentStatus','UNPAID'),COALESCE((p_payload->>'purchasedAt')::TIMESTAMPTZ,NOW()),(p_payload->>'paidAt')::TIMESTAMPTZ,1);
@@ -1704,6 +1725,9 @@ BEGIN
                     RAISE EXCEPTION 'Payment method is required before marking a purchase paid' USING ERRCODE='22023';
                 END IF;
                 SELECT version INTO v_current_version FROM public.purchase_orders WHERE id=v_entity_uuid AND payment_status='UNPAID' FOR UPDATE;
+                IF NULLIF(p_payload->>'expectedVersion','') IS NOT NULL AND v_current_version <> (p_payload->>'expectedVersion')::INTEGER THEN
+                    RAISE EXCEPTION 'VERSION_CONFLICT [409]: Purchase order version mismatch' USING ERRCODE='P0409';
+                END IF;
                 IF v_current_version IS NULL THEN
                     RAISE EXCEPTION 'Purchase order not found or already paid' USING ERRCODE='P0001';
                 END IF;
