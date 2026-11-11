@@ -3,6 +3,7 @@ import {
   PurchaseWeekEntity, PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
 } from '../../domain/models';
 import { repoContext, ensureStoreHydrated } from '../../components/pages/dayOrdersStore';
+import { RepositoryContext } from '../../application/useCases';
 import { localDb } from '../../infrastructure/localDb/localDb';
 import { recordSyncDiagnosticEvent } from '../../infrastructure/sync/syncDiagnosticJournal';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
@@ -43,14 +44,14 @@ function commandTypeFor(table: PurchaseBookTable): string {
     : 'SAVE_PURCHASE_ORDER';
 }
 
-async function saveInTransaction(
-  ctx: Parameters<Parameters<typeof repoContext.transactionManager.runInTransaction>[0]>[0],
+function saveInTransaction(
+  ctx: RepositoryContext,
   table: PurchaseBookTable,
   entity: PurchaseBookEntity,
   previous?: PurchaseBookEntity,
   forcedCommand?: string,
   forcedPayload?: Record<string, unknown>,
-): Promise<void> {
+): void {
   ctx.purchaseRepo.save(table, entity);
   const type = forcedCommand || commandTypeFor(table);
   ctx.commandRepo.record(
@@ -102,8 +103,8 @@ export async function savePurchaseCatalog(
       id:existing?.id || uuid(), name:cleanName, isActive:true, deletedAt:undefined,
       createdAt:existing?.createdAt || timestamp, updatedAt:timestamp, version:(existing?.version || 0)+1,
     };
-    await repoContext.transactionManager.runInTransaction(async (ctx) => {
-      await saveInTransaction(ctx,table,entity,existing);
+    await repoContext.transactionManager.runInTransaction((ctx) => {
+      saveInTransaction(ctx,table,entity,existing);
     });
     return entity;
   });
@@ -112,17 +113,17 @@ export async function savePurchaseCatalog(
 export async function hidePurchaseCatalog(table:'suppliers'|'items'|'methods', entity:PurchaseCatalogEntity):Promise<void>{
   return runPurchaseOperation('إخفاء الإضافة',async()=>{
     const updated:PurchaseCatalogEntity={...entity,isActive:false,deletedAt:nowIso(),updatedAt:nowIso(),version:entity.version+1};
-    await repoContext.transactionManager.runInTransaction(async(ctx)=>{
-      await saveInTransaction(ctx,table,updated,entity);
+    await repoContext.transactionManager.runInTransaction((ctx)=>{
+      saveInTransaction(ctx,table,updated,entity);
     });
   });
 }
 
 async function getWeekStartDay():Promise<number>{
-  const localValue=typeof localStorage!=='undefined'?localStorage.getItem('purchase_week_start_day'):null;
-  if(localValue!==null && Number.isInteger(Number(localValue)) && Number(localValue)>=0 && Number(localValue)<=6) return Number(localValue);
   const setting=await localDb.get<any>('system_settings','purchase_week_start_day');
   const raw=setting?.valueString ?? setting?.value_string;
+  if(raw!==undefined && Number.isInteger(Number(raw)) && Number(raw)>=0 && Number(raw)<=6) return Number(raw);
+  const localValue=typeof localStorage!=='undefined'?localStorage.getItem('purchase_week_start_day'):null;
   return raw!==undefined && Number.isInteger(Number(raw)) ? Number(raw) : 6;
 }
 
@@ -130,7 +131,7 @@ export async function setPurchaseWeekStartDay(day:number):Promise<void>{
   return runPurchaseOperation('تغيير بداية الأسبوع',async()=>{
     if(!Number.isInteger(day)||day<0||day>6) throw new PurchaseBookOperationError('PURCHASE_WEEK_START_INVALID','يوم بداية الأسبوع غير صالح.');
     if(typeof localStorage!=='undefined') localStorage.setItem('purchase_week_start_day',String(day));
-    await repoContext.transactionManager.runInTransaction(async(ctx)=>{
+    await repoContext.transactionManager.runInTransaction((ctx)=>{
       ctx.commandRepo.record(uuid(),'SET_SYSTEM_SETTING',{
         key:'purchase_week_start_day',valueType:'string',valueString:String(day),entityId:'purchase_week_start_day',
       });
@@ -188,14 +189,14 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
     id:stableCalendarId(`purchase-day:${date}`),weekId:targetWeek.id,purchaseDate:date,isClosed:false,
     createdAt:timestamp,updatedAt:timestamp,version:1,
   };
-  await repoContext.transactionManager.runInTransaction(async(ctx)=>{
-    if(!months.some(row=>row.id===monthId)) await saveInTransaction(ctx,'months',existingMonth as PurchaseMonthEntity);
+  await repoContext.transactionManager.runInTransaction((ctx)=>{
+    if(!months.some(row=>row.id===monthId)) saveInTransaction(ctx,'months',existingMonth as PurchaseMonthEntity);
     for(const week of openWeeks){
       const closed={...week,isClosed:true,updatedAt:timestamp,version:week.version+1};
-      await saveInTransaction(ctx,'weeks',closed,week);
+      saveInTransaction(ctx,'weeks',closed,week);
     }
-    if(!weeks.some(row=>row.id===targetWeek!.id)) await saveInTransaction(ctx,'weeks',targetWeek as PurchaseWeekEntity);
-    await saveInTransaction(ctx,'days',day);
+    if(!weeks.some(row=>row.id===targetWeek!.id)) saveInTransaction(ctx,'weeks',targetWeek as PurchaseWeekEntity);
+    saveInTransaction(ctx,'days',day);
   });
   return day;
 }
@@ -224,12 +225,20 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
       id:stableCalendarId(`purchase-week:${monthId}:${start}`),monthId,startDate:start,endDate:month.endDate,isClosed:false,
       createdAt:timestamp,updatedAt:timestamp,version:1,
     };
-    await repoContext.transactionManager.runInTransaction(async(ctx)=>{
-      for(const old of openWeeks) await saveInTransaction(ctx,'weeks',{...old,isClosed:true,updatedAt:timestamp,version:old.version+1},old);
+    await repoContext.transactionManager.runInTransaction((ctx)=>{
+      for(const old of openWeeks) saveInTransaction(ctx,'weeks',{...old,isClosed:true,updatedAt:timestamp,version:old.version+1},old);
       const existing=weeks.find(row=>row.id===week.id);
-      if(!existing) await saveInTransaction(ctx,'weeks',week);
+      if(!existing) saveInTransaction(ctx,'weeks',week);
     });
     return week;
+  });
+}
+
+export async function getCurrentPurchaseDay():Promise<PurchaseDayEntity|null>{
+  return runPurchaseOperation('التحقق من يوم المشتريات الحالي',async()=>{
+    const today=getLocalBusinessDateStr();
+    const days=await repoContext.purchaseRepo.findAll('days') as PurchaseDayEntity[];
+    return days.find(day=>day.purchaseDate===today) || null;
   });
 }
 
@@ -242,15 +251,16 @@ export async function addPurchaseOrder(input:{
     const precision=input.currency==='JOD'?1000:100;
     const amountMinor=Math.round(input.amount*precision);
     const purchasedAt=nowIso();
-    const day=await createCalendarDay(getLocalBusinessDateStr());
-    if(!day) throw new PurchaseBookOperationError('PURCHASE_DAY_REQUIRED','لا يوجد يوم حالي. أنشئ اليوم أولاً.');
+    const days=await repoContext.purchaseRepo.findAll('days') as PurchaseDayEntity[];
+    const day=days.find(row=>row.purchaseDate===getLocalBusinessDateStr());
+    if(!day) throw new PurchaseBookOperationError('PURCHASE_DAY_MISSING','لا يوجد يوم حالي. أنشئ اليوم ثم أعد إضافة الطلب.');
     const order:PurchaseOrderEntity={
       id:uuid(),purchaseDayId:day.id,supplierId:input.supplierId,itemId:input.itemId,paymentMethodId:input.paymentMethodId,
       amountMinor,currency:input.currency,paymentStatus:input.paymentStatus,purchasedAt,
       paidAt:input.paymentStatus==='PAID'?purchasedAt:undefined,createdAt:purchasedAt,updatedAt:purchasedAt,version:1,
     };
-    await repoContext.transactionManager.runInTransaction(async(ctx)=>{
-      await saveInTransaction(ctx,'orders',order);
+    await repoContext.transactionManager.runInTransaction((ctx)=>{
+      saveInTransaction(ctx,'orders',order);
     });
     return order;
   });
@@ -262,8 +272,8 @@ export async function markPurchaseOrderPaid(order:PurchaseOrderEntity,paymentMet
     if(!method) throw new PurchaseBookOperationError('PURCHASE_METHOD_REQUIRED','اختر طريقة الدفع قبل تحويل الطلب إلى مدفوع.');
     if(order.paymentStatus==='PAID') return order;
     const updated:PurchaseOrderEntity={...order,paymentMethodId:method,paymentStatus:'PAID',paidAt:nowIso(),updatedAt:nowIso(),version:order.version+1};
-    await repoContext.transactionManager.runInTransaction(async(ctx)=>{
-      await saveInTransaction(ctx,'orders',updated,order,'MARK_PURCHASE_ORDER_PAID',{id:order.id,paymentMethodId:method});
+    await repoContext.transactionManager.runInTransaction((ctx)=>{
+      saveInTransaction(ctx,'orders',updated,order,'MARK_PURCHASE_ORDER_PAID',{id:order.id,paymentMethodId:method});
     });
     return updated;
   });
