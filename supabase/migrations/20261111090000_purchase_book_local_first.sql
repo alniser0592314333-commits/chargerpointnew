@@ -1788,6 +1788,7 @@ BEGIN
   'qr_tokens',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.qr_tokens t),'[]'::jsonb),
   'goals',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.goals t),'[]'::jsonb),
   'goal_requests',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.goal_requests t),'[]'::jsonb),
+  'system_settings',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.key) FROM public.system_settings t),'[]'::jsonb),
   'purchase_suppliers',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_suppliers t),'[]'::jsonb),
   'purchase_items',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_items t),'[]'::jsonb),
   'purchase_payment_methods',COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_payment_methods t),'[]'::jsonb),
