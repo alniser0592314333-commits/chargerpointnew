@@ -1775,7 +1775,7 @@ BEGIN
         'serverProcessedAt', NOW()
     );
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
  RETURNS jsonb
