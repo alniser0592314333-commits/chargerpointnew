@@ -130,7 +130,7 @@ export async function hidePurchaseCatalog(table:'suppliers'|'items'|'methods', e
 }
 
 export async function getPurchaseWeekStartDay():Promise<number>{
-  const setting=await localDb.get<any>('system_settings','purchase_week_start_day');
+  const setting=await localDb.get<any>('system_settings','purchase_week_start_day') || await localDb.get<any>('systemSettings','purchase_week_start_day');
   const raw=setting?.valueString ?? setting?.value_string;
   if(raw!==undefined && Number.isInteger(Number(raw)) && Number(raw)>=0 && Number(raw)<=6) return Number(raw);
   const localValue=typeof localStorage!=='undefined'?localStorage.getItem('purchase_week_start_day'):null;
