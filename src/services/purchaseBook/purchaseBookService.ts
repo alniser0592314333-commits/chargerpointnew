@@ -52,7 +52,7 @@ function saveInTransaction(
   forcedCommand?: string,
   forcedPayload?: Record<string, unknown>,
 ): void {
-  ctx.purchaseRepo.save(table, entity);
+  ctx.purchaseRepo!.save(table, entity);
   const type = forcedCommand || commandTypeFor(table);
   ctx.commandRepo.record(
     previous ? uuid() : entity.id,
