@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Plus, CalendarDays, X, ChevronDown, Settings2, Pencil, EyeOff, CircleAlert } from 'lucide-react';
 import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
@@ -21,6 +22,18 @@ const localToday = () => {
 };
 const timeLabel = (value:string) => new Date(value).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'});
 const dateLabel = (value:string) => new Date(value+'T12:00:00').toLocaleDateString('ar',{day:'numeric',month:'long',year:'numeric'});
+
+type CollapsibleBlockProps = { header: ReactNode; defaultOpen?: boolean; className?: string; children: ReactNode };
+const CollapsibleBlock:React.FC<CollapsibleBlockProps> = ({header,defaultOpen=false,className='',children}) => {
+  const [open,setOpen]=useState(defaultOpen);
+  return <section className={className}>
+    <button type="button" aria-expanded={open} onClick={()=>setOpen(value=>!value)} className="w-full text-start flex items-center justify-between gap-3">
+      <span className="min-w-0 flex-1">{header}</span>
+      <ChevronDown className={`w-4 h-4 shrink-0 text-gray-400 transition-transform ${open?'rotate-180':''}`}/>
+    </button>
+    {open&&<div>{children}</div>}
+  </section>;
+};
 
 interface PurchaseBookPageProps { supplierId?: string; onNavigate?: (path:string)=>void; }
 
@@ -158,16 +171,13 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const periodOrders=(day:PurchaseDayEntity)=>supplierOrders.filter(o=>o.purchaseDayId===day.id);
   const isCurrentDay=(day:PurchaseDayEntity)=>day.purchaseDate===today;
   const renderDay=(day:PurchaseDayEntity)=>(
-    <details key={day.id} open={isCurrentDay(day)} className="rounded-lg border border-gray-100 dark:border-[#123d37] px-3 sm:px-4">
-      <summary className="cursor-pointer list-none py-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-emerald-700 dark:text-emerald-300"/><span className="text-xs font-bold">{dateLabel(day.purchaseDate)}</span>{isCurrentDay(day)&&<span className="text-[10px] rounded-full bg-emerald-50 text-emerald-700 px-2 py-1 dark:bg-[#123d37] dark:text-emerald-200">اليوم</span>}</div>
-        <div className="flex items-center gap-3"><span className="text-xs font-mono text-gray-500">{summaryRows(totalsFor(periodOrders(day))).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span><ChevronDown className="w-4 h-4 text-gray-400"/></div>
-      </summary>
+    <CollapsibleBlock key={day.id} defaultOpen={isCurrentDay(day)} className="rounded-lg border border-gray-100 dark:border-[#123d37] px-3 sm:px-4"
+      header={<div className="py-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-emerald-700 dark:text-emerald-300"/><span className="text-xs font-bold">{dateLabel(day.purchaseDate)}</span>{isCurrentDay(day)&&<span className="text-[10px] rounded-full bg-emerald-50 text-emerald-700 px-2 py-1 dark:bg-[#123d37] dark:text-emerald-200">اليوم</span>}</div><span className="text-xs font-mono text-gray-500">{summaryRows(totalsFor(periodOrders(day))).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></div>}>
       <div className="pb-3">
-        {periodOrders(day).sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard)}
+        {periodOrders(day).slice().sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard)}
         {!supplierId&&isCurrentDay(day)&&<button onClick={openOrderForm} className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-300"><Plus className="w-4 h-4"/>إضافة طلب</button>}
       </div>
-    </details>
+    </CollapsibleBlock>
   );
 
   return (
@@ -214,21 +224,21 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
             const monthWeeks=weeks.filter(w=>w.monthId===month.id).sort((a,b)=>b.startDate.localeCompare(a.startDate));
             const monthOrders=supplierOrders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
             const monthTotal=totalsFor(monthOrders);
-            return <details key={month.id} open={month.startDate.slice(0,7)===today.slice(0,7)} className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] overflow-hidden">
-              <summary className="cursor-pointer list-none p-4 flex items-center justify-between gap-3"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-xs font-mono text-gray-500">{summaryRows(monthTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</div></summary>
+            return <CollapsibleBlock key={month.id} defaultOpen={month.startDate.slice(0,7)===today.slice(0,7)} className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] overflow-hidden"
+              header={<div className="p-4 flex items-center justify-between gap-3"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-xs font-mono text-gray-500">{summaryRows(monthTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</div></div>}>
               <div className="px-3 sm:px-4 pb-4 space-y-3">
                 {!supplierId&&<div className="flex justify-end"><button onClick={()=>createPurchaseWeek(month.id).then(reload).catch(e=>setError(e.message))} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>إضافة أسبوع</button></div>}
                 {monthWeeks.map(week=>{
                   const weekDays=days.filter(d=>d.weekId===week.id).sort((a,b)=>b.purchaseDate.localeCompare(a.purchaseDate));
                   const weekOrders=supplierOrders.filter(o=>weekDays.some(d=>d.id===o.purchaseDayId));
                   const weekTotal=totalsFor(weekOrders);
-                  return <details key={week.id} open={weekDays.some(isCurrentDay)} className="rounded-lg border border-gray-100 dark:border-[#123d37] p-3">
-                    <summary className="cursor-pointer list-none flex items-center justify-between gap-3 py-1"><span className="text-xs font-bold">الأسبوع {dateLabel(week.startDate)} — {dateLabel(week.endDate)}{week.isClosed?' • مغلق':''}</span><span className="text-[11px] font-mono text-gray-500">{summaryRows(weekTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></summary>
+                  return <CollapsibleBlock key={week.id} defaultOpen={weekDays.some(isCurrentDay)} className="rounded-lg border border-gray-100 dark:border-[#123d37] p-3"
+                    header={<div className="flex items-center justify-between gap-3 py-1"><span className="text-xs font-bold">الأسبوع {dateLabel(week.startDate)} — {dateLabel(week.endDate)}{week.isClosed?' • مغلق':''}</span><span className="text-[11px] font-mono text-gray-500">{summaryRows(weekTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></div>}>
                     <div className="pt-3 space-y-2">{weekDays.map(renderDay)}</div>
-                  </details>;
+                  </CollapsibleBlock>;
                 })}
               </div>
-            </details>;
+            </CollapsibleBlock>;
           })}
         </section>
       </>}
