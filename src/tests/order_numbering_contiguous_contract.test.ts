@@ -79,4 +79,17 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(preview).toContain('getEffectiveOrderItemReadModel()');
   });
 
+
+  it('notifies only the originating device when an offline create receives a replacement number', () => {
+    const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
+    const store = fs.readFileSync(storePath, 'utf8');
+    const appPath = path.resolve(process.cwd(), 'src/App.tsx');
+    const app = fs.readFileSync(appPath, 'utf8');
+    expect(store).toContain("change.action === 'INSERT'");
+    expect(store).toContain("type: 'order_number_reassigned'");
+    expect(store).toContain("transaction.addEventListener('complete', emitReassignment");
+    expect(app).toContain('function SyncOrderNumberNotice()');
+    expect(app).toContain("showToast(message, 'info')");
+  });
+
 });
