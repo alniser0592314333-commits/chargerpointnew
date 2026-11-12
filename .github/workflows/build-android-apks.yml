@@ -570,31 +570,33 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
           path = Path("android/app/build.gradle")
           if not path.is_file():
               raise SystemExit("Android app Gradle file is missing after Capacitor sync")
-          source = path.read_text()
-          match = re.search(r"(?m)^([ \t]*)defaultConfig[ \t]*\\{", source)
-          if not match:
+          lines = path.read_text().splitlines()
+          start = next((i for i, line in enumerate(lines) if line.strip() == "defaultConfig {"), None)
+          if start is None:
               raise SystemExit("Could not locate Android defaultConfig block")
-          start = match.end()
-          next_block = source.find("\\n    }", start)
-          if next_block < 0:
+          indent = len(lines[start]) - len(lines[start].lstrip())
+          end = next((i for i in range(start + 1, len(lines)) if lines[i].strip() == "}" and len(lines[i]) - len(lines[i].lstrip()) == indent), None)
+          if end is None:
               raise SystemExit("Could not locate end of Android defaultConfig block")
-          block = source[start:next_block]
-          if re.search(r"(?m)^\\s*versionCode\\s+", block):
-              block = re.sub(r"(?m)^(\\s*versionCode\\s+)\\d+", r"\\g<1>1003005", block, count=1)
-          else:
-              block += "\\n        versionCode 1003005"
-          if re.search(r"(?m)^\\s*versionName\\s+", block):
-              block = re.sub(r"(?m)^(\\s*versionName\\s+)[^\\n]+", r'\\g<1>"1.3.5"', block, count=1)
-          else:
-              block += '\\n        versionName "1.3.5"'
-          source = source[:start] + block + source[next_block:]
-          path.write_text(source)
-          if "versionCode 1003005" not in source or 'versionName "1.3.5"' not in source:
-              raise SystemExit("Android version verification failed")
+          block = lines[start + 1:end]
+          found_code = found_name = False
+          for i, line in enumerate(block):
+              stripped = line.strip()
+              if stripped.startswith("versionCode "):
+                  block[i] = "        versionCode 1003005"
+                  found_code = True
+              elif stripped.startswith("versionName "):
+                  block[i] = '        versionName "1.3.5"'
+                  found_name = True
+          if not found_code:
+              block.append("        versionCode 1003005")
+          if not found_name:
+              block.append('        versionName "1.3.5"')
+          lines[start + 1:end] = block
+          path.write_text("\\n".join(lines) + "\\n")
           print("Verified Android versionName=1.3.5 and versionCode=1003005")
           PY
 
