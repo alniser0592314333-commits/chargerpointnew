@@ -3,6 +3,7 @@ import { createUsernameSignInHandler } from "./handler.ts";
 
 const validEnv: Record<string, string> = {
   SUPABASE_URL: "https://project.example",
+  SUPABASE_ANON_KEY: "sb_publishable_test_only",
   auth_supabase_secret_key: "sb_secret_test_only",
   username_signin_rate_limit_secret: "x".repeat(40),
 };
@@ -167,6 +168,8 @@ Deno.test("successful username sign-in returns the Auth session only after Auth 
   assertEquals(calls.auth, 1);
   assertEquals(calls.authBody?.email, "private-admin@example.test");
   assertEquals(calls.authBody?.password, "correct horse");
+  assertEquals(calls.authHeaders.get("apikey"), "sb_publishable_test_only");
+  assertEquals(calls.authHeaders.get("apikey") === "sb_secret_test_only", false);
   assertEquals(body.session.access_token, "test-access-token");
   assertEquals(body.error, null);
 });
