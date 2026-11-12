@@ -328,34 +328,38 @@ SELECT public.execute_canonical_sync_command(
 );
 RESET ROLE;
 
--- A previously issued number must fail; it must never be reused.
+-- A stale offline reservation is reassigned above the durable high-water mark.
+-- The already accepted order keeps its number; the incoming offline order receives #7.
 SET ROLE authenticated;
-DO $stale_number$
-DECLARE rejected_as_conflict boolean := FALSE;
+SELECT public.execute_canonical_sync_command(
+  'cccccccc-1111-4111-8111-111111111111'::uuid,
+  'CREATE_ORDER',
+  jsonb_build_object(
+    'id', 'cccccccc-2222-4222-8222-222222222222',
+    'dayId', '33333333-3333-4333-8333-333333333333',
+    'customerId', '99999999-9999-4999-8999-999999999999',
+    'displayNumber', 5,
+    'notes', 'stale offline reservation must be reassigned'
+  )
+);
+RESET ROLE;
+
+DO $reassigned_number$
 BEGIN
-  BEGIN
-    PERFORM public.execute_canonical_sync_command(
-      'cccccccc-1111-4111-8111-111111111111'::uuid,
-      'CREATE_ORDER',
-      jsonb_build_object(
-        'id', 'cccccccc-2222-4222-8222-222222222222',
-        'dayId', '33333333-3333-4333-8333-333333333333',
-        'customerId', '99999999-9999-4999-8999-999999999999',
-        'displayNumber', 5,
-        'notes', 'previously issued number must not be reused'
-      )
-    );
-  EXCEPTION WHEN SQLSTATE 'P0409' THEN
-    rejected_as_conflict := TRUE;
-  END;
-  IF NOT rejected_as_conflict THEN
-    RAISE EXCEPTION 'A stale number was silently accepted or reassigned instead of returning a conflict';
+  IF NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'cccccccc-2222-4222-8222-222222222222' AND display_number = 7
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.business_day_order_sequences
+    WHERE day_id = '33333333-3333-4333-8333-333333333333' AND last_assigned_number = 7
+  ) THEN
+    RAISE EXCEPTION 'Stale offline order was not assigned the next never-issued number';
   END IF;
 END;
-$stale_number$;
+$reassigned_number$;
 
--- Explicit renumbering releases numbers no longer assigned to any order.
--- Here order #6 is renumbered to #5, so the next new order must receive #6 again.
+-- Explicit renumbering compacts all current orders and resets the watermark.
+-- The next stale reservation at #6 is then reassigned to #7.
 SET ROLE authenticated;
 SELECT public.execute_canonical_sync_command(
   'fffffff1-1111-4111-8111-111111111111'::uuid,
@@ -367,7 +371,8 @@ SELECT public.execute_canonical_sync_command(
       jsonb_build_object('id', '55555555-5555-4555-8555-555555555555', 'expectedVersion', 2, 'oldNumber', 3, 'newNumber', 2),
       jsonb_build_object('id', '66666666-6666-4666-8666-666666666666', 'expectedVersion', 2, 'oldNumber', 1, 'newNumber', 3),
       jsonb_build_object('id', 'aaaaaaaa-2222-4222-8222-222222222222', 'expectedVersion', 1, 'oldNumber', 4, 'newNumber', 4),
-      jsonb_build_object('id', 'eeeeeeee-2222-4222-8222-222222222222', 'expectedVersion', 1, 'oldNumber', 6, 'newNumber', 5)
+      jsonb_build_object('id', 'eeeeeeee-2222-4222-8222-222222222222', 'expectedVersion', 1, 'oldNumber', 6, 'newNumber', 5),
+      jsonb_build_object('id', 'cccccccc-2222-4222-8222-222222222222', 'expectedVersion', 1, 'oldNumber', 7, 'newNumber', 6)
     )
   )
 );
@@ -379,7 +384,7 @@ SELECT public.execute_canonical_sync_command(
     'dayId', '33333333-3333-4333-8333-333333333333',
     'customerId', '99999999-9999-4999-8999-999999999999',
     'displayNumber', 6,
-    'notes', 'next number after explicit renumber is six'
+    'notes', 'stale reservation after renumber must move to seven'
   )
 );
 RESET ROLE;
@@ -423,10 +428,13 @@ BEGIN
     WHERE id = 'eeeeeeee-2222-4222-8222-222222222222' AND display_number = 5
   ) OR NOT EXISTS (
     SELECT 1 FROM public.orders
-    WHERE id = 'fffffff2-2222-4222-8222-222222222222' AND display_number = 6
+    WHERE id = 'cccccccc-2222-4222-8222-222222222222' AND display_number = 6
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE id = 'fffffff2-2222-4222-8222-222222222222' AND display_number = 7
   ) OR NOT EXISTS (
     SELECT 1 FROM public.business_day_order_sequences
-    WHERE day_id = '33333333-3333-4333-8333-333333333333' AND last_assigned_number = 6
+    WHERE day_id = '33333333-3333-4333-8333-333333333333' AND last_assigned_number = 7
   ) THEN
     RAISE EXCEPTION 'A deleted issued number was reused or the durable high-water mark was lost';
   END IF;
@@ -438,6 +446,12 @@ BEGIN
       AND (payload->>'displayNumber')::INTEGER = 4
       AND (payload->>'display_number')::INTEGER = 4
   ) OR NOT EXISTS (
+    SELECT 1 FROM public.test_change_events
+    WHERE entity_table = 'orders' AND entity_id = 'cccccccc-2222-4222-8222-222222222222'
+      AND operation = 'INSERT'
+      AND (payload->>'displayNumber')::INTEGER = 6
+      AND (payload->>'display_number')::INTEGER = 6
+  ) OR NOT EXISTS (
     SELECT 1 FROM public.processed_commands
     WHERE command_id = 'aaaaaaaa-1111-4111-8111-111111111111'
       AND result_payload->>'displayNumber' = '4'
@@ -448,7 +462,6 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM public.orders
     WHERE id IN (
-      'cccccccc-2222-4222-8222-222222222222',
       'dddddddd-2222-4222-8222-222222222222'
     )
   ) THEN
