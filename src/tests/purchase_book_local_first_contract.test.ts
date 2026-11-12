@@ -24,6 +24,9 @@ describe('Purchase book local-first architecture contract', () => {
 
   it('preserves the deployed canonical order numbering and order-item edit rules', () => {
     expect(migration).toContain('order_renumber_audit');
+    expect(migration).toContain('business_day_order_sequences');
+    expect(migration).toContain("IF COALESCE(auth.role(), '') = 'service_role'");
+    expect(migration).not.toContain('Offline devices may submit reserved numbers out of order');
     expect(migration).toContain('autoDelivery');
     expect(migration).toContain("IF COALESCE(auth.role(), '') = 'service_role'");
     expect(migration).toContain("WHEN 'UPDATE_ORDER_ITEM'");
