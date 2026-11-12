@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/customer-admin-android-builds-2026-10-20
+      - feature/purchase-book-local-first
   pull_request:
     paths:
       - 'package.json'
