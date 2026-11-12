@@ -449,8 +449,8 @@ BEGIN
     SELECT 1 FROM public.test_change_events
     WHERE entity_table = 'orders' AND entity_id = 'cccccccc-2222-4222-8222-222222222222'
       AND operation = 'INSERT'
-      AND (payload->>'displayNumber')::INTEGER = 6
-      AND (payload->>'display_number')::INTEGER = 6
+      AND (payload->>'displayNumber')::INTEGER = 7
+      AND (payload->>'display_number')::INTEGER = 7
   ) OR NOT EXISTS (
     SELECT 1 FROM public.processed_commands
     WHERE command_id = 'aaaaaaaa-1111-4111-8111-111111111111'
