@@ -20,6 +20,7 @@ import {
   OrderNumberReservationEntity,
   GoalEntity,
   GoalRequestEntity,
+  PurchaseBookEntity, PurchaseBookTable, PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity, PurchaseDayEntity, PurchaseOrderEntity,
 } from '../../domain/models';
 import { ClosedDayError, InactiveCustomerError, NotFoundError, ConflictError, OrderNumberReservationExhaustedError, presentError } from '../../domain/errors';
 import { localDb, OutboxRecord, OptimisticOverlayRecord } from '../../infrastructure/localDb/localDb';
@@ -181,6 +182,8 @@ const allocationsList: PaymentAllocationEntity[] = [];
 const reservationsMap = new Map<string, OrderNumberReservationEntity>();
 const goalsMap = new Map<string, GoalEntity>();
 const goalRequestsMap = new Map<string, GoalRequestEntity>();
+const purchaseTableKeys: Record<PurchaseBookTable, string> = { suppliers: 'purchaseSuppliers', items: 'purchaseItems', methods: 'purchasePaymentMethods', months: 'purchaseMonths', weeks: 'purchaseWeeks', days: 'purchaseDays', orders: 'purchaseOrders' };
+const purchaseMaps: Record<PurchaseBookTable, Map<string, PurchaseBookEntity>> = { suppliers: new Map(), items: new Map(), methods: new Map(), months: new Map(), weeks: new Map(), days: new Map(), orders: new Map() };
 
 /**
  * Builds the effective local-first order read model from persisted entities plus
@@ -289,6 +292,7 @@ export type StoreScope =
   | 'orderNumberReservations'
   | 'goals'
   | 'goalRequests'
+  | 'purchaseBook'
   | 'all';
 
 export type StoreChangeListener = (scope: StoreScope, entityId?: string) => void;
@@ -333,6 +337,15 @@ const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
       return ['orderItems'];
     case 'DELIVER_ORDER_ITEM':
       return ['orderItems', 'financialLedger'];
+    case 'SAVE_PURCHASE_SUPPLIER':
+    case 'SAVE_PURCHASE_ITEM':
+    case 'SAVE_PURCHASE_PAYMENT_METHOD':
+    case 'SAVE_PURCHASE_MONTH':
+    case 'SAVE_PURCHASE_WEEK':
+    case 'SAVE_PURCHASE_DAY':
+    case 'SAVE_PURCHASE_ORDER':
+    case 'MARK_PURCHASE_ORDER_PAID':
+      return ['purchaseBook'];
     case 'CREATE_PAYMENT':
     case 'CREATE_CUSTOMER_CREDIT':
       return ['payments', 'financialLedger'];
@@ -340,6 +353,8 @@ const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
       return [];
   }
 };
+
+export const getPurchaseBookRowsSync = (table: PurchaseBookTable): PurchaseBookEntity[] => Array.from(purchaseMaps[table].values());
 
 export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number {
   const [version, setVersion] = useState(0);
@@ -455,6 +470,53 @@ export const applyRemoteChange = (change: {
   const entityType = change.entityType;
   const isDelete = change.action === 'DELETE' || change.action === 'TOMBSTONE';
 
+  const purchaseTypeMap: Record<string, PurchaseBookTable> = {
+    purchase_suppliers: 'suppliers', purchase_items: 'items', purchase_payment_methods: 'methods',
+    purchase_months: 'months', purchase_weeks: 'weeks', purchase_days: 'days', purchase_orders: 'orders',
+  };
+  const purchaseTable = purchaseTypeMap[entityType];
+  if (purchaseTable) {
+    const localKey = purchaseTableKeys[purchaseTable];
+    // Keep the in-memory read model consistent with IndexedDB if the enclosing
+    // delta transaction aborts before the cursor can advance.
+    snapshotRemoteMapEntry(tx, `purchase:${purchaseTable}`, purchaseMaps[purchaseTable], change.entityId);
+    if (isDelete) {
+      purchaseMaps[purchaseTable].delete(change.entityId);
+      localDb.removeWithTx(tx as any, localKey, change.entityId);
+    } else {
+      const base = { id: p.id || change.entityId, createdAt: p.createdAt || p.created_at || new Date().toISOString(), updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(), version: Number(change.version ?? p.version ?? 1) };
+      let entity: PurchaseBookEntity;
+      if (purchaseTable === 'suppliers' || purchaseTable === 'items' || purchaseTable === 'methods') entity = { ...base, name: p.name, isActive: Boolean(p.isActive ?? p.is_active ?? true), deletedAt: p.deletedAt ?? p.deleted_at ?? undefined } as PurchaseCatalogEntity;
+      else if (purchaseTable === 'months') entity = { ...base, year: Number(p.year), month: Number(p.month ?? p.monthNumber ?? p.month_number), startDate: p.startDate || p.start_date, endDate: p.endDate || p.end_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseMonthEntity;
+      else if (purchaseTable === 'weeks') entity = { ...base, monthId: p.monthId || p.month_id, startDate: p.startDate || p.start_date, endDate: p.endDate || p.end_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseWeekEntity;
+      else if (purchaseTable === 'days') entity = { ...base, weekId: p.weekId || p.week_id, purchaseDate: p.purchaseDate || p.purchase_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseDayEntity;
+      else entity = { ...base, purchaseDayId: p.purchaseDayId || p.purchase_day_id, supplierId: p.supplierId || p.supplier_id, itemId: p.itemId || p.item_id, paymentMethodId: p.paymentMethodId || p.payment_method_id || undefined, amountMinor: Number(p.amountMinor ?? p.amount_minor), currency: p.currency, paymentStatus: p.paymentStatus || p.payment_status, purchasedAt: p.purchasedAt || p.purchased_at || base.createdAt, paidAt: p.paidAt || p.paid_at || undefined } as PurchaseOrderEntity;
+      if (purchaseTable === 'orders') {
+        const prior = purchaseMaps.orders.get(change.entityId) as PurchaseOrderEntity | undefined;
+        const incoming = entity as PurchaseOrderEntity;
+        if (prior) {
+          entity = {
+            ...prior,
+            ...incoming,
+            amountMinor: Number(p.amountMinor ?? p.amount_minor ?? prior.amountMinor),
+            currency: p.currency || prior.currency,
+            paymentStatus: p.paymentStatus || p.payment_status || prior.paymentStatus,
+            supplierId: p.supplierId || p.supplier_id || prior.supplierId,
+            itemId: p.itemId || p.item_id || prior.itemId,
+            purchaseDayId: p.purchaseDayId || p.purchase_day_id || prior.purchaseDayId,
+            paymentMethodId: p.paymentMethodId || p.payment_method_id || prior.paymentMethodId,
+            purchasedAt: p.purchasedAt || p.purchased_at || prior.purchasedAt,
+            paidAt: p.paidAt || p.paid_at || prior.paidAt,
+          } as PurchaseOrderEntity;
+        }
+      }
+      purchaseMaps[purchaseTable].set(entity.id, entity);
+      localDb.setWithTx(tx, localKey, entity.id, entity);
+    }
+    notifyStoreAfterTransaction('purchaseBook', change.entityId, tx);
+    return;
+  }
+
   if (entityType === 'system_settings') {
     const key = String(p.key || '');
     const designType: QRDesignType | null =
@@ -462,6 +524,7 @@ export const applyRemoteChange = (change: {
       key === 'app_qr_design_config_ORDER' ? 'ORDER' : null;
     if (!designType) {
       localDb.setWithTx(tx, 'system_settings', key || change.entityId, p);
+      localDb.setWithTx(tx, 'systemSettings', key || change.entityId, p);
       notifyStoreAfterTransaction('all', key || change.entityId, tx);
       return;
     }
@@ -476,6 +539,7 @@ export const applyRemoteChange = (change: {
       return;
     }
     localDb.setWithTx(tx, 'system_settings', key, p);
+    localDb.setWithTx(tx, 'systemSettings', key, p);
     const applyDesign = () => setActiveQrDesign(designType, incoming as QRDesignConfig, 'remote');
     if (tx && typeof tx.addEventListener === 'function') {
       tx.addEventListener('complete', applyDesign, { once: true });
@@ -612,6 +676,27 @@ export const applyRemoteChange = (change: {
     localDb.setWithTx(tx, 'orders', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'orders', ordersMap, entity.id);
     ordersMap.set(entity.id, entity);
+    if (
+      change.action === 'INSERT' &&
+      previousOrder &&
+      Number.isInteger(Number(previousOrder.displayNumber)) &&
+      Number(previousOrder.displayNumber) > 0 &&
+      Number(previousOrder.displayNumber) !== Number(entity.displayNumber)
+    ) {
+      const emitReassignment = () => syncEventEmitter.emit({
+        type: 'order_number_reassigned',
+        orderId: entity.id,
+        oldNumber: Number(previousOrder.displayNumber),
+        newNumber: Number(entity.displayNumber),
+        timestamp: new Date().toISOString(),
+      });
+      const transaction = tx as any;
+      if (transaction && typeof transaction.addEventListener === 'function') {
+        transaction.addEventListener('complete', emitReassignment, { once: true });
+      } else {
+        emitReassignment();
+      }
+    }
     notifyStoreAfterTransaction('orders', entity.id, tx);
   } else if (entityType === 'order_items' || entityType === 'orderItems') {
     if (isDelete) {
@@ -1012,6 +1097,7 @@ export const resetCanonicalReadModelsForReplay = (): void => {
   reservationsMap.clear();
   goalsMap.clear();
   goalRequestsMap.clear();
+  Object.values(purchaseMaps).forEach((map) => map.clear());
 };
 
 export const resetStoreMemory = () => {
@@ -1029,6 +1115,7 @@ export const resetStoreMemory = () => {
   reservationsMap.clear();
   goalsMap.clear();
   goalRequestsMap.clear();
+  Object.values(purchaseMaps).forEach((map) => map.clear());
   storeListeners.clear();
 };
 
@@ -1150,6 +1237,7 @@ export const clearAllOperationalData = async (): Promise<void> => {
   paymentsMap.clear();
   allocationsList.length = 0;
   devicesMap.clear();
+  Object.values(purchaseMaps).forEach((map) => map.clear());
 
   await localDb.clearOperationalTables({ clearOutbox: true, clearSyncState: true });
   await localDb.setLocalResetMarker(true);
@@ -1321,6 +1409,16 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       return false;
     }
 
+    // These collections were added by the purchase-book migration. Older
+    // deployments may not expose them yet, so treat them as empty until the
+    // migration is installed rather than blocking the whole app bootstrap.
+    for (const collection of [
+      'system_settings','purchase_suppliers','purchase_items','purchase_payment_methods',
+      'purchase_months','purchase_weeks','purchase_days','purchase_orders',
+    ]) {
+      if (!Array.isArray(snapshot[collection])) snapshot[collection] = [];
+    }
+
     const requiredCollections: Record<string, unknown> = {
       business_days: snapshot.business_days,
       customers: snapshot.customers,
@@ -1334,6 +1432,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       qr_tokens: snapshot.qr_tokens,
       goals: snapshot.goals,
       goal_requests: snapshot.goal_requests,
+      system_settings: snapshot.system_settings,
+      purchase_suppliers: snapshot.purchase_suppliers,
+      purchase_items: snapshot.purchase_items,
+      purchase_payment_methods: snapshot.purchase_payment_methods,
+      purchase_months: snapshot.purchase_months,
+      purchase_weeks: snapshot.purchase_weeks,
+      purchase_days: snapshot.purchase_days,
+      purchase_orders: snapshot.purchase_orders,
     };
     const invalidCollection = Object.entries(requiredCollections).find(([, rows]) => !Array.isArray(rows));
     const snapshotGeneration = Number(snapshot.server_reset_generation);
@@ -1395,9 +1501,18 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const qrTokensRes = { data: snapshot.qr_tokens as any[], error: null };
     const goalsRes = { data: snapshot.goals as any[], error: null };
     const goalRequestsRes = { data: snapshot.goal_requests as any[], error: null };
+    const systemSettingsRes = { data: Array.isArray(snapshot.system_settings) ? snapshot.system_settings as any[] : [], error: null };
+    const purchaseSuppliersRes = { data: Array.isArray(snapshot.purchase_suppliers) ? snapshot.purchase_suppliers as any[] : [], error: null };
+    const purchaseItemsRes = { data: Array.isArray(snapshot.purchase_items) ? snapshot.purchase_items as any[] : [], error: null };
+    const purchaseMethodsRes = { data: Array.isArray(snapshot.purchase_payment_methods) ? snapshot.purchase_payment_methods as any[] : [], error: null };
+    const purchaseMonthsRes = { data: Array.isArray(snapshot.purchase_months) ? snapshot.purchase_months as any[] : [], error: null };
+    const purchaseWeeksRes = { data: Array.isArray(snapshot.purchase_weeks) ? snapshot.purchase_weeks as any[] : [], error: null };
+    const purchaseDaysRes = { data: Array.isArray(snapshot.purchase_days) ? snapshot.purchase_days as any[] : [], error: null };
+    const purchaseOrdersRes = { data: Array.isArray(snapshot.purchase_orders) ? snapshot.purchase_orders as any[] : [], error: null };
     const remoteReads = [
       daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes,
-      reservationsRes, qrTokensRes, goalsRes, goalRequestsRes,
+      reservationsRes, qrTokensRes, goalsRes, goalRequestsRes, systemSettingsRes,
+      purchaseSuppliersRes, purchaseItemsRes, purchaseMethodsRes, purchaseMonthsRes, purchaseWeeksRes, purchaseDaysRes, purchaseOrdersRes,
     ];
     const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
     if (failedRemoteRead) {
@@ -1446,6 +1561,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     goalsMap.clear();
     goalRequestsMap.clear();
     reservationsMap.clear();
+    Object.values(purchaseMaps).forEach((map) => map.clear());
 
     // Only replace the local read model after the complete remote snapshot has
     // been fetched successfully. Partial table hydration is unsafe because it
@@ -1729,6 +1845,29 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // been persisted. The next incremental pull starts strictly after this
     // exact snapshot; it must not treat the new device as generation -1 and
     // clear the just-hydrated data for a redundant full change-log replay.
+    for (const row of systemSettingsRes.data as any[]) {
+      if (!row?.key) continue;
+      installWrites.push({ table: 'systemSettings', id: String(row.key), item: row });
+      reportInstalledRow();
+    }
+
+    for (const [table, rows] of [
+      ['suppliers', purchaseSuppliersRes.data], ['items', purchaseItemsRes.data], ['methods', purchaseMethodsRes.data],
+      ['months', purchaseMonthsRes.data], ['weeks', purchaseWeeksRes.data], ['days', purchaseDaysRes.data], ['orders', purchaseOrdersRes.data],
+    ] as Array<[PurchaseBookTable, any[]]>) {
+      for (const row of rows) {
+        const base = { id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, version: Number(row.version ?? 1) };
+        let entity: PurchaseBookEntity;
+        if (table === 'suppliers' || table === 'items' || table === 'methods') entity = { ...base, name: row.name, isActive: Boolean(row.is_active), deletedAt: row.deleted_at ?? undefined } as PurchaseCatalogEntity;
+        else if (table === 'months') entity = { ...base, year: Number(row.year), month: Number(row.month_number), startDate: row.start_date, endDate: row.end_date, isClosed: Boolean(row.is_closed) } as PurchaseMonthEntity;
+        else if (table === 'weeks') entity = { ...base, monthId: row.month_id, startDate: row.start_date, endDate: row.end_date, isClosed: Boolean(row.is_closed) } as PurchaseWeekEntity;
+        else if (table === 'days') entity = { ...base, weekId: row.week_id, purchaseDate: row.purchase_date, isClosed: Boolean(row.is_closed) } as PurchaseDayEntity;
+        else entity = { ...base, purchaseDayId: row.purchase_day_id, supplierId: row.supplier_id, itemId: row.item_id, paymentMethodId: row.payment_method_id ?? undefined, amountMinor: Number(row.amount_minor), currency: row.currency, paymentStatus: row.payment_status, purchasedAt: row.purchased_at, paidAt: row.paid_at ?? undefined } as PurchaseOrderEntity;
+        purchaseMaps[table].set(entity.id, entity);
+        installWrites.push({ table: purchaseTableKeys[table], id: entity.id, item: entity });
+        reportInstalledRow();
+      }
+    }
     const existingSyncState = await localDb.getSyncState('global');
     const snapshotSyncState = {
       ...(existingSyncState || {
@@ -1827,6 +1966,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       allocationsList.length = 0;
       goalsMap.clear();
       goalRequestsMap.clear();
+      Object.values(purchaseMaps).forEach((map) => map.clear());
       await localDb.clearOperationalTables({ clearOutbox: true, clearSyncState: true });
       await localDb.setInitialHydrationCompleted(false);
 
@@ -1848,6 +1988,7 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       persistedQrTokens,
       persistedGoals,
       persistedGoalRequests,
+      persistedPurchaseSuppliers, persistedPurchaseItems, persistedPurchaseMethods, persistedPurchaseMonths, persistedPurchaseWeeks, persistedPurchaseDays, persistedPurchaseOrders,
       persistedOutbox,
     ] = await Promise.all([
       localDb.list<CustomerEntity>('customers'),
@@ -1862,6 +2003,13 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       localDb.list<any>('qr_tokens'),
       localDb.list<GoalEntity>('goals'),
       localDb.list<GoalRequestEntity>('goalRequests'),
+      localDb.list<PurchaseCatalogEntity>('purchaseSuppliers'),
+      localDb.list<PurchaseCatalogEntity>('purchaseItems'),
+      localDb.list<PurchaseCatalogEntity>('purchasePaymentMethods'),
+      localDb.list<PurchaseMonthEntity>('purchaseMonths'),
+      localDb.list<PurchaseWeekEntity>('purchaseWeeks'),
+      localDb.list<PurchaseDayEntity>('purchaseDays'),
+      localDb.list<PurchaseOrderEntity>('purchaseOrders'),
       localDb.listOutbox(),
     ]);
 
@@ -1880,6 +2028,14 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     persistedGoals.forEach((g) => goalsMap.set(g.id, g));
     goalRequestsMap.clear();
     persistedGoalRequests.forEach((g) => goalRequestsMap.set(g.id, g));
+    (['suppliers','items','methods','months','weeks','days','orders'] as PurchaseBookTable[]).forEach((key) => purchaseMaps[key].clear());
+    persistedPurchaseSuppliers.forEach((row) => purchaseMaps.suppliers.set(row.id,row));
+    persistedPurchaseItems.forEach((row) => purchaseMaps.items.set(row.id,row));
+    persistedPurchaseMethods.forEach((row) => purchaseMaps.methods.set(row.id,row));
+    persistedPurchaseMonths.forEach((row) => purchaseMaps.months.set(row.id,row));
+    persistedPurchaseWeeks.forEach((row) => purchaseMaps.weeks.set(row.id,row));
+    persistedPurchaseDays.forEach((row) => purchaseMaps.days.set(row.id,row));
+    persistedPurchaseOrders.forEach((row) => purchaseMaps.orders.set(row.id,row));
 
     // 1. Customers Hydration (always read persisted data and auto-heal active status)
     customersMap.clear();
@@ -2529,10 +2685,19 @@ function createTransactionalRepoContext(
               ? 'goal_requests'
               : type === 'CREATE_CUSTOMER_CREDIT' || type === 'CONSUME_CUSTOMER_CREDIT' || type === 'CREATE_REFUND'
               ? 'financial_ledger'
+              : type === 'SAVE_PURCHASE_SUPPLIER' ? 'purchase_suppliers'
+              : type === 'SAVE_PURCHASE_ITEM' ? 'purchase_items'
+              : type === 'SAVE_PURCHASE_PAYMENT_METHOD' ? 'purchase_payment_methods'
+              : type === 'SAVE_PURCHASE_MONTH' ? 'purchase_months'
+              : type === 'SAVE_PURCHASE_WEEK' ? 'purchase_weeks'
+              : type === 'SAVE_PURCHASE_DAY' ? 'purchase_days'
+              : type === 'SAVE_PURCHASE_ORDER' || type === 'MARK_PURCHASE_ORDER_PAID' ? 'purchase_orders'
               : 'COMMAND',
           aggregateId,
           mutationKey:
-            type === 'RENUMBER_DAY_ORDERS'
+            type.startsWith('SAVE_PURCHASE_') || type === 'MARK_PURCHASE_ORDER_PAID'
+              ? `purchase:${aggregateId}`
+              : type === 'RENUMBER_DAY_ORDERS'
               ? `renumber-day:${payloadRecord.dayId || aggregateId}`
               : type === 'ADD_ORDER_ITEM' || type === 'UPDATE_ORDER_ITEM' || type === 'DELIVER_ORDER_ITEM' || type === 'CANCEL_ORDER_ITEM' || type === 'CANCEL_ORDER' || type === 'UPDATE_ORDER'
                 ? `order:${payloadRecord.orderId || aggregateId}`
@@ -2587,6 +2752,14 @@ function createTransactionalRepoContext(
         goalsMap.set(goal.id, goal);
         localDb.setWithTx(tx, 'goals', goal.id, goal);
         postCommitActions.push(() => notifyStore('goals', goal.id));
+      },
+    },
+    purchaseRepo: {
+      findAll: (table: PurchaseBookTable) => Array.from(purchaseMaps[table].values()),
+      save: (table: PurchaseBookTable, entity: PurchaseBookEntity) => {
+        purchaseMaps[table].set(entity.id, entity);
+        localDb.setWithTx(tx, purchaseTableKeys[table], entity.id, entity);
+        postCommitActions.push(() => notifyStore('purchaseBook', entity.id));
       },
     },
     goalRequestRepo: {
@@ -3239,6 +3412,24 @@ export const repoContext: RepositoryContext = {
       });
     },
   },
+  purchaseRepo: {
+    findAll: async (table: PurchaseBookTable) => {
+      await ensureStoreHydrated();
+      return Array.from(purchaseMaps[table].values());
+    },
+    save: async (table: PurchaseBookTable, entity: PurchaseBookEntity) => {
+      await ensureStoreHydrated();
+      const previous = purchaseMaps[table].get(entity.id);
+      const commandType = table === 'suppliers' ? 'SAVE_PURCHASE_SUPPLIER' : table === 'items' ? 'SAVE_PURCHASE_ITEM' : table === 'methods' ? 'SAVE_PURCHASE_PAYMENT_METHOD' : table === 'months' ? 'SAVE_PURCHASE_MONTH' : table === 'weeks' ? 'SAVE_PURCHASE_WEEK' : table === 'days' ? 'SAVE_PURCHASE_DAY' : 'SAVE_PURCHASE_ORDER';
+      const paidTransition = table === 'orders' && previous && (previous as PurchaseOrderEntity).paymentStatus === 'UNPAID' && (entity as PurchaseOrderEntity).paymentStatus === 'PAID';
+      const type = paidTransition ? 'MARK_PURCHASE_ORDER_PAID' : commandType;
+      const commandId = previous ? crypto.randomUUID() : entity.id;
+      await repoContext.transactionManager.runInTransaction((ctx) => {
+        ctx.purchaseRepo!.save(table, entity);
+        ctx.commandRepo.record(commandId, type, paidTransition ? { id: entity.id, paymentMethodId: (entity as PurchaseOrderEntity).paymentMethodId } : entity, previous?.version);
+      });
+    },
+  },
   transactionManager: {
     runInTransaction: async <T>(work: (ctx: RepositoryContext) => T extends Promise<any> ? never : T): Promise<T> => {
       await ensureStoreHydrated();
@@ -3255,6 +3446,7 @@ export const repoContext: RepositoryContext = {
       const snapReservations = cloneForTransactionRollback(new Map(reservationsMap));
       const snapGoals = cloneForTransactionRollback(new Map(goalsMap));
       const snapGoalRequests = cloneForTransactionRollback(new Map(goalRequestsMap));
+      const snapPurchase = Object.fromEntries(Object.entries(purchaseMaps).map(([key,map]) => [key, cloneForTransactionRollback(new Map(map))])) as Record<PurchaseBookTable, Map<string, PurchaseBookEntity>>;
       const snapLedger = cloneForTransactionRollback(ledgerList);
       const snapAllocations = cloneForTransactionRollback(allocationsList);
 
@@ -3269,6 +3461,7 @@ export const repoContext: RepositoryContext = {
         reservationsMap.clear(); for (const [k, v] of snapReservations) reservationsMap.set(k, cloneForTransactionRollback(v));
         goalsMap.clear(); for (const [k, v] of snapGoals) goalsMap.set(k, cloneForTransactionRollback(v));
         goalRequestsMap.clear(); for (const [k, v] of snapGoalRequests) goalRequestsMap.set(k, cloneForTransactionRollback(v));
+        (Object.keys(purchaseMaps) as PurchaseBookTable[]).forEach((key) => { purchaseMaps[key].clear(); for (const [id, value] of snapPurchase[key]) purchaseMaps[key].set(id, cloneForTransactionRollback(value)); });
         ledgerList.length = 0; ledgerList.push(...cloneForTransactionRollback(snapLedger));
         allocationsList.length = 0; allocationsList.push(...cloneForTransactionRollback(snapAllocations));
       };

@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/customer-admin-android-builds-2026-10-20
+      - feature/purchase-book-local-first
   pull_request:
     paths:
       - 'package.json'
@@ -394,9 +395,12 @@ jobs:
               root_gradle.write_text(root)
           app_gradle = Path("android/app/build.gradle")
           app = app_gradle.read_text()
-          if "com.google.gms.google-services" not in app:
-              app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
-          print("Firebase Cloud Messaging configured for " + variant)
+          if variant == "customer":
+              if "com.google.gms.google-services" not in app:
+                  app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
+              print("Firebase Cloud Messaging configured for " + variant)
+          else:
+              print("Admin debug package uses a separate application ID; admin FCM plugin is intentionally skipped for this debug build.")
           PY
 
       - name: Declare Android camera permission for QR scanning
@@ -505,6 +509,96 @@ jobs:
                   text = set_string(text, key, app_name)
               localized.write_text(text, encoding="utf-8")
           print(f"Applied locale-aware launcher labels for {variant}")
+          PY
+
+      - name: Give admin debug APK a separate install identity
+        if: matrix.variant == 'admin'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import json
+          import copy
+
+          gradle_file = Path("android/app/build.gradle")
+          gradle = gradle_file.read_text()
+          if "applicationIdSuffix" not in gradle:
+              match = re.search(r"(?m)^([ \t]*)buildTypes\s*\{", gradle)
+              if not match:
+                  raise SystemExit("Could not locate Android buildTypes block")
+              start = match.end()
+              gradle = gradle[:start] + '\n        debug {\n            applicationIdSuffix ".debug"\n        }' + gradle[start:]
+              gradle_file.write_text(gradle)
+
+          res = Path("android/app/src/main/res")
+          for locale, app_name in (("", "Charging Point Admin (Test)"), ("-ar", "نقطة الشحن تجريبي"), ("-en", "Charging Point Admin (Test)")):
+              strings_file = res / ("values" + locale) / "strings.xml"
+              if not strings_file.is_file():
+                  continue
+              content = strings_file.read_text(encoding="utf-8")
+              for key in ("app_name", "title_activity_main"):
+                  pattern = rf'<string name="{key}">.*?</string>'
+                  replacement = f'<string name="{key}">{app_name}</string>'
+                  if re.search(pattern, content):
+                      content = re.sub(pattern, replacement, content, count=1)
+                  else:
+                      content = content.replace("</resources>", f"    {replacement}\n</resources>")
+              strings_file.write_text(content, encoding="utf-8")
+
+          if 'applicationIdSuffix ".debug"' not in gradle_file.read_text():
+              raise SystemExit("Admin debug applicationIdSuffix was not applied")
+
+          # Google Services validates the Android package against google-services.json.
+          # Add a debug-package client clone so the debug APK can compile without
+          # registering or changing any production Firebase application.
+          firebase_file = Path("android/app/google-services.json")
+          if firebase_file.is_file():
+              firebase = json.loads(firebase_file.read_text(encoding="utf-8"))
+              clients = firebase.get("client", [])
+              source = next((item for item in clients if item.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.chargerpointnew.admin"), None)
+              if source is None:
+                  raise SystemExit("Admin Firebase client is missing; cannot prepare debug package")
+              debug_client = copy.deepcopy(source)
+              debug_client["client_info"]["android_client_info"]["package_name"] = "com.chargerpointnew.admin.debug"
+              if not any(item.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.chargerpointnew.admin.debug" for item in clients):
+                  clients.append(debug_client)
+              firebase_file.write_text(json.dumps(firebase, indent=2) + "\n", encoding="utf-8")
+
+          print("Admin debug APK will install as a separate app and display a test label.")
+          PY
+
+      - name: Set Android version to 1.3.5
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("android/app/build.gradle")
+          if not path.is_file():
+              raise SystemExit("Android app Gradle file is missing after Capacitor sync")
+          lines = path.read_text().splitlines()
+          start = next((i for i, line in enumerate(lines) if line.strip() == "defaultConfig {"), None)
+          if start is None:
+              raise SystemExit("Could not locate Android defaultConfig block")
+          indent = len(lines[start]) - len(lines[start].lstrip())
+          end = next((i for i in range(start + 1, len(lines)) if lines[i].strip() == "}" and len(lines[i]) - len(lines[i].lstrip()) == indent), None)
+          if end is None:
+              raise SystemExit("Could not locate end of Android defaultConfig block")
+          block = lines[start + 1:end]
+          found_code = found_name = False
+          for i, line in enumerate(block):
+              stripped = line.strip()
+              if stripped.startswith("versionCode "):
+                  block[i] = "        versionCode 1003005"
+                  found_code = True
+              elif stripped.startswith("versionName "):
+                  block[i] = '        versionName "1.3.5"'
+                  found_name = True
+          if not found_code:
+              block.append("        versionCode 1003005")
+          if not found_name:
+              block.append('        versionName "1.3.5"')
+          lines[start + 1:end] = block
+          path.write_text(chr(10).join(lines) + chr(10))
+          print("Verified Android versionName=1.3.5 and versionCode=1003005")
           PY
 
       - name: Build installable debug APK

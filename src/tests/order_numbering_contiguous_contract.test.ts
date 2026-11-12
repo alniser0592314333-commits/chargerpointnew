@@ -13,7 +13,7 @@ describe('Server-authoritative contiguous order numbering', () => {
     return fs.readFileSync(migrationPath, 'utf8');
   };
 
-  it('validates the exact client-assigned number against a durable high-water mark', () => {
+  it('preserves the first assigned number and reassigns stale offline numbers above the durable high-water mark', () => {
     const sql = readMigration();
     const routeStart = sql.indexOf('-- 5. ROUTE BY CANONICAL COMMAND TYPE');
     const createStart = sql.indexOf("WHEN 'CREATE_ORDER' THEN", routeStart);
@@ -30,7 +30,8 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(branch).toContain('public.business_day_order_sequences');
     expect(branch).toContain('last_assigned_number');
     expect(branch).toContain('GREATEST(v_max_new_number, COALESCE(MAX(display_number), 0))');
-    expect(branch).toContain('ORDER_NUMBER_CONFLICT [409]');
+    expect(branch).toContain('v_requested_display_number := v_max_new_number + 1');
+    expect(branch).toContain('The authoritative change');
     expect(branch).toContain('ORDER_NUMBER_IMMUTABLE [409]');
     expect(branch).toContain('ORDER_NUMBER_REQUIRED');
     expect(branch).toContain("'{displayNumber}'");
@@ -76,6 +77,42 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(preview).toContain('getLastAssignedNumberForDay');
     expect(preview).not.toContain('findActiveByDayAndDevice');
     expect(preview).toContain('getEffectiveOrderItemReadModel()');
+  });
+
+
+  it('notifies only the originating device when an offline create receives a replacement number', () => {
+    const storePath = path.resolve(process.cwd(), 'src/components/pages/dayOrdersStore.ts');
+    const store = fs.readFileSync(storePath, 'utf8');
+    const appPath = path.resolve(process.cwd(), 'src/App.tsx');
+    const app = fs.readFileSync(appPath, 'utf8');
+    expect(store).toContain("change.action === 'INSERT'");
+    expect(store).toContain("type: 'order_number_reassigned'");
+    expect(store).toContain("transaction.addEventListener('complete', emitReassignment");
+    expect(app).toContain('function SyncOrderNumberNotice()');
+    expect(app).toContain("showToast(message, 'info')");
+  });
+
+
+  it('preserves later production auto-delivery and order-customer policies in both migrations', () => {
+    const numbering = readMigration();
+    const purchasePath = path.resolve(
+      process.cwd(),
+      'supabase/migrations/20261111090000_purchase_book_local_first.sql'
+    );
+    const purchase = fs.readFileSync(purchasePath, 'utf8');
+    for (const sql of [numbering, purchase]) {
+      expect(sql).toContain("COALESCE(auth.role(), '') = 'service_role'");
+      expect(sql).toContain("p_command_type = 'DELIVER_ORDER_ITEM'");
+      expect(sql).toContain('SELECT oi.*, o.customer_id FROM public.order_items oi JOIN public.orders o');
+    }
+  });
+
+
+  it('locks order writes before the duplicate preflight and sequence backfill', () => {
+    const sql = readMigration();
+    expect(sql.indexOf('LOCK TABLE public.orders IN SHARE ROW EXCLUSIVE MODE')).toBeGreaterThanOrEqual(0);
+    expect(sql.indexOf('LOCK TABLE public.orders IN SHARE ROW EXCLUSIVE MODE'))
+      .toBeLessThan(sql.indexOf('DO $numbering_preflight$'));
   });
 
 });

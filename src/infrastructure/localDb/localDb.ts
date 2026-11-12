@@ -121,6 +121,13 @@ export interface BackupSnapshotData {
   deviceTypes: any[];
   goals?: any[];
   goalRequests?: any[];
+  purchaseSuppliers?: any[];
+  purchaseItems?: any[];
+  purchasePaymentMethods?: any[];
+  purchaseMonths?: any[];
+  purchaseWeeks?: any[];
+  purchaseDays?: any[];
+  purchaseOrders?: any[];
   qrTokens?: any[];
   orderNumberReservations?: any[];
   // Exact local outbox checkpoint. Required to restore an offline snapshot
@@ -595,7 +602,7 @@ export class IndexedDBLocalDatabase {
     const tableNames = [
       'customers','businessDays','orders','orderItems','financialLedger','payments',
       'paymentAllocations','deviceTypes','goals','goalRequests','qr_tokens','qrTokens',
-      'orderNumberReservations','deletedDeviceTypeMarkers','changeLog'
+      'orderNumberReservations','deletedDeviceTypeMarkers','changeLog','purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders'
     ];
     const tables: Record<string, any[]> = {};
     for (const name of tableNames) {
@@ -688,6 +695,13 @@ export class IndexedDBLocalDatabase {
           goal: 'goals', goals: 'goals',
           goal_request: 'goalRequests', goal_requests: 'goalRequests', goalrequest: 'goalRequests', goalrequests: 'goalRequests',
           qr_token: 'qr_tokens', qr_tokens: 'qr_tokens', qrtoken: 'qr_tokens', qrtokens: 'qr_tokens',
+          purchase_supplier: 'purchaseSuppliers', purchase_suppliers: 'purchaseSuppliers',
+          purchase_item: 'purchaseItems', purchase_items: 'purchaseItems',
+          purchase_payment_method: 'purchasePaymentMethods', purchase_payment_methods: 'purchasePaymentMethods',
+          purchase_month: 'purchaseMonths', purchase_months: 'purchaseMonths',
+          purchase_week: 'purchaseWeeks', purchase_weeks: 'purchaseWeeks',
+          purchase_day: 'purchaseDays', purchase_days: 'purchaseDays',
+          purchase_order: 'purchaseOrders', purchase_orders: 'purchaseOrders',
         };
         const localTable = tableAliases[normalizedAggregateType] || outbox.aggregateType;
         const tableMap = this.memoryFallback.get(localTable);
@@ -722,7 +736,9 @@ export class IndexedDBLocalDatabase {
       'orderNumberReservations',
       'changeLog',
       'deletedDeviceTypeMarkers',
-      'systemSettings'
+      'systemSettings','system_settings'
+      // The personal purchase book is deliberately not operational order data;
+      // preserve it across the app's operational-data reset flow.
     ];
 
     for (const table of operationalTables) {
@@ -1118,6 +1134,7 @@ export class IndexedDBLocalDatabase {
       'goals',
       'goalRequests',
       'systemSettings',
+      'purchaseSuppliers','purchaseItems','purchasePaymentMethods','purchaseMonths','purchaseWeeks','purchaseDays','purchaseOrders',
     ];
 
     for (const table of operationalTables) {

@@ -316,6 +316,7 @@ export type SyncEvent =
   | { type: 'rpc_started'; commandId: ID; groupId?: string; timestamp: string }
   | { type: 'rpc_finished'; commandId: ID; groupId?: string; success: boolean; rpcReached: 'YES' | 'NO' | 'UNKNOWN'; timestamp: string }
   | { type: 'command_failed'; commandId: ID; groupId?: string; error: string; timestamp: string }
+  | { type: 'order_number_reassigned'; orderId: ID; oldNumber: number; newNumber: number; timestamp: string }
   | { type: 'command_blocked'; commandId: ID; dependencies: ID[]; reason?: string; timestamp: string }
   | { type: 'command_unblocked'; commandId: ID; timestamp: string }
   | { type: 'sync_finished'; pushed: number; pulled: number; timestamp: string }

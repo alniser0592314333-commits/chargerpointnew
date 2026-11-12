@@ -16,7 +16,9 @@ import {
   QrTokenEntity,
   GoalEntity,
   GoalRequestEntity,
-  OrderNumberReservationEntity
+  OrderNumberReservationEntity,
+  PurchaseBookEntity,
+  PurchaseBookTable
 } from '../domain/models';
 import { OptimisticOverlayRecord } from '../infrastructure/localDb/localDb';
 import { 
@@ -126,6 +128,10 @@ export interface RepositoryContext {
     findById(id: ID): Promise<GoalRequestEntity | null> | (GoalRequestEntity | null);
     findAllByCustomerId(customerId: ID): Promise<GoalRequestEntity[]> | GoalRequestEntity[];
     save(request: GoalRequestEntity): Promise<void> | void;
+  };
+  purchaseRepo?: {
+    findAll(table: PurchaseBookTable): Promise<PurchaseBookEntity[]> | PurchaseBookEntity[];
+    save(table: PurchaseBookTable, entity: PurchaseBookEntity): Promise<void> | void;
   };
   transactionManager: {
     runInTransaction<T>(work: (ctx: RepositoryContext) => T): Promise<T>;

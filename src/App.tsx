@@ -9,7 +9,7 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { ThemeProvider } from './theme/themeContext';
 import { I18nProvider } from './i18n/i18nContext';
-import { ToastProvider } from './components/ui/Toast';
+import { ToastProvider, useToast } from './components/ui/Toast';
 import { AuthenticatedLayout } from './components/shell/AuthenticatedLayout';
 import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
@@ -18,6 +18,7 @@ import { isCurrentAccountSessionActive, registerCurrentAccountSession } from './
 import { refreshStoreFromRemote, ensureStoreHydrated, subscribeStoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import { globalSyncBridge } from './infrastructure/sync/syncBridge';
+import { syncEventEmitter } from './infrastructure/sync/syncEngine';
 import { HomePage } from './components/pages/HomePage';
 import { DaysOrdersPage } from './components/pages/DaysOrdersPage';
 import { DayDetailPage } from './components/pages/DayDetailPage';
@@ -42,6 +43,7 @@ import { FinancialsPage } from './components/pages/FinancialsPage';
 import { FinancialCustomersPage } from './components/pages/FinancialCustomersPage';
 import { FinancialCustomerDetailPage } from './components/pages/FinancialCustomerDetailPage';
 import { FinancialPendingPaymentsPage } from './components/pages/FinancialPendingPaymentsPage';
+import { PurchaseBookPage } from './components/pages/PurchaseBookPage';
 import { GoalsPage } from './components/pages/GoalsPage';
 import { NotificationsRequestsPage } from './components/pages/NotificationsRequestsPage';
 import { SettingsPage } from './components/pages/SettingsPage';
@@ -122,6 +124,20 @@ function scrollActiveViewToTop(): boolean {
   const deepest = candidates.reduce((best, element) => depth(element) > depth(best) ? element : best);
   deepest.scrollTo({ top: 0, behavior: 'smooth' });
   return true;
+}
+
+function SyncOrderNumberNotice() {
+  const { showToast } = useToast();
+
+  useEffect(() => syncEventEmitter.subscribe((event) => {
+    if (event.type !== 'order_number_reassigned') return;
+    const message = document.documentElement.lang === 'en'
+      ? `Order number changed from #${event.oldNumber} to #${event.newNumber} because another device already used #${event.oldNumber}.`
+      : `تم تعديل رقم الطلب تلقائيًا من #${event.oldNumber} إلى #${event.newNumber} لأن جهازًا آخر سبق واستخدم الرقم #${event.oldNumber}.`;
+    showToast(message, 'info');
+  }), [showToast]);
+
+  return null;
 }
 
 export default function App() {
@@ -668,6 +684,11 @@ export default function App() {
       );
     }
 
+    if (pathname.startsWith('/app/purchases/supplier/')) {
+      const purchaseSupplierId = pathname.replace('/app/purchases/supplier/', '');
+      return <PurchaseBookPage supplierId={purchaseSupplierId} onNavigate={(path) => navigate(path)} />;
+    }
+
     if (pathname.startsWith('/app/customers/') && pathname !== '/app/customers') {
       const customerId = pathname.replace('/app/customers/', '');
       return (
@@ -708,6 +729,8 @@ export default function App() {
             onSelectDay={(dayId) => navigate(`/app/days/${dayId}`)}
           />
         );
+      case '/app/purchases':
+        return <PurchaseBookPage onNavigate={(path) => navigate(path)} />;
       case '/app/messages':
         return <MessageCenterHomePage onNavigate={(section) => navigate(`/app/messages/${section}`)} />;
       case '/app/customers':
@@ -778,6 +801,7 @@ export default function App() {
     <ThemeProvider>
       <I18nProvider>
         <ToastProvider>
+          <SyncOrderNumberNotice />
           {isPublicPortalPath(parseRoute(currentPath).pathname) ? (
             <div className="public-portal-host min-h-screen">{renderContent()}</div>
           ) : isSuspended ? (

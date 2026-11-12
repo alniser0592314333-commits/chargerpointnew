@@ -1,3 +1,6 @@
+-- Serialize against in-flight order writes while validating and installing the number invariant.
+LOCK TABLE public.orders IN SHARE ROW EXCLUSIVE MODE;
+
 -- Read-only preflight must fail before any schema/data mutation if legacy duplicate numbers exist.
 DO $numbering_preflight$
 BEGIN
@@ -116,23 +119,27 @@ BEGIN
     -- ==========================================
     -- Authenticate BEFORE any idempotency lookup. A known command_id must
     -- never become a side-channel for unauthenticated callers.
-    IF auth.uid() IS NULL THEN
+    IF COALESCE(auth.role(), '') = 'service_role'
+       AND p_command_type = 'DELIVER_ORDER_ITEM'
+       AND COALESCE((p_payload->>'autoDelivery')::boolean, false) THEN
+        v_actor_id := NULL;
+        v_admin_role := 'SUPER_ADMIN';
+        v_is_active := TRUE;
+    ELSIF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Authentication required: caller must be signed in via Supabase Auth'
             USING ERRCODE = 'P0001';
-    END IF;
-
-    v_actor_id := auth.uid();
-    SELECT id, role, is_active INTO v_actor_id, v_admin_role, v_is_active
-    FROM public.admins WHERE auth_user_id = auth.uid() LIMIT 1;
-
-    IF v_actor_id IS NULL THEN
-        RAISE EXCEPTION 'Unauthorized: Caller is not a registered admin profile'
-            USING ERRCODE = 'P0001';
-    END IF;
-
-    IF v_is_active IS NOT TRUE THEN
-        RAISE EXCEPTION 'Forbidden: Admin account is inactive or disabled'
-            USING ERRCODE = 'P0001';
+    ELSE
+        v_actor_id := auth.uid();
+        SELECT id, role, is_active INTO v_actor_id, v_admin_role, v_is_active
+        FROM public.admins WHERE auth_user_id = auth.uid() LIMIT 1;
+        IF v_actor_id IS NULL THEN
+            RAISE EXCEPTION 'Unauthorized: Caller is not a registered admin profile'
+                USING ERRCODE = 'P0001';
+        END IF;
+        IF v_is_active IS NOT TRUE THEN
+            RAISE EXCEPTION 'Forbidden: Admin account is inactive or disabled'
+                USING ERRCODE = 'P0001';
+        END IF;
     END IF;
 
     -- ==========================================
@@ -560,9 +567,11 @@ BEGIN
                 WHERE day_id = v_day_uuid;
 
                 IF v_requested_display_number <= v_max_new_number THEN
-                    RAISE EXCEPTION 'ORDER_NUMBER_CONFLICT [409]: client order number % is not above the current high-water mark %. The assigned number was not changed.',
-                        v_requested_display_number, v_max_new_number
-                        USING ERRCODE = 'P0409';
+                    -- A different device may already have claimed this offline reservation.
+                    -- Preserve the first accepted order's number and assign the conflicting
+                    -- offline order the next never-issued number. The authoritative change
+                    -- feed returns this replacement number to the originating device.
+                    v_requested_display_number := v_max_new_number + 1;
                 END IF;
 
                 INSERT INTO public.orders (
@@ -1069,7 +1078,7 @@ BEGIN
             IF EXISTS (SELECT 1 FROM public.orders WHERE id = v_order_uuid AND status = 'cancelled') THEN
                 v_result := jsonb_build_object('orderId', v_order_uuid, 'status', 'CANCELLED', 'alreadyCancelled', TRUE);
             ELSE
-                FOR v_rec_item IN SELECT oi.* FROM public.order_items oi WHERE oi.order_id = v_order_uuid AND oi.operational_status <> 'CANCELLED' FOR UPDATE LOOP
+                FOR v_rec_item IN SELECT oi.*, o.customer_id FROM public.order_items oi JOIN public.orders o ON o.id = oi.order_id WHERE oi.order_id = v_order_uuid AND oi.operational_status <> 'CANCELLED' FOR UPDATE OF oi LOOP
                     IF v_rec_item.financial_status = 'RECOGNIZED' THEN
                         SELECT id, amount_minor INTO v_ledger_uuid, v_orig_charge_amount
                         FROM public.financial_ledger WHERE order_item_id = v_rec_item.id AND event_type IN ('CHARGE','ORDER_ITEM_CHARGE')

@@ -53,9 +53,10 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
 
     const url = deps.getEnv("SUPABASE_URL");
     const secretKey = deps.getEnv("auth_supabase_secret_key");
+    const publicKey = deps.getEnv("SUPABASE_ANON_KEY") || deps.getEnv("SUPABASE_PUBLISHABLE_KEY");
     const rateLimitSecret = deps.getEnv("username_signin_rate_limit_secret");
     if (!url || !secretKey || !secretKey.startsWith("sb_secret_")
-      || !rateLimitSecret || rateLimitSecret.length < 32) {
+      || !publicKey || !rateLimitSecret || rateLimitSecret.length < 32) {
       // Fail closed unless modern server-only API credentials and a strong rate-limit
       // secret are configured. Never trust the shared Edge egress IP.
       console.error("Username sign-in configuration unavailable", {
@@ -137,7 +138,9 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         {
           method: "POST",
           headers: {
-            apikey: secretKey,
+            // Password-token exchange is a public Auth endpoint; use the publishable
+            // key here. Keep the server secret exclusively on the privileged admin client.
+            apikey: publicKey,
             "Content-Type": "application/json",
             "Sb-Forwarded-For": clientIp,
           },
