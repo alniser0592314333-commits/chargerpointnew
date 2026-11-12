@@ -561,7 +561,7 @@ jobs:
               debug_client["client_info"]["android_client_info"]["package_name"] = "com.chargerpointnew.admin.debug"
               if not any(item.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.chargerpointnew.admin.debug" for item in clients):
                   clients.append(debug_client)
-              firebase_file.write_text(json.dumps(firebase, indent=2) + "\\n", encoding="utf-8")
+              firebase_file.write_text(json.dumps(firebase, indent=2) + "\n", encoding="utf-8")
 
           print("Admin debug APK will install as a separate app and display a test label.")
           PY
