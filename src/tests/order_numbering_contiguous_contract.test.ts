@@ -92,4 +92,19 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(app).toContain("showToast(message, 'info')");
   });
 
+
+  it('preserves later production auto-delivery and order-customer policies in both migrations', () => {
+    const numbering = readMigration();
+    const purchasePath = path.resolve(
+      process.cwd(),
+      'supabase/migrations/20261111090000_purchase_book_local_first.sql'
+    );
+    const purchase = fs.readFileSync(purchasePath, 'utf8');
+    for (const sql of [numbering, purchase]) {
+      expect(sql).toContain("COALESCE(auth.role(), '') = 'service_role'");
+      expect(sql).toContain("p_command_type = 'DELIVER_ORDER_ITEM'");
+      expect(sql).toContain('SELECT oi.*, o.customer_id FROM public.order_items oi JOIN public.orders o');
+    }
+  });
+
 });
