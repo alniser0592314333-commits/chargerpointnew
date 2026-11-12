@@ -676,6 +676,27 @@ export const applyRemoteChange = (change: {
     localDb.setWithTx(tx, 'orders', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'orders', ordersMap, entity.id);
     ordersMap.set(entity.id, entity);
+    if (
+      change.action === 'INSERT' &&
+      previousOrder &&
+      Number.isInteger(Number(previousOrder.displayNumber)) &&
+      Number(previousOrder.displayNumber) > 0 &&
+      Number(previousOrder.displayNumber) !== Number(entity.displayNumber)
+    ) {
+      const emitReassignment = () => syncEventEmitter.emit({
+        type: 'order_number_reassigned',
+        orderId: entity.id,
+        oldNumber: Number(previousOrder.displayNumber),
+        newNumber: Number(entity.displayNumber),
+        timestamp: new Date().toISOString(),
+      });
+      const transaction = tx as any;
+      if (transaction && typeof transaction.addEventListener === 'function') {
+        transaction.addEventListener('complete', emitReassignment, { once: true });
+      } else {
+        emitReassignment();
+      }
+    }
     notifyStoreAfterTransaction('orders', entity.id, tx);
   } else if (entityType === 'order_items' || entityType === 'orderItems') {
     if (isDelete) {
