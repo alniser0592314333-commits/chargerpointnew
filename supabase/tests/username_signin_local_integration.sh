@@ -77,7 +77,9 @@ if [[ -z "$API_URL" || -z "$DB_URL" || -z "$ANON_KEY" || -z "$SECRET_KEY" ]]; th
 fi
 
 cat > "$WORKDIR/supabase/functions/.env" <<ENV
-SUPABASE_URL=$API_URL
+# The Edge Function runs inside the Supabase Docker network. Use Kong's
+# internal address here; host-side curl continues to use API_URL.
+SUPABASE_URL=http://kong:8000
 SUPABASE_ANON_KEY=$ANON_KEY
 auth_supabase_secret_key=$SECRET_KEY
 username_signin_rate_limit_secret=$(openssl rand -hex 32)
@@ -102,7 +104,7 @@ psql "$DB_URL" -v ON_ERROR_STOP=1 -c \
 supabase functions serve sign-in-by-username --no-verify-jwt --env-file "$WORKDIR/supabase/functions/.env" > "$WORKDIR/function.log" 2>&1 &
 FUNCTION_PID=$!
 for _ in $(seq 1 60); do
-  CODE="$(curl -sS -o /dev/null -w '%{http_code}' -H "apikey: $ANON_KEY" "$API_URL/functions/v1/sign-in-by-username" || true)"
+  CODE="$(curl --connect-timeout 3 --max-time 5 -sS -o /dev/null -w '%{http_code}' -H "apikey: $ANON_KEY" "$API_URL/functions/v1/sign-in-by-username" || true)"
   if [[ "$CODE" == "405" ]]; then break; fi
   if ! kill -0 "$FUNCTION_PID" 2>/dev/null; then
     echo "Local Edge Function process exited before becoming ready."
