@@ -1,6 +1,35 @@
 -- Runtime regression tests for the actual smart-goal policy migration.
 BEGIN;
 
+-- The migration must repair a safe historical bonus but must not pay an item
+-- that became recognized only after the bonus timestamp.
+DO $historical_bonus_backfill$
+BEGIN
+  IF (SELECT payment_status FROM public.order_items
+      WHERE id='c3c3c3c3-c3c3-43c3-83c3-c3c3c3c3c3c3') <> 'PAID' THEN
+    RAISE EXCEPTION 'Historical bonus backfill must pay the oldest eligible item';
+  END IF;
+  IF (SELECT payment_status FROM public.order_items
+      WHERE id='d4d4d4d4-d4d4-44d4-84d4-d4d4d4d4d4d4') <> 'UNPAID' THEN
+    RAISE EXCEPTION 'Historical bonus backfill must not pay items recognized after the bonus';
+  END IF;
+  IF (SELECT count(*) FROM public.payment_allocations
+      WHERE payment_id='efefefef-efef-4fef-8fef-efefefefefef') <> 1
+     OR (SELECT COALESCE(SUM(allocated_amount_minor),0) FROM public.payment_allocations
+         WHERE payment_id='efefefef-efef-4fef-8fef-efefefefefef') <> 15 THEN
+    RAISE EXCEPTION 'Historical bonus backfill must allocate only the 15-unit pre-existing debt';
+  END IF;
+  IF (SELECT count(*) FROM public.payments
+      WHERE id='efefefef-efef-4fef-8fef-efefefefefef' AND payment_method='GOAL_BONUS') <> 1 THEN
+    RAISE EXCEPTION 'Historical bonus backfill must create exactly one allocation funding record';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.financial_ledger
+             WHERE event_type='PAYMENT' AND reference_id='efefefef-efef-4fef-8fef-efefefefefef') THEN
+    RAISE EXCEPTION 'Historical bonus backfill must not duplicate the bonus in the ledger';
+  END IF;
+END;
+$historical_bonus_backfill$;
+
 INSERT INTO public.admins(id, auth_user_id, role, is_active)
 VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         '11111111-1111-4111-8111-111111111111', 'SUPER_ADMIN', TRUE);
@@ -46,9 +75,9 @@ INSERT INTO public.goals(
  (now() - interval '5 days') + interval '3 days', 1
 );
 
-INSERT INTO public.order_items(id, order_id) VALUES
- ('88888888-8888-4888-8888-888888888888', '44444444-4444-4444-8444-444444444444'),
- ('99999999-9999-4999-8999-999999999998', '55555555-5555-4555-8555-555555555555');
+INSERT INTO public.order_items(id, order_id, item_sequence, final_charge_snapshot_minor) VALUES
+ ('88888888-8888-4888-8888-888888888888', '44444444-4444-4444-8444-444444444444', 1, 25),
+ ('99999999-9999-4999-8999-999999999998', '55555555-5555-4555-8555-555555555555', 1, 30);
 
 -- Progress is calculated from server-recognized delivery state, not client payload.
 UPDATE public.order_items
@@ -82,11 +111,37 @@ BEGIN
   IF bonus_count <> 1 THEN
     RAISE EXCEPTION 'Expected exactly one immutable bonus ledger entry, found %', bonus_count;
   END IF;
+
+  -- The 40-unit bonus must be allocated FIFO: 25 to the oldest item, then 15
+  -- to the next item. No second PAYMENT ledger entry may double-count the reward.
+  IF (SELECT payment_status FROM public.order_items
+      WHERE id='88888888-8888-4888-8888-888888888888') <> 'PAID' THEN
+    RAISE EXCEPTION 'Goal bonus must fully pay the oldest outstanding item';
+  END IF;
+  IF (SELECT payment_status FROM public.order_items
+      WHERE id='99999999-9999-4999-8999-999999999998') <> 'PARTIALLY_PAID' THEN
+    RAISE EXCEPTION 'Goal bonus remainder must partially pay the next item';
+  END IF;
+  IF (SELECT count(*) FROM public.payments
+      WHERE id=g.bonus_ledger_id AND payment_method='GOAL_BONUS' AND amount_minor=40) <> 1 THEN
+    RAISE EXCEPTION 'Goal bonus must have exactly one non-cash allocation funding record';
+  END IF;
+  IF (SELECT count(*) FROM public.payment_allocations WHERE payment_id=g.bonus_ledger_id) <> 2
+     OR (SELECT COALESCE(SUM(allocated_amount_minor),0)
+         FROM public.payment_allocations WHERE payment_id=g.bonus_ledger_id) <> 40 THEN
+    RAISE EXCEPTION 'Goal bonus allocations must total the bonus exactly without duplication';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.financial_ledger
+             WHERE event_type='PAYMENT' AND reference_id=g.bonus_ledger_id) THEN
+    RAISE EXCEPTION 'Goal bonus must not create a second PAYMENT ledger entry';
+  END IF;
+
   IF public.evaluate_customer_active_goal(g.customer_id)->>'hasActiveGoal' <> 'false' THEN
     RAISE EXCEPTION 'Completed goal must not be evaluated as active again';
   END IF;
-  IF (SELECT count(*) FROM public.financial_ledger WHERE event_type='BONUS' AND reference_id=g.id) <> 1 THEN
-    RAISE EXCEPTION 'Re-evaluation must not duplicate a completed-goal bonus';
+  IF (SELECT count(*) FROM public.financial_ledger WHERE event_type='BONUS' AND reference_id=g.id) <> 1
+     OR (SELECT count(*) FROM public.payment_allocations WHERE payment_id=g.bonus_ledger_id) <> 2 THEN
+    RAISE EXCEPTION 'Re-evaluation must not duplicate the bonus or its allocations';
   END IF;
 END $$;
 
