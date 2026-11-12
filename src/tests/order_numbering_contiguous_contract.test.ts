@@ -107,4 +107,12 @@ describe('Server-authoritative contiguous order numbering', () => {
     }
   });
 
+
+  it('locks order writes before the duplicate preflight and sequence backfill', () => {
+    const sql = readMigration();
+    expect(sql.indexOf('LOCK TABLE public.orders IN SHARE ROW EXCLUSIVE MODE')).toBeGreaterThanOrEqual(0);
+    expect(sql.indexOf('LOCK TABLE public.orders IN SHARE ROW EXCLUSIVE MODE'))
+      .toBeLessThan(sql.indexOf('DO $numbering_preflight$'));
+  });
+
 });
