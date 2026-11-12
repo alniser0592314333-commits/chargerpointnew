@@ -1,3 +1,6 @@
+-- Serialize against in-flight order writes while validating and installing the number invariant.
+LOCK TABLE public.orders IN SHARE ROW EXCLUSIVE MODE;
+
 -- Read-only preflight must fail before any schema/data mutation if legacy duplicate numbers exist.
 DO $numbering_preflight$
 BEGIN
