@@ -130,6 +130,7 @@ DECLARE
     v_max_new_number INTEGER;
     v_requested_display_number INTEGER;
     v_order_change_payload JSONB;
+    v_order_exists BOOLEAN := FALSE;
 BEGIN
     -- Serialize concurrent retries of the same logical command before
     -- checking/inserting processed_commands. This closes the race where two
