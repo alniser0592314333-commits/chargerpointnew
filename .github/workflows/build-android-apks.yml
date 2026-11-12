@@ -394,9 +394,12 @@ jobs:
               root_gradle.write_text(root)
           app_gradle = Path("android/app/build.gradle")
           app = app_gradle.read_text()
-          if "com.google.gms.google-services" not in app:
-              app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
-          print("Firebase Cloud Messaging configured for " + variant)
+          if variant == "customer":
+              if "com.google.gms.google-services" not in app:
+                  app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
+              print("Firebase Cloud Messaging configured for " + variant)
+          else:
+              print("Admin debug package uses a separate application ID; admin FCM plugin is intentionally skipped for this debug build.")
           PY
 
       - name: Declare Android camera permission for QR scanning
@@ -505,6 +508,43 @@ jobs:
                   text = set_string(text, key, app_name)
               localized.write_text(text, encoding="utf-8")
           print(f"Applied locale-aware launcher labels for {variant}")
+          PY
+
+      - name: Give admin debug APK a separate install identity
+        if: matrix.variant == 'admin'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          gradle_file = Path("android/app/build.gradle")
+          gradle = gradle_file.read_text()
+          if "applicationIdSuffix" not in gradle:
+              match = re.search(r"(?m)^([ \\t]*)buildTypes\\s*\\{", gradle)
+              if not match:
+                  raise SystemExit("Could not locate Android buildTypes block")
+              start = match.end()
+              gradle = gradle[:start] + '\\n        debug {\\n            applicationIdSuffix ".debug"\\n        }' + gradle[start:]
+              gradle_file.write_text(gradle)
+
+          res = Path("android/app/src/main/res")
+          for locale, app_name in (("", "Charging Point Admin (Test)"), ("-ar", "نقطة الشحن تجريبي"), ("-en", "Charging Point Admin (Test)")):
+              strings_file = res / ("values" + locale) / "strings.xml"
+              if not strings_file.is_file():
+                  continue
+              content = strings_file.read_text(encoding="utf-8")
+              for key in ("app_name", "title_activity_main"):
+                  pattern = rf'<string name="{key}">.*?</string>'
+                  replacement = f'<string name="{key}">{app_name}</string>'
+                  if re.search(pattern, content):
+                      content = re.sub(pattern, replacement, content, count=1)
+                  else:
+                      content = content.replace("</resources>", f"    {replacement}\\n</resources>")
+              strings_file.write_text(content, encoding="utf-8")
+
+          if 'applicationIdSuffix ".debug"' not in gradle_file.read_text():
+              raise SystemExit("Admin debug applicationIdSuffix was not applied")
+          print("Admin debug APK will install as a separate app and display a test label.")
           PY
 
       - name: Build installable debug APK
