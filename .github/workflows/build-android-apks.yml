@@ -516,6 +516,8 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
+          import json
+          import copy
 
           gradle_file = Path("android/app/build.gradle")
           gradle = gradle_file.read_text()
@@ -544,6 +546,23 @@ jobs:
 
           if 'applicationIdSuffix ".debug"' not in gradle_file.read_text():
               raise SystemExit("Admin debug applicationIdSuffix was not applied")
+
+          # Google Services validates the Android package against google-services.json.
+          # Add a debug-package client clone so the debug APK can compile without
+          # registering or changing any production Firebase application.
+          firebase_file = Path("android/app/google-services.json")
+          if firebase_file.is_file():
+              firebase = json.loads(firebase_file.read_text(encoding="utf-8"))
+              clients = firebase.get("client", [])
+              source = next((item for item in clients if item.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.chargerpointnew.admin"), None)
+              if source is None:
+                  raise SystemExit("Admin Firebase client is missing; cannot prepare debug package")
+              debug_client = copy.deepcopy(source)
+              debug_client["client_info"]["android_client_info"]["package_name"] = "com.chargerpointnew.admin.debug"
+              if not any(item.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.chargerpointnew.admin.debug" for item in clients):
+                  clients.append(debug_client)
+              firebase_file.write_text(json.dumps(firebase, indent=2) + "\\n", encoding="utf-8")
+
           print("Admin debug APK will install as a separate app and display a test label.")
           PY
 
