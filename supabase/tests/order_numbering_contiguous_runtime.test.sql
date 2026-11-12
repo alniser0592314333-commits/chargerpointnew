@@ -4,7 +4,7 @@ BEGIN;
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS uuid LANGUAGE sql STABLE
-AS 'SELECT ''11111111-1111-4111-8111-111111111111''::uuid';
+AS $ SELECT NULLIF(current_setting('request.jwt.claim.sub', TRUE), '')::uuid $;
 CREATE OR REPLACE FUNCTION auth.role()
 RETURNS text LANGUAGE sql STABLE
 AS 'SELECT ''authenticated''::text';
