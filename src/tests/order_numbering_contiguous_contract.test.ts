@@ -13,7 +13,7 @@ describe('Server-authoritative contiguous order numbering', () => {
     return fs.readFileSync(migrationPath, 'utf8');
   };
 
-  it('validates the exact client-assigned number against a durable high-water mark', () => {
+  it('preserves the first assigned number and reassigns stale offline numbers above the durable high-water mark', () => {
     const sql = readMigration();
     const routeStart = sql.indexOf('-- 5. ROUTE BY CANONICAL COMMAND TYPE');
     const createStart = sql.indexOf("WHEN 'CREATE_ORDER' THEN", routeStart);
@@ -30,7 +30,8 @@ describe('Server-authoritative contiguous order numbering', () => {
     expect(branch).toContain('public.business_day_order_sequences');
     expect(branch).toContain('last_assigned_number');
     expect(branch).toContain('GREATEST(v_max_new_number, COALESCE(MAX(display_number), 0))');
-    expect(branch).toContain('ORDER_NUMBER_CONFLICT [409]');
+    expect(branch).toContain('v_requested_display_number := v_max_new_number + 1');
+    expect(branch).toContain('The authoritative change');
     expect(branch).toContain('ORDER_NUMBER_IMMUTABLE [409]');
     expect(branch).toContain('ORDER_NUMBER_REQUIRED');
     expect(branch).toContain("'{displayNumber}'");
