@@ -689,11 +689,11 @@ jobs:
       - name: Apply server-authoritative contiguous-numbering migration
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261016130000_server_authoritative_contiguous_order_numbers.sql
+        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261016130000_server_authoritative_contiguous_order_numbers.sql
       - name: Apply the local-first purchase book migration against the latest canonical dispatcher
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261111090000_purchase_book_local_first.sql
+        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261111090000_purchase_book_local_first.sql
       - name: Verify purchase commands, payment transition, currency validation, and table isolation
         env:
           PGPASSWORD: postgres
