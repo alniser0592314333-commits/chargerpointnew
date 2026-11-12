@@ -520,11 +520,11 @@ jobs:
           gradle_file = Path("android/app/build.gradle")
           gradle = gradle_file.read_text()
           if "applicationIdSuffix" not in gradle:
-              match = re.search(r"(?m)^([ \\t]*)buildTypes\\s*\\{", gradle)
+              match = re.search(r"(?m)^([ \t]*)buildTypes\\s*\\{", gradle)
               if not match:
                   raise SystemExit("Could not locate Android buildTypes block")
               start = match.end()
-              gradle = gradle[:start] + '\\n        debug {\\n            applicationIdSuffix ".debug"\\n        }' + gradle[start:]
+              gradle = gradle[:start] + '\n        debug {\n            applicationIdSuffix ".debug"\n        }' + gradle[start:]
               gradle_file.write_text(gradle)
 
           res = Path("android/app/src/main/res")
@@ -539,7 +539,7 @@ jobs:
                   if re.search(pattern, content):
                       content = re.sub(pattern, replacement, content, count=1)
                   else:
-                      content = content.replace("</resources>", f"    {replacement}\\n</resources>")
+                      content = content.replace("</resources>", f"    {replacement}\n</resources>")
               strings_file.write_text(content, encoding="utf-8")
 
           if 'applicationIdSuffix ".debug"' not in gradle_file.read_text():
