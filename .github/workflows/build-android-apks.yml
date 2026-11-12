@@ -37,7 +37,6 @@ on:
       - 'supabase/functions/account-biometric/**'
       - 'src/components/settings/AdminBiometricSettings.tsx'
       - 'scripts/android/**'
-      - 'supabase/functions/account-biometric/**'
       - 'supabase/migrations/*server_verified_biometric*.sql'
       - 'src/tests/native_push_notifications.test.ts'
       - 'supabase/config.toml'
@@ -58,35 +57,26 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Set up Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: 2.x
-
       - name: Install dependencies
         run: npm install
-
       - name: Typecheck application and native notification integration
         run: npm run lint
-
       - name: Test native notification registration and customer portal regressions
         run: npx vitest run src/tests/native_push_notifications.test.ts src/tests/customer_portal_polish.test.ts src/tests/local_payment_helper_code.test.ts
-
       - name: Typecheck native push Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/native-push/index.ts
-
       - name: Typecheck server-verified biometric Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/account-biometric/index.ts
-
       - name: Typecheck authenticated customer-account Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/customer-account/index.ts
-
       - name: Parse migration SQL and assert canonical trigger coverage
         run: |
           python3 -m pip install --disable-pip-version-check pglast
@@ -108,9 +98,8 @@ jobs:
           for fix in fixes:
               fix_sql = fix.read_text()
               parse_sql(fix_sql)
-              if "http_post(" in fix_sql:
-                  if "http_post($1, $4, $2, $3, $5)" not in fix_sql:
-                      raise SystemExit("pg_net http_post call does not match the installed positional signature")
+              if "http_post(" in fix_sql and "http_post($1, $4, $2, $3, $5)" not in fix_sql:
+                  raise SystemExit("pg_net http_post call does not match the installed positional signature")
           final_fix = Path("supabase/migrations/20261021120000_fix_native_push_pg_net_schema_resolution.sql").read_text()
           if "http_post($1, $4, $2, $3, $5)" not in final_fix or "pg_get_function_identity_arguments" not in final_fix:
               raise SystemExit("Final pg_net schema/signature repair is incomplete")
@@ -128,17 +117,12 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install dependencies
         run: npm install
-
-      # Keep legacy-suite failures visible without blocking the focused notification
-      # checks or APK packaging; do not modify unrelated financial/business tests here.
       - name: Run full application regression suite
         continue-on-error: true
         run: npm test
@@ -154,35 +138,27 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-
       - name: Install dependencies
         run: npm install
-
       - name: Build selected web variant
         env:
           VITE_NATIVE_PUSH_ENABLED: ${{ (matrix.variant == 'customer' && secrets.GOOGLE_SERVICES_JSON_CUSTOMER_BASE64 != '') || (matrix.variant == 'admin' && secrets.GOOGLE_SERVICES_JSON_ADMIN_BASE64 != '') }}
         run: npm run build:${{ matrix.variant }}
-
       - name: Select Capacitor app configuration
         run: cp capacitor.${{ matrix.variant }}.config.json capacitor.config.json
-
       - name: Generate native Android project
         run: npx cap add android
-
       - name: Sync Capacitor assets
         run: npx cap sync android
-
       - name: Install server-verified Android biometric signing plugin
         run: |
           python3 - <<'PY'
@@ -197,38 +173,34 @@ jobs:
           package_dir = java_root / "com/chargerpointnew/biometric"
           package_dir.mkdir(parents=True, exist_ok=True)
           (package_dir / "AccountBiometricPlugin.java").write_text(source.read_text())
-
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text()
           if "android.permission.USE_BIOMETRIC" not in text:
-              text = text.replace("<application", '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\n    <application', 1)
+              text = text.replace("<application", '    <uses-permission android:name="android.permission.USE_BIOMETRIC" />\\n    <application', 1)
           manifest.write_text(text)
-
           app_gradle = Path("android/app/build.gradle")
           gradle = app_gradle.read_text()
           if "androidx.biometric:biometric" not in gradle:
-              match = re.search(r"dependencies\s*\{", gradle)
+              match = re.search(r"dependencies\\s*\\{", gradle)
               if not match:
                   raise SystemExit("Could not find Android app dependencies block")
-              gradle = gradle[:match.end()] + "\n    implementation 'androidx.biometric:biometric:1.1.0'" + gradle[match.end():]
+              gradle = gradle[:match.end()] + "\\n    implementation 'androidx.biometric:biometric:1.1.0'" + gradle[match.end():]
               app_gradle.write_text(gradle)
-
           activities = list(java_root.rglob("MainActivity.java"))
           if len(activities) != 1:
               raise SystemExit(f"Expected exactly one generated MainActivity.java, found {len(activities)}")
           main = activities[0]
           code = main.read_text()
           if "com.chargerpointnew.biometric.AccountBiometricPlugin" not in code:
-              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\nimport com.chargerpointnew.biometric.AccountBiometricPlugin;")
+              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\nimport com.chargerpointnew.biometric.AccountBiometricPlugin;")
           if "registerPlugin(AccountBiometricPlugin.class)" not in code:
               if "void onCreate(" in code:
-                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(AccountBiometricPlugin.class);", code, count=1)
+                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(AccountBiometricPlugin.class);", code, count=1)
               else:
-                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(AccountBiometricPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(AccountBiometricPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
           main.write_text(code)
           print("Android Keystore + strong-biometric signing plugin registered.")
           PY
-
       - name: Install default-SIM bulk SMS plugin for admin APK only
         if: matrix.variant == 'admin'
         run: |
@@ -243,13 +215,11 @@ jobs:
           package_dir = java_root / "com/chargerpointnew/sms"
           package_dir.mkdir(parents=True, exist_ok=True)
           (package_dir / "NativeSmsPlugin.java").write_text(source.read_text())
-
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           content = manifest.read_text()
           if "android.permission.SEND_SMS" not in content:
-              content = content.replace("<application", '    <uses-permission android:name="android.permission.SEND_SMS" />\n    <application', 1)
+              content = content.replace("<application", '    <uses-permission android:name="android.permission.SEND_SMS" />\\n    <application', 1)
               manifest.write_text(content)
-
           activities = list(java_root.rglob("MainActivity.java"))
           if len(activities) != 1:
               raise SystemExit(f"Expected exactly one generated MainActivity.java, found {len(activities)}")
@@ -257,23 +227,21 @@ jobs:
           code = main.read_text()
           import_line = "import com.chargerpointnew.sms.NativeSmsPlugin;"
           if import_line not in code:
-              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + import_line, 1)
+              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\n" + import_line, 1)
           if "registerPlugin(NativeSmsPlugin.class)" not in code:
               if "void onCreate(" in code:
-                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(NativeSmsPlugin.class);", code, count=1)
+                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(NativeSmsPlugin.class);", code, count=1)
               else:
-                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(NativeSmsPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(NativeSmsPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
           main.write_text(code)
           print("Installed the default-SIM SMS plugin only in the admin APK.")
           PY
-
-      - name: Install local payment helper with encrypted device storage and direct USSD calling
+      - name: Install local payment helper for customer APK only
         if: matrix.variant == 'customer'
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
-
           source = Path("scripts/android/LocalPaymentHelperPlugin.java")
           if not source.is_file():
               raise SystemExit("Local payment helper Android plugin source is missing")
@@ -281,13 +249,11 @@ jobs:
           package_dir = java_root / "com/chargerpointnew/paymenthelper"
           package_dir.mkdir(parents=True, exist_ok=True)
           (package_dir / "LocalPaymentHelperPlugin.java").write_text(source.read_text())
-
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text()
           if "android.permission.CALL_PHONE" not in text:
-              text = text.replace("<application", '    <uses-permission android:name="android.permission.CALL_PHONE" />\n    <application', 1)
+              text = text.replace("<application", '    <uses-permission android:name="android.permission.CALL_PHONE" />\\n    <application', 1)
               manifest.write_text(text)
-
           activities = list(java_root.rglob("MainActivity.java"))
           if len(activities) != 1:
               raise SystemExit(f"Expected exactly one generated MainActivity.java, found {len(activities)}")
@@ -295,65 +261,15 @@ jobs:
           code = main.read_text()
           import_line = "import com.chargerpointnew.paymenthelper.LocalPaymentHelperPlugin;"
           if import_line not in code:
-              anchor = "import com.chargerpointnew.biometric.AccountBiometricPlugin;"
-              if anchor in code:
-                  code = code.replace(anchor, anchor + "\n" + import_line, 1)
-              else:
-                  code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + import_line, 1)
+              code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\n" + import_line, 1)
           if "registerPlugin(LocalPaymentHelperPlugin.class)" not in code:
               if "void onCreate(" in code:
-                  code = re.sub(r"(void onCreate\([^)]*\)\s*\{)", r"\1\n    registerPlugin(LocalPaymentHelperPlugin.class);", code, count=1)
+                  code = re.sub(r"(void onCreate\\([^)]*\\)\\s*\\{)", r"\\1\\n    registerPlugin(LocalPaymentHelperPlugin.class);", code, count=1)
               else:
-                  code = re.sub(r"(class MainActivity extends BridgeActivity\s*\{)", r"\1\n  @Override\n  public void onCreate(android.os.Bundle savedInstanceState) {\n    registerPlugin(LocalPaymentHelperPlugin.class);\n    super.onCreate(savedInstanceState);\n  }\n", code, count=1)
+                  code = re.sub(r"(class MainActivity extends BridgeActivity\\s*\\{)", r"\\1\\n  @Override\\n  public void onCreate(android.os.Bundle savedInstanceState) {\\n    registerPlugin(LocalPaymentHelperPlugin.class);\\n    super.onCreate(savedInstanceState);\\n  }\\n", code, count=1)
           main.write_text(code)
-          # Register the AccessibilityService itself; copying only the Capacitor plugin
-          # does not make the automation service appear in Android Accessibility settings.
-          automation_source = Path("scripts/android/UssdAutomationService.java")
-          if not automation_source.is_file():
-              raise SystemExit("USSD accessibility service source is missing")
-          (package_dir / "UssdAutomationService.java").write_text(automation_source.read_text())
-
-          xml_dir = Path("android/app/src/main/res/xml")
-          xml_dir.mkdir(parents=True, exist_ok=True)
-          (xml_dir / "ussd_accessibility_service.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
-          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-              android:description="@string/ussd_accessibility_service_description"
-              android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
-              android:accessibilityFeedbackType="feedbackGeneric"
-              android:notificationTimeout="100"
-              android:canRetrieveWindowContent="true"
-              android:canPerformGestures="false" />
-          """)
-
-          strings_file = Path("android/app/src/main/res/values/strings.xml")
-          strings = strings_file.read_text(encoding="utf-8")
-          desc_key = "ussd_accessibility_service_description"
-          if f'name="{desc_key}"' not in strings:
-              strings = strings.replace("</resources>", '    <string name="ussd_accessibility_service_description">USSD payment step assistance for Charging Point</string>\n</resources>')
-              strings_file.write_text(strings, encoding="utf-8")
-
-          manifest = Path("android/app/src/main/AndroidManifest.xml")
-          manifest_text = manifest.read_text()
-          service_declaration = """        <service
-              android:name="com.chargerpointnew.paymenthelper.UssdAutomationService"
-              android:label="Charging Point - USSD payment assistance"
-              android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-              android:exported="true">
-              <intent-filter>
-                  <action android:name="android.accessibilityservice.AccessibilityService" />
-              </intent-filter>
-              <meta-data
-                  android:name="android.accessibilityservice"
-                  android:resource="@xml/ussd_accessibility_service" />
-          </service>"""
-          if "com.chargerpointnew.paymenthelper.UssdAutomationService" not in manifest_text:
-              if "</application>" not in manifest_text:
-                  raise SystemExit("Could not find application closing tag in AndroidManifest.xml")
-              manifest_text = manifest_text.replace("</application>", service_declaration + "\n    </application>", 1)
-              manifest.write_text(manifest_text)
-          print("Installed encrypted local payment storage, direct USSD calling, and registered the USSD accessibility service.")
+          print("Installed customer payment helper plugin.")
           PY
-
       - name: Configure Firebase Cloud Messaging for native push
         env:
           GOOGLE_SERVICES_JSON_CUSTOMER_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_CUSTOMER_BASE64 }}
@@ -363,8 +279,8 @@ jobs:
           import base64
           import json
           import os
-          from pathlib import Path
           import re
+          from pathlib import Path
 
           variant = "${{ matrix.variant }}"
           secret_name = "GOOGLE_SERVICES_JSON_CUSTOMER_BASE64" if variant == "customer" else "GOOGLE_SERVICES_JSON_ADMIN_BASE64"
@@ -382,85 +298,60 @@ jobs:
           packages = [item.get("client_info", {}).get("android_client_info", {}).get("package_name") for item in clients]
           if expected_package not in packages:
               raise SystemExit(f"Firebase config does not contain expected Android package {expected_package}")
-
           Path("android/app/google-services.json").write_bytes(firebase)
           root_gradle = Path("android/build.gradle")
           root = root_gradle.read_text()
           if "com.google.gms:google-services" not in root:
-              match = re.search(r"dependencies\s*\{", root)
+              match = re.search(r"dependencies\\s*\\{", root)
               if not match:
                   raise SystemExit("Could not locate root Gradle dependencies for Google Services plugin")
-              root = root[:match.end()] + "\n        classpath 'com.google.gms:google-services:4.4.2'" + root[match.end():]
+              root = root[:match.end()] + "\\n        classpath 'com.google.gms:google-services:4.4.2'" + root[match.end():]
               root_gradle.write_text(root)
           app_gradle = Path("android/app/build.gradle")
           app = app_gradle.read_text()
           if variant == "customer":
               if "com.google.gms.google-services" not in app:
-                  app_gradle.write_text(app.rstrip() + "\n\napply plugin: 'com.google.gms.google-services'\n")
+                  app_gradle.write_text(app.rstrip() + "\\n\\napply plugin: 'com.google.gms.google-services'\\n")
               print("Firebase Cloud Messaging configured for " + variant)
           else:
               print("Admin debug package uses a separate application ID; admin FCM plugin is intentionally skipped for this debug build.")
           PY
-
       - name: Declare Android camera permission for QR scanning
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
-
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           content = manifest.read_text()
           if "android.permission.POST_NOTIFICATIONS" not in content:
-              content = content.replace("<application", '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application', 1)
+              content = content.replace("<application", '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\\n    <application', 1)
           if "android.permission.CAMERA" not in content:
-              content, count = re.subn(
-                  r"(?m)^([ \t]*)<application\b",
-                  '    <uses-permission android:name="android.permission.CAMERA" />\n'
-                  '    <uses-feature android:name="android.hardware.camera.any" android:required="false" />\n'
-                  r"\1<application",
-                  content,
-                  count=1,
-              )
+              content, count = re.subn(r"(?m)^([ \\t]*)<application\\b", '    <uses-permission android:name="android.permission.CAMERA" />\\n    <uses-feature android:name="android.hardware.camera.any" android:required="false" />\\n' + r"\\1<application", content, count=1)
               if count != 1:
                   raise SystemExit("Could not safely add CAMERA permission to AndroidManifest.xml")
           manifest.write_text(content)
-
+          PY
       - name: Sync Capacitor assets
         run: npx cap sync android
-
-      - name: Apply official mountain-and-moon launcher icon and localized app name
+      - name: Apply official icon and localized app name
         run: |
-          python3 -m pip install --break-system-packages --disable-pip-version-check cairosvg
           python3 - <<'PY'
           from pathlib import Path
-          import os
           import re
           import cairosvg
-
           variant = "${{ matrix.variant }}"
           res = Path("android/app/src/main/res")
           full_icon = Path("public/icon.svg")
           foreground_icon = Path("public/charging-point-foreground.svg")
           if not full_icon.is_file() or not foreground_icon.is_file():
               raise SystemExit("Official Charging Point SVG icon assets are missing")
-
-          density_sizes = {
-              "mdpi": (48, 108),
-              "hdpi": (72, 162),
-              "xhdpi": (96, 216),
-              "xxhdpi": (144, 324),
-              "xxxhdpi": (192, 432),
-          }
+          density_sizes = {"mdpi": (48,108), "hdpi": (72,162), "xhdpi": (96,216), "xxhdpi": (144,324), "xxxhdpi": (192,432)}
           for density, (legacy_size, foreground_size) in density_sizes.items():
               folder = res / f"mipmap-{density}"
               folder.mkdir(parents=True, exist_ok=True)
               for name in ("ic_launcher.png", "ic_launcher_round.png"):
-                  cairosvg.svg2png(url=str(full_icon), write_to=str(folder / name),
-                                   output_width=legacy_size, output_height=legacy_size)
-              cairosvg.svg2png(url=str(foreground_icon),
-                               write_to=str(folder / "ic_launcher_foreground.png"),
-                               output_width=foreground_size, output_height=foreground_size)
-
+                  cairosvg.svg2png(url=str(full_icon), write_to=str(folder / name), output_width=legacy_size, output_height=legacy_size)
+              cairosvg.svg2png(url=str(foreground_icon), write_to=str(folder / "ic_launcher_foreground.png"), output_width=foreground_size, output_height=foreground_size)
           adaptive_folder = res / "mipmap-anydpi-v26"
           adaptive_folder.mkdir(parents=True, exist_ok=True)
           adaptive_xml = '''<?xml version="1.0" encoding="utf-8"?>
@@ -471,45 +362,32 @@ jobs:
           '''
           (adaptive_folder / "ic_launcher.xml").write_text(adaptive_xml)
           (adaptive_folder / "ic_launcher_round.xml").write_text(adaptive_xml)
-
           values = res / "values"
           values.mkdir(parents=True, exist_ok=True)
-          (values / "cp_icon_colors.xml").write_text('''<?xml version="1.0" encoding="utf-8"?>
-          <resources><color name="cp_icon_background">#082b32</color></resources>
-          ''')
-
-          # Android's generated activity label may use title_activity_main rather than app_name.
-          # Localize both keys so the launcher label follows the device's Android locale.
+          (values / "cp_icon_colors.xml").write_text('<?xml version="1.0" encoding="utf-8"?>\\n<resources><color name="cp_icon_background">#082b32</color></resources>\\n')
           base_name = "Charging Point" if variant == "customer" else "Charging Point Admin"
           arabic_name = "نقطة الشحن" if variant == "customer" else "نقطة الشحن - الإدارة"
-
           def set_string(xml, key, value):
               pattern = rf'<string name="{re.escape(key)}">.*?</string>'
               replacement = f'<string name="{key}">{value}</string>'
               if re.search(pattern, xml):
                   return re.sub(pattern, replacement, xml, count=1)
-              return xml.replace("</resources>", f'    {replacement}\n</resources>')
-
+              return xml.replace("</resources>", f'    {replacement}\\n</resources>')
           strings_file = values / "strings.xml"
           strings = strings_file.read_text(encoding="utf-8")
           for key in ("app_name", "title_activity_main"):
               strings = set_string(strings, key, base_name)
           strings_file.write_text(strings, encoding="utf-8")
-
           for locale, app_name in (("ar", arabic_name), ("en", base_name)):
               folder = res / f"values-{locale}"
               folder.mkdir(parents=True, exist_ok=True)
               localized = folder / "strings.xml"
-              if localized.exists():
-                  text = localized.read_text(encoding="utf-8")
-              else:
-                  text = '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n'
+              text = localized.read_text(encoding="utf-8") if localized.exists() else '<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n</resources>\\n'
               for key in ("app_name", "title_activity_main"):
                   text = set_string(text, key, app_name)
               localized.write_text(text, encoding="utf-8")
           print(f"Applied locale-aware launcher labels for {variant}")
           PY
-
       - name: Give admin debug APK a separate install identity
         if: matrix.variant == 'admin'
         run: |
@@ -518,17 +396,15 @@ jobs:
           import re
           import json
           import copy
-
           gradle_file = Path("android/app/build.gradle")
           gradle = gradle_file.read_text()
           if "applicationIdSuffix" not in gradle:
-              match = re.search(r"(?m)^([ \t]*)buildTypes\s*\{", gradle)
+              match = re.search(r"(?m)^([ \\t]*)buildTypes\\s*\\{", gradle)
               if not match:
                   raise SystemExit("Could not locate Android buildTypes block")
               start = match.end()
-              gradle = gradle[:start] + '\n        debug {\n            applicationIdSuffix ".debug"\n        }' + gradle[start:]
+              gradle = gradle[:start] + '\\n        debug {\\n            applicationIdSuffix ".debug"\\n        }' + gradle[start:]
               gradle_file.write_text(gradle)
-
           res = Path("android/app/src/main/res")
           for locale, app_name in (("", "Charging Point Admin (Test)"), ("-ar", "نقطة الشحن تجريبي"), ("-en", "Charging Point Admin (Test)")):
               strings_file = res / ("values" + locale) / "strings.xml"
@@ -541,15 +417,10 @@ jobs:
                   if re.search(pattern, content):
                       content = re.sub(pattern, replacement, content, count=1)
                   else:
-                      content = content.replace("</resources>", f"    {replacement}\n</resources>")
+                      content = content.replace("</resources>", f"    {replacement}\\n</resources>")
               strings_file.write_text(content, encoding="utf-8")
-
           if 'applicationIdSuffix ".debug"' not in gradle_file.read_text():
               raise SystemExit("Admin debug applicationIdSuffix was not applied")
-
-          # Google Services validates the Android package against google-services.json.
-          # Add a debug-package client clone so the debug APK can compile without
-          # registering or changing any production Firebase application.
           firebase_file = Path("android/app/google-services.json")
           if firebase_file.is_file():
               firebase = json.loads(firebase_file.read_text(encoding="utf-8"))
@@ -561,19 +432,29 @@ jobs:
               debug_client["client_info"]["android_client_info"]["package_name"] = "com.chargerpointnew.admin.debug"
               if not any(item.get("client_info", {}).get("android_client_info", {}).get("package_name") == "com.chargerpointnew.admin.debug" for item in clients):
                   clients.append(debug_client)
-              firebase_file.write_text(json.dumps(firebase, indent=2) + "\n", encoding="utf-8")
-
+              firebase_file.write_text(json.dumps(firebase, indent=2) + "\\n", encoding="utf-8")
           print("Admin debug APK will install as a separate app and display a test label.")
           PY
-
+      - name: Set Android version to 1.3.5
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          gradle = Path("android/app/build.gradle")
+          content = gradle.read_text()
+          content, code_count = re.subn(r'(?m)^(\\s*versionCode\\s+)\\d+\\s*$', r'\\g<1>1003005', content, count=1)
+          content, name_count = re.subn(r'(?m)^(\\s*versionName\\s+)[^\\n]+$', r'\\g<1>"1.3.5"', content, count=1)
+          if code_count != 1 or name_count != 1:
+              raise SystemExit(f"Could not set Android version: versionCode matches={code_count}, versionName matches={name_count}")
+          gradle.write_text(content)
+          print("APK versionName=1.3.5, versionCode=1003005")
+          PY
       - name: Build installable debug APK
         run: cd android && ./gradlew assembleDebug
-
       - name: Name APK artifact
         run: |
           mkdir -p artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/ChargerPoint-${{ matrix.variant }}-debug.apk
-
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
