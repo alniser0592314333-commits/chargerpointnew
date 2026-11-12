@@ -560,9 +560,11 @@ BEGIN
                 WHERE day_id = v_day_uuid;
 
                 IF v_requested_display_number <= v_max_new_number THEN
-                    RAISE EXCEPTION 'ORDER_NUMBER_CONFLICT [409]: client order number % is not above the current high-water mark %. The assigned number was not changed.',
-                        v_requested_display_number, v_max_new_number
-                        USING ERRCODE = 'P0409';
+                    -- A different device may already have claimed this offline reservation.
+                    -- Preserve the first accepted order's number and assign the conflicting
+                    -- offline order the next never-issued number. The authoritative change
+                    -- feed returns this replacement number to the originating device.
+                    v_requested_display_number := v_max_new_number + 1;
                 END IF;
 
                 INSERT INTO public.orders (
