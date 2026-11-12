@@ -566,6 +566,7 @@ jobs:
           print("Admin debug APK will install as a separate app and display a test label.")
           PY
 
+      # Pin the installable debug package to the requested Android version.
       - name: Set Android version to 1.3.5
         run: |
           python3 - <<'PY'
@@ -573,7 +574,8 @@ jobs:
           import re
           gradle = Path("android/app/build.gradle")
           content = gradle.read_text()
-          content, code_count = re.subn(r'(?m)^(\s*versionCode\s+)\d+\s*
+          content, code_count = re.subn(r'(?m)^(\\s*versionCode\\s+)\\d+\\s*        run: cd android && ./gradlew assembleDebug
+
       - name: Name APK artifact
         run: |
           mkdir -p artifacts
@@ -586,8 +588,9 @@ jobs:
           path: artifacts/ChargerPoint-${{ matrix.variant }}-debug.apk
           if-no-files-found: error
           retention-days: 14
-, r'\g<1>1003005', content, count=1)
-          content, name_count = re.subn(r'(?m)^(\s*versionName\s+)[^\n]+
+, r'\\g<1>1003005', content, count=1)
+          content, name_count = re.subn(r'(?m)^(\\s*versionName\\s+)[^\\n]+        run: cd android && ./gradlew assembleDebug
+
       - name: Name APK artifact
         run: |
           mkdir -p artifacts
@@ -600,7 +603,7 @@ jobs:
           path: artifacts/ChargerPoint-${{ matrix.variant }}-debug.apk
           if-no-files-found: error
           retention-days: 14
-, r'\g<1>"1.3.5"', content, count=1)
+, r'\\g<1>"1.3.5"', content, count=1)
           if code_count != 1 or name_count != 1:
               raise SystemExit(f"Could not set Android version: versionCode matches={code_count}, versionName matches={name_count}")
           gradle.write_text(content)
