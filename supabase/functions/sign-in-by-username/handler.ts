@@ -138,7 +138,9 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         {
           method: "POST",
           headers: {
-            apikey: secretKey,
+            // Password-token exchange is a public Auth endpoint; use the publishable
+            // key here. Keep the server secret exclusively on the privileged admin client.
+            apikey: publicKey,
             "Content-Type": "application/json",
             "Sb-Forwarded-For": clientIp,
           },
