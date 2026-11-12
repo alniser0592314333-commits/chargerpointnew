@@ -185,6 +185,31 @@ Deno.serve(async (request: Request) => {
     }
 
     const locale = normalize(input.locale, 8) === "en" ? "en" : "ar";
+
+    // Clean up only stale registrations owned by this already-authenticated identity
+    // before enforcing the five-device cap. Old sessions must not permanently consume
+    // slots after logout, reinstall, or a refreshed device identifier.
+    const { data: activeRegistrations, error: registrationsError } = await admin.from("native_push_devices")
+      .select("id")
+      .eq("app_variant", variant)
+      .eq("principal_id", principalId)
+      .is("disabled_at", null);
+    if (registrationsError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    for (const registration of activeRegistrations ?? []) {
+      const { data: isCurrent, error: currentError } = await admin.rpc("native_push_device_is_current", {
+        p_device_id: registration.id,
+        p_allow_account_status_notice: false,
+      });
+      // Never delete records based on an inconclusive database/session check.
+      if (currentError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      if (isCurrent !== true) {
+        const { error: staleDeleteError } = await admin.from("native_push_devices")
+          .delete().eq("id", registration.id)
+          .eq("app_variant", variant).eq("principal_id", principalId);
+        if (staleDeleteError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      }
+    }
+
     const { data: existingDevice, error: existingDeviceError } = await admin.from("native_push_devices")
       .select("id").eq("device_id", device).eq("app_variant", variant)
       .eq("principal_id", principalId).maybeSingle();
