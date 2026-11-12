@@ -520,7 +520,7 @@ jobs:
           gradle_file = Path("android/app/build.gradle")
           gradle = gradle_file.read_text()
           if "applicationIdSuffix" not in gradle:
-              match = re.search(r"(?m)^([ \t]*)buildTypes\\s*\\{", gradle)
+              match = re.search(r"(?m)^([ \t]*)buildTypes\s*\{", gradle)
               if not match:
                   raise SystemExit("Could not locate Android buildTypes block")
               start = match.end()
