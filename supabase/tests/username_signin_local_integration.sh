@@ -76,9 +76,9 @@ if [[ -z "$API_URL" || -z "$DB_URL" || -z "$ANON_KEY" || -z "$SECRET_KEY" ]]; th
   exit 1
 fi
 
+# The Edge Function runs inside the Supabase Docker network, so use Kong's
+# internal address here. Host-side curl continues to use API_URL.
 cat > "$WORKDIR/supabase/functions/.env" <<ENV
-# The Edge Function runs inside the Supabase Docker network. Use Kong's
-# internal address here; host-side curl continues to use API_URL.
 SUPABASE_URL=http://kong:8000
 SUPABASE_ANON_KEY=$ANON_KEY
 auth_supabase_secret_key=$SECRET_KEY
@@ -86,7 +86,7 @@ username_signin_rate_limit_secret=$(openssl rand -hex 32)
 username_signin_diagnostics=true
 ENV
 
-curl -fsS -X POST "$API_URL/auth/v1/signup" \
+curl --connect-timeout 3 --max-time 15 -fsS -X POST "$API_URL/auth/v1/signup" \
   -H "apikey: $ANON_KEY" \
   -H "Content-Type: application/json" \
   --data '{"email":"integration-admin@example.test","password":"Integration!Pass12345"}' \
@@ -123,7 +123,7 @@ post_signin() {
   local username="$1"
   local password="$2"
   local outfile="$3"
-  curl -sS -o "$outfile" -w '%{http_code}' -X POST "$API_URL/functions/v1/sign-in-by-username" \
+  curl --connect-timeout 3 --max-time 15 -sS -o "$outfile" -w '%{http_code}' -X POST "$API_URL/functions/v1/sign-in-by-username" \
     -H "apikey: $ANON_KEY" \
     -H "Content-Type: application/json" \
     -H "cf-connecting-ip: 203.0.113.8" \
