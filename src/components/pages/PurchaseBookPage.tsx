@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, CalendarDays, X, Settings2, Pencil, EyeOff, CircleAlert, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
+import { Plus, CalendarDays, X, Pencil, EyeOff, CircleAlert, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
 import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
