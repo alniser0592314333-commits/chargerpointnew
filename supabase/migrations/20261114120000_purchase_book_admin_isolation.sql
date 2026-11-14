@@ -281,7 +281,7 @@ BEGIN
       ORDER BY sequence_id LIMIT LEAST(GREATEST(COALESCE(p_limit,500),1),500)
     ), visible AS (
       SELECT p.* FROM page p
-      WHERE p.entity_type NOT LIKE 'purchase\_%' ESCAPE '\'
+      WHERE p.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
          OR public.purchase_entity_belongs_to_admin(p.entity_type,p.entity_id,v_admin_id)
     )
     SELECT jsonb_build_object(
@@ -306,7 +306,7 @@ BEGIN
   SELECT c.sequence_id,c.entity_type,c.entity_id,c.action,c.payload,c.version,c.changed_at
   FROM public.change_log c
   WHERE c.sequence_id>p_since_sequence
-    AND (c.entity_type NOT LIKE 'purchase\_%' ESCAPE '\'
+    AND (c.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
       OR public.purchase_entity_belongs_to_admin(c.entity_type,c.entity_id,v_admin_id))
   ORDER BY c.sequence_id ASC
   LIMIT LEAST(COALESCE(p_limit,500),1000);
