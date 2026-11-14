@@ -383,6 +383,16 @@ export class MockServerSyncTransport implements ServerSyncTransport {
   }
 }
 
+const getActiveAdminIdForPurchaseSync = (): string | undefined => {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('app_auth_session') : null;
+    const session = raw ? JSON.parse(raw) : null;
+    return typeof session?.userId === 'string' && session.userId ? session.userId : undefined;
+  } catch { return undefined; }
+};
+
+const isPurchaseOutboxCommand = (type: string): boolean => type.startsWith('SAVE_PURCHASE_') || type === 'MARK_PURCHASE_ORDER_PAID';
+
 export class SyncEngine {
   private isSyncing = false;
   public onAuthoritativeReset?: () => void;
@@ -865,8 +875,10 @@ export class SyncEngine {
           }
         }
 
+        const activePurchaseAdminId = getActiveAdminIdForPurchaseSync();
         const candidates = outboxItems.filter(
           i =>
+            (!isPurchaseOutboxCommand(i.commandType) || Boolean(activePurchaseAdminId && i.actorAdminId === activePurchaseAdminId)) &&
             !processedInCycle.has(i.commandId) &&
             !((i.payload as any)?.deferBinVerification === true && (!((i.payload as any)?.bin) || String((i.payload as any)?.bin).trim().length < 4)) &&
             (i.status === 'pending' ||
