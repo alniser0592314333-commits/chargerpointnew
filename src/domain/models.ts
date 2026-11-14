@@ -143,21 +143,22 @@ export interface OrderItemEntity extends BaseEntity {
 
 export type PurchaseCurrency = 'ILS' | 'USD' | 'JOD';
 export type PurchasePaymentStatus = 'PAID' | 'UNPAID';
-export interface PurchaseCatalogEntity extends BaseEntity {
+export interface PurchaseOwnedEntity extends BaseEntity { adminId?: ID; }
+export interface PurchaseCatalogEntity extends PurchaseOwnedEntity {
   name: string;
   isActive: boolean;
   deletedAt?: Timestamp;
 }
-export interface PurchaseMonthEntity extends BaseEntity {
+export interface PurchaseMonthEntity extends PurchaseOwnedEntity {
   year: number; month: number; startDate: string; endDate: string; isClosed: boolean;
 }
-export interface PurchaseWeekEntity extends BaseEntity {
+export interface PurchaseWeekEntity extends PurchaseOwnedEntity {
   monthId: ID; startDate: string; endDate: string; isClosed: boolean;
 }
-export interface PurchaseDayEntity extends BaseEntity {
+export interface PurchaseDayEntity extends PurchaseOwnedEntity {
   weekId: ID; purchaseDate: string; isClosed: boolean;
 }
-export interface PurchaseOrderEntity extends BaseEntity {
+export interface PurchaseOrderEntity extends PurchaseOwnedEntity {
   purchaseDayId: ID; supplierId: ID; itemId: ID; paymentMethodId?: ID;
   amountMinor: number; currency: PurchaseCurrency; paymentStatus: PurchasePaymentStatus;
   purchasedAt: Timestamp; paidAt?: Timestamp;
