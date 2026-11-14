@@ -67,11 +67,23 @@ BEGIN
     RAISE EXCEPTION 'Bootstrap snapshot leaked another admin purchase supplier';
   END IF;
 
+  PERFORM set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000011',true);
+  v_snapshot := public.capture_sync_bootstrap_snapshot();
+  IF jsonb_array_length(v_snapshot->'purchase_suppliers') <> 1
+     OR v_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier A' THEN
+    RAISE EXCEPTION 'Admin A bootstrap snapshot did not remain isolated';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000012',true);
+
   INSERT INTO public.change_log(entity_type,entity_id,action,payload,version) VALUES
     ('purchase_suppliers','30000000-0000-4000-8000-000000000001','INSERT','{"id":"30000000-0000-4000-8000-000000000001","name":"Supplier A"}',1),
     ('purchase_suppliers','30000000-0000-4000-8000-000000000002','INSERT','{"id":"30000000-0000-4000-8000-000000000002","name":"Supplier B"}',1);
 
   v_snapshot := public.capture_authoritative_business_snapshot();
+  IF jsonb_array_length(v_snapshot->'purchase_suppliers') <> 1
+     OR v_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier B' THEN
+    RAISE EXCEPTION 'Authoritative snapshot leaked another admin purchase supplier';
+  END IF;
   v_page := public.capture_authoritative_change_log_page(0,(SELECT max(sequence_id) FROM public.change_log),500);
   v_final_page := public.capture_authoritative_change_log_page((SELECT max(sequence_id) FROM public.change_log),(SELECT max(sequence_id) FROM public.change_log),500);
   IF (SELECT count(*) FROM jsonb_array_elements(v_page->'rows') r WHERE r->>'entity_type'='purchase_suppliers') <> 1
