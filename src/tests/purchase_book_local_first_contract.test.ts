@@ -57,6 +57,9 @@ describe('Purchase book local-first architecture contract', () => {
     expect(store).toContain('purchaseWeeksRes');
     expect(store).toContain('purchaseOrdersRes');
     expect(backup).toContain("localDb.list('purchaseOrders')");
+    expect(backup).toContain('currentBackupAdminId');
+    expect(backup).toContain('isOwnedPurchaseRow(row, activeAdminId)');
+    expect(backup).toContain('adminId:r.admin_id');
     expect(backup).toContain("localDb.setWithTx(tx, 'purchaseOrders'");
     expect(backup).toContain("for (const row of onlineData.purchaseOrders || [])");
     expect(backup).toContain("for (const row of d.purchaseOrders || [])");
