@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   key text PRIMARY KEY,
   value_number bigint
 );
+INSERT INTO public.system_settings(key,value_number)
+VALUES ('server_reset_generation',1)
+ON CONFLICT (key) DO UPDATE SET value_number=EXCLUDED.value_number;
+
 CREATE TABLE IF NOT EXISTS public.change_log (
   sequence_id bigserial PRIMARY KEY,
   entity_type text NOT NULL,
