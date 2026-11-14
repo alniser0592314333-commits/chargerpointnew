@@ -188,7 +188,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button type="button" aria-label="فتح قائمة دفتر المشتريات" onClick={()=>setMenuOpen(true)} className="shrink-0 rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Menu className="w-5 h-5"/></button>
-            <button type="button" onClick={()=>onNavigate?.('/app/purchases')} className="flex items-center gap-2 min-w-0 text-start">
+            <button type="button" aria-label="فتح قائمة دفتر المشتريات" onClick={()=>setMenuOpen(true)} className="flex items-center gap-2 min-w-0 text-start">
               <span className="w-9 h-9 shrink-0 rounded-xl bg-emerald-700 text-white flex items-center justify-center"><ShoppingBag className="w-5 h-5"/></span>
               <span className="min-w-0"><span className="block text-sm font-bold truncate">دفتر المشتريات</span><span className="block text-[10px] text-gray-500 dark:text-[#8eb698] truncate">{supplierId?(supplier?.name||'الجهة'):'إدارة المشتريات والموردين'}</span></span>
             </button>
@@ -239,7 +239,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
           </div>
         </section>
 
-        {showAdditions&&!supplierId&&<section className="border-y border-gray-200 dark:border-[#14423b] py-4 space-y-4">
+        {showAdditions&&<section className="border-y border-gray-200 dark:border-[#14423b] py-4 space-y-4">
           <h2 className="text-sm font-bold">إدارة الإضافات</h2>
           <label className="block text-xs font-semibold">بداية الأسبوع
             <select value={weekStartDay} onChange={e=>{const value=Number(e.target.value);setWeekStartDay(value);setPurchaseWeekStartDay(value).catch(err=>setError(err.message));}} className="mt-1 w-full sm:w-64 rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-2.5">
@@ -257,7 +257,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
             const monthOrders=supplierOrders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
             const monthTotal=totalsFor(monthOrders);
             return <CollapsibleBlock key={month.id} defaultOpen={month.startDate.slice(0,7)===today.slice(0,7)} className="border-b border-gray-200 dark:border-[#14423b] py-1"
-              header={<div className="p-4 flex items-center justify-between gap-3"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-xs font-mono text-gray-500">{summaryRows(monthTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</div></div>}>
+              header={<div className="px-3 py-3 flex items-center justify-between gap-3"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-xs font-mono text-gray-500">{summaryRows(monthTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</div></div>}>
               <div className="px-3 sm:px-4 pb-4 space-y-3">
                 {!supplierId&&<div className="flex justify-end"><button onClick={()=>createPurchaseWeek(month.id).then(reload).catch(e=>setError(e.message))} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>إضافة أسبوع</button></div>}
                 {monthWeeks.map(week=>{
