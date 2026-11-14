@@ -362,7 +362,11 @@ const getCommandNotificationScopes = (commandType: string): StoreScope[] => {
   }
 };
 
-export const getPurchaseBookRowsSync = (table: PurchaseBookTable): PurchaseBookEntity[] => Array.from(purchaseMaps[table].values());
+export const getPurchaseBookRowsSync = (table: PurchaseBookTable): PurchaseBookEntity[] => {
+  const activeAdminId = getCachedPurchaseAdminId();
+  if (!activeAdminId) return [];
+  return Array.from(purchaseMaps[table].values()).filter((row) => row.adminId === activeAdminId);
+};
 
 export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number {
   const [version, setVersion] = useState(0);
@@ -2765,8 +2769,12 @@ function createTransactionalRepoContext(
       },
     },
     purchaseRepo: {
-      findAll: (table: PurchaseBookTable) => Array.from(purchaseMaps[table].values()),
+      findAll: (table: PurchaseBookTable) => getPurchaseBookRowsSync(table),
       save: (table: PurchaseBookTable, entity: PurchaseBookEntity) => {
+        const activeAdminId = getCachedPurchaseAdminId();
+        if (!activeAdminId || entity.adminId !== activeAdminId) {
+          throw new Error('Purchase Book write rejected: entity owner does not match the active admin session.');
+        }
         purchaseMaps[table].set(entity.id, entity);
         localDb.setWithTx(tx, purchaseTableKeys[table], entity.id, entity);
         postCommitActions.push(() => notifyStore('purchaseBook', entity.id));
@@ -3425,10 +3433,14 @@ export const repoContext: RepositoryContext = {
   purchaseRepo: {
     findAll: async (table: PurchaseBookTable) => {
       await ensureStoreHydrated();
-      return Array.from(purchaseMaps[table].values());
+      return getPurchaseBookRowsSync(table);
     },
     save: async (table: PurchaseBookTable, entity: PurchaseBookEntity) => {
       await ensureStoreHydrated();
+      const activeAdminId = getCachedPurchaseAdminId();
+      if (!activeAdminId || entity.adminId !== activeAdminId) {
+        throw new Error('Purchase Book write rejected: entity owner does not match the active admin session.');
+      }
       const previous = purchaseMaps[table].get(entity.id);
       const commandType = table === 'suppliers' ? 'SAVE_PURCHASE_SUPPLIER' : table === 'items' ? 'SAVE_PURCHASE_ITEM' : table === 'methods' ? 'SAVE_PURCHASE_PAYMENT_METHOD' : table === 'months' ? 'SAVE_PURCHASE_MONTH' : table === 'weeks' ? 'SAVE_PURCHASE_WEEK' : table === 'days' ? 'SAVE_PURCHASE_DAY' : 'SAVE_PURCHASE_ORDER';
       const paidTransition = table === 'orders' && previous && (previous as PurchaseOrderEntity).paymentStatus === 'UNPAID' && (entity as PurchaseOrderEntity).paymentStatus === 'PAID';
