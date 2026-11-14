@@ -52,6 +52,18 @@ CREATE INDEX IF NOT EXISTS purchase_weeks_admin_idx ON public.purchase_weeks(adm
 CREATE INDEX IF NOT EXISTS purchase_days_admin_idx ON public.purchase_days(admin_id, purchase_date DESC);
 CREATE INDEX IF NOT EXISTS purchase_orders_admin_idx ON public.purchase_orders(admin_id, purchased_at DESC);
 
+CREATE OR REPLACE FUNCTION public.current_purchase_admin_id()
+RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT a.id FROM public.admins a
+  WHERE a.auth_user_id=auth.uid() AND a.is_active IS TRUE
+  LIMIT 1;
+$function$;
+REVOKE ALL ON FUNCTION public.current_purchase_admin_id() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.current_purchase_admin_id() TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.enforce_purchase_book_admin_owner()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -101,7 +113,7 @@ BEGIN
     );
     EXECUTE format('DROP POLICY IF EXISTS purchase_book_admin_isolation ON public.%I', t);
     EXECUTE format(
-      'CREATE POLICY purchase_book_admin_isolation ON public.%I FOR ALL TO authenticated USING (admin_id = (SELECT a.id FROM public.admins a WHERE a.auth_user_id = auth.uid() AND a.is_active IS TRUE LIMIT 1)) WITH CHECK (admin_id = (SELECT a.id FROM public.admins a WHERE a.auth_user_id = auth.uid() AND a.is_active IS TRUE LIMIT 1))',
+      'CREATE POLICY purchase_book_admin_isolation ON public.%I FOR ALL TO authenticated USING (admin_id = public.current_purchase_admin_id()) WITH CHECK (admin_id = public.current_purchase_admin_id())',
       t
     );
   END LOOP;
