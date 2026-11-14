@@ -7,6 +7,7 @@ describe('Purchase book local-first architecture contract', () => {
   const migration = read('supabase/migrations/20261111090000_purchase_book_local_first.sql');
   const isolationMigration = read('supabase/migrations/20261114120000_purchase_book_admin_isolation.sql');
   const syncEngine = read('src/infrastructure/sync/syncEngine.ts');
+  const syncTransport = read('src/infrastructure/sync/SupabaseSyncTransport.ts');
   const models = read('src/domain/models.ts');
   const store = read('src/components/pages/dayOrdersStore.ts');
   const service = read('src/services/purchaseBook/purchaseBookService.ts');
@@ -124,6 +125,8 @@ describe('Purchase book local-first architecture contract', () => {
     expect(service).toContain('adminId, name:cleanName');
     expect(service).toContain('purchase-month:${adminId}:');
     expect(syncEngine).toContain('i.actorAdminId === activePurchaseAdminId');
+    expect(syncTransport).toContain('response.latestSequence');
+    expect(syncTransport).toContain('CHANGE_LOG_PULL_INVALID_LATEST_SEQUENCE');
     expect(store).toContain('row?.adminId === activePurchaseAdminId');
     expect(store).toContain('adminId: row.admin_id');
   });
