@@ -20,6 +20,13 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 }) => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const notificationCount = useAdminNotificationCount(Boolean(userSession));
+  const isPurchaseWorkspace = currentPath === '/app/purchases' || currentPath.startsWith('/app/purchases/');
+
+  if (isPurchaseWorkspace) {
+    return <div className="min-h-screen bg-gray-50 dark:bg-[#061f1c] text-gray-900 dark:text-gray-100" dir="rtl">
+      <main className="min-h-screen w-full">{children}</main>
+    </div>;
+  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-transparent text-gray-900 dark:text-gray-100">
