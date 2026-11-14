@@ -7,6 +7,7 @@ import { RepositoryContext } from '../../application/useCases';
 import { localDb } from '../../infrastructure/localDb/localDb';
 import { recordSyncDiagnosticEvent } from '../../infrastructure/sync/syncDiagnosticJournal';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
+import { authService } from '../auth/authService';
 
 export class PurchaseBookOperationError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -23,6 +24,11 @@ const uuid = () => {
   return globalThis.crypto.randomUUID();
 };
 const pad = (value: number) => String(value).padStart(2, '0');
+async function currentPurchaseAdminId(): Promise<string> {
+  const session = await authService.getCurrentSession();
+  if (!session?.userId) throw new PurchaseBookOperationError('PURCHASE_ADMIN_SESSION_REQUIRED', 'يجب تسجيل الدخول بحساب أدمن نشط قبل استخدام دفتر المشتريات.');
+  return session.userId;
+}
 const dateString = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
 const parseDate = (value: string) => new Date(`${value}T12:00:00`);
 
@@ -108,9 +114,11 @@ export async function savePurchaseCatalog(
     if (rows.some(row=>row.id!==existing?.id && row.isActive && row.name.trim().toLocaleLowerCase()===cleanName.toLocaleLowerCase())) {
       throw new PurchaseBookOperationError('PURCHASE_NAME_DUPLICATE','هذا الاسم موجود مسبقاً.');
     }
+    const adminId=await currentPurchaseAdminId();
+    if (existing?.adminId && existing.adminId !== adminId) throw new PurchaseBookOperationError('PURCHASE_OWNER_MISMATCH','هذا السجل تابع لحساب أدمن آخر.');
     const timestamp=nowIso();
     const entity: PurchaseCatalogEntity={
-      id:existing?.id || uuid(), name:cleanName, isActive:true, deletedAt:undefined,
+      id:existing?.id || uuid(), adminId, name:cleanName, isActive:true, deletedAt:undefined,
       createdAt:existing?.createdAt || timestamp, updatedAt:timestamp, version:(existing?.version || 0)+1,
     };
     await repoContext.transactionManager.runInTransaction((ctx) => {
@@ -161,6 +169,7 @@ function monthRange(year:number,month:number){
 }
 
 async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseDayEntity|null>{
+  const adminId=await currentPurchaseAdminId();
   const months=await repoContext.purchaseRepo!.findAll('months') as PurchaseMonthEntity[];
   const weeks=await repoContext.purchaseRepo!.findAll('weeks') as PurchaseWeekEntity[];
   const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
@@ -170,9 +179,9 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
   const parsed=parseDate(date);
   const year=parsed.getFullYear(), month=parsed.getMonth()+1;
   const range=monthRange(year,month);
-  const monthId=stableCalendarId(`purchase-month:${year}-${pad(month)}`);
+  const monthId=stableCalendarId(`purchase-month:${adminId}:${year}-${pad(month)}`);
   const existingMonth=months.find(row=>row.id===monthId) || {
-    id:monthId,year,month,startDate:range.start,endDate:range.end,isClosed:false,
+    id:monthId,adminId,year,month,startDate:range.start,endDate:range.end,isClosed:false,
     createdAt:nowIso(),updatedAt:nowIso(),version:1,
   } as PurchaseMonthEntity;
 
@@ -186,22 +195,22 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
   endDate.setDate(endDate.getDate()+6);
   let end=dateString(endDate);
   if(end>range.end) end=range.end;
-  const weekId=stableCalendarId(`purchase-week:${monthId}:${start}`);
+  const weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}`);
   let targetWeek=weeks.find(row=>!row.isClosed && row.monthId===monthId && date>=row.startDate && date<=row.endDate) || null;
   const openWeeks=weeks.filter(row=>!row.isClosed && row.id!==targetWeek?.id);
   if(!targetWeek){
     let nextId=weekId;
     let suffix=2;
-    while(weeks.some(row=>row.id===nextId)) nextId=stableCalendarId(`purchase-week:${monthId}:${start}:${suffix++}`);
+    while(weeks.some(row=>row.id===nextId)) nextId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}:${suffix++}`);
     targetWeek={
-      id:nextId,monthId,startDate:start,endDate:end,isClosed:false,
+      id:nextId,adminId,monthId,startDate:start,endDate:end,isClosed:false,
       createdAt:nowIso(),updatedAt:nowIso(),version:1,
     };
   }
 
   const timestamp=nowIso();
   const day:PurchaseDayEntity={
-    id:stableCalendarId(`purchase-day:${date}`),weekId:targetWeek.id,purchaseDate:date,isClosed:false,
+    id:stableCalendarId(`purchase-day:${adminId}:${date}`),adminId,weekId:targetWeek.id,purchaseDate:date,isClosed:false,
     createdAt:timestamp,updatedAt:timestamp,version:1,
   };
   await repoContext.transactionManager.runInTransaction((ctx)=>{
@@ -227,9 +236,10 @@ export async function createCurrentPurchaseDay():Promise<PurchaseDayEntity>{
 
 export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEntity>{
   return runPurchaseOperation('إنشاء أسبوع المشتريات',async()=>{
+    const adminId=await currentPurchaseAdminId();
     const months=await repoContext.purchaseRepo!.findAll('months') as PurchaseMonthEntity[];
     const weeks=await repoContext.purchaseRepo!.findAll('weeks') as PurchaseWeekEntity[];
-    const month=months.find(row=>row.id===monthId);
+    const month=months.find(row=>row.id===monthId && row.adminId===adminId);
     if(!month) throw new PurchaseBookOperationError('PURCHASE_MONTH_NOT_FOUND','الشهر غير موجود.');
     const timestamp=nowIso();
     const openWeeks=weeks.filter(row=>!row.isClosed);
@@ -253,10 +263,10 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
     }
     const endCandidate=parseDate(start);endCandidate.setDate(endCandidate.getDate()+6);
     const weekEnd=dateString(endCandidate)>month.endDate?month.endDate:dateString(endCandidate);
-    let weekId=stableCalendarId(`purchase-week:${monthId}:${start}`);
-    let suffix=2;while(weeks.some(row=>row.id===weekId)) weekId=stableCalendarId(`purchase-week:${monthId}:${start}:${suffix++}`);
+    let weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}`);
+    let suffix=2;while(weeks.some(row=>row.id===weekId)) weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}:${suffix++}`);
     const week:PurchaseWeekEntity={
-      id:weekId,monthId,startDate:start,endDate:weekEnd,isClosed:false,
+      id:weekId,adminId,monthId,startDate:start,endDate:weekEnd,isClosed:false,
       createdAt:timestamp,updatedAt:timestamp,version:1,
     };
     await repoContext.transactionManager.runInTransaction((ctx)=>{
@@ -285,6 +295,7 @@ export async function addPurchaseOrder(input:{
     const precision=input.currency==='JOD'?1000:100;
     const amountMinor=Math.round(input.amount*precision);
     if(!Number.isSafeInteger(amountMinor)||amountMinor<=0) throw new PurchaseBookOperationError('PURCHASE_AMOUNT_PRECISION_INVALID','المبلغ أقل من دقة العملة المسموحة.');
+    const adminId=await currentPurchaseAdminId();
     const suppliers=await repoContext.purchaseRepo!.findAll('suppliers') as PurchaseCatalogEntity[];
     const items=await repoContext.purchaseRepo!.findAll('items') as PurchaseCatalogEntity[];
     const methods=await repoContext.purchaseRepo!.findAll('methods') as PurchaseCatalogEntity[];
@@ -297,7 +308,7 @@ export async function addPurchaseOrder(input:{
     if(!day) throw new PurchaseBookOperationError('PURCHASE_DAY_MISSING','لا يوجد يوم حالي. أنشئ اليوم ثم أعد إضافة الطلب.');
     if(day.isClosed) throw new PurchaseBookOperationError('PURCHASE_DAY_CLOSED','يوم المشتريات الحالي مغلق ولا يمكن إضافة طلب جديد.');
     const order:PurchaseOrderEntity={
-      id:uuid(),purchaseDayId:day.id,supplierId:input.supplierId,itemId:input.itemId,paymentMethodId:input.paymentMethodId,
+      id:uuid(),adminId,purchaseDayId:day.id,supplierId:input.supplierId,itemId:input.itemId,paymentMethodId:input.paymentMethodId,
       amountMinor,currency:input.currency,paymentStatus:input.paymentStatus,purchasedAt,
       paidAt:input.paymentStatus==='PAID'?purchasedAt:undefined,createdAt:purchasedAt,updatedAt:purchasedAt,version:1,
     };
