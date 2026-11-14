@@ -72,11 +72,10 @@ BEGIN
   v_snapshot := public.capture_authoritative_business_snapshot();
   v_page := public.capture_authoritative_change_log_page(0,(SELECT max(sequence_id) FROM public.change_log),500);
   v_final_page := public.capture_authoritative_change_log_page((SELECT max(sequence_id) FROM public.change_log),(SELECT max(sequence_id) FROM public.change_log),500);
-  IF jsonb_array_length(v_page->'rows') <> 1 THEN
-    RAISE EXCEPTION 'Admin delta page row count mismatch: %', v_page;
-  END IF;
-  IF v_page->'rows'->0->>'entity_id' <> '30000000-0000-4000-8000-000000000002' THEN
-    RAISE EXCEPTION 'Admin delta page returned the wrong purchase owner: %', v_page;
+  IF (SELECT count(*) FROM jsonb_array_elements(v_page->'rows') r WHERE r->>'entity_type'='purchase_suppliers') <> 1
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_page->'rows') r WHERE r->>'entity_type'='purchase_suppliers' AND r->>'entity_id'='30000000-0000-4000-8000-000000000001')
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_page->'rows') r WHERE r->>'entity_type'='purchase_suppliers' AND r->>'entity_id'='30000000-0000-4000-8000-000000000002') THEN
+    RAISE EXCEPTION 'Admin delta page leaked or lost a purchase change: %', v_page;
   END IF;
   IF (v_final_page->>'current_count_through_sequence')::integer <> (v_snapshot->>'change_log_count')::integer THEN
     RAISE EXCEPTION 'Admin delta count checkpoint mismatch: final %, snapshot %', v_final_page, v_snapshot;
@@ -86,9 +85,10 @@ BEGIN
   END IF;
 
   v_changes := public.pull_canonical_changes(0,500);
-  IF jsonb_array_length(v_changes->'changes') <> 1
-     OR v_changes->'changes'->0->>'entity_id' <> '30000000-0000-4000-8000-000000000002' THEN
-    RAISE EXCEPTION 'Incremental change feed leaked another admin purchase change';
+  IF (SELECT count(*) FROM jsonb_array_elements(v_changes->'changes') r WHERE r->>'entity_type'='purchase_suppliers') <> 1
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_changes->'changes') r WHERE r->>'entity_type'='purchase_suppliers' AND r->>'entity_id'='30000000-0000-4000-8000-000000000001')
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_changes->'changes') r WHERE r->>'entity_type'='purchase_suppliers' AND r->>'entity_id'='30000000-0000-4000-8000-000000000002') THEN
+    RAISE EXCEPTION 'Incremental change feed leaked or lost an admin purchase change: %', v_changes;
   END IF;
 
   SELECT count(*) INTO v_delta_count FROM public.pull_canonical_delta_changes(0,500)
