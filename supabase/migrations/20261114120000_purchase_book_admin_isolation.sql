@@ -85,6 +85,7 @@ BEGIN
   RETURN NEW;
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.enforce_purchase_book_admin_owner() FROM PUBLIC, anon, authenticated, service_role;
 
 DO $block$
 DECLARE t text;
@@ -134,7 +135,7 @@ $function$;
 -- expose a guarded wrapper that removes every other admin's purchase aggregates.
 ALTER FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
   RENAME TO capture_sync_bootstrap_snapshot__shared_unfiltered;
-REVOKE ALL ON FUNCTION public.capture_sync_bootstrap_snapshot__shared_unfiltered() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.capture_sync_bootstrap_snapshot__shared_unfiltered() FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
@@ -166,7 +167,7 @@ $function$;
 
 ALTER FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
   RENAME TO capture_authoritative_business_snapshot__shared_unfiltered;
-REVOKE ALL ON FUNCTION public.capture_authoritative_business_snapshot__shared_unfiltered() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.capture_authoritative_business_snapshot__shared_unfiltered() FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
@@ -197,7 +198,7 @@ $function$;
 -- this admin's purchase changes, and advance the cursor over the scanned page.
 ALTER FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(bigint,bigint,integer)
   RENAME TO capture_authoritative_change_log_page__shared_unfiltered;
-REVOKE ALL ON FUNCTION public.capture_authoritative_change_log_page__shared_unfiltered(bigint,bigint,integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.capture_authoritative_change_log_page__shared_unfiltered(bigint,bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(
   p_after_sequence_id bigint, p_through_sequence_id bigint, p_limit integer DEFAULT 500
 ) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
@@ -249,7 +250,7 @@ REVOKE ALL ON FUNCTION public.purchase_entity_belongs_to_admin(text,uuid,uuid) F
 -- scanned rows so a busy different account cannot stall this account's cursor.
 ALTER FUNCTION public.pull_canonical_changes__session_guarded_impl(bigint,integer)
   RENAME TO pull_canonical_changes__shared_unfiltered;
-REVOKE ALL ON FUNCTION public.pull_canonical_changes__shared_unfiltered(bigint,integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.pull_canonical_changes__shared_unfiltered(bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.pull_canonical_changes__session_guarded_impl(
   p_since_sequence bigint, p_limit integer DEFAULT 500
 ) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
