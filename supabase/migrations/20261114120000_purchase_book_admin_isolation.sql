@@ -305,7 +305,7 @@ BEGIN
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN RAISE EXCEPTION 'Active admin profile required'; END IF;
   PERFORM public._cp_assert_active_admin_permission('sync:manage');
   RETURN QUERY
-  SELECT c.sequence_id,c.entity_type,c.entity_id,c.action,c.payload,c.version,c.changed_at
+  SELECT c.sequence_id,c.entity_type::varchar,c.entity_id,c.action::varchar,c.payload,c.version,c.changed_at
   FROM public.change_log c
   WHERE c.sequence_id>p_since_sequence
     AND (left(c.entity_type,9) <> 'purchase_'
