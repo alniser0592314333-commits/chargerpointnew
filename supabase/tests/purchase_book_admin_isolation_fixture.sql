@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.change_log (
 
 CREATE OR REPLACE FUNCTION public.get_effective_permissions(p_admin_id uuid)
 RETURNS TABLE(permission text) LANGUAGE sql STABLE
-AS $ SELECT unnest(ARRAY['settings:manage','admin:manage','SUPER_ADMIN']) $;
+AS $perm$ SELECT unnest(ARRAY['settings:manage','admin:manage','SUPER_ADMIN']) $perm$;
 
 CREATE OR REPLACE FUNCTION public.assert_my_account_session_active()
 RETURNS void LANGUAGE plpgsql STABLE
