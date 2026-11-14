@@ -39,7 +39,124 @@ BEGIN
       'SELECT unnest(ARRAY[''settings:manage'',''sync:manage''])'$sql$;
   END IF;
   IF to_regprocedure('public.assert_my_account_session_active()') IS NULL THEN
-    EXECUTE 'CREATE FUNCTION public.assert_my_account_session_active() RETURNS void LANGUAGE sql STABLE AS ''SELECT''';
+    EXECUTE 'CREATE FUNCTION public.assert_my_account_session_active() RETURNS void LANGUAGE plpgsql STABLE AS $body$ BEGIN RETURN; END; $body
+  END IF;
+  IF to_regprocedure('public._cp_assert_active_admin_permission(text)') IS NULL THEN
+    EXECUTE 'CREATE FUNCTION public._cp_assert_active_admin_permission(p_permission text) RETURNS void LANGUAGE plpgsql STABLE AS $body$ BEGIN RETURN; END; $body
+  END IF;
+END;
+$block$;
+
+CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object(
+  'schema_version',1,'captured_at',now(),'server_reset_generation',1,
+  'max_change_sequence',COALESCE((SELECT max(sequence_id) FROM public.change_log),0),
+  'purchase_suppliers','[]'::jsonb,'purchase_items','[]'::jsonb,
+  'purchase_payment_methods','[]'::jsonb,'purchase_months','[]'::jsonb,
+  'purchase_weeks','[]'::jsonb,'purchase_days','[]'::jsonb,'purchase_orders','[]'::jsonb
+) $$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object(
+  'schema_version',1,'captured_at',now(),'server_reset_generation',1,
+  'max_change_sequence',COALESCE((SELECT max(sequence_id) FROM public.change_log),0),
+  'change_log_count',(SELECT count(*) FROM public.change_log),
+  'change_log_fingerprint',md5(''),
+  'purchase_suppliers','[]'::jsonb,'purchase_items','[]'::jsonb,
+  'purchase_payment_methods','[]'::jsonb,'purchase_months','[]'::jsonb,
+  'purchase_weeks','[]'::jsonb,'purchase_days','[]'::jsonb,'purchase_orders','[]'::jsonb
+) $$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(
+  p_after_sequence_id bigint,p_through_sequence_id bigint,p_limit integer DEFAULT 500
+) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object('rows','[]'::jsonb,'next_after_sequence_id',p_after_sequence_id,
+  'current_count_through_sequence',0,'server_reset_generation',1,'change_log_fingerprint',md5('')) $$;
+
+CREATE OR REPLACE FUNCTION public.pull_canonical_changes__session_guarded_impl(
+  p_since_sequence bigint,p_limit integer DEFAULT 500
+) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object('changes','[]'::jsonb,'latestSequence',p_since_sequence,'serverResetGeneration',1) $$;
+;
+  END IF;
+  IF to_regprocedure('public._cp_assert_active_admin_permission(text)') IS NULL THEN
+    EXECUTE 'CREATE FUNCTION public._cp_assert_active_admin_permission(p_permission text) RETURNS void LANGUAGE sql STABLE AS ''SELECT''';
+  END IF;
+END;
+$block$;
+
+CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object(
+  'schema_version',1,'captured_at',now(),'server_reset_generation',1,
+  'max_change_sequence',COALESCE((SELECT max(sequence_id) FROM public.change_log),0),
+  'purchase_suppliers','[]'::jsonb,'purchase_items','[]'::jsonb,
+  'purchase_payment_methods','[]'::jsonb,'purchase_months','[]'::jsonb,
+  'purchase_weeks','[]'::jsonb,'purchase_days','[]'::jsonb,'purchase_orders','[]'::jsonb
+) $$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object(
+  'schema_version',1,'captured_at',now(),'server_reset_generation',1,
+  'max_change_sequence',COALESCE((SELECT max(sequence_id) FROM public.change_log),0),
+  'change_log_count',(SELECT count(*) FROM public.change_log),
+  'change_log_fingerprint',md5(''),
+  'purchase_suppliers','[]'::jsonb,'purchase_items','[]'::jsonb,
+  'purchase_payment_methods','[]'::jsonb,'purchase_months','[]'::jsonb,
+  'purchase_weeks','[]'::jsonb,'purchase_days','[]'::jsonb,'purchase_orders','[]'::jsonb
+) $$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(
+  p_after_sequence_id bigint,p_through_sequence_id bigint,p_limit integer DEFAULT 500
+) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object('rows','[]'::jsonb,'next_after_sequence_id',p_after_sequence_id,
+  'current_count_through_sequence',0,'server_reset_generation',1,'change_log_fingerprint',md5('')) $$;
+
+CREATE OR REPLACE FUNCTION public.pull_canonical_changes__session_guarded_impl(
+  p_since_sequence bigint,p_limit integer DEFAULT 500
+) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object('changes','[]'::jsonb,'latestSequence',p_since_sequence,'serverResetGeneration',1) $$;
+;
+  END IF;
+END;
+$block$;
+
+CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object(
+  'schema_version',1,'captured_at',now(),'server_reset_generation',1,
+  'max_change_sequence',COALESCE((SELECT max(sequence_id) FROM public.change_log),0),
+  'purchase_suppliers','[]'::jsonb,'purchase_items','[]'::jsonb,
+  'purchase_payment_methods','[]'::jsonb,'purchase_months','[]'::jsonb,
+  'purchase_weeks','[]'::jsonb,'purchase_days','[]'::jsonb,'purchase_orders','[]'::jsonb
+) $$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object(
+  'schema_version',1,'captured_at',now(),'server_reset_generation',1,
+  'max_change_sequence',COALESCE((SELECT max(sequence_id) FROM public.change_log),0),
+  'change_log_count',(SELECT count(*) FROM public.change_log),
+  'change_log_fingerprint',md5(''),
+  'purchase_suppliers','[]'::jsonb,'purchase_items','[]'::jsonb,
+  'purchase_payment_methods','[]'::jsonb,'purchase_months','[]'::jsonb,
+  'purchase_weeks','[]'::jsonb,'purchase_days','[]'::jsonb,'purchase_orders','[]'::jsonb
+) $$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(
+  p_after_sequence_id bigint,p_through_sequence_id bigint,p_limit integer DEFAULT 500
+) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object('rows','[]'::jsonb,'next_after_sequence_id',p_after_sequence_id,
+  'current_count_through_sequence',0,'server_reset_generation',1,'change_log_fingerprint',md5('')) $$;
+
+CREATE OR REPLACE FUNCTION public.pull_canonical_changes__session_guarded_impl(
+  p_since_sequence bigint,p_limit integer DEFAULT 500
+) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER
+AS $$ SELECT jsonb_build_object('changes','[]'::jsonb,'latestSequence',p_since_sequence,'serverResetGeneration',1) $$;
+;
   END IF;
   IF to_regprocedure('public._cp_assert_active_admin_permission(text)') IS NULL THEN
     EXECUTE 'CREATE FUNCTION public._cp_assert_active_admin_permission(p_permission text) RETURNS void LANGUAGE sql STABLE AS ''SELECT''';
