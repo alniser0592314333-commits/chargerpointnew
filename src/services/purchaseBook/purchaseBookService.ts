@@ -263,8 +263,8 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
     }
     const endCandidate=parseDate(start);endCandidate.setDate(endCandidate.getDate()+6);
     const weekEnd=dateString(endCandidate)>month.endDate?month.endDate:dateString(endCandidate);
-    let weekId=stableCalendarId(`purchase-week:${monthId}:${start}`);
-    let suffix=2;while(weeks.some(row=>row.id===weekId)) weekId=stableCalendarId(`purchase-week:${monthId}:${start}:${suffix++}`);
+    let weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}`);
+    let suffix=2;while(weeks.some(row=>row.id===weekId)) weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}:${suffix++}`);
     const week:PurchaseWeekEntity={
       id:weekId,adminId,monthId,startDate:start,endDate:weekEnd,isClosed:false,
       createdAt:timestamp,updatedAt:timestamp,version:1,
