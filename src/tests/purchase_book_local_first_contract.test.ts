@@ -63,7 +63,7 @@ describe('Purchase book local-first architecture contract', () => {
   });
 
   it('uses deterministic date identities, prevents duplicate current days, and closes the previous week', () => {
-    expect(service).toContain('stableCalendarId(`purchase-day:${date}`)');
+    expect(service).toContain('stableCalendarId(`purchase-day:${adminId}:${date}`)');
     expect(service).toContain('days.find(day=>day.purchaseDate===date)');
     expect(service).toContain('weeks.filter(row=>!row.isClosed');
     expect(service).toContain('PURCHASE_WEEK_OVERLAP');
