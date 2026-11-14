@@ -302,6 +302,7 @@ BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
   SELECT id,is_active INTO v_admin_id,v_active FROM public.admins WHERE auth_user_id=auth.uid() LIMIT 1;
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN RAISE EXCEPTION 'Active admin profile required'; END IF;
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
   RETURN QUERY
   SELECT c.sequence_id,c.entity_type,c.entity_id,c.action,c.payload,c.version,c.changed_at
   FROM public.change_log c
