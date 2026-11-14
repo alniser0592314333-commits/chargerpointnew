@@ -101,7 +101,8 @@ describe('Purchase book local-first architecture contract', () => {
     expect(page).toContain('إضافة طريقة دفع');
     expect(page).toContain('بداية الأسبوع');
     expect(sidebar).toContain("'/app/purchases'");
-    expect(sidebar).toContain('/app/purchases/supplier/');
+    expect(sidebar).not.toContain('/app/purchases/supplier/');
+    expect(page).toContain("onNavigate?.('/app/purchases/supplier/'");
   });
 
 
