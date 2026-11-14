@@ -20,9 +20,21 @@ ALTER TABLE public.purchase_days ALTER COLUMN admin_id SET NOT NULL;
 ALTER TABLE public.purchase_orders ALTER COLUMN admin_id SET NOT NULL;
 
 ALTER TABLE public.purchase_months DROP CONSTRAINT IF EXISTS purchase_months_year_month_number_key;
-ALTER TABLE public.purchase_months ADD CONSTRAINT purchase_months_admin_year_month_key UNIQUE (admin_id, year, month_number);
+DO $constraints$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_months_admin_year_month_key' AND conrelid='public.purchase_months'::regclass) THEN
+    ALTER TABLE public.purchase_months ADD CONSTRAINT purchase_months_admin_year_month_key UNIQUE (admin_id, year, month_number);
+  END IF;
+END;
+$constraints$;
 ALTER TABLE public.purchase_days DROP CONSTRAINT IF EXISTS purchase_days_purchase_date_key;
-ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_admin_purchase_date_key UNIQUE (admin_id, purchase_date);
+DO $constraints$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_days_admin_purchase_date_key' AND conrelid='public.purchase_days'::regclass) THEN
+    ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_admin_purchase_date_key UNIQUE (admin_id, purchase_date);
+  END IF;
+END;
+$constraints$;
 
 DO $constraints$
 BEGIN
