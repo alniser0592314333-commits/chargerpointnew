@@ -1,3 +1,32 @@
+CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$ BEGIN
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
+  RETURN public.capture_sync_bootstrap_snapshot__session_guarded_impl();
+END; $function$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot()
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$ BEGIN
+  PERFORM public.assert_my_account_session_active();
+  RETURN public.capture_authoritative_business_snapshot__session_guarded_impl();
+END; $function$;
+
+CREATE OR REPLACE FUNCTION public.capture_authoritative_change_log_page(
+  p_after_sequence_id bigint,p_through_sequence_id bigint,p_limit integer DEFAULT 500
+) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$ BEGIN
+  PERFORM public.assert_my_account_session_active();
+  RETURN public.capture_authoritative_change_log_page__session_guarded_impl($1,$2,$3);
+END; $function$;
+
+CREATE OR REPLACE FUNCTION public.pull_canonical_changes(p_since_sequence bigint,p_limit integer DEFAULT 500)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$ BEGIN
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
+  RETURN public.pull_canonical_changes__session_guarded_impl($1,$2);
+END; $function$;
+
 BEGIN;
 
 INSERT INTO public.admins(id,auth_user_id,role,is_active) VALUES
