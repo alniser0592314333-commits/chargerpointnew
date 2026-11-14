@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Plus, CalendarDays, X, ChevronDown, Settings2, Pencil, EyeOff, CircleAlert } from 'lucide-react';
+import { Plus, CalendarDays, X, ChevronDown, Settings2, Pencil, EyeOff, CircleAlert, Menu, ShoppingBag, Users, Package, Wallet, ArrowRight, LayoutDashboard } from 'lucide-react';
 import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
@@ -50,6 +50,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
   const [showOrderForm,setShowOrderForm]=useState(false);
+  const [menuOpen,setMenuOpen]=useState(false);
   const [showPayDialog,setShowPayDialog]=useState<PurchaseOrderEntity|null>(null);
   const [payMethodId,setPayMethodId]=useState('');
   const [showNoDayDialog,setShowNoDayDialog]=useState(false);
@@ -172,7 +173,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const periodOrders=(day:PurchaseDayEntity)=>supplierOrders.filter(o=>o.purchaseDayId===day.id);
   const isCurrentDay=(day:PurchaseDayEntity)=>day.purchaseDate===today;
   const renderDay=(day:PurchaseDayEntity)=>(
-    <CollapsibleBlock key={day.id} defaultOpen={isCurrentDay(day)} className="rounded-lg border border-gray-100 dark:border-[#123d37] px-3 sm:px-4"
+    <CollapsibleBlock key={day.id} defaultOpen={isCurrentDay(day)} className="border-b border-gray-100 dark:border-[#123d37] px-1"
       header={<div className="py-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-emerald-700 dark:text-emerald-300"/><span className="text-xs font-bold">{dateLabel(day.purchaseDate)}</span>{isCurrentDay(day)&&<span className="text-[10px] rounded-full bg-emerald-50 text-emerald-700 px-2 py-1 dark:bg-[#123d37] dark:text-emerald-200">اليوم</span>}</div><span className="text-xs font-mono text-gray-500">{summaryRows(totalsFor(periodOrders(day))).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></div>}>
       <div className="pb-3">
         {periodOrders(day).slice().sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard)}
@@ -183,12 +184,42 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-24 space-y-5 text-gray-900 dark:text-[#daf1de]" dir="rtl">
-      <header className="border-b border-gray-200 dark:border-[#14423b] pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div><h1 className="text-xl font-bold tracking-tight">{supplierId?(supplier?.name||'الجهة'): 'دفتر المشتريات'}</h1><p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">تسجيل المشتريات ومتابعة المستحقات حسب الجهة والعملة</p></div>
-          {supplierId&&<div className="flex items-center gap-3 shrink-0"><button onClick={openOrderForm} className="text-xs font-bold text-white bg-emerald-700 rounded-lg px-3 py-2">إضافة طلب</button><button onClick={()=>onNavigate?.('/app/purchases')} className="text-xs text-emerald-700 dark:text-emerald-300">كل المشتريات</button></div>}
+      <header className="sticky top-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-[#14423b] bg-gray-50/95 dark:bg-[#061f1c]/95 backdrop-blur">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button type="button" aria-label="فتح قائمة دفتر المشتريات" onClick={()=>setMenuOpen(true)} className="shrink-0 rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Menu className="w-5 h-5"/></button>
+            <button type="button" onClick={()=>onNavigate?.('/app/purchases')} className="flex items-center gap-2 min-w-0 text-start">
+              <span className="w-9 h-9 shrink-0 rounded-xl bg-emerald-700 text-white flex items-center justify-center"><ShoppingBag className="w-5 h-5"/></span>
+              <span className="min-w-0"><span className="block text-sm font-bold truncate">دفتر المشتريات</span><span className="block text-[10px] text-gray-500 dark:text-[#8eb698] truncate">{supplierId?(supplier?.name||'الجهة'):'إدارة المشتريات والموردين'}</span></span>
+            </button>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {supplierId&&<button onClick={()=>onNavigate?.('/app/purchases')} className="text-[11px] text-emerald-700 dark:text-emerald-300">كل المشتريات</button>}
+            <button onClick={openOrderForm} className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-emerald-700 rounded-lg px-3 py-2"><Plus className="w-3.5 h-3.5"/>إضافة طلب</button>
+          </div>
         </div>
       </header>
+      {menuOpen&&<div className="fixed inset-0 z-[70]">
+        <button aria-label="إغلاق القائمة" className="absolute inset-0 bg-black/45" onClick={()=>setMenuOpen(false)}/>
+        <aside className="absolute inset-y-0 right-0 w-[min(19rem,86vw)] bg-white dark:bg-[#06201c] border-s border-gray-200 dark:border-[#123d37] shadow-2xl flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-[#123d37]">
+            <div className="flex items-center gap-2"><span className="w-9 h-9 rounded-xl bg-emerald-700 text-white flex items-center justify-center"><ShoppingBag className="w-5 h-5"/></span><div><div className="text-sm font-bold">دفتر المشتريات</div><div className="text-[10px] text-gray-500">القائمة الخاصة بالمشتريات</div></div></div>
+            <button onClick={()=>setMenuOpen(false)} aria-label="إغلاق" className="p-2 text-gray-500"><X className="w-5 h-5"/></button>
+          </div>
+          <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-xs">
+            <button onClick={()=>{setMenuOpen(false);onNavigate?.('/app/purchases');}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><LayoutDashboard className="w-4 h-4 text-emerald-700"/>الرئيسية</button>
+            <div className="my-2 border-t border-gray-100 dark:border-[#123d37]"/>
+            <button onClick={()=>{setMenuOpen(false);openOrderForm();}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Plus className="w-4 h-4 text-emerald-700"/>إضافة طلب</button>
+            <button onClick={()=>{setMenuOpen(false);setCatalogType('items');setEditingCatalog(null);setCatalogName('');setShowAdditions(true);}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Package className="w-4 h-4 text-emerald-700"/>إضافة عنصر</button>
+            <button onClick={()=>{setMenuOpen(false);setCatalogType('suppliers');setEditingCatalog(null);setCatalogName('');setShowAdditions(true);}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Users className="w-4 h-4 text-emerald-700"/>إضافة جهة / مورد</button>
+            <button onClick={()=>{setMenuOpen(false);setCatalogType('methods');setEditingCatalog(null);setCatalogName('');setShowAdditions(true);}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Wallet className="w-4 h-4 text-emerald-700"/>طرق الدفع</button>
+            <div className="my-3 border-t border-gray-100 dark:border-[#123d37]"/>
+            <div className="px-3 py-2 text-[10px] font-bold text-gray-400">الموردون والجهات</div>
+            {activeSuppliers.length===0?<p className="px-3 py-2 text-[11px] text-gray-400">لا يوجد موردون مضافون</p>:activeSuppliers.map(row=><button key={row.id} onClick={()=>{setMenuOpen(false);onNavigate?.('/app/purchases/supplier/'+row.id);}} className={`w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b] ${supplierId===row.id?'bg-emerald-50 text-emerald-800 dark:bg-[#0c312b] dark:text-emerald-200':''}`}><Users className="w-3.5 h-3.5 text-gray-400"/><span className="truncate">{row.name}</span><ArrowRight className="w-3 h-3 ms-auto text-gray-300"/></button>)}
+          </nav>
+          <div className="p-3 border-t border-gray-100 dark:border-[#123d37] text-[10px] text-gray-400">دفتر المشتريات · Charging Point</div>
+        </aside>
+      </div>}
 
       {error&&<div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-200 p-3 text-xs flex gap-2"><CircleAlert className="w-4 h-4 shrink-0"/>{error}</div>}
       {notice&&<div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900 dark:text-emerald-200 p-3 text-xs">{notice}</div>}
@@ -200,7 +231,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
       </div>}
 
       {loading?<div className="animate-pulse space-y-3"><div className="h-28 rounded-xl bg-gray-100 dark:bg-[#082622]"/><div className="h-48 rounded-xl bg-gray-100 dark:bg-[#082622]"/></div>:<>
-        <section className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] p-4 sm:p-5">
+        <section className="border-y border-gray-200 dark:border-[#14423b] py-4">
           <h2 className="text-sm font-bold mb-3">{supplierId?'ملخص الجهة':'ملخص دفتر المشتريات'}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><div className="text-[11px] text-gray-500 dark:text-[#8eb698] mb-2">إجمالي المشتريات</div>{summaryRows(overall).length?summaryRows(overall).map(x=><div key={x.currency} className="font-mono font-bold text-sm py-0.5">{money(x.amount,x.currency)}</div>):<div className="text-sm text-gray-400">0</div>}</div>
@@ -208,7 +239,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
           </div>
         </section>
 
-        {showAdditions&&!supplierId&&<section className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] p-4 space-y-4">
+        {showAdditions&&!supplierId&&<section className="border-y border-gray-200 dark:border-[#14423b] py-4 space-y-4">
           <h2 className="text-sm font-bold">إدارة الإضافات</h2>
           <label className="block text-xs font-semibold">بداية الأسبوع
             <select value={weekStartDay} onChange={e=>{const value=Number(e.target.value);setWeekStartDay(value);setPurchaseWeekStartDay(value).catch(err=>setError(err.message));}} className="mt-1 w-full sm:w-64 rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-2.5">
@@ -221,11 +252,11 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
         </section>}
 
         <section className="space-y-3">
-          {groupedMonths.length===0?<div className="rounded-xl border border-dashed border-gray-300 dark:border-[#28564d] p-8 text-center text-xs text-gray-500">لا توجد مشتريات مسجلة لهذه الجهة بعد.</div>:groupedMonths.map(month=>{
+          {groupedMonths.length===0?<div className="py-10 text-center text-xs text-gray-500 border-y border-dashed border-gray-300 dark:border-[#28564d]">لا توجد مشتريات مسجلة لهذه الجهة بعد.</div>:groupedMonths.map(month=>{
             const monthWeeks=weeks.filter(w=>w.monthId===month.id).sort((a,b)=>b.startDate.localeCompare(a.startDate));
             const monthOrders=supplierOrders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
             const monthTotal=totalsFor(monthOrders);
-            return <CollapsibleBlock key={month.id} defaultOpen={month.startDate.slice(0,7)===today.slice(0,7)} className="rounded-xl border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#082622] overflow-hidden"
+            return <CollapsibleBlock key={month.id} defaultOpen={month.startDate.slice(0,7)===today.slice(0,7)} className="border-b border-gray-200 dark:border-[#14423b] py-1"
               header={<div className="p-4 flex items-center justify-between gap-3"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-xs font-mono text-gray-500">{summaryRows(monthTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</div></div>}>
               <div className="px-3 sm:px-4 pb-4 space-y-3">
                 {!supplierId&&<div className="flex justify-end"><button onClick={()=>createPurchaseWeek(month.id).then(reload).catch(e=>setError(e.message))} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>إضافة أسبوع</button></div>}
@@ -233,7 +264,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
                   const weekDays=days.filter(d=>d.weekId===week.id).sort((a,b)=>b.purchaseDate.localeCompare(a.purchaseDate));
                   const weekOrders=supplierOrders.filter(o=>weekDays.some(d=>d.id===o.purchaseDayId));
                   const weekTotal=totalsFor(weekOrders);
-                  return <CollapsibleBlock key={week.id} defaultOpen={weekDays.some(isCurrentDay)} className="rounded-lg border border-gray-100 dark:border-[#123d37] p-3"
+                  return <CollapsibleBlock key={week.id} defaultOpen={weekDays.some(isCurrentDay)} className="border-b border-gray-100 dark:border-[#123d37] py-3 ps-3"
                     header={<div className="flex items-center justify-between gap-3 py-1"><span className="text-xs font-bold">الأسبوع {dateLabel(week.startDate)} — {dateLabel(week.endDate)}{week.isClosed?' • مغلق':''}</span><span className="text-[11px] font-mono text-gray-500">{summaryRows(weekTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></div>}>
                     <div className="pt-3 space-y-2">{weekDays.map(renderDay)}</div>
                   </CollapsibleBlock>;
