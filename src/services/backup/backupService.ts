@@ -1116,8 +1116,8 @@ export class BackupService {
     const ownedPurchaseWeeks = purchaseWeeks.filter((row: any) => isOwnedPurchaseRow(row, activeAdminId));
     const ownedPurchaseDays = purchaseDays.filter((row: any) => isOwnedPurchaseRow(row, activeAdminId));
     const ownedPurchaseOrders = purchaseOrders.filter((row: any) => isOwnedPurchaseRow(row, activeAdminId));
-    const ownedOutbox = outbox.filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.actorAdminId === activeAdminId);
-    const ownedSyncHistory = syncHistory.filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.entityType !== 'purchase_orders' && !String(row.entityType || '').startsWith('purchase_'));
+    const ownedOutbox = outbox.filter((row: any) => (!String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID') || row.actorAdminId === activeAdminId);
+    const ownedSyncHistory = syncHistory.filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' && !String(row.entityType || '').startsWith('purchase_'));
 
     return {
       customers: customers.map(sanitizeEntity),
@@ -1152,8 +1152,8 @@ export class BackupService {
   async captureOfflineDataFromData(data: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
     const activeAdminId = await currentBackupAdminId();
     const owned = (rows: any[] = []) => rows.filter((row) => isOwnedPurchaseRow(row, activeAdminId));
-    const ownedOutbox = (data.outbox || []).filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.actorAdminId === activeAdminId);
-    const ownedSyncHistory = (data.syncHistory || []).filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.entityType !== 'purchase_orders' && !String(row.entityType || '').startsWith('purchase_'));
+    const ownedOutbox = (data.outbox || []).filter((row: any) => (!String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID') || row.actorAdminId === activeAdminId);
+    const ownedSyncHistory = (data.syncHistory || []).filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' && !String(row.entityType || '').startsWith('purchase_'));
     return {
       customers: (data.customers || []).map(sanitizeEntity),
       businessDays: (data.businessDays || []).map(sanitizeEntity),
@@ -1165,7 +1165,7 @@ export class BackupService {
       deviceTypes: (data.deviceTypes || []).map(sanitizeEntity).map(normalizeDeviceTypeEntity),
       goals: (data.goals || []).map(normalizeGoalEntity),
       goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
-      purchaseSuppliers: (data.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (data.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (data.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (data.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (data.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (data.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (data.purchaseOrders || []).map(sanitizeEntity),
+      purchaseSuppliers: owned(data.purchaseSuppliers).map(sanitizeEntity), purchaseItems: owned(data.purchaseItems).map(sanitizeEntity), purchasePaymentMethods: owned(data.purchasePaymentMethods).map(sanitizeEntity), purchaseMonths: owned(data.purchaseMonths).map(sanitizeEntity), purchaseWeeks: owned(data.purchaseWeeks).map(sanitizeEntity), purchaseDays: owned(data.purchaseDays).map(sanitizeEntity), purchaseOrders: owned(data.purchaseOrders).map(sanitizeEntity),
       qrTokens: (data.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
       outbox: ownedOutbox.map(sanitizeEntity),
