@@ -1,6 +1,8 @@
 import React from 'react';
 import { useI18n } from '../../i18n/i18nContext';
 import { UserSession } from '../../services/auth/authService';
+import { getPurchaseBookRowsSync, useStoreSubscription } from '../pages/dayOrdersStore';
+import { PurchaseCatalogEntity } from '../../domain/models';
 
 export interface MobileNavProps {
   isOpen: boolean;
@@ -13,6 +15,8 @@ export interface MobileNavProps {
 
 export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPath, userSession, notificationCount = 0, onNavigate }) => {
   const { t, locale } = useI18n();
+  useStoreSubscription('purchaseBook');
+  const purchaseSuppliers = getPurchaseBookRowsSync('suppliers').filter((row) => (row as PurchaseCatalogEntity).isActive) as PurchaseCatalogEntity[];
 
   if (!isOpen) return null;
 
@@ -23,6 +27,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
     { id: '/app', label: t('navHome') },
     { id: '/app/days', label: t('navDaysOrders') },
     { id: '/app/customers', label: t('navCustomers') },
+    { id: '/app/purchases', label: locale === 'ar' ? 'دفتر المشتريات' : 'Purchase Book' },
+    ...purchaseSuppliers.map((supplier) => ({ id: `/app/purchases/supplier/${supplier.id}`, label: supplier.name })),
     { id: '/app/messages', label: locale === 'ar' ? 'الرسائل والتواصل' : 'Messages & Communication' },
     { id: '/app/financials', label: t('navFinancials') },
     ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
@@ -46,7 +52,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
           {navItems.map((item) => {
             const isActive =
               currentPath === item.id ||
-              (item.id === '/app/days' && currentPath.startsWith('/app/days/'));
+              (item.id === '/app/days' && currentPath.startsWith('/app/days/')) ||
+              (item.id === '/app/purchases' && currentPath.startsWith('/app/purchases'));
             return (
               <button
                 key={item.id}
