@@ -684,6 +684,11 @@ export default function App() {
       );
     }
 
+    const purchasePeriodMatch = pathname.match(/^\/app\/purchases\/month\/([^/]+)(?:\/week\/([^/]+)(?:\/day\/([^/]+))?)?$/);
+    if (purchasePeriodMatch) {
+      return <PurchaseBookPage viewLevel={purchasePeriodMatch[3] ? 'day' : purchasePeriodMatch[2] ? 'days' : 'weeks'} monthId={purchasePeriodMatch[1]} weekId={purchasePeriodMatch[2]} dayId={purchasePeriodMatch[3]} onNavigate={(path) => navigate(path)} />;
+    }
+
     if (pathname.startsWith('/app/purchases/supplier/')) {
       const purchaseSupplierId = pathname.replace('/app/purchases/supplier/', '');
       return <PurchaseBookPage supplierId={purchaseSupplierId} onNavigate={(path) => navigate(path)} />;
@@ -730,7 +735,7 @@ export default function App() {
           />
         );
       case '/app/purchases':
-        return <PurchaseBookPage onNavigate={(path) => navigate(path)} />;
+        return <PurchaseBookPage viewLevel="months" onNavigate={(path) => navigate(path)} />;
       case '/app/messages':
         return <MessageCenterHomePage onNavigate={(section) => navigate(`/app/messages/${section}`)} />;
       case '/app/customers':
