@@ -146,6 +146,13 @@ BEGIN
   v_snapshot := public.capture_sync_bootstrap_snapshot__shared_unfiltered();
   RETURN v_snapshot
     || jsonb_build_object(
+      'change_log_count', (SELECT count(*) FROM public.change_log t
+        WHERE t.entity_type NOT LIKE 'purchase\\_%' ESCAPE '\\'
+          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
+      'change_log_fingerprint', (SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text), '' ORDER BY t.sequence_id), ''))
+        FROM public.change_log t
+        WHERE t.entity_type NOT LIKE 'purchase\\_%' ESCAPE '\\'
+          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
       'purchase_suppliers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_suppliers t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
       'purchase_items', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_items t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
       'purchase_payment_methods', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_payment_methods t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
