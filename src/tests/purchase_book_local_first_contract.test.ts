@@ -120,6 +120,8 @@ describe('Purchase book local-first architecture contract', () => {
     expect(isolationMigration).toContain('purchase_entity_belongs_to_admin');
     expect(isolationMigration).toContain('pull_canonical_changes__shared_unfiltered');
     expect(isolationMigration).toContain('pull_canonical_delta_changes');
+    expect(isolationMigration).toContain('WITH scanned AS MATERIALIZED');
+    expect(isolationMigration).toContain("'next_after_sequence_id',COALESCE((SELECT max(sequence_id) FROM scanned),p_after_sequence_id)");
     expect(models).toContain('export interface PurchaseOwnedEntity extends BaseEntity { adminId?: ID; }');
     expect(service).toContain('currentPurchaseAdminId');
     expect(service).toContain('adminId, name:cleanName');
@@ -128,6 +130,9 @@ describe('Purchase book local-first architecture contract', () => {
     expect(syncTransport).toContain('response.latestSequence');
     expect(syncTransport).toContain('CHANGE_LOG_PULL_INVALID_LATEST_SEQUENCE');
     expect(store).toContain('row?.adminId === activePurchaseAdminId');
+    expect(store).toContain('row.adminId === activeAdminId');
+    expect(store).toContain('getPurchaseBookRowsSync(table)');
+    expect(store).toContain('Purchase Book write rejected');
     expect(store).toContain('adminId: row.admin_id');
   });
 
