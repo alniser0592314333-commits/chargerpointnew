@@ -103,7 +103,7 @@ describe('Purchase book local-first architecture contract', () => {
     for (const table of ['purchase_suppliers','purchase_items','purchase_payment_methods','purchase_months','purchase_weeks','purchase_days','purchase_orders']) {
       expect(isolationMigration).toContain(`ALTER TABLE public.${table} ADD COLUMN IF NOT EXISTS admin_id uuid REFERENCES public.admins(id)`);
       expect(isolationMigration).toContain(`ALTER TABLE public.${table} ALTER COLUMN admin_id SET NOT NULL`);
-      expect(isolationMigration).toContain(`CREATE POLICY purchase_book_admin_isolation ON public.${table}`);
+      expect(isolationMigration).toContain('CREATE POLICY purchase_book_admin_isolation ON public.%I');
     }
     expect(isolationMigration).toContain('enforce_purchase_book_admin_owner');
     expect(isolationMigration).toContain('purchase_orders_supplier_owner_fk');
