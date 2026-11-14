@@ -5,6 +5,9 @@ import path from 'path';
 describe('Purchase book local-first architecture contract', () => {
   const read = (file:string) => fs.readFileSync(path.resolve(process.cwd(),file),'utf8');
   const migration = read('supabase/migrations/20261111090000_purchase_book_local_first.sql');
+  const isolationMigration = read('supabase/migrations/20261114120000_purchase_book_admin_isolation.sql');
+  const syncEngine = read('src/infrastructure/sync/syncEngine.ts');
+  const models = read('src/domain/models.ts');
   const store = read('src/components/pages/dayOrdersStore.ts');
   const service = read('src/services/purchaseBook/purchaseBookService.ts');
   const page = read('src/components/pages/PurchaseBookPage.tsx');
@@ -93,6 +96,31 @@ describe('Purchase book local-first architecture contract', () => {
     expect(page).toContain('بداية الأسبوع');
     expect(sidebar).toContain("'/app/purchases'");
     expect(sidebar).toContain('/app/purchases/supplier/');
+  });
+
+
+  it('isolates purchase rows, parent references, snapshots, delta feeds, and offline queues by admin', () => {
+    for (const table of ['purchase_suppliers','purchase_items','purchase_payment_methods','purchase_months','purchase_weeks','purchase_days','purchase_orders']) {
+      expect(isolationMigration).toContain(`ALTER TABLE public.${table} ADD COLUMN IF NOT EXISTS admin_id uuid REFERENCES public.admins(id)`);
+      expect(isolationMigration).toContain(`ALTER TABLE public.${table} ALTER COLUMN admin_id SET NOT NULL`);
+      expect(isolationMigration).toContain(`CREATE POLICY purchase_book_admin_isolation ON public.${table}`);
+    }
+    expect(isolationMigration).toContain('enforce_purchase_book_admin_owner');
+    expect(isolationMigration).toContain('purchase_orders_supplier_owner_fk');
+    expect(isolationMigration).toContain('purchase_orders_item_owner_fk');
+    expect(isolationMigration).toContain('purchase_orders_method_owner_fk');
+    expect(isolationMigration).toContain('capture_sync_bootstrap_snapshot__shared_unfiltered');
+    expect(isolationMigration).toContain('capture_authoritative_business_snapshot__shared_unfiltered');
+    expect(isolationMigration).toContain('purchase_entity_belongs_to_admin');
+    expect(isolationMigration).toContain('pull_canonical_changes__shared_unfiltered');
+    expect(isolationMigration).toContain('pull_canonical_delta_changes');
+    expect(models).toContain('export interface PurchaseOwnedEntity extends BaseEntity { adminId?: ID; }');
+    expect(service).toContain('currentPurchaseAdminId');
+    expect(service).toContain('adminId, name:cleanName');
+    expect(service).toContain('purchase-month:${adminId}:');
+    expect(syncEngine).toContain('i.actorAdminId === activePurchaseAdminId');
+    expect(store).toContain('row?.adminId === activePurchaseAdminId');
+    expect(store).toContain('adminId: row.admin_id');
   });
 
   it('does not erase the independent purchase book during operational-data reset', () => {
