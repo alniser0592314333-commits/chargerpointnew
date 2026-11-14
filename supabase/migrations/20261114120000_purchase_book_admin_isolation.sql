@@ -210,22 +210,20 @@ BEGIN
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN RAISE EXCEPTION 'Active admin profile required'; END IF;
   IF p_after_sequence_id < 0 OR p_through_sequence_id < p_after_sequence_id THEN RAISE EXCEPTION 'Invalid change-log page bounds'; END IF;
   RETURN (
-    WITH scanned AS MATERIALIZED (
+    WITH visible AS MATERIALIZED (
       SELECT t.* FROM public.change_log t
       WHERE t.sequence_id>p_after_sequence_id AND t.sequence_id<=p_through_sequence_id
+        AND (t.entity_type NOT LIKE 'purchase\\_%' ESCAPE '\\'
+          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id))
       ORDER BY t.sequence_id LIMIT v_limit
-    ), visible AS (
-      SELECT s.* FROM scanned s
-      WHERE s.entity_type NOT LIKE 'purchase\_%' ESCAPE '\'
-         OR public.purchase_entity_belongs_to_admin(s.entity_type,s.entity_id,v_admin_id)
     )
     SELECT jsonb_build_object(
       'rows',COALESCE((SELECT jsonb_agg(to_jsonb(v) ORDER BY v.sequence_id) FROM visible v),'[]'::jsonb),
-      'next_after_sequence_id',COALESCE((SELECT max(sequence_id) FROM scanned),p_after_sequence_id),
+      'next_after_sequence_id',COALESCE((SELECT max(sequence_id) FROM visible),p_after_sequence_id),
       'current_count_through_sequence',(
         SELECT count(*) FROM public.change_log t
         WHERE t.sequence_id<=p_through_sequence_id
-          AND (t.entity_type NOT LIKE 'purchase\_%' ESCAPE '\'
+          AND (t.entity_type NOT LIKE 'purchase\\_%' ESCAPE '\\'
             OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id))
       ),
       'server_reset_generation',COALESCE((SELECT value_number FROM public.system_settings WHERE key='server_reset_generation' LIMIT 1),0),
@@ -233,7 +231,7 @@ BEGIN
         SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text),'' ORDER BY t.sequence_id),''))
         FROM public.change_log t
         WHERE t.sequence_id<=p_through_sequence_id
-          AND (t.entity_type NOT LIKE 'purchase\_%' ESCAPE '\'
+          AND (t.entity_type NOT LIKE 'purchase\\_%' ESCAPE '\\'
             OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id))
       ) ELSE NULL END
     )
