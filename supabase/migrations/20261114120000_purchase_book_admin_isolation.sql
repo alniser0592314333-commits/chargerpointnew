@@ -215,11 +215,15 @@ CREATE OR REPLACE FUNCTION public.capture_authoritative_change_log_page__session
   p_after_sequence_id bigint, p_through_sequence_id bigint, p_limit integer DEFAULT 500
 ) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
-DECLARE v_admin_id uuid; v_active boolean; v_limit integer := GREATEST(1,LEAST(COALESCE(p_limit,500),1000));
+DECLARE v_admin_id uuid; v_admin_role text; v_active boolean; v_limit integer := GREATEST(1,LEAST(COALESCE(p_limit,500),1000));
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
-  SELECT id,is_active INTO v_admin_id,v_active FROM public.admins WHERE auth_user_id=auth.uid() LIMIT 1;
+  SELECT id,role,is_active INTO v_admin_id,v_admin_role,v_active FROM public.admins WHERE auth_user_id=auth.uid() LIMIT 1;
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN RAISE EXCEPTION 'Active admin profile required'; END IF;
+  IF v_admin_role NOT IN ('SUPER_ADMIN','Super Admin') AND NOT EXISTS (
+    SELECT 1 FROM public.get_effective_permissions(v_admin_id)
+    WHERE permission IN ('settings:manage','admin:manage','SUPER_ADMIN')
+  ) THEN RAISE EXCEPTION 'Forbidden: settings:manage permission required'; END IF;
   IF p_after_sequence_id < 0 OR p_through_sequence_id < p_after_sequence_id THEN RAISE EXCEPTION 'Invalid change-log page bounds'; END IF;
   RETURN (
     WITH visible AS MATERIALIZED (
