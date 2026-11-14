@@ -22,7 +22,7 @@ INSERT INTO public.purchase_weeks(id,month_id,start_date,end_date) VALUES ('4100
 INSERT INTO public.purchase_days(id,week_id,purchase_date) VALUES ('42000000-0000-4000-8000-000000000002','41000000-0000-4000-8000-000000000002','2026-11-11');
 
 DO $owner_assertions$
-DECLARE v_a uuid; v_b uuid; v_snapshot jsonb; v_page jsonb; v_changes jsonb; v_delta_count integer; v_rejected boolean := false;
+DECLARE v_a uuid; v_b uuid; v_snapshot jsonb; v_page jsonb; v_final_page jsonb; v_changes jsonb; v_delta_count integer; v_rejected boolean := false;
 BEGIN
   SELECT admin_id INTO v_a FROM public.purchase_suppliers WHERE id='30000000-0000-4000-8000-000000000001';
   SELECT admin_id INTO v_b FROM public.purchase_suppliers WHERE id='30000000-0000-4000-8000-000000000002';
@@ -42,10 +42,11 @@ BEGIN
 
   v_snapshot := public.capture_authoritative_business_snapshot();
   v_page := public.capture_authoritative_change_log_page(0,(SELECT max(sequence_id) FROM public.change_log),500);
+  v_final_page := public.capture_authoritative_change_log_page((SELECT max(sequence_id) FROM public.change_log),(SELECT max(sequence_id) FROM public.change_log),500);
   IF jsonb_array_length(v_page->'rows') <> 1
      OR v_page->'rows'->0->>'entity_id' <> '30000000-0000-4000-8000-000000000002'
-     OR (v_page->>'current_count_through_sequence')::integer <> (v_snapshot->>'change_log_count')::integer
-     OR v_page->>'change_log_fingerprint' <> v_snapshot->>'change_log_fingerprint' THEN
+     OR (v_final_page->>'current_count_through_sequence')::integer <> (v_snapshot->>'change_log_count')::integer
+     OR v_final_page->>'change_log_fingerprint' <> v_snapshot->>'change_log_fingerprint' THEN
     RAISE EXCEPTION 'Authoritative delta paging leaked or lost account-scoped purchase changes';
   END IF;
 
