@@ -760,7 +760,7 @@ function normalizeReplacementLocalData(data: Partial<BackupSnapshotData>): Backu
     orderNumberReservations: (data.orderNumberReservations || []).map(normalizeOrderNumberReservationEntity),
     goals: (data.goals || []).map(normalizeGoalEntity),
     goalRequests: (data.goalRequests || []).map(normalizeGoalRequestEntity),
-    purchaseSuppliers: owned(data.purchaseSuppliers).map(sanitizeEntity), purchaseItems: owned(data.purchaseItems).map(sanitizeEntity), purchasePaymentMethods: owned(data.purchasePaymentMethods).map(sanitizeEntity), purchaseMonths: owned(data.purchaseMonths).map(sanitizeEntity), purchaseWeeks: owned(data.purchaseWeeks).map(sanitizeEntity), purchaseDays: owned(data.purchaseDays).map(sanitizeEntity), purchaseOrders: owned(data.purchaseOrders).map(sanitizeEntity),
+    purchaseSuppliers: (data.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (data.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (data.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (data.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (data.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (data.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (data.purchaseOrders || []).map(sanitizeEntity),
     outbox: (data.outbox || []).map(sanitizeEntity),
     syncHistory: (data.syncHistory || []).map(sanitizeEntity),
     mutationSnapshots: (data.mutationSnapshots || []).map(sanitizeEntity),
