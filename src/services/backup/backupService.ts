@@ -1116,6 +1116,8 @@ export class BackupService {
     const ownedPurchaseWeeks = purchaseWeeks.filter((row: any) => isOwnedPurchaseRow(row, activeAdminId));
     const ownedPurchaseDays = purchaseDays.filter((row: any) => isOwnedPurchaseRow(row, activeAdminId));
     const ownedPurchaseOrders = purchaseOrders.filter((row: any) => isOwnedPurchaseRow(row, activeAdminId));
+    const ownedOutbox = outbox.filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.actorAdminId === activeAdminId);
+    const ownedSyncHistory = syncHistory.filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.entityType !== 'purchase_orders' && !String(row.entityType || '').startsWith('purchase_'));
 
     return {
       customers: customers.map(sanitizeEntity),
@@ -1131,8 +1133,8 @@ export class BackupService {
       purchaseSuppliers: ownedPurchaseSuppliers.map(sanitizeEntity), purchaseItems: ownedPurchaseItems.map(sanitizeEntity), purchasePaymentMethods: ownedPurchaseMethods.map(sanitizeEntity), purchaseMonths: ownedPurchaseMonths.map(sanitizeEntity), purchaseWeeks: ownedPurchaseWeeks.map(sanitizeEntity), purchaseDays: ownedPurchaseDays.map(sanitizeEntity), purchaseOrders: ownedPurchaseOrders.map(sanitizeEntity),
       qrTokens: qrTokens.map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: orderNumberReservations.map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
-      outbox: outbox.map(sanitizeEntity),
-      syncHistory: syncHistory.map(sanitizeEntity),
+      outbox: ownedOutbox.map(sanitizeEntity),
+      syncHistory: ownedSyncHistory.map(sanitizeEntity),
       mutationSnapshots: mutationSnapshots.map(sanitizeEntity),
       optimisticOverlays: optimisticOverlays.map(sanitizeEntity),
       syncState: syncState ? sanitizeEntity(syncState) : null,
@@ -1150,6 +1152,8 @@ export class BackupService {
   async captureOfflineDataFromData(data: Partial<BackupSnapshotData>): Promise<BackupSnapshotData> {
     const activeAdminId = await currentBackupAdminId();
     const owned = (rows: any[] = []) => rows.filter((row) => isOwnedPurchaseRow(row, activeAdminId));
+    const ownedOutbox = (data.outbox || []).filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.actorAdminId === activeAdminId);
+    const ownedSyncHistory = (data.syncHistory || []).filter((row: any) => !String(row.commandType || '').startsWith('SAVE_PURCHASE_') && row.commandType !== 'MARK_PURCHASE_ORDER_PAID' || row.entityType !== 'purchase_orders' && !String(row.entityType || '').startsWith('purchase_'));
     return {
       customers: (data.customers || []).map(sanitizeEntity),
       businessDays: (data.businessDays || []).map(sanitizeEntity),
@@ -1164,8 +1168,8 @@ export class BackupService {
       purchaseSuppliers: (data.purchaseSuppliers || []).map(sanitizeEntity), purchaseItems: (data.purchaseItems || []).map(sanitizeEntity), purchasePaymentMethods: (data.purchasePaymentMethods || []).map(sanitizeEntity), purchaseMonths: (data.purchaseMonths || []).map(sanitizeEntity), purchaseWeeks: (data.purchaseWeeks || []).map(sanitizeEntity), purchaseDays: (data.purchaseDays || []).map(sanitizeEntity), purchaseOrders: (data.purchaseOrders || []).map(sanitizeEntity),
       qrTokens: (data.qrTokens || []).map(sanitizeEntity).map((q) => normalizeQrTokenEntity(q, { allowLegacyPlaceholder: true })),
       orderNumberReservations: (data.orderNumberReservations || []).map(sanitizeEntity).map(normalizeOrderNumberReservationEntity),
-      outbox: (data.outbox || []).map(sanitizeEntity),
-      syncHistory: (data.syncHistory || []).map(sanitizeEntity),
+      outbox: ownedOutbox.map(sanitizeEntity),
+      syncHistory: ownedSyncHistory.map(sanitizeEntity),
       mutationSnapshots: (data.mutationSnapshots || []).map(sanitizeEntity),
       optimisticOverlays: (data.optimisticOverlays || []).map(sanitizeEntity),
       syncState: data.syncState ? sanitizeEntity(data.syncState) : null,
@@ -1249,7 +1253,7 @@ export class BackupService {
     const goals = (authoritative.goals || []).map(normalizeGoalEntity);
     const goalRequests = (authoritative.goal_requests || authoritative.goalRequests || []).map(normalizeGoalRequestEntity);
     const purchaseSuppliers = (authoritative.purchase_suppliers || []).map((r: any) => ({ id:r.id,adminId:r.admin_id,name:r.name,isActive:r.is_active,deletedAt:r.deleted_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
-    const purchaseItems = (authoritative.purchase_items || []).map((r: any) => ({ id:r.id,name:r.name,isActive:r.is_active,deletedAt:r.deleted_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
+    const purchaseItems = (authoritative.purchase_items || []).map((r: any) => ({ id:r.id,adminId:r.admin_id,name:r.name,isActive:r.is_active,deletedAt:r.deleted_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
     const purchasePaymentMethods = (authoritative.purchase_payment_methods || []).map((r: any) => ({ id:r.id,name:r.name,isActive:r.is_active,deletedAt:r.deleted_at,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
     const purchaseMonths = (authoritative.purchase_months || []).map((r: any) => ({ id:r.id,adminId:r.admin_id,year:r.year,month:r.month_number,startDate:r.start_date,endDate:r.end_date,isClosed:r.is_closed,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
     const purchaseWeeks = (authoritative.purchase_weeks || []).map((r: any) => ({ id:r.id,adminId:r.admin_id,monthId:r.month_id,startDate:r.start_date,endDate:r.end_date,isClosed:r.is_closed,createdAt:r.created_at,updatedAt:r.updated_at,version:r.version }));
