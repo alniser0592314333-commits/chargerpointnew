@@ -22,6 +22,13 @@ export function resolveLogicalBackPath(pathAndHash: string): string | null {
   if (addOrderRoute) return `/app/days/${addOrderRoute[1]}`;
 
   if (/^\/app\/days\/[^/]+$/.test(pathname)) return '/app/days';
+  const purchaseDayRoute = pathname.match(/^\/app\/purchases\/month\/([^/]+)\/week\/([^/]+)\/day\/[^/]+$/);
+  if (purchaseDayRoute) return `/app/purchases/month/${purchaseDayRoute[1]}/week/${purchaseDayRoute[2]}`;
+  const purchaseWeekRoute = pathname.match(/^\/app\/purchases\/month\/([^/]+)\/week\/[^/]+$/);
+  if (purchaseWeekRoute) return `/app/purchases/month/${purchaseWeekRoute[1]}`;
+  if (/^\/app\/purchases\/month\/[^/]+$/.test(pathname)) return '/app/purchases';
+  if (pathname.startsWith('/app/purchases/supplier/')) return '/app/purchases';
+
   if (pathname === '/app/days') return '/app';
   if (pathname.startsWith('/app/messages/')) return '/app/messages';
   if (pathname === '/app/messages') return '/app';

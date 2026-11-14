@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, CalendarDays, X, Settings2, Pencil, EyeOff, CircleAlert, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
+import { Plus, CalendarDays, X, Pencil, EyeOff, CircleAlert, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
 import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
@@ -22,9 +22,9 @@ const localToday = () => {
 const timeLabel = (value:string) => new Date(value).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'});
 const dateLabel = (value:string) => new Date(value+'T12:00:00').toLocaleDateString('ar',{day:'numeric',month:'long',year:'numeric'});
 
-interface PurchaseBookPageProps { supplierId?: string; onNavigate?: (path:string)=>void; }
+interface PurchaseBookPageProps { supplierId?: string; onNavigate?: (path:string)=>void; viewLevel?: 'months'|'weeks'|'days'|'day'; monthId?: string; weekId?: string; dayId?: string; }
 
-export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onNavigate}) => {
+export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onNavigate,viewLevel='months',monthId,weekId,dayId}) => {
   const version=useStoreSubscription('purchaseBook');
   const [suppliers,setSuppliers]=useState<PurchaseCatalogEntity[]>([]);
   const [items,setItems]=useState<PurchaseCatalogEntity[]>([]);
@@ -38,10 +38,6 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const [notice,setNotice]=useState('');
   const [showOrderForm,setShowOrderForm]=useState(false);
   const [menuOpen,setMenuOpen]=useState(false);
-  const [pageLevel,setPageLevel]=useState<'months'|'weeks'|'days'|'day'>('months');
-  const [selectedMonthId,setSelectedMonthId]=useState('');
-  const [selectedWeekId,setSelectedWeekId]=useState('');
-  const [selectedDayId,setSelectedDayId]=useState('');
   const [showPayDialog,setShowPayDialog]=useState<PurchaseOrderEntity|null>(null);
   const [payMethodId,setPayMethodId]=useState('');
   const [showNoDayDialog,setShowNoDayDialog]=useState(false);
@@ -107,10 +103,6 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
     try{await createCurrentPurchaseDay();setShowNoDayDialog(false);setError('');await submitOrder();}
     catch(e){setError(e instanceof Error?e.message:'تعذّر إنشاء اليوم الحالي.');setShowNoDayDialog(false);}
   };
-  const createDay=async()=>{
-    try{await createCurrentPurchaseDay();setNotice('تم إنشاء يوم المشتريات الحالي.');setError('');await reload();}
-    catch(e){setError(e instanceof Error?e.message:'تعذّر إنشاء اليوم الحالي.');}
-  };
   const quickCreate=async()=>{
     if(!quickAdd||!quickName.trim())return;
     try{
@@ -162,6 +154,10 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   );
 
   const periodOrders=(day:PurchaseDayEntity)=>supplierOrders.filter(o=>o.purchaseDayId===day.id);
+  const selectedMonthId=monthId||'';
+  const selectedWeekId=weekId||'';
+  const selectedDayId=dayId||'';
+  const pageLevel=viewLevel;
   const selectedMonth=months.find(x=>x.id===selectedMonthId);
   const selectedWeek=weeks.find(x=>x.id===selectedWeekId);
   const selectedDay=days.find(x=>x.id===selectedDayId);
@@ -170,15 +166,18 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const monthOrders=(month:PurchaseMonthEntity)=>supplierOrders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
   const weekOrders=(week:PurchaseWeekEntity)=>supplierOrders.filter(o=>days.some(d=>d.weekId===week.id&&d.id===o.purchaseDayId));
   const periodCount=(count:number)=>`${count} مشتريات`;
-  const openMonth=(month:PurchaseMonthEntity)=>{setSelectedMonthId(month.id);setPageLevel('weeks');};
-  const openWeek=(week:PurchaseWeekEntity)=>{setSelectedWeekId(week.id);setPageLevel('days');};
-  const openDay=(day:PurchaseDayEntity)=>{setSelectedDayId(day.id);setPageLevel('day');};
-  const goBackOneLevel=()=>{if(pageLevel==='day')setPageLevel('days');else if(pageLevel==='days')setPageLevel('weeks');else if(pageLevel==='weeks')setPageLevel('months');};
-  const renderOrderList=(rows:PurchaseOrderEntity[],allowAdd=false)=>(
+  const openMonth=(month:PurchaseMonthEntity)=>onNavigate?.(`/app/purchases/month/${month.id}`);
+  const openWeek=(week:PurchaseWeekEntity)=>onNavigate?.(`/app/purchases/month/${selectedMonthId}/week/${week.id}`);
+  const openDay=(day:PurchaseDayEntity)=>onNavigate?.(`/app/purchases/month/${selectedMonthId}/week/${selectedWeekId}/day/${day.id}`);
+  const goBackOneLevel=()=>{
+    if(pageLevel==='day')onNavigate?.(`/app/purchases/month/${selectedMonthId}/week/${selectedWeekId}`);
+    else if(pageLevel==='days')onNavigate?.(`/app/purchases/month/${selectedMonthId}`);
+    else if(pageLevel==='weeks')onNavigate?.('/app/purchases');
+  };
+  const renderOrderList=(rows:PurchaseOrderEntity[])=>(
     <div className="divide-y divide-gray-100 dark:divide-[#123d37]">
       {rows.slice().sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard)}
       {rows.length===0&&<div className="py-8 text-center text-xs text-gray-400">لا توجد مشتريات مسجلة في هذه الفترة.</div>}
-      {allowAdd&&!supplierId&&<button onClick={openOrderForm} className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-300"><Plus className="w-4 h-4"/>إضافة طلب</button>}
     </div>
   );
 
@@ -232,20 +231,14 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
       {error&&<div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-200 p-3 text-xs flex gap-2"><CircleAlert className="w-4 h-4 shrink-0"/>{error}</div>}
       {notice&&<div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900 dark:text-emerald-200 p-3 text-xs">{notice}</div>}
 
-      {!supplierId&&<div className="flex flex-wrap gap-2">
-        <button onClick={openOrderForm} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 text-white px-4 py-2.5 text-xs font-bold hover:bg-emerald-800"><Plus className="w-4 h-4"/>إضافة طلب</button>
-        <button onClick={createDay} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#28564d] px-4 py-2.5 text-xs font-bold hover:bg-gray-50 dark:hover:bg-[#0c312b]"><CalendarDays className="w-4 h-4"/>إضافة يوم</button>
-        <button onClick={()=>setShowAdditions(v=>!v)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[#28564d] px-4 py-2.5 text-xs font-bold hover:bg-gray-50 dark:hover:bg-[#0c312b]"><Settings2 className="w-4 h-4"/>الإضافات</button>
-      </div>}
-
       {loading?<div className="animate-pulse space-y-3"><div className="h-28 rounded-xl bg-gray-100 dark:bg-[#082622]"/><div className="h-48 rounded-xl bg-gray-100 dark:bg-[#082622]"/></div>:<>
-        <section className="border-y border-gray-200 dark:border-[#14423b] py-4">
+        {pageLevel==='months'&&<section className="border-y border-gray-200 dark:border-[#14423b] py-4">
           <h2 className="text-sm font-bold mb-3">{supplierId?'ملخص الجهة':'ملخص دفتر المشتريات'}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><div className="text-[11px] text-gray-500 dark:text-[#8eb698] mb-2">إجمالي المشتريات</div>{summaryRows(overall).length?summaryRows(overall).map(x=><div key={x.currency} className="font-mono font-bold text-sm py-0.5">{money(x.amount,x.currency)}</div>):<div className="text-sm text-gray-400">0</div>}</div>
             <div><div className="text-[11px] text-gray-500 dark:text-[#8eb698] mb-2">إجمالي الديون الحالية</div>{summaryRows(debt).length?summaryRows(debt).map(x=><div key={x.currency} className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400 py-0.5">{money(x.amount,x.currency)}</div>):<div className="text-sm text-gray-400">0</div>}</div>
           </div>
-        </section>
+        </section>}
 
         {showAdditions&&<section className="border-y border-gray-200 dark:border-[#14423b] py-4 space-y-4">
           <h2 className="text-sm font-bold">إدارة الإضافات</h2>
@@ -263,9 +256,9 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
           {pageLevel!=='months'&&<div className="flex items-center gap-3 border-b border-gray-200 dark:border-[#14423b] pb-3">
             <button onClick={goBackOneLevel} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-[#28564d] px-3 py-2 text-xs font-bold hover:bg-gray-50 dark:hover:bg-[#0c312b]"><ArrowRight className="w-4 h-4"/>رجوع</button>
             <div className="min-w-0 text-xs text-gray-500 dark:text-[#8eb698] truncate">
-              <button onClick={()=>setPageLevel('months')} className="hover:text-emerald-700">الأشهر</button>
-              {selectedMonth&&<> / <button onClick={()=>setPageLevel('weeks')} className="hover:text-emerald-700">{new Date(selectedMonth.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</button></>}
-              {selectedWeek&&<> / <button onClick={()=>setPageLevel('days')} className="hover:text-emerald-700">الأسبوع {dateLabel(selectedWeek.startDate)} — {dateLabel(selectedWeek.endDate)}</button></>}
+              <button onClick={()=>onNavigate?.('/app/purchases')} className="hover:text-emerald-700">الأشهر</button>
+              {selectedMonth&&<> / <button onClick={()=>onNavigate?.(`/app/purchases/month/${selectedMonth.id}`)} className="hover:text-emerald-700">{new Date(selectedMonth.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</button></>}
+              {selectedWeek&&<> / <button onClick={()=>onNavigate?.(`/app/purchases/month/${selectedMonthId}/week/${selectedWeek.id}`)} className="hover:text-emerald-700">الأسبوع {dateLabel(selectedWeek.startDate)} — {dateLabel(selectedWeek.endDate)}</button></>}
               {selectedDay&&<> / {dateLabel(selectedDay.purchaseDate)}</>}
             </div>
           </div>}
@@ -314,7 +307,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
           {pageLevel==='day'&&selectedDay&&(
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 py-2"><h3 className="font-bold text-sm">{dateLabel(selectedDay.purchaseDate)}</h3><span className="text-[11px] text-gray-500">{periodCount(periodOrders(selectedDay).length)}</span></div>
-              {renderOrderList(periodOrders(selectedDay),selectedDay.purchaseDate===today)}
+              {renderOrderList(periodOrders(selectedDay))}
             </div>
           )}
         </section>
