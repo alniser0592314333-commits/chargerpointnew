@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, CalendarDays, X, Pencil, EyeOff, CircleAlert, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
+import { Plus, CalendarDays, X, Pencil, EyeOff, CircleAlert, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut, Home } from 'lucide-react';
 import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
@@ -205,7 +205,8 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
             <button onClick={()=>setMenuOpen(false)} aria-label="إغلاق" className="p-2 text-gray-500"><X className="w-5 h-5"/></button>
           </div>
           <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-xs">
-
+            <button onClick={()=>{setMenuOpen(false);onNavigate?.('/app');}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Home className="w-4 h-4 text-emerald-700"/>الصفحة الرئيسية</button>
+            <div className="my-2 border-t border-gray-100 dark:border-[#123d37]"/>
             <button onClick={()=>{setMenuOpen(false);openOrderForm();}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Plus className="w-4 h-4 text-emerald-700"/>إضافة طلب</button>
             <button onClick={()=>{setMenuOpen(false);setCatalogType('items');setEditingCatalog(null);setCatalogName('');setShowAdditions(true);}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Package className="w-4 h-4 text-emerald-700"/>إضافة عنصر</button>
             <button onClick={()=>{setMenuOpen(false);setCatalogType('suppliers');setEditingCatalog(null);setCatalogName('');setShowAdditions(true);}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Users className="w-4 h-4 text-emerald-700"/>إضافة جهة / مورد</button>
