@@ -52,6 +52,14 @@ import { setActiveQrDesign } from '../qr/defaultDesigns';
 const isBrowserOffline = (): boolean =>
   typeof navigator !== 'undefined' && navigator.onLine === false;
 
+const getCachedPurchaseAdminId = (): string | undefined => {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('app_auth_session') : null;
+    const session = raw ? JSON.parse(raw) : null;
+    return typeof session?.userId === 'string' && session.userId ? session.userId : undefined;
+  } catch { return undefined; }
+};
+
 const cloneForTransactionRollback = <T>(value: T): T => {
   if (typeof structuredClone === 'function') return structuredClone(value);
   if (value === undefined) return value;
@@ -484,7 +492,7 @@ export const applyRemoteChange = (change: {
       purchaseMaps[purchaseTable].delete(change.entityId);
       localDb.removeWithTx(tx as any, localKey, change.entityId);
     } else {
-      const base = { id: p.id || change.entityId, createdAt: p.createdAt || p.created_at || new Date().toISOString(), updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(), version: Number(change.version ?? p.version ?? 1) };
+      const base = { id: p.id || change.entityId, adminId: p.adminId || p.admin_id || getCachedPurchaseAdminId(), createdAt: p.createdAt || p.created_at || new Date().toISOString(), updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(), version: Number(change.version ?? p.version ?? 1) };
       let entity: PurchaseBookEntity;
       if (purchaseTable === 'suppliers' || purchaseTable === 'items' || purchaseTable === 'methods') entity = { ...base, name: p.name, isActive: Boolean(p.isActive ?? p.is_active ?? true), deletedAt: p.deletedAt ?? p.deleted_at ?? undefined } as PurchaseCatalogEntity;
       else if (purchaseTable === 'months') entity = { ...base, year: Number(p.year), month: Number(p.month ?? p.monthNumber ?? p.month_number), startDate: p.startDate || p.start_date, endDate: p.endDate || p.end_date, isClosed: Boolean(p.isClosed ?? p.is_closed ?? false) } as PurchaseMonthEntity;
@@ -1856,7 +1864,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       ['months', purchaseMonthsRes.data], ['weeks', purchaseWeeksRes.data], ['days', purchaseDaysRes.data], ['orders', purchaseOrdersRes.data],
     ] as Array<[PurchaseBookTable, any[]]>) {
       for (const row of rows) {
-        const base = { id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, version: Number(row.version ?? 1) };
+        const base = { id: row.id, adminId: row.admin_id, createdAt: row.created_at, updatedAt: row.updated_at, version: Number(row.version ?? 1) };
         let entity: PurchaseBookEntity;
         if (table === 'suppliers' || table === 'items' || table === 'methods') entity = { ...base, name: row.name, isActive: Boolean(row.is_active), deletedAt: row.deleted_at ?? undefined } as PurchaseCatalogEntity;
         else if (table === 'months') entity = { ...base, year: Number(row.year), month: Number(row.month_number), startDate: row.start_date, endDate: row.end_date, isClosed: Boolean(row.is_closed) } as PurchaseMonthEntity;
@@ -2028,14 +2036,16 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     persistedGoals.forEach((g) => goalsMap.set(g.id, g));
     goalRequestsMap.clear();
     persistedGoalRequests.forEach((g) => goalRequestsMap.set(g.id, g));
+    const activePurchaseAdminId = getCachedPurchaseAdminId();
     (['suppliers','items','methods','months','weeks','days','orders'] as PurchaseBookTable[]).forEach((key) => purchaseMaps[key].clear());
-    persistedPurchaseSuppliers.forEach((row) => purchaseMaps.suppliers.set(row.id,row));
-    persistedPurchaseItems.forEach((row) => purchaseMaps.items.set(row.id,row));
-    persistedPurchaseMethods.forEach((row) => purchaseMaps.methods.set(row.id,row));
-    persistedPurchaseMonths.forEach((row) => purchaseMaps.months.set(row.id,row));
-    persistedPurchaseWeeks.forEach((row) => purchaseMaps.weeks.set(row.id,row));
-    persistedPurchaseDays.forEach((row) => purchaseMaps.days.set(row.id,row));
-    persistedPurchaseOrders.forEach((row) => purchaseMaps.orders.set(row.id,row));
+    const belongsToActiveAdmin = (row: any) => Boolean(activePurchaseAdminId && row?.adminId === activePurchaseAdminId);
+    persistedPurchaseSuppliers.filter(belongsToActiveAdmin).forEach((row) => purchaseMaps.suppliers.set(row.id,row));
+    persistedPurchaseItems.filter(belongsToActiveAdmin).forEach((row) => purchaseMaps.items.set(row.id,row));
+    persistedPurchaseMethods.filter(belongsToActiveAdmin).forEach((row) => purchaseMaps.methods.set(row.id,row));
+    persistedPurchaseMonths.filter(belongsToActiveAdmin).forEach((row) => purchaseMaps.months.set(row.id,row));
+    persistedPurchaseWeeks.filter(belongsToActiveAdmin).forEach((row) => purchaseMaps.weeks.set(row.id,row));
+    persistedPurchaseDays.filter(belongsToActiveAdmin).forEach((row) => purchaseMaps.days.set(row.id,row));
+    persistedPurchaseOrders.filter(belongsToActiveAdmin).forEach((row) => purchaseMaps.orders.set(row.id,row));
 
     // 1. Customers Hydration (always read persisted data and auto-heal active status)
     customersMap.clear();
