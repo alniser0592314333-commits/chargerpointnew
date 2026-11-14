@@ -159,13 +159,6 @@ BEGIN
   v_snapshot := public.capture_sync_bootstrap_snapshot__shared_unfiltered();
   RETURN v_snapshot
     || jsonb_build_object(
-      'change_log_count', (SELECT count(*) FROM public.change_log t
-        WHERE left(t.entity_type,9) <> 'purchase_'
-          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
-      'change_log_fingerprint', (SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text), '' ORDER BY t.sequence_id), ''))
-        FROM public.change_log t
-        WHERE left(t.entity_type,9) <> 'purchase_'
-          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
       'purchase_suppliers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_suppliers t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
       'purchase_items', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_items t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
       'purchase_payment_methods', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_payment_methods t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
@@ -195,6 +188,13 @@ BEGIN
   v_snapshot := public.capture_authoritative_business_snapshot__shared_unfiltered();
   RETURN v_snapshot
     || jsonb_build_object(
+      'change_log_count', (SELECT count(*) FROM public.change_log t
+        WHERE left(t.entity_type,9) <> 'purchase_'
+          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
+      'change_log_fingerprint', (SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text), '' ORDER BY t.sequence_id), ''))
+        FROM public.change_log t
+        WHERE left(t.entity_type,9) <> 'purchase_'
+          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
       'purchase_suppliers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_suppliers t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
       'purchase_items', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_items t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
       'purchase_payment_methods', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_payment_methods t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
@@ -206,8 +206,8 @@ BEGIN
 END;
 $function$;
 
--- Authoritative paged delta: scan a global sequence page, return shared changes plus
--- this admin's purchase changes, and advance the cursor over the scanned page.
+-- Authoritative paged delta: return shared changes plus this admin's purchase changes
+-- while preserving a cursor over the admin-visible change-log sequence.
 ALTER FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(bigint,bigint,integer)
   RENAME TO capture_authoritative_change_log_page__shared_unfiltered;
 REVOKE ALL ON FUNCTION public.capture_authoritative_change_log_page__shared_unfiltered(bigint,bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
@@ -292,6 +292,7 @@ BEGIN
   );
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.pull_canonical_changes__session_guarded_impl(bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.pull_canonical_delta_changes(p_since_sequence bigint DEFAULT 0, p_limit integer DEFAULT 500)
 RETURNS TABLE(sequence_id bigint, entity_type character varying, entity_id uuid, action character varying, payload jsonb, version integer, changed_at timestamptz)
