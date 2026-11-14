@@ -160,11 +160,11 @@ BEGIN
   RETURN v_snapshot
     || jsonb_build_object(
       'change_log_count', (SELECT count(*) FROM public.change_log t
-        WHERE t.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
+        WHERE left(t.entity_type,9) <> 'purchase_'
           OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
       'change_log_fingerprint', (SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text), '' ORDER BY t.sequence_id), ''))
         FROM public.change_log t
-        WHERE t.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
+        WHERE left(t.entity_type,9) <> 'purchase_'
           OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id)),
       'purchase_suppliers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_suppliers t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
       'purchase_items', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM public.purchase_items t WHERE t.admin_id=v_admin_id),'[]'::jsonb),
@@ -229,7 +229,7 @@ BEGIN
     WITH visible AS MATERIALIZED (
       SELECT t.* FROM public.change_log t
       WHERE t.sequence_id>p_after_sequence_id AND t.sequence_id<=p_through_sequence_id
-        AND (t.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
+        AND (left(t.entity_type,9) <> 'purchase_'
           OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id))
       ORDER BY t.sequence_id LIMIT v_limit
     )
@@ -239,7 +239,7 @@ BEGIN
       'current_count_through_sequence',(
         SELECT count(*) FROM public.change_log t
         WHERE t.sequence_id<=p_through_sequence_id
-          AND (t.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
+          AND (left(t.entity_type,9) <> 'purchase_'
             OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id))
       ),
       'server_reset_generation',COALESCE((SELECT value_number FROM public.system_settings WHERE key='server_reset_generation' LIMIT 1),0),
@@ -247,7 +247,7 @@ BEGIN
         SELECT md5(COALESCE(string_agg(md5(to_jsonb(t)::text),'' ORDER BY t.sequence_id),''))
         FROM public.change_log t
         WHERE t.sequence_id<=p_through_sequence_id
-          AND (t.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
+          AND (left(t.entity_type,9) <> 'purchase_'
             OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id))
       ) ELSE NULL END
     )
@@ -281,7 +281,7 @@ BEGIN
       ORDER BY sequence_id LIMIT LEAST(GREATEST(COALESCE(p_limit,500),1),500)
     ), visible AS (
       SELECT p.* FROM page p
-      WHERE p.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
+      WHERE left(p.entity_type,9) <> 'purchase_'
          OR public.purchase_entity_belongs_to_admin(p.entity_type,p.entity_id,v_admin_id)
     )
     SELECT jsonb_build_object(
@@ -307,7 +307,7 @@ BEGIN
   SELECT c.sequence_id,c.entity_type,c.entity_id,c.action,c.payload,c.version,c.changed_at
   FROM public.change_log c
   WHERE c.sequence_id>p_since_sequence
-    AND (c.entity_type NOT LIKE E'purchase\\_%' ESCAPE E'\\'
+    AND (left(c.entity_type,9) <> 'purchase_'
       OR public.purchase_entity_belongs_to_admin(c.entity_type,c.entity_id,v_admin_id))
   ORDER BY c.sequence_id ASC
   LIMIT LEAST(COALESCE(p_limit,500),1000);
