@@ -185,7 +185,13 @@ export class SupabaseSyncTransport implements ServerSyncTransport {
     if (changes.some(change => !Number.isSafeInteger(change.sequenceId) || change.sequenceId <= cursor)) {
       throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: returned sequence is not greater than cursor');
     }
-    const latestSequence = changes.length > 0 ? Math.max(...changes.map(change => change.sequenceId)) : cursor;
+    // The server cursor may advance over purchase changes owned by other admins.
+    // Those rows are intentionally omitted from this account's feed, but must
+    // not be fetched repeatedly on every sync cycle.
+    const latestSequence = Number(response.latestSequence ?? (changes.length > 0 ? Math.max(...changes.map(change => change.sequenceId)) : cursor));
+    if (!Number.isSafeInteger(latestSequence) || latestSequence < cursor || changes.some(change => change.sequenceId > latestSequence)) {
+      throw new Error('CHANGE_LOG_PULL_INVALID_LATEST_SEQUENCE: invalid server cursor');
+    }
     return { changes, latestSequence, serverResetGeneration };
   }
 }
