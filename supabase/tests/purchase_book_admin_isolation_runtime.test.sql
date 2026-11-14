@@ -53,7 +53,7 @@ INSERT INTO public.purchase_weeks(id,month_id,start_date,end_date) VALUES ('4100
 INSERT INTO public.purchase_days(id,week_id,purchase_date) VALUES ('42000000-0000-4000-8000-000000000002','41000000-0000-4000-8000-000000000002','2026-11-11');
 
 DO $owner_assertions$
-DECLARE v_a uuid; v_b uuid; v_snapshot jsonb; v_page jsonb; v_final_page jsonb; v_changes jsonb; v_delta_count integer; v_rejected boolean := false;
+DECLARE v_a uuid; v_b uuid; v_snapshot jsonb; v_page jsonb; v_final_page jsonb; v_changes jsonb; v_delta_count integer; v_hidden_sequence bigint; v_rejected boolean := false;
 BEGIN
   SELECT admin_id INTO v_a FROM public.purchase_suppliers WHERE id='30000000-0000-4000-8000-000000000001';
   SELECT admin_id INTO v_b FROM public.purchase_suppliers WHERE id='30000000-0000-4000-8000-000000000002';
@@ -90,6 +90,17 @@ BEGIN
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_page->'rows') r WHERE r->>'entity_type'='purchase_suppliers' AND r->>'entity_id'='30000000-0000-4000-8000-000000000001')
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_page->'rows') r WHERE r->>'entity_type'='purchase_suppliers' AND r->>'entity_id'='30000000-0000-4000-8000-000000000002') THEN
     RAISE EXCEPTION 'Admin delta page leaked or lost a purchase change: %', v_page;
+  END IF;
+
+  -- A page containing only another admin's change must still advance the
+  -- global scan cursor; otherwise authoritative repair repeatedly rereads it.
+  SELECT sequence_id INTO v_hidden_sequence FROM public.change_log
+  WHERE entity_id='30000000-0000-4000-8000-000000000001' AND entity_type='purchase_suppliers'
+  ORDER BY sequence_id DESC LIMIT 1;
+  v_page := public.capture_authoritative_change_log_page(v_hidden_sequence-1,v_hidden_sequence,1);
+  IF jsonb_array_length(v_page->'rows') <> 0
+     OR (v_page->>'next_after_sequence_id')::bigint <> v_hidden_sequence THEN
+    RAISE EXCEPTION 'Filtered authoritative page did not advance over another admin change: %', v_page;
   END IF;
   IF (v_final_page->>'current_count_through_sequence')::integer <> (v_snapshot->>'change_log_count')::integer THEN
     RAISE EXCEPTION 'Admin delta count checkpoint mismatch: final %, snapshot %', v_final_page, v_snapshot;

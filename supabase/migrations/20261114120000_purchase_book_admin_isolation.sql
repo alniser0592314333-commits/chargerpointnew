@@ -20,29 +20,68 @@ ALTER TABLE public.purchase_days ALTER COLUMN admin_id SET NOT NULL;
 ALTER TABLE public.purchase_orders ALTER COLUMN admin_id SET NOT NULL;
 
 ALTER TABLE public.purchase_months DROP CONSTRAINT IF EXISTS purchase_months_year_month_number_key;
-ALTER TABLE public.purchase_months ADD CONSTRAINT purchase_months_admin_year_month_key UNIQUE (admin_id, year, month_number);
+DO $constraints$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_months_admin_year_month_key' AND conrelid='public.purchase_months'::regclass) THEN
+    ALTER TABLE public.purchase_months ADD CONSTRAINT purchase_months_admin_year_month_key UNIQUE (admin_id, year, month_number);
+  END IF;
+END;
+$constraints$;
 ALTER TABLE public.purchase_days DROP CONSTRAINT IF EXISTS purchase_days_purchase_date_key;
-ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_admin_purchase_date_key UNIQUE (admin_id, purchase_date);
+DO $constraints$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_days_admin_purchase_date_key' AND conrelid='public.purchase_days'::regclass) THEN
+    ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_admin_purchase_date_key UNIQUE (admin_id, purchase_date);
+  END IF;
+END;
+$constraints$;
 
-ALTER TABLE public.purchase_suppliers ADD CONSTRAINT purchase_suppliers_id_admin_key UNIQUE (id, admin_id);
-ALTER TABLE public.purchase_items ADD CONSTRAINT purchase_items_id_admin_key UNIQUE (id, admin_id);
-ALTER TABLE public.purchase_payment_methods ADD CONSTRAINT purchase_payment_methods_id_admin_key UNIQUE (id, admin_id);
-ALTER TABLE public.purchase_months ADD CONSTRAINT purchase_months_id_admin_key UNIQUE (id, admin_id);
-ALTER TABLE public.purchase_weeks ADD CONSTRAINT purchase_weeks_id_admin_key UNIQUE (id, admin_id);
-ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_id_admin_key UNIQUE (id, admin_id);
-
-ALTER TABLE public.purchase_weeks ADD CONSTRAINT purchase_weeks_month_owner_fk
-  FOREIGN KEY (month_id, admin_id) REFERENCES public.purchase_months(id, admin_id) ON DELETE RESTRICT;
-ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_week_owner_fk
-  FOREIGN KEY (week_id, admin_id) REFERENCES public.purchase_weeks(id, admin_id) ON DELETE RESTRICT;
-ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_day_owner_fk
-  FOREIGN KEY (purchase_day_id, admin_id) REFERENCES public.purchase_days(id, admin_id) ON DELETE RESTRICT;
-ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_supplier_owner_fk
-  FOREIGN KEY (supplier_id, admin_id) REFERENCES public.purchase_suppliers(id, admin_id) ON DELETE RESTRICT;
-ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_item_owner_fk
-  FOREIGN KEY (item_id, admin_id) REFERENCES public.purchase_items(id, admin_id) ON DELETE RESTRICT;
-ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_method_owner_fk
-  FOREIGN KEY (payment_method_id, admin_id) REFERENCES public.purchase_payment_methods(id, admin_id) ON DELETE RESTRICT;
+DO $constraints$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_suppliers_id_admin_key' AND conrelid='public.purchase_suppliers'::regclass) THEN
+    ALTER TABLE public.purchase_suppliers ADD CONSTRAINT purchase_suppliers_id_admin_key UNIQUE (id, admin_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_items_id_admin_key' AND conrelid='public.purchase_items'::regclass) THEN
+    ALTER TABLE public.purchase_items ADD CONSTRAINT purchase_items_id_admin_key UNIQUE (id, admin_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_payment_methods_id_admin_key' AND conrelid='public.purchase_payment_methods'::regclass) THEN
+    ALTER TABLE public.purchase_payment_methods ADD CONSTRAINT purchase_payment_methods_id_admin_key UNIQUE (id, admin_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_months_id_admin_key' AND conrelid='public.purchase_months'::regclass) THEN
+    ALTER TABLE public.purchase_months ADD CONSTRAINT purchase_months_id_admin_key UNIQUE (id, admin_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_weeks_id_admin_key' AND conrelid='public.purchase_weeks'::regclass) THEN
+    ALTER TABLE public.purchase_weeks ADD CONSTRAINT purchase_weeks_id_admin_key UNIQUE (id, admin_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_days_id_admin_key' AND conrelid='public.purchase_days'::regclass) THEN
+    ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_id_admin_key UNIQUE (id, admin_id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_weeks_month_owner_fk' AND conrelid='public.purchase_weeks'::regclass) THEN
+    ALTER TABLE public.purchase_weeks ADD CONSTRAINT purchase_weeks_month_owner_fk
+      FOREIGN KEY (month_id, admin_id) REFERENCES public.purchase_months(id, admin_id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_days_week_owner_fk' AND conrelid='public.purchase_days'::regclass) THEN
+    ALTER TABLE public.purchase_days ADD CONSTRAINT purchase_days_week_owner_fk
+      FOREIGN KEY (week_id, admin_id) REFERENCES public.purchase_weeks(id, admin_id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_orders_day_owner_fk' AND conrelid='public.purchase_orders'::regclass) THEN
+    ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_day_owner_fk
+      FOREIGN KEY (purchase_day_id, admin_id) REFERENCES public.purchase_days(id, admin_id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_orders_supplier_owner_fk' AND conrelid='public.purchase_orders'::regclass) THEN
+    ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_supplier_owner_fk
+      FOREIGN KEY (supplier_id, admin_id) REFERENCES public.purchase_suppliers(id, admin_id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_orders_item_owner_fk' AND conrelid='public.purchase_orders'::regclass) THEN
+    ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_item_owner_fk
+      FOREIGN KEY (item_id, admin_id) REFERENCES public.purchase_items(id, admin_id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='purchase_orders_method_owner_fk' AND conrelid='public.purchase_orders'::regclass) THEN
+    ALTER TABLE public.purchase_orders ADD CONSTRAINT purchase_orders_method_owner_fk
+      FOREIGN KEY (payment_method_id, admin_id) REFERENCES public.purchase_payment_methods(id, admin_id) ON DELETE RESTRICT;
+  END IF;
+END;
+$constraints$;
 
 CREATE INDEX IF NOT EXISTS purchase_suppliers_admin_idx ON public.purchase_suppliers(admin_id);
 CREATE INDEX IF NOT EXISTS purchase_items_admin_idx ON public.purchase_items(admin_id);
@@ -145,8 +184,15 @@ $function$;
 
 -- Keep the original snapshot implementation private under an internal name, then
 -- expose a guarded wrapper that removes every other admin's purchase aggregates.
-ALTER FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
-  RENAME TO capture_sync_bootstrap_snapshot__shared_unfiltered;
+DO $rename$
+BEGIN
+  IF to_regprocedure('public.capture_sync_bootstrap_snapshot__session_guarded_impl()') IS NOT NULL
+     AND to_regprocedure('public.capture_sync_bootstrap_snapshot__shared_unfiltered()') IS NULL THEN
+    ALTER FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
+      RENAME TO capture_sync_bootstrap_snapshot__shared_unfiltered;
+  END IF;
+END;
+$rename$;
 REVOKE ALL ON FUNCTION public.capture_sync_bootstrap_snapshot__shared_unfiltered() FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl()
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
@@ -170,8 +216,15 @@ BEGIN
 END;
 $function$;
 
-ALTER FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
-  RENAME TO capture_authoritative_business_snapshot__shared_unfiltered;
+DO $rename$
+BEGIN
+  IF to_regprocedure('public.capture_authoritative_business_snapshot__session_guarded_impl()') IS NOT NULL
+     AND to_regprocedure('public.capture_authoritative_business_snapshot__shared_unfiltered()') IS NULL THEN
+    ALTER FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
+      RENAME TO capture_authoritative_business_snapshot__shared_unfiltered;
+  END IF;
+END;
+$rename$;
 REVOKE ALL ON FUNCTION public.capture_authoritative_business_snapshot__shared_unfiltered() FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl()
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
@@ -208,8 +261,15 @@ $function$;
 
 -- Authoritative paged delta: return shared changes plus this admin's purchase changes
 -- while preserving a cursor over the admin-visible change-log sequence.
-ALTER FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(bigint,bigint,integer)
-  RENAME TO capture_authoritative_change_log_page__shared_unfiltered;
+DO $rename$
+BEGIN
+  IF to_regprocedure('public.capture_authoritative_change_log_page__session_guarded_impl(bigint,bigint,integer)') IS NOT NULL
+     AND to_regprocedure('public.capture_authoritative_change_log_page__shared_unfiltered(bigint,bigint,integer)') IS NULL THEN
+    ALTER FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(bigint,bigint,integer)
+      RENAME TO capture_authoritative_change_log_page__shared_unfiltered;
+  END IF;
+END;
+$rename$;
 REVOKE ALL ON FUNCTION public.capture_authoritative_change_log_page__shared_unfiltered(bigint,bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(
   p_after_sequence_id bigint, p_through_sequence_id bigint, p_limit integer DEFAULT 500
@@ -226,16 +286,18 @@ BEGIN
   ) THEN RAISE EXCEPTION 'Forbidden: settings:manage permission required'; END IF;
   IF p_after_sequence_id < 0 OR p_through_sequence_id < p_after_sequence_id THEN RAISE EXCEPTION 'Invalid change-log page bounds'; END IF;
   RETURN (
-    WITH visible AS MATERIALIZED (
+    WITH scanned AS MATERIALIZED (
       SELECT t.* FROM public.change_log t
       WHERE t.sequence_id>p_after_sequence_id AND t.sequence_id<=p_through_sequence_id
-        AND (left(t.entity_type,9) <> 'purchase_'
-          OR public.purchase_entity_belongs_to_admin(t.entity_type,t.entity_id,v_admin_id))
       ORDER BY t.sequence_id LIMIT v_limit
+    ), visible AS MATERIALIZED (
+      SELECT s.* FROM scanned s
+      WHERE left(s.entity_type,9) <> 'purchase_'
+         OR public.purchase_entity_belongs_to_admin(s.entity_type,s.entity_id,v_admin_id)
     )
     SELECT jsonb_build_object(
       'rows',COALESCE((SELECT jsonb_agg(to_jsonb(v) ORDER BY v.sequence_id) FROM visible v),'[]'::jsonb),
-      'next_after_sequence_id',COALESCE((SELECT max(sequence_id) FROM visible),p_after_sequence_id),
+      'next_after_sequence_id',COALESCE((SELECT max(sequence_id) FROM scanned),p_after_sequence_id),
       'current_count_through_sequence',(
         SELECT count(*) FROM public.change_log t
         WHERE t.sequence_id<=p_through_sequence_id
@@ -262,8 +324,15 @@ REVOKE ALL ON FUNCTION public.purchase_entity_belongs_to_admin(text,uuid,uuid) F
 
 -- Regular incremental pull uses the same visibility rule and advances over all
 -- scanned rows so a busy different account cannot stall this account's cursor.
-ALTER FUNCTION public.pull_canonical_changes__session_guarded_impl(bigint,integer)
-  RENAME TO pull_canonical_changes__shared_unfiltered;
+DO $rename$
+BEGIN
+  IF to_regprocedure('public.pull_canonical_changes__session_guarded_impl(bigint,integer)') IS NOT NULL
+     AND to_regprocedure('public.pull_canonical_changes__shared_unfiltered(bigint,integer)') IS NULL THEN
+    ALTER FUNCTION public.pull_canonical_changes__session_guarded_impl(bigint,integer)
+      RENAME TO pull_canonical_changes__shared_unfiltered;
+  END IF;
+END;
+$rename$;
 REVOKE ALL ON FUNCTION public.pull_canonical_changes__shared_unfiltered(bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
 CREATE OR REPLACE FUNCTION public.pull_canonical_changes__session_guarded_impl(
   p_since_sequence bigint, p_limit integer DEFAULT 500
