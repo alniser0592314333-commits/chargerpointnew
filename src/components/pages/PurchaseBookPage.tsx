@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { Plus, CalendarDays, X, ChevronDown, Settings2, Pencil, EyeOff, CircleAlert, Menu, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
+import { Plus, CalendarDays, X, Settings2, Pencil, EyeOff, CircleAlert, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
 import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
@@ -23,18 +22,6 @@ const localToday = () => {
 const timeLabel = (value:string) => new Date(value).toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'});
 const dateLabel = (value:string) => new Date(value+'T12:00:00').toLocaleDateString('ar',{day:'numeric',month:'long',year:'numeric'});
 
-type CollapsibleBlockProps = { header: ReactNode; defaultOpen?: boolean; className?: string; children: ReactNode };
-const CollapsibleBlock:React.FC<CollapsibleBlockProps> = ({header,defaultOpen=false,className='',children}) => {
-  const [open,setOpen]=useState(defaultOpen);
-  return <section className={className}>
-    <button type="button" aria-expanded={open} onClick={()=>setOpen(value=>!value)} className="w-full text-start flex items-center justify-between gap-3">
-      <span className="min-w-0 flex-1">{header}</span>
-      <ChevronDown className={`w-4 h-4 shrink-0 text-gray-400 transition-transform ${open?'rotate-180':''}`}/>
-    </button>
-    {open&&<div>{children}</div>}
-  </section>;
-};
-
 interface PurchaseBookPageProps { supplierId?: string; onNavigate?: (path:string)=>void; }
 
 export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onNavigate}) => {
@@ -51,6 +38,10 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const [notice,setNotice]=useState('');
   const [showOrderForm,setShowOrderForm]=useState(false);
   const [menuOpen,setMenuOpen]=useState(false);
+  const [pageLevel,setPageLevel]=useState<'months'|'weeks'|'days'|'day'>('months');
+  const [selectedMonthId,setSelectedMonthId]=useState('');
+  const [selectedWeekId,setSelectedWeekId]=useState('');
+  const [selectedDayId,setSelectedDayId]=useState('');
   const [showPayDialog,setShowPayDialog]=useState<PurchaseOrderEntity|null>(null);
   const [payMethodId,setPayMethodId]=useState('');
   const [showNoDayDialog,setShowNoDayDialog]=useState(false);
@@ -171,15 +162,24 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   );
 
   const periodOrders=(day:PurchaseDayEntity)=>supplierOrders.filter(o=>o.purchaseDayId===day.id);
-  const isCurrentDay=(day:PurchaseDayEntity)=>day.purchaseDate===today;
-  const renderDay=(day:PurchaseDayEntity)=>(
-    <CollapsibleBlock key={day.id} defaultOpen={isCurrentDay(day)} className="border-b border-gray-100 dark:border-[#123d37] px-1"
-      header={<div className="py-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><CalendarDays className="w-4 h-4 text-emerald-700 dark:text-emerald-300"/><span className="text-xs font-bold">{dateLabel(day.purchaseDate)}</span>{isCurrentDay(day)&&<span className="text-[10px] rounded-full bg-emerald-50 text-emerald-700 px-2 py-1 dark:bg-[#123d37] dark:text-emerald-200">اليوم</span>}</div><span className="text-xs font-mono text-gray-500">{summaryRows(totalsFor(periodOrders(day))).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></div>}>
-      <div className="pb-3">
-        {periodOrders(day).slice().sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard)}
-        {!supplierId&&isCurrentDay(day)&&<button onClick={openOrderForm} className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-300"><Plus className="w-4 h-4"/>إضافة طلب</button>}
-      </div>
-    </CollapsibleBlock>
+  const selectedMonth=months.find(x=>x.id===selectedMonthId);
+  const selectedWeek=weeks.find(x=>x.id===selectedWeekId);
+  const selectedDay=days.find(x=>x.id===selectedDayId);
+  const selectedMonthWeeks=weeks.filter(w=>w.monthId===selectedMonthId).sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const selectedWeekDays=days.filter(d=>d.weekId===selectedWeekId).sort((a,b)=>a.purchaseDate.localeCompare(b.purchaseDate));
+  const monthOrders=(month:PurchaseMonthEntity)=>supplierOrders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
+  const weekOrders=(week:PurchaseWeekEntity)=>supplierOrders.filter(o=>days.some(d=>d.weekId===week.id&&d.id===o.purchaseDayId));
+  const periodCount=(count:number)=>`${count} مشتريات`;
+  const openMonth=(month:PurchaseMonthEntity)=>{setSelectedMonthId(month.id);setPageLevel('weeks');};
+  const openWeek=(week:PurchaseWeekEntity)=>{setSelectedWeekId(week.id);setPageLevel('days');};
+  const openDay=(day:PurchaseDayEntity)=>{setSelectedDayId(day.id);setPageLevel('day');};
+  const goBackOneLevel=()=>{if(pageLevel==='day')setPageLevel('days');else if(pageLevel==='days')setPageLevel('weeks');else if(pageLevel==='weeks')setPageLevel('months');};
+  const renderOrderList=(rows:PurchaseOrderEntity[],allowAdd=false)=>(
+    <div className="divide-y divide-gray-100 dark:divide-[#123d37]">
+      {rows.slice().sort((a,b)=>b.purchasedAt.localeCompare(a.purchasedAt)).map(orderCard)}
+      {rows.length===0&&<div className="py-8 text-center text-xs text-gray-400">لا توجد مشتريات مسجلة في هذه الفترة.</div>}
+      {allowAdd&&!supplierId&&<button onClick={openOrderForm} className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-emerald-700 dark:text-emerald-300"><Plus className="w-4 h-4"/>إضافة طلب</button>}
+    </div>
   );
 
   return (
@@ -187,8 +187,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
       <header className="sticky top-0 z-30 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-[#14423b] bg-gray-50/95 dark:bg-[#061f1c]/95 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <button type="button" aria-label="فتح قائمة دفتر المشتريات" onClick={()=>setMenuOpen(true)} className="shrink-0 rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Menu className="w-5 h-5"/></button>
-            <button type="button" aria-label="فتح قائمة دفتر المشتريات" onClick={()=>setMenuOpen(true)} className="flex items-center gap-2 min-w-0 text-start">
+            <button type="button" aria-label="فتح قائمة دفتر المشتريات" aria-expanded={menuOpen} onClick={()=>setMenuOpen(true)} className="flex items-center gap-2 min-w-0 text-start rounded-xl hover:bg-gray-100 dark:hover:bg-[#0c312b] p-1">
               <span className="w-9 h-9 shrink-0 rounded-xl bg-emerald-700 text-white flex items-center justify-center"><ShoppingBag className="w-5 h-5"/></span>
               <span className="min-w-0"><span className="block text-sm font-bold truncate">دفتر المشتريات</span><span className="block text-[10px] text-gray-500 dark:text-[#8eb698] truncate">{supplierId?(supplier?.name||'الجهة'):'إدارة المشتريات والموردين'}</span></span>
             </button>
@@ -261,26 +260,63 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
         </section>}
 
         <section className="space-y-3">
-          {groupedMonths.length===0?<div className="py-10 text-center text-xs text-gray-500 border-y border-dashed border-gray-300 dark:border-[#28564d]">لا توجد مشتريات مسجلة لهذه الجهة بعد.</div>:groupedMonths.map(month=>{
-            const monthWeeks=weeks.filter(w=>w.monthId===month.id).sort((a,b)=>b.startDate.localeCompare(a.startDate));
-            const monthOrders=supplierOrders.filter(o=>days.some(d=>d.purchaseDate>=month.startDate&&d.purchaseDate<=month.endDate&&d.id===o.purchaseDayId));
-            const monthTotal=totalsFor(monthOrders);
-            return <CollapsibleBlock key={month.id} defaultOpen={month.startDate.slice(0,7)===today.slice(0,7)} className="border-b border-gray-200 dark:border-[#14423b] py-1"
-              header={<div className="px-3 py-3 flex items-center justify-between gap-3"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-xs font-mono text-gray-500">{summaryRows(monthTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</div></div>}>
-              <div className="px-3 sm:px-4 pb-4 space-y-3">
-                {!supplierId&&<div className="flex justify-end"><button onClick={()=>createPurchaseWeek(month.id).then(reload).catch(e=>setError(e.message))} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>إضافة أسبوع</button></div>}
-                {monthWeeks.map(week=>{
-                  const weekDays=days.filter(d=>d.weekId===week.id).sort((a,b)=>b.purchaseDate.localeCompare(a.purchaseDate));
-                  const weekOrders=supplierOrders.filter(o=>weekDays.some(d=>d.id===o.purchaseDayId));
-                  const weekTotal=totalsFor(weekOrders);
-                  return <CollapsibleBlock key={week.id} defaultOpen={weekDays.some(isCurrentDay)} className="border-b border-gray-100 dark:border-[#123d37] py-3 ps-3"
-                    header={<div className="flex items-center justify-between gap-3 py-1"><span className="text-xs font-bold">الأسبوع {dateLabel(week.startDate)} — {dateLabel(week.endDate)}{week.isClosed?' • مغلق':''}</span><span className="text-[11px] font-mono text-gray-500">{summaryRows(weekTotal).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span></div>}>
-                    <div className="pt-3 space-y-2">{weekDays.map(renderDay)}</div>
-                  </CollapsibleBlock>;
-                })}
-              </div>
-            </CollapsibleBlock>;
-          })}
+          {pageLevel!=='months'&&<div className="flex items-center gap-3 border-b border-gray-200 dark:border-[#14423b] pb-3">
+            <button onClick={goBackOneLevel} className="inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-[#28564d] px-3 py-2 text-xs font-bold hover:bg-gray-50 dark:hover:bg-[#0c312b]"><ArrowRight className="w-4 h-4"/>رجوع</button>
+            <div className="min-w-0 text-xs text-gray-500 dark:text-[#8eb698] truncate">
+              <button onClick={()=>setPageLevel('months')} className="hover:text-emerald-700">الأشهر</button>
+              {selectedMonth&&<> / <button onClick={()=>setPageLevel('weeks')} className="hover:text-emerald-700">{new Date(selectedMonth.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</button></>}
+              {selectedWeek&&<> / <button onClick={()=>setPageLevel('days')} className="hover:text-emerald-700">الأسبوع {dateLabel(selectedWeek.startDate)} — {dateLabel(selectedWeek.endDate)}</button></>}
+              {selectedDay&&<> / {dateLabel(selectedDay.purchaseDate)}</>}
+            </div>
+          </div>}
+
+          {pageLevel==='months'&&(
+            <div className="space-y-1">
+              {groupedMonths.length===0?<div className="py-10 text-center text-xs text-gray-500 border-y border-dashed border-gray-300 dark:border-[#28564d]">لا توجد مشتريات مسجلة لهذه الجهة بعد.</div>:groupedMonths.map(month=>{
+                const rows=monthOrders(month);
+                const total=totalsFor(rows);
+                return <button key={month.id} type="button" onClick={()=>openMonth(month)} className="w-full text-start border-b border-gray-200 dark:border-[#14423b] px-3 py-4 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-[#0c312b] rounded-lg">
+                  <div className="min-w-0"><div className="font-bold text-sm">{new Date(month.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</div><div className="text-[11px] text-gray-500 mt-1">{periodCount(rows.length)}</div></div>
+                  <div className="flex items-center gap-3 shrink-0"><span className="text-xs font-mono text-gray-500">{summaryRows(total).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span><ArrowRight className="w-4 h-4 text-gray-400"/></div>
+                </button>;
+              })}
+            </div>
+          )}
+
+          {pageLevel==='weeks'&&selectedMonth&&(
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-3 py-2"><h3 className="font-bold text-sm">أسابيع {new Date(selectedMonth.startDate+'T12:00:00').toLocaleDateString('ar',{month:'long',year:'numeric'})}</h3>{!supplierId&&<button onClick={()=>createPurchaseWeek(selectedMonth.id).then(reload).catch(e=>setError(e.message))} className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5"/>إضافة أسبوع</button>}</div>
+              {selectedMonthWeeks.length===0?<div className="py-8 text-center text-xs text-gray-400">لا توجد أسابيع لهذا الشهر.</div>:selectedMonthWeeks.map(week=>{
+                const rows=weekOrders(week);
+                const total=totalsFor(rows);
+                return <button key={week.id} type="button" onClick={()=>openWeek(week)} className="w-full text-start border-b border-gray-200 dark:border-[#14423b] px-3 py-4 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-[#0c312b] rounded-lg">
+                  <div className="min-w-0"><div className="font-bold text-xs">الأسبوع {dateLabel(week.startDate)} — {dateLabel(week.endDate)}{week.isClosed?' • مغلق':''}</div><div className="text-[11px] text-gray-500 mt-1">{periodCount(rows.length)}</div></div>
+                  <div className="flex items-center gap-3 shrink-0"><span className="text-xs font-mono text-gray-500">{summaryRows(total).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span><ArrowRight className="w-4 h-4 text-gray-400"/></div>
+                </button>;
+              })}
+            </div>
+          )}
+
+          {pageLevel==='days'&&selectedWeek&&(
+            <div className="space-y-1">
+              <h3 className="font-bold text-sm py-2">أيام الأسبوع</h3>
+              {selectedWeekDays.length===0?<div className="py-8 text-center text-xs text-gray-400">لا توجد أيام مسجلة في هذا الأسبوع.</div>:selectedWeekDays.map(day=>{
+                const rows=periodOrders(day);
+                const total=totalsFor(rows);
+                return <button key={day.id} type="button" onClick={()=>openDay(day)} className="w-full text-start border-b border-gray-200 dark:border-[#14423b] px-3 py-4 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-[#0c312b] rounded-lg">
+                  <div className="min-w-0"><div className="font-bold text-xs flex items-center gap-2"><CalendarDays className="w-4 h-4 text-emerald-700 dark:text-emerald-300"/>{dateLabel(day.purchaseDate)}{day.purchaseDate===today&&<span className="text-[10px] rounded-full bg-emerald-50 text-emerald-700 px-2 py-1 dark:bg-[#123d37] dark:text-emerald-200">اليوم</span>}</div><div className="text-[11px] text-gray-500 mt-1">{periodCount(rows.length)}</div></div>
+                  <div className="flex items-center gap-3 shrink-0"><span className="text-xs font-mono text-gray-500">{summaryRows(total).map(x=>money(x.amount,x.currency)).join(' • ')||'0'}</span><ArrowRight className="w-4 h-4 text-gray-400"/></div>
+                </button>;
+              })}
+            </div>
+          )}
+
+          {pageLevel==='day'&&selectedDay&&(
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 py-2"><h3 className="font-bold text-sm">{dateLabel(selectedDay.purchaseDate)}</h3><span className="text-[11px] text-gray-500">{periodCount(periodOrders(selectedDay).length)}</span></div>
+              {renderOrderList(periodOrders(selectedDay),selectedDay.purchaseDate===today)}
+            </div>
+          )}
         </section>
       </>}
       
