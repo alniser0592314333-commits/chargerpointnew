@@ -110,7 +110,7 @@ $block$;
 -- No direct table access: all mutations still pass through the canonical command RPC.
 REVOKE ALL ON public.purchase_suppliers, public.purchase_items, public.purchase_payment_methods,
   public.purchase_months, public.purchase_weeks, public.purchase_days, public.purchase_orders
-  FROM PUBLIC, anon, authenticated;
+  FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION public.purchase_entity_belongs_to_admin(
   p_entity_type text, p_entity_id uuid, p_admin_id uuid
@@ -232,6 +232,11 @@ BEGIN
   );
 END;
 $function$;
+REVOKE ALL ON FUNCTION public.capture_sync_bootstrap_snapshot__session_guarded_impl() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.capture_authoritative_business_snapshot__session_guarded_impl() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.capture_authoritative_change_log_page__session_guarded_impl(bigint,bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.pull_canonical_changes__session_guarded_impl(bigint,integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.purchase_entity_belongs_to_admin(text,uuid,uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- Regular incremental pull uses the same visibility rule and advances over all
 -- scanned rows so a busy different account cannot stall this account's cursor.
