@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Plus, CalendarDays, X, ChevronDown, Settings2, Pencil, EyeOff, CircleAlert, Menu, ShoppingBag, Users, Package, Wallet, ArrowRight, LayoutDashboard } from 'lucide-react';
+import { Plus, CalendarDays, X, ChevronDown, Settings2, Pencil, EyeOff, CircleAlert, Menu, ShoppingBag, Users, Package, Wallet, ArrowRight, LogOut } from 'lucide-react';
 import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
@@ -207,8 +207,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
             <button onClick={()=>setMenuOpen(false)} aria-label="إغلاق" className="p-2 text-gray-500"><X className="w-5 h-5"/></button>
           </div>
           <nav className="flex-1 overflow-y-auto p-3 space-y-1 text-xs">
-            <button onClick={()=>{setMenuOpen(false);onNavigate?.('/app/purchases');}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><LayoutDashboard className="w-4 h-4 text-emerald-700"/>الرئيسية</button>
-            <div className="my-2 border-t border-gray-100 dark:border-[#123d37]"/>
+
             <button onClick={()=>{setMenuOpen(false);openOrderForm();}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Plus className="w-4 h-4 text-emerald-700"/>إضافة طلب</button>
             <button onClick={()=>{setMenuOpen(false);setCatalogType('items');setEditingCatalog(null);setCatalogName('');setShowAdditions(true);}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Package className="w-4 h-4 text-emerald-700"/>إضافة عنصر</button>
             <button onClick={()=>{setMenuOpen(false);setCatalogType('suppliers');setEditingCatalog(null);setCatalogName('');setShowAdditions(true);}} className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b]"><Users className="w-4 h-4 text-emerald-700"/>إضافة جهة / مورد</button>
@@ -217,7 +216,17 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
             <div className="px-3 py-2 text-[10px] font-bold text-gray-400">الموردون والجهات</div>
             {activeSuppliers.length===0?<p className="px-3 py-2 text-[11px] text-gray-400">لا يوجد موردون مضافون</p>:activeSuppliers.map(row=><button key={row.id} onClick={()=>{setMenuOpen(false);onNavigate?.('/app/purchases/supplier/'+row.id);}} className={`w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-start hover:bg-gray-100 dark:hover:bg-[#0c312b] ${supplierId===row.id?'bg-emerald-50 text-emerald-800 dark:bg-[#0c312b] dark:text-emerald-200':''}`}><Users className="w-3.5 h-3.5 text-gray-400"/><span className="truncate">{row.name}</span><ArrowRight className="w-3 h-3 ms-auto text-gray-300"/></button>)}
           </nav>
-          <div className="p-3 border-t border-gray-100 dark:border-[#123d37] text-[10px] text-gray-400">دفتر المشتريات · Charging Point</div>
+          <div className="p-3 border-t border-gray-100 dark:border-[#123d37]">
+            <button
+              type="button"
+              onClick={()=>{setMenuOpen(false);onNavigate?.('/app');}}
+              className="w-full flex items-center justify-center gap-2 rounded-xl border border-rose-200 dark:border-rose-900/60 px-3 py-3 text-xs font-bold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+            >
+              <LogOut className="w-4 h-4"/>
+              خروج من دفتر المشتريات
+            </button>
+            <div className="mt-2 text-center text-[10px] text-gray-400">دفتر المشتريات · Charging Point</div>
+          </div>
         </aside>
       </div>}
 
