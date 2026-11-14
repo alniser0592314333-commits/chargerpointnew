@@ -72,11 +72,17 @@ BEGIN
   v_snapshot := public.capture_authoritative_business_snapshot();
   v_page := public.capture_authoritative_change_log_page(0,(SELECT max(sequence_id) FROM public.change_log),500);
   v_final_page := public.capture_authoritative_change_log_page((SELECT max(sequence_id) FROM public.change_log),(SELECT max(sequence_id) FROM public.change_log),500);
-  IF jsonb_array_length(v_page->'rows') <> 1
-     OR v_page->'rows'->0->>'entity_id' <> '30000000-0000-4000-8000-000000000002'
-     OR (v_final_page->>'current_count_through_sequence')::integer <> (v_snapshot->>'change_log_count')::integer
-     OR v_final_page->>'change_log_fingerprint' <> v_snapshot->>'change_log_fingerprint' THEN
-    RAISE EXCEPTION 'Authoritative delta paging leaked or lost account-scoped purchase changes';
+  IF jsonb_array_length(v_page->'rows') <> 1 THEN
+    RAISE EXCEPTION 'Admin delta page row count mismatch: %', v_page;
+  END IF;
+  IF v_page->'rows'->0->>'entity_id' <> '30000000-0000-4000-8000-000000000002' THEN
+    RAISE EXCEPTION 'Admin delta page returned the wrong purchase owner: %', v_page;
+  END IF;
+  IF (v_final_page->>'current_count_through_sequence')::integer <> (v_snapshot->>'change_log_count')::integer THEN
+    RAISE EXCEPTION 'Admin delta count checkpoint mismatch: final %, snapshot %', v_final_page, v_snapshot;
+  END IF;
+  IF v_final_page->>'change_log_fingerprint' <> v_snapshot->>'change_log_fingerprint' THEN
+    RAISE EXCEPTION 'Admin delta fingerprint checkpoint mismatch: final %, snapshot %', v_final_page, v_snapshot;
   END IF;
 
   v_changes := public.pull_canonical_changes(0,500);
