@@ -723,6 +723,10 @@ jobs:
         run: |
           psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115130000_manual_price_for_other_order_item.sql
           psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115150000_manual_price_for_other_order_edit.sql
+      - name: Apply manual Other price delivery preservation migration
+        env:
+          PGPASSWORD: postgres
+        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115170000_preserve_other_manual_price_on_delivery.sql
       - name: Verify manual price dispatcher and bilingual device-name columns
         env:
           PGPASSWORD: postgres
