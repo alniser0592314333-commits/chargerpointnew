@@ -4093,7 +4093,6 @@ export const getOrdersForDay = async (
         deviceName: devName,
         priceMinor: i.totalPriceMinor,
         hasCharger: i.hasCharger,
-        manualPrice: ((i.finalChargeSnapshotMinor ?? i.totalPriceMinor) / 100).toFixed(2),
       };
     });
 
@@ -5049,6 +5048,7 @@ export const getOrderForEdit = async (
         deviceName: devName,
         priceMinor: i.totalPriceMinor,
         hasCharger: i.hasCharger,
+        manualPrice: ((i.finalChargeSnapshotMinor ?? i.totalPriceMinor) / 100).toFixed(2),
         discountSnapshotMinor: i.discountSnapshotMinor ?? 0,
         status: i.status,
         isExisting: true,
@@ -5154,6 +5154,23 @@ export const updateOrderWithPhase5Engine = async (
     for (const edit of existingItemEdits) {
       const device = await repoContext.deviceRepo.findById(edit.deviceTypeId);
       if (!device || !device.isActive) return { success: false, error: 'نوع الجهاز المحدد غير متاح. حدّث الصفحة واختر نوعاً فعالاً.' };
+      const names = [device.name, device.nameAr, device.nameEn].map((value) => value?.trim().toLocaleLowerCase()).filter(Boolean);
+      const isOther = names.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+      if (edit.manualPriceMinor !== undefined && (!isOther || !Number.isSafeInteger(edit.manualPriceMinor) || edit.manualPriceMinor <= 0)) {
+        return { success: false, error: 'السعر اليدوي غير صالح أو لا ينتمي إلى عنصر «أخرى».' };
+      }
+    }
+    for (const item of newItemsToAdd) {
+      const device = await repoContext.deviceRepo.findById(item.deviceTypeId);
+      if (!device || !device.isActive) return { success: false, error: 'نوع الجهاز المحدد غير متاح. حدّث الصفحة واختر نوعاً فعالاً.' };
+      const names = [device.name, device.nameAr, device.nameEn].map((value) => value?.trim().toLocaleLowerCase()).filter(Boolean);
+      const isOther = names.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+      if (item.manualPriceMinor !== undefined && (!isOther || !Number.isSafeInteger(item.manualPriceMinor) || item.manualPriceMinor <= 0)) {
+        return { success: false, error: 'السعر اليدوي غير صالح أو لا ينتمي إلى عنصر «أخرى».' };
+      }
+      if (isOther && item.manualPriceMinor === undefined) {
+        return { success: false, error: 'يرجى إدخال السعر اليدوي لعنصر «أخرى».' };
+      }
     }
 
     // Validate the complete requested edit before queueing any local command.
