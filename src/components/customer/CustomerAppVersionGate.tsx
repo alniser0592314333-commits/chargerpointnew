@@ -187,7 +187,7 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
       setDownloadProgress({ status: 'starting', bytesDownloaded: 0, totalBytes: -1, done: false, failed: false });
       setDownloadSpeed(0);
       progressSample.current = null;
-      const result = await ApkUpdater.startDownload({ url: parsed.toString(), version: policy?.latest_version || 'latest' });
+      const downloadUrl = new URL(getAppDownloadEndpoint(channel), window.location.origin).toString();\n      const result = await ApkUpdater.startDownload({ url: downloadUrl, version: policy?.latest_version || 'latest' });
       setDownloadId(result.downloadId);
     } catch (error) {
       setDownloadProgress(null);
