@@ -33,6 +33,21 @@ export interface AddOrderPageProps {
 
 type UICustomerSearchResult = UICustomerItem & { isOverDebtLimit?: boolean };
 
+export const isOtherDeviceOption = (option?: UIDeviceTypeOption): boolean => {
+  const names = [option?.name, option?.nameAr, option?.nameEn]
+    .map((value) => value?.trim().toLocaleLowerCase())
+    .filter(Boolean);
+  return names.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+};
+
+const manualPriceToMinor = (value: string): number | null => {
+  if (!value.trim()) return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const minor = Math.round(amount * 100);
+  return Number.isSafeInteger(minor) && Math.abs(amount * 100 - minor) < 1e-7 ? minor : null;
+};
+
 const hasDebtLimitOverridePermission = (): boolean => {
   try {
     const auth = getCurrentAdminAuthorizationContext();
@@ -47,6 +62,7 @@ export interface SelectedDeviceFormItem {
   tempId: string;
   deviceTypeId: string;
   hasCharger: boolean;
+  manualPrice?: string;
 }
 
 export const AddOrderPage: React.FC<AddOrderPageProps> = ({
@@ -240,9 +256,14 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
 
   // Change device type selection
   const handleDeviceTypeChange = (index: number, deviceTypeId: string) => {
-    setDevices((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, deviceTypeId } : item))
-    );
+    const selectedOption = deviceOptions.find((option) => option.id === deviceTypeId);
+    const selectingOther = isOtherDeviceOption(selectedOption);
+    setDevices((prev) => prev.map((item, i) => i === index ? {
+      ...item,
+      deviceTypeId,
+      hasCharger: selectingOther ? false : item.hasCharger,
+      manualPrice: selectingOther && item.deviceTypeId === deviceTypeId ? item.manualPrice : '',
+    } : item));
   };
 
   // Toggle charger checkbox
@@ -254,11 +275,15 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
 
   // Compute live total value in minor units (cents / piastres)
   const liveTotalMinor = devices.reduce((sum, item) => {
-    const calculated = calculateDeviceItemPreviewPrice(
-      item.deviceTypeId,
-      item.hasCharger,
-      selectedCustomer?.chargerFeeExempt || false
-    );
+    const option = deviceOptions.find((device) => device.id === item.deviceTypeId);
+    const manualPriceMinor = isOtherDeviceOption(option) ? manualPriceToMinor(item.manualPrice || '') : null;
+    const calculated = isOtherDeviceOption(option)
+      ? (manualPriceMinor ?? 0)
+      : calculateDeviceItemPreviewPrice(
+          item.deviceTypeId,
+          item.hasCharger,
+          selectedCustomer?.chargerFeeExempt || false
+        );
     return sum + calculated;
   }, 0);
 
@@ -279,11 +304,24 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
       return;
     }
 
+    const orderItems: { deviceTypeId: string; hasCharger: boolean; manualPriceMinor?: number }[] = [];
+    for (const device of devices) {
+      const option = deviceOptions.find((candidate) => candidate.id === device.deviceTypeId);
+      if (isOtherDeviceOption(option)) {
+        const manualPriceMinor = manualPriceToMinor(device.manualPrice || '');
+        if (manualPriceMinor === null) {
+          setErrorMessage(locale === 'ar'
+            ? 'يرجى إدخال سعر صحيح لعنصر «أخرى» (أكبر من صفر وبحد أقصى منزلتين عشريتين).'
+            : 'Enter a valid price for “Other” (greater than zero, up to 2 decimal places).');
+          return;
+        }
+        orderItems.push({ deviceTypeId: device.deviceTypeId, hasCharger: false, manualPriceMinor });
+      } else {
+        orderItems.push({ deviceTypeId: device.deviceTypeId, hasCharger: device.hasCharger });
+      }
+    }
+
     setIsSaving(true);
-    const orderItems = devices.map((d) => ({
-      deviceTypeId: d.deviceTypeId,
-      hasCharger: d.hasCharger,
-    }));
 
     const result = await createOrderWithPhase5Engine(
       dayId,
@@ -573,14 +611,16 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
                     >
                       {deviceOptions.map((opt) => (
                         <option key={opt.id} value={opt.id}>
-                          {opt.name} — ({formatCurrency(opt.priceMinor)})
+                          {isOtherDeviceOption(opt)
+                        ? `${opt.name} — ${locale === 'ar' ? 'سعر يدوي' : 'Manual price'}`
+                        : `${opt.name} — (${formatCurrency(opt.priceMinor)})`}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   {/* Charger Option Toggle */}
-                  {devOpt?.supportsCharger && (
+                  {devOpt?.supportsCharger && !isOtherDeviceOption(devOpt) && (
                     <div className="flex items-center justify-between pt-1">
                       <span className="text-xs text-gray-600 dark:text-[#8eb698]">
                         {t('hasChargerOption')}:
@@ -612,10 +652,34 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
                     </div>
                   )}
 
-                  {/* Read-Only Device Row Price */}
+                  {isOtherDeviceOption(devOpt) && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-gray-600 dark:text-[#8eb698]" htmlFor={`other-price-${dev.tempId}`}>
+                        {locale === 'ar' ? 'حدد السعر (₪)' : 'Set price (₪)'}
+                      </label>
+                      <input
+                        id={`other-price-${dev.tempId}`}
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        value={dev.manualPrice || ''}
+                        onChange={(event) => setDevices((prev) => prev.map((item, i) => i === idx ? { ...item, manualPrice: event.target.value } : item))}
+                        placeholder={locale === 'ar' ? 'أدخل السعر يدوياً' : 'Enter price manually'}
+                        className="w-full rounded-md border border-gray-300 dark:border-[#14423b] bg-white dark:bg-[#082622] text-gray-900 dark:text-[#daf1de] text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-[#8eb698]"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {/* Device Row Price */}
                   <div className="flex items-center justify-end pt-1 text-xs">
                     <span className="font-bold text-base text-gray-900 dark:text-[#daf1de]">
-                      {formatCurrency(deviceTotal)}
+                      {isOtherDeviceOption(devOpt)
+                        ? (manualPriceToMinor(dev.manualPrice || '') !== null
+                          ? formatCurrency(manualPriceToMinor(dev.manualPrice || '')!)
+                          : (locale === 'ar' ? 'حدد السعر' : 'Set price'))
+                        : formatCurrency(deviceTotal)}
                     </span>
                   </div>
                 </div>

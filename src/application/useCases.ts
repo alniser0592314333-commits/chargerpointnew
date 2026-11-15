@@ -531,7 +531,7 @@ export class FinalUseCases {
     commandId: ID,
     dayId: ID,
     customerId: ID,
-    items: Array<{ deviceTypeId: ID; hasCharger: boolean }>,
+    items: Array<{ deviceTypeId: ID; hasCharger: boolean; manualPriceMinor?: number }>,
     notes?: string,
     groupId?: string
   ): Promise<Result<{ order: OrderEntity; items: OrderItemEntity[] }>> {
@@ -556,22 +556,37 @@ export class FinalUseCases {
     const orderId = commandId || crypto.randomUUID();
     const now = new Date().toISOString();
     const preparedItems: OrderItemEntity[] = [];
+    const manualPriceByItemId = new Map<string, number>();
     for (let index = 0; index < items.length; index++) {
       const requested = items[index];
       const deviceType = await this.deps.deviceRepo.findById(requested.deviceTypeId);
       if (!deviceType || !deviceType.isActive) throw new NotFoundError('Device type not found or inactive');
 
-      const pricing = calculateItemPrice({
-        basePriceMinor: deviceType.basePriceMinor,
-        chargerFeeEnabled: deviceType.chargerFeeEnabled,
-        chargerFeeApplicable: deviceType.chargerFeeApplicable ?? deviceType.chargerFeeEnabled,
-        customerExempt: customer.chargerFeeExempt,
-        hasCharger: requested.hasCharger,
-      });
+      const normalizedDeviceNames = [deviceType.name, deviceType.nameAr, deviceType.nameEn]
+        .map((value) => value?.trim().toLocaleLowerCase())
+        .filter(Boolean);
+      const isOtherDevice = normalizedDeviceNames.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+      if (requested.manualPriceMinor !== undefined) {
+        if (!isOtherDevice) throw new BusinessRuleViolation('Manual item pricing is only allowed for the Other device type');
+        if (!Number.isSafeInteger(requested.manualPriceMinor) || requested.manualPriceMinor <= 0) {
+          throw new BusinessRuleViolation('Manual item price must be a positive integer in minor currency units');
+        }
+      }
+      const pricing = requested.manualPriceMinor !== undefined
+        ? { chargerFeeSnapshotMinor: 0, unitPriceMinor: requested.manualPriceMinor, totalPriceMinor: requested.manualPriceMinor }
+        : calculateItemPrice({
+            basePriceMinor: deviceType.basePriceMinor,
+            chargerFeeEnabled: deviceType.chargerFeeEnabled,
+            chargerFeeApplicable: deviceType.chargerFeeApplicable ?? deviceType.chargerFeeEnabled,
+            customerExempt: customer.chargerFeeExempt,
+            hasCharger: requested.hasCharger,
+          });
 
       const initialStatus = isClosed && actor.isSuperAdmin ? 'delivered' : 'charging';
+      const preparedItemId = crypto.randomUUID();
+      if (requested.manualPriceMinor !== undefined) manualPriceByItemId.set(preparedItemId, requested.manualPriceMinor);
       preparedItems.push({
-        id: crypto.randomUUID(),
+        id: preparedItemId,
         orderId,
         deviceTypeId: requested.deviceTypeId,
         itemSequence: index + 1,
@@ -585,6 +600,7 @@ export class FinalUseCases {
         hasCharger: requested.hasCharger,
         unitPriceMinor: pricing.unitPriceMinor,
         totalPriceMinor: pricing.totalPriceMinor,
+        finalChargeSnapshotMinor: pricing.totalPriceMinor,
         deliveredAt: initialStatus === 'delivered' ? now : undefined,
         createdAt: now,
         updatedAt: now,
@@ -726,6 +742,7 @@ export class FinalUseCases {
             chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
             unitPriceMinor: item.unitPriceMinor,
             totalPriceMinor: item.totalPriceMinor,
+            ...(manualPriceByItemId.has(item.id) ? { manualPriceMinor: manualPriceByItemId.get(item.id)! } : {}),
             dependencyCommandId: commandId,
           });
 
