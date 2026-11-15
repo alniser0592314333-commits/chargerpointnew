@@ -742,7 +742,7 @@ export class FinalUseCases {
             chargerFeeSnapshotMinor: item.chargerFeeSnapshotMinor,
             unitPriceMinor: item.unitPriceMinor,
             totalPriceMinor: item.totalPriceMinor,
-            ...(manualPriceByItemId.has(item.id) ? { manualPriceMinor: manualPriceByItemId.get(item.id) } : {}),
+            ...(manualPriceByItemId.has(item.id) ? { manualPriceMinor: manualPriceByItemId.get(item.id)! } : {}),
             dependencyCommandId: commandId,
           });
 
