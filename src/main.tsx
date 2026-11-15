@@ -4,20 +4,24 @@ import './index.css';
 import { isCustomerPortalPath } from './services/publicPortalOrigin';
 
 const root = createRoot(document.getElementById('root')!);
-const appVariant = import.meta.env.VITE_APP_VARIANT;
-let pathname = window.location.pathname;
+const pathnameAtEntry = window.location.pathname;
 const hostname = window.location.hostname.toLowerCase();
 const isCustomerHost = hostname === 'www.monther.work' || hostname === 'monther.work';
 const isAdminHost = hostname === 'admin.monther.work';
-const isApiPath = pathname === '/api' || pathname.startsWith('/api/');
+const isApiPath = pathnameAtEntry === '/api' || pathnameAtEntry.startsWith('/api/');
+const hostRedirect = !isApiPath && isCustomerHost && !isCustomerPortalPath(pathnameAtEntry)
+  ? 'https://www.monther.work/public/about'
+  : !isApiPath && isAdminHost && isCustomerPortalPath(pathnameAtEntry)
+    ? 'https://www.monther.work' + pathnameAtEntry + window.location.search + window.location.hash
+    : null;
 
-// Enforce the hostname boundary before React can mount either application.
-// Customer URLs always stay on www; admin pages are only served on admin host.
-if (!isApiPath && isCustomerHost && !isCustomerPortalPath(pathname)) {
-  window.location.replace('https://www.monther.work/public/about');
-} else if (!isApiPath && isAdminHost && isCustomerPortalPath(pathname)) {
-  window.location.replace('https://www.monther.work' + pathname + window.location.search + window.location.hash);
-}
+if (hostRedirect) {
+  // Do not mount the admin application even for a single frame on the customer host.
+  window.location.replace(hostRedirect);
+  root.render(<main role="status" style={{ minHeight: '100vh' }} />);
+} else {
+const appVariant = import.meta.env.VITE_APP_VARIANT;
+let pathname = window.location.pathname;
 
 // On the shared production domains, the root is selected by hostname.
 // The admin PWA starts at /app; customer web starts at /public/about.
@@ -97,4 +101,6 @@ if (appVariant === 'customer') {
       })
       .catch((error) => console.error('App failed to load.', error));
   }
+}
+
 }
