@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { useTheme } from '../../theme/themeContext';
-import { fetchAppReleasePolicy } from '../../services/appReleasePolicy';
+import { fetchAppReleasePolicy, getAppDownloadEndpoint } from '../../services/appReleasePolicy';
 import { AppLogo } from '../qr/AppLogo';
 import { QrScannerModal } from '../qr/QrScannerModal';
 import {
@@ -82,7 +82,7 @@ export const PublicAboutPage: React.FC = () => {
     window.addEventListener('appinstalled', onInstalled);
     detectInstalledMode();
     void fetchAppReleasePolicy('customer').then(({ policy }) => {
-      if (policy?.download_url) setReleaseDownloadUrl(policy.download_url.trim());
+      if (policy?.download_url) setReleaseDownloadUrl(getAppDownloadEndpoint('customer'));
     }).catch(() => undefined);
     return () => {
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
@@ -97,7 +97,7 @@ export const PublicAboutPage: React.FC = () => {
       setIsStartingDownload(true);
       try {
         const { policy } = await fetchAppReleasePolicy('customer');
-        url = policy?.download_url?.trim() || '';
+        url = policy?.download_url?.trim() ? getAppDownloadEndpoint('customer') : '';
         if (url) setReleaseDownloadUrl(url);
       } catch { /* Show a simple message below if policy cannot be loaded. */ }
       setIsStartingDownload(false);
