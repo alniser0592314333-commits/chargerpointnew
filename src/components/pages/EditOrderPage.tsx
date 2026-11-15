@@ -26,7 +26,23 @@ export interface NewDeviceFormItem {
   tempId: string;
   deviceTypeId: string;
   hasCharger: boolean;
+  manualPrice?: string;
 }
+
+const isOtherDeviceOption = (option?: UIDeviceTypeOption): boolean => {
+  const names = [option?.name, option?.nameAr, option?.nameEn]
+    .map((value) => value?.trim().toLocaleLowerCase())
+    .filter(Boolean);
+  return names.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+};
+
+const manualPriceToMinor = (value: string): number | null => {
+  if (!value.trim()) return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const minor = Math.round(amount * 100);
+  return Number.isSafeInteger(minor) && Math.abs(amount * 100 - minor) < 1e-7 ? minor : null;
+};
 
 export const EditOrderPage: React.FC<EditOrderPageProps> = ({
   dayId,
@@ -168,6 +184,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
       tempId: `new_dev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       deviceTypeId: deviceOptions[0].id,
       hasCharger: false,
+      manualPrice: '',
     };
     setNewItems((prev) => [...prev, newRow]);
     setErrorMessage('');
@@ -256,17 +273,47 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
 
     setIsSaving(true);
     try {
-      const itemsToAdd = newItems.map((n) => ({
-        deviceTypeId: n.deviceTypeId,
-        hasCharger: n.hasCharger,
-      }));
+      const itemsToAdd: { deviceTypeId: string; hasCharger: boolean; manualPriceMinor?: number }[] = [];
+      for (const item of newItems) {
+        const option = deviceOptions.find((candidate) => candidate.id === item.deviceTypeId);
+        const manualPriceMinor = isOtherDeviceOption(option) ? manualPriceToMinor(item.manualPrice || '') : null;
+        if (isOtherDeviceOption(option) && manualPriceMinor === null) {
+          setErrorMessage(locale === 'ar'
+            ? 'يرجى إدخال سعر صحيح لكل عنصر «أخرى» (أكبر من صفر وبحد أقصى منزلتين عشريتين).'
+            : 'Enter a valid price for every “Other” item (greater than zero, up to 2 decimal places).');
+          return;
+        }
+        itemsToAdd.push({
+          deviceTypeId: item.deviceTypeId,
+          hasCharger: isOtherDeviceOption(option) ? false : item.hasCharger,
+          ...(manualPriceMinor !== null ? { manualPriceMinor } : {}),
+        });
+      }
+
       const originalById = new Map(originalExistingItems.map((item) => [item.id, item]));
-      const itemsToUpdate = activeExistingItems.flatMap((item) => {
+      const itemsToUpdate: { itemId: string; deviceTypeId: string; hasCharger: boolean; manualPriceMinor?: number }[] = [];
+      for (const item of activeExistingItems) {
         const original = originalById.get(item.id);
-        return original && (original.deviceTypeId !== item.deviceTypeId || original.hasCharger !== item.hasCharger)
-          ? [{ itemId: item.id, deviceTypeId: item.deviceTypeId, hasCharger: item.hasCharger }]
-          : [];
-      });
+        if (!original) continue;
+        const changed = original.deviceTypeId !== item.deviceTypeId ||
+          original.hasCharger !== item.hasCharger ||
+          original.manualPrice !== item.manualPrice;
+        if (!changed) continue;
+        const option = deviceOptions.find((candidate) => candidate.id === item.deviceTypeId);
+        const manualPriceMinor = isOtherDeviceOption(option) ? manualPriceToMinor(item.manualPrice || '') : null;
+        if (isOtherDeviceOption(option) && manualPriceMinor === null) {
+          setErrorMessage(locale === 'ar'
+            ? 'يرجى إدخال سعر صحيح لعنصر «أخرى» (أكبر من صفر وبحد أقصى منزلتين عشريتين).'
+            : 'Enter a valid price for “Other” (greater than zero, up to 2 decimal places).');
+          return;
+        }
+        itemsToUpdate.push({
+          itemId: item.id,
+          deviceTypeId: item.deviceTypeId,
+          hasCharger: isOtherDeviceOption(option) ? false : item.hasCharger,
+          ...(manualPriceMinor !== null ? { manualPriceMinor } : {}),
+        });
+      }
 
       const result = await updateOrderWithPhase5Engine(
         orderId,
@@ -536,10 +583,16 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                       onChange={(e) => {
                         const option = deviceOptions.find((candidate) => candidate.id === e.target.value);
                         if (!option) return;
-                        const hasCharger = option.supportsCharger ? item.hasCharger : false;
-                        const priceMinor = Math.max(0, calculateDeviceItemPreviewPrice(option.id, hasCharger, order.customerChargerFeeExempt) - (item.discountSnapshotMinor ?? 0));
+                        const selectingOther = isOtherDeviceOption(option);
+                        const wasOther = isOtherDeviceOption(selectedOption);
+                        const hasCharger = !selectingOther && option.supportsCharger ? item.hasCharger : false;
+                        const manualPrice = selectingOther ? (wasOther ? item.manualPrice : '') : undefined;
+                        const manualMinor = selectingOther ? manualPriceToMinor(manualPrice || '') : null;
+                        const priceMinor = selectingOther
+                          ? (manualMinor ?? 0)
+                          : Math.max(0, calculateDeviceItemPreviewPrice(option.id, hasCharger, order.customerChargerFeeExempt) - (item.discountSnapshotMinor ?? 0));
                         setExistingItems((prev) => prev.map((current) => current.id === item.id
-                          ? { ...current, deviceTypeId: option.id, deviceName: option.name, hasCharger, priceMinor }
+                          ? { ...current, deviceTypeId: option.id, deviceName: option.name, hasCharger, manualPrice, priceMinor }
                           : current));
                         setErrorMessage('');
                       }}
@@ -550,7 +603,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                       ))}
                     </select>
                   </div>
-                  {selectedOption?.supportsCharger && (
+                  {selectedOption?.supportsCharger && !isOtherDeviceOption(selectedOption) && (
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-[#8eb698] mb-1">{t('hasChargerOption')}</label>
                       <div className="flex items-center bg-gray-100 dark:bg-[#041714] p-1 rounded-lg border border-gray-200/60 dark:border-[#14423b] self-start">
@@ -574,7 +627,30 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                     </div>
                   )}
                 </div>
-                {!canEditDetails && <p className="text-[11px] text-amber-700 dark:text-amber-300">{locale === 'ar' ? 'لا يمكن تعديل نوع أو شاحن جهاز تم تسليمه؛ حفاظاً على السجل المالي.' : 'Delivered items cannot be edited to preserve financial history.'}</p>}
+                {isOtherDeviceOption(selectedOption) && (
+                  <div className="max-w-xs">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-[#8eb698] mb-1">
+                      {locale === 'ar' ? 'السعر اليدوي (₪)' : 'Manual price (₪)'}
+                    </label>
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={item.manualPrice ?? ''}
+                      disabled={!canEditDetails}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const minor = manualPriceToMinor(value);
+                        setExistingItems((prev) => prev.map((current) => current.id === item.id
+                          ? { ...current, manualPrice: value, priceMinor: minor ?? 0, hasCharger: false }
+                          : current));
+                      }}
+                      placeholder={locale === 'ar' ? 'أدخل السعر' : 'Enter price'}
+                      className="text-xs"
+                    />
+                  </div>
+                )}
+                {!canEditDetails && <p className="text-[11px] text-amber-700 dark:text-amber-300">{locale === 'ar' ? 'لا يمكن تعديل نوع أو سعر جهاز تم تسليمه؛ حفاظاً على السجل المالي.' : 'Delivered items cannot be edited to preserve financial history.'}</p>}
               </div>
             );
           })}
@@ -584,7 +660,11 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
             const isLastNew = idx === newItems.length - 1;
             const itemIndex = activeExistingItems.length + idx + 1;
             const devOpt = deviceOptions.find((d) => d.id === dev.deviceTypeId) || deviceOptions[0];
-            const deviceTotal = calculateDeviceItemPreviewPrice(dev.deviceTypeId, dev.hasCharger, false);
+            const isOther = isOtherDeviceOption(devOpt);
+            const manualMinor = isOther ? manualPriceToMinor(dev.manualPrice || '') : null;
+            const deviceTotal = isOther
+              ? (manualMinor ?? 0)
+              : calculateDeviceItemPreviewPrice(dev.deviceTypeId, dev.hasCharger, false);
 
             return (
               <div
@@ -615,8 +695,15 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                       value={dev.deviceTypeId ?? ''}
                       onChange={(e) => {
                         const selectedId = e.target.value;
+                        const selectedOption = deviceOptions.find((option) => option.id === selectedId);
+                        const selectingOther = isOtherDeviceOption(selectedOption);
                         setNewItems((prev) =>
-                          prev.map((it, i) => (i === idx ? { ...it, deviceTypeId: selectedId } : it))
+                          prev.map((it, i) => (i === idx ? {
+                            ...it,
+                            deviceTypeId: selectedId,
+                            hasCharger: selectingOther ? false : it.hasCharger,
+                            manualPrice: selectingOther && it.deviceTypeId === selectedId ? it.manualPrice : selectingOther ? '' : undefined,
+                          } : it))
                         );
                       }}
                       className="w-full rounded-lg border border-gray-200 dark:border-[#14423b] bg-white dark:bg-[#061f1c] text-gray-900 dark:text-[#daf1de] text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -629,7 +716,7 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                     </select>
                   </div>
 
-                  {devOpt?.supportsCharger && (
+                  {devOpt?.supportsCharger && !isOther && (
                     <div className="flex flex-col justify-end">
                       <label className="block text-xs font-medium text-gray-600 dark:text-[#8eb698] mb-1">
                         {t('hasChargerOption')}
@@ -661,6 +748,28 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
                     </div>
                   )}
                 </div>
+
+                {isOther && (
+                  <div className="max-w-xs">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-[#8eb698] mb-1">
+                      {locale === 'ar' ? 'السعر اليدوي (₪)' : 'Manual price (₪)'}
+                    </label>
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={dev.manualPrice ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setNewItems((prev) => prev.map((current, i) => i === idx
+                          ? { ...current, manualPrice: value, hasCharger: false }
+                          : current));
+                      }}
+                      placeholder={locale === 'ar' ? 'أدخل السعر' : 'Enter price'}
+                      className="text-xs"
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center justify-end text-xs font-mono font-bold text-gray-900 dark:text-[#daf1de]">
                   {formatCurrency(deviceTotal)}
