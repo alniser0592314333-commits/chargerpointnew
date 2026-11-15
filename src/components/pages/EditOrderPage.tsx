@@ -250,7 +250,11 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
   );
 
   const newTotalMinor = newItems.reduce((sum, dev) => {
-    const calculated = calculateDeviceItemPreviewPrice(dev.deviceTypeId, dev.hasCharger, false);
+    const option = deviceOptions.find((candidate) => candidate.id === dev.deviceTypeId);
+    const manualMinor = isOtherDeviceOption(option) ? manualPriceToMinor(dev.manualPrice || '') : null;
+    const calculated = isOtherDeviceOption(option)
+      ? (manualMinor ?? 0)
+      : calculateDeviceItemPreviewPrice(dev.deviceTypeId, dev.hasCharger, false);
     return sum + calculated;
   }, 0);
 
