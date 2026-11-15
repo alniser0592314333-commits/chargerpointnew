@@ -20,7 +20,7 @@ describe('Manual price for the Other order item', () => {
     expect(store).toContain('manualPriceMinor?: number');
     expect(useCases).toContain('Manual item pricing is only allowed for the Other device type');
     expect(useCases).toContain('finalChargeSnapshotMinor: pricing.totalPriceMinor');
-    expect(useCases).toContain('{ manualPriceMinor: manualPriceByItemId.get(item.id) }');
+    expect(useCases).toContain('{ manualPriceMinor: manualPriceByItemId.get(item.id)! }');
     expect(useCases).toContain('calculateItemPrice({');
   });
 
