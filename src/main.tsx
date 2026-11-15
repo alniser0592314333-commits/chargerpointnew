@@ -15,7 +15,15 @@ const hostRedirect = !isApiPath && isCustomerHost && !isCustomerPortalPath(pathn
     ? 'https://www.monther.work' + pathnameAtEntry + window.location.search + window.location.hash
     : null;
 
-if (isApiPath) {
+if (isAdminHost && pathnameAtEntry === '/') {
+  // Force a fresh request to the admin entry route instead of relying on
+  // history-only navigation at the shared root, which can preserve a stale PWA shell.
+  window.location.replace('/app');
+  root.render(<main role="status" style={{ minHeight: '100vh' }} />);
+} else if (isCustomerHost && pathnameAtEntry === '/') {
+  window.location.replace('/public/about');
+  root.render(<main role="status" style={{ minHeight: '100vh' }} />);
+} else if (isApiPath) {
   // Fail closed if a hosting or service-worker misconfiguration ever serves
   // index.html for an API URL: API paths must never mount either application.
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
