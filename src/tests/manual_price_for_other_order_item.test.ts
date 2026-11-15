@@ -20,6 +20,8 @@ describe('Manual price for the Other order item', () => {
     expect(store).toContain('manualPriceMinor?: number');
     expect(useCases).toContain('Manual item pricing is only allowed for the Other device type');
     expect(useCases).toContain('finalChargeSnapshotMinor: pricing.totalPriceMinor');
+    expect(useCases).toContain('basePriceSnapshotMinor: manualPriceMinor !== undefined ? manualPriceMinor : deviceType.basePriceMinor');
+    expect(useCases).toContain('basePriceSnapshotMinor: requested.manualPriceMinor !== undefined ? requested.manualPriceMinor : deviceType.basePriceMinor');
     expect(useCases).toContain('{ manualPriceMinor: manualPriceByItemId.get(item.id)! }');
     expect(useCases).toContain('calculateItemPrice({');
   });
@@ -31,6 +33,7 @@ describe('Manual price for the Other order item', () => {
     expect(migration).toContain("IF NOT v_is_other_item THEN");
     expect(migration).toContain('v_authoritative_final_charge := v_manual_price;');
     expect(migration).toContain('v_authoritative_charger_fee := 0;');
+    expect(migration).toContain('v_base_price := v_manual_price;');
     expect(migration).toContain('v_authoritative_final_charge := GREATEST(0, v_base_price + v_authoritative_charger_fee - v_authoritative_discount);');
   });
 });
@@ -65,5 +68,10 @@ describe('Manual price for Other in order editing', () => {
     expect(migration).toContain("IF NOT v_is_other_item THEN");
     expect(migration).toContain('v_authoritative_final_charge := v_manual_price;');
     expect(migration).toContain('v_authoritative_charger_fee := 0;');
+    expect(migration).toContain('v_base_price := v_manual_price;');
+    expect(migration).toContain('IF v_is_other_item THEN');
+    expect(migration).toContain('v_rec_item.final_charge_snapshot_minor');
+    expect(migration).toContain('v_authoritative_final_charge := COALESCE(');
+    expect(migration).toContain('v_base_price := v_authoritative_final_charge;');
   });
 });
