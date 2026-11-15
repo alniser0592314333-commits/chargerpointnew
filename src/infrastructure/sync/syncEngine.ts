@@ -396,7 +396,7 @@ const isPurchaseOutboxCommand = (type: string): boolean => type.startsWith('SAVE
 const isRejectedPurchaseCommandFromMissingDispatcher = (item: OutboxRecord): boolean => {
   if (!isPurchaseOutboxCommand(item.commandType)) return false;
   const error = String(item.lastError || '');
-  const match = error.match(/Unknown Canonical Command Type:\\s*([A-Z0-9_]+)/i);
+  const match = error.match(/Unknown Canonical Command Type:\s*([A-Z0-9_]+)/i);
   // Only recover the exact command that the old server dispatcher rejected.
   // The RPC raises this before any purchase write or processed-command record.
   return match?.[1] === item.commandType;
