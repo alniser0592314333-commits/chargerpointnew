@@ -725,8 +725,9 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER TABLE public.device_types ADD COLUMN IF NOT EXISTS name_ar text; ALTER TABLE public.device_types ADD COLUMN IF NOT EXISTS name_en text;"
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $verify_manual_price$
           DECLARE
             v_definition TEXT := pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure);
           BEGIN
@@ -744,7 +745,8 @@ jobs:
             ) THEN
               RAISE EXCEPTION 'Bilingual device type name columns are required by the manual price dispatcher';
             END IF;
-          END $;
+          END;
+          $verify_manual_price$;
           SQL
       - name: Verify dispatcher and audit-table privileges
         env:
