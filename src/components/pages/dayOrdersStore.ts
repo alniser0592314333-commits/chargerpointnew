@@ -4982,6 +4982,7 @@ export interface UIEditOrderItem {
   discountSnapshotMinor?: number;
   status: 'charging' | 'delivered' | 'cancelled';
   isExisting: boolean;
+  manualPrice?: string;
 }
 
 export interface UIEditOrderDetail {
@@ -5047,6 +5048,7 @@ export const getOrderForEdit = async (
         deviceName: devName,
         priceMinor: i.totalPriceMinor,
         hasCharger: i.hasCharger,
+        manualPrice: ((i.finalChargeSnapshotMinor ?? i.totalPriceMinor) / 100).toFixed(2),
         discountSnapshotMinor: i.discountSnapshotMinor ?? 0,
         status: i.status,
         isExisting: true,
@@ -5129,10 +5131,10 @@ export const updateOrderWithPhase5Engine = async (
   orderId: string,
   newNotes: string,
   newStatus: 'pending' | 'charging' | 'delivered' | 'cancelled',
-  newItemsToAdd: { deviceTypeId: string; hasCharger: boolean }[],
+  newItemsToAdd: { deviceTypeId: string; hasCharger: boolean; manualPriceMinor?: number }[],
   existingItemIdsToRemove: string[],
   bin?: string,
-  existingItemEdits: { itemId: string; deviceTypeId: string; hasCharger: boolean }[] = []
+  existingItemEdits: { itemId: string; deviceTypeId: string; hasCharger: boolean; manualPriceMinor?: number }[] = []
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     const order = await repoContext.orderRepo.findById(orderId);
@@ -5152,6 +5154,26 @@ export const updateOrderWithPhase5Engine = async (
     for (const edit of existingItemEdits) {
       const device = await repoContext.deviceRepo.findById(edit.deviceTypeId);
       if (!device || !device.isActive) return { success: false, error: 'نوع الجهاز المحدد غير متاح. حدّث الصفحة واختر نوعاً فعالاً.' };
+      const names = [device.name, device.nameAr, device.nameEn].map((value) => value?.trim().toLocaleLowerCase()).filter(Boolean);
+      const isOther = names.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+      if (isOther && edit.manualPriceMinor === undefined) {
+        return { success: false, error: 'يرجى إدخال السعر اليدوي لعنصر «أخرى».' };
+      }
+      if (edit.manualPriceMinor !== undefined && (!isOther || !Number.isSafeInteger(edit.manualPriceMinor) || edit.manualPriceMinor <= 0)) {
+        return { success: false, error: 'السعر اليدوي غير صالح أو لا ينتمي إلى عنصر «أخرى».' };
+      }
+    }
+    for (const item of newItemsToAdd) {
+      const device = await repoContext.deviceRepo.findById(item.deviceTypeId);
+      if (!device || !device.isActive) return { success: false, error: 'نوع الجهاز المحدد غير متاح. حدّث الصفحة واختر نوعاً فعالاً.' };
+      const names = [device.name, device.nameAr, device.nameEn].map((value) => value?.trim().toLocaleLowerCase()).filter(Boolean);
+      const isOther = names.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+      if (item.manualPriceMinor !== undefined && (!isOther || !Number.isSafeInteger(item.manualPriceMinor) || item.manualPriceMinor <= 0)) {
+        return { success: false, error: 'السعر اليدوي غير صالح أو لا ينتمي إلى عنصر «أخرى».' };
+      }
+      if (isOther && item.manualPriceMinor === undefined) {
+        return { success: false, error: 'يرجى إدخال السعر اليدوي لعنصر «أخرى».' };
+      }
     }
 
     // Validate the complete requested edit before queueing any local command.
@@ -5245,7 +5267,7 @@ export const updateOrderWithPhase5Engine = async (
 
     // 3. Update existing charging items through the canonical command boundary.
     for (const edit of existingItemEdits) {
-      const result = await phase5UseCases.updateOrderItem(auth, edit.itemId, edit.deviceTypeId, edit.hasCharger);
+      const result = await phase5UseCases.updateOrderItem(auth, edit.itemId, edit.deviceTypeId, edit.hasCharger, edit.manualPriceMinor);
       if (!result.success) return { success: false, error: (result as any).error || 'فشل تعديل الجهاز. لم يتم تجاهل الخطأ.' };
     }
 
@@ -5255,7 +5277,10 @@ export const updateOrderWithPhase5Engine = async (
         auth,
         orderId,
         item.deviceTypeId,
-        item.hasCharger
+        item.hasCharger,
+        undefined,
+        undefined,
+        item.manualPriceMinor
       );
       if (!itemRes.success) {
         const err = (itemRes as any).error || 'فشل إضافة الجهاز للطلب';

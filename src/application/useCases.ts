@@ -328,7 +328,8 @@ export class FinalUseCases {
     deviceTypeId: ID,
     hasCharger: boolean,
     commandId?: ID,
-    groupId?: string
+    groupId?: string,
+    manualPriceMinor?: number
   ): Promise<Result<OrderItemEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:edit');
@@ -348,12 +349,25 @@ export class FinalUseCases {
     const deviceType = await this.deps.deviceRepo.findById(deviceTypeId);
     if (!deviceType || !deviceType.isActive) throw new NotFoundError('Device type not found or inactive');
 
-    const pricing = calculateItemPrice({
-      basePriceMinor: deviceType.basePriceMinor,
-      chargerFeeEnabled: deviceType.chargerFeeEnabled,
-      customerExempt: customer.chargerFeeExempt,
-      hasCharger,
-    });
+    const normalizedNames = [deviceType.name, deviceType.nameAr, deviceType.nameEn]
+      .map((value) => value?.trim().toLocaleLowerCase())
+      .filter(Boolean);
+    const isOtherDevice = normalizedNames.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+    if (manualPriceMinor !== undefined && !isOtherDevice) {
+      throw new BusinessRuleViolation('Manual item pricing is only allowed for the Other device type');
+    }
+    if (manualPriceMinor !== undefined && (!Number.isSafeInteger(manualPriceMinor) || manualPriceMinor <= 0)) {
+      throw new BusinessRuleViolation('Manual item price must be a positive integer in minor currency units');
+    }
+    const normalizedHasCharger = manualPriceMinor !== undefined ? false : hasCharger;
+    const pricing = manualPriceMinor !== undefined
+      ? { chargerFeeSnapshotMinor: 0, unitPriceMinor: manualPriceMinor, totalPriceMinor: manualPriceMinor }
+      : calculateItemPrice({
+          basePriceMinor: deviceType.basePriceMinor,
+          chargerFeeEnabled: deviceType.chargerFeeEnabled,
+          customerExempt: customer.chargerFeeExempt,
+          hasCharger: normalizedHasCharger,
+        });
 
     const existingItems = await this.deps.itemRepo.findByOrderId(orderId);
     const itemSequence = (Array.isArray(existingItems) ? existingItems.length : 0) + 1;
@@ -372,9 +386,10 @@ export class FinalUseCases {
       chargerFeeEnabledSnapshot: deviceType.chargerFeeEnabled,
       customerChargerFeeExemptSnapshot: customer.chargerFeeExempt,
       chargerFeeSnapshotMinor: pricing.chargerFeeSnapshotMinor,
-      hasCharger,
+      hasCharger: normalizedHasCharger,
       unitPriceMinor: pricing.unitPriceMinor,
       totalPriceMinor: pricing.totalPriceMinor,
+      finalChargeSnapshotMinor: pricing.totalPriceMinor,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: 1,
@@ -392,7 +407,8 @@ export class FinalUseCases {
     await this.deps.commandRepo.record(itemId, 'ADD_ORDER_ITEM', {
         orderId,
         deviceTypeId,
-        hasCharger,
+        hasCharger: normalizedHasCharger,
+        ...(manualPriceMinor !== undefined ? { manualPriceMinor } : {}),
         ...(groupId ? { groupId } : {}),
         deviceNameSnapshot: item.deviceNameSnapshot,
         deviceIconSnapshot: item.deviceIconSnapshot,
@@ -907,7 +923,8 @@ export class FinalUseCases {
     auth: AuthorizationContext,
     itemId: ID,
     deviceTypeId: ID,
-    hasCharger: boolean
+    hasCharger: boolean,
+    manualPriceMinor?: number
   ): Promise<Result<OrderItemEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('orders:edit');
@@ -926,14 +943,30 @@ export class FinalUseCases {
     const device = await this.deps.deviceRepo.findById(deviceTypeId);
     if (!device || !device.isActive) throw new NotFoundError('Device type not found or inactive');
 
-    const normalizedHasCharger = device.chargerFeeEnabled ? hasCharger : false;
-    const pricing = calculateItemPrice({
-      basePriceMinor: device.basePriceMinor,
-      chargerFeeEnabled: device.chargerFeeEnabled,
-      customerExempt: customer.chargerFeeExempt,
-      hasCharger: normalizedHasCharger,
-    });
-    const finalTotalMinor = Math.max(0, pricing.totalPriceMinor - (item.discountSnapshotMinor ?? 0));
+    const normalizedDeviceNames = [device.name, device.nameAr, device.nameEn]
+      .map((value) => value?.trim().toLocaleLowerCase())
+      .filter(Boolean);
+    const isOtherDevice = normalizedDeviceNames.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+    if (manualPriceMinor !== undefined && !isOtherDevice) {
+      throw new BusinessRuleViolation('Manual item pricing is only allowed for the Other device type');
+    }
+    if (manualPriceMinor !== undefined && (!Number.isSafeInteger(manualPriceMinor) || manualPriceMinor <= 0)) {
+      throw new BusinessRuleViolation('Manual item price must be a positive integer in minor currency units');
+    }
+    const normalizedHasCharger = manualPriceMinor !== undefined
+      ? false
+      : (device.chargerFeeEnabled ? hasCharger : false);
+    const pricing = manualPriceMinor !== undefined
+      ? { chargerFeeSnapshotMinor: 0, unitPriceMinor: manualPriceMinor, totalPriceMinor: manualPriceMinor }
+      : calculateItemPrice({
+          basePriceMinor: device.basePriceMinor,
+          chargerFeeEnabled: device.chargerFeeEnabled,
+          customerExempt: customer.chargerFeeExempt,
+          hasCharger: normalizedHasCharger,
+        });
+    const finalTotalMinor = manualPriceMinor !== undefined
+      ? manualPriceMinor
+      : Math.max(0, pricing.totalPriceMinor - (item.discountSnapshotMinor ?? 0));
     const now = new Date().toISOString();
     const patch: Partial<OrderItemEntity> = {
       deviceTypeId,
@@ -965,6 +998,7 @@ export class FinalUseCases {
       orderId: order.id,
       deviceTypeId,
       hasCharger: normalizedHasCharger,
+      ...(manualPriceMinor !== undefined ? { manualPriceMinor } : {}),
       expectedVersion: item.version,
     }, item.version);
     return { success: true, data: { ...item, ...patch } as OrderItemEntity };
