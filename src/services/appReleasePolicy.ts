@@ -18,7 +18,7 @@ export interface AppReleasePolicyResult {
 }
 
 export function parseAppVersion(value: string): { major: number; minor: number; patch: number; code: number } | null {
-  const match = /^(0|[1-9]\\d{0,3})\\.(0|[1-9]\\d{0,2})\\.(0|[1-9]\\d{0,2})$/.exec(value.trim());
+  const match = /^(0|[1-9]\d{0,3})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})$/.exec(value.trim());
   if (!match) return null;
   const major = Number(match[1]);
   const minor = Number(match[2]);
