@@ -740,16 +740,19 @@ jobs:
           DO $purchase_dispatcher_final$
           DECLARE
             definition text := pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure);
+            route_definition text;
             command_name text;
             v_permission_exists boolean;
           BEGIN
+            route_definition := substring(
+              definition FROM position('-- 5. ROUTE BY CANONICAL COMMAND TYPE' IN definition)
+            );
             FOREACH command_name IN ARRAY ARRAY[
               'SAVE_PURCHASE_SUPPLIER','SAVE_PURCHASE_ITEM','SAVE_PURCHASE_PAYMENT_METHOD',
               'SAVE_PURCHASE_MONTH','SAVE_PURCHASE_WEEK','SAVE_PURCHASE_DAY',
               'SAVE_PURCHASE_ORDER','MARK_PURCHASE_ORDER_PAID'
             ] LOOP
-              IF position('WHEN ''' || command_name || '''' IN definition) = 0
-                 AND position('''' || command_name || '''' IN definition) = 0 THEN
+              IF position('''' || command_name || '''' IN route_definition) = 0 THEN
                 RAISE EXCEPTION 'Final canonical dispatcher is missing purchase command %', command_name;
               END IF;
             END LOOP;
