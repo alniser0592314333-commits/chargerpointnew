@@ -7,6 +7,7 @@ import { CustomerAccountPage } from './components/pages/CustomerAccountPage';
 import { PublicOrderPage } from './components/pages/PublicOrderPage';
 import { PublicPaymentPage } from './components/pages/PublicPaymentPage';
 import { PublicAboutPage } from './components/pages/PublicAboutPage';
+import { PublicAppDownloadPage } from './components/pages/PublicAppDownloadPage';
 import { WalletManagementPage } from './components/pages/WalletManagementPage';
 import { PublicServicesPage } from './components/pages/PublicServicesPage';
 import { PublicServicesAccessGate } from './components/pages/PublicServicesAccessGate';
@@ -245,7 +246,9 @@ const PublicPortalApp: React.FC = () => {
   // show the intro on every app entry, including QR deep links.
   let welcomeEnabled = Capacitor.isNativePlatform() ? nativeInitialIntro.current === true : (initialPath.current === '/public/about' && pathname === '/public/about');
 
-  if (pathname === '/public/about') {
+  if (pathname === '/download') {
+    content = <ThemeProvider><PublicAppDownloadPage /></ThemeProvider>;
+  } else if (pathname === '/public/about') {
     content = <ThemeProvider><PublicAboutPage /></ThemeProvider>;
   } else if (pathname === '/public/services') {
     content = <PublicServicesAccessGate><ThemeProvider><PublicServicesPage onBack={() => { window.history.replaceState({ path: '/public/about' }, '', '/public/about'); setCurrentPath('/public/about'); }} onOpenWallet={() => { window.history.replaceState({ path: '/public/services/wallet' }, '', '/public/services/wallet'); setCurrentPath('/public/services/wallet'); }} /></ThemeProvider></PublicServicesAccessGate>;
