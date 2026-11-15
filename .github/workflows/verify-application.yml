@@ -757,9 +757,13 @@ jobs:
                OR position('purchases:manage' IN definition) = 0 THEN
               RAISE EXCEPTION 'Final dispatcher lost manual-price behavior or purchase RBAC';
             END IF;
-            IF to_regclass('public.permissions') IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM public.permissions WHERE code='purchases:manage') THEN
-              RAISE EXCEPTION 'Purchase Book permission was not registered';
+            IF to_regclass('public.permissions') IS NOT NULL THEN
+              EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.permissions WHERE code = $1)'
+                INTO STRICT command_name
+                USING 'purchases:manage';
+              IF command_name::boolean IS NOT TRUE THEN
+                RAISE EXCEPTION 'Purchase Book permission was not registered';
+              END IF;
             END IF;
           END;
           $purchase_dispatcher_final$;
