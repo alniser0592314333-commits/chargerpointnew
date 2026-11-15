@@ -49,6 +49,11 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/order_item_cancel_status_contract.test.ts src/tests/phase6_11_4_delivery_bin_security.test.ts src/tests/offline_reactivity_and_delivery_targeting_regression.test.ts && npx vitest run src/tests/domain.test.ts -t 'Item Removal vs Full Order Cancellation Permission Boundaries'
+      - name: Run manual price for Other order item contract tests
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/manual_price_for_other_order_item.test.ts
       - name: Run canonical sync engine and delta paging regressions
         env:
           # Test runs must never use the production Supabase project.
@@ -712,6 +717,35 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/order_numbering_contiguous_runtime.test.sql
+      - name: Apply manual price for Other order item dispatcher migration
+        env:
+          PGPASSWORD: postgres
+        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115130000_manual_price_for_other_order_item.sql
+      - name: Verify manual price dispatcher and bilingual device-name columns
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          DECLARE
+            v_definition TEXT := pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure);
+          BEGIN
+            IF position('manualPriceMinor' IN v_definition) = 0
+               OR position('v_authoritative_final_charge := v_manual_price' IN v_definition) = 0
+               OR position('IF NOT v_is_other_item THEN' IN v_definition) = 0 THEN
+              RAISE EXCEPTION 'Manual Other item price dispatcher contract is missing';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'device_types' AND column_name = 'name_ar'
+            ) OR NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'device_types' AND column_name = 'name_en'
+            ) THEN
+              RAISE EXCEPTION 'Bilingual device type name columns are required by the manual price dispatcher';
+            END IF;
+          END $;
+          SQL
       - name: Verify dispatcher and audit-table privileges
         env:
           PGPASSWORD: postgres
