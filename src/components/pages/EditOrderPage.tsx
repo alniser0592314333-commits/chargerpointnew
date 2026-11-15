@@ -282,9 +282,11 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
         const option = deviceOptions.find((candidate) => candidate.id === item.deviceTypeId);
         const manualPriceMinor = isOtherDeviceOption(option) ? manualPriceToMinor(item.manualPrice || '') : null;
         if (isOtherDeviceOption(option) && manualPriceMinor === null) {
-          setErrorMessage(locale === 'ar'
+          const message = locale === 'ar'
             ? 'يرجى إدخال سعر صحيح لكل عنصر «أخرى» (أكبر من صفر وبحد أقصى منزلتين عشريتين).'
-            : 'Enter a valid price for every “Other” item (greater than zero, up to 2 decimal places).');
+            : 'Enter a valid price for every “Other” item (greater than zero, up to 2 decimal places).';
+          if (isBinModalOpen) setBinError(message);
+          else setErrorMessage(message);
           return;
         }
         itemsToAdd.push({
@@ -306,9 +308,11 @@ export const EditOrderPage: React.FC<EditOrderPageProps> = ({
         const option = deviceOptions.find((candidate) => candidate.id === item.deviceTypeId);
         const manualPriceMinor = isOtherDeviceOption(option) ? manualPriceToMinor(item.manualPrice || '') : null;
         if (isOtherDeviceOption(option) && manualPriceMinor === null) {
-          setErrorMessage(locale === 'ar'
+          const message = locale === 'ar'
             ? 'يرجى إدخال سعر صحيح لعنصر «أخرى» (أكبر من صفر وبحد أقصى منزلتين عشريتين).'
-            : 'Enter a valid price for “Other” (greater than zero, up to 2 decimal places).');
+            : 'Enter a valid price for “Other” (greater than zero, up to 2 decimal places).';
+          if (isBinModalOpen) setBinError(message);
+          else setErrorMessage(message);
           return;
         }
         itemsToUpdate.push({
