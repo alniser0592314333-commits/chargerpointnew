@@ -44,10 +44,11 @@ describe('Manual price for Other in order editing', () => {
 
   it('keeps the manual amount editable for existing and newly added Other items', () => {
     const page = read('src/components/pages/EditOrderPage.tsx');
+    const store = read('src/components/pages/dayOrdersStore.ts');
     expect(page).toContain("'Manual price (₪)'");
     expect(page).toContain('manualPriceToMinor(item.manualPrice || \'\')');
     expect(page).toContain('manualPriceMinor');
-    expect(page).toContain("manualPrice: ((i.finalChargeSnapshotMinor ?? i.totalPriceMinor) / 100).toFixed(2)");
+    expect(store).toContain("manualPrice: ((i.finalChargeSnapshotMinor ?? i.totalPriceMinor) / 100).toFixed(2)");
     expect(page).toContain('!isOtherDeviceOption(selectedOption)');
     expect(page).toContain('!isOther && (');
   });
