@@ -5479,7 +5479,7 @@ export const ensureBusinessDayEntityExists = async (dayId: string): Promise<Busi
 export const createOrderWithPhase5Engine = async (
   dayId: string,
   customerId: string,
-  items: { deviceTypeId: string; hasCharger: boolean }[],
+  items: { deviceTypeId: string; hasCharger: boolean; manualPriceMinor?: number }[],
   notes?: string
 ): Promise<{ success: boolean; error?: string; errorCode?: string; order?: UIDayOrderDetail }> => {
   if (!items || items.length === 0) {
