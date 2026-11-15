@@ -96,10 +96,10 @@ export const PublicAboutPage: React.FC = () => {
     if (!url) {
       setIsStartingDownload(true);
       try {
-        const { policy } = await fetchAppReleasePolicy('customer');
-        url = policy?.download_url?.trim() ? getAppDownloadEndpoint('customer') : '';
-        if (url) setReleaseDownloadUrl(url);
-      } catch { /* Show a simple message below if policy cannot be loaded. */ }
+      const parsed = new URL(url, window.location.origin);
+      if (parsed.protocol !== 'https:' || parsed.origin !== window.location.origin) throw new Error('Same-origin download route required');
+      window.location.assign(parsed.pathname + parsed.search);
+    } catch { /* Show a simple message below if policy cannot be loaded. */ }
       setIsStartingDownload(false);
     }
     if (!url) {
