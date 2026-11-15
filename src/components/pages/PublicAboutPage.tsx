@@ -96,10 +96,10 @@ export const PublicAboutPage: React.FC = () => {
     if (!url) {
       setIsStartingDownload(true);
       try {
-      const parsed = new URL(url, window.location.origin);
-      if (parsed.protocol !== 'https:' || parsed.origin !== window.location.origin) throw new Error('Same-origin download route required');
-      window.location.assign(parsed.pathname + parsed.search);
-    } catch { /* Show a simple message below if policy cannot be loaded. */ }
+        const { policy } = await fetchAppReleasePolicy('customer');
+        url = policy?.download_url?.trim() ? getAppDownloadEndpoint('customer') : '';
+        if (url) setReleaseDownloadUrl(url);
+      } catch { /* Show a simple message below if policy cannot be loaded. */ }
       setIsStartingDownload(false);
     }
     if (!url) {
@@ -107,11 +107,9 @@ export const PublicAboutPage: React.FC = () => {
       return;
     }
     try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'https:') throw new Error('HTTPS required');
-      // Dropbox's dl=1 parameter requests the file directly instead of its preview page.
-      if (parsed.hostname === 'www.dropbox.com' || parsed.hostname === 'dropbox.com') parsed.searchParams.set('dl', '1');
-      window.location.assign(parsed.toString());
+      const parsed = new URL(url, window.location.origin);
+      if (parsed.protocol !== 'https:' || parsed.origin !== window.location.origin) throw new Error('Same-origin download route required');
+      window.location.assign(parsed.pathname + parsed.search);
     } catch {
       window.alert(isAr ? 'رابط التنزيل غير صالح.' : 'The download link is invalid.');
     }
