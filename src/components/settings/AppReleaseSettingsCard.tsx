@@ -96,7 +96,7 @@ export const AppReleaseSettingsCard: React.FC<{ locale: 'ar' | 'en' }> = ({ loca
   };
 
   const title = channel === 'customer' ? (ar ? 'تطبيق العميل' : 'Customer App') : (ar ? 'تطبيق الأدمن' : 'Admin App');
-  const currentRelease = history.find((item) => item.url === policy?.download_url);
+  const currentRelease = history.find((item) => item.version === policy?.latest_version);
 
   return <section className="space-y-4">
     {!channel ? <>
@@ -127,6 +127,7 @@ export const AppReleaseSettingsCard: React.FC<{ locale: 'ar' | 'en' }> = ({ loca
           {currentRelease && <p className="mt-2 text-[11px] text-gray-500 dark:text-[#8eb698]">{formatSize(currentRelease.size)} · {formatDate(currentRelease.uploadedAt, locale)}</p>}
           <a href={getAppDownloadEndpoint(channel)} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-emerald-700 underline dark:text-[#a5d6b4]" target="_blank" rel="noreferrer"><ArrowDownToLine className="h-3.5 w-3.5" />{ar ? 'اختبار رابط التنزيل الثابت' : 'Test stable download URL'}</a>
         </div>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">{ar ? 'سجل الإصدارات والتنزيل يعملان من GitHub. لرفع APK جديد، يلزم إعداد مفتاح GitHub آمن مرة واحدة في Vercel باسم GITHUB_RELEASES_TOKEN؛ المفتاح لا يظهر داخل التطبيق.' : 'Release history and downloads use GitHub. Uploading a new APK requires a one-time server-side GitHub token in Vercel named GITHUB_RELEASES_TOKEN; it is never exposed in the app.'}</p>
         <form onSubmit={upload} className="space-y-3 border-b border-gray-200/80 pb-5 dark:border-[#123832]">
           <div className="flex items-center gap-2"><CloudUpload className="h-4 w-4 text-emerald-700 dark:text-[#a5d6b4]" /><h4 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{ar ? 'رفع إصدار جديد' : 'Upload new release'}</h4></div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -139,8 +140,8 @@ export const AppReleaseSettingsCard: React.FC<{ locale: 'ar' | 'en' }> = ({ loca
         </form>
         <div className="space-y-3">
           <div className="flex items-center gap-2"><History className="h-4 w-4 text-gray-500" /><h4 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{ar ? 'سجل الإصدارات' : 'Release history'}</h4><span className="text-[11px] text-gray-500">({history.length})</span></div>
-          {history.length === 0 ? <p className="rounded-xl bg-gray-50 p-4 text-xs leading-5 text-gray-500 dark:bg-[#041714] dark:text-[#8eb698]">{ar ? 'لا توجد ملفات في سجل Blob بعد. سيبدأ السجل من أول APK ترفعه هنا؛ إصدارات GitHub القديمة لن تُحذف.' : 'No Blob releases yet. History starts with the first APK uploaded here; existing GitHub releases remain untouched.'}</p> : history.map((release) => {
-            const active = release.url === policy?.download_url;
+          {history.length === 0 ? <p className="rounded-xl bg-gray-50 p-4 text-xs leading-5 text-gray-500 dark:bg-[#041714] dark:text-[#8eb698]">{ar ? 'لا توجد إصدارات لهذا التطبيق في GitHub Releases حتى الآن.' : 'No releases found for this app channel yet. Existing GitHub releases are shown here when they contain a matching APK asset.'}</p> : history.map((release) => {
+            const active = release.version === policy?.latest_version;
             return <div key={release.url} className="flex flex-wrap items-center gap-3 border-b border-gray-100 py-3 last:border-0 dark:border-[#0f302b]">
               <FileArchive className="h-4 w-4 text-gray-500" />
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-bold text-gray-900 dark:text-[#daf1de]">{release.version}</span>{active && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{ar ? 'فعّال' : 'Active'}</span>}</div><p className="mt-1 text-[11px] text-gray-500 dark:text-[#8eb698]">{formatSize(release.size)} · {formatDate(release.uploadedAt, locale)}</p></div>
