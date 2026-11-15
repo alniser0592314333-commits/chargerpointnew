@@ -64,7 +64,7 @@ export interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, setTheme } = useTheme();
-  const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | null>(null);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | "releases" | null>(null);
 
   const [session, setSession] = useState<UserSession | null>(null);
   useEffect(() => {
@@ -463,6 +463,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
             sync: locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status",
             account: locale === "ar" ? "الحسابات" : "Accounts",
             about: locale === "ar" ? "حول التطبيق" : "About the App",
+            releases: locale === "ar" ? "إدارة إصدارات التطبيقات" : "App Release Management",
           } as const)[activeSettingsSection]}
         </h1>
         <p className="text-xs text-gray-500 dark:text-[#8eb698] mt-1">
@@ -492,6 +493,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                   <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
                 </button>
               )}
+              {isSuperAdmin && (
+                <button type="button" onClick={() => setActiveSettingsSection("releases")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+       ...[truncated]
               {hasPermission("settings:manage") && (
                 <button type="button" onClick={() => setActiveSettingsSection("backup")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
                   <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Database className="w-5 h-5" /></span>
