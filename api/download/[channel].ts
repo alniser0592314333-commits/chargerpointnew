@@ -16,6 +16,9 @@ function isSafeHttpsUrl(value: string): URL | null {
     if (url.protocol !== 'https:' || url.username || url.password) return null;
     const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return null;
+    const allowedHost = host === 'github.com' || host === 'release-assets.githubusercontent.com' ||
+      host === 'objects.githubusercontent.com' || host.endsWith('.public.blob.vercel-storage.com');
+    if (!allowedHost) return null;
     // Prevent obvious private / loopback / link-local IPv4 destinations.
     const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
     if (ipv4) {
@@ -73,7 +76,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     const policyUrl = new URL('/rest/v1/app_release_policies', supabaseUrl);
     policyUrl.search = new URLSearchParams({
-      select: 'latest_version',
+      select: 'latest_version,download_url',
       channel: 'eq.' + channel,
       limit: '1',
     }).toString();
@@ -84,7 +87,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     });
     if (!policyResponse.ok) return json(res, 502, 'RELEASE_POLICY_UNAVAILABLE');
 
-    const rows = await policyResponse.json() as Array<{ latest_version?: string }>;
+    const rows = await policyResponse.json() as Array<{ latest_version?: string; download_url?: string }>;
     const latestVersion = rows?.[0]?.latest_version?.trim();
     // Never persist or reuse GitHub's temporary release-assets URL: it expires.
     // Build the stable release URL from the authoritative channel + version.
@@ -92,7 +95,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return json(res, 404, 'APK_RELEASE_VERSION_UNAVAILABLE');
     }
     const assetName = `ChargerPoint-${channel}-v${latestVersion}.apk`;
-    const sourceUrl = `https://github.com/alniser0592314333-commits/chargerpointnew/releases/download/v${latestVersion}/${assetName}`;
+    const storedUrl = rows?.[0]?.download_url?.trim() || '';
+    let sourceUrl = `https://github.com/alniser0592314333-commits/chargerpointnew/releases/download/v${latestVersion}/${assetName}`;
+    // New releases use immutable public Blob URLs. Legacy policy rows may contain
+    // expired GitHub signed-asset URLs, so retain the stable GitHub release fallback.
+    if (storedUrl) {
+      const stored = isSafeHttpsUrl(storedUrl);
+      if (stored && stored.hostname.toLowerCase().endsWith('.public.blob.vercel-storage.com') &&
+          stored.pathname.startsWith(`/apk/${channel}/`)) {
+        sourceUrl = stored.toString();
+      }
+    }
 
     const fileResponse = await fetchFollowingSafeRedirects(sourceUrl, req.method);
     if (!fileResponse.ok || (req.method === 'GET' && !fileResponse.body)) {
