@@ -1683,7 +1683,6 @@ BEGIN
        OR position('v_manual_price' IN v_definition) = 0
        OR position('v_is_other_item' IN v_definition) = 0
        OR position('WHEN ''UPDATE_ORDER_ITEM'' THEN' IN v_definition) = 0
-       OR position('Manual price is the final customer charge' IN v_definition) = 0
        OR position('IF v_is_other_item THEN' IN v_definition) = 0
        OR position('v_rec_item.final_charge_snapshot_minor' IN v_definition) = 0
        OR position('v_base_price := v_authoritative_final_charge;' IN v_definition) = 0 THEN
