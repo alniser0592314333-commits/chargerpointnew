@@ -5156,6 +5156,9 @@ export const updateOrderWithPhase5Engine = async (
       if (!device || !device.isActive) return { success: false, error: 'نوع الجهاز المحدد غير متاح. حدّث الصفحة واختر نوعاً فعالاً.' };
       const names = [device.name, device.nameAr, device.nameEn].map((value) => value?.trim().toLocaleLowerCase()).filter(Boolean);
       const isOther = names.some((name) => name === 'أخرى' || name === 'اخرى' || name === 'other');
+      if (isOther && edit.manualPriceMinor === undefined) {
+        return { success: false, error: 'يرجى إدخال السعر اليدوي لعنصر «أخرى».' };
+      }
       if (edit.manualPriceMinor !== undefined && (!isOther || !Number.isSafeInteger(edit.manualPriceMinor) || edit.manualPriceMinor <= 0)) {
         return { success: false, error: 'السعر اليدوي غير صالح أو لا ينتمي إلى عنصر «أخرى».' };
       }
