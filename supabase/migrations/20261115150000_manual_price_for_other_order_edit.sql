@@ -1658,8 +1658,10 @@ DECLARE
 BEGIN
     IF position('manualPriceMinor' IN v_definition) = 0
        OR position('v_manual_price' IN v_definition) = 0
-       OR position('v_is_other_item' IN v_definition) = 0 THEN
-        RAISE EXCEPTION 'Manual Other item price dispatcher validation failed';
+       OR position('v_is_other_item' IN v_definition) = 0
+       OR position('WHEN ''UPDATE_ORDER_ITEM'' THEN' IN v_definition) = 0
+       OR position('Manual price is the final customer charge' IN v_definition) = 0 THEN
+        RAISE EXCEPTION 'Manual Other item price update dispatcher validation failed';
     END IF;
 END;
 $manual_other_price_contract$;
