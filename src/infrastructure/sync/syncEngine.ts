@@ -393,6 +393,15 @@ const getActiveAdminIdForPurchaseSync = (): string | undefined => {
 
 const isPurchaseOutboxCommand = (type: string): boolean => type.startsWith('SAVE_PURCHASE_') || type === 'MARK_PURCHASE_ORDER_PAID';
 
+const isRejectedPurchaseCommandFromMissingDispatcher = (item: OutboxRecord): boolean => {
+  if (!isPurchaseOutboxCommand(item.commandType)) return false;
+  const error = String(item.lastError || '');
+  const match = error.match(/Unknown Canonical Command Type:\\s*([A-Z0-9_]+)/i);
+  // Only recover the exact command that the old server dispatcher rejected.
+  // The RPC raises this before any purchase write or processed-command record.
+  return match?.[1] === item.commandType;
+};
+
 export class SyncEngine {
   private isSyncing = false;
   public onAuthoritativeReset?: () => void;
@@ -495,7 +504,10 @@ export class SyncEngine {
         item.status === 'syncing' ||
         item.status === 'conflict' ||
         item.status === 'blocked' ||
-        (item.status === 'rejected' && isAuthOrNetworkError(item.lastError))
+        (item.status === 'rejected' && (
+          isAuthOrNetworkError(item.lastError) ||
+          isRejectedPurchaseCommandFromMissingDispatcher(item)
+        ))
       ) {
         item.status = 'pending';
         await localDb.saveOutbox(item);
