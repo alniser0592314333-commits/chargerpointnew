@@ -108,8 +108,8 @@ export const PublicAboutPage: React.FC = () => {
     }
     try {
       const parsed = new URL(url, window.location.origin);
-      if (parsed.protocol !== 'https:' || parsed.origin !== window.location.origin) throw new Error('Same-origin download route required');
-      window.location.assign(parsed.pathname + parsed.search);
+      if (parsed.protocol !== 'https:' || parsed.pathname !== '/api/download/customer') throw new Error('Secure customer download route required');
+      window.location.assign(parsed.toString());
     } catch {
       window.alert(isAr ? 'رابط التنزيل غير صالح.' : 'The download link is invalid.');
     }
