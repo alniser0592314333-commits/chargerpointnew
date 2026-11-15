@@ -725,7 +725,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "ALTER TABLE public.device_types ADD COLUMN IF NOT EXISTS name_ar text; ALTER TABLE public.device_types ADD COLUMN IF NOT EXISTS name_en text;"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS public.device_types (id uuid PRIMARY KEY, name varchar(200), name_ar varchar(200), name_en varchar(200), icon varchar(100), base_price_minor bigint, charger_fee_applicable boolean); ALTER TABLE public.device_types ADD COLUMN IF NOT EXISTS name_ar text; ALTER TABLE public.device_types ADD COLUMN IF NOT EXISTS name_en text;"
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
           DO $verify_manual_price$
           DECLARE
