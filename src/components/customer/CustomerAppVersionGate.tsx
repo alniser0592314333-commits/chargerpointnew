@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { AlertCircle, CheckCircle2, Clock3, Download, Gauge, RefreshCw, ShieldAlert, XCircle } from 'lucide-react';
-import { fetchAppReleasePolicy, parseAppVersion, type AppReleaseChannel, type AppReleasePolicy } from '../../services/appReleasePolicy';
+import { fetchAppReleasePolicy, getAppDownloadEndpoint, parseAppVersion, type AppReleaseChannel, type AppReleasePolicy } from '../../services/appReleasePolicy';
 
 const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
 
@@ -177,17 +177,20 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   const showUpdateNotice = state === 'update' && noticeReady && (channel === 'admin' || landingRoute);
   const hardBlock = state === 'blocked';
   const startUpdateDownload = async () => {
-    const url = policy?.download_url?.trim();
+    const url = policy?.download_url?.trim() ? getAppDownloadEndpoint(channel) : ''; 
     if (!url) { setDownloadError('رابط تنزيل التحديث غير متوفر في إعدادات الإدارة.'); return; }
     try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'https:') { setDownloadError('رابط التحديث غير صالح؛ يجب أن يبدأ بـ HTTPS.'); return; }
+      const downloadUrl = new URL(getAppDownloadEndpoint(channel), window.location.origin);
+      if (downloadUrl.protocol !== 'https:' || downloadUrl.origin !== window.location.origin) {
+        setDownloadError('رابط التحديث غير صالح؛ يجب أن يكون من نفس موقع التطبيق.');
+        return;
+      }
       setDownloadError('');
       setDownloadId(null);
       setDownloadProgress({ status: 'starting', bytesDownloaded: 0, totalBytes: -1, done: false, failed: false });
       setDownloadSpeed(0);
       progressSample.current = null;
-      const result = await ApkUpdater.startDownload({ url: parsed.toString(), version: policy?.latest_version || 'latest' });
+      const result = await ApkUpdater.startDownload({ url: downloadUrl.toString(), version: policy?.latest_version || 'latest' });
       setDownloadId(result.downloadId);
     } catch (error) {
       setDownloadProgress(null);
