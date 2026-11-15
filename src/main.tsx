@@ -6,11 +6,23 @@ import { isCustomerPortalPath } from './services/publicPortalOrigin';
 const root = createRoot(document.getElementById('root')!);
 const appVariant = import.meta.env.VITE_APP_VARIANT;
 let pathname = window.location.pathname;
+const hostname = window.location.hostname.toLowerCase();
+const isCustomerHost = hostname === 'www.monther.work' || hostname === 'monther.work';
+const isAdminHost = hostname === 'admin.monther.work';
+const isApiPath = pathname === '/api' || pathname.startsWith('/api/');
 
-// On the shared web origin the root is the public landing page. The admin PWA
-// has an explicit /app start URL; native admin builds also default to /app.
+// Enforce the hostname boundary before React can mount either application.
+// Customer URLs always stay on www; admin pages are only served on admin host.
+if (!isApiPath && isCustomerHost && !isCustomerPortalPath(pathname)) {
+  window.location.replace('https://www.monther.work/public/about');
+} else if (!isApiPath && isAdminHost && isCustomerPortalPath(pathname)) {
+  window.location.replace('https://www.monther.work' + pathname + window.location.search + window.location.hash);
+}
+
+// On the shared production domains, the root is selected by hostname.
+// The admin PWA starts at /app; customer web starts at /public/about.
 if (pathname === '/') {
-  const startPath = appVariant === 'admin' ? '/app' : '/public/about';
+  const startPath = appVariant === 'admin' || isAdminHost ? '/app' : '/public/about';
   window.history.replaceState({ path: startPath }, '', startPath + window.location.search + window.location.hash);
   pathname = startPath;
 }
