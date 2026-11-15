@@ -741,6 +741,7 @@ jobs:
           DECLARE
             definition text := pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure);
             command_name text;
+            v_permission_exists boolean;
           BEGIN
             FOREACH command_name IN ARRAY ARRAY[
               'SAVE_PURCHASE_SUPPLIER','SAVE_PURCHASE_ITEM','SAVE_PURCHASE_PAYMENT_METHOD',
@@ -759,9 +760,9 @@ jobs:
             END IF;
             IF to_regclass('public.permissions') IS NOT NULL THEN
               EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.permissions WHERE code = $1)'
-                INTO STRICT command_name
+                INTO v_permission_exists
                 USING 'purchases:manage';
-              IF command_name::boolean IS NOT TRUE THEN
+              IF v_permission_exists IS NOT TRUE THEN
                 RAISE EXCEPTION 'Purchase Book permission was not registered';
               END IF;
             END IF;
