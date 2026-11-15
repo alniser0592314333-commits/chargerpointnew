@@ -20,17 +20,20 @@ describe('Manual price for the Other order item', () => {
     expect(store).toContain('manualPriceMinor?: number');
     expect(useCases).toContain('Manual item pricing is only allowed for the Other device type');
     expect(useCases).toContain('finalChargeSnapshotMinor: pricing.totalPriceMinor');
+    expect(useCases).toContain('basePriceSnapshotMinor: manualPriceMinor !== undefined ? manualPriceMinor : deviceType.basePriceMinor');
+    expect(useCases).toContain('basePriceSnapshotMinor: requested.manualPriceMinor !== undefined ? requested.manualPriceMinor : deviceType.basePriceMinor');
     expect(useCases).toContain('{ manualPriceMinor: manualPriceByItemId.get(item.id)! }');
     expect(useCases).toContain('calculateItemPrice({');
   });
 
   it('accepts a server-authoritative override only when the selected device type is Other', () => {
-    const migration = read('supabase/migrations/20261115130000_manual_price_for_other_order_item.sql');
+    const migration = read('supabase/migrations/20261115170000_preserve_other_manual_price_on_delivery.sql');
     expect(migration).toContain("name_ar, name_en");
     expect(migration).toContain("v_manual_price := NULLIF(p_payload->>'manualPriceMinor', '')::BIGINT");
     expect(migration).toContain("IF NOT v_is_other_item THEN");
     expect(migration).toContain('v_authoritative_final_charge := v_manual_price;');
     expect(migration).toContain('v_authoritative_charger_fee := 0;');
+    expect(migration).toContain('v_base_price := v_manual_price;');
     expect(migration).toContain('v_authoritative_final_charge := GREATEST(0, v_base_price + v_authoritative_charger_fee - v_authoritative_discount);');
   });
 });
@@ -41,9 +44,11 @@ describe('Manual price for Other in order editing', () => {
 
   it('keeps the manual amount editable for existing and newly added Other items', () => {
     const page = read('src/components/pages/EditOrderPage.tsx');
+    const store = read('src/components/pages/dayOrdersStore.ts');
     expect(page).toContain("'Manual price (₪)'");
     expect(page).toContain('manualPriceToMinor(item.manualPrice || \'\')');
     expect(page).toContain('manualPriceMinor');
+    expect(store).toContain("manualPrice: ((i.finalChargeSnapshotMinor ?? i.totalPriceMinor) / 100).toFixed(2)");
     expect(page).toContain('!isOtherDeviceOption(selectedOption)');
     expect(page).toContain('!isOther && (');
   });
@@ -59,11 +64,16 @@ describe('Manual price for Other in order editing', () => {
   });
 
   it('applies the server-authoritative manual final price to UPDATE_ORDER_ITEM only for Other', () => {
-    const migration = read('supabase/migrations/20261115150000_manual_price_for_other_order_edit.sql');
+    const migration = read('supabase/migrations/20261115170000_preserve_other_manual_price_on_delivery.sql');
     expect(migration).toContain("WHEN 'UPDATE_ORDER_ITEM' THEN");
     expect(migration).toContain("v_manual_price := NULLIF(p_payload->>'manualPriceMinor', '')::BIGINT");
     expect(migration).toContain("IF NOT v_is_other_item THEN");
     expect(migration).toContain('v_authoritative_final_charge := v_manual_price;');
     expect(migration).toContain('v_authoritative_charger_fee := 0;');
+    expect(migration).toContain('v_base_price := v_manual_price;');
+    expect(migration).toContain('IF v_is_other_item THEN');
+    expect(migration).toContain('v_rec_item.final_charge_snapshot_minor');
+    expect(migration).toContain('v_authoritative_final_charge := COALESCE(');
+    expect(migration).toContain('v_base_price := v_authoritative_final_charge;');
   });
 });
