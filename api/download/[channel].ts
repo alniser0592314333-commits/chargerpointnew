@@ -84,9 +84,15 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     });
     if (!policyResponse.ok) return json(res, 502, 'RELEASE_POLICY_UNAVAILABLE');
 
-    const rows = await policyResponse.json() as Array<{ download_url?: string; latest_version?: string }>;
-    const sourceUrl = rows?.[0]?.download_url?.trim();
-    if (!sourceUrl) return json(res, 404, 'APK_DOWNLOAD_NOT_CONFIGURED');
+    const rows = await policyResponse.json() as Array<{ latest_version?: string }>;
+    const latestVersion = rows?.[0]?.latest_version?.trim();
+    // Never persist or reuse GitHub's temporary release-assets URL: it expires.
+    // Build the stable release URL from the authoritative channel + version.
+    if (!latestVersion || !/^(0|[1-9]\\d{0,3})\\.(0|[1-9]\\d{0,2})\\.(0|[1-9]\\d{0,2})$/.test(latestVersion)) {
+      return json(res, 404, 'APK_RELEASE_VERSION_UNAVAILABLE');
+    }
+    const assetName = `ChargerPoint-${channel}-v${latestVersion}.apk`;
+    const sourceUrl = `https://github.com/alniser0592314333-commits/chargerpointnew/releases/download/v${latestVersion}/${assetName}`;
 
     const fileResponse = await fetchFollowingSafeRedirects(sourceUrl, req.method);
     if (!fileResponse.ok || (req.method === 'GET' && !fileResponse.body)) {
