@@ -180,14 +180,17 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
     const url = policy?.download_url?.trim() ? getAppDownloadEndpoint(channel) : ''; 
     if (!url) { setDownloadError('رابط تنزيل التحديث غير متوفر في إعدادات الإدارة.'); return; }
     try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'https:') { setDownloadError('رابط التحديث غير صالح؛ يجب أن يبدأ بـ HTTPS.'); return; }
+      const downloadUrl = new URL(getAppDownloadEndpoint(channel), window.location.origin);
+      if (downloadUrl.protocol !== 'https:' || downloadUrl.origin !== window.location.origin) {
+        setDownloadError('رابط التحديث غير صالح؛ يجب أن يكون من نفس موقع التطبيق.');
+        return;
+      }
       setDownloadError('');
       setDownloadId(null);
       setDownloadProgress({ status: 'starting', bytesDownloaded: 0, totalBytes: -1, done: false, failed: false });
       setDownloadSpeed(0);
       progressSample.current = null;
-      const downloadUrl = new URL(getAppDownloadEndpoint(channel), window.location.origin).toString();\n      const result = await ApkUpdater.startDownload({ url: downloadUrl, version: policy?.latest_version || 'latest' });
+      const result = await ApkUpdater.startDownload({ url: downloadUrl.toString(), version: policy?.latest_version || 'latest' });
       setDownloadId(result.downloadId);
     } catch (error) {
       setDownloadProgress(null);
