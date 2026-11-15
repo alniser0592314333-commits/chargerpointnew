@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { AlertCircle, CheckCircle2, Clock3, Download, Gauge, RefreshCw, ShieldAlert, XCircle } from 'lucide-react';
-import { fetchAppReleasePolicy, parseAppVersion, type AppReleaseChannel, type AppReleasePolicy } from '../../services/appReleasePolicy';
+import { fetchAppReleasePolicy, getAppDownloadEndpoint, parseAppVersion, type AppReleaseChannel, type AppReleasePolicy } from '../../services/appReleasePolicy';
 
 const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
 
@@ -177,7 +177,7 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
   const showUpdateNotice = state === 'update' && noticeReady && (channel === 'admin' || landingRoute);
   const hardBlock = state === 'blocked';
   const startUpdateDownload = async () => {
-    const url = policy?.download_url?.trim();
+    const url = policy?.download_url?.trim() ? getAppDownloadEndpoint(channel) : ''; 
     if (!url) { setDownloadError('رابط تنزيل التحديث غير متوفر في إعدادات الإدارة.'); return; }
     try {
       const parsed = new URL(url);
