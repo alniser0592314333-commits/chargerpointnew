@@ -727,6 +727,43 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115170000_preserve_other_manual_price_on_delivery.sql
+      - name: Restore purchase command handlers on top of the latest manual-price dispatcher
+        env:
+          PGPASSWORD: postgres
+        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115180000_restore_purchase_sync_command_dispatch.sql
+      - name: Re-run all Purchase Book command regressions after the final dispatcher migration
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/purchase_book_migration_runtime.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $purchase_dispatcher_final$
+          DECLARE
+            definition text := pg_get_functiondef('public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure);
+            command_name text;
+          BEGIN
+            FOREACH command_name IN ARRAY ARRAY[
+              'SAVE_PURCHASE_SUPPLIER','SAVE_PURCHASE_ITEM','SAVE_PURCHASE_PAYMENT_METHOD',
+              'SAVE_PURCHASE_MONTH','SAVE_PURCHASE_WEEK','SAVE_PURCHASE_DAY',
+              'SAVE_PURCHASE_ORDER','MARK_PURCHASE_ORDER_PAID'
+            ] LOOP
+              IF position('WHEN ''' || command_name || '''' IN definition) = 0
+                 AND position('''' || command_name || '''' IN definition) = 0 THEN
+                RAISE EXCEPTION 'Final canonical dispatcher is missing purchase command %', command_name;
+              END IF;
+            END LOOP;
+            IF position('v_manual_price' IN definition) = 0
+               OR position('v_authoritative_final_charge := v_manual_price' IN definition) = 0
+               OR position('purchases:manage' IN definition) = 0 THEN
+              RAISE EXCEPTION 'Final dispatcher lost manual-price behavior or purchase RBAC';
+            END IF;
+            IF to_regclass('public.permissions') IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM public.permissions WHERE code='purchases:manage') THEN
+              RAISE EXCEPTION 'Purchase Book permission was not registered';
+            END IF;
+          END;
+          $purchase_dispatcher_final$;
+          SQL
       - name: Verify manual price dispatcher and bilingual device-name columns
         env:
           PGPASSWORD: postgres
