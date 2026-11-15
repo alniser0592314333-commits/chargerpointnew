@@ -717,10 +717,12 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/order_numbering_contiguous_runtime.test.sql
-      - name: Apply manual price for Other order item dispatcher migration
+      - name: Apply manual price for Other order item dispatcher migrations
         env:
           PGPASSWORD: postgres
-        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115130000_manual_price_for_other_order_item.sql
+        run: |
+          psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115130000_manual_price_for_other_order_item.sql
+          psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261115150000_manual_price_for_other_order_edit.sql
       - name: Verify manual price dispatcher and bilingual device-name columns
         env:
           PGPASSWORD: postgres
@@ -733,8 +735,10 @@ jobs:
           BEGIN
             IF position('manualPriceMinor' IN v_definition) = 0
                OR position('v_authoritative_final_charge := v_manual_price' IN v_definition) = 0
-               OR position('IF NOT v_is_other_item THEN' IN v_definition) = 0 THEN
-              RAISE EXCEPTION 'Manual Other item price dispatcher contract is missing';
+               OR position('IF NOT v_is_other_item THEN' IN v_definition) = 0
+               OR position('WHEN ''UPDATE_ORDER_ITEM'' THEN' IN v_definition) = 0
+               OR position('Manual price is the final customer charge' IN v_definition) = 0 THEN
+              RAISE EXCEPTION 'Manual Other item add/edit dispatcher contract is missing';
             END IF;
             IF NOT EXISTS (
               SELECT 1 FROM information_schema.columns
