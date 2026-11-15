@@ -5,6 +5,7 @@ import path from 'path';
 describe('Purchase book local-first architecture contract', () => {
   const read = (file:string) => fs.readFileSync(path.resolve(process.cwd(),file),'utf8');
   const migration = read('supabase/migrations/20261111090000_purchase_book_local_first.sql');
+  const dispatcherRepair = read('supabase/migrations/20261115180000_restore_purchase_sync_command_dispatch.sql');
   const isolationMigration = read('supabase/migrations/20261114120000_purchase_book_admin_isolation.sql');
   const syncEngine = read('src/infrastructure/sync/syncEngine.ts');
   const syncTransport = read('src/infrastructure/sync/SupabaseSyncTransport.ts');
@@ -48,6 +49,29 @@ describe('Purchase book local-first architecture contract', () => {
     expect(service).toContain('ctx.commandRepo.record');
     expect(service).not.toContain('invokeSupabaseRpc');
     expect(service).not.toContain('invokeSupabaseRestGet');
+  });
+
+  it('keeps all eight purchase handlers in the final dispatcher after manual-price migrations', () => {
+    const commands = [
+      'SAVE_PURCHASE_SUPPLIER','SAVE_PURCHASE_ITEM','SAVE_PURCHASE_PAYMENT_METHOD',
+      'SAVE_PURCHASE_MONTH','SAVE_PURCHASE_WEEK','SAVE_PURCHASE_DAY',
+      'SAVE_PURCHASE_ORDER','MARK_PURCHASE_ORDER_PAID',
+    ];
+    for (const command of commands) {
+      expect(dispatcherRepair).toContain(`'${command}'`);
+    }
+    expect(dispatcherRepair).toContain("v_required_perm := 'purchases:manage'");
+    expect(dispatcherRepair).toContain("VALUES ('purchases:manage'");
+    expect(dispatcherRepair).toContain('v_manual_price');
+    expect(dispatcherRepair).toContain('v_authoritative_final_charge := v_manual_price');
+    expect(dispatcherRepair.indexOf("WHEN 'SAVE_PURCHASE_SUPPLIER'")).toBeLessThan(
+      dispatcherRepair.indexOf("RAISE EXCEPTION 'Unknown Canonical Command Type: %'"),
+    );
+  });
+
+  it('requeues only rejected purchase outbox commands whose exact handler was missing', () => {
+    expect(syncEngine).toContain('isRejectedPurchaseCommandFromMissingDispatcher');
+    expect(syncEngine).toContain('match?.[1] === item.commandType');
   });
 
   it('includes purchase entities in both new-device bootstrap and authoritative backup snapshots', () => {
