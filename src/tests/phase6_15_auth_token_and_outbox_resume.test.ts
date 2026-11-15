@@ -217,7 +217,65 @@ describe('Phase 6.15: Auth Token Resolution & Outbox Resume Security Suite', () 
       expect(items.find(i => i.commandId === 'cmd-conflict-auth')?.status).toBe('pending');
     });
 
-    it('3. Outbox records and sync state survive localDb restart and reload', async () => {
+    it('3. recovers only purchase commands rejected by the missing canonical dispatcher handler', async () => {
+      const engine = new SyncEngine(new MockServerSyncTransport());
+      const purchasePayload = { id: 'purchase-item-1', name: 'Battery', isActive: true, resetGeneration: 1 };
+
+      await localDb.saveOutbox({
+        commandId: 'cmd-purchase-missing-handler',
+        commandType: 'SAVE_PURCHASE_ITEM',
+        aggregateType: 'purchase_items',
+        aggregateId: 'purchase-item-1',
+        payload: purchasePayload,
+        createdAt: new Date().toISOString(),
+        deviceId: 'dev-1',
+        actorAdminId: 'admin-1',
+        status: 'rejected',
+        retryCount: 1,
+        lastError: 'UNKNOWN: RPC execute_sync_command failed [400]: Unknown Canonical Command Type: SAVE_PURCHASE_ITEM',
+      });
+
+      await localDb.saveOutbox({
+        commandId: 'cmd-purchase-different-handler',
+        commandType: 'SAVE_PURCHASE_ITEM',
+        aggregateType: 'purchase_items',
+        aggregateId: 'purchase-item-2',
+        payload: { id: 'purchase-item-2' },
+        createdAt: new Date().toISOString(),
+        deviceId: 'dev-1',
+        actorAdminId: 'admin-1',
+        status: 'rejected',
+        retryCount: 1,
+        lastError: 'Unknown Canonical Command Type: SAVE_PURCHASE_ORDER',
+      });
+
+      await localDb.saveOutbox({
+        commandId: 'cmd-non-purchase-unknown',
+        commandType: 'CREATE_CUSTOMER',
+        aggregateType: 'customers',
+        aggregateId: 'customer-1',
+        payload: { id: 'customer-1' },
+        createdAt: new Date().toISOString(),
+        deviceId: 'dev-1',
+        actorAdminId: 'admin-1',
+        status: 'rejected',
+        retryCount: 1,
+        lastError: 'Unknown Canonical Command Type: CREATE_CUSTOMER',
+      });
+
+      const resumedCount = await engine.resumePendingOutbox();
+      expect(resumedCount).toBe(1);
+
+      const items = await localDb.listOutbox();
+      const recovered = items.find(item => item.commandId === 'cmd-purchase-missing-handler');
+      expect(recovered?.status).toBe('pending');
+      expect(recovered?.payload).toEqual(purchasePayload);
+      expect(recovered?.retryCount).toBe(1);
+      expect(items.find(item => item.commandId === 'cmd-purchase-different-handler')?.status).toBe('rejected');
+      expect(items.find(item => item.commandId === 'cmd-non-purchase-unknown')?.status).toBe('rejected');
+    });
+
+    it('4. Outbox records and sync state survive localDb restart and reload', async () => {
       await localDb.saveOutbox({
         commandId: 'cmd-persist-1',
         commandType: 'OPEN_DAY',
