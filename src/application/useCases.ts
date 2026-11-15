@@ -389,6 +389,7 @@ export class FinalUseCases {
       hasCharger: normalizedHasCharger,
       unitPriceMinor: pricing.unitPriceMinor,
       totalPriceMinor: pricing.totalPriceMinor,
+      finalChargeSnapshotMinor: pricing.totalPriceMinor,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: 1,
