@@ -4,13 +4,33 @@ import './index.css';
 import { isCustomerPortalPath } from './services/publicPortalOrigin';
 
 const root = createRoot(document.getElementById('root')!);
+const pathnameAtEntry = window.location.pathname;
+const hostname = window.location.hostname.toLowerCase();
+const isCustomerHost = hostname === 'www.monther.work' || hostname === 'monther.work';
+const isAdminHost = hostname === 'admin.monther.work';
+const isApiPath = pathnameAtEntry === '/api' || pathnameAtEntry.startsWith('/api/');
+const hostRedirect = !isApiPath && isCustomerHost && !isCustomerPortalPath(pathnameAtEntry)
+  ? 'https://www.monther.work/public/about'
+  : !isApiPath && isAdminHost && isCustomerPortalPath(pathnameAtEntry)
+    ? 'https://www.monther.work' + pathnameAtEntry + window.location.search + window.location.hash
+    : null;
+
+if (isApiPath) {
+  // Fail closed if a hosting or service-worker misconfiguration ever serves
+  // index.html for an API URL: API paths must never mount either application.
+  root.render(<main role="status" style={{ minHeight: '100vh' }} />);
+} else if (hostRedirect) {
+  // Do not mount the admin application even for a single frame on the customer host.
+  window.location.replace(hostRedirect);
+  root.render(<main role="status" style={{ minHeight: '100vh' }} />);
+} else {
 const appVariant = import.meta.env.VITE_APP_VARIANT;
 let pathname = window.location.pathname;
 
-// On the shared web origin the root is the public landing page. The admin PWA
-// has an explicit /app start URL; native admin builds also default to /app.
+// On the shared production domains, the root is selected by hostname.
+// The admin PWA starts at /app; customer web starts at /public/about.
 if (pathname === '/') {
-  const startPath = appVariant === 'admin' ? '/app' : '/public/about';
+  const startPath = appVariant === 'admin' || isAdminHost ? '/app' : '/public/about';
   window.history.replaceState({ path: startPath }, '', startPath + window.location.search + window.location.hash);
   pathname = startPath;
 }
@@ -85,4 +105,6 @@ if (appVariant === 'customer') {
       })
       .catch((error) => console.error('App failed to load.', error));
   }
+}
+
 }

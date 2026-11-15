@@ -24,8 +24,9 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           // This is a root-scoped SPA. Navigation requests should fall back to
           // index.html except for API paths, which must remain network-only.
-          navigateFallbackAllowlist: [/^(?!\/rest\/v1\/).*/],
-          navigateFallbackDenylist: [/^\/rest\/v1\//, /^https:\/\/.*\.supabase\.co\/.*/],
+          navigateFallbackAllowlist: [/^(?!\/api\/)(?!\/rest\/v1\/).*/],
+          // API requests must reach Vercel Functions, never the cached SPA shell.
+          navigateFallbackDenylist: [/^\/api\//, /^\/rest\/v1\//, /^https:\/\/.*\.supabase\.co\/.*/],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,

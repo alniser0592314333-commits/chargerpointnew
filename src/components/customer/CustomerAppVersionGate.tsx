@@ -181,8 +181,8 @@ export const AppVersionGate: React.FC<React.PropsWithChildren<{ channel: AppRele
     if (!url) { setDownloadError('رابط تنزيل التحديث غير متوفر في إعدادات الإدارة.'); return; }
     try {
       const downloadUrl = new URL(getAppDownloadEndpoint(channel), window.location.origin);
-      if (downloadUrl.protocol !== 'https:' || downloadUrl.origin !== window.location.origin) {
-        setDownloadError('رابط التحديث غير صالح؛ يجب أن يكون من نفس موقع التطبيق.');
+      if (downloadUrl.protocol !== 'https:' || downloadUrl.pathname !== '/api/download/' + channel) {
+        setDownloadError('رابط التحديث غير صالح؛ يجب أن يكون من رابط الإصدار الآمن.');
         return;
       }
       setDownloadError('');

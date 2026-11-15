@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, Download, Gauge, HardDrive, MoonStar, RefreshCw, ShieldCheck, Wifi, XCircle } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
-import { fetchAppReleasePolicy, type AppReleasePolicy } from '../../services/appReleasePolicy';
+import { fetchAppReleasePolicy, getAppDownloadEndpoint, type AppReleasePolicy } from '../../services/appReleasePolicy';
 import './public-app-download.css';
 
 type DownloadState = 'idle' | 'loading-policy' | 'downloading' | 'complete' | 'error';
@@ -54,14 +54,14 @@ export const PublicAppDownloadPage: React.FC = () => {
       return;
     }
     setPolicy(result.policy);
-    setDownloadUrl(result.policy.download_url?.trim() || '');
+    setDownloadUrl(result.policy.download_url?.trim() ? getAppDownloadEndpoint('customer') : '');
     if (!result.policy.download_url?.trim()) {
       setState('error');
       setError(ar ? 'رابط تنزيل التطبيق غير مضاف في إعدادات الإدارة.' : 'The app download URL has not been set in Admin Settings.');
       return;
     }
     try {
-      const url = new URL(result.policy.download_url);
+      const url = new URL(getAppDownloadEndpoint('customer'), window.location.origin);
       if (url.protocol !== 'https:') throw new Error('HTTPS required');
       setState('idle');
     } catch {
@@ -137,8 +137,8 @@ export const PublicAppDownloadPage: React.FC = () => {
       setDirectFallback(true);
       setState('error');
       setError(ar
-        ? 'تعذر عرض تقدم التنزيل من مصدر الملف. يمكنك متابعة التنزيل مباشرة من الرابط الرسمي أدناه.'
-        : 'The file host does not allow in-page progress tracking. You can still download directly from the official link below.');
+        ? 'تعذر تنزيل الملف عبر الصفحة. استخدم رابط التنزيل الآمن أدناه للمحاولة مباشرة.'
+        : 'The download could not be streamed in-page. Use the secure download link below to retry.');
     }
   };
 

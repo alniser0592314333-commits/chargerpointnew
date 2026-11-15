@@ -30,7 +30,24 @@ export function parseAppVersion(value: string): { major: number; minor: number; 
 
 /** Stable same-origin download route. The server resolves the current URL from the release policy. */
 export function getAppDownloadEndpoint(channel: AppReleaseChannel): string {
-  return '/api/download/' + channel;
+  const current = typeof window !== 'undefined' ? window.location : null;
+  const hostname = current?.hostname.toLowerCase() || '';
+  const productionHosts = new Set([
+    'www.monther.work',
+    'monther.work',
+    'admin.monther.work',
+    'chargerpointnew.vercel.app',
+  ]);
+
+  // Capacitor uses https://localhost as its WebView origin. Never build a
+  // production APK update URL from that internal origin.
+  if (productionHosts.has(hostname) || (hostname === 'localhost' && current?.protocol === 'https:')) {
+    const host = channel === 'customer' ? 'www.monther.work' : 'admin.monther.work';
+    return 'https://' + host + '/api/download/' + channel;
+  }
+
+  // Keep preview and local development environments isolated.
+  return (current?.origin || '') + '/api/download/' + channel;
 }
 
 export async function fetchAppReleasePolicy(channel: AppReleaseChannel): Promise<AppReleasePolicyResult> {
