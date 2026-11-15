@@ -47,6 +47,7 @@ describe('Manual price for Other in order editing', () => {
     expect(page).toContain("'Manual price (₪)'");
     expect(page).toContain('manualPriceToMinor(item.manualPrice || \'\')');
     expect(page).toContain('manualPriceMinor');
+    expect(page).toContain("manualPrice: ((i.finalChargeSnapshotMinor ?? i.totalPriceMinor) / 100).toFixed(2)");
     expect(page).toContain('!isOtherDeviceOption(selectedOption)');
     expect(page).toContain('!isOther && (');
   });
