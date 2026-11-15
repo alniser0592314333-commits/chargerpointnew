@@ -27,7 +27,7 @@ describe('Manual price for the Other order item', () => {
   });
 
   it('accepts a server-authoritative override only when the selected device type is Other', () => {
-    const migration = read('supabase/migrations/20261115130000_manual_price_for_other_order_item.sql');
+    const migration = read('supabase/migrations/20261115170000_preserve_other_manual_price_on_delivery.sql');
     expect(migration).toContain("name_ar, name_en");
     expect(migration).toContain("v_manual_price := NULLIF(p_payload->>'manualPriceMinor', '')::BIGINT");
     expect(migration).toContain("IF NOT v_is_other_item THEN");
@@ -62,7 +62,7 @@ describe('Manual price for Other in order editing', () => {
   });
 
   it('applies the server-authoritative manual final price to UPDATE_ORDER_ITEM only for Other', () => {
-    const migration = read('supabase/migrations/20261115150000_manual_price_for_other_order_edit.sql');
+    const migration = read('supabase/migrations/20261115170000_preserve_other_manual_price_on_delivery.sql');
     expect(migration).toContain("WHEN 'UPDATE_ORDER_ITEM' THEN");
     expect(migration).toContain("v_manual_price := NULLIF(p_payload->>'manualPriceMinor', '')::BIGINT");
     expect(migration).toContain("IF NOT v_is_other_item THEN");
