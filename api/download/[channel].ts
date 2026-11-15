@@ -58,6 +58,14 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const channel = channelMatch?.[1] as DownloadChannel | undefined;
   if (!channel) return json(res, 404, 'NOT_FOUND');
 
+  // Keep the administrator APK endpoint off the public customer hostname.
+  // Customer downloads are likewise served only from the canonical public host.
+  const requestHost = String(req.headers.host || '').split(':')[0].toLowerCase();
+  if ((channel === 'admin' && requestHost !== 'admin.monther.work') ||
+      (channel === 'customer' && requestHost === 'admin.monther.work')) {
+    return json(res, 404, 'NOT_FOUND');
+  }
+
   const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://ydhcyamtgioyrxfarkwk.supabase.co';
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_dXsrK8ltM6DCZ88HgfP27w_bxb3rvGN';
   if (!anonKey) return json(res, 503, 'DOWNLOAD_CONFIGURATION_UNAVAILABLE');
