@@ -15,7 +15,11 @@ const hostRedirect = !isApiPath && isCustomerHost && !isCustomerPortalPath(pathn
     ? 'https://www.monther.work' + pathnameAtEntry + window.location.search + window.location.hash
     : null;
 
-if (hostRedirect) {
+if (isApiPath) {
+  // Fail closed if a hosting or service-worker misconfiguration ever serves
+  // index.html for an API URL: API paths must never mount either application.
+  root.render(<main role="status" style={{ minHeight: '100vh' }} />);
+} else if (hostRedirect) {
   // Do not mount the admin application even for a single frame on the customer host.
   window.location.replace(hostRedirect);
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
