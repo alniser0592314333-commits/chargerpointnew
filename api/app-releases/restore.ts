@@ -1,6 +1,6 @@
 import { list } from '@vercel/blob';
-import type { ApiRequest, ApiResponse, ReleaseChannel } from '../_lib/appReleaseAuth';
-import { parseReleaseVersion, requireSuperAdmin, sendJson, updateReleasePolicy } from '../_lib/appReleaseAuth';
+import type { ApiRequest, ApiResponse, ReleaseChannel } from '../_lib/appReleaseAuth.js';
+import { parseReleaseVersion, requireSuperAdmin, sendJson, updateReleasePolicy } from '../_lib/appReleaseAuth.js';
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   res.setHeader('Cache-Control', 'no-store, private');

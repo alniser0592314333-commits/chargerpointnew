@@ -1,6 +1,6 @@
 import { put } from '@vercel/blob';
 import type { IncomingMessage } from 'node:http';
-import { parseReleaseVersion, requireSuperAdmin, sendJson, updateReleasePolicy, type ApiRequest, type ApiResponse, type ReleaseChannel } from '../_lib/appReleaseAuth';
+import { parseReleaseVersion, requireSuperAdmin, sendJson, updateReleasePolicy, type ApiRequest, type ApiResponse, type ReleaseChannel } from '../_lib/appReleaseAuth.js';
 
 const MAX_APK_BYTES = 4 * 1024 * 1024;
 async function readBody(req: IncomingMessage): Promise<Buffer> {
