@@ -493,6 +493,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                   <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
                 </button>
               )}
+              {isSuperAdmin && (
+                <button type="button" onClick={() => setActiveSettingsSection("releases")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+       ...[truncated]
               {hasPermission("settings:manage") && (
                 <button type="button" onClick={() => setActiveSettingsSection("backup")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
                   <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Database className="w-5 h-5" /></span>
@@ -504,13 +507,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                 <button type="button" onClick={() => setActiveSettingsSection("sync")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
                   <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><RefreshCw className="w-5 h-5" /></span>
                   <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "حالة الاتصال والمزامنة والعمليات المعلقة" : "Connection, synchronization and pending operations"}</span></span>
-                  <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
-                </button>
-              )}
-              {isSuperAdmin && (
-                <button type="button" onClick={() => setActiveSettingsSection("releases")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
-                  <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Smartphone className="w-5 h-5" /></span>
-                  <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "إدارة إصدارات التطبيقات" : "App Release Management"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "رفع APK وسجل الإصدارات والاستعادة" : "Upload APKs, release history and restore"}</span></span>
                   <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
                 </button>
               )}
@@ -659,7 +655,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
           <JawwalPayRecipientSettings locale={locale} />
         )}
 
-        {activeSettingsSection === "releases" && isSuperAdmin && (
+        {activeSettingsSection === "general" && isSuperAdmin && (
           <AppReleaseSettingsCard locale={locale} />
         )}
 
