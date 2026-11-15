@@ -73,7 +73,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     const policyUrl = new URL('/rest/v1/app_release_policies', supabaseUrl);
     policyUrl.search = new URLSearchParams({
-      select: 'download_url,latest_version',
+      select: 'latest_version',
       channel: 'eq.' + channel,
       limit: '1',
     }).toString();
@@ -88,7 +88,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const latestVersion = rows?.[0]?.latest_version?.trim();
     // Never persist or reuse GitHub's temporary release-assets URL: it expires.
     // Build the stable release URL from the authoritative channel + version.
-    if (!latestVersion || !/^(0|[1-9]\\d{0,3})\\.(0|[1-9]\\d{0,2})\\.(0|[1-9]\\d{0,2})$/.test(latestVersion)) {
+    if (!latestVersion || !/^(0|[1-9][0-9]{0,3})\\.(0|[1-9][0-9]{0,2})\\.(0|[1-9][0-9]{0,2})$/.test(latestVersion)) {
       return json(res, 404, 'APK_RELEASE_VERSION_UNAVAILABLE');
     }
     const assetName = `ChargerPoint-${channel}-v${latestVersion}.apk`;
