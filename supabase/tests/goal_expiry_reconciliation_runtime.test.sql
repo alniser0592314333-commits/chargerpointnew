@@ -226,7 +226,7 @@ SELECT public.execute_canonical_sync_command_unlocked(
   'APPROVE_GOAL_REQUEST',
   jsonb_build_object(
     'requestId', '60000000-0000-4000-8000-000000000002',
-    'resultingGoalId', '30000000-0000-4000-8000-000000000005',
+    'resultingGoalId', '30000000-0000-4000-8000-000000000006',
     'targetQuantity', 12,
     'bonusAmountMinor', 180,
     'durationDays', 6
@@ -236,11 +236,11 @@ SELECT public.execute_canonical_sync_command_unlocked(
   '10000000-0000-4000-8000-000000000001'
 );
 
-DO $
+DO $approval_values$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.goals
-    WHERE id = '30000000-0000-4000-8000-000000000005'
+    WHERE id = '30000000-0000-4000-8000-000000000006'
       AND target_quantity = 12
       AND bonus_amount_minor = 180
       AND duration_days = 6
@@ -248,6 +248,6 @@ BEGIN
     RAISE EXCEPTION 'Approval did not preserve the explicitly reviewed proposal values';
   END IF;
 END;
-$;
+$approval_values$;
 
 SELECT 'goal_expiry_reconciliation_runtime_tests_passed' AS result;
