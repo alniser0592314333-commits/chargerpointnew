@@ -22,8 +22,8 @@
 ## Live database audit findings on 16 November 2026
 
 - There is one ACTIVE goal and one COMPLETED goal; two goal requests are APPROVED. No goal-specific cron job is scheduled.
-- The live goal and goal-request tables have change-capture triggers. The canonical dispatcher also manually calls `record_canonical_change` after the same DML, producing duplicate sync rows. The live log contains 6 duplicated goal-request entity/version groups (6 redundant rows) and 6 duplicated goal entity/version groups (7 redundant rows).
-- PR #310 adds two low-resource fixes without changing production: expiry reconciliation inside the existing admin Goals read RPC, and same-transaction de-duplication for trigger-captured goals, goal requests, and financial-ledger bonus events. It deliberately creates no cron job, polling loop, extra client RPC, Edge Function, or new index.
+- The live goal and goal-request tables have change-capture triggers. The canonical dispatcher also manually calls `record_canonical_change` after the same DML, producing duplicate sync rows. The live log contains 4 duplicated goal-request entity/version groups (6 redundant rows) and 6 duplicated goal entity/version groups (7 redundant rows).
+- PR #310 adds two low-resource fixes without changing production: expiry reconciliation inside the existing admin Goals read RPC, and same-transaction de-duplication for trigger-captured goals, goal requests, and financial-ledger events. It deliberately creates no cron job, polling loop, extra client RPC, Edge Function, or new index.
 
 ## Release blockers still requiring isolated regression tests
 
