@@ -8,9 +8,10 @@ export interface SidebarProps {
   onNavigate: (path: string) => void;
   className?: string;
   notificationCount?: number;
+  customerAccountCount?: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNavigate, className = '', notificationCount = 0 }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNavigate, className = '', notificationCount = 0, customerAccountCount = 0 }) => {
   const { t, locale } = useI18n();
 
   const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
@@ -26,7 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
     { id: '/app/financials', label: t('navFinancials') },
     ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
     { id: '/app/notifications', label: t('navNotificationsRequests'), badge: notificationCount },
-    ...(canManageCustomerAccounts ? [{ id: '/app/customer-accounts', label: locale === 'ar' ? 'حسابات العملاء وكلمات السر' : 'Customer Accounts & Passwords' }] : []),
+    ...(canManageCustomerAccounts ? [{ id: '/app/customer-accounts', label: locale === 'ar' ? 'حسابات العملاء وكلمات السر' : 'Customer Accounts & Passwords', badge: customerAccountCount }] : []),
     { id: '/app/settings/qr', label: t('navQrDesign') },
     ...(hasAdminManage ? [{ id: '/app/settings/admins', label: t('navAdminMgmt') }] : []),
     { id: '/app/settings', label: t('navSettings') },
@@ -57,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
               }`}
             >
               <span>{item.label}</span>
-              {item.id === '/app/notifications' && Boolean(item.badge) && <span aria-label={t('navNotificationsRequests') + ': ' + item.badge} className="ms-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-extrabold leading-none text-white">{Number(item.badge) > 99 ? '99+' : item.badge}</span>}
+              {Boolean(item.badge) && <span aria-label={item.label + ': ' + item.badge} className="ms-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[10px] font-extrabold leading-none text-white">{Number(item.badge) > 99 ? '99+' : item.badge}</span>}
             </button>
           );
         })}
