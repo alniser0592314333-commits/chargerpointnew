@@ -1,29 +1,41 @@
-# Smart Customer Goals — Canonical Policy
+# Smart Customer Goals — Current Policy and Release Audit
 
-## Approved business rules
-- A customer can have only one ACTIVE goal.
-- Goal duration is a randomly selected integer from 3 through 15 days inclusive unless an authorized admin explicitly sets a valid duration.
-- Once a goal is created, its chosen duration and expiry are persisted. Sync, refresh, and retries must not reroll an existing goal.
-- The target scales with both the customer's recent delivered-device pace and the selected duration. Recent activity is measured over the previous seven days.
-- Target formula: expected devices during the goal = (distinct qualifying devices delivered in the previous 7 days / 7) × duration. Target = max(10, ceil(expected devices + max(10, 25% of expected devices))).
-- Count distinct order-item IDs, not ledger rows. Only actually delivered and financially recognized devices qualify. A reversed/cancelled item must not count toward active-goal progress.
-- Reward remains based on target size and challenge difficulty. Existing reward band is 8–13 agorot per target device (₪0.80–₪1.30 per 10 devices), and all values remain integer minor units.
-- Hard reward cap: ₪2 per 10 target devices = 20 agorot per target device. Bonus must never exceed targetQuantity × 20 minor units. Example: target 50 → cap 1,000 agorot = ₪10.
-- Progress is derived, not manually editable. Completion and bonus issuance must be atomic and idempotent. Completed/failed goals are immutable.
-- Server/PostgreSQL is authoritative for eligibility, progress, completion, expiry, and bonus issuance; client-computed values are advisory only.
-- Cancelling/reversing a previously counted delivery must remove that device from an ACTIVE goal's progress.
-- Goal duration and expiry must remain consistent: expires_at = started_at + duration_days × 24 hours.
+## Current proposal policy in `src/domain/rules.ts`
 
-## Code/database reconciliation findings (read-only audit)
-- `src/domain/rules.ts` previously restricted duration to 6–7 days, used a fixed seven-day target independent of selected duration, and had no ₪2/10-device cap.
-- `src/application/useCases.ts` previously counted CHARGE/ORDER_ITEM_CHARGE ledger rows rather than distinct item IDs; evaluator did the same, so duplicate ledger rows could inflate progress and reversals were not subtracted.
-- `src/domain/invariants.ts` previously allowed any positive duration and did not validate the reward cap.
-- Live `public.goals` schema has target, progress, bonus, duration, status, start/expiry timestamps and bonus_ledger_id, but the database duration constraint is only `duration_days > 0`; it does not enforce 3–15 or reward cap.
-- Live `public.evaluate_customer_active_goal(uuid)` counts distinct delivered, recognized order items and excludes soft-deleted items, but its EXECUTE privilege is granted to PUBLIC and anon as well as authenticated. It is SECURITY DEFINER and must be hardened.
-- Live `execute_canonical_sync_command` UPDATE_GOAL_PROGRESS branch accepts client-provided progress/status/bonus fields instead of independently verifying progress and target eligibility. This violates server-authoritative goal accounting and remains a database-side blocker.
-- The live database already has `trg_change_capture` triggers on `goals`, `goal_requests`, and `financial_ledger`; the previous goal functions also manually wrote change_log rows, creating duplicate delta events. The forward migration removes manual goal-related change-log writes and relies on full-row trigger capture.
-- The migration currently in source control and live function body are not identical; the database change must be a new forward migration, not an edit to an already-applied migration.
-- No live goal data should be mutated for tests. Existing live goal tables were reported empty during the audit; tests must use isolated fixtures/local mocks.
+- A customer may have only one ACTIVE goal. The live database enforces this with the partial unique index `uq_goals_one_active_customer`.
+- A generated proposal uses an integer duration between 5 and 15 days. For a 28-day activity profile, the selected range is activity-sensitive: 5–9 days at a high recent pace, 5–11 days at a medium pace, and 7–15 days at a lower pace. An explicitly selected admin duration may be 3–15 days.
+- The activity profile covers up to 28 days. The recent seven-day average contributes 65% and the 28-day average contributes 35%.
+- Expected devices = weighted daily pace × duration. The target is at least 10 and adds a stretch of the greater of 10 devices or 25% of expected devices.
+- The proposal reward rate is 15–20 agorot per target device. Proposal generation has a minimum total bonus of 150 agorot. The hard maximum is 20 agorot per target device; all amounts are integer minor units.
+- Once created, a goal's duration and expiry must remain consistent: `expires_at = started_at + duration_days`.
+- The client proposal is advisory. PostgreSQL is authoritative for eligibility, progress, completion, expiry, and bonus issuance.
 
-## Release gate
-Do not consider the feature complete until a forward SQL migration enforces the same duration and bonus rules, hardens evaluator privileges, recalculates progress on the server, rejects forged progress/bonus mutations, and handles reversals consistently. Verify typecheck/unit tests and inspect the generated migration before applying it to the live project.
+## Server-side progress and state enforcement confirmed in the live database
+
+- Progress counts distinct order-item IDs only when status is `delivered`, operational status is `DELIVERED`, financial status is `RECOGNIZED`, delivery time is within the goal window, and the item is not soft-deleted.
+- The order-item update trigger invokes the server evaluator when delivery, recognition, reversal, or soft-delete fields change.
+- The evaluator locks the ACTIVE goal, recalculates progress from order items, and handles completion/expiry. Completion writes a matching BONUS ledger entry and updates the goal in the same transaction.
+- The goal business-rule trigger enforces positive target, 3–15 day duration, expiry/duration consistency, the 20-agorot-per-device cap, server-calculated progress, and matching bonus-ledger data for COMPLETED goals.
+- Completed and failed goals are immutable.
+- The public evaluator is not executable by `anon`; direct execution of the internal evaluator is not granted to `anon`, `authenticated`, or `service_role`. The public wrapper is permission-guarded.
+
+## Live database audit findings on 16 November 2026
+
+- There is one ACTIVE goal and one COMPLETED goal; two goal requests are APPROVED. No goal-specific cron job is scheduled.
+- The live goal and goal-request tables have change-capture triggers. The canonical dispatcher also manually calls `record_canonical_change` after the same DML, producing duplicate sync rows. The live log contains 6 duplicated goal-request entity/version groups (6 redundant rows) and 6 duplicated goal entity/version groups (7 redundant rows).
+- PR #310 adds two low-resource fixes without changing production: expiry reconciliation inside the existing admin Goals read RPC, and same-transaction de-duplication for trigger-captured goals, goal requests, and financial-ledger bonus events. It deliberately creates no cron job, polling loop, extra client RPC, Edge Function, or new index.
+
+## Release blockers still requiring isolated regression tests
+
+1. **Premature bonus insertion:** the canonical `UPDATE_GOAL_PROGRESS` branch can insert a BONUS ledger row when the client sends `bonusGranted=true`, before the goal update proves that the goal is completed. The goal trigger validates a matching ledger row when status becomes COMPLETED, but it does not itself reject a BONUS row that is inserted while the goal remains ACTIVE. This path must be closed before release.
+2. **Approval fallbacks:** `APPROVE_GOAL_REQUEST` still defaults missing proposal fields to target 10 (after requested target), bonus 500 agorot, and duration 7 days. Approval should require the reviewed proposal values or generate them server-side, not silently invent defaults.
+3. **Pending-request duplication:** `goal_requests` currently has only its primary-key index; it has no database uniqueness guard for one PENDING request per customer. Confirm the intended product rule, then enforce it atomically if only one pending request is allowed.
+4. **Customer-facing expiry view:** PR #310 reconciles expiry when the admin Goals page is opened. Verify the customer portal's read path and decide whether it needs the same on-demand server reconciliation without adding a separate polling request.
+5. **Legacy RPC closure:** the older `execute_sync_command_impl_unlocked` still contains client-driven goal mutation code. Confirm all callers remain routed through the canonical guarded RPC and that the legacy implementation cannot be executed directly.
+
+## Cost and rollout rules
+
+- Do not add a per-minute cron, client polling, repeated data downloads, or new Edge Function/HTTP work for goals.
+- Prefer existing RPC calls and database triggers; keep new queries bounded by existing indexes.
+- Test only against isolated fixtures. Do not mutate live customer, goal, or financial-ledger rows for verification.
+- Do not apply this forward migration to production until CI verifies the exact migration and the release blockers above are addressed.
