@@ -18,7 +18,10 @@ describe('notification routing and customer account management', () => {
     expect(push).toContain('allowExpiredCustomerAppSession = true');
     expect(push).toContain('eventType === "DEBT_PAYMENT_REMINDER" ? "/customer/finance" : "/public/about"');
     expect(push).toContain('p_allow_expired_customer_app_session: allowExpiredCustomerAppSession');
+    expect(push).toContain('eventType === "RESET_REQUESTED" ? "/app/customer-accounts" : "/app/notifications"');
     expect(push).not.toContain('p_allow_account_status_notice: allowExpiredCustomerAppSession');
+    const pushNavigation = read('src/services/nativePushNotifications.ts');
+    expect(pushNavigation).toContain("requested === '/app/customer-accounts'");
   });
 
   it('exposes customer accounts as a separate admin route and menu item', () => {
@@ -30,6 +33,11 @@ describe('notification routing and customer account management', () => {
     expect(desktop).toContain("'/app/customer-accounts'");
     expect(mobile).toContain("'/app/customer-accounts'");
     expect(payments).not.toContain('CustomerAccountNotificationsPanel');
+    const layout = read('src/components/shell/AuthenticatedLayout.tsx');
+    const countHook = read('src/hooks/useAdminNotificationCount.ts');
+    expect(layout).toContain('customerAccountCount={notificationCounts.customerAccounts}');
+    expect(countHook).toContain('nextCounts.notifications = paymentsResult.data.length');
+    expect(countHook).toContain('nextCounts.customerAccounts = requests.filter');
   });
 
   it('loads customer phone numbers and sends reset passwords through the default Android SIM', () => {
