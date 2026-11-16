@@ -299,7 +299,7 @@ export const SyncCenter: React.FC = () => {
 
     try {
       const outbox = await localDb.listOutbox();
-      const selected = outbox.filter((o) => commandIds.includes(o.commandId) && isBinRequiredCommand(o));
+      const selected = outbox.filter((o) => commandIds.includes(o.commandId) && isBinRequiredOutboxCommand(o));
 
       for (const target of selected) {
         const payload = ((target.payload || {}) as any);
@@ -410,7 +410,7 @@ export const SyncCenter: React.FC = () => {
       // Do not skip an older command that needs credentials or belongs to a
       // previous reset generation; newer failed commands must not overtake it.
       const first = failedCommands[0];
-      if (isBinRequiredCommand(first)) {
+      if (isBinRequiredOutboxCommand(first)) {
         showToast(
           locale === 'ar'
             ? `أقدم عملية فاشلة (${first.commandId}) تحتاج BIN. أدخل BIN من قسم العمليات التي تحتاج BIN أولاً.`
@@ -434,7 +434,7 @@ export const SyncCenter: React.FC = () => {
       for (const item of failedCommands) {
         // Keep the retry batch FIFO. If a later item needs explicit authorization
         // or is stale, leave it and all newer items untouched for a separate action.
-        if (isBinRequiredCommand(item) || String(item.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
+        if (isBinRequiredOutboxCommand(item) || String(item.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
           break;
         }
 
