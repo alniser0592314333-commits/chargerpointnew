@@ -4,6 +4,7 @@ import {
   getCustomerDetail,
   getCustomerOrders,
   getCustomerFinancialHistory,
+  getCustomerQrCardData,
   updateCustomer,
   topUpCustomerBalance,
   updateCustomerChargerFeeExemptionWithPhase5,
@@ -17,12 +18,13 @@ import {
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
-import { sendSmsUsingSystemDefaultSim } from '../../services/nativeSms';
+import { CustomerSingleSmsComposer } from './CustomerSingleSmsComposer';
 import { authService, UserSession } from '../../services/auth/authService';
 import {
   ChevronDown,
   ChevronUp,
   Phone,
+  MessageSquareText,
   ShoppingBag,
   QrCode,
   X,
@@ -86,6 +88,9 @@ const [isLoading, setIsLoading] = useState(true);
 
   // Unified customer profile and account management modal state
   const [isAccountControlModalOpen, setIsAccountControlModalOpen] = useState(false);
+  const [isCallPhoneModalOpen, setIsCallPhoneModalOpen] = useState(false);
+  const [callPhoneInput, setCallPhoneInput] = useState('');
+  const [isSmsComposerOpen, setIsSmsComposerOpen] = useState(false);
   const [controlName, setControlName] = useState('');
   const [controlPhone, setControlPhone] = useState('');
   const [controlDebtLimit, setControlDebtLimit] = useState('');
@@ -465,6 +470,32 @@ const [isLoading, setIsLoading] = useState(true);
     }
   };
 
+  const normalizeContactPhone = (value: string) => value.trim().replace(/[٠-٩۰-۹]/g, (digit) => {
+    const ar = '٠١٢٣٤٥٦٧٨٩'; const east = '۰۱۲۳۴۵۶۷۸۹';
+    const a = ar.indexOf(digit); if (a >= 0) return String(a);
+    const e = east.indexOf(digit); return e >= 0 ? String(e) : digit;
+  }).replace(/[^+\\d]/g, '');
+
+  const handleCallCustomer = () => {
+    const phone = normalizeContactPhone(customer?.phone || '');
+    if (phone.replace(/\\D/g, '').length >= 7) {
+      window.location.href = `tel:${phone}`;
+      return;
+    }
+    setCallPhoneInput('');
+    setIsCallPhoneModalOpen(true);
+  };
+
+  const handleCallWithEnteredPhone = () => {
+    const phone = normalizeContactPhone(callPhoneInput);
+    if (phone.replace(/\\D/g, '').length < 7 || phone.replace(/\\D/g, '').length > 15) {
+      showToast(locale === 'ar' ? 'أدخل رقم هاتف صحيحًا.' : 'Enter a valid phone number.', 'error');
+      return;
+    }
+    setIsCallPhoneModalOpen(false);
+    window.location.href = `tel:${phone}`;
+  };
+
   const handleQrClick = () => {
     if (!customer) return;
     if (onNavigateToQr) {
@@ -575,123 +606,55 @@ const [isLoading, setIsLoading] = useState(true);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 px-4 py-4 sm:px-6">
-      {/* 1. Header Profile & Actions Card */}
-      <div className="bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-2xl p-5 shadow-xs space-y-4 transition-colors">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          {/* Right/Start Area: Customer Name + Green/Red Status Dot + Code + Sub Info */}
-          <div className="space-y-2 flex-1 min-w-0">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-xl font-bold text-gray-900 dark:text-[#daf1de] tracking-tight truncate">
-                {customer.name}
-              </h1>
-
-              {/* Status Indicator: Pure Green / Red Clean Dot */}
-              <span
-                className={`inline-block w-2.5 h-2.5 rounded-full ${
-                  customer.isActive
-                    ? 'bg-emerald-500 ring-3 ring-emerald-500/20'
-                    : 'bg-rose-500 ring-3 ring-rose-500/20'
-                }`}
-                title={
-                  customer.isActive
-                    ? locale === 'ar' ? 'الحساب نشط' : 'Active'
-                    : locale === 'ar' ? 'الحساب غير نشط ومجمد' : 'Inactive'
-                }
-              />
-
-              {/* Code */}
-              <span className="font-mono text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-[#0c312b] text-gray-600 dark:text-[#a9d4b4] border border-gray-200/60 dark:border-[#14423b] uppercase">
-                {customer.code}
-              </span>
-            </div>
-
-            {/* Sub-info: Phone & Created Date */}
-            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-[#8eb698]">
-              {customer.phone && (
-                <div className="flex items-center gap-1.5 dir-ltr text-start">
-                  <Phone className="w-3.5 h-3.5 text-gray-400 dark:text-[#5e8674]" />
-                  <span className="font-mono">{customer.phone}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-gray-400 dark:text-[#5e8674]" />
-                <span>{formatDate(customer.createdAt)}</span>
+      {/* Customer identity and contact */}
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-[#14423b] dark:bg-[#082622]">
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="max-w-full truncate text-xl font-bold tracking-tight text-gray-900 dark:text-[#daf1de] sm:text-2xl">{customer.name}</h1>
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${customer.isActive ? 'bg-emerald-500 ring-4 ring-emerald-500/10' : 'bg-rose-500 ring-4 ring-rose-500/10'}`} title={customer.isActive ? (locale === 'ar' ? 'الحساب نشط' : 'Active') : (locale === 'ar' ? 'الحساب غير نشط' : 'Inactive')} />
+                <span className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 font-mono text-[11px] font-semibold text-gray-600 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#a9d4b4]">{customer.code}</span>
+                <span className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold ${customer.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-[#0d362f] dark:text-[#7ae09e]' : 'bg-rose-50 text-rose-700 dark:bg-[#360d13] dark:text-[#f87171]'}`}>{customer.isActive ? (locale === 'ar' ? 'حساب نشط' : 'Active account') : (locale === 'ar' ? 'حساب موقوف' : 'Inactive account')}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-[#8eb698]">
+                <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{locale === 'ar' ? 'تاريخ إنشاء الحساب:' : 'Account created:'} {formatDate(customer.createdAt)}</span>
+                <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /><b dir="ltr" className="font-mono font-medium text-gray-700 dark:text-[#daf1de]">{customer.phone || (locale === 'ar' ? 'لا يوجد رقم هاتف مسجل' : 'No phone number saved')}</b></span>
               </div>
             </div>
-          </div>
-
-          {/* Left/End Area: Action Buttons (Top-Up Big Button on Top, 50/50 QR & Edit underneath) */}
-          <div className="flex flex-col gap-2 w-full sm:w-60 shrink-0">
-            {/* Top Large Primary Button: Top-Up Balance */}
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleOpenTopUp}
-              className="w-full justify-center gap-2 py-2 px-4 text-xs font-bold shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all cursor-pointer"
-            >
-              <CreditCard className="w-4 h-4 shrink-0" />
-              <span>{t('topUpBalance') || 'شحن الرصيد'}</span>
-            </Button>
-
-            {/* QR shortcut; customer editing lives in Account Management */}
-            <div className="grid grid-cols-1 gap-2 w-full">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleQrClick}
-                className="w-full justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-xl border-gray-200 dark:border-[#14423b] hover:bg-gray-50 dark:hover:bg-[#0c312b] cursor-pointer"
-              >
-                <QrCode className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>{t('qrCode') || 'الـ QR'}</span>
-              </Button>
-
+            <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[230px]">
+              <button type="button" onClick={handleCallCustomer} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 dark:border-[#28665a] dark:bg-[#0c312b] dark:text-[#a9d9b7] dark:hover:bg-[#104036]">
+                <Phone className="h-4 w-4" />{locale === 'ar' ? 'اتصال' : 'Call'}
+              </button>
+              <button type="button" onClick={() => setIsSmsComposerOpen(true)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs font-bold text-blue-800 transition hover:bg-blue-100 dark:border-[#244d78] dark:bg-[#102b42] dark:text-[#a9d4f5] dark:hover:bg-[#163955]">
+                <MessageSquareText className="h-4 w-4" />{locale === 'ar' ? 'مراسلة' : 'Message'}
+              </button>
             </div>
           </div>
         </div>
-
-        {/* 2. Customer Balance & Bottom Corner Activation / Control Button */}
-        <div className="pt-3 border-t border-gray-100 dark:border-[#123832] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          {/* Balance Display */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-gray-500 dark:text-[#8eb698] font-medium">
-              {t('currentBalance')}:
-            </span>
-            <span
-              className={`text-base sm:text-lg font-bold font-mono tracking-tight ${
-                customer.currentBalanceMinor > 0
-                  ? 'text-emerald-600 dark:text-[#7ae09e]'
-                  : customer.currentBalanceMinor < 0
-                  ? 'text-rose-600 dark:text-[#f87171]'
-                  : 'text-gray-900 dark:text-[#daf1de]'
-              }`}
-            >
-              {formatCurrency(customer.currentBalanceMinor)}
-            </span>
-            {customer.currentBalanceMinor > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-[#0d362f] dark:text-[#7ae09e] font-semibold border border-emerald-200/50 dark:border-[#14423b]">
-                {locale === 'ar' ? 'رصيد دائن' : 'Credit'}
-              </span>
-            )}
-            {customer.currentBalanceMinor < 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 dark:bg-[#360d13] dark:text-[#f87171] font-semibold border border-rose-200/50 dark:border-[#421419]">
-                {locale === 'ar' ? 'دين مستحق' : 'Debt'}
-              </span>
-            )}
+        <div className="grid grid-cols-1 gap-3 border-t border-gray-100 bg-gray-50/70 p-4 dark:border-[#14423b] dark:bg-[#061f1c]/70 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-gray-500 dark:text-[#8eb698]">{t('currentBalance')}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2.5">
+              <strong className={`font-mono text-2xl font-bold tracking-tight ${customer.currentBalanceMinor > 0 ? 'text-emerald-600 dark:text-[#7ae09e]' : customer.currentBalanceMinor < 0 ? 'text-rose-600 dark:text-[#f87171]' : 'text-gray-900 dark:text-[#daf1de]'}`}>{formatCurrency(customer.currentBalanceMinor)}</strong>
+              {customer.currentBalanceMinor > 0 && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold text-emerald-800 dark:bg-[#0d362f] dark:text-[#7ae09e]">{locale === 'ar' ? 'رصيد دائن' : 'Credit balance'}</span>}
+              {customer.currentBalanceMinor < 0 && <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-800 dark:bg-[#360d13] dark:text-[#f87171]">{locale === 'ar' ? 'عليه مستحقات' : 'Outstanding debt'}</span>}
+              {customer.currentBalanceMinor === 0 && <span className="rounded-full bg-gray-200 px-2.5 py-1 text-[10px] font-bold text-gray-600 dark:bg-[#0c312b] dark:text-[#a9d4b4]">{locale === 'ar' ? 'الرصيد متوازن' : 'Settled'}</span>}
+            </div>
           </div>
-
-          {/* Quick Account Controls & Activation Trigger Button */}
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={handleOpenAccountControlModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-gray-700 dark:text-[#daf1de] bg-gray-50 hover:bg-gray-100 dark:bg-[#061f1c] dark:hover:bg-[#0c312b] border border-gray-200 dark:border-[#14423b] transition-colors cursor-pointer"
-            >
-              <Power className={`w-3.5 h-3.5 ${customer.isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} />
-              <span>{locale === 'ar' ? 'تفعيل وإدارة الحساب' : 'Account Controls'}</span>
+          <div className="grid grid-cols-2 gap-2 sm:min-w-[290px]">
+            <Button variant="primary" size="sm" onClick={handleOpenTopUp} className="min-h-11 justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-emerald-700">
+              <CreditCard className="h-4 w-4" />{t('topUpBalance') || 'شحن الرصيد'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleQrClick} className="min-h-11 justify-center gap-2 rounded-xl border-gray-200 px-4 text-xs font-semibold dark:border-[#14423b]">
+              <QrCode className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />{t('qrCode') || 'رمز QR'}
+            </Button>
+            <button type="button" onClick={handleOpenAccountControlModal} className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-[#14423b] dark:bg-[#082622] dark:text-[#daf1de] dark:hover:bg-[#0c312b]">
+              <Power className={`h-4 w-4 ${customer.isActive ? 'text-emerald-600' : 'text-rose-600'}`} />{locale === 'ar' ? 'إدارة وتفعيل الحساب' : 'Manage account'}
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* 3. Dynamic Record Selector Dropdown Section */}
       <div className="space-y-3">
@@ -1018,6 +981,17 @@ const [isLoading, setIsLoading] = useState(true);
       </div>
 
       {/* Unified customer profile and account management */}
+      {isCallPhoneModalOpen && (
+        <Modal isOpen={isCallPhoneModalOpen} onClose={() => setIsCallPhoneModalOpen(false)} title={locale === 'ar' ? 'إدخال رقم الهاتف للاتصال' : 'Enter a phone number to call'}>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-[#a9d4b4]">{locale === 'ar' ? 'ما فيش رقم هاتف مسجل لهذا الزبون. أدخل الرقم الذي تريد الاتصال عليه.' : 'This customer has no saved phone number. Enter the number to call.'}</p>
+            <input autoFocus value={callPhoneInput} onChange={(e) => setCallPhoneInput(e.target.value)} dir="ltr" inputMode="tel" placeholder="059xxxxxxx" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-start text-sm outline-none focus:border-emerald-500 dark:border-[#14423b] dark:bg-[#061f1c] dark:text-[#daf1de]" />
+            <div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => setIsCallPhoneModalOpen(false)}>{locale === 'ar' ? 'إلغاء' : 'Cancel'}</Button><Button variant="primary" size="sm" onClick={handleCallWithEnteredPhone} className="gap-2"><Phone className="h-4 w-4" />{locale === 'ar' ? 'اتصال الآن' : 'Call now'}</Button></div>
+          </div>
+        </Modal>
+      )}
+      {isSmsComposerOpen && customer && <CustomerSingleSmsComposer customerId={customer.id} customerName={customer.name} customerPhone={customer.phone} balanceMinor={customer.currentBalanceMinor} onClose={() => setIsSmsComposerOpen(false)} />}
+
       {isAccountControlModalOpen && customer && (
         <Modal
           isOpen={isAccountControlModalOpen}
