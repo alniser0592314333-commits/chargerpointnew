@@ -248,6 +248,7 @@ Deno.serve(async (request: Request) => {
   let targetPath = "/app/notifications";
   let eventKey = source + ":" + recordId;
   let allowRevokedCustomerNotice = false;
+  let allowExpiredCustomerAppSession = false;
 
   if (source === "qr_payment_submissions") {
     const { data: submission, error } = await admin.from("qr_payment_submissions")
@@ -329,6 +330,9 @@ Deno.serve(async (request: Request) => {
       allowRevokedCustomerNotice = ["TEMP_PASSWORD_ISSUED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_CANCELLED", "ACCOUNT_REACTIVATED"].includes(eventType);
       titleAr = message[0]; titleEn = message[1]; bodyAr = message[2]; bodyEn = message[3];
       if (eventType === "DEBT_PAYMENT_REMINDER") {
+        // Keep reminders deliverable after the app's short-lived portal session expires,
+        // while the SQL verifier still requires a live Supabase Auth session and active account.
+        allowExpiredCustomerAppSession = true;
         const balanceMinor = Number((event as { payload?: { balance_minor?: unknown } }).payload?.balance_minor);
         if (Number.isFinite(balanceMinor) && balanceMinor > 0) {
           const amount = (balanceMinor / 100).toFixed(2);
@@ -336,7 +340,7 @@ Deno.serve(async (request: Request) => {
           bodyEn = "Your outstanding amount is ILS " + amount + ". Open the app to review your account.";
         }
       }
-      targetPath = "/public/about";
+      targetPath = eventType === "DEBT_PAYMENT_REMINDER" ? "/customer/finance" : "/public/about";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
         .eq("app_variant", "customer").eq("customer_id", event.customer_id).is("disabled_at", null);
@@ -503,6 +507,7 @@ Deno.serve(async (request: Request) => {
     const { data: deviceIsCurrent, error: deviceCheckError } = await admin.rpc("native_push_device_is_current", {
       p_device_id: deviceRowId,
       p_allow_account_status_notice: allowRevokedCustomerNotice,
+      p_allow_expired_customer_app_session: allowExpiredCustomerAppSession,
     });
     if (deviceCheckError) {
       // A transient verifier/database error is not proof that the session was revoked.
