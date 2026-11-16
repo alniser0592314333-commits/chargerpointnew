@@ -162,7 +162,7 @@ describe('Purchase book local-first architecture contract', () => {
   });
 
   it('repairs cross-device purchase visibility with a permission-gated, admin-scoped snapshot', () => {
-    const snapshotMigration = read('supabase/migrations/20261116070000_purchase_book_scoped_snapshot.sql');
+    const snapshotMigration = read('supabase/migrations/20261116053623_purchase_book_scoped_snapshot.sql');
     expect(snapshotMigration).toContain('CREATE OR REPLACE FUNCTION public.capture_purchase_book_snapshot()');
     expect(snapshotMigration).toContain("PERFORM public._cp_assert_active_admin_permission('purchases:manage')");
     expect(snapshotMigration).toContain('WHERE t.admin_id=v_admin_id');
