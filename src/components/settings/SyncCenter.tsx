@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { isBinRequiredOutboxCommand } from '../../infrastructure/sync/binAuthorization';
 import { useI18n } from '../../i18n/i18nContext';
 import { useToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
@@ -167,28 +168,9 @@ export const SyncCenter: React.FC = () => {
 
   const failedCount = activeFailedCount;
 
-  // Sensitive commands that require an admin BIN before the server can execute them.
-  // This also recognizes older queued commands that reached the server without the
-  // deferred-BIN marker, so they can be recovered safely from the Sync Center.
-  const isBinRequiredCommand = (item: OutboxRecord): boolean => {
-    const binCommands = new Set(['DELIVER_ORDER_ITEM', 'CANCEL_ORDER', 'CANCEL_ORDER_ITEM', 'CREATE_CUSTOMER_CREDIT', 'CREATE_PAYMENT']);
-    if (!binCommands.has(item.commandType)) return false;
-
-    const payload = (item.payload || {}) as any;
-    const bin = String(payload?.bin || '').trim();
-    if (bin.length >= 4 && payload?.deferBinVerification !== true) return false;
-
-    const error = String(item.lastError || '');
-    return (
-      payload?.deferBinVerification === true ||
-      error === 'BIN_REQUIRED' ||
-      /BIN is required/i.test(error) ||
-      /Authorization required:\s*BIN/i.test(error)
-    );
-  };
-
+  // Includes legacy payment commands rejected by the server without a BIN.
   const binRequiredItems = useMemo(
-    () => outboxRecords.filter(isBinRequiredCommand),
+    () => outboxRecords.filter(isBinRequiredOutboxCommand),
     [outboxRecords]
   );
   const binRequiredCount = binRequiredItems.length;
