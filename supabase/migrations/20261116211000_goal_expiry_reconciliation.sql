@@ -51,6 +51,9 @@ BEGIN
   -- Only reconcile when this request is already authorized to view goals.
   -- There is at most one ACTIVE goal per customer (partial unique index).
   IF v_can_view_goals THEN
+    -- Read-time reconciliation must not fan out to an external push provider.
+    -- Normal delivery-triggered completion keeps its existing push behavior.
+    PERFORM set_config('app.suppress_goal_completion_push', '1', true);
     FOR v_customer_id IN
       SELECT g.customer_id
       FROM public.goals g
@@ -60,6 +63,7 @@ BEGIN
     LOOP
       PERFORM public.evaluate_customer_active_goal_internal(v_customer_id);
     END LOOP;
+    PERFORM set_config('app.suppress_goal_completion_push', '0', true);
   END IF;
 
   SELECT jsonb_build_object(
@@ -239,7 +243,7 @@ DECLARE
   v_old text := E'IF v_customer_id IS NULL THEN\n    RETURN NULL;\n  END IF;';
   v_new text;
 BEGIN
-  v_new := v_old || E'\n\n  IF EXISTS (\n    SELECT 1\n    FROM public.goals g\n    WHERE g.customer_id = v_customer_id\n      AND g.status = ''ACTIVE''\n      AND g.expires_at <= statement_timestamp()\n  ) THEN\n    PERFORM public.evaluate_customer_active_goal_internal(v_customer_id);\n  END IF;';
+  v_new := v_old || E'\n\n  IF EXISTS (\n    SELECT 1\n    FROM public.goals g\n    WHERE g.customer_id = v_customer_id\n      AND g.status = ''ACTIVE''\n      AND g.expires_at <= statement_timestamp()\n  ) THEN\n    PERFORM set_config(''app.suppress_goal_completion_push'', ''1'', true);\n    PERFORM public.evaluate_customer_active_goal_internal(v_customer_id);\n    PERFORM set_config(''app.suppress_goal_completion_push'', ''0'', true);\n  END IF;';
 
   FOREACH v_signature IN ARRAY ARRAY[
     'public.public_resolve_customer_portal(text)'::regprocedure,
@@ -257,3 +261,30 @@ BEGIN
   END LOOP;
 END;
 $migration$;
+
+-- Goal completion reached only through a read-time fallback is already visible
+-- in the response, so do not invoke pg_net/HTTP for a push from that read.
+-- Normal order-item-triggered completion remains unchanged and still notifies.
+CREATE OR REPLACE FUNCTION public.trigger_native_push_for_goal_completion()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+BEGIN
+  IF pg_catalog.current_setting('app.suppress_goal_completion_push', true) = '1' THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status IS DISTINCT FROM NEW.status
+     AND upper(COALESCE(NEW.status, '')) = 'COMPLETED'
+     AND NEW.customer_id IS NOT NULL THEN
+    PERFORM public.enqueue_native_push_event('goals', NEW.id, 'UPDATE', 'COMPLETED');
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+COMMENT ON FUNCTION public.trigger_native_push_for_goal_completion()
+IS 'Sends completion push for normal event-driven completions; suppresses external push dispatch during read-time expiry reconciliation.';
