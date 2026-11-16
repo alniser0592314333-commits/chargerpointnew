@@ -1483,8 +1483,14 @@ export const globalSyncEngine = new SyncEngine(globalSyncTransport);
 globalSyncEngine.onDeltaApplied = applyRemoteChange;
 
 let onTransactionCommitted: (() => void) | null = null;
+let onLatestDataReload: (() => Promise<unknown>) | null = null;
 export const setTransactionCommittedHook = (hook: () => void) => {
   onTransactionCommitted = hook;
+};
+
+/** Register the pull-only sync path used by read screens that need fresh server data. */
+export const setLatestDataReloadHook = (hook: (() => Promise<unknown>) | null): void => {
+  onLatestDataReload = hook;
 };
 
 let isStoreHydrated = false;
@@ -3712,7 +3718,31 @@ export const getGoalsPageData = async (access: {
   canViewGoals: boolean;
   canViewRequests: boolean;
 }) => {
-  await ensureStoreHydrated();
+  try {
+    await ensureStoreHydrated();
+  } catch (error) {
+    // ensureStoreHydrated rehydrates the durable IndexedDB replica before trying
+    // a first-run cloud bootstrap. If that remote bootstrap fails, do not turn a
+    // transient sync outage into a page failure when cached goals data is usable.
+    const hasCachedGoalsData = goalsMap.size > 0 || goalRequestsMap.size > 0 || customersMap.size > 0;
+    if (!hasCachedGoalsData) throw error;
+    console.warn('[GoalsPage] bootstrap failed; using durable local goals snapshot', error);
+  }
+
+  // Goal requests are created on the customer portal. A notification can arrive
+  // before the admin's background sync has pulled the matching change_log row.
+  // Pull only the latest remote delta before reading this page's local read model;
+  // never push the admin outbox just to open a read-only screen.
+  if (onLatestDataReload) {
+    try {
+      await onLatestDataReload();
+    } catch (error) {
+      // Keep the last durable local snapshot usable while offline or during a
+      // transient server failure. A later store revision / refresh retries the pull.
+      console.warn('[GoalsPage] latest-data pull failed; using local snapshot', error);
+    }
+  }
+
   return {
     goals: access.canViewGoals
       ? Array.from(goalsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
