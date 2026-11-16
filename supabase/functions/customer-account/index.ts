@@ -527,6 +527,59 @@ Deno.serve(async (request: Request) => {
         return respond(200, { ok: true, already_pending: false, request: created });
       }
 
+      if (action === "request-goal-cancellation") {
+        const goalId = typeof input.goal_id === "string" ? input.goal_id.trim() : "";
+        const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+        if (!/^[0-9a-f-]{36}$/i.test(goalId) || reason.length < 3 || reason.length > 500) {
+          return respond(400, { ok: false, error: "INVALID_REQUEST" });
+        }
+
+        const { data: updated, error: updateError } = await admin.from("goals")
+          .update({
+            cancellation_requested_at: now.toISOString(),
+            cancellation_request_reason: reason,
+            cancellation_request_status: "PENDING",
+            cancellation_reviewed_at: null,
+            cancellation_reviewed_by: null,
+            cancellation_review_reason: null,
+            updated_at: now.toISOString(),
+            version: admin.rpc ? undefined : undefined,
+          })
+          .eq("id", goalId)
+          .eq("customer_id", link.customer_id)
+          .eq("status", "ACTIVE")
+          .gt("expires_at", now.toISOString())
+          .or("cancellation_request_status.is.null,cancellation_request_status.eq.REJECTED")
+          .select("id,cancellation_request_status,cancellation_requested_at")
+          .maybeSingle();
+
+        if (updateError) {
+          console.error("Goal cancellation request could not be recorded");
+          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        }
+        if (!updated) {
+          const { data: current, error: currentError } = await admin.from("goals")
+            .select("id,status,cancellation_request_status,expires_at")
+            .eq("id", goalId).eq("customer_id", link.customer_id).maybeSingle();
+          if (currentError || !current) return genericFailure();
+          if (current.status !== "ACTIVE" || current.expires_at <= now.toISOString()) {
+            return respond(409, { ok: false, error: "GOAL_NOT_ACTIVE" });
+          }
+          if (current.cancellation_request_status === "PENDING") {
+            return respond(200, { ok: true, already_pending: true, status: "PENDING" });
+          }
+          return respond(409, { ok: false, error: "REQUEST_NOT_AVAILABLE" });
+        }
+
+        const { error: eventError } = await admin.from("customer_account_events").insert({
+          customer_id: link.customer_id,
+          event_type: "GOAL_CANCELLATION_REQUESTED",
+          payload: { goal_id: goalId },
+        });
+        if (eventError) console.error("Goal cancellation request event could not be recorded");
+        return respond(200, { ok: true, already_pending: false, status: "PENDING" });
+      }
+
       if (action === "mark-notifications-read") {
         if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
         // Only mark notifications belonging to the authenticated customer. Keep this
