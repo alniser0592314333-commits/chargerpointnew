@@ -4316,7 +4316,7 @@ export const getDeviceTypesOptions = async (
         nameAr,
         nameEn,
         priceMinor: d.basePriceMinor,
-        supportsCharger: d.chargerFeeEnabled,
+        supportsCharger: d.chargerFeeEnabled && (d.chargerFeeApplicable ?? d.chargerFeeEnabled),
         chargerFeeMinor: 50,
       };
     });
@@ -4465,6 +4465,7 @@ export const calculateDeviceItemPreviewPrice = (
   const result = calculateItemPrice({
     basePriceMinor: dev.basePriceMinor,
     chargerFeeEnabled: dev.chargerFeeEnabled,
+    chargerFeeApplicable: dev.chargerFeeApplicable ?? dev.chargerFeeEnabled,
     customerExempt,
     hasCharger,
   });
@@ -5073,6 +5074,7 @@ export const updateCustomer = async (
     currentBalanceMinor,
     debtLimitMinor: updated.debtLimitMinor,
     isActive: updated.isActive,
+    chargerFeeExempt: !!updated.chargerFeeExempt,
     createdAt: updated.createdAt,
   };
 };
