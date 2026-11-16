@@ -18,6 +18,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
 
   const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
   const hasAdminManage = isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage'));
+  const canManageCustomerAccounts = isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['customers:edit', 'customers:write', 'customers:manage', 'customer_accounts:manage', 'customer_accounts:reset', 'admin:manage'].includes(permission)));
 
   const navItems: Array<{ id: string; label: string; badge?: number }> = [
     { id: '/app', label: t('navHome') },
@@ -28,6 +29,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
     { id: '/app/financials', label: t('navFinancials') },
     ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
     { id: '/app/notifications', label: t('navNotificationsRequests'), badge: notificationCount },
+    ...(canManageCustomerAccounts ? [{ id: '/app/customer-accounts', label: locale === 'ar' ? 'حسابات العملاء وكلمات السر' : 'Customer Accounts & Passwords' }] : []),
     { id: '/app/settings/qr', label: t('navQrDesign') },
     ...(hasAdminManage ? [{ id: '/app/settings/admins', label: t('navAdminMgmt') }] : []),
     { id: '/app/settings', label: t('navSettings') },
