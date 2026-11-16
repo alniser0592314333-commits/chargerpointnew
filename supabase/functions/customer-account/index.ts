@@ -893,6 +893,48 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true });
     }
 
+    if (action === "admin-set-password") {
+      const administrator = await requireAdmin();
+      if (!administrator?.adminId) return respond(403, { ok: false, error: "FORBIDDEN" });
+      const customerId = normalize(input.customerId, 64);
+      const password = rawPassword(input.password);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(customerId) ||
+          !strongPassword(password)) {
+        return respond(400, { ok: false, error: "INVALID_REQUEST" });
+      }
+      const { data: link, error: linkError } = await admin.from("customer_account_links")
+        .select("auth_user_id,account_status").eq("customer_id", customerId).maybeSingle();
+      if (linkError || !link || link.account_status !== "ACTIVE" || !link.auth_user_id) {
+        return respond(409, { ok: false, error: "ACCOUNT_UNAVAILABLE" });
+      }
+      // Revoke existing customer sessions before changing credentials.
+      const { error: revokeError } = await admin.from("customer_account_sessions")
+        .update({ revoked_at: now.toISOString() }).eq("customer_id", customerId).is("revoked_at", null);
+      if (revokeError) return respond(503, { ok: false, error: "PASSWORD_RESET_FAILED" });
+      const { error: passwordError } = await admin.auth.admin.updateUserById(link.auth_user_id, { password });
+      if (passwordError) {
+        console.error("Administrator direct customer password reset failed");
+        return respond(503, { ok: false, error: "PASSWORD_RESET_FAILED" });
+      }
+      const { error: flagError } = await admin.from("customer_account_links")
+        .update({ must_change_password: false, updated_at: now.toISOString() })
+        .eq("customer_id", customerId).eq("account_status", "ACTIVE");
+      if (flagError) {
+        console.error("Direct password was changed but account flag reconciliation is pending");
+        return respond(503, { ok: false, error: "PASSWORD_CHANGED_ACCOUNT_UPDATE_PENDING" });
+      }
+      const { error: eventError } = await admin.from("customer_account_events").insert({
+        customer_id: customerId,
+        event_type: "PASSWORD_CHANGED",
+        payload: { source: "ADMIN_DIRECT_RESET", admin_id: administrator.adminId },
+      });
+      if (eventError) {
+        console.error("Direct password reset audit event could not be recorded");
+        return respond(503, { ok: false, error: "PASSWORD_CHANGED_AUDIT_PENDING" });
+      }
+      return respond(200, { ok: true });
+    }
+
     if (action === "admin-set-status") {
       const administrator = await requireAdmin();
       if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
