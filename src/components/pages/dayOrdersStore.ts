@@ -3863,7 +3863,7 @@ export const cancelGoalForAdmin = async (goalId: string, reason?: string) => {
     p_goal_id: goalId,
     p_reason: reason?.trim() || null,
   });
-  if (error) return { success: false, error: error.message || 'Goal cancellation failed', code: error.code };
+  if (error) return { success: false, error };
   return { success: true, data };
 };
 
@@ -3877,7 +3877,7 @@ export const reviewGoalCancellationForAdmin = async (
     p_approve: approve,
     p_reason: reason?.trim() || null,
   });
-  if (error) return { success: false, error: error.message || 'Goal cancellation review failed', code: error.code };
+  if (error) return { success: false, error };
   return { success: true, data };
 };
 
