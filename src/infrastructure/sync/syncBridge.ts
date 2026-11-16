@@ -1,4 +1,4 @@
-import { globalSyncEngine, applyRemoteChange, resetCanonicalReadModelsForReplay, setTransactionCommittedHook } from '../../components/pages/dayOrdersStore';
+import { globalSyncEngine, applyRemoteChange, resetCanonicalReadModelsForReplay, setTransactionCommittedHook, setLatestDataReloadHook } from '../../components/pages/dayOrdersStore';
 import { localDb } from '../localDb/localDb';
 
 export class SyncBridge {
@@ -16,6 +16,9 @@ export class SyncBridge {
         console.warn('Background sync error on commit hook:', err);
       });
     });
+    // Read-only screens can await a pull-only delta refresh without pushing any
+    // pending local commands or starting a full-table bootstrap.
+    setLatestDataReloadHook(() => this.requestLatestDataReload());
   }
 
   /**
