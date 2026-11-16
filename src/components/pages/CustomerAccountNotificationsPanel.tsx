@@ -408,7 +408,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
           : requests.length === 0 ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('لا توجد طلبات معلّقة.', 'No pending reset requests.')}</p>
           : requests.map((request) => <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 p-3 dark:border-[#244746]">
               <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('الهاتف: ', 'Phone: ')}{customerPhone(request.customers) || '—'} · {t('تاريخ الطلب: ', 'Requested: ')}{dateLabel(request.requested_at)} · {t('ينتهي: ', 'Expires: ')}{dateLabel(request.expires_at)}</p></div>
-              <button type="button" disabled={busy} onClick={() => prepareReset(request)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3.5 py-2.5 text-xs font-bold text-white disabled:opacity-50"><KeyRound className="h-4 w-4" />{t('إعادة تعيين', 'Reset password')}</button>
+              <button type="button" disabled={busy} onClick={() => prepareReset(request)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3.5 py-2.5 text-xs font-bold text-white disabled:opacity-50"><KeyRound className="h-4 w-4" />{t('إرسال كلمة المرور SMS', 'Send password by SMS')}</button>
             </article>)}
       </div>
 
