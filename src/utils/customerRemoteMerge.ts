@@ -1,4 +1,4 @@
-import { CustomerEntity } from '../domain/models';
+import type { CustomerEntity } from '../domain/models';
 
 type CustomerRemotePayload = Record<string, unknown>;
 
@@ -11,7 +11,8 @@ export const mergeCustomerRemoteDelta = (
   prior: CustomerEntity | undefined,
   payload: CustomerRemotePayload,
   entityId: string,
-  changeVersion?: number
+  changeVersion?: number,
+  changeTimestamp?: string
 ): CustomerEntity => {
   const has = (key: string, snakeKey?: string): boolean =>
     Object.prototype.hasOwnProperty.call(payload, key) ||
@@ -33,7 +34,7 @@ export const mergeCustomerRemoteDelta = (
     debtLimitMinor: Number(read('debtLimitMinor', 'debt_limit_minor') ?? prior?.debtLimitMinor ?? 0),
     chargerFeeExempt: Boolean(read('chargerFeeExempt', 'charger_fee_exempt') ?? prior?.chargerFeeExempt ?? false),
     createdAt: String(read('createdAt', 'created_at') ?? prior?.createdAt ?? new Date().toISOString()),
-    updatedAt: String(read('updatedAt', 'updated_at') ?? prior?.updatedAt ?? new Date().toISOString()),
+    updatedAt: String(read('updatedAt', 'updated_at') ?? changeTimestamp ?? prior?.updatedAt ?? new Date().toISOString()),
     version: Number(changeVersion ?? read('version') ?? prior?.version ?? 1),
     deletedAt: deletedAtValue === undefined ? prior?.deletedAt : (deletedAtValue == null ? undefined : String(deletedAtValue)),
   };
