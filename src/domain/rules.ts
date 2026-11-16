@@ -147,11 +147,13 @@ export function checkDebtLimit(
 export const MIN_GOAL_DURATION_DAYS = 3;
 export const MAX_GOAL_DURATION_DAYS = 15;
 export const GOAL_BONUS_CAP_MINOR_PER_DEVICE = 20;
-export const MIN_GOAL_BONUS_MINOR = 80;
+export const MIN_GOAL_BONUS_MINOR = 150;
 
 export function randomGoalDurationDays(random: () => number = Math.random): number {
   const sample = Math.min(0.999999999, Math.max(0, random()));
-  return MIN_GOAL_DURATION_DAYS + Math.floor(sample * (MAX_GOAL_DURATION_DAYS - MIN_GOAL_DURATION_DAYS + 1));
+  // Randomized goals should not default to the shortest 3-day challenge.
+  const minimumRandomDuration = 5;
+  return minimumRandomDuration + Math.floor(sample * (MAX_GOAL_DURATION_DAYS - minimumRandomDuration + 1));
 }
 
 export function calculateGoalBonusCapMinor(targetQuantity: number): number {
@@ -162,9 +164,8 @@ export function calculateGoalBonusCapMinor(targetQuantity: number): number {
 }
 
 /**
- * Legacy proposal policy note: proposals should be based on delivered activity,
- * with an adaptive stretch and a minimum target of 10 devices. The production
- * implementation is being revised to use a 28-day activity profile.
+ * Smart proposals use the customer's delivered activity over 28 days, weighted
+ * toward the latest week, with a controlled stretch and a minimum target of 10.
  */
 export interface GeneratedGoalProposal {
   targetQuantity: number;
@@ -177,7 +178,7 @@ export interface GenerateGoalProposalOptions {
   startedAt?: string;
   /** Optional deterministic override for tests/controlled admin workflows. */
   customRatePerDeviceMinor?: number;
-  /** Explicit duration override; otherwise choose a random integer from 3 through 15. */
+  /** Explicit duration override; otherwise choose an activity-based integer from 5 through 15. */
   customDurationDays?: number;
   /** Injectable random source for deterministic tests. */
   random?: () => number;
@@ -202,7 +203,7 @@ export function generateGoalProposal(
   const baselineRate = profile.reduce((sum, n) => sum + n, 0) / Math.max(1, profile.length);
   const dailyRate = isProfile ? recentRate * 0.65 + baselineRate * 0.35 : profile[0] / 7;
 
-  const minDuration = isProfile ? (dailyRate >= 4 ? 3 : dailyRate >= 1.5 ? 4 : 6) : MIN_GOAL_DURATION_DAYS;
+  const minDuration = isProfile ? (dailyRate >= 4 ? 5 : dailyRate >= 1.5 ? 5 : 7) : 5;
   const maxDuration = isProfile ? (dailyRate >= 4 ? 9 : dailyRate >= 1.5 ? 11 : MAX_GOAL_DURATION_DAYS) : MAX_GOAL_DURATION_DAYS;
   const durationDays = Number.isInteger(customDuration) && customDuration! >= MIN_GOAL_DURATION_DAYS && customDuration! <= MAX_GOAL_DURATION_DAYS
     ? customDuration!
@@ -212,11 +213,11 @@ export function generateGoalProposal(
     ? Math.max(10, Math.ceil(expectedDevicesDuringGoal * (1.25 + sample() * 0.30)))
     : Math.max(10, Math.ceil(expectedDevicesDuringGoal + Math.max(10, expectedDevicesDuringGoal * 0.25)));
   const difficultyRatio = expectedDevicesDuringGoal > 0 ? targetQuantity / expectedDevicesDuringGoal : 1.5;
-  const derivedRate = 8 + Math.min(5, Math.max(0, Math.round((difficultyRatio - 1) * 10)));
-  const ratePerDeviceMinor = Number.isInteger(customRate) && customRate! >= 8 && customRate! <= 13
+  const derivedRate = 15 + Math.min(5, Math.max(0, Math.round((difficultyRatio - 1) * 10)));
+  const ratePerDeviceMinor = Number.isInteger(customRate) && customRate! >= 15 && customRate! <= 20
     ? customRate!
     : isProfile
-      ? Math.min(13, Math.max(8, derivedRate + Math.floor(sample() * 3) - 1))
+      ? Math.min(20, Math.max(15, derivedRate + Math.floor(sample() * 3) - 1))
       : derivedRate;
   const bonusAmountMinor = Math.min(
     calculateGoalBonusCapMinor(targetQuantity),
