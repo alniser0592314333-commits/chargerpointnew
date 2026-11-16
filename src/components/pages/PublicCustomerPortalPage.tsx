@@ -48,6 +48,7 @@ type PortalSubmission = {
   rejection_reason?: string | null;
 };
 type PortalGoal = {
+  id: string;
   target_quantity: number;
   current_progress: number;
   status: string;
@@ -55,6 +56,9 @@ type PortalGoal = {
   completed_at: string | null;
   bonus_minor: number | null;
   bonus_recorded: boolean;
+  cancellation_request_status?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  cancellation_requested_at?: string | null;
+  cancellation_request_reason?: string | null;
 };
 type PortalData = {
   customer_name: string;
@@ -219,6 +223,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [financeView, setFinanceView] = useState<'receipts' | 'movements'>('receipts');
   const [financeMenuOpen, setFinanceMenuOpen] = useState(false);
   const [goalRequestBusy, setGoalRequestBusy] = useState(false);
+  const [goalCancellationBusy, setGoalCancellationBusy] = useState(false);
+  const [goalCancellationReason, setGoalCancellationReason] = useState('');
   const [resetRequestBusy, setResetRequestBusy] = useState(false);
   const [historyRequestStatus, setHistoryRequestStatus] = useState<string | null>(null);
   const [historyAccessExpiresAt, setHistoryAccessExpiresAt] = useState<string | null>(null);
@@ -683,6 +689,33 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     setGoalRequestBusy(false);
   };
 
+
+  const requestGoalCancellation = async () => {
+    if (!online || !serverAvailable || !activeGoal || goalCancellationBusy) return;
+    const reason = goalCancellationReason.trim();
+    if (reason.length < 3 || reason.length > 500) {
+      setActionMessage(isAr ? 'اكتب سبب الإلغاء (3 أحرف على الأقل).' : 'Please enter a cancellation reason (at least 3 characters).');
+      return;
+    }
+    setGoalCancellationBusy(true);
+    setActionMessage('');
+    const { error: requestError } = await callCustomerAccount(
+      'request-goal-cancellation',
+      { token, goal_id: activeGoal.id, reason },
+    );
+    if (requestError) {
+      setActionMessage(requestError === 'GOAL_NOT_AVAILABLE'
+        ? (isAr ? 'الهدف لم يعد نشطًا أو انتهت مدته.' : 'This goal is no longer active or has expired.')
+        : (isAr ? 'تعذّر إرسال طلب الإلغاء. حاول مرة أخرى.' : 'The cancellation request could not be sent. Please try again.'));
+    } else {
+      setActionMessage(isAr ? 'تم إرسال طلب إلغاء الهدف، وسيبقى نشطًا إلى أن تراجعه الإدارة.' : 'Your cancellation request was sent. The goal stays active until an administrator reviews it.');
+      setGoalCancellationReason('');
+      await load();
+      await loadActivity();
+    }
+    setGoalCancellationBusy(false);
+  };
+
   const changePortalPassword = async () => {
     if (!online || !serverAvailable || passwordChangeBusy) return;
     const common = new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']);
@@ -827,6 +860,10 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       TERMS_ACCEPTED: ['تم تحديث الموافقة على الشروط', 'Terms acceptance updated'],
       EMAIL_RESET_SENT: ['تم إرسال رابط استعادة كلمة المرور', 'Password recovery email sent'],
       GOAL_REQUESTED: ['تم إرسال طلب إنشاء هدف', 'Goal creation requested'],
+      GOAL_CANCELLATION_REQUESTED: ['تم إرسال طلب إلغاء الهدف', 'Goal cancellation requested'],
+      GOAL_CANCELLATION_APPROVED: ['وافقت الإدارة على إلغاء الهدف', 'Goal cancellation approved'],
+      GOAL_CANCELLATION_REJECTED: ['رفضت الإدارة طلب إلغاء الهدف', 'Goal cancellation rejected'],
+      GOAL_CANCELLED_BY_ADMIN: ['قامت الإدارة بإلغاء الهدف', 'Goal cancelled by administrator'],
       DEBT_PAYMENT_REMINDER: ['تذكير باستحقاق الدفع', 'Payment reminder'],
       HISTORY_ACCESS_APPROVED: ['تمت الموافقة على كشف الطلبات التاريخية لمدة 24 ساعة', 'Historical order access approved for 24 hours'],
       HISTORY_ACCESS_REJECTED: ['تم رفض طلب كشف الطلبات التاريخية', 'Historical order access rejected'],
@@ -1030,6 +1067,31 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
                 <div className="cp-portal-progress"><span style={{ width: (Math.max(0, Math.min(100, activeGoal.target_quantity > 0 ? activeGoal.current_progress / activeGoal.target_quantity * 100 : 0))) + '%' }} /></div>
                 {activeGoal.expires_at && <p className="mt-3 text-xs cp-portal-muted">{isAr ? 'ينتهي في' : 'Expires'} · {safeDate(activeGoal.expires_at, locale)}</p>}
                 {activeGoal.bonus_recorded && activeGoal.bonus_minor !== null && <p className="mt-3 font-bold">{isAr ? 'المكافأة المثبتة' : 'Recorded reward'} · {money(activeGoal.bonus_minor, locale)}</p>}
+                {activeGoal.cancellation_request_status === 'PENDING' ? (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                    <p className="font-bold">{isAr ? 'طلب الإلغاء بانتظار موافقة الإدارة' : 'Cancellation request awaiting administrator approval'}</p>
+                    <p className="mt-1">{isAr ? 'سيبقى هدفك نشطًا حتى تتخذ الإدارة قرارها.' : 'Your goal remains active until the administrator makes a decision.'}</p>
+                    {activeGoal.cancellation_requested_at && <p className="mt-1 text-xs opacity-75">{safeDate(activeGoal.cancellation_requested_at, locale)}</p>}
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    {activeGoal.cancellation_request_status === 'REJECTED' && <p className="text-sm text-amber-700 dark:text-amber-300">{isAr ? 'تم رفض طلب الإلغاء السابق. يمكنك إرسال طلب جديد إذا رغبت.' : 'Your previous cancellation request was rejected. You may submit a new request.'}</p>}
+                    <label className="block text-sm font-semibold">{isAr ? 'سبب طلب الإلغاء' : 'Reason for cancellation request'}</label>
+                    <textarea
+                      className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm text-gray-900 outline-none focus:border-emerald-500 dark:border-[#1d5147] dark:bg-[#082622] dark:text-[#daf1de]"
+                      rows={2}
+                      maxLength={500}
+                      value={goalCancellationReason}
+                      onChange={(event) => setGoalCancellationReason(event.target.value)}
+                      placeholder={isAr ? 'اكتب سبب طلب الإلغاء...' : 'Tell us why you want to cancel...'}
+                    />
+                    <button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable || goalCancellationBusy || goalCancellationReason.trim().length < 3} onClick={() => void requestGoalCancellation()}>
+                      {goalCancellationBusy ? <RefreshCw size={16} className="animate-spin" /> : <History size={16} />}
+                      {isAr ? 'طلب إلغاء الهدف' : 'Request goal cancellation'}
+                    </button>
+                    <p className="text-xs cp-portal-muted">{isAr ? 'هذا طلب فقط؛ لا يتم إلغاء الهدف إلا بعد موافقة الإدارة.' : 'This is only a request. The goal is cancelled only after administrator approval.'}</p>
+                  </div>
+                )}
               </div> : pendingGoalRequest ? <div className="cp-portal-request-state"><span className="cp-portal-request-state__icon"><History size={20} /></span><div><p className="font-bold">{isAr ? 'طلب إنشاء الهدف قيد المراجعة' : 'Goal request awaiting review'}</p><p className="mt-1 text-sm cp-portal-muted">{isAr ? 'الإدارة ستحدد تفاصيل الهدف عند الموافقة.' : 'The administrator will determine the goal details after approval.'}</p><p className="mt-2 text-xs cp-portal-muted">{safeDate(pendingGoalRequest.created_at, locale)}</p></div></div>
               : activityLoading ? <p className="cp-portal-empty">{isAr ? 'جارٍ التحقق من حالة الأهداف…' : 'Checking goal status…'}</p>
               : activityError || !activity ? <div className="cp-portal-goal-empty"><span className="cp-portal-goal-empty__icon"><Target size={28} /></span><h2 className="mt-3 text-lg font-bold">{isAr ? 'تعذّر تحميل حالة الهدف' : 'Goal status unavailable'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'تقدر تعيد المحاولة أو ترسل طلب إنشاء هدف للإدارة. ستتحقق الخدمة من وجود هدف فعّال قبل تسجيل الطلب.' : 'Retry, or request a goal from the administrator. The service checks for an existing active goal before recording the request.'}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="cp-portal-secondary-button" disabled={!online || activityLoading} onClick={() => { void load(); void loadActivity(); }}><RefreshCw size={15} className={activityLoading ? 'animate-spin' : ''}/>{isAr ? 'إعادة المحاولة' : 'Retry'}</button><button type="button" className="cp-portal-primary-button" disabled={!online || !serverAvailable || goalRequestBusy} onClick={() => void requestGoal()}>{goalRequestBusy ? <RefreshCw className="animate-spin" size={17} /> : <Target size={17} />}{isAr ? 'طلب إنشاء هدف' : 'Request a goal'}</button></div></div>
