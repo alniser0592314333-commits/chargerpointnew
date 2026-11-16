@@ -16,7 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
 
   const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\s+/g, '_') === 'SUPER_ADMIN');
   const hasAdminManage = isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage'));
-  const canManageCustomerAccounts = isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['customers:edit', 'customers:write', 'customers:manage', 'customer_accounts:manage', 'customer_accounts:reset', 'admin:manage'].includes(permission)));
+  const canManageCustomerAccounts = isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['customers:manage', 'customer_accounts:manage', 'customer_accounts:reset', 'admin:manage'].includes(permission)));
 
   const navItems: Array<{ id: string; label: string; badge?: number }> = [
     { id: '/app', label: t('navHome') },
