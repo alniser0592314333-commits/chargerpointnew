@@ -37,7 +37,9 @@ describe('notification routing and customer account management', () => {
     const countHook = read('src/hooks/useAdminNotificationCount.ts');
     expect(layout).toContain('customerAccountCount={notificationCounts.customerAccounts}');
     expect(countHook).toContain('nextCounts.notifications = paymentsResult.data.length');
-    expect(countHook).toContain('nextCounts.customerAccounts = requests.filter');
+    expect(countHook).toContain("callCustomerAccount<AdminInbox>('admin-counts', {}, token)");
+    expect(countHook).toContain('nextCounts.customerAccounts = Math.max');
+    expect(edge).toContain('action === "admin-counts"');
   });
 
   it('loads customer phone numbers and sends reset passwords through the default Android SIM', () => {
