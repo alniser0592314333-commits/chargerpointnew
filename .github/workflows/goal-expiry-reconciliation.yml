@@ -1,0 +1,59 @@
+name: Verify goal expiry reconciliation migration
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261116211000_goal_expiry_reconciliation.sql'
+      - 'supabase/tests/goal_expiry_reconciliation_fixture.sql'
+      - 'supabase/tests/goal_expiry_reconciliation_runtime.test.sql'
+      - '.github/workflows/goal-expiry-reconciliation.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify goal expiry, bonus and sync guards in isolated PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Prepare isolated schema fixture
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/goal_expiry_reconciliation_fixture.sql
+
+      - name: Apply the exact proposed migration
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20261116211000_goal_expiry_reconciliation.sql
+
+      - name: Verify on-demand expiry, customer portal, bonus integrity, push suppression and sync de-duplication
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/goal_expiry_reconciliation_runtime.test.sql
