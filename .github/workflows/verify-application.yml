@@ -163,6 +163,18 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/add_order_customer_search.test.ts
 
+      - name: Run partial customer sync merge regressions
+        env:
+          # These pure merge tests must never connect to production Supabase.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/customer_partial_sync_merge.test.ts
+      - name: Run customer pricing authority regressions
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/customer_pricing_authority_contract.test.ts
+
       - name: Type-check and lint
         run: npm run lint
       - name: Run BIN lockout and proof-gated change client regressions
@@ -206,6 +218,13 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';"
+      - name: Verify authoritative customer charger-fee migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: |
+          createdb -h localhost -U postgres customer_charger_fee_test
+          psql -h localhost -U postgres -d customer_charger_fee_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261116122000_authoritative_charger_fee_from_settings.sql
+          psql -h localhost -U postgres -d customer_charger_fee_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_charger_fee_authority.test.sql
       - name: Apply wallet service migrations in an isolated PostgreSQL database
         env:
           PGPASSWORD: postgres

@@ -50,6 +50,7 @@ import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrd
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import { setActiveQrDesign } from '../qr/defaultDesigns';
 import { normalizeCustomerSearchText } from '../../utils/customerSearch';
+import { mergeCustomerRemoteDelta } from '../../utils/customerRemoteMerge';
 
 const isBrowserOffline = (): boolean =>
   typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -736,18 +737,10 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('customers', change.entityId, tx);
       return;
     }
-    const entity: CustomerEntity = {
-      id: p.id || change.entityId,
-      name: p.name,
-      phone: p.phone || '',
-      isActive: p.isActive ?? p.is_active ?? true,
-      notes: p.notes ?? undefined,
-      debtLimitMinor: p.debtLimitMinor ?? p.debt_limit_minor ?? 0,
-      chargerFeeExempt: p.chargerFeeExempt ?? p.charger_fee_exempt ?? false,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      version: p.version || 1,
-    };
+    // Customer UPDATE events are partial patches. Preserve fields omitted from
+    // the payload (especially name) instead of rebuilding a blank customer row.
+    const prior = customersMap.get(change.entityId);
+    const entity: CustomerEntity = mergeCustomerRemoteDelta(prior, p, change.entityId, change.version, change.changedAt);
     localDb.setWithTx(tx, 'customers', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'customers', customersMap, entity.id);
     customersMap.set(entity.id, entity);
@@ -768,6 +761,7 @@ export const applyRemoteChange = (change: {
       icon: p.icon || 'smartphone',
       basePriceMinor: p.basePriceMinor ?? p.base_price_minor ?? 0,
       chargerFeeEnabled: p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true,
+      chargerFeeApplicable: p.chargerFeeApplicable ?? p.charger_fee_applicable ?? (p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true),
       status: p.status ?? undefined,
       isActive: p.isActive ?? p.is_active ?? true,
       sortOrder: p.sortOrder ?? p.sort_order ?? 0,
@@ -4323,7 +4317,7 @@ export const getDeviceTypesOptions = async (
         nameAr,
         nameEn,
         priceMinor: d.basePriceMinor,
-        supportsCharger: d.chargerFeeEnabled,
+        supportsCharger: d.chargerFeeEnabled && (d.chargerFeeApplicable ?? d.chargerFeeEnabled),
         chargerFeeMinor: 50,
       };
     });
@@ -4472,6 +4466,7 @@ export const calculateDeviceItemPreviewPrice = (
   const result = calculateItemPrice({
     basePriceMinor: dev.basePriceMinor,
     chargerFeeEnabled: dev.chargerFeeEnabled,
+    chargerFeeApplicable: dev.chargerFeeApplicable ?? dev.chargerFeeEnabled,
     customerExempt,
     hasCharger,
   });
@@ -5080,6 +5075,7 @@ export const updateCustomer = async (
     currentBalanceMinor,
     debtLimitMinor: updated.debtLimitMinor,
     isActive: updated.isActive,
+    chargerFeeExempt: !!updated.chargerFeeExempt,
     createdAt: updated.createdAt,
   };
 };

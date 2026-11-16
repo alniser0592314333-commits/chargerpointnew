@@ -17,6 +17,6 @@ describe('add-order Arabic customer search normalization', () => {
   it('matches each typed word across searchable customer fields', () => {
     const terms = normalizeCustomerSearchText('محمد 059').split(' ');
     const values = ['محمد جودة', '0599000000'].map(normalizeCustomerSearchText);
-    expect(terms.every((term) => values.some((value) => value.includes(term))).toBe(true);
+    expect(terms.every((term) => values.some((value) => value.includes(term)))).toBe(true);
   });
 });
