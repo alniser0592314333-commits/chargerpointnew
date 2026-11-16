@@ -25,6 +25,14 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install --legacy-peer-deps
+      - name: Run offline customer payment BIN authorization regressions
+        env:
+          # These tests use local repositories and mocked BIN verifiers only.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/offline_payment_bin_enforcement.test.ts src/tests/bin_authorization_queue.test.ts src/tests/payment_bin_sql_contract.test.ts src/tests/fifo_payment_status_allocation.test.ts
+      - name: Type-check application changes
+        run: npx tsc --noEmit
       - name: Run customer and home financial history grouping regressions
         env:
           # Test runs must never use the production Supabase project.

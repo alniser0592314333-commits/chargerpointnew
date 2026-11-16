@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { isBinRequiredOutboxCommand } from '../../infrastructure/sync/binAuthorization';
 import { useI18n } from '../../i18n/i18nContext';
 import { useToast } from '../ui/Toast';
 import { Button } from '../ui/Button';
@@ -167,28 +168,9 @@ export const SyncCenter: React.FC = () => {
 
   const failedCount = activeFailedCount;
 
-  // Sensitive commands that require an admin BIN before the server can execute them.
-  // This also recognizes older queued commands that reached the server without the
-  // deferred-BIN marker, so they can be recovered safely from the Sync Center.
-  const isBinRequiredCommand = (item: OutboxRecord): boolean => {
-    const binCommands = new Set(['DELIVER_ORDER_ITEM', 'CANCEL_ORDER', 'CANCEL_ORDER_ITEM', 'CREATE_CUSTOMER_CREDIT']);
-    if (!binCommands.has(item.commandType)) return false;
-
-    const payload = (item.payload || {}) as any;
-    const bin = String(payload?.bin || '').trim();
-    if (bin.length >= 4 && payload?.deferBinVerification !== true) return false;
-
-    const error = String(item.lastError || '');
-    return (
-      payload?.deferBinVerification === true ||
-      error === 'BIN_REQUIRED' ||
-      /BIN is required/i.test(error) ||
-      /Authorization required:\s*BIN/i.test(error)
-    );
-  };
-
+  // Includes legacy payment commands rejected by the server without a BIN.
   const binRequiredItems = useMemo(
-    () => outboxRecords.filter(isBinRequiredCommand),
+    () => outboxRecords.filter(isBinRequiredOutboxCommand),
     [outboxRecords]
   );
   const binRequiredCount = binRequiredItems.length;
@@ -317,7 +299,7 @@ export const SyncCenter: React.FC = () => {
 
     try {
       const outbox = await localDb.listOutbox();
-      const selected = outbox.filter((o) => commandIds.includes(o.commandId) && isBinRequiredCommand(o));
+      const selected = outbox.filter((o) => commandIds.includes(o.commandId) && isBinRequiredOutboxCommand(o));
 
       for (const target of selected) {
         const payload = ((target.payload || {}) as any);
@@ -428,7 +410,7 @@ export const SyncCenter: React.FC = () => {
       // Do not skip an older command that needs credentials or belongs to a
       // previous reset generation; newer failed commands must not overtake it.
       const first = failedCommands[0];
-      if (isBinRequiredCommand(first)) {
+      if (isBinRequiredOutboxCommand(first)) {
         showToast(
           locale === 'ar'
             ? `أقدم عملية فاشلة (${first.commandId}) تحتاج BIN. أدخل BIN من قسم العمليات التي تحتاج BIN أولاً.`
@@ -452,7 +434,7 @@ export const SyncCenter: React.FC = () => {
       for (const item of failedCommands) {
         // Keep the retry batch FIFO. If a later item needs explicit authorization
         // or is stale, leave it and all newer items untouched for a separate action.
-        if (isBinRequiredCommand(item) || String(item.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
+        if (isBinRequiredOutboxCommand(item) || String(item.lastError || '').includes('RESET_GENERATION_MISMATCH')) {
           break;
         }
 
