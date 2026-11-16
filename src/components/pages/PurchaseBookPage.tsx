@@ -55,6 +55,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const [quickAdd,setQuickAdd]=useState<'suppliers'|'items'|'methods'|null>(null);
   const [quickName,setQuickName]=useState('');
   const today=localToday();
+  const ar = typeof document !== 'undefined' && document.documentElement.lang !== 'en';
 
   const reload=useCallback(async()=>{
     try{
