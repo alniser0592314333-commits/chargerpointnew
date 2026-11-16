@@ -474,11 +474,11 @@ const [isLoading, setIsLoading] = useState(true);
     const ar = '٠١٢٣٤٥٦٧٨٩'; const east = '۰۱۲۳۴۵۶۷۸۹';
     const a = ar.indexOf(digit); if (a >= 0) return String(a);
     const e = east.indexOf(digit); return e >= 0 ? String(e) : digit;
-  }).replace(/[^+\\d]/g, '');
+  }).replace(/[^+\d]/g, '');
 
   const handleCallCustomer = () => {
     const phone = normalizeContactPhone(customer?.phone || '');
-    if (phone.replace(/\\D/g, '').length >= 7) {
+    if (phone.replace(/\D/g, '').length >= 7) {
       window.location.href = `tel:${phone}`;
       return;
     }
@@ -488,7 +488,7 @@ const [isLoading, setIsLoading] = useState(true);
 
   const handleCallWithEnteredPhone = () => {
     const phone = normalizeContactPhone(callPhoneInput);
-    if (phone.replace(/\\D/g, '').length < 7 || phone.replace(/\\D/g, '').length > 15) {
+    if (phone.replace(/\D/g, '').length < 7 || phone.replace(/\D/g, '').length > 15) {
       showToast(locale === 'ar' ? 'أدخل رقم هاتف صحيحًا.' : 'Enter a valid phone number.', 'error');
       return;
     }
