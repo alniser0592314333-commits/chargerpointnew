@@ -83,7 +83,12 @@ export const CustomerLinkSmsPage: React.FC<{
   });
   const [savedTemplates, setSavedTemplates] = useState(readSavedTemplates);
   const [templateName, setTemplateName] = useState('');
-  const [selectedSavedTemplate, setSelectedSavedTemplate] = useState('');
+  const [selectedSavedTemplate, setSelectedSavedTemplate] = useState(() => {
+    try {
+      const current = localStorage.getItem(TEMPLATE_KEY) || DEFAULT_TEMPLATE;
+      return readSavedTemplates().find((item) => item.content === current)?.id || '';
+    } catch { return ''; }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -182,6 +187,7 @@ export const CustomerLinkSmsPage: React.FC<{
   };
   const loadSavedTemplate = (id: string) => {
     setSelectedSavedTemplate(id);
+    if (!id) { updateTemplate(DEFAULT_TEMPLATE); return; }
     const found = savedTemplates.find((x) => x.id === id);
     if (found) updateTemplate(found.content);
   };
@@ -191,7 +197,6 @@ export const CustomerLinkSmsPage: React.FC<{
     try { localStorage.setItem(SAVED_TEMPLATES_KEY, JSON.stringify(next)); setSavedTemplates(next); if (selectedSavedTemplate === id) setSelectedSavedTemplate(''); }
     catch { setNotice(ar ? 'تعذر حذف القالب.' : 'Could not delete the template.'); }
   };
-  const applyPreset = (kind: keyof typeof MESSAGE_PRESETS) => updateTemplate(MESSAGE_PRESETS[kind]);
   const insertToken = (token: string) => {
     const editor = editorRef.current;
     const start = editor?.selectionStart ?? messageTemplate.length;
@@ -271,20 +276,6 @@ export const CustomerLinkSmsPage: React.FC<{
       localStorage.removeItem(STORAGE_KEY);
       return true;
     } catch (error) { console.error('Could not archive SMS campaign:', error); return false; }
-  };
-  const createFreshCampaign = (next: Recipient[]) => {
-    const id = `sms-${Date.now()}`;
-    setCampaignId(id); setCampaignStartedAt(''); setCampaignFinishedAt('');
-    setRecipients(next);
-    saveCampaign(next, { id, startedAt: '', finishedAt: '', status: 'draft', messageTemplate });
-  };
-  const startNewCampaign = () => {
-    if (isSending || !window.confirm(ar ? 'سيتم حفظ الحملة الحالية في الأرشيف وبدء حملة جديدة. هل تريد المتابعة؟' : 'Archive the current campaign and start a new one?')) return;
-    if ((campaignStartedAt || recipients.some((r) => r.status !== 'pending')) && !archiveCurrentCampaign()) {
-      setNotice(ar ? 'تعذر أرشفة الحملة؛ لم نغيّر بياناتها.' : 'Could not archive the campaign; no data was changed.'); return;
-    }
-    createFreshCampaign(recipients.map((r) => ({ ...r, status: 'pending' as const, selected: r.hasDebt, error: undefined })));
-    setNotice(ar ? 'بدأت حملة جديدة. الحملة السابقة محفوظة في الأرشيف.' : 'New campaign started; previous campaign is archived.');
   };
   const endCampaign = () => {
     if (isSending || !window.confirm(ar ? 'إنهاء الحملة وأرشفة تقريرها؟' : 'End this campaign and archive its report?')) return;
