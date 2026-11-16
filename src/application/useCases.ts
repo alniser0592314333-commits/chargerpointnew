@@ -2158,7 +2158,8 @@ export class FinalUseCases {
     auth: AuthorizationContext,
     requestId: ID,
     bonusAmountMinor?: number,
-    durationDays?: number
+    durationDays?: number,
+    targetQuantityOverride?: number
   ): Promise<Result<{ request: GoalRequestEntity; goal: GoalEntity }>> {
     const actor = auth.requireAuth();
     auth.assertPermission('goals:approve');
@@ -2175,9 +2176,15 @@ export class FinalUseCases {
     const existingActive = await this.deps.goalRepo.findActiveByCustomerId(req.customerId);
     DomainInvariants.assertSingleActiveGoal(existingActive, req.customerId);
 
-    const targetQuantity = req.requestedTarget || 10;
-    const effectiveDurationDays = durationDays ?? randomGoalDurationDays();
-    const effectiveBonusAmountMinor = bonusAmountMinor ?? Math.min(targetQuantity * 10, calculateGoalBonusCapMinor(targetQuantity));
+    const targetQuantity = targetQuantityOverride ?? req.requestedTarget;
+    if (!Number.isInteger(targetQuantity) || targetQuantity! <= 0) {
+      throw new BusinessRuleViolation('A valid customer-specific goal target is required before approving this request.');
+    }
+    if (!Number.isInteger(durationDays) || durationDays! < 3 || durationDays! > 15 || !Number.isInteger(bonusAmountMinor) || bonusAmountMinor! < 0) {
+      throw new BusinessRuleViolation('A complete goal proposal (duration and bonus) is required before approving this request.');
+    }
+    const effectiveDurationDays = durationDays!;
+    const effectiveBonusAmountMinor = bonusAmountMinor!;
     DomainInvariants.assertGoalParamsValid(targetQuantity, effectiveDurationDays, effectiveBonusAmountMinor);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + effectiveDurationDays * 24 * 60 * 60 * 1000).toISOString();
