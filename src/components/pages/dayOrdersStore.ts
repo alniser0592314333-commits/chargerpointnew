@@ -368,6 +368,128 @@ export const getPurchaseBookRowsSync = (table: PurchaseBookTable): PurchaseBookE
   return Array.from(purchaseMaps[table].values()).filter((row) => row.adminId === activeAdminId);
 };
 
+// The global change-log cursor is shared by the app, while purchase deltas are
+// filtered by admin on the server. A device that previously advanced its cursor
+// under another admin (or missed older purchase deltas) cannot reconstruct this
+// account's older rows from incremental sync alone. Refresh this small, scoped
+// aggregate when the Purchase Book is opened; never reset the global cursor.
+let lastPurchaseBookSnapshotRefreshAt = 0;
+let purchaseBookSnapshotRefreshPromise: Promise<boolean> | null = null;
+
+export const refreshPurchaseBookFromRemote = async (force = false): Promise<boolean> => {
+  const activeAdminId = getCachedPurchaseAdminId();
+  if (!activeAdminId) throw new Error('PURCHASE_ADMIN_SESSION_REQUIRED');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  if (!force && Date.now() - lastPurchaseBookSnapshotRefreshAt < 30_000) return false;
+  if (purchaseBookSnapshotRefreshPromise) return purchaseBookSnapshotRefreshPromise;
+
+  const refreshPromise = (async (): Promise<boolean> => {
+    const { data, error } = await invokeSupabaseRpc<Record<string, any>>('capture_purchase_book_snapshot');
+    if (error || !data) throw new Error(error || 'PURCHASE_BOOK_SNAPSHOT_EMPTY');
+    const snapshot = (Array.isArray(data) ? data[0] : data) as Record<string, any>;
+    const specs: Array<{ table: PurchaseBookTable; key: string; serverKey: string }> = [
+      { table: 'suppliers', key: 'purchaseSuppliers', serverKey: 'purchase_suppliers' },
+      { table: 'items', key: 'purchaseItems', serverKey: 'purchase_items' },
+      { table: 'methods', key: 'purchasePaymentMethods', serverKey: 'purchase_payment_methods' },
+      { table: 'months', key: 'purchaseMonths', serverKey: 'purchase_months' },
+      { table: 'weeks', key: 'purchaseWeeks', serverKey: 'purchase_weeks' },
+      { table: 'days', key: 'purchaseDays', serverKey: 'purchase_days' },
+      { table: 'orders', key: 'purchaseOrders', serverKey: 'purchase_orders' },
+    ];
+    for (const spec of specs) {
+      if (!Array.isArray(snapshot?.[spec.serverKey])) {
+        throw new Error(`PURCHASE_BOOK_SNAPSHOT_INVALID:${spec.serverKey}`);
+      }
+      if (snapshot[spec.serverKey].some((row: any) => row?.admin_id !== activeAdminId)) {
+        throw new Error('PURCHASE_BOOK_SNAPSHOT_OWNER_MISMATCH');
+      }
+    }
+
+    const [outbox, ...persistedTables] = await Promise.all([
+      localDb.listOutbox(),
+      ...specs.map((spec) => localDb.list<any>(spec.key)),
+    ]);
+    const pendingIds = new Set<string>();
+    for (const command of outbox as any[]) {
+      const pending = ['pending', 'PENDING_RECONCILIATION', 'syncing', 'blocked', 'conflict'].includes(String(command.status));
+      const purchaseCommand = String(command.commandType || '').startsWith('SAVE_PURCHASE_') || command.commandType === 'MARK_PURCHASE_ORDER_PAID';
+      if (pending && purchaseCommand) {
+        const id = command.aggregateId || command.payload?.id;
+        if (typeof id === 'string' && id) pendingIds.add(id);
+      }
+    }
+
+    const nextRows = new Map<PurchaseBookTable, PurchaseBookEntity[]>();
+    specs.forEach((spec, index) => {
+      const persisted = persistedTables[index] as any[];
+      const serverRows = snapshot[spec.serverKey] as any[];
+      const normalized: PurchaseBookEntity[] = serverRows.map((row: any) => {
+        const base = {
+          id: row.id,
+          adminId: activeAdminId,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          version: Number(row.version ?? 1),
+        };
+        if (spec.table === 'suppliers' || spec.table === 'items' || spec.table === 'methods') {
+          return { ...base, name: row.name, isActive: Boolean(row.is_active), deletedAt: row.deleted_at ?? undefined } as PurchaseCatalogEntity;
+        }
+        if (spec.table === 'months') {
+          return { ...base, year: Number(row.year), month: Number(row.month_number), startDate: row.start_date, endDate: row.end_date, isClosed: Boolean(row.is_closed) } as PurchaseMonthEntity;
+        }
+        if (spec.table === 'weeks') {
+          return { ...base, monthId: row.month_id, startDate: row.start_date, endDate: row.end_date, isClosed: Boolean(row.is_closed) } as PurchaseWeekEntity;
+        }
+        if (spec.table === 'days') {
+          return { ...base, weekId: row.week_id, purchaseDate: row.purchase_date, isClosed: Boolean(row.is_closed) } as PurchaseDayEntity;
+        }
+        return {
+          ...base, purchaseDayId: row.purchase_day_id, supplierId: row.supplier_id, itemId: row.item_id,
+          paymentMethodId: row.payment_method_id ?? undefined, amountMinor: Number(row.amount_minor),
+          currency: row.currency, paymentStatus: row.payment_status, purchasedAt: row.purchased_at,
+          paidAt: row.paid_at ?? undefined,
+        } as PurchaseOrderEntity;
+      });
+      const merged = new Map<string, PurchaseBookEntity>(normalized.map((row) => [row.id, row]));
+      for (const row of persisted) {
+        if (row?.adminId === activeAdminId && pendingIds.has(row.id)) merged.set(row.id, row);
+      }
+      nextRows.set(spec.table, Array.from(merged.values()));
+    });
+
+    await localDb.runTransaction(['kvStore'], 'readwrite', (tx) => {
+      specs.forEach((spec, index) => {
+        const persisted = persistedTables[index] as any[];
+        const rows = nextRows.get(spec.table) || [];
+        const nextIds = new Set(rows.map((row) => row.id));
+        for (const row of persisted) {
+          if (row?.adminId === activeAdminId && !nextIds.has(row.id)) {
+            localDb.removeWithTx(tx, spec.key, row.id);
+          }
+        }
+        for (const row of rows) localDb.setWithTx(tx, spec.key, row.id, row);
+      });
+    });
+
+    for (const spec of specs) {
+      const map = purchaseMaps[spec.table];
+      map.clear();
+      for (const row of nextRows.get(spec.table) || []) map.set(row.id, row);
+    }
+    lastPurchaseBookSnapshotRefreshAt = Date.now();
+    notifyStore('purchaseBook');
+    return true;
+  })();
+
+  purchaseBookSnapshotRefreshPromise = refreshPromise;
+  try {
+    return await refreshPromise;
+  } finally {
+    if (purchaseBookSnapshotRefreshPromise === refreshPromise) purchaseBookSnapshotRefreshPromise = null;
+  }
+};
+
+
 export function useStoreSubscription(scope?: StoreScope | StoreScope[]): number {
   const [version, setVersion] = useState(0);
 
