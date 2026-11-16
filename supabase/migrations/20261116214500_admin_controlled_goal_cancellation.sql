@@ -301,3 +301,96 @@ BEGIN
   END LOOP;
 END;
 $migration$;
+
+-- If the goal completes or expires before the admin reviews the request, close
+-- the pending request in the same UPDATE/change-log event instead of leaving an
+-- orphaned request that can no longer be approved.
+CREATE OR REPLACE FUNCTION public.close_goal_cancellation_request_when_goal_ends()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+BEGIN
+  IF OLD.status = 'ACTIVE'
+     AND NEW.status IN ('COMPLETED','FAILED')
+     AND OLD.cancellation_request_status = 'PENDING' THEN
+    NEW.cancellation_request_status := 'REJECTED';
+    NEW.cancellation_reviewed_at := now();
+    NEW.cancellation_reviewed_by := NULL;
+    NEW.cancellation_review_reason := 'Goal ended before the administrator reviewed the cancellation request.';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.close_goal_cancellation_request_when_goal_ends()
+  FROM PUBLIC, anon, authenticated, service_role;
+DROP TRIGGER IF EXISTS trg_goal_close_pending_cancellation ON public.goals;
+CREATE TRIGGER trg_goal_close_pending_cancellation
+BEFORE UPDATE OF status ON public.goals
+FOR EACH ROW
+WHEN (OLD.status = 'ACTIVE' AND NEW.status IN ('COMPLETED','FAILED'))
+EXECUTE FUNCTION public.close_goal_cancellation_request_when_goal_ends();
+
+-- A direct administrator cancellation also resolves an already-pending
+-- customer request as approved, so no stale pending card remains.
+CREATE OR REPLACE FUNCTION public.admin_cancel_goal(
+  p_goal_id uuid,
+  p_reason text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_admin_id uuid;
+  v_role text;
+  v_allowed boolean := false;
+  v_goal public.goals%ROWTYPE;
+BEGIN
+  v_admin_id := public._cp_assert_active_admin_permission(NULL);
+  SELECT a.role INTO v_role FROM public.admins a WHERE a.id = v_admin_id AND a.is_active IS TRUE;
+  IF upper(replace(trim(coalesce(v_role,'')), ' ', '_')) = 'SUPER_ADMIN' THEN
+    v_allowed := true;
+  ELSE
+    SELECT coalesce(bool_or(ep.permission = 'goals:manage'), false)
+      INTO v_allowed
+    FROM public.get_effective_permissions__session_guarded_impl(v_admin_id) ep;
+  END IF;
+  IF NOT v_allowed THEN
+    RAISE EXCEPTION 'Missing required permission: goals:manage' USING ERRCODE='42501';
+  END IF;
+
+  SELECT * INTO v_goal FROM public.goals WHERE id = p_goal_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Goal not found' USING ERRCODE='P0002'; END IF;
+  IF v_goal.status <> 'ACTIVE' THEN
+    RAISE EXCEPTION 'Only an active goal can be cancelled' USING ERRCODE='P0001';
+  END IF;
+  IF v_goal.expires_at <= now() THEN
+    PERFORM public.evaluate_customer_active_goal_internal(v_goal.customer_id);
+    SELECT * INTO v_goal FROM public.goals WHERE id = p_goal_id FOR UPDATE;
+    IF v_goal.status <> 'ACTIVE' THEN
+      RAISE EXCEPTION 'Goal has already expired and was reconciled' USING ERRCODE='P0001';
+    END IF;
+  END IF;
+
+  UPDATE public.goals
+  SET status = 'CANCELLED',
+      cancellation_request_status = CASE
+        WHEN cancellation_request_status = 'PENDING' THEN 'APPROVED'
+        ELSE cancellation_request_status END,
+      cancellation_reviewed_at = now(),
+      cancellation_reviewed_by = v_admin_id,
+      cancellation_review_reason = nullif(left(btrim(coalesce(p_reason,'')),500),''),
+      updated_at = now(),
+      version = version + 1
+  WHERE id = p_goal_id;
+
+  INSERT INTO public.customer_account_events(customer_id,event_type,payload)
+  VALUES (v_goal.customer_id,'GOAL_CANCELLED_BY_ADMIN',
+          jsonb_build_object('goal_id',p_goal_id,'reason',nullif(left(btrim(coalesce(p_reason,'')),500),'')));
+  RETURN jsonb_build_object('ok',true,'goal_id',p_goal_id,'status','CANCELLED');
+END;
+$function$;
