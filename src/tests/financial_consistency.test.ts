@@ -57,7 +57,7 @@ describe('Financial Consistency Audit & Idempotency', () => {
     await localDb.set('customers', custId, { id: custId, name: 'C', isActive: true });
     
     const paymentId = 'pay-1';
-    await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1);
+    await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1, '1234');
     await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1);
     
     // CREATE_PAYMENT is optimistic-overlay backed: it must not write the
