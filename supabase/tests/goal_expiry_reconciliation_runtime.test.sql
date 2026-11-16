@@ -250,4 +250,82 @@ BEGIN
 END;
 $approval_values$;
 
+
+-- Customer cancellation is only a request; admin approval is the only path
+-- that changes ACTIVE to CANCELLED. Rejection leaves the goal active.
+INSERT INTO public.customers(id,name,is_active,status)
+VALUES
+  ('20000000-0000-4000-8000-000000000006','Cancellation Approval Customer',true,'ACTIVE'),
+  ('20000000-0000-4000-8000-000000000007','Direct Cancellation Customer',true,'ACTIVE');
+
+INSERT INTO public.goals(
+  id,customer_id,target_quantity,current_progress,bonus_amount_minor,duration_days,
+  status,started_at,expires_at,created_at,updated_at,version
+)
+VALUES
+  ('30000000-0000-4000-8000-000000000007','20000000-0000-4000-8000-000000000006',
+   10,0,200,7,'ACTIVE',now(),now()+interval '7 days',now(),now(),1),
+  ('30000000-0000-4000-8000-000000000008','20000000-0000-4000-8000-000000000007',
+   10,0,200,7,'ACTIVE',now(),now()+interval '7 days',now(),now(),1);
+
+SELECT public.customer_request_goal_cancellation(
+  '20000000-0000-4000-8000-000000000006',
+  '30000000-0000-4000-8000-000000000007',
+  'I no longer want to participate'
+);
+
+DO $cancellation_request$
+BEGIN
+  IF (SELECT status FROM public.goals WHERE id='30000000-0000-4000-8000-000000000007') <> 'ACTIVE' THEN
+    RAISE EXCEPTION 'Customer request cancelled the goal without admin approval';
+  END IF;
+  IF (SELECT cancellation_request_status FROM public.goals WHERE id='30000000-0000-4000-8000-000000000007') <> 'PENDING' THEN
+    RAISE EXCEPTION 'Customer cancellation request was not stored as pending';
+  END IF;
+END;
+$cancellation_request$;
+
+SELECT public.admin_review_goal_cancellation(
+  '30000000-0000-4000-8000-000000000007', false, 'The goal is nearly complete'
+);
+
+DO $cancellation_rejected$
+BEGIN
+  IF (SELECT status FROM public.goals WHERE id='30000000-0000-4000-8000-000000000007') <> 'ACTIVE'
+     OR (SELECT cancellation_request_status FROM public.goals WHERE id='30000000-0000-4000-8000-000000000007') <> 'REJECTED' THEN
+    RAISE EXCEPTION 'Rejected cancellation request did not preserve the active goal';
+  END IF;
+END;
+$cancellation_rejected$;
+
+SELECT public.customer_request_goal_cancellation(
+  '20000000-0000-4000-8000-000000000006',
+  '30000000-0000-4000-8000-000000000007',
+  'I confirm I want to stop this goal'
+);
+SELECT public.admin_review_goal_cancellation(
+  '30000000-0000-4000-8000-000000000007', true, 'Approved by administrator'
+);
+SELECT public.admin_cancel_goal(
+  '30000000-0000-4000-8000-000000000008', 'Administrative decision'
+);
+
+DO $cancellation_approved$
+BEGIN
+  IF (SELECT status FROM public.goals WHERE id='30000000-0000-4000-8000-000000000007') <> 'CANCELLED' THEN
+    RAISE EXCEPTION 'Admin approval did not cancel the requested goal';
+  END IF;
+  IF (SELECT cancellation_request_status FROM public.goals WHERE id='30000000-0000-4000-8000-000000000007') <> 'APPROVED' THEN
+    RAISE EXCEPTION 'Admin cancellation approval was not recorded';
+  END IF;
+  IF (SELECT status FROM public.goals WHERE id='30000000-0000-4000-8000-000000000008') <> 'CANCELLED' THEN
+    RAISE EXCEPTION 'Admin direct cancellation did not cancel the active goal';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.financial_ledger WHERE event_type='BONUS'
+      AND reference_id IN ('30000000-0000-4000-8000-000000000007','30000000-0000-4000-8000-000000000008')) THEN
+    RAISE EXCEPTION 'Cancelled goals must not create reward ledger entries';
+  END IF;
+END;
+$cancellation_approved$;
+
 SELECT 'goal_expiry_reconciliation_runtime_tests_passed' AS result;
