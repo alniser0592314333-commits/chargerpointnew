@@ -4273,20 +4273,35 @@ export const getNextOrderNumberForDay = async (dayId: string): Promise<number> =
 
 export const searchCustomers = async (query: string): Promise<UICustomerItem[]> => {
   if (!query || !query.trim()) return [];
-  const q = query.trim().toLowerCase();
+
+  // The add-order screen can be opened before the initial local database
+  // hydration finishes. Always await the shared hydration promise before
+  // reading customersMap, otherwise a valid search can incorrectly return []
+  // while the persisted customer list is still being loaded.
+  await ensureStoreHydrated();
+
+  const normalize = (value: string): string => value
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
+    .replace(/\\s+/g, ' ')
+    .trim();
+
+  const queryTerms = normalize(query).split(' ').filter(Boolean);
   const all = Array.from(customersMap.values()).filter((c) => c.isActive);
 
   return all
     .filter((c) => {
-      const code = getCustomerCode(c).toLowerCase();
-      const phone = c.phone || '';
-      const id = c.id.toLowerCase();
-      return (
-        c.name.toLowerCase().includes(q) ||
-        phone.includes(q) ||
-        code.includes(q) ||
-        id.includes(q)
-      );
+      const searchableValues = [c.name, c.phone || '', getCustomerCode(c), c.id].map(normalize);
+      // Match all query words, even when they appear in different customer fields.
+      return queryTerms.every((term) => searchableValues.some((value) => value.includes(term)));
     })
     .map((c) => ({
       id: c.id,
