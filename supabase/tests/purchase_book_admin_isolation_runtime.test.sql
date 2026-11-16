@@ -72,6 +72,11 @@ BEGIN
      OR v_purchase_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier B' THEN
     RAISE EXCEPTION 'Scoped Purchase Book snapshot leaked or omitted Admin B supplier';
   END IF;
+  IF has_function_privilege('anon','public.capture_purchase_book_snapshot()','EXECUTE')
+     OR has_function_privilege('service_role','public.capture_purchase_book_snapshot()','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.capture_purchase_book_snapshot()','EXECUTE') THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot function grants are not restricted to authenticated callers';
+  END IF;
 
   PERFORM set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000011',true);
   v_snapshot := public.capture_sync_bootstrap_snapshot();
