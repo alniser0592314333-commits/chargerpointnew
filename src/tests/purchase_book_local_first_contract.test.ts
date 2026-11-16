@@ -161,6 +161,20 @@ describe('Purchase book local-first architecture contract', () => {
     expect(store).toContain('adminId: row.admin_id');
   });
 
+  it('repairs cross-device purchase visibility with a permission-gated, admin-scoped snapshot', () => {
+    const snapshotMigration = read('supabase/migrations/20261116070000_purchase_book_scoped_snapshot.sql');
+    expect(snapshotMigration).toContain('CREATE OR REPLACE FUNCTION public.capture_purchase_book_snapshot()');
+    expect(snapshotMigration).toContain("PERFORM public._cp_assert_active_admin_permission('purchases:manage')");
+    expect(snapshotMigration).toContain('WHERE t.admin_id=v_admin_id');
+    expect(snapshotMigration).toContain('REVOKE ALL ON FUNCTION public.capture_purchase_book_snapshot() FROM PUBLIC, anon, service_role');
+    expect(snapshotMigration).toContain('GRANT EXECUTE ON FUNCTION public.capture_purchase_book_snapshot() TO authenticated');
+    expect(store).toContain("invokeSupabaseRpc<Record<string, any>>('capture_purchase_book_snapshot')");
+    expect(store).toContain("row?.admin_id !== activeAdminId");
+    expect(store).toContain("localDb.runTransaction(['kvStore'], 'readwrite'");
+    expect(store).toContain('pendingIds');
+    expect(page).toContain('refreshPurchaseBookFromRemote()');
+  });
+
   it('does not erase the independent purchase book during operational-data reset', () => {
     const localDb = read('src/infrastructure/localDb/localDb.ts');
     const resetList = localDb.slice(localDb.indexOf('const operationalTables = ['), localDb.indexOf('];', localDb.indexOf('const operationalTables = [')));
