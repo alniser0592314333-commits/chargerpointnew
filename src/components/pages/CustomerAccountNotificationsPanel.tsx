@@ -333,7 +333,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
 
       {prepared && (
         <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/25">
-          <div className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" /><div><h3 className="font-bold">{t('كلمة سر مؤقتة جاهزة', 'Temporary password prepared')}</h3><p className="mt-1 text-sm">{t('للعميل: ', 'For customer: ')}<strong>{prepared.customerName}</strong>. {t('لن تصبح فعالة قبل الضغط على حفظ واعتماد.', 'It will not become active until you select Save and activate.')}</p></div></div>
+          <div className="flex items-start gap-2"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700 dark:text-amber-300" /><div><h3 className="font-bold">{t('كلمة سر مؤقتة جاهزة', 'Temporary password prepared')}</h3><p className="mt-1 text-sm">{t('للعميل: ', 'For customer: ')}<strong>{prepared.customerName}</strong> · <span dir="ltr">{prepared.phone}</span>. {t('لن تصبح فعالة قبل اعتماد الطلب وإرسال SMS.', 'It will not become active until you confirm and send the SMS.')}</p></div></div>
           <div className="flex flex-wrap items-center gap-2">
             <code dir="ltr" className="min-w-0 flex-1 select-all break-all rounded-lg border border-amber-300 bg-white px-3 py-3 text-sm font-bold tracking-wide text-gray-900">{prepared.password}</code>
             <button type="button" onClick={() => void copyPassword(prepared.password)} className="inline-flex items-center gap-2 rounded-lg border border-amber-400 px-3 py-3 text-xs font-bold"><Clipboard className="h-4 w-4" />{t('نسخ', 'Copy')}</button>
