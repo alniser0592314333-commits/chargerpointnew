@@ -691,7 +691,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
 
 
   const requestGoalCancellation = async () => {
-    if (!online || !serverAvailable || !activeGoal || goalCancellationBusy) return;
+    const currentActiveGoal = data?.goals.find((goal) => goal.status.toUpperCase() === 'ACTIVE');
+    if (!online || !serverAvailable || !currentActiveGoal || goalCancellationBusy) return;
     const reason = goalCancellationReason.trim();
     if (reason.length < 3 || reason.length > 500) {
       setActionMessage(isAr ? 'اكتب سبب الإلغاء (3 أحرف على الأقل).' : 'Please enter a cancellation reason (at least 3 characters).');
@@ -701,7 +702,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
     setActionMessage('');
     const { error: requestError } = await callCustomerAccount(
       'request-goal-cancellation',
-      { token, goal_id: activeGoal.id, reason },
+      { token, goal_id: currentActiveGoal.id, reason },
     );
     if (requestError) {
       setActionMessage(requestError === 'GOAL_NOT_AVAILABLE'
