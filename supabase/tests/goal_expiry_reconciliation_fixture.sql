@@ -261,6 +261,58 @@ BEGIN
 END;
 $$;
 
+
+CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command_unlocked(
+  p_command_id uuid,
+  p_command_type text,
+  p_payload jsonb,
+  p_payload_hash text,
+  p_device_id text,
+  p_actor_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $
+DECLARE
+  v_rec_goal_request public.goal_requests%ROWTYPE;
+  v_entity_uuid uuid;
+BEGIN
+  IF p_command_type = 'APPROVE_GOAL_REQUEST' THEN
+    SELECT * INTO v_rec_goal_request
+    FROM public.goal_requests
+    WHERE id = (p_payload->>'requestId')::uuid
+    FOR UPDATE;
+
+    v_entity_uuid := COALESCE((p_payload->>'resultingGoalId')::UUID, gen_random_uuid());
+
+    INSERT INTO public.goals(
+      id, customer_id, target_quantity, current_progress, bonus_amount_minor,
+      duration_days, status, started_at, expires_at, created_at, updated_at, version
+    )
+    VALUES (
+      v_entity_uuid,
+      v_rec_goal_request.customer_id,
+      COALESCE((p_payload->>'targetQuantity')::INTEGER, v_rec_goal_request.requested_target, 10),
+      0,
+      COALESCE((p_payload->>'bonusAmountMinor')::BIGINT, 500),
+      COALESCE((p_payload->>'durationDays')::INTEGER, 7),
+      'ACTIVE',
+      now(),
+      COALESCE((p_payload->>'expiresAt')::TIMESTAMPTZ, now() + make_interval(days => COALESCE((p_payload->>'durationDays')::INTEGER, 7))),
+      now(),
+      now(),
+      1
+    );
+
+    RETURN jsonb_build_object('goalId', v_entity_uuid);
+  END IF;
+
+  RETURN '{}'::jsonb;
+END;
+$;
+
 CREATE OR REPLACE FUNCTION public.public_resolve_customer_portal(p_public_token text)
 RETURNS jsonb
 LANGUAGE plpgsql
