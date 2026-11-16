@@ -122,7 +122,7 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
 
   it('1. Goal Generation Proposal: Deterministically calculates target, variable duration, and reconciled bonus formula', () => {
     // 0 past items -> baseline minimum 10 target, proposal floor of 150 minor units (1.50 ILS)
-    const proposalZero = generateGoalProposal(0, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
+    const proposalZero = generateGoalProposal(0, { customDurationDays: 7, customRatePerDeviceMinor: 15, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposalZero.targetQuantity).toBe(10);
     expect(proposalZero.durationDays).toBe(7);
     expect(proposalZero.bonusAmountMinor).toBe(150);
