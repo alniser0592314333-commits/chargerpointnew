@@ -328,4 +328,37 @@ BEGIN
 END;
 $cancellation_approved$;
 
+
+-- A pending cancellation request is auto-closed in the same goal update if the
+-- goal expires/fails before an administrator reviews it.
+INSERT INTO public.customers(id,name,is_active,status)
+VALUES ('20000000-0000-4000-8000-000000000008','Expired Cancellation Customer',true,'ACTIVE');
+INSERT INTO public.goals(
+  id,customer_id,target_quantity,current_progress,bonus_amount_minor,duration_days,
+  status,started_at,expires_at,cancellation_requested_at,cancellation_request_reason,
+  cancellation_request_status,created_at,updated_at,version
+)
+VALUES (
+  '30000000-0000-4000-8000-000000000009',
+  '20000000-0000-4000-8000-000000000008',
+  10,0,200,7,'ACTIVE',now()-interval '8 days',now()-interval '1 day',
+  now()-interval '1 hour','No longer participating','PENDING',now()-interval '8 days',now(),1
+);
+UPDATE public.goals
+SET status='FAILED', version=version+1
+WHERE id='30000000-0000-4000-8000-000000000009';
+
+DO $expired_cancellation$
+BEGIN
+  IF (SELECT cancellation_request_status FROM public.goals
+      WHERE id='30000000-0000-4000-8000-000000000009') <> 'REJECTED' THEN
+    RAISE EXCEPTION 'Expired goal left an orphaned pending cancellation request';
+  END IF;
+  IF (SELECT cancellation_reviewed_by FROM public.goals
+      WHERE id='30000000-0000-4000-8000-000000000009') IS NOT NULL THEN
+    RAISE EXCEPTION 'System closure of an expired cancellation request must not impersonate an admin';
+  END IF;
+END;
+$expired_cancellation$;
+
 SELECT 'goal_expiry_reconciliation_runtime_tests_passed' AS result;
