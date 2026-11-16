@@ -222,6 +222,23 @@ jobs:
           END
           $wallet_isolation$;
           SQL
+      - name: Create isolated database for native push debt-reminder session policy
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres native_push_debt_test
+      - name: Prepare native push verifier fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d native_push_debt_test -v ON_ERROR_STOP=1 -f supabase/tests/native_push_debt_reminder_fixture.sql
+      - name: Apply native push debt-reminder session policy migration
+        env:
+          PGPASSWORD: postgres
+        run: psql --single-transaction -h localhost -U postgres -d native_push_debt_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261116070000_native_push_debt_reminder_session_bypass.sql
+      - name: Verify debt reminders bypass only the expired portal session
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d native_push_debt_test -v ON_ERROR_STOP=1 -f supabase/tests/native_push_debt_reminder_runtime.test.sql
+
       - name: Create isolated database for account session management
         env:
           PGPASSWORD: postgres
