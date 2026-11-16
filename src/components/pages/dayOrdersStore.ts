@@ -1483,14 +1483,8 @@ export const globalSyncEngine = new SyncEngine(globalSyncTransport);
 globalSyncEngine.onDeltaApplied = applyRemoteChange;
 
 let onTransactionCommitted: (() => void) | null = null;
-let onLatestDataReload: (() => Promise<unknown>) | null = null;
 export const setTransactionCommittedHook = (hook: () => void) => {
   onTransactionCommitted = hook;
-};
-
-/** Register the pull-only sync path used by read screens that need fresh server data. */
-export const setLatestDataReloadHook = (hook: (() => Promise<unknown>) | null): void => {
-  onLatestDataReload = hook;
 };
 
 let isStoreHydrated = false;
@@ -3718,42 +3712,78 @@ export const getGoalsPageData = async (access: {
   canViewGoals: boolean;
   canViewRequests: boolean;
 }) => {
-  try {
-    await ensureStoreHydrated();
-  } catch (error) {
-    // ensureStoreHydrated rehydrates the durable IndexedDB replica before trying
-    // a first-run cloud bootstrap. If that remote bootstrap fails, do not turn a
-    // transient sync outage into a page failure when cached goals data is usable.
-    const hasCachedGoalsData = goalsMap.size > 0 || goalRequestsMap.size > 0 || customersMap.size > 0;
-    if (!hasCachedGoalsData) throw error;
-    console.warn('[GoalsPage] bootstrap failed; using durable local goals snapshot', error);
-  }
+  // Read this small screen through its own server projection. Never trigger the
+  // all-operational-data bootstrap merely to list goals and customer requests.
+  const mapGoal = (row: any): GoalEntity => ({
+    id: String(row.id), customerId: String(row.customerId ?? row.customer_id),
+    targetQuantity: Number(row.targetQuantity ?? row.target_quantity ?? 0),
+    currentProgress: Number(row.currentProgress ?? row.current_progress ?? 0),
+    bonusAmountMinor: Number(row.bonusAmountMinor ?? row.bonus_amount_minor ?? 0),
+    durationDays: Number(row.durationDays ?? row.duration_days ?? 0),
+    status: String(row.status || 'ACTIVE').toUpperCase() as GoalEntity['status'],
+    startedAt: row.startedAt ?? row.started_at ?? '',
+    expiresAt: row.expiresAt ?? row.expires_at ?? '',
+    completedAt: row.completedAt ?? row.completed_at ?? undefined,
+    bonusLedgerId: row.bonusLedgerId ?? row.bonus_ledger_id ?? undefined,
+    createdAt: row.createdAt ?? row.created_at ?? '',
+    updatedAt: row.updatedAt ?? row.updated_at ?? '',
+    version: Number(row.version ?? 1),
+  });
+  const mapRequest = (row: any): GoalRequestEntity => ({
+    id: String(row.id), customerId: String(row.customerId ?? row.customer_id),
+    requestedTarget: row.requestedTarget == null && row.requested_target == null
+      ? undefined : Number(row.requestedTarget ?? row.requested_target),
+    status: String(row.status || 'PENDING').toUpperCase() as GoalRequestEntity['status'],
+    reviewedBy: row.reviewedBy ?? row.reviewed_by ?? undefined,
+    reviewedAt: row.reviewedAt ?? row.reviewed_at ?? undefined,
+    rejectionReason: row.rejectionReason ?? row.rejection_reason ?? undefined,
+    resultingGoalId: row.resultingGoalId ?? row.resulting_goal_id ?? undefined,
+    createdAt: row.createdAt ?? row.created_at ?? '',
+    updatedAt: row.updatedAt ?? row.updated_at ?? '',
+    version: Number(row.version ?? 1),
+  });
+  const mapCustomer = (row: any): CustomerEntity => ({
+    id: String(row.id), name: String(row.name || row.id),
+    isActive: Boolean(row.isActive ?? row.is_active ?? (!row.deletedAt && !row.deleted_at)),
+    phone: row.phone || undefined, status: row.status || 'ACTIVE',
+    notes: row.notes || '',
+    debtLimitMinor: Number(row.debtLimitMinor ?? row.debt_limit_minor ?? 0),
+    chargerFeeExempt: Boolean(row.chargerFeeExempt ?? row.charger_fee_exempt ?? false),
+    deletedAt: row.deletedAt ?? row.deleted_at ?? undefined,
+    createdAt: row.createdAt ?? row.created_at ?? '',
+    updatedAt: row.updatedAt ?? row.updated_at ?? '',
+    version: Number(row.version ?? 1),
+  });
 
-  // Goal requests are created on the customer portal. A notification can arrive
-  // before the admin's background sync has pulled the matching change_log row.
-  // Pull only the latest remote delta before reading this page's local read model;
-  // never push the admin outbox just to open a read-only screen.
-  if (onLatestDataReload) {
-    try {
-      await onLatestDataReload();
-    } catch (error) {
-      // Keep the last durable local snapshot usable while offline or during a
-      // transient server failure. A later store revision / refresh retries the pull.
-      console.warn('[GoalsPage] latest-data pull failed; using local snapshot', error);
+  const { data: raw, error } = await invokeSupabaseRpc<any>('get_admin_goals_page_data', {});
+  if (!error && raw) {
+    const payload = Array.isArray(raw) ? raw[0] : raw;
+    if (!payload || Number(payload.schema_version) !== 1 ||
+        !Array.isArray(payload.goals) || !Array.isArray(payload.goal_requests) ||
+        !Array.isArray(payload.customers)) {
+      throw new Error('GOALS_READ_MODEL_INVALID_RESPONSE: incomplete server payload');
     }
+    return {
+      goals: access.canViewGoals ? payload.goals.map(mapGoal) : [],
+      requests: access.canViewRequests ? payload.goal_requests.map(mapRequest) : [],
+      customers: payload.customers.map(mapCustomer).sort((a: CustomerEntity, b: CustomerEntity) => a.name.localeCompare(b.name)),
+    };
   }
 
-  return {
-    goals: access.canViewGoals
-      ? Array.from(goalsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      : [],
-    requests: access.canViewRequests
-      ? Array.from(goalRequestsMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      : [],
-    customers: (access.canViewGoals || access.canViewRequests)
-      ? Array.from(customersMap.values()).sort((a, b) => a.name.localeCompare(b.name))
-      : [],
-  };
+  // Offline fallback initializes only IndexedDB and reads the three required
+  // stores; it does not start cloud bootstrap or alter the sync cursor/outbox.
+  console.warn('[GoalsPage] server read model unavailable; trying local cache', error);
+  const [localGoals, localRequests, localCustomers] = await Promise.all([
+    localDb.list<any>('goals'), localDb.list<any>('goalRequests'), localDb.list<any>('customers'),
+  ]);
+  if (localGoals.length || localRequests.length || localCustomers.length) {
+    return {
+      goals: access.canViewGoals ? localGoals.map(mapGoal).sort((a: GoalEntity, b: GoalEntity) => b.createdAt.localeCompare(a.createdAt)) : [],
+      requests: access.canViewRequests ? localRequests.map(mapRequest).sort((a: GoalRequestEntity, b: GoalRequestEntity) => b.createdAt.localeCompare(a.createdAt)) : [],
+      customers: localCustomers.map(mapCustomer).sort((a: CustomerEntity, b: CustomerEntity) => a.name.localeCompare(b.name)),
+    };
+  }
+  throw new Error(error || 'GOALS_READ_MODEL_UNAVAILABLE: no server response or local cache');
 };
 
 export const generateCustomerGoalProposalForAdmin = async (customerId: string) => {
