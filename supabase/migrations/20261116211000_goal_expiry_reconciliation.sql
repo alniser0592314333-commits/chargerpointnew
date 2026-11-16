@@ -178,3 +178,53 @@ $function$;
 
 COMMENT ON FUNCTION public.record_canonical_change(text, uuid, text, jsonb, integer)
 IS 'Appends canonical sync changes; goal, goal-request, and financial-ledger manual calls reuse the row already captured by the same transaction trigger.';
+
+-- A client-controlled UPDATE_GOAL_PROGRESS payload could previously insert a
+-- BONUS ledger row before the same transaction proved that the goal was earned.
+-- Check at transaction end so the legitimate evaluator can insert the ledger
+-- row first and mark the goal COMPLETED second, while an ACTIVE goal cannot
+-- retain an unearned bonus.
+CREATE OR REPLACE FUNCTION public.enforce_goal_bonus_requires_completion()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_goal public.goals%ROWTYPE;
+BEGIN
+  IF NEW.event_type <> 'BONUS' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT *
+    INTO v_goal
+  FROM public.goals
+  WHERE id = NEW.reference_id;
+
+  IF NOT FOUND
+     OR v_goal.status <> 'COMPLETED'
+     OR v_goal.bonus_ledger_id IS DISTINCT FROM NEW.id
+     OR v_goal.customer_id IS DISTINCT FROM NEW.customer_id
+     OR v_goal.bonus_amount_minor IS DISTINCT FROM NEW.amount_minor THEN
+    RAISE EXCEPTION 'Goal bonus ledger entry must match a completed goal'
+      USING ERRCODE = '23514';
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.enforce_goal_bonus_requires_completion()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS trg_goal_bonus_requires_completion ON public.financial_ledger;
+
+CREATE CONSTRAINT TRIGGER trg_goal_bonus_requires_completion
+AFTER INSERT ON public.financial_ledger
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION public.enforce_goal_bonus_requires_completion();
+
+COMMENT ON FUNCTION public.enforce_goal_bonus_requires_completion()
+IS 'Defers goal BONUS validation until commit and requires the matching goal to be COMPLETED.';
