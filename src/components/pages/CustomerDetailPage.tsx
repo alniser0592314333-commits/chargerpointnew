@@ -17,6 +17,7 @@ import {
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
+import { sendSmsUsingSystemDefaultSim } from '../../services/nativeSms';
 import { authService, UserSession } from '../../services/auth/authService';
 import {
   ChevronDown,
@@ -212,13 +213,47 @@ const [isLoading, setIsLoading] = useState(true);
         return;
       }
 
-      // Refresh in place
+      // The payment is already committed. SMS is a best-effort follow-up and must
+      // never roll back or disguise a successful financial transaction.
+      let smsNotice = '';
+      const smsPhone = String(customer.phone || '').trim();
+      const smsKey = String(res.transactionId || idempotencyKeyRef.current);
+      const sentKey = 'chargerpoint.balanceTopUpSmsSent.v1';
+      if (smsPhone) {
+        try {
+          const sentMap = JSON.parse(localStorage.getItem(sentKey) || '{}') as Record<string, string>;
+          if (!sentMap[smsKey]) {
+            const template = localStorage.getItem('chargerpoint.balanceTopUpSmsTemplate.v1')
+              || 'عزيزنا المشترك {customer_name}، تم إضافة رصيد إلى حسابك بقيمة {amount}. رصيدك الحالي بعد الإضافة: {current_balance}. شكراً لثقتك بنا.';
+            const money = (minor: number) => (minor / 100).toLocaleString(locale === 'ar' ? 'ar-PS' : 'en-GB', {
+              minimumFractionDigits: 2, maximumFractionDigits: 2,
+            }) + (locale === 'ar' ? ' شيكل' : ' ILS');
+            const smsMessage = template
+              .replace(/\{customer_name\}/g, customer.name || '')
+              .replace(/\{amount\}/g, money(amountMinor))
+              .replace(/\{current_balance\}/g, money(res.newBalanceMinor));
+            await sendSmsUsingSystemDefaultSim(smsPhone, smsMessage);
+            sentMap[smsKey] = new Date().toISOString();
+            const entries = Object.entries(sentMap).slice(-300);
+            localStorage.setItem(sentKey, JSON.stringify(Object.fromEntries(entries)));
+          }
+        } catch (smsError) {
+          console.warn('Balance was topped up, but confirmation SMS was not submitted:', smsError);
+          smsNotice = locale === 'ar'
+            ? '، لكن تعذّر إرسال رسالة SMS'
+            : ', but the SMS could not be submitted';
+        }
+      } else {
+        smsNotice = locale === 'ar' ? '، ولا يوجد رقم هاتف مسجل للزبون' : ', and the customer has no phone number';
+      }
+
+      // Refresh in place after the financial operation and SMS attempt.
       await loadData();
       setIsSubmittingTopUp(false);
       handleCloseTopUp();
       showToast(
-        locale === 'ar' ? 'تم شحن الرصيد بنجاح' : 'Balance topped up successfully',
-        'success'
+        (locale === 'ar' ? 'تم شحن الرصيد بنجاح' : 'Balance topped up successfully') + smsNotice,
+        smsNotice ? 'warning' : 'success'
       );
     } catch (err) {
       console.error('Commit topup error:', err);
