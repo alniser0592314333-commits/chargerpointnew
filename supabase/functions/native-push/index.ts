@@ -396,11 +396,27 @@ Deno.serve(async (request: Request) => {
       if (qrLinkError) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       if (qrLinked?.length) return json(200, { ok: true, skipped: true, reason: "QR_PAYMENT_ALREADY_NOTIFIED" });
     }
+    const [
+      { data: customerRecord, error: customerError },
+      { data: balanceMinor, error: balanceError },
+    ] = await Promise.all([
+      admin.from("customers").select("name").eq("id", entry.customer_id).maybeSingle(),
+      admin.rpc("native_push_customer_balance", { p_customer_id: entry.customer_id }),
+    ]);
+    if (customerError || balanceError || !customerRecord ||
+        !Number.isFinite(Number(balanceMinor))) {
+      return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+    }
+    const customerName = String(customerRecord.name || "").trim();
     eventKey += ":MANUAL_PAYMENT";
-    titleAr = "تم شحن رصيدك • " + formatMoney(entry.amount_minor, "ar");
-    titleEn = "Your balance was topped up • " + formatMoney(entry.amount_minor, "en");
-    bodyAr = "قيمة الشحن: " + formatMoney(entry.amount_minor, "ar") + "\nتاريخ الشحن: " + formatDate(entry.created_at, "ar");
-    bodyEn = "Amount added: " + formatMoney(entry.amount_minor, "en") + "\nDate: " + formatDate(entry.created_at, "en");
+    titleAr = "تم شحن رصيدك • " + (customerName || "نقطة الشحن");
+    titleEn = "Your balance was topped up";
+    bodyAr = "عزيزنا المشترك " + customerName + "، تم إضافة رصيد إلى حسابك بقيمة " +
+      formatMoney(entry.amount_minor, "ar") + ".\nرصيدك الحالي بعد الإضافة: " +
+      formatMoney(Number(balanceMinor), "ar") + ".";
+    bodyEn = "Dear subscriber " + customerName + ", " + formatMoney(entry.amount_minor, "en") +
+      " has been added to your account. Your current balance after this top-up is " +
+      formatMoney(Number(balanceMinor), "en") + ".";
     targetPath = "/customer/finance";
     const { data, error: recipientError } = await admin.from("native_push_devices")
       .select("id,device_id,token,locale,app_variant,principal_id,customer_id")

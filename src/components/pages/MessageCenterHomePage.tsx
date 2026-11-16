@@ -2,7 +2,7 @@ import React from 'react';
 import { Archive, FileText, MessageSquareText, Send, Users, ChevronLeft } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 
-type MessageSection = 'compose' | 'templates' | 'recipients' | 'campaigns' | 'archive';
+type MessageSection = 'compose' | 'templates' | 'recipients' | 'campaigns' | 'archive' | 'payment-template';
 
 export const MessageCenterHomePage: React.FC<{ onNavigate: (section: MessageSection) => void }> = ({ onNavigate }) => {
   const { locale } = useI18n();
@@ -10,6 +10,7 @@ export const MessageCenterHomePage: React.FC<{ onNavigate: (section: MessageSect
   const sections = [
     { id: 'compose' as const, icon: Send, title: ar ? 'إرسال رسالة' : 'Send a message', desc: ar ? 'اختيار القالب وتحديد المستلمين ثم الإرسال' : 'Choose a template, recipients and send', tone: 'bg-emerald-50 text-emerald-700 dark:bg-[#0c312b] dark:text-[#a9d9b7]' },
     { id: 'templates' as const, icon: FileText, title: ar ? 'قوالب الرسائل' : 'Message templates', desc: ar ? 'إنشاء القوالب وتعديلها وحذفها فقط' : 'Create, edit and delete reusable templates', tone: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300' },
+    { id: 'payment-template' as const, icon: FileText, title: ar ? 'تخصيص رسالة الدفع' : 'Customize payment message', desc: ar ? 'تعديل رسالة تأكيد إضافة الرصيد التي تصل للزبون عبر SMS' : 'Edit the balance top-up confirmation SMS', tone: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300' },
     { id: 'campaigns' as const, icon: Users, title: ar ? 'إدارة الحملات' : 'Campaign management', desc: ar ? 'متابعة الرسائل والمستلمين وأرشفة الحملة' : 'Track recipients and archive campaigns', tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
     { id: 'archive' as const, icon: Archive, title: ar ? 'أرشيف الحملات' : 'Campaign archive', desc: ar ? 'الرجوع إلى تقارير الحملات السابقة' : 'Review previous campaign reports', tone: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200' },
   ];

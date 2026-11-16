@@ -51,6 +51,11 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/customer_notifications_routing.test.ts
+      - name: Run balance top-up SMS confirmation regressions
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/balance_topup_sms_confirmation.test.ts
       - name: Run order-numbering safety tests
         env:
           # Test runs must never use the production Supabase project.
