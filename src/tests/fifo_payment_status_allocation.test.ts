@@ -75,7 +75,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
 
     const auth = getAuthorizedAdminContext('1234');
     const payment = await phase5UseCases.recordPayment(
-      auth, crypto.randomUUID(), custId, 10000, 'CASH', 'FIFO TEST'
+      auth, crypto.randomUUID(), custId, 10000, 'CASH', 'FIFO TEST', undefined, '1234'
     );
     expect(payment.success).toBe(true);
 
@@ -101,7 +101,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
 
     const auth = getAuthorizedAdminContext('1234');
     const payment = await phase5UseCases.recordPayment(
-      auth, crypto.randomUUID(), custId, 1000, 'CASH', 'FIFO TEST PARTIAL'
+      auth, crypto.randomUUID(), custId, 1000, 'CASH', 'FIFO TEST PARTIAL', undefined, '1234'
     );
     expect(payment.success).toBe(true);
 
@@ -141,7 +141,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
 
     const firstAmount = orders[0].total + Math.floor(orders[1].total / 2);
     const p1 = await phase5UseCases.recordPayment(
-      auth, crypto.randomUUID(), custId, firstAmount, 'CASH', 'FIFO TEST 1'
+      auth, crypto.randomUUID(), custId, firstAmount, 'CASH', 'FIFO TEST 1', undefined, '1234'
     );
     expect(p1.success).toBe(true);
 
@@ -156,7 +156,7 @@ describe('FIFO Order Payment Status Allocation Engine', () => {
       (orders[1].total - Math.floor(orders[1].total / 2)) +
       Math.floor(orders[2].total / 2);
     const p2 = await phase5UseCases.recordPayment(
-      auth, crypto.randomUUID(), custId, secondAmount, 'CASH', 'FIFO TEST 2'
+      auth, crypto.randomUUID(), custId, secondAmount, 'CASH', 'FIFO TEST 2', undefined, '1234'
     );
     expect(p2.success).toBe(true);
 
