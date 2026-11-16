@@ -553,7 +553,7 @@ Deno.serve(async (request: Request) => {
             .select("id,status,requested_target,created_at,reviewed_at,rejection_reason")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(20),
           admin.from("customer_account_events")
-            .select("id,event_type,is_read,created_at")
+            .select("id,event_type,is_read,created_at,payload")
             .eq("customer_id", link.customer_id).order("created_at", { ascending: false }).limit(50),
           admin.from("customer_account_sessions")
             .select("created_at,expires_at").eq("customer_id", link.customer_id)
@@ -760,20 +760,44 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, sent_count: sentCount });
     }
 
+    if (action === "admin-counts") {
+      const administrator = await requireAdmin();
+      if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
+      const accountEventTypes = [
+        "TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED",
+        "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_REACTIVATED", "ACCOUNT_CANCELLED",
+      ];
+      const [requestsResult, eventsResult] = await Promise.all([
+        admin.from("customer_account_reset_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "PENDING").gt("expires_at", now.toISOString()),
+        admin.from("customer_account_events")
+          .select("id", { count: "exact", head: true })
+          .in("event_type", accountEventTypes).eq("is_read", false),
+      ]);
+      if (requestsResult.error || eventsResult.error) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      return respond(200, {
+        ok: true,
+        pending_reset_requests: requestsResult.count ?? 0,
+        unread_account_events: eventsResult.count ?? 0,
+      });
+    }
+
     if (action === "admin-list") {
       const administrator = await requireAdmin();
       if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
       await admin.from("customer_account_reset_requests").update({ status: "EXPIRED" })
         .in("status", ["PENDING", "PROCESSING"]).lt("expires_at", now.toISOString());
       const { data: requests, error: requestError } = await admin.from("customer_account_reset_requests")
-        .select("id,customer_id,status,requested_at,expires_at,customers(name)")
+        .select("id,customer_id,status,requested_at,expires_at,customers(name,phone)")
         .eq("status", "PENDING").gt("expires_at", now.toISOString()).order("requested_at", { ascending: true });
       const { data: events, error: eventError } = await admin.from("customer_account_events")
-        .select("id,customer_id,event_type,request_id,is_read,created_at,customers(name)")
-        .order("created_at", { ascending: false }).limit(50);
+        .select("id,customer_id,event_type,request_id,is_read,created_at,customers(name,phone)")
+        .in("event_type", ["TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_REACTIVATED", "ACCOUNT_CANCELLED"])
+        .order("created_at", { ascending: false }).limit(100);
       const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
-        .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name)")
-        .order("created_at", { ascending: false }).limit(200);
+        .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name,phone)")
+        .order("created_at", { ascending: false }).limit(1000);
       const { data: walletActivationRows, error: walletRequestsError } = await admin.from("wallet_activation_requests")
         .select("id,customer_id,status,requested_at")
         .eq("status", "PENDING").order("requested_at", { ascending: true }).limit(100);

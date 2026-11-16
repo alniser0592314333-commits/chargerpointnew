@@ -19,7 +19,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   children,
 }) => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const notificationCount = useAdminNotificationCount(Boolean(userSession));
+  const notificationCounts = useAdminNotificationCount(Boolean(userSession));
   const isPurchaseWorkspace = currentPath === '/app/purchases' || currentPath.startsWith('/app/purchases/');
 
   if (isPurchaseWorkspace) {
@@ -30,20 +30,21 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-transparent text-gray-900 dark:text-gray-100">
-      <Sidebar currentPath={currentPath} userSession={userSession} onNavigate={onNavigate} notificationCount={notificationCount} />
+      <Sidebar currentPath={currentPath} userSession={userSession} onNavigate={onNavigate} notificationCount={notificationCounts.notifications} customerAccountCount={notificationCounts.customerAccounts} />
       <MobileNav
         isOpen={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
         currentPath={currentPath}
         userSession={userSession}
-        notificationCount={notificationCount}
+        notificationCount={notificationCounts.notifications}
+        customerAccountCount={notificationCounts.customerAccounts}
         onNavigate={onNavigate}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Header
           onOpenMobileNav={() => setMobileNavOpen(true)}
           currentPath={currentPath}
-          notificationCount={notificationCount}
+          notificationCount={notificationCounts.notifications}
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>
