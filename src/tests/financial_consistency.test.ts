@@ -58,7 +58,7 @@ describe('Financial Consistency Audit & Idempotency', () => {
     
     const paymentId = 'pay-1';
     await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1, '1234');
-    await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1);
+    await useCases.recordPayment(adminAuth, paymentId, custId, 100, 'CASH', undefined, 1, '1234');
     
     // CREATE_PAYMENT is optimistic-overlay backed: it must not write the
     // canonical payment/ledger tables before the outbox command is accepted.
