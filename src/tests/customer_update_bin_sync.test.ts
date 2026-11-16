@@ -108,6 +108,32 @@ describe('Customer update BIN sync contract', () => {
     });
   });
 
+  it('verifies the exemption BIN exactly once and includes it in the canonical outbox command', async () => {
+    const fixture = makeUseCases();
+    let verifyCalls = 0;
+    const auth = admin((bin) => {
+      verifyCalls += 1;
+      return bin === validBin;
+    });
+
+    await fixture.useCases.updateCustomerChargerFeeExemption(
+      auth,
+      customer.id,
+      true,
+      validBin
+    );
+
+    expect(verifyCalls).toBe(1);
+    const command = fixture.getRecorded();
+    expect(command?.[1]).toBe('UPDATE_CUSTOMER');
+    expect(command?.[2]).toMatchObject({
+      id: customer.id,
+      chargerFeeExempt: true,
+      bin: validBin,
+    });
+    expect(fixture.getSaved()).toMatchObject({ chargerFeeExempt: true, version: 2 });
+  });
+
   it('rejects a charger-fee exemption change without a valid BIN before writing or queueing', async () => {
     const fixture = makeUseCases();
     await expect(
