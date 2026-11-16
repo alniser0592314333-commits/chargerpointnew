@@ -1519,10 +1519,12 @@ export class FinalUseCases {
     paymentMethod: string,
     reference?: string,
     resetGeneration?: number,
-    bin?: string
+    bin?: string,
+    options?: { deferBinVerification?: boolean }
   ): Promise<Result<PaymentEntity>> {
     const actor = auth.requireAuth();
     auth.assertPermission('finance:create-payment');
+    if (!options?.deferBinVerification) await auth.verifyBin(bin || '');
     DomainInvariants.assertValidPaymentAmount(amountMinor);
 
     const customer = await this.deps.customerRepo.findById(customerId);
@@ -1567,7 +1569,8 @@ export class FinalUseCases {
     await this.deps.commandRepo.record(commandId, 'CREATE_PAYMENT', {
       ...payment,
       resetGeneration,
-      ...(bin ? { bin } : {})
+      ...(bin ? { bin } : {}),
+      ...(options?.deferBinVerification ? { deferBinVerification: true } : {})
     });
 
     return { success: true, data: payment };
