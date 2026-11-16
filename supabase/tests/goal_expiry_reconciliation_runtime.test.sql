@@ -164,4 +164,71 @@ BEGIN
 END;
 $$;
 
+
+-- Approval must reject incomplete legacy payloads instead of inventing defaults.
+INSERT INTO public.customers(id, name, is_active, status)
+VALUES ('20000000-0000-4000-8000-000000000005', 'Approval Validation Customer', true, 'ACTIVE');
+
+INSERT INTO public.goal_requests(id, customer_id, requested_target, status, version)
+VALUES ('60000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000005', 10, 'PENDING', 1);
+
+DO $
+DECLARE
+  v_rejected boolean := false;
+BEGIN
+  BEGIN
+    PERFORM public.execute_canonical_sync_command_unlocked(
+      gen_random_uuid(),
+      'APPROVE_GOAL_REQUEST',
+      jsonb_build_object('requestId', '60000000-0000-4000-8000-000000000002'),
+      'fixture-hash',
+      'fixture-device',
+      '10000000-0000-4000-8000-000000000001'
+    );
+  EXCEPTION WHEN SQLSTATE 'P2201' THEN
+    v_rejected := true;
+  END;
+
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'Incomplete goal approval payload was not rejected';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.goals
+    WHERE customer_id = '20000000-0000-4000-8000-000000000005'
+  ) THEN
+    RAISE EXCEPTION 'Incomplete goal approval created a goal using fallback values';
+  END IF;
+END;
+$;
+
+SELECT public.execute_canonical_sync_command_unlocked(
+  gen_random_uuid(),
+  'APPROVE_GOAL_REQUEST',
+  jsonb_build_object(
+    'requestId', '60000000-0000-4000-8000-000000000002',
+    'resultingGoalId', '30000000-0000-4000-8000-000000000005',
+    'targetQuantity', 12,
+    'bonusAmountMinor', 180,
+    'durationDays', 6
+  ),
+  'fixture-hash',
+  'fixture-device',
+  '10000000-0000-4000-8000-000000000001'
+);
+
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.goals
+    WHERE id = '30000000-0000-4000-8000-000000000005'
+      AND target_quantity = 12
+      AND bonus_amount_minor = 180
+      AND duration_days = 6
+  ) THEN
+    RAISE EXCEPTION 'Approval did not preserve the explicitly reviewed proposal values';
+  END IF;
+END;
+$;
+
 SELECT 'goal_expiry_reconciliation_runtime_tests_passed' AS result;
