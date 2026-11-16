@@ -761,6 +761,7 @@ export const applyRemoteChange = (change: {
       icon: p.icon || 'smartphone',
       basePriceMinor: p.basePriceMinor ?? p.base_price_minor ?? 0,
       chargerFeeEnabled: p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true,
+      chargerFeeApplicable: p.chargerFeeApplicable ?? p.charger_fee_applicable ?? (p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true),
       status: p.status ?? undefined,
       isActive: p.isActive ?? p.is_active ?? true,
       sortOrder: p.sortOrder ?? p.sort_order ?? 0,
