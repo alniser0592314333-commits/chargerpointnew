@@ -225,3 +225,60 @@ BEGIN
   END LOOP;
 END;
 $migration$;
+
+-- The Edge Function authenticates the customer's portal session and resolves
+-- customer_id from the server-side account link. This narrowly scoped RPC makes
+-- the request atomic and increments the goal version for offline sync.
+CREATE OR REPLACE FUNCTION public.customer_request_goal_cancellation(
+  p_customer_id uuid,
+  p_goal_id uuid,
+  p_reason text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_goal public.goals%ROWTYPE;
+  v_reason text := btrim(coalesce(p_reason,''));
+BEGIN
+  IF p_customer_id IS NULL OR p_goal_id IS NULL OR length(v_reason) < 3 OR length(v_reason) > 500 THEN
+    RAISE EXCEPTION 'A valid cancellation reason is required' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_goal
+  FROM public.goals
+  WHERE id = p_goal_id AND customer_id = p_customer_id
+  FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Goal not found' USING ERRCODE='P0002'; END IF;
+  IF v_goal.status <> 'ACTIVE' OR v_goal.expires_at <= now() THEN
+    RAISE EXCEPTION 'Only a current active goal can receive a cancellation request' USING ERRCODE='P0001';
+  END IF;
+  IF v_goal.cancellation_request_status = 'PENDING' THEN
+    RETURN jsonb_build_object('ok',true,'already_pending',true,'status','PENDING');
+  END IF;
+  IF v_goal.cancellation_request_status = 'APPROVED' THEN
+    RAISE EXCEPTION 'The goal cancellation request has already been approved' USING ERRCODE='P0001';
+  END IF;
+
+  UPDATE public.goals
+  SET cancellation_requested_at = now(),
+      cancellation_request_reason = v_reason,
+      cancellation_request_status = 'PENDING',
+      cancellation_reviewed_at = NULL,
+      cancellation_reviewed_by = NULL,
+      cancellation_review_reason = NULL,
+      updated_at = now(),
+      version = version + 1
+  WHERE id = p_goal_id;
+
+  INSERT INTO public.customer_account_events(customer_id,event_type,payload)
+  VALUES (p_customer_id,'GOAL_CANCELLATION_REQUESTED',jsonb_build_object('goal_id',p_goal_id));
+  RETURN jsonb_build_object('ok',true,'already_pending',false,'status','PENDING');
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.customer_request_goal_cancellation(uuid,uuid,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.customer_request_goal_cancellation(uuid,uuid,text) TO service_role;
+COMMENT ON FUNCTION public.customer_request_goal_cancellation(uuid,uuid,text)
+IS 'Service-role-only endpoint for an already authenticated customer portal session; records a request but never cancels a goal.';
