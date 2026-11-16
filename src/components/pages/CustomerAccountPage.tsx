@@ -141,6 +141,7 @@ export const CustomerAccountPage: React.FC<{ token: string; search?: string }> =
   const setErrorMessage = (value: string) => {
     const messages: Record<string, [string, string]> = {
       ACCOUNT_UNAVAILABLE_OR_INVALID: ['الحساب غير متاح حاليًا. تأكد من الرمز أو تواصل مع الإدارة.', 'The account is currently unavailable. Check the QR or contact the administrator.'],
+      SERVICE_UNAVAILABLE: ['تعذّر إكمال تسجيل الدخول بسبب مشكلة مؤقتة بالخادم. جرّب مرة ثانية بعد قليل.', 'A temporary server issue prevented sign-in. Please try again shortly.'],
       ACCOUNT_ALREADY_ACTIVATED: ['الحساب مفعّل مسبقًا. سجّل الدخول بكلمة السر.', 'This account is already activated. Sign in with your password.'],
       INVALID_CREDENTIALS: ['كلمة السر غير صحيحة أو الحساب غير متاح.', 'The password is incorrect or the account is unavailable.'],
       NETWORK_UNAVAILABLE: ['تعذّر الاتصال بالخادم. تحقق من الإنترنت وحاول مجددًا.', 'Could not reach the server. Check your connection and try again.'],
@@ -271,8 +272,18 @@ export const CustomerAccountPage: React.FC<{ token: string; search?: string }> =
         setMessage(t('تعذّر الوصول للخادم. تعرض الصفحة آخر نسخة محفوظة للقراءة فقط حتى عودة الاتصال.', 'The server is unreachable. Showing the last saved read-only copy until connectivity returns.'));
         return;
       }
-      await customerAuth.auth.signOut();
-      setErrorMessage('ACCOUNT_UNAVAILABLE_OR_INVALID');
+      if (registered.error === 'ACCOUNT_UNAVAILABLE_OR_INVALID') {
+        // The entry endpoint already confirmed that this customer account is active.
+        // A failed session check therefore means the old server-side session ended,
+        // not that the customer's account was disabled.
+        await customerAuth.auth.signOut();
+        try { localStorage.removeItem(sessionExpiryKey(accountToken)); } catch {}
+        setError(t('انتهت صلاحية جلسة الدخول أو تم إنهاؤها. أدخل كلمة السر للمتابعة.', 'Your sign-in session has expired or ended. Enter your password to sign in again.'));
+      } else {
+        setMode('unavailable');
+        setErrorMessage(registered.error || 'SERVICE_UNAVAILABLE');
+        return;
+      }
     }
       if (customerIdFromQuery && !status.activated) {
       setMode('unavailable');
@@ -381,7 +392,8 @@ export const CustomerAccountPage: React.FC<{ token: string; search?: string }> =
       if (directEntry) {
         const entryResult = await callCustomerAccount<EntryStatus>('entry', { token: loginToken });
         if (entryResult.error || !entryResult.data?.valid) {
-          setErrorMessage(entryResult.error === 'NETWORK_UNAVAILABLE' ? entryResult.error : 'INVALID_CREDENTIALS');
+          setErrorMessage(entryResult.error === 'NETWORK_UNAVAILABLE' || entryResult.error === 'SERVICE_UNAVAILABLE'
+            ? entryResult.error : 'INVALID_CREDENTIALS');
           return;
         }
         if (!entryResult.data.activated) {
@@ -397,7 +409,8 @@ export const CustomerAccountPage: React.FC<{ token: string; search?: string }> =
       );
       const loginData = result.data;
       if (result.error || !loginData?.session) {
-        setErrorMessage(result.error === 'NETWORK_UNAVAILABLE' ? result.error : 'INVALID_CREDENTIALS');
+        setErrorMessage(result.error === 'NETWORK_UNAVAILABLE' || result.error === 'SERVICE_UNAVAILABLE'
+          ? result.error : 'INVALID_CREDENTIALS');
         return;
       }
       loginAccountIdentifier = loginData.customer_code || loginAccountIdentifier;
