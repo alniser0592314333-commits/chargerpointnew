@@ -17,7 +17,7 @@ AS $function$
 DECLARE
   v_bin text;
 BEGIN
-  IF p_command_type IN ('POST_PAYMENT', 'CREATE_PAYMENT') THEN
+  IF p_command_type IN ('POST_PAYMENT', 'CREATE_PAYMENT', 'CREATE_CUSTOMER_CREDIT') THEN
     v_bin := NULLIF(
       pg_catalog.btrim(COALESCE(p_payload->>'bin', p_payload->>'adminBin', '')),
       ''
@@ -50,4 +50,4 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.execute_canonical_sync_command(uuid, text, jsonb, text, text, uuid)
-IS 'Canonical sync boundary. Enforces BIN verification for POST_PAYMENT and CREATE_PAYMENT before any payment mutation.';
+IS 'Canonical sync boundary. Enforces BIN verification for customer payment and credit mutations before execution.';
