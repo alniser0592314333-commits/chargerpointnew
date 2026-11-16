@@ -3834,14 +3834,16 @@ export const updateGoalConfigForAdmin = async (
 export const approveGoalRequestForAdmin = async (
   requestId: string,
   durationDays?: number,
-  bonusAmountMinor?: number
+  bonusAmountMinor?: number,
+  targetQuantity?: number
 ) => {
   await ensureStoreHydrated();
   return phase5UseCases.approveGoalRequest(
     getAuthorizedAdminContext(),
     requestId,
     bonusAmountMinor,
-    durationDays
+    durationDays,
+    targetQuantity
   );
 };
 
