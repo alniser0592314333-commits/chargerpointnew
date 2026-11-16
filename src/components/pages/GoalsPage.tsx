@@ -656,6 +656,7 @@ export const GoalsPage: React.FC = () => {
               <option value="ACTIVE">{copy.activeStatus}</option>
               <option value="COMPLETED">{copy.completedStatus}</option>
               <option value="FAILED">{copy.failedStatus}</option>
+              <option value="CANCELLED">{locale === 'ar' ? 'ملغي من الإدارة' : 'Cancelled by admin'}</option>
             </select>
           </div>
 
