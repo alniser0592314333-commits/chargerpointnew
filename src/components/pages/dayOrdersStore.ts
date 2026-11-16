@@ -6647,8 +6647,9 @@ export const topUpCustomerBalance = async (
   const authContext = getAuthorizedAdminContext(bin);
 
   try {
-    // Authoritative verifyBin (rejects if verifier missing, invalid, or fails)
-    if (!offline) await authContext.verifyBin(bin);
+    // recordPayment enforces BIN verification for online execution. Offline
+    // payments remain local-only and carry an explicit deferred-authorization
+    // marker so SyncEngine blocks them until Sync Center receives a fresh BIN.
 
     // A customer payment is a real payment, not an administrative credit adjustment.
     // Keep the existing credit-adjustment command reserved for explicit credit operations.
@@ -6660,7 +6661,8 @@ export const topUpCustomerBalance = async (
       'CASH',
       note?.trim() || undefined,
       undefined,
-      bin
+      bin,
+      { deferBinVerification: offline }
     );
 
     if (!result.success) {
