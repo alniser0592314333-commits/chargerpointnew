@@ -330,12 +330,27 @@ SET search_path TO 'public', 'pg_temp'
 AS $$
 DECLARE
   v_customer_id uuid;
+  v_result jsonb;
 BEGIN
   v_customer_id := p_public_token::uuid;
   IF v_customer_id IS NULL THEN
     RETURN NULL;
   END IF;
-  RETURN jsonb_build_object('customer_id', v_customer_id);
+  SELECT jsonb_build_object(
+    'goals', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+        'target_quantity', g.target_quantity,
+        'bonus_recorded', (g.bonus_ledger_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM public.financial_ledger bonus
+          WHERE bonus.id = g.bonus_ledger_id AND bonus.customer_id = v_customer_id
+        ))
+      ))
+      FROM public.goals g
+      WHERE g.customer_id = v_customer_id
+        AND (g.status IN ('ACTIVE', 'COMPLETED') OR g.completed_at IS NOT NULL)
+    ), '[]'::jsonb)
+  ) INTO v_result;
+  RETURN v_result;
 END;
 $$;
 
@@ -347,11 +362,26 @@ SET search_path TO 'public', 'pg_temp'
 AS $$
 DECLARE
   v_customer_id uuid;
+  v_result jsonb;
 BEGIN
   v_customer_id := p_public_token::uuid;
   IF v_customer_id IS NULL THEN
     RETURN NULL;
   END IF;
-  RETURN jsonb_build_object('customer_id', v_customer_id, 'include_history', p_include_history);
+  SELECT jsonb_build_object(
+    'goals', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+        'target_quantity', g.target_quantity,
+        'bonus_recorded', (g.bonus_ledger_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM public.financial_ledger bonus
+          WHERE bonus.id = g.bonus_ledger_id AND bonus.customer_id = v_customer_id
+        ))
+      ))
+      FROM public.goals g
+      WHERE g.customer_id = v_customer_id
+        AND (g.status IN ('ACTIVE', 'COMPLETED') OR g.completed_at IS NOT NULL)
+    ), '[]'::jsonb)
+  ) INTO v_result;
+  RETURN v_result;
 END;
 $$;
