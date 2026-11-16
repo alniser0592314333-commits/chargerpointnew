@@ -20,6 +20,7 @@ const TEMPLATE_KEY = 'chargerpoint.customerLinkSmsTemplate.v1';
 const SAVED_TEMPLATES_KEY = 'chargerpoint.customerLinkSmsSavedTemplates.v1';
 const DUE_DATE_KEY = 'chargerpoint.customerLinkSmsDueDate.v1';
 const DEFAULT_DUE_DATE = 'الخميس';
+let activeSmsCampaignId: string | null = null;
 const DEFAULT_TEMPLATE = 'مرحباً {name}، نذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. نرجو تسديده يوم {due_date} إن أمكن، وشكراً لثقتك بنا.';
 const MESSAGE_PRESETS = {
   debt: 'مرحباً {name} 🌹\nنذكّرك بلطف بوجود مبلغ مستحق على حسابك: {debt}. بنكون شاكرين إلك لو بتقدر تسدده يوم {due_date}. يعطيك العافية.',
@@ -31,12 +32,13 @@ const readCampaign = (): SavedCampaign | null => {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!parsed || !Array.isArray(parsed.recipients)) return null;
-    const interrupted = parsed.recipients.some((r: Recipient) => r.status === 'sending');
+    const id = typeof parsed.id === 'string' ? parsed.id : `legacy-${parsed.updatedAt || Date.now()}`;
+    const recoverInterrupted = parsed.recipients.some((r: Recipient) => r.status === 'sending') && activeSmsCampaignId !== id;
     return {
       ...parsed,
-      id: typeof parsed.id === 'string' ? parsed.id : `legacy-${parsed.updatedAt || Date.now()}`,
-      status: interrupted ? 'stopped' : parsed.status,
-      recipients: parsed.recipients.map((r: Recipient) => r.status === 'sending'
+      id,
+      status: recoverInterrupted ? 'stopped' : parsed.status,
+      recipients: parsed.recipients.map((r: Recipient) => recoverInterrupted && r.status === 'sending'
         ? { ...r, status: 'uncertain', error: 'لم يتم تأكيد نتيجة الإرسال قبل إغلاق التطبيق' }
         : r),
     };
@@ -91,7 +93,10 @@ export const CustomerLinkSmsPage: React.FC<{
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isCampaignSending, setIsCampaignSending] = useState(() => {
+    const campaign = readCampaign();
+    return Boolean(campaign && campaign.status === 'sending' && activeSmsCampaignId === campaign.id);
+  });
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -101,7 +106,6 @@ export const CustomerLinkSmsPage: React.FC<{
   const [campaignId, setCampaignId] = useState(() => readCampaign()?.id || `sms-${Date.now()}`);
   const [campaignStartedAt, setCampaignStartedAt] = useState(() => readCampaign()?.startedAt || '');
   const [campaignFinishedAt, setCampaignFinishedAt] = useState(() => readCampaign()?.finishedAt || '');
-  const pauseRef = useRef(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const saveCampaign = (next: Recipient[], metadata: Partial<SavedCampaign> = {}): boolean => {
@@ -119,6 +123,7 @@ export const CustomerLinkSmsPage: React.FC<{
         recipients: next,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      window.dispatchEvent(new CustomEvent('sms-campaign-updated', { detail: payload }));
       return true;
     } catch (error) { console.error('Could not persist SMS campaign:', error); return false; }
   };
@@ -130,13 +135,16 @@ export const CustomerLinkSmsPage: React.FC<{
       setCampaignId(previous.id);
       setCampaignStartedAt(previous.startedAt || '');
       setCampaignFinishedAt(previous.finishedAt || '');
+      setIsCampaignSending(previous.status === 'sending' && activeSmsCampaignId === previous.id);
       if (typeof previous.messageTemplate === 'string') setMessageTemplate(previous.messageTemplate);
       if (typeof previous.dueDateText === 'string') setDueDateText(previous.dueDateText);
       if (typeof previous.sendDelay === 'string') setSendDelay(previous.sendDelay);
     }
     getSmsCustomerRecipients().then((customers: SmsCustomerRecipient[]) => {
       if (!active) return;
-      const oldById = new Map((previous?.recipients || []).map((r) => [r.id, r]));
+      const latestCampaign = readCampaign();
+      const oldById = new Map((latestCampaign?.recipients || []).map((r) => [r.id, r]));
+      setIsCampaignSending(latestCampaign?.status === 'sending' && activeSmsCampaignId === latestCampaign.id);
       const next = customers.flatMap((customer): Recipient[] => {
         const phone = normalizePhone(customer.phone);
         if (!phone) return [];
@@ -154,7 +162,20 @@ export const CustomerLinkSmsPage: React.FC<{
       console.error('Failed to load SMS recipients:', error);
       if (active) setLoadError(ar ? 'تعذرت قراءة قائمة الزبائن من البيانات المحلية.' : 'Could not load customers from the local store.');
     }).finally(() => { if (active) setIsLoading(false); });
-    return () => { active = false; };
+    const handleCampaignUpdate = (event: Event) => {
+      const campaign = (event as CustomEvent<SavedCampaign>).detail;
+      if (!campaign || !Array.isArray(campaign.recipients)) return;
+      setRecipients(campaign.recipients);
+      setMessageTemplate(campaign.messageTemplate || DEFAULT_TEMPLATE);
+      setCampaignStartedAt(campaign.startedAt || '');
+      setCampaignFinishedAt(campaign.finishedAt || '');
+      setIsCampaignSending(campaign.status === 'sending');
+    };
+    window.addEventListener('sms-campaign-updated', handleCampaignUpdate);
+    return () => {
+      active = false;
+      window.removeEventListener('sms-campaign-updated', handleCampaignUpdate);
+    };
   }, [ar]);
 
   const updateDueDate = (value: string) => {
@@ -274,6 +295,7 @@ export const CustomerLinkSmsPage: React.FC<{
       };
       localStorage.setItem(ARCHIVE_KEY, JSON.stringify([item, ...archive.filter((x: any) => x?.id !== campaignId)].slice(0, 100)));
       localStorage.removeItem(STORAGE_KEY);
+      activeSmsCampaignId = null;
       return true;
     } catch (error) { console.error('Could not archive SMS campaign:', error); return false; }
   };
@@ -284,13 +306,6 @@ export const CustomerLinkSmsPage: React.FC<{
     onNavigate('archive');
   };
 
-  const togglePause = () => {
-    pauseRef.current = !pauseRef.current;
-    setIsPaused(pauseRef.current);
-    saveCampaign(recipients, { status: pauseRef.current ? 'paused' : 'sending' });
-    setNotice(pauseRef.current ? (ar ? 'تم إيقاف الحملة مؤقتاً بعد الرسالة الحالية.' : 'Campaign paused after the current SMS.') : (ar ? 'تم استئناف الحملة.' : 'Campaign resumed.'));
-  };
-
   const sendSelected = async () => {
     if (!isAndroidAdmin) { setNotice(ar ? 'إرسال SMS متاح من تطبيق الأدمن APK فقط.' : 'SMS sending is available from the Admin APK only.'); return; }
     if (hasLinkToken && !navigator.onLine) { setNotice(ar ? 'يلزم الإنترنت عند استخدام متغير الرابط الشخصي.' : 'Internet is required when using the personal-link token.'); return; }
@@ -299,16 +314,18 @@ export const CustomerLinkSmsPage: React.FC<{
     if (!window.confirm(ar ? `سيتم إرسال الرسالة إلى ${selectedCount} رقم. قد تُحتسب تكلفة SMS. هل تريد المتابعة؟` : `Send SMS to ${selectedCount} numbers? Carrier charges may apply.`)) return;
     let current = recipients.map((r) => ({ ...r }));
     const startedAt = campaignStartedAt || new Date().toISOString();
+    activeSmsCampaignId = campaignId;
     if (!saveCampaign(current, { id: campaignId, startedAt, finishedAt: '', status: 'sending', messageTemplate })) {
+      activeSmsCampaignId = null;
       setNotice(ar ? 'تعذر حفظ الحملة؛ أوقفنا الإرسال لتجنب التكرار.' : 'Could not save campaign; sending stopped to avoid duplicates.'); return;
     }
     setCampaignStartedAt(startedAt); setCampaignFinishedAt('');
-    setIsSending(true); pauseRef.current = false; setIsPaused(false); setNotice('');
+    setIsSending(true); setIsCampaignSending(true); setNotice('');
+    onNavigate('campaigns');
     try {
       for (let index = 0; index < current.length; index++) {
         const recipient = current[index];
         if (!recipient.selected || recipient.status !== 'pending') continue;
-        while (pauseRef.current) await new Promise((resolve) => window.setTimeout(resolve, 250));
         current[index] = { ...recipient, status: 'sending', error: undefined };
         setRecipients([...current]);
         if (!saveCampaign(current, { status: 'sending', startedAt, finishedAt: '' })) {
@@ -337,8 +354,7 @@ export const CustomerLinkSmsPage: React.FC<{
         if (delayMs > 0 && current.some((r, i) => i > index && r.selected && r.status === 'pending')) {
           const deadline = Date.now() + delayMs;
           while (Date.now() < deadline) {
-            while (pauseRef.current) await new Promise((resolve) => window.setTimeout(resolve, 250));
-            await new Promise((resolve) => window.setTimeout(resolve, Math.min(250, deadline - Date.now())));
+              await new Promise((resolve) => window.setTimeout(resolve, Math.min(250, deadline - Date.now())));
           }
         }
       }
@@ -346,12 +362,13 @@ export const CustomerLinkSmsPage: React.FC<{
         setNotice(ar ? `انتهت الحملة: ${current.filter((r) => r.status === 'submitted').length} قُبلت، ${current.filter((r) => r.status === 'failed').length} فشلت، ${current.filter((r) => r.status === 'uncertain').length} غير محسومة.` : `Finished: ${current.filter((r) => r.status === 'submitted').length} submitted, ${current.filter((r) => r.status === 'failed').length} failed, ${current.filter((r) => r.status === 'uncertain').length} uncertain.`);
       }
     } finally {
-      setIsSending(false); pauseRef.current = false; setIsPaused(false);
+      setIsSending(false);
       const finishedAt = new Date().toISOString();
       setCampaignFinishedAt(finishedAt);
       const hasPending = current.some((r) => r.selected && r.status === 'pending');
       saveCampaign(current, { id: campaignId, startedAt, finishedAt, status: hasPending ? 'stopped' : 'completed', messageTemplate });
-      onNavigate('campaigns');
+      activeSmsCampaignId = null;
+      setIsCampaignSending(false);
     }
   };
 
@@ -367,11 +384,11 @@ export const CustomerLinkSmsPage: React.FC<{
 
   return <div className="mx-auto max-w-3xl space-y-5 px-1 py-2 sm:px-0">
     <header className="flex items-center gap-3 border-b border-gray-200 pb-4 dark:border-[#14423b]">
-      <button type="button" onClick={onBack} disabled={isSending} className="rounded-lg p-2 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-[#0c312b]" aria-label={ar ? 'رجوع' : 'Back'}><ArrowLeft className="h-5 w-5" /></button>
+      <button type="button" onClick={onBack} disabled={isSending || isCampaignSending} className="rounded-lg p-2 hover:bg-gray-100 disabled:opacity-40 dark:hover:bg-[#0c312b]" aria-label={ar ? 'رجوع' : 'Back'}><ArrowLeft className="h-5 w-5" /></button>
       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-[#0c312b] dark:text-[#8eb698]"><MessageSquareText className="h-5 w-5" /></div>
       <div className="min-w-0 flex-1"><h1 className="text-xl font-bold text-gray-900 dark:text-[#daf1de]">{titles[section]}</h1><p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{ar ? 'كل مهمة في صفحة مستقلة' : 'Each task has its own page'}</p></div>
-      {section === 'campaigns' && (campaignStartedAt || recipients.some((r) => r.status !== 'pending')) && <button type="button" onClick={endCampaign} disabled={isSending} className="rounded-lg border border-red-200 px-2.5 py-2 text-xs font-semibold text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-300">{ar ? 'أرشفة الحملة' : 'Archive campaign'}</button>}
-      {section === 'campaigns' && <button type="button" onClick={() => onNavigate('archive')} disabled={isSending} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold disabled:opacity-40 dark:border-[#14423b]"><Archive className="h-4 w-4" />{ar ? 'الأرشيف' : 'Archive'}</button>}
+      {section === 'campaigns' && !isCampaignSending && (campaignStartedAt || recipients.some((r) => r.status !== 'pending')) && <button type="button" onClick={endCampaign} disabled={isSending} className="rounded-lg border border-red-200 px-2.5 py-2 text-xs font-semibold text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-300">{ar ? 'أرشفة الحملة' : 'Archive campaign'}</button>}
+      {section === 'campaigns' && <button type="button" onClick={() => onNavigate('archive')} disabled={isSending || isCampaignSending} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-semibold disabled:opacity-40 dark:border-[#14423b]"><Archive className="h-4 w-4" />{ar ? 'الأرشيف' : 'Archive'}</button>}
     </header>
     {!isAndroidAdmin && section !== 'templates' && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">{ar ? 'إرسال SMS متاح من تطبيق الأدمن APK فقط، ويستخدم شريحة Android الافتراضية.' : 'SMS sending is available in the Admin APK only and uses Android’s default SMS SIM.'}</div>}
     {notice && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">{notice}</div>}
@@ -423,7 +440,7 @@ export const CustomerLinkSmsPage: React.FC<{
       <div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><p className="mb-2 text-xs font-bold">{ar ? 'نص الرسالة المرسلة' : 'Campaign message'}</p><p dir="auto" className="whitespace-pre-wrap break-words text-sm">{previewMessage}</p></div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><Users className="mb-1 h-4 w-4" /><p className="text-xs text-gray-500">{ar ? 'أرقام صالحة' : 'Valid numbers'}</p><p className="text-xl font-bold">{isLoading ? '…' : recipients.length}</p></div><div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><CheckCircle2 className="mb-1 h-4 w-4 text-emerald-600" /><p className="text-xs text-gray-500">{ar ? 'قُبلت' : 'Submitted'}</p><p className="text-xl font-bold">{counts.submitted}</p></div><div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><AlertTriangle className="mb-1 h-4 w-4 text-red-600" /><p className="text-xs text-gray-500">{ar ? 'فشلت' : 'Failed'}</p><p className="text-xl font-bold">{counts.failed}</p></div><div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><AlertTriangle className="mb-1 h-4 w-4 text-orange-600" /><p className="text-xs text-gray-500">{ar ? 'غير محسومة' : 'Uncertain'}</p><p className="text-xl font-bold">{counts.uncertain}</p></div></div>
       <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#061f1c]"><div className="flex justify-between text-sm"><strong>{ar ? 'تقدم الحملة' : 'Campaign progress'}</strong><span>{campaignProgress.done}/{campaignProgress.total}</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-[#0b312b]"><div className="h-full bg-emerald-600" style={{ width: campaignProgress.total ? `${campaignProgress.done / campaignProgress.total * 100}%` : '0%' }} /></div><p className="mt-2 text-xs text-gray-500">{campaignStartedAt ? (ar ? 'بدأت: ' : 'Started: ') + new Date(campaignStartedAt).toLocaleString() : (ar ? 'لم تبدأ بعد' : 'Not started yet')}{campaignFinishedAt ? ' · ' + (ar ? 'انتهت: ' : 'Ended: ') + new Date(campaignFinishedAt).toLocaleString() : ''}</p></div>
-      <div className="flex flex-wrap gap-2"><button type="button" onClick={() => onNavigate('recipients')} className="rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-[#14423b]">{ar ? 'عرض المستلمين' : 'View recipients'}</button>{isSending && <button type="button" onClick={togglePause} className="rounded-lg border border-amber-300 px-3 py-2 text-xs text-amber-800">{isPaused ? (ar ? 'استئناف' : 'Resume') : (ar ? 'إيقاف مؤقت' : 'Pause')}</button>}<button type="button" onClick={endCampaign} disabled={isSending || isLoading} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-700">{ar ? 'إنهاء الحملة وأرشفتها' : 'End & archive campaign'}</button></div>
+      <div className="flex flex-wrap gap-2"><button type="button" onClick={() => onNavigate('recipients')} disabled={isCampaignSending} className="rounded-lg border border-gray-200 px-3 py-2 text-xs disabled:opacity-40 dark:border-[#14423b]">{ar ? 'عرض المستلمين' : 'View recipients'}</button>{isCampaignSending && <span className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">{ar ? 'الحملة قيد الإرسال الآن…' : 'Campaign is sending…'}</span>}<button type="button" onClick={endCampaign} disabled={isSending || isLoading} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-700">{ar ? 'إنهاء الحملة وأرشفتها' : 'End & archive campaign'}</button></div>
       <div className="rounded-xl border border-gray-200 p-3 dark:border-[#14423b]"><div className="mb-2 flex justify-between text-xs"><strong>{ar ? 'نتائج الحملة' : 'Campaign results'}</strong><span>{campaignProgress.done}/{campaignProgress.total}</span></div><div className="max-h-64 divide-y divide-gray-100 overflow-y-auto dark:divide-[#14423b]">{recipients.filter(r => r.selected).map(r => <div key={r.id} className="flex items-center justify-between gap-3 py-2 text-xs"><span className="flex min-w-0 items-center gap-2 truncate">{r.status === 'submitted' ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <span className="h-4 w-4 shrink-0 rounded-full border border-gray-300 dark:border-gray-600" />}{r.name}</span><span className="shrink-0">{statusLabel(r.status)}{r.error ? ' · ' + r.error : ''}</span></div>)}</div></div>
       <p className="text-[11px] leading-5 text-gray-500">{ar ? 'قُبلت للإرسال تعني أن Android قبل الرسالة، ولا تؤكد وصولها. الرسائل ذات النتيجة غير المحسومة لا يعاد إرسالها تلقائياً.' : 'Submitted means Android accepted the SMS, not that it was delivered. Uncertain messages are never retried automatically.'}</p>
     </section>}
