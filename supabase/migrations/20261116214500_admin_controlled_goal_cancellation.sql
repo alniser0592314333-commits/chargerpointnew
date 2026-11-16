@@ -24,10 +24,6 @@ ALTER TABLE public.goals
   ADD CONSTRAINT goals_cancellation_request_reason_check
   CHECK (cancellation_request_reason IS NULL OR length(btrim(cancellation_request_reason)) BETWEEN 1 AND 500);
 
-CREATE INDEX IF NOT EXISTS idx_goals_pending_cancellation
-  ON public.goals (cancellation_requested_at DESC)
-  WHERE cancellation_request_status = 'PENDING' AND status = 'ACTIVE';
-
 CREATE OR REPLACE FUNCTION public.admin_cancel_goal(
   p_goal_id uuid,
   p_reason text DEFAULT NULL
