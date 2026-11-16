@@ -412,7 +412,7 @@ Deno.serve(async (request: Request) => {
     titleAr = "تم شحن رصيدك • " + (customerName || "نقطة الشحن");
     titleEn = "Your balance was topped up";
     bodyAr = "عزيزنا المشترك " + customerName + "، تم إضافة رصيد إلى حسابك بقيمة " +
-      formatMoney(entry.amount_minor, "ar") + ".\\nرصيدك الحالي بعد الإضافة: " +
+      formatMoney(entry.amount_minor, "ar") + ".\nرصيدك الحالي بعد الإضافة: " +
       formatMoney(Number(balanceMinor), "ar") + ".";
     bodyEn = "Dear subscriber " + customerName + ", " + formatMoney(entry.amount_minor, "en") +
       " has been added to your account. Your current balance after this top-up is " +
