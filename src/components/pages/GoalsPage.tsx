@@ -466,7 +466,21 @@ export const GoalsPage: React.FC = () => {
     setError('');
     setSuccess('');
     try {
-      const result = await approveGoalRequestForAdmin(request.id);
+      const proposalResult = await generateCustomerGoalProposalForAdmin(request.customerId);
+      if (!proposalResult.success) throw new Error(proposalResult.code ? `${proposalResult.code}: ${proposalResult.error}` : proposalResult.error);
+      const proposal = proposalResult.data;
+      const targetQuantity = request.requestedTarget ?? proposal.targetQuantity;
+      const rewardPerDeviceMinor = proposal.bonusAmountMinor / Math.max(1, proposal.targetQuantity);
+      const bonusAmountMinor = Math.min(
+        targetQuantity * 20,
+        Math.max(Math.min(150, targetQuantity * 20), Math.round(targetQuantity * rewardPerDeviceMinor))
+      );
+      const result = await approveGoalRequestForAdmin(
+        request.id,
+        proposal.durationDays,
+        bonusAmountMinor,
+        targetQuantity
+      );
       if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
       setSuccess(copy.approved);
       await refresh();
