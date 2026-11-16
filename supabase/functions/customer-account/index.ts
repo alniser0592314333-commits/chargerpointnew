@@ -342,7 +342,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "reauthenticate") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-goal-cancellation" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "reauthenticate") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
