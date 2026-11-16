@@ -28,6 +28,7 @@ import { FeaturePlaceholderPage } from './components/pages/FeaturePlaceholderPag
 import { CustomersPage } from './components/pages/CustomersPage';
 import { CustomerLinkSmsPage } from './components/pages/CustomerLinkSmsPage';
 import { MessageCenterHomePage } from './components/pages/MessageCenterHomePage';
+import { BalanceTopUpSmsTemplatePage } from './components/pages/BalanceTopUpSmsTemplatePage';
 import { SmsCampaignArchivePage } from './components/pages/SmsCampaignArchivePage';
 import { CustomerDetailPage } from './components/pages/CustomerDetailPage';
 import { CustomerQrDesignPage } from './components/pages/CustomerQrDesignPage';
@@ -605,6 +606,9 @@ export default function App() {
     }
 
     // Message center routes: a focused landing page and dedicated task pages.
+    if (pathname === '/app/messages/payment-template') {
+      return <BalanceTopUpSmsTemplatePage onBack={() => navigate('/app/messages')} />;
+    }
     if (pathname === '/app/messages/archive') {
       return <SmsCampaignArchivePage onBack={() => navigate('/app/messages')} />;
     }
