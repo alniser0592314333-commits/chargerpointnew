@@ -253,7 +253,7 @@ const [isLoading, setIsLoading] = useState(true);
       handleCloseTopUp();
       showToast(
         (locale === 'ar' ? 'تم شحن الرصيد بنجاح' : 'Balance topped up successfully') + smsNotice,
-        smsNotice ? 'warning' : 'success'
+        smsNotice ? 'info' : 'success'
       );
     } catch (err) {
       console.error('Commit topup error:', err);
