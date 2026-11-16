@@ -8,8 +8,9 @@ describe('notification routing and customer account management', () => {
   it('keeps debt reminders out of the administrator account inbox', () => {
     const edge = read('supabase/functions/customer-account/index.ts');
     const adminList = edge.slice(edge.indexOf('if (action === "admin-list")'), edge.indexOf('if (action === "admin-review-wallet-activation")'));
-    expect(adminList).toContain('"RESET_REQUESTED"');
+    expect(adminList).toContain('customer_account_reset_requests');
     expect(adminList).toContain('"PASSWORD_CHANGED"');
+    expect(adminList).not.toContain('"RESET_REQUESTED"');
     expect(adminList).not.toContain('"DEBT_PAYMENT_REMINDER"');
   });
 
