@@ -47,6 +47,10 @@ describe('notification routing and customer account management', () => {
     const edge = read('supabase/functions/customer-account/index.ts');
     const panel = read('src/components/pages/CustomerAccountNotificationsPanel.tsx');
     expect(edge).toContain('customers(name,phone)');
+    expect(edge).toContain('select("id,event_type,is_read,created_at,payload")');
+    const portal = read('src/components/pages/PublicCustomerPortalPage.tsx');
+    expect(portal).toContain("event.event_type === 'DEBT_PAYMENT_REMINDER'");
+    expect(portal).toContain('event.payload?.balance_minor');
     expect(panel).toContain('sendSmsUsingSystemDefaultSim');
     expect(panel).toContain('إرسال كلمة المرور SMS');
     expect(panel).toContain('smsSubmitted');
