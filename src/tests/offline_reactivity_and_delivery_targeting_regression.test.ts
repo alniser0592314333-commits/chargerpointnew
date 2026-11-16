@@ -137,7 +137,10 @@ describe('Offline reactivity and delivery targeting regression', () => {
       crypto.randomUUID(),
       'cust-regression',
       1000,
-      'cash'
+      'cash',
+      undefined,
+      undefined,
+      '1234'
     );
     expect(paymentResult.success).toBe(true);
 
