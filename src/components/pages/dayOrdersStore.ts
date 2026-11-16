@@ -49,6 +49,7 @@ import { authService } from '../../services/auth/authService';
 import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrder } from '../../domain/financialPresentation';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import { setActiveQrDesign } from '../qr/defaultDesigns';
+import { normalizeCustomerSearchText } from '../../utils/customerSearch';
 
 const isBrowserOffline = (): boolean =>
   typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -4280,26 +4281,12 @@ export const searchCustomers = async (query: string): Promise<UICustomerItem[]> 
   // while the persisted customer list is still being loaded.
   await ensureStoreHydrated();
 
-  const normalize = (value: string): string => value
-    .toLocaleLowerCase()
-    .normalize('NFD')
-    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ؤ/g, 'و')
-    .replace(/ئ/g, 'ي')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
-    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
-    .replace(/\\s+/g, ' ')
-    .trim();
-
-  const queryTerms = normalize(query).split(' ').filter(Boolean);
+  const queryTerms = normalizeCustomerSearchText(query).split(' ').filter(Boolean);
   const all = Array.from(customersMap.values()).filter((c) => c.isActive);
 
   return all
     .filter((c) => {
-      const searchableValues = [c.name, c.phone || '', getCustomerCode(c), c.id].map(normalize);
+      const searchableValues = [c.name, c.phone || '', getCustomerCode(c), c.id].map(normalizeCustomerSearchText);
       // Match all query words, even when they appear in different customer fields.
       return queryTerms.every((term) => searchableValues.some((value) => value.includes(term)));
     })
