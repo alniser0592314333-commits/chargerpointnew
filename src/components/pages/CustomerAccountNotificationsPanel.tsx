@@ -266,7 +266,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       setError(t('كلمتا المرور غير متطابقتين.', 'The passwords do not match.'));
       return;
     }
-    if (directPassword.length < 8 || directPassword.length > 128 || /^(.)\\1{7,}$/.test(directPassword) || new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']).has(directPassword.trim().toLowerCase())) {
+    if (directPassword.length < 8 || directPassword.length > 128 || /^(.)(\1){7,}$/.test(directPassword) || new Set(['password', 'password123', '12345678', 'qwerty123', '11111111', '123456789', '1234567890', 'qwertyuiop', 'abc12345', 'letmein123', 'iloveyou', 'admin123', 'welcome1', 'monkey123', 'dragon123']).has(directPassword.trim().toLowerCase())) {
       setError(t('كلمة المرور ضعيفة. استخدم 8 أحرف على الأقل وتجنب الكلمات الشائعة أو الأحرف المكررة.', 'Password is too weak. Use at least 8 characters and avoid common or repeated passwords.'));
       return;
     }
