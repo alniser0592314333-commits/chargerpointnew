@@ -223,7 +223,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           createdb -h localhost -U postgres customer_charger_fee_test
-          psql -h localhost -U postgres -d customer_charger_fee_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261116122000_authoritative_charger_fee_from_settings.sql
+          psql -h localhost -U postgres -d customer_charger_fee_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261116103207_authoritative_charger_fee_from_settings.sql
           psql -h localhost -U postgres -d customer_charger_fee_test -v ON_ERROR_STOP=1 -f supabase/tests/customer_charger_fee_authority.test.sql
       - name: Apply wallet service migrations in an isolated PostgreSQL database
         env:
