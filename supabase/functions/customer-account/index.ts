@@ -764,7 +764,7 @@ Deno.serve(async (request: Request) => {
       const administrator = await requireAdmin();
       if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
       const accountEventTypes = [
-        "RESET_REQUESTED", "TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED",
+        "TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED",
         "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_REACTIVATED", "ACCOUNT_CANCELLED",
       ];
       const [requestsResult, eventsResult] = await Promise.all([
@@ -793,7 +793,7 @@ Deno.serve(async (request: Request) => {
         .eq("status", "PENDING").gt("expires_at", now.toISOString()).order("requested_at", { ascending: true });
       const { data: events, error: eventError } = await admin.from("customer_account_events")
         .select("id,customer_id,event_type,request_id,is_read,created_at,customers(name,phone)")
-        .in("event_type", ["RESET_REQUESTED", "TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_REACTIVATED", "ACCOUNT_CANCELLED"])
+        .in("event_type", ["TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_REACTIVATED", "ACCOUNT_CANCELLED"])
         .order("created_at", { ascending: false }).limit(100);
       const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
         .select("customer_id,account_status,auth_provider,must_change_password,created_at,customers(name,phone)")
