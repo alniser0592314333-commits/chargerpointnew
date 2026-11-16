@@ -32,6 +32,15 @@ CREATE TABLE public.customers (
   version integer NOT NULL DEFAULT 1
 );
 
+CREATE TABLE public.customer_account_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  event_type text NOT NULL,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_read boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE public.goals (
   id uuid PRIMARY KEY,
   customer_id uuid NOT NULL REFERENCES public.customers(id),
