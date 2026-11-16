@@ -163,6 +163,13 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/add_order_customer_search.test.ts
 
+      - name: Run partial customer sync merge regressions
+        env:
+          # These pure merge tests must never connect to production Supabase.
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/customer_partial_sync_merge.test.ts
+
       - name: Type-check and lint
         run: npm run lint
       - name: Run BIN lockout and proof-gated change client regressions
