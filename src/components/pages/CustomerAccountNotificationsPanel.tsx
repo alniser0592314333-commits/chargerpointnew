@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n/i18nContext';
 import { config } from '../../config/env';
 import { getSupabaseAuthToken } from '../../services/supabase/client';
 import { callCustomerAccount } from '../../services/customer/customerAuth';
+import { sendSmsUsingSystemDefaultSim } from '../../services/nativeSms';
 
 type ResetRequest = {
   id: string;
@@ -13,7 +14,7 @@ type ResetRequest = {
   status: string;
   requested_at: string;
   expires_at: string;
-  customers?: { name?: string } | Array<{ name?: string }> | null;
+  customers?: { name?: string; phone?: string | null } | Array<{ name?: string; phone?: string | null }> | null;
 };
 type AccountEvent = {
   id: string;
@@ -22,7 +23,7 @@ type AccountEvent = {
   request_id?: string | null;
   is_read: boolean;
   created_at: string;
-  customers?: { name?: string } | Array<{ name?: string }> | null;
+  customers?: { name?: string; phone?: string | null } | Array<{ name?: string; phone?: string | null }> | null;
 };
 type CustomerAccount = {
   customer_id: string;
@@ -30,14 +31,17 @@ type CustomerAccount = {
   auth_provider: string;
   must_change_password: boolean;
   created_at: string;
-  customers?: { name?: string } | Array<{ name?: string }> | null;
+  customers?: { name?: string; phone?: string | null } | Array<{ name?: string; phone?: string | null }> | null;
 };
-type HistoryRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
-type WalletActivationRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string } | Array<{ name?: string }> | null };
+type HistoryRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string; phone?: string | null } | Array<{ name?: string; phone?: string | null }> | null };
+type WalletActivationRequest = { id: string; customer_id: string; status: string; requested_at: string; customers?: { name?: string; phone?: string | null } | Array<{ name?: string; phone?: string | null }> | null };
 type InboxData = { requests?: ResetRequest[]; events?: AccountEvent[]; accounts?: CustomerAccount[]; walletActivationRequests?: WalletActivationRequest[] };
 
 const customerName = (value: ResetRequest['customers'] | AccountEvent['customers']) =>
   Array.isArray(value) ? value[0]?.name ?? '' : value?.name ?? '';
+const customerPhone = (value: ResetRequest['customers'] | AccountEvent['customers']) =>
+  Array.isArray(value) ? value[0]?.phone ?? '' : value?.phone ?? '';
+const validSmsPhone = (value: string) => value.replace(/[^0-9]/g, '').length >= 7;
 
 const makeTemporaryPassword = () => {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@';
@@ -59,8 +63,8 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [prepared, setPrepared] = useState<{ requestId: string; customerName: string; password: string } | null>(null);
-  const [issued, setIssued] = useState<{ customerName: string; password: string } | null>(null);
+  const [prepared, setPrepared] = useState<{ requestId: string; customerName: string; phone: string; password: string } | null>(null);
+  const [issued, setIssued] = useState<{ customerName: string; phone: string; password: string; smsSubmitted: boolean } | null>(null);
 
   const t = (ar: string, en: string) => isAr ? ar : en;
   const load = useCallback(async (quiet = false, background = false) => {
@@ -129,9 +133,19 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
   }, [load]);
 
   const prepareReset = (request: ResetRequest) => {
+    const phone = customerPhone(request.customers).trim();
+    if (!validSmsPhone(phone)) {
+      setError(t('لا يوجد رقم هاتف صالح لهذا العميل. حدّث بياناته قبل إعادة تعيين كلمة السر عبر SMS.', 'This customer has no valid phone number. Update their contact details before resetting by SMS.'));
+      return;
+    }
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+      setError(t('إرسال SMS من شريحة الهاتف متاح من تطبيق APK الخاص بالإدارة فقط.', 'SIM-based SMS is available only in the Android admin APK.'));
+      return;
+    }
     setPrepared({
       requestId: request.id,
       customerName: customerName(request.customers) || request.customer_id,
+      phone,
       password: makeTemporaryPassword(),
     });
     setIssued(null);
@@ -167,10 +181,34 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
           : t('تعذّر اعتماد إعادة التعيين. لم نعرض العملية على أنها ناجحة؛ حدّث القائمة وتحقق من حالة الحساب.', 'Reset could not be confirmed. Refresh the list and verify the account state.'));
         return;
       }
-      setIssued({ customerName: prepared.customerName, password: prepared.password });
+      // Activate first, then submit this same one-time password through Android's default SIM.
+      // If SMS fails, retain it only in memory and retry the same value (never rotate silently).
+      setIssued({ customerName: prepared.customerName, phone: prepared.phone, password: prepared.password, smsSubmitted: false });
       setPrepared(null);
-      setMessage(t('تم اعتماد كلمة السر المؤقتة. انسخها وسلّمها للعميل بطريقة آمنة.', 'The temporary password is active. Copy it and deliver it to the customer securely.'));
+      try {
+        await sendSmsUsingSystemDefaultSim(prepared.phone,
+          t(`مرحباً ${prepared.customerName}، كلمة المرور المؤقتة لحسابك: ${prepared.password}. يرجى تغييرها عند أول دخول وعدم مشاركتها مع أحد.`, `Hello ${prepared.customerName}, your temporary account password is: ${prepared.password}. Please change it after signing in and do not share it.`));
+        setIssued({ customerName: prepared.customerName, phone: prepared.phone, password: '', smsSubmitted: true });
+        setMessage(t('تم اعتماد كلمة السر وقُبلت رسالة SMS للإرسال عبر الشريحة الافتراضية. هذا تأكيد قبول من Android وليس تقرير تسليم من شركة الاتصالات.', 'The password is active and Android accepted the SMS submission through the default SIM. This confirms submission, not carrier delivery.'));
+      } catch (smsError) {
+        console.error('Temporary customer password SMS submission failed:', smsError);
+        setError(t('تم تفعيل كلمة السر لكن تعذّر إرسال SMS. كلمة السر محفوظة مؤقتاً على هذه الشاشة؛ افحص الشريحة والصلاحيات ثم اضغط إعادة محاولة SMS دون إنشاء كلمة جديدة.', 'The password is active but SMS submission failed. The password is held temporarily on this screen; check the SIM and permissions, then retry SMS without generating a new password.'));
+      }
       await load(true);
+    } finally { setBusy(false); }
+  };
+
+  const retryIssuedSms = async () => {
+    if (!issued || !issued.password || issued.smsSubmitted || busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await sendSmsUsingSystemDefaultSim(issued.phone,
+        t(`مرحباً ${issued.customerName}، كلمة المرور المؤقتة لحسابك: ${issued.password}. يرجى تغييرها عند أول دخول وعدم مشاركتها مع أحد.`, `Hello ${issued.customerName}, your temporary account password is: ${issued.password}. Please change it after signing in and do not share it.`));
+      setIssued({ ...issued, password: '', smsSubmitted: true });
+      setMessage(t('قُبلت رسالة SMS للإرسال عبر الشريحة الافتراضية. هذا ليس تقرير تسليم من شركة الاتصالات.', 'Android accepted the SMS submission through the default SIM; this is not a carrier delivery receipt.'));
+    } catch (smsError) {
+      console.error('Temporary customer password SMS retry failed:', smsError);
+      setError(t('لم يتم تأكيد إرسال الرسالة. بقيت كلمة السر نفسها متاحة لإعادة المحاولة؛ لا تنشئ كلمة جديدة.', 'SMS submission was not confirmed. The same password remains available for retry; do not generate another one.'));
     } finally { setBusy(false); }
   };
 
@@ -301,7 +339,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
             <button type="button" onClick={() => void copyPassword(prepared.password)} className="inline-flex items-center gap-2 rounded-lg border border-amber-400 px-3 py-3 text-xs font-bold"><Clipboard className="h-4 w-4" />{t('نسخ', 'Copy')}</button>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={busy} onClick={() => void saveReset()} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t('حفظ واعتماد الكلمة المؤقتة', 'Save and activate temporary password')}</button>
+            <button type="button" disabled={busy} onClick={() => void saveReset()} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{t('اعتماد وإرسال كلمة السر SMS', 'Activate and send password by SMS')}</button>
             <button type="button" disabled={busy} onClick={() => setPrepared(null)} className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold dark:border-[#315653]">{t('إلغاء', 'Cancel')}</button>
           </div>
         </div>
@@ -310,9 +348,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       {issued && (
         <div className="space-y-3 rounded-xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/25">
           <p className="font-bold text-emerald-900 dark:text-emerald-100"><CheckCircle2 className="me-2 inline h-5 w-5" />{t('الكلمة المؤقتة فعّالة للعميل: ', 'Temporary password is active for: ')}{issued.customerName}</p>
-          <div className="flex flex-wrap items-center gap-2"><code dir="ltr" className="min-w-0 flex-1 select-all break-all rounded-lg border border-emerald-300 bg-white px-3 py-3 text-sm font-bold text-gray-900">{issued.password}</code><button type="button" onClick={() => void copyPassword(issued.password)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-400 px-3 py-3 text-xs font-bold"><Clipboard className="h-4 w-4" />{t('نسخ', 'Copy')}</button></div>
-          <p className="text-xs leading-5 text-emerald-900 dark:text-emerald-100">{t('سيُطلب من العميل تغييرها قبل فتح بياناته. لا تغلق هذه الرسالة قبل نسخها.', 'The customer must change it before accessing account data. Copy it before closing this message.')}</p>
-          <button type="button" onClick={() => setIssued(null)} className="text-xs font-semibold underline">{t('إخفاء كلمة السر بعد حفظها', 'Hide password after saving it')}</button>
+          <p className="text-xs text-gray-600 dark:text-[#b5d0c9]" dir="ltr">{issued.phone}</p>
+          {issued.smsSubmitted ? <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">{t('تم تسليم طلب SMS إلى Android للإرسال من الشريحة الافتراضية.', 'SMS was submitted to Android using the default SIM.')}</p> : <><div className="flex flex-wrap items-center gap-2"><code dir="ltr" className="min-w-0 flex-1 select-all break-all rounded-lg border border-amber-300 bg-white px-3 py-3 text-sm font-bold text-gray-900">{issued.password}</code><button type="button" onClick={() => void copyPassword(issued.password)} className="inline-flex items-center gap-2 rounded-lg border border-amber-400 px-3 py-3 text-xs font-bold"><Clipboard className="h-4 w-4" />{t('نسخ', 'Copy')}</button></div><p className="text-xs leading-5 text-amber-900 dark:text-amber-100">{t('كلمة السر فعّالة بالفعل. أعد محاولة إرسال نفس الكلمة؛ لا تنشئ كلمة جديدة لهذا الطلب.', 'The password is already active. Retry sending this same password; do not create a new password for this request.')}</p><button type="button" disabled={busy} onClick={() => void retryIssuedSms()} className="rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{busy ? t('جارٍ الإرسال…', 'Sending…') : t('إعادة محاولة SMS', 'Retry SMS')}</button></>}
+          <button type="button" onClick={() => setIssued(null)} className="text-xs font-semibold underline">{t('إخفاء تفاصيل كلمة السر', 'Hide password details')}</button>
         </div>
       )}
 
@@ -324,7 +362,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
             const name = customerName(account.customers) || account.customer_id;
             return <article key={account.customer_id} className="space-y-3 rounded-xl border border-gray-200 p-3 dark:border-[#244746]">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div><p className="font-semibold">{name}</p><p className="mt-1 text-xs text-gray-500">{t('طريقة الدخول: ', 'Sign-in method: ')}{account.auth_provider} · {t('الحالة: ', 'Status: ')}{account.account_status === 'ACTIVE' ? t('فعّال', 'Active') : account.account_status === 'FROZEN' ? t('مجمّد', 'Frozen') : t('ملغى', 'Cancelled')}{account.must_change_password ? ' · ' + t('بانتظار تغيير كلمة السر', 'Password change required') : ''}</p></div>
+                <div><p className="font-semibold">{name}</p><p className="mt-1 text-xs text-gray-500">{t('الهاتف: ', 'Phone: ')}{customerPhone(account.customers) || '—'} · {t('طريقة الدخول: ', 'Sign-in method: ')}{account.auth_provider} · {t('الحالة: ', 'Status: ')}{account.account_status === 'ACTIVE' ? t('فعّال', 'Active') : account.account_status === 'FROZEN' ? t('مجمّد', 'Frozen') : t('ملغى', 'Cancelled')}{account.must_change_password ? ' · ' + t('بانتظار تغيير كلمة السر', 'Password change required') : ''}</p></div>
                 {account.account_status === 'ACTIVE' && <button type="button" disabled={busy} onClick={() => setPendingStatus({ customerId: account.customer_id, status: 'FROZEN', name })} className="rounded-xl border border-rose-300 px-3 py-2 text-xs font-bold text-rose-700 dark:border-rose-900 dark:text-rose-200">{t('تجميد الحساب', 'Freeze account')}</button>}
                 {account.account_status === 'FROZEN' && <button type="button" disabled={busy} onClick={() => setPendingStatus({ customerId: account.customer_id, status: 'ACTIVE', name })} className="rounded-xl border border-emerald-300 px-3 py-2 text-xs font-bold text-emerald-800 dark:border-emerald-900 dark:text-emerald-200">{t('إعادة التفعيل', 'Reactivate account')}</button>}
               </div>
@@ -369,7 +407,7 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
         {loading ? <p className="py-4 text-sm text-gray-500">{t('جارٍ التحميل…', 'Loading…')}</p>
           : requests.length === 0 ? <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-[#0b302b]">{t('لا توجد طلبات معلّقة.', 'No pending reset requests.')}</p>
           : requests.map((request) => <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 p-3 dark:border-[#244746]">
-              <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('تاريخ الطلب: ', 'Requested: ')}{dateLabel(request.requested_at)} · {t('ينتهي: ', 'Expires: ')}{dateLabel(request.expires_at)}</p></div>
+              <div><p className="font-semibold">{customerName(request.customers) || request.customer_id}</p><p className="mt-1 text-xs text-gray-500">{t('الهاتف: ', 'Phone: ')}{customerPhone(request.customers) || '—'} · {t('تاريخ الطلب: ', 'Requested: ')}{dateLabel(request.requested_at)} · {t('ينتهي: ', 'Expires: ')}{dateLabel(request.expires_at)}</p></div>
               <button type="button" disabled={busy} onClick={() => prepareReset(request)} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-3.5 py-2.5 text-xs font-bold text-white disabled:opacity-50"><KeyRound className="h-4 w-4" />{t('إعادة تعيين', 'Reset password')}</button>
             </article>)}
       </div>
