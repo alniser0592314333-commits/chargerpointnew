@@ -4,7 +4,6 @@ import {
   getCustomerDetail,
   getCustomerOrders,
   getCustomerFinancialHistory,
-  getCustomerQrCardData,
   updateCustomer,
   topUpCustomerBalance,
   updateCustomerChargerFeeExemptionWithPhase5,
