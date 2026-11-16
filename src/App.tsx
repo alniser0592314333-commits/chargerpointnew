@@ -46,6 +46,7 @@ import { FinancialPendingPaymentsPage } from './components/pages/FinancialPendin
 import { PurchaseBookPage } from './components/pages/PurchaseBookPage';
 import { GoalsPage } from './components/pages/GoalsPage';
 import { NotificationsRequestsPage } from './components/pages/NotificationsRequestsPage';
+import { CustomerAccountNotificationsPanel } from './components/pages/CustomerAccountNotificationsPanel';
 import { SettingsPage } from './components/pages/SettingsPage';
 import { RenumberDayPage } from './components/pages/RenumberDayPage';
 import { QrDesignSettingsPage } from './components/pages/QrDesignSettingsPage';
@@ -759,6 +760,8 @@ export default function App() {
       }
       case '/app/notifications':
         return <NotificationsRequestsPage />;
+      case '/app/customer-accounts':
+        return <CustomerAccountNotificationsPanel />;
       case '/app/settings':
         return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async () => {
           await stopNativePushNotifications();
