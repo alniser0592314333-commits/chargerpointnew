@@ -23,7 +23,6 @@ import {
   ChevronUp,
   Phone,
   ShoppingBag,
-  Edit2,
   QrCode,
   X,
   AlertTriangle,
@@ -86,19 +85,12 @@ const [isLoading, setIsLoading] = useState(true);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [expandedFinancialId, setExpandedFinancialId] = useState<string | null>(null);
 
-  // Edit Customer Modal State
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editDebtLimit, setEditDebtLimit] = useState('');
-  const [editBin, setEditBin] = useState('');
-  const [editIsActive, setEditIsActive] = useState(true);
-  const [editError, setEditError] = useState('');
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-
-  // Account Controls & Activation Modal State
+  // Unified customer profile and account management modal state
   const [isAccountControlModalOpen, setIsAccountControlModalOpen] = useState(false);
+  const [controlName, setControlName] = useState('');
+  const [controlPhone, setControlPhone] = useState('');
   const [controlDebtLimit, setControlDebtLimit] = useState('');
+  const [controlBin, setControlBin] = useState('');
   const [controlError, setControlError] = useState('');
   const [isSavingControl, setIsSavingControl] = useState(false);
 
@@ -113,10 +105,7 @@ const [isLoading, setIsLoading] = useState(true);
   const [isValidatingBin, setIsValidatingBin] = useState(false);
   const idempotencyKeyRef = useRef<string>('');
 
-  // Charger Fee Exemption Modal State
-  const [isExemptModalOpen, setIsExemptModalOpen] = useState(false);
-  const [exemptBinInput, setExemptBinInput] = useState('');
-  const [exemptBinError, setExemptBinError] = useState('');
+  // Charger-fee exemption is managed inside the unified account modal.
   const [isSubmittingExempt, setIsSubmittingExempt] = useState(false);
 
   // Top-up Modal Flow Handlers
@@ -294,85 +283,73 @@ const [isLoading, setIsLoading] = useState(true);
     if (paymentStoreVersion > 0) loadData();
   }, [paymentStoreVersion]);
 
-  const handleOpenEditModal = () => {
+  const handleOpenAccountControlModal = () => {
     if (!customer) return;
-    if (!hasPermission('customers:edit')) {
-      showToast(
-        locale === 'ar'
-          ? 'أنت لا تتمتع بالصلاحية اللازمة لتنفيذ هذا الإجراء.'
-          : 'You do not have permission to perform this action.',
-        'error'
-      );
-      return;
-    }
-    setEditName(customer.name);
-    setEditPhone(customer.phone || '');
-    setEditDebtLimit(`${Math.abs(customer.debtLimitMinor / 100)}`);
-    setEditBin('');
-    setEditIsActive(customer.isActive);
-    setEditError('');
-    setIsEditModalOpen(true);
+    setControlName(customer.name);
+    setControlPhone(customer.phone || '');
+    setControlDebtLimit(`${Math.abs(customer.debtLimitMinor / 100)}`);
+    setControlBin('');
+    setControlError('');
+    setIsAccountControlModalOpen(true);
   };
 
-  const handleSaveEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customer) return;
-    if (!editName.trim()) {
-      setEditError(t('customerNameRequired'));
+  const handleSaveAccountDetails = async () => {
+    if (!customer || isSavingControl) return;
+    if (!hasPermission('customers:edit')) {
+      setControlError(locale === 'ar' ? 'غير مصرح بتعديل بيانات العميل' : 'Not authorized to edit customer details');
+      return;
+    }
+    if (!controlName.trim()) {
+      setControlError(t('customerNameRequired'));
       return;
     }
 
-    const debtNum = parseFloat(editDebtLimit);
-    const debtLimitMinor = isNaN(debtNum)
-      ? customer.debtLimitMinor
-      : -Math.abs(Math.round(debtNum * 100));
+    const debtNum = Number(controlDebtLimit);
+    if (!Number.isFinite(debtNum) || debtNum < 0) {
+      setControlError(locale === 'ar' ? 'يرجى إدخال سقف دين صحيح' : 'Please enter a valid debt limit');
+      return;
+    }
+    const debtLimitMinor = -Math.abs(Math.round(debtNum * 100));
     const debtLimitChanged = debtLimitMinor !== customer.debtLimitMinor;
 
-    if (debtLimitChanged && !hasPermission('customers:debt-limit')) {
-      setEditError(locale === 'ar' ? 'غير مصرح بتعديل سقف الدين' : 'Not authorized to change debt limit');
-      return;
-    }
     if (debtLimitChanged) {
-      const validation = validateBinFormat(editBin, locale);
+      if (!hasPermission('customers:debt-limit')) {
+        setControlError(locale === 'ar' ? 'غير مصرح بتعديل سقف الدين' : 'Not authorized to change debt limit');
+        return;
+      }
+      const validation = validateBinFormat(controlBin, locale);
       if (!validation.valid) {
-        setEditError(validation.error || t('invalidBinError'));
+        setControlError(validation.error || t('invalidBinError'));
         return;
       }
     }
 
-    setIsSavingEdit(true);
-    setEditError('');
+    setIsSavingControl(true);
+    setControlError('');
     try {
       const updated = await updateCustomer(
         customer.id,
         {
-          name: editName.trim(),
-          phone: editPhone.trim(),
+          name: controlName.trim(),
+          phone: controlPhone.trim(),
           ...(debtLimitChanged ? { debtLimitMinor } : {}),
-          isActive: editIsActive,
         },
-        debtLimitChanged ? editBin.trim() : undefined
+        debtLimitChanged ? controlBin.trim() : undefined
       );
       setCustomer(updated);
-      setIsEditModalOpen(false);
-      setEditBin('');
+      setControlName(updated.name);
+      setControlPhone(updated.phone || '');
+      setControlDebtLimit(`${Math.abs(updated.debtLimitMinor / 100)}`);
+      setControlBin('');
       showToast(
-        locale === 'ar' ? 'تم حفظ بيانات العميل بنجاح' : 'Customer updated successfully',
+        locale === 'ar' ? 'تم حفظ بيانات العميل وإعدادات حسابه بنجاح' : 'Customer details and account settings saved',
         'success'
       );
     } catch (err: any) {
-      setEditError(err?.message || t('errorOccurred'));
+      setControlError(err?.message || (locale === 'ar' ? 'فشل حفظ بيانات العميل' : 'Failed to save customer details'));
     } finally {
-      setIsSavingEdit(false);
+      setIsSavingControl(false);
     }
-  };
-
-  // Direct Account Control (Activate / Deactivate & Limits)
-  const handleOpenAccountControlModal = () => {
-    if (!customer) return;
-    setControlDebtLimit(`${Math.abs(customer.debtLimitMinor / 100)}`);
-    setControlError('');
-    setIsAccountControlModalOpen(true);
   };
 
   const handleToggleCustomerActive = async () => {
@@ -407,78 +384,43 @@ const [isLoading, setIsLoading] = useState(true);
     }
   };
 
-  const handleSaveDebtLimit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customer) return;
-    if (!hasPermission('customers:debt-limit')) {
-      setControlError(locale === 'ar' ? 'غير مصرح بتعديل سقف الدين' : 'Not authorized to change debt limit');
-      return;
-    }
-
-    const num = parseFloat(controlDebtLimit);
-    if (isNaN(num) || num < 0) {
-      setControlError(locale === 'ar' ? 'يرجى إدخال سقف دين صحيح' : 'Please enter a valid debt limit');
-      return;
-    }
-
-    setIsSavingControl(true);
-    setControlError('');
-    try {
-      const updated = await updateCustomer(customer.id, {
-        debtLimitMinor: -Math.abs(Math.round(num * 100)),
-      });
-      setCustomer(updated);
-      setIsAccountControlModalOpen(false);
-      showToast(
-        locale === 'ar' ? 'تم تحديث سقف الدين بنجاح' : 'Debt limit updated successfully',
-        'success'
-      );
-    } catch (err: any) {
-      setControlError(err?.message || 'فشل تحديث سقف الدين');
-    } finally {
-      setIsSavingControl(false);
-    }
-  };
-
-  // Charger Fee Exemption Handlers
-  const handleCommitExempt = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCommitExempt = async () => {
     if (!customer || isSubmittingExempt) return;
+    if (!hasPermission('customers:charger-exemption')) {
+      setControlError(locale === 'ar' ? 'غير مصرح بمنح أو إلغاء الإعفاء' : 'Not authorized to change charger-fee exemption');
+      return;
+    }
 
-    const validation = validateBinFormat(exemptBinInput, locale);
+    const validation = validateBinFormat(controlBin, locale);
     if (!validation.valid) {
-      setExemptBinError(validation.error || t('invalidBinError'));
+      setControlError(validation.error || t('invalidBinError'));
       return;
     }
 
     setIsSubmittingExempt(true);
-    setExemptBinError('');
-
+    setControlError('');
     try {
       const nextExemptState = !customer.chargerFeeExempt;
       const res = await updateCustomerChargerFeeExemptionWithPhase5(
         customer.id,
         nextExemptState,
-        exemptBinInput.trim()
+        controlBin.trim()
       );
-
       if (!res.success) {
-        setExemptBinError(res.error || 'رمز التحقق (BIN) غير صحيح أو تم رفض العملية');
-        setIsSubmittingExempt(false);
+        setControlError(res.error || (locale === 'ar' ? 'رمز BIN غير صحيح أو تم رفض العملية' : 'BIN is invalid or the operation was rejected'));
         return;
       }
 
       await loadData();
-      setIsExemptModalOpen(false);
-      setExemptBinInput('');
+      setControlBin('');
       showToast(
         nextExemptState
-          ? (locale === 'ar' ? 'تم تفعيل استثناء رسوم الشاحن' : 'Charger fee exemption activated')
-          : (locale === 'ar' ? 'تم إلغاء استثناء رسوم الشاحن' : 'Charger fee exemption removed'),
+          ? (locale === 'ar' ? 'تم منح الإعفاء بنجاح' : 'Exemption granted successfully')
+          : (locale === 'ar' ? 'تم إلغاء الإعفاء بنجاح' : 'Exemption removed successfully'),
         'success'
       );
     } catch (err: any) {
-      setExemptBinError(err?.message || 'حدث خطأ أثناء حفظ التعديل');
+      setControlError(err?.message || (locale === 'ar' ? 'حدث خطأ أثناء حفظ الإعفاء' : 'Failed to save exemption'));
     } finally {
       setIsSubmittingExempt(false);
     }
@@ -652,8 +594,8 @@ const [isLoading, setIsLoading] = useState(true);
               <span>{t('topUpBalance') || 'شحن الرصيد'}</span>
             </Button>
 
-            {/* Bottom Row: 50% / 50% Divided Buttons (QR & Edit) matching the top button width */}
-            <div className="grid grid-cols-2 gap-2 w-full">
+            {/* QR shortcut; customer editing lives in Account Management */}
+            <div className="grid grid-cols-1 gap-2 w-full">
               <Button
                 variant="outline"
                 size="sm"
@@ -664,15 +606,6 @@ const [isLoading, setIsLoading] = useState(true);
                 <span>{t('qrCode') || 'الـ QR'}</span>
               </Button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleOpenEditModal}
-                className="w-full justify-center gap-1.5 py-1.5 px-2 text-xs font-semibold rounded-xl border-gray-200 dark:border-[#14423b] hover:bg-gray-50 dark:hover:bg-[#0c312b] cursor-pointer"
-              >
-                <Edit2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span>{t('edit') || 'تعديل'}</span>
-              </Button>
             </div>
           </div>
         </div>
@@ -1045,12 +978,12 @@ const [isLoading, setIsLoading] = useState(true);
         </div>
       </div>
 
-      {/* 4. Account Controls & Activation Modal */}
-      {isAccountControlModalOpen && (
+      {/* Unified customer profile and account management */}
+      {isAccountControlModalOpen && customer && (
         <Modal
           isOpen={isAccountControlModalOpen}
           onClose={() => setIsAccountControlModalOpen(false)}
-          title={locale === 'ar' ? 'إدارة وتفعيل حساب العميل' : 'Customer Account Controls'}
+          title={locale === 'ar' ? 'تفعيل وإدارة حساب العميل' : 'Customer Account Management'}
           className="max-w-md bg-white dark:bg-[#082622] border-gray-200 dark:border-[#14423b]"
         >
           <div className="space-y-4">
@@ -1061,307 +994,127 @@ const [isLoading, setIsLoading] = useState(true);
               </div>
             )}
 
-            {/* A. Account Activation Status */}
-            <div className="p-3.5 bg-gray-50 dark:bg-[#061f1c] border border-gray-200/80 dark:border-[#123832] rounded-xl flex items-center justify-between">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-[#8eb698]">{t('customerName')} *</label>
+              <input
+                type="text"
+                required
+                disabled={!hasPermission('customers:edit') || isSavingControl}
+                value={controlName}
+                onChange={(e) => setControlName(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#061f1c] border border-gray-200 dark:border-[#14423b] rounded-xl text-gray-900 dark:text-[#daf1de] disabled:opacity-60"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-[#8eb698]">{t('phoneNumber')}</label>
+              <input
+                type="tel"
+                disabled={!hasPermission('customers:edit') || isSavingControl}
+                value={controlPhone}
+                onChange={(e) => setControlPhone(e.target.value)}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#061f1c] border border-gray-200 dark:border-[#14423b] rounded-xl text-gray-900 dark:text-[#daf1de] dir-ltr text-start font-mono disabled:opacity-60"
+              />
+            </div>
+
+            <div className="p-3.5 bg-gray-50 dark:bg-[#061f1c] border border-gray-200/80 dark:border-[#123832] rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-900 dark:text-[#daf1de]">{t('debtLimit') || 'سقف الدين'} (₪)</label>
+                <span className="text-xs font-mono font-semibold text-gray-600 dark:text-[#8eb698]">{formatCurrency(customer.debtLimitMinor)}</span>
+              </div>
+              <input
+                type="number"
+                min="0"
+                step="10"
+                disabled={!hasPermission('customers:debt-limit') || isSavingControl}
+                value={controlDebtLimit}
+                onChange={(e) => setControlDebtLimit(e.target.value)}
+                placeholder="0.00"
+                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-lg text-gray-900 dark:text-[#daf1de] disabled:opacity-60"
+              />
+            </div>
+
+            <div className="p-3.5 bg-gray-50 dark:bg-[#061f1c] border border-gray-200/80 dark:border-[#123832] rounded-xl flex items-center justify-between gap-3">
               <div className="space-y-0.5">
-                <span className="text-xs font-bold text-gray-900 dark:text-[#daf1de] block">
-                  {locale === 'ar' ? 'حالة تنشيط الحساب' : 'Account Status'}
-                </span>
+                <span className="text-xs font-bold text-gray-900 dark:text-[#daf1de] block">{locale === 'ar' ? 'حالة الحساب' : 'Account Status'}</span>
                 <span className="text-[11px] text-gray-500 dark:text-[#8eb698]">
                   {customer.isActive
                     ? (locale === 'ar' ? 'الحساب نشط ويستقبل الطلبات' : 'Active and accepting orders')
                     : (locale === 'ar' ? 'الحساب مجمد وموقوف عن العمليات' : 'Account is frozen / deactivated')}
                 </span>
               </div>
-
               <Button
                 type="button"
                 size="sm"
                 variant={customer.isActive ? 'outline' : 'primary'}
                 disabled={isSavingControl || !hasPermission('customers:deactivate')}
                 onClick={handleToggleCustomerActive}
-                className={`gap-1.5 text-xs font-semibold cursor-pointer ${
-                  customer.isActive
-                    ? 'border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                }`}
+                className={`gap-1.5 text-xs font-semibold cursor-pointer ${customer.isActive ? 'border-rose-300 text-rose-700 dark:border-rose-900/60 dark:text-rose-400' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
               >
                 <Power className="w-3.5 h-3.5" />
                 <span>{customer.isActive ? (locale === 'ar' ? 'تجميد الحساب' : 'Deactivate') : (locale === 'ar' ? 'تنشيط الحساب' : 'Activate')}</span>
               </Button>
             </div>
 
-            {/* B. Debt Limit Control */}
-            <form onSubmit={handleSaveDebtLimit} className="p-3.5 bg-gray-50 dark:bg-[#061f1c] border border-gray-200/80 dark:border-[#123832] rounded-xl space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-900 dark:text-[#daf1de]">
-                  {t('debtLimit') || 'سقف الدين'} (₪)
-                </span>
-                <span className="text-xs font-mono font-semibold text-gray-600 dark:text-[#8eb698]">
-                  {formatCurrency(customer.debtLimitMinor)}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  step="10"
-                  disabled={!hasPermission('customers:debt-limit') || isSavingControl}
-                  value={controlDebtLimit}
-                  onChange={(e) => setControlDebtLimit(e.target.value)}
-                  placeholder="0.00"
-                  className="flex-1 px-3 py-1.5 text-xs font-mono bg-white dark:bg-[#082622] border border-gray-200 dark:border-[#14423b] rounded-lg text-gray-900 dark:text-[#daf1de] focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="outline"
-                  disabled={!hasPermission('customers:debt-limit') || isSavingControl}
-                  className="text-xs px-3 cursor-pointer"
-                >
-                  {locale === 'ar' ? 'حفظ السقف' : 'Save Limit'}
-                </Button>
-              </div>
-            </form>
-
-            {/* C. Charger Fee Exemption Control */}
-            <div className="p-3.5 bg-gray-50 dark:bg-[#061f1c] border border-gray-200/80 dark:border-[#123832] rounded-xl flex items-center justify-between">
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold text-gray-900 dark:text-[#daf1de] block">
-                  {t('chargerFeeExempt') || 'استثناء رسوم الشاحن'}
-                </span>
-                <span className="text-[11px] text-gray-500 dark:text-[#8eb698]">
-                  {customer.chargerFeeExempt
-                    ? (locale === 'ar' ? 'العميل معفى من رسوم الشاحن' : 'Customer is exempt from charger fees')
-                    : (locale === 'ar' ? 'تُطبق رسوم الشاحن الاعتيادية' : 'Standard charger fee applies')}
-                </span>
-              </div>
-
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!hasPermission('customers:charger-exemption')}
-                onClick={() => {
-                  setExemptBinInput('');
-                  setExemptBinError('');
-                  setIsExemptModalOpen(true);
-                }}
-                className={`text-xs font-semibold px-3 cursor-pointer ${
-                  customer.chargerFeeExempt
-                    ? 'border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20'
-                    : 'border-gray-200 dark:border-[#14423b]'
-                }`}
-              >
-                {customer.chargerFeeExempt ? (locale === 'ar' ? 'إلغاء الإعفاء' : 'Remove Exemption') : (locale === 'ar' ? 'منح الإعفاء' : 'Grant Exemption')}
-              </Button>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 dark:text-[#8eb698] block">{t('adminPinLabel')} (BIN)</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={8}
+                value={controlBin}
+                onChange={(e) => setControlBin(e.target.value)}
+                placeholder={locale === 'ar' ? 'مطلوب عند تعديل سقف الدين أو الإعفاء' : 'Required for debt-limit or exemption changes'}
+                className="w-full text-center tracking-widest font-mono text-sm bg-gray-50 dark:bg-[#06201c] border border-gray-200 dark:border-[#14423b] rounded-xl py-2.5 text-gray-900 dark:text-[#daf1de]"
+              />
+              <p className="text-[10px] text-gray-500 dark:text-[#8eb698]">
+                {locale === 'ar' ? 'يتم التحقق من الرمز عند تنفيذ العملية الحساسة فقط.' : 'The BIN is verified only when a protected change is submitted.'}
+              </p>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col gap-2">
               <Button
                 type="button"
-                variant="outline"
+                variant="primary"
                 size="sm"
-                onClick={() => setIsAccountControlModalOpen(false)}
-                className="text-xs cursor-pointer"
+                disabled={isSavingControl || !hasPermission('customers:edit')}
+                isLoading={isSavingControl}
+                onClick={handleSaveAccountDetails}
+                className="w-full text-xs font-semibold cursor-pointer"
               >
+                {locale === 'ar' ? 'حفظ بيانات العميل وحد الدين' : 'Save Customer Details & Debt Limit'}
+              </Button>
+
+              <div className="p-3.5 bg-gray-50 dark:bg-[#061f1c] border border-gray-200/80 dark:border-[#123832] rounded-xl flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-gray-900 dark:text-[#daf1de] block">{t('chargerFeeExempt') || 'استثناء رسوم الشاحن'}</span>
+                  <span className="text-[11px] text-gray-500 dark:text-[#8eb698]">
+                    {customer.chargerFeeExempt
+                      ? (locale === 'ar' ? 'العميل معفى من رسوم الشاحن' : 'Customer is exempt from charger fees')
+                      : (locale === 'ar' ? 'تُطبق رسوم الشاحن الاعتيادية' : 'Standard charger fee applies')}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!hasPermission('customers:charger-exemption') || isSubmittingExempt}
+                  isLoading={isSubmittingExempt}
+                  onClick={handleCommitExempt}
+                  className={`text-xs font-semibold px-3 cursor-pointer ${customer.chargerFeeExempt ? 'border-amber-300 text-amber-800 dark:border-amber-800 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-950/20' : 'border-gray-200 dark:border-[#14423b]'}`}
+                >
+                  {customer.chargerFeeExempt ? (locale === 'ar' ? 'إلغاء الإعفاء' : 'Remove Exemption') : (locale === 'ar' ? 'منح الإعفاء' : 'Grant Exemption')}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-gray-100 dark:border-[#14423b]">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsAccountControlModalOpen(false)} className="text-xs cursor-pointer">
                 {t('closeAction') || 'إغلاق'}
               </Button>
             </div>
           </div>
-        </Modal>
-      )}
-
-      {/* 5. Charger Fee Exemption PIN Modal */}
-      {isExemptModalOpen && (
-        <Modal
-          isOpen={isExemptModalOpen}
-          onClose={() => setIsExemptModalOpen(false)}
-          title={locale === 'ar' ? 'تعديل استثناء رسوم الشاحن' : 'Modify Charger Fee Exemption'}
-          className="max-w-md bg-white dark:bg-[#082622] border-gray-200 dark:border-[#14423b]"
-        >
-          <form onSubmit={handleCommitExempt} className="space-y-4">
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-800/40 rounded-xl text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
-                <ShieldAlert className="w-4 h-4" />
-                <span>{locale === 'ar' ? 'عملية حساسة تتطلب رمز المشرف' : 'Sensitive Operation'}</span>
-              </div>
-              <p className="text-amber-700 dark:text-amber-400 text-[11px]">
-                {customer.chargerFeeExempt
-                  ? (locale === 'ar' ? 'سيتم إلغاء استثناء العميل وتطبيق رسوم الشاحن عليه.' : 'Customer charger fee exemption will be removed.')
-                  : (locale === 'ar' ? 'سيتم إعفاء العميل من رسوم الشاحن في جميع طلباته القادمة.' : 'Customer will be exempt from charger fees.')}
-              </p>
-            </div>
-
-            {exemptBinError && (
-              <div className="p-3 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 rounded-xl flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{exemptBinError}</span>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-700 dark:text-[#8eb698] block">
-                {t('adminPinLabel')} (BIN)
-              </label>
-              <div className="relative">
-                <Lock className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-[#5e8674] ${isRTL ? 'right-3' : 'left-3'}`} />
-                <input
-                  type="password"
-                  autoFocus
-                  required
-                  value={exemptBinInput}
-                  onChange={(e) => setExemptBinInput(e.target.value)}
-                  placeholder="••••"
-                  maxLength={8}
-                  className="w-full text-center tracking-widest font-mono text-sm bg-gray-50 dark:bg-[#06201c] border border-gray-200 dark:border-[#14423b] rounded-xl py-2.5 text-gray-900 dark:text-[#daf1de] placeholder-gray-400 dark:placeholder-[#5e8674] focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-[#14423b]">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isSubmittingExempt}
-                onClick={() => setIsExemptModalOpen(false)}
-                className="text-xs cursor-pointer"
-              >
-                {t('cancel')}
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                disabled={isSubmittingExempt}
-                isLoading={isSubmittingExempt}
-                className="text-xs font-semibold cursor-pointer"
-              >
-                {locale === 'ar' ? 'تأكيد التعديل' : 'Confirm'}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* 6. Edit Customer Modal */}
-      {isEditModalOpen && (
-        <Modal
-          isOpen={isEditModalOpen}
-          onClose={() => setIsEditModalOpen(false)}
-          title={t('editCustomerDetails')}
-          className="max-w-md bg-white dark:bg-[#082622] border-gray-200 dark:border-[#14423b]"
-        >
-          <form onSubmit={handleSaveEdit} className="space-y-4">
-            {editError && (
-              <div className="p-3 text-xs text-red-600 dark:text-[#e07a7a] bg-red-50 dark:bg-[#360d13] border border-red-200 dark:border-[#421419] rounded-xl">
-                {editError}
-              </div>
-            )}
-
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-700 dark:text-[#8eb698]">
-                {t('customerName')} *
-              </label>
-              <input
-                type="text"
-                required
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#061f1c] border border-gray-200 dark:border-[#14423b] rounded-xl text-gray-900 dark:text-[#daf1de] placeholder-gray-400 dark:placeholder-[#5e8674] focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-700 dark:text-[#8eb698]">
-                {t('phoneNumber')}
-              </label>
-              <input
-                type="tel"
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#061f1c] border border-gray-200 dark:border-[#14423b] rounded-xl text-gray-900 dark:text-[#daf1de] placeholder-gray-400 dark:placeholder-[#5e8674] focus:outline-none focus:ring-1 focus:ring-emerald-500 dir-ltr text-start font-mono"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-gray-700 dark:text-[#8eb698]">
-                {t('debtLimit')} (₪)
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="10"
-                disabled={!hasPermission('customers:debt-limit')}
-                value={editDebtLimit}
-                onChange={(e) => setEditDebtLimit(e.target.value)}
-                className={`w-full px-3 py-2 text-sm bg-white dark:bg-[#061f1c] border border-gray-200 dark:border-[#14423b] rounded-xl text-gray-900 dark:text-[#daf1de] placeholder-gray-400 dark:placeholder-[#5e8674] focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono ${
-                  !hasPermission('customers:debt-limit') ? 'opacity-60 cursor-not-allowed bg-gray-50' : ''
-                }`}
-              />
-            </div>
-
-            {hasPermission('customers:debt-limit') && (
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-gray-700 dark:text-[#8eb698]">
-                  {t('adminPinLabel')} (BIN) — {locale === 'ar' ? 'مطلوب عند تعديل سقف الدين' : 'required when changing debt limit'}
-                </label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  value={editBin}
-                  onChange={(e) => setEditBin(e.target.value)}
-                  placeholder={locale === 'ar' ? 'أدخل BIN للتفويض' : 'Enter BIN to authorize'}
-                  className="w-full px-3 py-2 text-sm bg-white dark:bg-[#061f1c] border border-gray-200 dark:border-[#14423b] rounded-xl text-gray-900 dark:text-[#daf1de] placeholder-gray-400 dark:placeholder-[#5e8674] focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
-                />
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="checkbox"
-                id="edit-is-active"
-                disabled={!hasPermission('customers:deactivate')}
-                checked={editIsActive}
-                onChange={(e) => setEditIsActive(e.target.checked)}
-                className={`rounded text-emerald-600 focus:ring-emerald-500 dark:bg-[#061f1c] dark:border-[#14423b] ${
-                  !hasPermission('customers:deactivate') ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                }`}
-              />
-              <label
-                htmlFor="edit-is-active"
-                className={`text-xs text-gray-700 dark:text-[#8eb698] ${
-                  !hasPermission('customers:deactivate') ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
-                }`}
-              >
-                {t('accountStatusActive')}
-              </label>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-[#14423b]">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-xs cursor-pointer"
-              >
-                {t('cancel')}
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                isLoading={isSavingEdit}
-                className="text-xs font-semibold cursor-pointer"
-              >
-                {t('saveChanges')}
-              </Button>
-            </div>
-          </form>
         </Modal>
       )}
 
