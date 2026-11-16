@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { MessageSquareText, Send, X, AlertCircle } from 'lucide-react';
+import { MessageSquareText, Send, X } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { getCustomerQrCardData } from './dayOrdersStore';
 import { sendSmsUsingSystemDefaultSim } from '../../services/nativeSms';
