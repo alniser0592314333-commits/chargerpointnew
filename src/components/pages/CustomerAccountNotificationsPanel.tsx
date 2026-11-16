@@ -23,6 +23,7 @@ type AccountEvent = {
   request_id?: string | null;
   is_read: boolean;
   created_at: string;
+  payload?: Record<string, unknown> | null;
   customers?: { name?: string; phone?: string | null } | Array<{ name?: string; phone?: string | null }> | null;
 };
 type CustomerAccount = {
@@ -343,6 +344,9 @@ export const CustomerAccountNotificationsPanel: React.FC = () => {
       WALLET_ACTIVATION_APPROVED: ['تمت الموافقة على تفعيل المحفظة', 'Wallet activation approved'],
       WALLET_ACTIVATION_REJECTED: ['تم رفض طلب تفعيل المحفظة', 'Wallet activation request rejected'],
     };
+    if (event.event_type === 'PASSWORD_CHANGED' && event.payload?.source === 'ADMIN_DIRECT_RESET') {
+      return t('أعاد المشرف تعيين كلمة المرور مباشرة', 'Administrator directly reset the password');
+    }
     return labels[event.event_type]?.[isAr ? 0 : 1] ?? event.event_type;
   };
   const dateLabel = (value: string) => {
