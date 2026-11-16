@@ -3725,6 +3725,12 @@ export const getGoalsPageData = async (access: {
     expiresAt: row.expiresAt ?? row.expires_at ?? '',
     completedAt: row.completedAt ?? row.completed_at ?? undefined,
     bonusLedgerId: row.bonusLedgerId ?? row.bonus_ledger_id ?? undefined,
+    cancellationRequestedAt: row.cancellationRequestedAt ?? row.cancellation_requested_at ?? undefined,
+    cancellationRequestReason: row.cancellationRequestReason ?? row.cancellation_request_reason ?? undefined,
+    cancellationRequestStatus: row.cancellationRequestStatus ?? row.cancellation_request_status ?? undefined,
+    cancellationReviewedAt: row.cancellationReviewedAt ?? row.cancellation_reviewed_at ?? undefined,
+    cancellationReviewedBy: row.cancellationReviewedBy ?? row.cancellation_reviewed_by ?? undefined,
+    cancellationReviewReason: row.cancellationReviewReason ?? row.cancellation_review_reason ?? undefined,
     createdAt: row.createdAt ?? row.created_at ?? '',
     updatedAt: row.updatedAt ?? row.updated_at ?? '',
     version: Number(row.version ?? 1),
@@ -3850,6 +3856,29 @@ export const approveGoalRequestForAdmin = async (
 export const rejectGoalRequestForAdmin = async (requestId: string, rejectionReason: string) => {
   await ensureStoreHydrated();
   return phase5UseCases.rejectGoalRequest(getAuthorizedAdminContext(), requestId, rejectionReason);
+};
+
+export const cancelGoalForAdmin = async (goalId: string, reason?: string) => {
+  const { data, error } = await invokeSupabaseRpc<any>('admin_cancel_goal', {
+    p_goal_id: goalId,
+    p_reason: reason?.trim() || null,
+  });
+  if (error) return { success: false, error: error.message || 'Goal cancellation failed', code: error.code };
+  return { success: true, data };
+};
+
+export const reviewGoalCancellationForAdmin = async (
+  goalId: string,
+  approve: boolean,
+  reason?: string
+) => {
+  const { data, error } = await invokeSupabaseRpc<any>('admin_review_goal_cancellation', {
+    p_goal_id: goalId,
+    p_approve: approve,
+    p_reason: reason?.trim() || null,
+  });
+  if (error) return { success: false, error: error.message || 'Goal cancellation review failed', code: error.code };
+  return { success: true, data };
 };
 
 // Test-only compatibility actor. It is deliberately unauthorised in production.
