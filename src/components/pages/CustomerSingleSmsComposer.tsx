@@ -23,12 +23,12 @@ const renderTemplate = (template: string, name: string, phone: string, balanceMi
     ? `${(Math.abs(balanceMinor) / 100).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`
     : 'لا يوجد';
   return template
-    .replace(/\\{name\\}/g, name)
-    .replace(/\\{debt\\}/g, debt)
-    .replace(/\\{link\\}/g, link)
-    .replace(/\\{phone\\}/g, phone)
-    .replace(/\\{date\\}/g, new Date().toLocaleDateString(locale))
-    .replace(/\\{due_date\\}/g, dueDate);
+    .replace(/\{name\}/g, name)
+    .replace(/\{debt\}/g, debt)
+    .replace(/\{link\}/g, link)
+    .replace(/\{phone\}/g, phone)
+    .replace(/\{date\}/g, new Date().toLocaleDateString(locale))
+    .replace(/\{due_date\}/g, dueDate);
 };
 
 export const CustomerSingleSmsComposer: React.FC<{
@@ -75,8 +75,8 @@ export const CustomerSingleSmsComposer: React.FC<{
       if (a >= 0) return String(a);
       const e = '۰۱۲۳۴۵۶۷۸۹'.indexOf(digit);
       return e >= 0 ? String(e) : digit;
-    }).replace(/[^+\\d]/g, '');
-    const digits = normalizedPhone.replace(/\\D/g, '');
+    }).replace(/[^+\d]/g, '');
+    const digits = normalizedPhone.replace(/\D/g, '');
     if (digits.length < 7 || digits.length > 15) {
       setError(ar ? 'أدخل رقم هاتف صحيحًا لهذا الزبون.' : 'Enter a valid phone number for this customer.');
       return;
