@@ -45,6 +45,7 @@ import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTra
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
+import { authService } from '../../services/auth/authService';
 import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrder } from '../../domain/financialPresentation';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import { setActiveQrDesign } from '../qr/defaultDesigns';
@@ -377,16 +378,29 @@ let lastPurchaseBookSnapshotRefreshAt = 0;
 let purchaseBookSnapshotRefreshPromise: Promise<boolean> | null = null;
 
 export const refreshPurchaseBookFromRemote = async (force = false): Promise<boolean> => {
-  const activeAdminId = getCachedPurchaseAdminId();
-  if (!activeAdminId) throw new Error('PURCHASE_ADMIN_SESSION_REQUIRED');
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
   if (!force && Date.now() - lastPurchaseBookSnapshotRefreshAt < 30_000) return false;
   if (purchaseBookSnapshotRefreshPromise) return purchaseBookSnapshotRefreshPromise;
 
   const refreshPromise = (async (): Promise<boolean> => {
+    let activeAdminId = getCachedPurchaseAdminId();
+    if (!activeAdminId) activeAdminId = (await authService.getCurrentSession(true))?.userId;
+    if (!activeAdminId) throw new Error('PURCHASE_ADMIN_SESSION_REQUIRED');
+
     const { data, error } = await invokeSupabaseRpc<Record<string, any>>('capture_purchase_book_snapshot');
     if (error || !data) throw new Error(error || 'PURCHASE_BOOK_SNAPSHOT_EMPTY');
     const snapshot = (Array.isArray(data) ? data[0] : data) as Record<string, any>;
+    const serverAdminId = typeof snapshot?.admin_id === 'string' ? snapshot.admin_id : '';
+    if (!serverAdminId) throw new Error('PURCHASE_BOOK_SNAPSHOT_ADMIN_MISSING');
+    if (serverAdminId !== activeAdminId) {
+      // Older installations may still hold a cached admin profile ID. Refresh it
+      // from the same authenticated Supabase token before touching local records.
+      const refreshedSession = await authService.getCurrentSession(true);
+      activeAdminId = refreshedSession?.userId || getCachedPurchaseAdminId();
+      if (!activeAdminId || activeAdminId !== serverAdminId) {
+        throw new Error('PURCHASE_ADMIN_IDENTITY_REFRESH_REQUIRED');
+      }
+    }
     const specs: Array<{ table: PurchaseBookTable; key: string; serverKey: string }> = [
       { table: 'suppliers', key: 'purchaseSuppliers', serverKey: 'purchase_suppliers' },
       { table: 'items', key: 'purchaseItems', serverKey: 'purchase_items' },
