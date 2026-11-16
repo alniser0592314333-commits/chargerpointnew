@@ -53,7 +53,7 @@ INSERT INTO public.purchase_weeks(id,month_id,start_date,end_date) VALUES ('4100
 INSERT INTO public.purchase_days(id,week_id,purchase_date) VALUES ('42000000-0000-4000-8000-000000000002','41000000-0000-4000-8000-000000000002','2026-11-11');
 
 DO $owner_assertions$
-DECLARE v_a uuid; v_b uuid; v_snapshot jsonb; v_page jsonb; v_final_page jsonb; v_changes jsonb; v_delta_count integer; v_hidden_sequence bigint; v_rejected boolean := false;
+DECLARE v_a uuid; v_b uuid; v_snapshot jsonb; v_purchase_snapshot jsonb; v_page jsonb; v_final_page jsonb; v_changes jsonb; v_delta_count integer; v_hidden_sequence bigint; v_rejected boolean := false;
 BEGIN
   SELECT admin_id INTO v_a FROM public.purchase_suppliers WHERE id='30000000-0000-4000-8000-000000000001';
   SELECT admin_id INTO v_b FROM public.purchase_suppliers WHERE id='30000000-0000-4000-8000-000000000002';
@@ -67,11 +67,33 @@ BEGIN
     RAISE EXCEPTION 'Bootstrap snapshot leaked another admin purchase supplier';
   END IF;
 
+  v_purchase_snapshot := public.capture_purchase_book_snapshot();
+  IF v_purchase_snapshot->>'admin_id' <> '10000000-0000-4000-8000-000000000002' THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot did not return the authenticated admin identity';
+  END IF;
+  IF jsonb_array_length(v_purchase_snapshot->'purchase_suppliers') <> 1
+     OR v_purchase_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier B' THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot leaked or omitted Admin B supplier';
+  END IF;
+  IF has_function_privilege('anon','public.capture_purchase_book_snapshot()','EXECUTE')
+     OR has_function_privilege('service_role','public.capture_purchase_book_snapshot()','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.capture_purchase_book_snapshot()','EXECUTE') THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot function grants are not restricted to authenticated callers';
+  END IF;
+
   PERFORM set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000011',true);
   v_snapshot := public.capture_sync_bootstrap_snapshot();
   IF jsonb_array_length(v_snapshot->'purchase_suppliers') <> 1
      OR v_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier A' THEN
     RAISE EXCEPTION 'Admin A bootstrap snapshot did not remain isolated';
+  END IF;
+  v_purchase_snapshot := public.capture_purchase_book_snapshot();
+  IF v_purchase_snapshot->>'admin_id' <> '10000000-0000-4000-8000-000000000001' THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot returned the wrong authenticated admin identity';
+  END IF;
+  IF jsonb_array_length(v_purchase_snapshot->'purchase_suppliers') <> 1
+     OR v_purchase_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier A' THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot leaked or omitted Admin A supplier';
   END IF;
   PERFORM set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000012',true);
 
