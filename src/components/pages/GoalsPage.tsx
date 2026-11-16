@@ -356,7 +356,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await generateCustomerGoalProposalForAdmin(selectedCustomerId);
-      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
+      if (!result.success) throw new Error(result.error);
       setTargetQuantity(String(result.data.targetQuantity));
       setDurationDays(String(result.data.durationDays));
       setBonusIls((result.data.bonusAmountMinor / 100).toFixed(2));
