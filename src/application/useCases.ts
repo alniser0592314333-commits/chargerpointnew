@@ -2176,10 +2176,11 @@ export class FinalUseCases {
     const existingActive = await this.deps.goalRepo.findActiveByCustomerId(req.customerId);
     DomainInvariants.assertSingleActiveGoal(existingActive, req.customerId);
 
-    const targetQuantity = targetQuantityOverride ?? req.requestedTarget;
-    if (!Number.isInteger(targetQuantity) || targetQuantity! <= 0) {
+    const requestedTarget = targetQuantityOverride ?? req.requestedTarget;
+    if (requestedTarget === undefined || !Number.isInteger(requestedTarget) || requestedTarget <= 0) {
       throw new BusinessRuleViolation('A valid customer-specific goal target is required before approving this request.');
     }
+    const targetQuantity = requestedTarget;
     if (!Number.isInteger(durationDays) || durationDays! < 3 || durationDays! > 15 || !Number.isInteger(bonusAmountMinor) || bonusAmountMinor! < 0) {
       throw new BusinessRuleViolation('A complete goal proposal (duration and bonus) is required before approving this request.');
     }
