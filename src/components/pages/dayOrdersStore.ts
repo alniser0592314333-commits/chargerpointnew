@@ -450,7 +450,7 @@ export const refreshPurchaseBookFromRemote = async (force = false): Promise<bool
           paidAt: row.paid_at ?? undefined,
         } as PurchaseOrderEntity;
       });
-      const merged = new Map<string, PurchaseBookEntity>(normalized.map((row) => [row.id, row]));
+      const merged = new Map<string, PurchaseBookEntity>(normalized.map((row) => [row.id, row] as const));
       for (const row of persisted) {
         if (row?.adminId === activeAdminId && pendingIds.has(row.id)) merged.set(row.id, row);
       }
