@@ -543,7 +543,6 @@ Deno.serve(async (request: Request) => {
             cancellation_reviewed_by: null,
             cancellation_review_reason: null,
             updated_at: now.toISOString(),
-            version: admin.rpc ? undefined : undefined,
           })
           .eq("id", goalId)
           .eq("customer_id", link.customer_id)
