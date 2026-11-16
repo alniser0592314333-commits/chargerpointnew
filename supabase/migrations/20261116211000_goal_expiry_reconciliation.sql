@@ -129,7 +129,7 @@ $function$;
 COMMENT ON FUNCTION public.get_admin_goals_page_data()
 IS 'Returns the admin goals read model and reconciles expired ACTIVE goals on-demand, avoiding a background polling job.';
 
--- Goal and goal-request writes are already captured by trg_change_capture.
+-- Goal, goal-request, and financial-ledger writes are already captured by trg_change_capture.
 -- The canonical command dispatcher also calls record_canonical_change after
 -- those DML statements, which previously produced two change_log rows for the
 -- same entity/action/version in one transaction. Reuse the trigger's row instead
@@ -151,7 +151,7 @@ DECLARE
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
 
-  IF p_entity_type IN ('goals', 'goal_requests') THEN
+  IF p_entity_type IN ('goals', 'goal_requests', 'financial_ledger') THEN
     SELECT cl.sequence_id
       INTO v_seq
     FROM public.change_log cl
@@ -177,4 +177,4 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.record_canonical_change(text, uuid, text, jsonb, integer)
-IS 'Appends canonical sync changes; goal and goal-request manual calls reuse the row already captured by the same transaction trigger.';
+IS 'Appends canonical sync changes; goal, goal-request, and financial-ledger manual calls reuse the row already captured by the same transaction trigger.';
