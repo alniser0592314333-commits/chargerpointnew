@@ -68,6 +68,9 @@ BEGIN
   END IF;
 
   v_purchase_snapshot := public.capture_purchase_book_snapshot();
+  IF v_purchase_snapshot->>'admin_id' <> '10000000-0000-4000-8000-000000000002' THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot did not return the authenticated admin identity';
+  END IF;
   IF jsonb_array_length(v_purchase_snapshot->'purchase_suppliers') <> 1
      OR v_purchase_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier B' THEN
     RAISE EXCEPTION 'Scoped Purchase Book snapshot leaked or omitted Admin B supplier';
@@ -85,6 +88,9 @@ BEGIN
     RAISE EXCEPTION 'Admin A bootstrap snapshot did not remain isolated';
   END IF;
   v_purchase_snapshot := public.capture_purchase_book_snapshot();
+  IF v_purchase_snapshot->>'admin_id' <> '10000000-0000-4000-8000-000000000001' THEN
+    RAISE EXCEPTION 'Scoped Purchase Book snapshot returned the wrong authenticated admin identity';
+  END IF;
   IF jsonb_array_length(v_purchase_snapshot->'purchase_suppliers') <> 1
      OR v_purchase_snapshot->'purchase_suppliers'->0->>'name' <> 'Supplier A' THEN
     RAISE EXCEPTION 'Scoped Purchase Book snapshot leaked or omitted Admin A supplier';
