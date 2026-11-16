@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { CUSTOMER_ACCOUNT_TERMS_VERSION } from "../_shared/customerAccountTerms.ts";
+import { canRegisterCustomerSession } from "../_shared/customerSessionPolicy.ts";
 
 const TERMS_VERSION = CUSTOMER_ACCOUNT_TERMS_VERSION;
 const SESSION_DAYS = 7;
@@ -140,7 +141,7 @@ Deno.serve(async (request: Request) => {
     return { ...data, customer: { ...customer, customer_code: customerCode(customer.id) } };
   }
 
-  async function registerSession(link: any, userId: string, claims: Record<string, unknown> | null) {
+  async function registerSession(link: any, userId: string, claims: Record<string, unknown> | null, allowFreshPasswordSession = false) {
     const sessionId = normalize(claims?.session_id, 64);
     const issuedAt = Number(claims?.iat);
     if (!/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isSafeInteger(issuedAt) || issuedAt <= 0) return false;
@@ -148,12 +149,10 @@ Deno.serve(async (request: Request) => {
       .select("session_id,auth_issued_at,expires_at,revoked_at")
       .eq("customer_id", link.customer_id).maybeSingle();
     if (existingError) return false;
-    if (existing && existing.session_id === sessionId) {
-      return existing.revoked_at == null && new Date(existing.expires_at).getTime() > Date.now();
-    }
-    // A stale, previously issued access token cannot reclaim the single-device slot.
-    // A newly authenticated session must have a strictly newer Auth-issued iat.
-    if (existing && issuedAt <= Number(existing.auth_issued_at)) return false;
+    // Password-authenticated sign-ins are freshly verified by Supabase in this
+    // request. Permit replacing the previous session when Auth's second-resolution
+    // iat ties, while still rejecting older tokens and stale non-password sessions.
+    if (!canRegisterCustomerSession(existing ?? null, sessionId, issuedAt, allowFreshPasswordSession)) return false;
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
     const { error } = await admin.from("customer_account_sessions").upsert({
       customer_id: link.customer_id, auth_user_id: userId, session_id: sessionId,
@@ -301,7 +300,7 @@ Deno.serve(async (request: Request) => {
       if (signInError || !signedIn.session || signedIn.user?.id !== link.auth_user_id) return genericFailure();
       await rateLimit(resolved.customer.id, "LOGIN", 8, 900, true);
       const claims = decodeClaims(signedIn.session.access_token);
-      if (!(await registerSession(link, signedIn.user.id, claims))) {
+      if (!(await registerSession(link, signedIn.user.id, claims, true))) {
         return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
       }
       return respond(200, {
@@ -358,7 +357,7 @@ Deno.serve(async (request: Request) => {
         });
         if (reauthError || !refreshed.session || refreshed.user?.id !== authenticated.user.id) return genericFailure();
         const refreshedClaims = decodeClaims(refreshed.session.access_token);
-        if (!(await registerSession(link, authenticated.user.id, refreshedClaims))) return genericFailure();
+        if (!(await registerSession(link, authenticated.user.id, refreshedClaims, true))) return genericFailure();
         return respond(200, { ok: true, session: refreshed.session });
       }
 
