@@ -27,11 +27,10 @@
 
 ## Release blockers still requiring isolated regression tests
 
-1. **Premature bonus insertion:** the canonical `UPDATE_GOAL_PROGRESS` branch can insert a BONUS ledger row when the client sends `bonusGranted=true`, before the goal update proves that the goal is completed. The goal trigger validates a matching ledger row when status becomes COMPLETED, but it does not itself reject a BONUS row that is inserted while the goal remains ACTIVE. This path must be closed before release.
-2. **Approval fallbacks:** `APPROVE_GOAL_REQUEST` still defaults missing proposal fields to target 10 (after requested target), bonus 500 agorot, and duration 7 days. Approval should require the reviewed proposal values or generate them server-side, not silently invent defaults.
-3. **Pending-request duplication:** `goal_requests` currently has only its primary-key index; it has no database uniqueness guard for one PENDING request per customer. Confirm the intended product rule, then enforce it atomically if only one pending request is allowed.
-4. **Customer-facing expiry view:** PR #310 reconciles expiry when the admin Goals page is opened. Verify the customer portal's read path and decide whether it needs the same on-demand server reconciliation without adding a separate polling request.
-5. **Legacy RPC closure:** the authenticated `execute_sync_command` entry point delegates through the session-guarded wrapper to the canonical dispatcher. The older `execute_sync_command_impl` wrapper and its unlocked implementation are not executable by `authenticated`, but `service_role` still has EXECUTE on the wrapper. Audit any service-role callers before revoking that legacy path.
+1. **Approval fallbacks:** `APPROVE_GOAL_REQUEST` still defaults missing proposal fields to target 10 (after requested target), bonus 500 agorot, and duration 7 days. Approval should require the reviewed proposal values or generate them server-side, not silently invent defaults.
+2. **Pending-request duplication:** `goal_requests` currently has only its primary-key index; it has no database uniqueness guard for one PENDING request per customer. Confirm the intended product rule, then enforce it atomically if only one pending request is allowed.
+3. **Customer-facing expiry view:** PR #310 reconciles expiry when the admin Goals page is opened. Verify the customer portal's read path and decide whether it needs the same on-demand server reconciliation without adding a separate polling request.
+4. **Legacy RPC closure:** the authenticated `execute_sync_command` entry point delegates through the session-guarded wrapper to the canonical dispatcher. The older `execute_sync_command_impl` wrapper and its unlocked implementation are not executable by `authenticated`, but `service_role` still has EXECUTE on the wrapper. Audit any service-role callers before revoking that legacy path.
 
 ## Cost and rollout rules
 
