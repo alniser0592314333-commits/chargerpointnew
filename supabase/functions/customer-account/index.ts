@@ -792,7 +792,7 @@ Deno.serve(async (request: Request) => {
         .select("id,customer_id,status,requested_at,expires_at,customers(name,phone)")
         .eq("status", "PENDING").gt("expires_at", now.toISOString()).order("requested_at", { ascending: true });
       const { data: events, error: eventError } = await admin.from("customer_account_events")
-        .select("id,customer_id,event_type,request_id,is_read,created_at,customers(name,phone)")
+        .select("id,customer_id,event_type,request_id,is_read,created_at,payload,customers(name,phone)")
         .in("event_type", ["TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_REACTIVATED", "ACCOUNT_CANCELLED"])
         .order("created_at", { ascending: false }).limit(100);
       const { data: accounts, error: accountsError } = await admin.from("customer_account_links")
