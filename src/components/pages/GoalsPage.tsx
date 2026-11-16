@@ -399,6 +399,9 @@ export const GoalsPage: React.FC = () => {
   };
 
   const beginEdit = (goal: GoalEntity) => {
+    // The edit form is rendered inside the Manage tab. Switch tabs before
+    // setting the selected goal so the button in the Overview tab opens it.
+    setActiveTab('manage');
     setEditingGoal(goal);
     setEditTarget(String(goal.targetQuantity));
     setEditDuration(String(goal.durationDays));
