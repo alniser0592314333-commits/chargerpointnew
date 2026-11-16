@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'supabase/migrations/20261116211000_goal_expiry_reconciliation.sql'
+      - 'supabase/migrations/20261116214500_admin_controlled_goal_cancellation.sql'
+      - 'supabase/functions/customer-account/index.ts'
+      - 'src/components/pages/PublicCustomerPortalPage.tsx'
+      - 'src/components/pages/GoalsPage.tsx'
+      - 'src/components/pages/dayOrdersStore.ts'
+      - 'src/domain/models.ts'
       - 'supabase/tests/goal_expiry_reconciliation_fixture.sql'
       - 'supabase/tests/goal_expiry_reconciliation_runtime.test.sql'
       - '.github/workflows/goal-expiry-reconciliation.yml'
@@ -51,7 +57,14 @@ jobs:
           psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/20261116211000_goal_expiry_reconciliation.sql
 
-      - name: Verify on-demand expiry, customer portal, bonus integrity, push suppression and sync de-duplication
+      - name: Apply admin-controlled cancellation migration
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20261116214500_admin_controlled_goal_cancellation.sql
+
+      - name: Verify expiry, admin cancellation decisions, customer requests, bonus integrity, push suppression and sync de-duplication
         env:
           PGPASSWORD: postgres
         run: |
