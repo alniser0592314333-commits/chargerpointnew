@@ -22,6 +22,7 @@ import {
   getCustomersList,
   getCustomerDetail,
   getCurrentAdminAuthorizationContext,
+  useStoreSubscription,
 } from './dayOrdersStore';
 
 export interface AddOrderPageProps {
@@ -88,6 +89,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UICustomerSearchResult[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<UICustomerSearchResult | UICustomerItem | null>(null);
+  const customerStoreVersion = useStoreSubscription('customers');
 
   // New Customer Form State
   const [newCustomerName, setNewCustomerName] = useState('');
@@ -177,6 +179,25 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
     }
     return () => { active = false; };
   }, [searchQuery, customerMode, canOverrideDebtLimit]);
+
+  // Keep the selected customer's pricing inputs fresh while this form remains open.
+  // The store subscription is local-only: it reacts to sync deltas without polling Supabase.
+  useEffect(() => {
+    if (!selectedCustomer || customerStoreVersion === 0) return;
+    let active = true;
+    void getCustomerDetail(selectedCustomer.id).then((detail) => {
+      if (!active || !detail) return;
+      setSelectedCustomer((current) => current && current.id === detail.id
+        ? { ...current, ...detail, chargerFeeExempt: detail.chargerFeeExempt ?? current.chargerFeeExempt }
+        : current);
+      setSearchResults((current) => current.map((item) => item.id === detail.id
+        ? { ...item, ...detail, chargerFeeExempt: detail.chargerFeeExempt ?? item.chargerFeeExempt }
+        : item));
+    }).catch((error) => {
+      console.warn('Unable to refresh selected customer after store update:', error);
+    });
+    return () => { active = false; };
+  }, [customerStoreVersion, selectedCustomer?.id]);
 
   // Resolve the same-day order before committing the customer selection.
   // If one exists, reuse its edit flow immediately instead of creating a duplicate order.
