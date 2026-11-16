@@ -390,7 +390,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await createGoalForAdmin(selectedCustomerId, target, duration, bonusMinor);
-      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
+      if (!result.success) throw new Error(result.error);
       setSuccess(copy.created);
       setSelectedCustomerId('');
       await refresh();
