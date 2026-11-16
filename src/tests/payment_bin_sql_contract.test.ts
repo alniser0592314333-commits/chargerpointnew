@@ -29,5 +29,8 @@ describe('canonical customer payment BIN database boundary', () => {
     expect(sql).toContain("hashtextextended('chargerpointnew:change_log:commit_order', 0)");
     expect(sql).toContain('public.execute_canonical_sync_command_unlocked(');
     expect(sql).toContain("SET search_path TO ''");
+    expect(sql).toContain("p_payload_hash text DEFAULT 'no_hash'::text");
+    expect(sql).toContain("p_device_id text DEFAULT 'default_device'::text");
+    expect(sql).toContain('p_actor_id uuid DEFAULT NULL::uuid');
   });
 });

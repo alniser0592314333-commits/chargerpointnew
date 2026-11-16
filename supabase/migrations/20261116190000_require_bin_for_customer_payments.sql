@@ -5,9 +5,9 @@ CREATE OR REPLACE FUNCTION public.execute_canonical_sync_command(
   p_command_id uuid,
   p_command_type text,
   p_payload jsonb,
-  p_payload_hash text,
-  p_device_id text,
-  p_actor_id uuid
+  p_payload_hash text DEFAULT 'no_hash'::text,
+  p_device_id text DEFAULT 'default_device'::text,
+  p_actor_id uuid DEFAULT NULL::uuid
 )
 RETURNS jsonb
 LANGUAGE plpgsql
