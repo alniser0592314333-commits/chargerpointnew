@@ -50,6 +50,7 @@ import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrd
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import { setActiveQrDesign } from '../qr/defaultDesigns';
 import { normalizeCustomerSearchText } from '../../utils/customerSearch';
+import { mergeCustomerRemoteDelta } from '../../utils/customerRemoteMerge';
 
 const isBrowserOffline = (): boolean =>
   typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -736,18 +737,10 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('customers', change.entityId, tx);
       return;
     }
-    const entity: CustomerEntity = {
-      id: p.id || change.entityId,
-      name: p.name,
-      phone: p.phone || '',
-      isActive: p.isActive ?? p.is_active ?? true,
-      notes: p.notes ?? undefined,
-      debtLimitMinor: p.debtLimitMinor ?? p.debt_limit_minor ?? 0,
-      chargerFeeExempt: p.chargerFeeExempt ?? p.charger_fee_exempt ?? false,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      version: p.version || 1,
-    };
+    // Customer UPDATE events are partial patches. Preserve fields omitted from
+    // the payload (especially name) instead of rebuilding a blank customer row.
+    const prior = customersMap.get(change.entityId);
+    const entity: CustomerEntity = mergeCustomerRemoteDelta(prior, p, change.entityId, change.version);
     localDb.setWithTx(tx, 'customers', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'customers', customersMap, entity.id);
     customersMap.set(entity.id, entity);
