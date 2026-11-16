@@ -278,3 +278,26 @@ REVOKE ALL ON FUNCTION public.customer_request_goal_cancellation(uuid,uuid,text)
 GRANT EXECUTE ON FUNCTION public.customer_request_goal_cancellation(uuid,uuid,text) TO service_role;
 COMMENT ON FUNCTION public.customer_request_goal_cancellation(uuid,uuid,text)
 IS 'Service-role-only endpoint for an already authenticated customer portal session; records a request but never cancels a goal.';
+
+-- Keep cancelled goals visible in the customer's own goal history.
+DO $migration$
+DECLARE
+  v_item regprocedure;
+  v_definition text;
+  v_anchor text := 'g.status IN (''ACTIVE'', ''COMPLETED'') OR g.completed_at IS NOT NULL';
+  v_replacement text := 'g.status IN (''ACTIVE'', ''COMPLETED'', ''CANCELLED'') OR g.completed_at IS NOT NULL';
+  v_signatures regprocedure[] := ARRAY[
+    'public.public_resolve_customer_portal(text)'::regprocedure,
+    'public.public_resolve_customer_portal(text,boolean)'::regprocedure
+  ];
+BEGIN
+  FOREACH v_item IN ARRAY v_signatures LOOP
+    v_definition := pg_get_functiondef(v_item);
+    IF position(v_anchor in v_definition) = 0 THEN
+      RAISE EXCEPTION 'Customer portal goal history filter changed in %',v_item;
+    END IF;
+    v_definition := replace(v_definition,v_anchor,v_replacement);
+    EXECUTE v_definition;
+  END LOOP;
+END;
+$migration$;
