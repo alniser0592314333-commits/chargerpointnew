@@ -164,9 +164,8 @@ export function calculateGoalBonusCapMinor(targetQuantity: number): number {
 }
 
 /**
- * Legacy proposal policy note: proposals should be based on delivered activity,
- * with an adaptive stretch and a minimum target of 10 devices. The production
- * implementation is being revised to use a 28-day activity profile.
+ * Smart proposals use the customer's delivered activity over 28 days, weighted
+ * toward the latest week, with a controlled stretch and a minimum target of 10.
  */
 export interface GeneratedGoalProposal {
   targetQuantity: number;
@@ -179,7 +178,7 @@ export interface GenerateGoalProposalOptions {
   startedAt?: string;
   /** Optional deterministic override for tests/controlled admin workflows. */
   customRatePerDeviceMinor?: number;
-  /** Explicit duration override; otherwise choose a random integer from 3 through 15. */
+  /** Explicit duration override; otherwise choose an activity-based integer from 5 through 15. */
   customDurationDays?: number;
   /** Injectable random source for deterministic tests. */
   random?: () => number;
