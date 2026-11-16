@@ -156,20 +156,20 @@ describe('Phase 1 Reconciliation Closure - Comprehensive Architecture Invariants
   // --------------------------------------------------------------------------
   it('1. Goal Generation Formulas: Verifies exact 7-day activity selection, integer minor units, and deterministic proposal', () => {
     // Past 7-day Delivered Items count = 8
-    const proposal8 = generateGoalProposal(8, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
+    const proposal8 = generateGoalProposal(8, { customDurationDays: 7, customRatePerDeviceMinor: 15, startedAt: '2026-10-01T00:00:00.000Z' });
     // target = max(10, 8 + 10, ceil(8 * 1.25)) = 18
     expect(proposal8.targetQuantity).toBe(18);
     expect(proposal8.durationDays).toBe(7);
-    // bonus = max(80, 18 * 10) = 180 minor units (1.80₪ = 1.00₪ per 10 devices rate)
-    expect(proposal8.bonusAmountMinor).toBe(180);
+    // bonus = 18 * 15 = 270 minor units (2.70₪)
+    expect(proposal8.bonusAmountMinor).toBe(270);
     expect(Number.isInteger(proposal8.bonusAmountMinor)).toBe(true);
 
     // Past 7-day Delivered Items count = 20
-    const proposal20 = generateGoalProposal(20, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
+    const proposal20 = generateGoalProposal(20, { customDurationDays: 7, customRatePerDeviceMinor: 15, startedAt: '2026-10-01T00:00:00.000Z' });
     // target = max(10, 20 + 10, ceil(20 * 1.25)) = 30
     expect(proposal20.targetQuantity).toBe(30);
-    // bonus = max(80, 30 * 10) = 300 minor units (3.00₪)
-    expect(proposal20.bonusAmountMinor).toBe(300);
+    // bonus = 30 * 15 = 450 minor units (4.50₪)
+    expect(proposal20.bonusAmountMinor).toBe(450);
     expect(Number.isInteger(proposal20.bonusAmountMinor)).toBe(true);
 
     // Fractional bonus amounts are strictly impossible because bonusAmountMinor is integer
