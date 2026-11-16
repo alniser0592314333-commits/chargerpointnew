@@ -15,7 +15,7 @@
 - Progress counts distinct order-item IDs only when status is `delivered`, operational status is `DELIVERED`, financial status is `RECOGNIZED`, delivery time is within the goal window, and the item is not soft-deleted.
 - The order-item update trigger invokes the server evaluator when delivery, recognition, reversal, or soft-delete fields change.
 - The evaluator locks the ACTIVE goal, recalculates progress from order items, and handles completion/expiry. Completion writes a matching BONUS ledger entry and updates the goal in the same transaction.
-- The goal business-rule trigger enforces positive target, 3–15 day duration, expiry/duration consistency, the 20-agorot-per-device cap, server-calculated progress, and matching bonus-ledger data for COMPLETED goals.
+- The goal business-rule trigger enforces positive target, 3–15 day duration, expiry/duration consistency, the 20-agorot-per-device cap, server-calculated progress, and matching bonus-ledger data for COMPLETED goals. PR #310 additionally validates every new BONUS row at transaction commit and makes existing BONUS rows immutable against UPDATE/DELETE.
 - Completed and failed goals are immutable.
 - The public evaluator is not executable by `anon`; direct execution of the internal evaluator is not granted to `anon`, `authenticated`, or `service_role`. The public wrapper is permission-guarded.
 
