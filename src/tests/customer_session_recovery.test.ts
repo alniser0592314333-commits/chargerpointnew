@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { canRegisterCustomerSession, type RegisteredCustomerSession } from '../../supabase/functions/_shared/customerSessionPolicy';
 
 const now = Date.parse('2026-11-16T06:00:00.000Z');
@@ -37,5 +39,22 @@ describe('customer account session recovery', () => {
     expect(canRegisterCustomerSession(null, nextSessionId, 1794808800, false, now)).toBe(true);
     expect(canRegisterCustomerSession(null, 'not-a-session', 1794808800, true, now)).toBe(false);
     expect(canRegisterCustomerSession(null, nextSessionId, 0, true, now)).toBe(false);
+  });
+});
+
+describe('customer account recovery UI and server contract', () => {
+  it('returns an active account with an expired session to password login instead of calling the account unavailable', () => {
+    const page = fs.readFileSync(path.resolve(process.cwd(), 'src/components/pages/CustomerAccountPage.tsx'), 'utf8');
+    expect(page).toContain("registered.error === 'ACCOUNT_UNAVAILABLE_OR_INVALID'");
+    expect(page).toContain('localStorage.removeItem(sessionExpiryKey(accountToken))');
+    expect(page).toContain('انتهت صلاحية جلسة الدخول');
+    expect(page).toContain("SERVICE_UNAVAILABLE:");
+  });
+
+  it('allows same-second replacement only on server-verified password login and reauthentication', () => {
+    const edge = fs.readFileSync(path.resolve(process.cwd(), 'supabase/functions/customer-account/index.ts'), 'utf8');
+    expect(edge).toContain('registerSession(link, signedIn.user.id, claims, true)');
+    expect(edge).toContain('registerSession(link, authenticated.user.id, refreshedClaims, true)');
+    expect(edge).toContain('canRegisterCustomerSession(existing ?? null, sessionId, issuedAt, allowFreshPasswordSession)');
   });
 });
