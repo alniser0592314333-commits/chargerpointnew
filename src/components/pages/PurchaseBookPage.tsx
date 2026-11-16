@@ -4,7 +4,7 @@ import {
   PurchaseCatalogEntity, PurchaseMonthEntity, PurchaseWeekEntity,
   PurchaseDayEntity, PurchaseOrderEntity, PurchaseCurrency,
 } from '../../domain/models';
-import { useStoreSubscription } from './dayOrdersStore';
+import { refreshPurchaseBookFromRemote, useStoreSubscription } from './dayOrdersStore';
 import {
   addPurchaseOrder, createCurrentPurchaseDay, createPurchaseWeek, hidePurchaseCatalog,
   listPurchaseRows, markPurchaseOrderPaid, purchaseMinorToAmount, savePurchaseCatalog, PurchaseBookOperationError, getPurchaseWeekStartDay, setPurchaseWeekStartDay,
@@ -69,6 +69,16 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
     finally{setLoading(false);}
   },[]);
   useEffect(()=>{void reload();},[reload,version]);
+  useEffect(()=>{
+    let active=true;
+    void refreshPurchaseBookFromRemote().then(()=>{
+      if(active) setError('');
+    }).catch((e)=>{
+      console.warn('Purchase Book scoped server refresh failed; keeping local data:',e);
+      if(active) setError(ar ? 'تعذّر تحديث دفتر المشتريات من الخادم. يتم عرض آخر نسخة محفوظة محلياً.' : 'Could not refresh the Purchase Book from the server. Showing the last locally saved copy.');
+    });
+    return ()=>{active=false;};
+  },[ar]);
   useEffect(()=>{getPurchaseWeekStartDay().then(setWeekStartDay).catch(e=>setError(e.message));},[]);
   useEffect(()=>{setSupplierIdValue(supplierId || '');},[supplierId]);
 
