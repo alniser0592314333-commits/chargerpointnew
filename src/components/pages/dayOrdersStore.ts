@@ -3718,7 +3718,16 @@ export const getGoalsPageData = async (access: {
   canViewGoals: boolean;
   canViewRequests: boolean;
 }) => {
-  await ensureStoreHydrated();
+  try {
+    await ensureStoreHydrated();
+  } catch (error) {
+    // ensureStoreHydrated rehydrates the durable IndexedDB replica before trying
+    // a first-run cloud bootstrap. If that remote bootstrap fails, do not turn a
+    // transient sync outage into a page failure when cached goals data is usable.
+    const hasCachedGoalsData = goalsMap.size > 0 || goalRequestsMap.size > 0 || customersMap.size > 0;
+    if (!hasCachedGoalsData) throw error;
+    console.warn('[GoalsPage] bootstrap failed; using durable local goals snapshot', error);
+  }
 
   // Goal requests are created on the customer portal. A notification can arrive
   // before the admin's background sync has pulled the matching change_log row.
