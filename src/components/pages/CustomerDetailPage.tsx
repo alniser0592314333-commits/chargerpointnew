@@ -304,7 +304,7 @@ const [isLoading, setIsLoading] = useState(true);
       return;
     }
 
-    const debtNum = Number(controlDebtLimit);
+    const debtNum = controlDebtLimit.trim() === '' ? Number.NaN : Number(controlDebtLimit);
     if (!Number.isFinite(debtNum) || debtNum < 0) {
       setControlError(locale === 'ar' ? 'يرجى إدخال سقف دين صحيح' : 'Please enter a valid debt limit');
       return;
