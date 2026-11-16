@@ -57,6 +57,25 @@ BEGIN
 END;
 $$;
 
+
+DO $bonus_immutable$
+DECLARE
+  v_rejected boolean := false;
+BEGIN
+  BEGIN
+    UPDATE public.financial_ledger
+    SET amount_minor = amount_minor + 1
+    WHERE event_type = 'BONUS';
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    v_rejected := true;
+  END;
+
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'Completed goal BONUS ledger entry was mutable';
+  END IF;
+END;
+$bonus_immutable$;
+
 -- Normal event-driven completion still keeps its existing push behavior.
 INSERT INTO public.goals(
   id, customer_id, target_quantity, current_progress, bonus_amount_minor,
