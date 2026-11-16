@@ -23,6 +23,7 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object(
+    'admin_id', v_admin_id,
     'purchase_suppliers', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.name, t.id) FROM public.purchase_suppliers t WHERE t.admin_id=v_admin_id), '[]'::jsonb),
     'purchase_items', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.name, t.id) FROM public.purchase_items t WHERE t.admin_id=v_admin_id), '[]'::jsonb),
     'purchase_payment_methods', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.name, t.id) FROM public.purchase_payment_methods t WHERE t.admin_id=v_admin_id), '[]'::jsonb),
