@@ -760,6 +760,29 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, sent_count: sentCount });
     }
 
+    if (action === "admin-counts") {
+      const administrator = await requireAdmin();
+      if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
+      const accountEventTypes = [
+        "RESET_REQUESTED", "TEMP_PASSWORD_ISSUED", "PASSWORD_CHANGED",
+        "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_REACTIVATED", "ACCOUNT_CANCELLED",
+      ];
+      const [requestsResult, eventsResult] = await Promise.all([
+        admin.from("customer_account_reset_requests")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "PENDING").gt("expires_at", now.toISOString()),
+        admin.from("customer_account_events")
+          .select("id", { count: "exact", head: true })
+          .in("event_type", accountEventTypes).eq("is_read", false),
+      ]);
+      if (requestsResult.error || eventsResult.error) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+      return respond(200, {
+        ok: true,
+        pending_reset_requests: requestsResult.count ?? 0,
+        unread_account_events: eventsResult.count ?? 0,
+      });
+    }
+
     if (action === "admin-list") {
       const administrator = await requireAdmin();
       if (!administrator) return respond(403, { ok: false, error: "FORBIDDEN" });
