@@ -23,9 +23,9 @@
 
 - There is one ACTIVE goal and one COMPLETED goal; two goal requests are APPROVED. No goal-specific cron job is scheduled.
 - The live goal and goal-request tables have change-capture triggers. The canonical dispatcher also manually calls `record_canonical_change` after the same DML, producing duplicate sync rows. The live log contains 4 duplicated goal-request entity/version groups (6 redundant rows) and 6 duplicated goal entity/version groups (7 redundant rows).
-- PR #310 adds two low-resource fixes without changing production: expiry reconciliation inside the existing admin Goals read RPC, and same-transaction de-duplication for trigger-captured goals, goal requests, and financial-ledger events. It deliberately creates no cron job, polling loop, extra client RPC, Edge Function, or new index.
+- PR #310 adds three low-resource fixes without changing production: expiry reconciliation inside the existing admin Goals read RPC, same-transaction de-duplication for trigger-captured goals, goal requests, and financial-ledger events, and a deferred constraint trigger that rejects a BONUS ledger row unless its matching goal is COMPLETED at transaction commit. It deliberately creates no cron job, polling loop, extra client RPC, Edge Function, or new index.
 
-## Release blockers still requiring isolated regression tests
+## Remaining release blockers requiring isolated regression tests
 
 1. **Approval fallbacks:** `APPROVE_GOAL_REQUEST` still defaults missing proposal fields to target 10 (after requested target), bonus 500 agorot, and duration 7 days. Approval should require the reviewed proposal values or generate them server-side, not silently invent defaults.
 2. **Pending-request duplication:** `goal_requests` currently has only its primary-key index; it has no database uniqueness guard for one PENDING request per customer. Confirm the intended product rule, then enforce it atomically if only one pending request is allowed.
