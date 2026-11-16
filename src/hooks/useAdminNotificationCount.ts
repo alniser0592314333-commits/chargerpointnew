@@ -8,13 +8,14 @@ type AdminInbox = {
   requests?: Array<{ status?: string }>;
   events?: Array<{ is_read?: boolean }>;
 };
+type AdminNotificationCounts = { notifications: number; customerAccounts: number };
 
-export function useAdminNotificationCount(enabled: boolean): number {
-  const [count, setCount] = useState(0);
+export function useAdminNotificationCount(enabled: boolean): AdminNotificationCounts {
+  const [counts, setCounts] = useState<AdminNotificationCounts>({ notifications: 0, customerAccounts: 0 });
 
   useEffect(() => {
     if (!enabled) {
-      setCount(0);
+      setCounts({ notifications: 0, customerAccounts: 0 });
       return;
     }
     let disposed = false;
@@ -30,17 +31,17 @@ export function useAdminNotificationCount(enabled: boolean): number {
           callCustomerAccount<AdminInbox>('admin-list', {}, token),
         ]);
         if (disposed) return;
-        let nextCount = 0;
+        const nextCounts: AdminNotificationCounts = { notifications: 0, customerAccounts: 0 };
         if (!paymentsResult.error && Array.isArray(paymentsResult.data)) {
-          nextCount += paymentsResult.data.length;
+          nextCounts.notifications = paymentsResult.data.length;
         }
         if (!inboxResult.error && inboxResult.data) {
           const requests = Array.isArray(inboxResult.data.requests) ? inboxResult.data.requests : [];
           const events = Array.isArray(inboxResult.data.events) ? inboxResult.data.events : [];
-          nextCount += requests.filter((request) => String(request.status || '').toUpperCase() === 'PENDING').length;
-          nextCount += events.filter((event) => event.is_read === false).length;
+          nextCounts.customerAccounts = requests.filter((request) => String(request.status || '').toUpperCase() === 'PENDING').length
+            + events.filter((event) => event.is_read === false).length;
         }
-        setCount(nextCount);
+        setCounts(nextCounts);
       } catch {
         // Keep the last confirmed count if the network is temporarily unavailable.
       } finally {
@@ -76,5 +77,5 @@ export function useAdminNotificationCount(enabled: boolean): number {
     };
   }, [enabled]);
 
-  return count;
+  return counts;
 }
