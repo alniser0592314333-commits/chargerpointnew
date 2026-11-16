@@ -740,7 +740,7 @@ export const applyRemoteChange = (change: {
     // Customer UPDATE events are partial patches. Preserve fields omitted from
     // the payload (especially name) instead of rebuilding a blank customer row.
     const prior = customersMap.get(change.entityId);
-    const entity: CustomerEntity = mergeCustomerRemoteDelta(prior, p, change.entityId, change.version);
+    const entity: CustomerEntity = mergeCustomerRemoteDelta(prior, p, change.entityId, change.version, change.changedAt);
     localDb.setWithTx(tx, 'customers', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'customers', customersMap, entity.id);
     customersMap.set(entity.id, entity);
