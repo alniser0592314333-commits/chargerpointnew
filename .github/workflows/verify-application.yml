@@ -844,7 +844,7 @@ jobs:
       - name: Apply scoped Purchase Book snapshot migration in isolation
         env:
           PGPASSWORD: postgres
-        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261116070000_purchase_book_scoped_snapshot.sql
+        run: psql --single-transaction -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261116053623_purchase_book_scoped_snapshot.sql
       - name: Verify Purchase Book snapshots, deltas, writes, and foreign keys are admin-isolated
         env:
           PGPASSWORD: postgres
