@@ -506,7 +506,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await reviewGoalCancellationForAdmin(goal.id, approve);
-      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
+      if (!result.success) throw new Error(result.error);
       setSuccess(approve
         ? (locale === 'ar' ? 'تمت الموافقة على طلب الإلغاء وإلغاء الهدف.' : 'Cancellation approved; the goal is cancelled.')
         : (locale === 'ar' ? 'تم رفض طلب الإلغاء وبقي الهدف نشطًا.' : 'Cancellation rejected; the goal remains active.'));
@@ -529,7 +529,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await cancelGoalForAdmin(goal.id);
-      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
+      if (!result.success) throw new Error(result.error);
       setSuccess(locale === 'ar' ? 'تم إلغاء الهدف من الإدارة.' : 'Goal cancelled by the administrator.');
       await refresh();
     } catch (cause) {
