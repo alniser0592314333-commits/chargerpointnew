@@ -18,6 +18,7 @@ import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { CustomerSingleSmsComposer } from './CustomerSingleSmsComposer';
+import { sendSmsUsingSystemDefaultSim } from '../../services/nativeSms';
 import { authService, UserSession } from '../../services/auth/authService';
 import {
   ChevronDown,
