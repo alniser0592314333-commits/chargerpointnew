@@ -288,3 +288,34 @@ $function$;
 
 COMMENT ON FUNCTION public.trigger_native_push_for_goal_completion()
 IS 'Sends completion push for normal event-driven completions; suppresses external push dispatch during read-time expiry reconciliation.';
+
+-- The client approval use case already sends the reviewed target, bonus and
+-- duration. Do not silently fall back to requested_target/10, 500 agorot, or
+-- 7 days when an old or incomplete outbox payload reaches the server.
+DO $migration$
+DECLARE
+  v_signature regprocedure := 'public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)'::regprocedure;
+  v_definition text;
+  v_old_target text := 'COALESCE((p_payload->>''targetQuantity'')::INTEGER, v_rec_goal_request.requested_target, 10)';
+  v_old_bonus text := 'COALESCE((p_payload->>''bonusAmountMinor'')::BIGINT, 500)';
+  v_old_duration text := 'COALESCE((p_payload->>''durationDays'')::INTEGER, 7)';
+  v_anchor text := 'v_entity_uuid := COALESCE((p_payload->>''resultingGoalId'')::UUID, gen_random_uuid());';
+  v_guard text := E'IF p_payload->>''targetQuantity'' IS NULL\n               OR p_payload->>''bonusAmountMinor'' IS NULL\n               OR p_payload->>''durationDays'' IS NULL\n               OR (p_payload->>''targetQuantity'')::INTEGER <= 0\n               OR (p_payload->>''bonusAmountMinor'')::BIGINT < 0\n               OR (p_payload->>''durationDays'')::INTEGER NOT BETWEEN 3 AND 15 THEN\n                RAISE EXCEPTION ''Goal approval requires valid reviewed target, bonus, and duration values'' USING ERRCODE = ''P2201'';\n            END IF;\n\n            ';
+BEGIN
+  v_definition := pg_get_functiondef(v_signature);
+
+  IF (length(v_definition) - length(replace(v_definition, v_old_target, ''))) / length(v_old_target) <> 1
+     OR (length(v_definition) - length(replace(v_definition, v_old_bonus, ''))) / length(v_old_bonus) <> 1
+     OR (length(v_definition) - length(replace(v_definition, v_old_duration, ''))) / length(v_old_duration) <> 2
+     OR (length(v_definition) - length(replace(v_definition, v_anchor, ''))) / length(v_anchor) <> 1 THEN
+    RAISE EXCEPTION 'Canonical goal approval branch changed; refusing an unsafe fallback rewrite';
+  END IF;
+
+  v_definition := replace(v_definition, v_old_target, '(p_payload->>''targetQuantity'')::INTEGER');
+  v_definition := replace(v_definition, v_old_bonus, '(p_payload->>''bonusAmountMinor'')::BIGINT');
+  v_definition := replace(v_definition, v_old_duration, '(p_payload->>''durationDays'')::INTEGER');
+  v_definition := replace(v_definition, v_anchor, v_guard || v_anchor);
+
+  EXECUTE v_definition;
+END;
+$migration$;
