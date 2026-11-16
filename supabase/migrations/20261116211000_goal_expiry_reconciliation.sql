@@ -228,3 +228,32 @@ EXECUTE FUNCTION public.enforce_goal_bonus_requires_completion();
 
 COMMENT ON FUNCTION public.enforce_goal_bonus_requires_completion()
 IS 'Defers goal BONUS validation until commit and requires the matching goal to be COMPLETED.';
+
+-- Keep the customer-facing portal's existing RPC response current as well.
+-- A valid customer QR token resolves exactly one customer; only that customer's
+-- expired ACTIVE goal is evaluated. No extra browser request or polling is added.
+DO $migration$
+DECLARE
+  v_signature regprocedure;
+  v_definition text;
+  v_old text := E'IF v_customer_id IS NULL THEN\n    RETURN NULL;\n  END IF;';
+  v_new text;
+BEGIN
+  v_new := v_old || E'\n\n  IF EXISTS (\n    SELECT 1\n    FROM public.goals g\n    WHERE g.customer_id = v_customer_id\n      AND g.status = ''ACTIVE''\n      AND g.expires_at <= statement_timestamp()\n  ) THEN\n    PERFORM public.evaluate_customer_active_goal_internal(v_customer_id);\n  END IF;';
+
+  FOREACH v_signature IN ARRAY ARRAY[
+    'public.public_resolve_customer_portal(text)'::regprocedure,
+    'public.public_resolve_customer_portal(text,boolean)'::regprocedure
+  ]
+  LOOP
+    v_definition := pg_get_functiondef(v_signature);
+
+    IF strpos(v_definition, v_old) = 0 THEN
+      RAISE EXCEPTION 'Customer portal resolver % no longer matches the expected safe insertion point', v_signature;
+    END IF;
+
+    v_definition := replace(v_definition, v_old, v_new);
+    EXECUTE v_definition;
+  END LOOP;
+END;
+$migration$;
