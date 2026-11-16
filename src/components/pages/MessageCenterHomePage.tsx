@@ -8,17 +8,16 @@ export const MessageCenterHomePage: React.FC<{ onNavigate: (section: MessageSect
   const { locale } = useI18n();
   const ar = locale === 'ar';
   const sections = [
-    { id: 'compose' as const, icon: MessageSquareText, title: ar ? 'كتابة رسالة' : 'Compose message', desc: ar ? 'اكتب الرسالة وخصص بيانات كل زبون' : 'Write and personalize each customer message', tone: 'bg-emerald-50 text-emerald-700 dark:bg-[#0c312b] dark:text-[#a9d9b7]' },
-    { id: 'templates' as const, icon: FileText, title: ar ? 'قوالب الرسائل' : 'Message templates', desc: ar ? 'القوالب الجاهزة والمحفوظه وتعديلها' : 'Manage reusable message templates', tone: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300' },
-    { id: 'recipients' as const, icon: Users, title: ar ? 'المستلمون' : 'Recipients', desc: ar ? 'اختيار الزبائن والبحث والتصفية' : 'Select, search and filter customers', tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300' },
-    { id: 'campaigns' as const, icon: Send, title: ar ? 'إدارة الحملات' : 'Campaign management', desc: ar ? 'بدء الإرسال والإيقاف والاستئناف وإنهاء الحملة' : 'Start, pause, resume and finish campaigns', tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
-    { id: 'archive' as const, icon: Archive, title: ar ? 'أرشيف الحملات' : 'Campaign archive', desc: ar ? 'الرجوع لنتائج الحملات السابقة' : 'Review completed campaign reports', tone: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200' },
+    { id: 'compose' as const, icon: Send, title: ar ? 'إرسال رسالة' : 'Send a message', desc: ar ? 'اختيار القالب وتحديد المستلمين ثم الإرسال' : 'Choose a template, recipients and send', tone: 'bg-emerald-50 text-emerald-700 dark:bg-[#0c312b] dark:text-[#a9d9b7]' },
+    { id: 'templates' as const, icon: FileText, title: ar ? 'قوالب الرسائل' : 'Message templates', desc: ar ? 'إنشاء القوالب وتعديلها وحذفها فقط' : 'Create, edit and delete reusable templates', tone: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300' },
+    { id: 'campaigns' as const, icon: Users, title: ar ? 'إدارة الحملات' : 'Campaign management', desc: ar ? 'متابعة الرسائل والمستلمين وأرشفة الحملة' : 'Track recipients and archive campaigns', tone: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300' },
+    { id: 'archive' as const, icon: Archive, title: ar ? 'أرشيف الحملات' : 'Campaign archive', desc: ar ? 'الرجوع إلى تقارير الحملات السابقة' : 'Review previous campaign reports', tone: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200' },
   ];
   return <div className="mx-auto max-w-3xl space-y-5 px-1 py-2 sm:px-0">
     <header className="border-b border-gray-200 pb-4 dark:border-[#14423b]">
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-[#0c312b] dark:text-[#a9d9b7]"><MessageSquareText className="h-5 w-5" /></div>
-        <div><h1 className="text-xl font-bold text-gray-900 dark:text-[#daf1de]">{ar ? 'مركز الرسائل والتواصل' : 'Messages & communication'}</h1><p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{ar ? 'كل وظيفة في صفحة مستقلة وواضحة' : 'Each task has its own focused page'}</p></div>
+        <div><h1 className="text-xl font-bold text-gray-900 dark:text-[#daf1de]">{ar ? 'الرسائل والتواصل' : 'Messages & communication'}</h1><p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{ar ? 'قوالب مستقلة، إرسال واضح، ومتابعة حملات منظمة' : 'Separate templates, simple sending and organized campaign tracking'}</p></div>
       </div>
     </header>
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
