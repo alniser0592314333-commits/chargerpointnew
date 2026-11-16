@@ -274,7 +274,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
-AS $
+AS $approval$
 DECLARE
   v_rec_goal_request public.goal_requests%ROWTYPE;
   v_entity_uuid uuid;
@@ -311,7 +311,7 @@ BEGIN
 
   RETURN '{}'::jsonb;
 END;
-$;
+$approval$;
 
 CREATE OR REPLACE FUNCTION public.public_resolve_customer_portal(p_public_token text)
 RETURNS jsonb
