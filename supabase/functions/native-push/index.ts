@@ -305,7 +305,7 @@ Deno.serve(async (request: Request) => {
       titleEn = eventType === "HISTORY_ACCESS_REQUESTED" ? "Historical order access request" : eventType === "WALLET_ACTIVATION_REQUESTED" ? "Wallet activation request" : "Password reset request";
       bodyAr = eventType === "HISTORY_ACCESS_REQUESTED" ? "يوجد طلب كشف تاريخي جديد بانتظار موافقة الإدارة." : eventType === "WALLET_ACTIVATION_REQUESTED" ? "يوجد عميل طلب تفعيل خدمة إدارة المحفظة. افتح الإشعارات لمراجعة الطلب." : "يوجد طلب جديد بانتظار مراجعة الإدارة.";
       bodyEn = eventType === "HISTORY_ACCESS_REQUESTED" ? "A historical order access request is waiting for administrator approval." : eventType === "WALLET_ACTIVATION_REQUESTED" ? "A customer requested wallet-management access. Open notifications to review the request." : "A new request is waiting for administrator review.";
-      targetPath = "/app/notifications";
+      targetPath = eventType === "RESET_REQUESTED" ? "/app/customer-accounts" : "/app/notifications";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
         .eq("app_variant", "admin").is("disabled_at", null);
