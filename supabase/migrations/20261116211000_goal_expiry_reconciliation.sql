@@ -128,3 +128,53 @@ $function$;
 
 COMMENT ON FUNCTION public.get_admin_goals_page_data()
 IS 'Returns the admin goals read model and reconciles expired ACTIVE goals on-demand, avoiding a background polling job.';
+
+-- Goal and goal-request writes are already captured by trg_change_capture.
+-- The canonical command dispatcher also calls record_canonical_change after
+-- those DML statements, which previously produced two change_log rows for the
+-- same entity/action/version in one transaction. Reuse the trigger's row instead
+-- of appending a second sync event. The entity index keeps this lookup bounded.
+CREATE OR REPLACE FUNCTION public.record_canonical_change(
+  p_entity_type text,
+  p_entity_id uuid,
+  p_action text,
+  p_payload jsonb,
+  p_version integer
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+DECLARE
+  v_seq bigint;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
+
+  IF p_entity_type IN ('goals', 'goal_requests') THEN
+    SELECT cl.sequence_id
+      INTO v_seq
+    FROM public.change_log cl
+    WHERE cl.entity_type = p_entity_type
+      AND cl.entity_id = p_entity_id
+      AND cl.action = p_action
+      AND cl.version IS NOT DISTINCT FROM COALESCE(p_version, 1)
+      AND cl.xmin = pg_current_xact_id()::xid
+    ORDER BY cl.sequence_id DESC
+    LIMIT 1;
+
+    IF v_seq IS NOT NULL THEN
+      RETURN v_seq;
+    END IF;
+  END IF;
+
+  INSERT INTO public.change_log(entity_type, entity_id, action, payload, version, changed_at)
+  VALUES (p_entity_type, p_entity_id, p_action, COALESCE(p_payload, '{}'::jsonb), COALESCE(p_version, 1), NOW())
+  RETURNING sequence_id INTO v_seq;
+
+  RETURN v_seq;
+END;
+$function$;
+
+COMMENT ON FUNCTION public.record_canonical_change(text, uuid, text, jsonb, integer)
+IS 'Appends canonical sync changes; goal and goal-request manual calls reuse the row already captured by the same transaction trigger.';
