@@ -143,7 +143,7 @@ const showForegroundNotification = async (notification: PushNotificationSchema) 
 const resolveNotificationTarget = (data: Record<string, unknown> | undefined): string => {
   const requested = typeof data?.targetPath === 'string' ? data.targetPath : currentNavigationTarget;
   if (currentVariant === 'admin') {
-    if (requested === '/app/goals' || requested === '/app/notifications' ||
+    if (requested === '/app/goals' || requested === '/app/notifications' || requested === '/app/customer-accounts' ||
         requested === '/app/days' || requested === '/app/customers' ||
         requested === '/app/financials') return requested;
     // Order links are only allowed to navigate to the existing order/day detail route.
