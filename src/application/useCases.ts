@@ -1301,10 +1301,12 @@ export class FinalUseCases {
   }
 
   async updateCustomerChargerFeeExemption(auth: AuthorizationContext, customerId: ID, exempt: boolean, bin: string): Promise<Result<CustomerEntity>> {
-    const actor = auth.requireAuth();
+    auth.requireAuth();
     auth.assertPermission('customers:charger-exemption');
-    await auth.verifyBin(bin);
-    return this.updateCustomer(auth, customerId, { chargerFeeExempt: exempt });
+    // updateCustomer is the single authorization boundary for protected customer
+    // mutations: it verifies the BIN once and persists that verified BIN in the
+    // same UPDATE_CUSTOMER outbox command. Do not pre-verify and then omit it.
+    return this.updateCustomer(auth, customerId, { chargerFeeExempt: exempt }, bin);
   }
 
   async updateCustomerNotes(auth: AuthorizationContext, customerId: ID, notes: string, bin: string): Promise<Result<CustomerEntity>> {
