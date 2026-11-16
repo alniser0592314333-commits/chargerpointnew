@@ -319,3 +319,37 @@ BEGIN
   EXECUTE v_definition;
 END;
 $migration$;
+
+-- Goal BONUS ledger entries are accounting facts. They may be reversed by a
+-- separate compensating entry, but must never be edited or deleted in place.
+CREATE OR REPLACE FUNCTION public.prevent_goal_bonus_ledger_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+BEGIN
+  IF OLD.event_type = 'BONUS' THEN
+    RAISE EXCEPTION 'Goal BONUS ledger entries are immutable; post a reversal entry instead'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.prevent_goal_bonus_ledger_mutation()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS trg_prevent_goal_bonus_ledger_mutation ON public.financial_ledger;
+
+CREATE TRIGGER trg_prevent_goal_bonus_ledger_mutation
+BEFORE UPDATE OR DELETE ON public.financial_ledger
+FOR EACH ROW
+EXECUTE FUNCTION public.prevent_goal_bonus_ledger_mutation();
+
+COMMENT ON FUNCTION public.prevent_goal_bonus_ledger_mutation()
+IS 'Prevents in-place mutation of goal BONUS ledger entries; corrections must use compensating ledger events.';
