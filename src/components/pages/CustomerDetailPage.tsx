@@ -34,9 +34,7 @@ import {
   Lock,
   ArrowRight,
   AlertCircle,
-  Sliders,
   Power,
-  ShieldAlert,
 } from 'lucide-react';
 
 export interface CustomerDetailPageProps {
