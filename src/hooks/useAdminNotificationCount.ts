@@ -5,8 +5,8 @@ import { callCustomerAccount } from '../services/customer/customerAuth';
 import { getSupabaseAuthToken, invokeSupabaseRpc } from '../services/supabase/client';
 
 type AdminInbox = {
-  requests?: Array<{ status?: string }>;
-  events?: Array<{ is_read?: boolean }>;
+  pending_reset_requests?: number;
+  unread_account_events?: number;
 };
 type AdminNotificationCounts = { notifications: number; customerAccounts: number };
 
@@ -28,7 +28,7 @@ export function useAdminNotificationCount(enabled: boolean): AdminNotificationCo
       try {
         const [paymentsResult, inboxResult] = await Promise.all([
           invokeSupabaseRpc<Array<Record<string, unknown>>>('list_pending_qr_payment_submissions', {}),
-          callCustomerAccount<AdminInbox>('admin-list', {}, token),
+          callCustomerAccount<AdminInbox>('admin-counts', {}, token),
         ]);
         if (disposed) return;
         const nextCounts: AdminNotificationCounts = { notifications: 0, customerAccounts: 0 };
@@ -36,10 +36,8 @@ export function useAdminNotificationCount(enabled: boolean): AdminNotificationCo
           nextCounts.notifications = paymentsResult.data.length;
         }
         if (!inboxResult.error && inboxResult.data) {
-          const requests = Array.isArray(inboxResult.data.requests) ? inboxResult.data.requests : [];
-          const events = Array.isArray(inboxResult.data.events) ? inboxResult.data.events : [];
-          nextCounts.customerAccounts = requests.filter((request) => String(request.status || '').toUpperCase() === 'PENDING').length
-            + events.filter((event) => event.is_read === false).length;
+          nextCounts.customerAccounts = Math.max(0, Number(inboxResult.data.pending_reset_requests) || 0)
+            + Math.max(0, Number(inboxResult.data.unread_account_events) || 0);
         }
         setCounts(nextCounts);
       } catch {
