@@ -33,6 +33,7 @@ describe('notification routing and customer account management', () => {
     expect(desktop).toContain("'/app/customer-accounts'");
     expect(mobile).toContain("'/app/customer-accounts'");
     expect(payments).not.toContain('CustomerAccountNotificationsPanel');
+    const edge = read('supabase/functions/customer-account/index.ts');
     const layout = read('src/components/shell/AuthenticatedLayout.tsx');
     const countHook = read('src/hooks/useAdminNotificationCount.ts');
     expect(layout).toContain('customerAccountCount={notificationCounts.customerAccounts}');
