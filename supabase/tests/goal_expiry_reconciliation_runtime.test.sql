@@ -172,7 +172,7 @@ VALUES ('20000000-0000-4000-8000-000000000005', 'Approval Validation Customer', 
 INSERT INTO public.goal_requests(id, customer_id, requested_target, status, version)
 VALUES ('60000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000005', 10, 'PENDING', 1);
 
-DO $
+DO $approval_test$
 DECLARE
   v_rejected boolean := false;
 BEGIN
@@ -200,7 +200,7 @@ BEGIN
     RAISE EXCEPTION 'Incomplete goal approval created a goal using fallback values';
   END IF;
 END;
-$;
+$approval_test$;
 
 SELECT public.execute_canonical_sync_command_unlocked(
   gen_random_uuid(),
