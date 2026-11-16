@@ -11,7 +11,7 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = pg_catalog, public, auth
+SET search_path = pg_catalog, public, auth, pg_temp
 AS $function$
   SELECT EXISTS (
     SELECT 1
@@ -80,7 +80,7 @@ RETURNS boolean
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = pg_catalog, public, auth
+SET search_path = pg_catalog, public, auth, pg_temp
 AS $function$
   SELECT public.native_push_device_is_current(
     p_device_id,
