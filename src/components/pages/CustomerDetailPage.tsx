@@ -250,7 +250,13 @@ const [isLoading, setIsLoading] = useState(true);
       // Refresh in place after the financial operation and SMS attempt.
       await loadData();
       setIsSubmittingTopUp(false);
-      handleCloseTopUp();
+      // Close directly here: handleCloseTopUp intentionally blocks while the
+      // submitting state is true, and React state updates are asynchronous.
+      setIsTopUpModalOpen(false);
+      setTopUpBin('');
+      setTopUpAmountNIS('');
+      setTopUpNote('');
+      setTopUpError('');
       showToast(
         (locale === 'ar' ? 'تم شحن الرصيد بنجاح' : 'Balance topped up successfully') + smsNotice,
         smsNotice ? 'info' : 'success'
