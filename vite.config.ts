@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
         // The canonical web manifest is checked in at public/manifest.webmanifest.
         manifest: false,
         workbox: {
+          importScripts: ['/push-handler.js'],
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           // This is a root-scoped SPA. Navigation requests should fall back to
           // index.html except for API paths, which must remain network-only.

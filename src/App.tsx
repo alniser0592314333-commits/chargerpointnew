@@ -46,6 +46,7 @@ import { FinancialCustomerDetailPage } from './components/pages/FinancialCustome
 import { FinancialPendingPaymentsPage } from './components/pages/FinancialPendingPaymentsPage';
 import { PurchaseBookPage } from './components/pages/PurchaseBookPage';
 import { GoalsPage } from './components/pages/GoalsPage';
+import { CustomerPortalEventsAdminPage } from './components/pages/CustomerPortalEventsAdminPage';
 import { NotificationsRequestsPage } from './components/pages/NotificationsRequestsPage';
 import { CustomerAccountNotificationsPanel } from './components/pages/CustomerAccountNotificationsPanel';
 import { SettingsPage } from './components/pages/SettingsPage';
@@ -761,6 +762,12 @@ export default function App() {
         const canViewGoals = isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => goalPagePermissions.has(permission)));
         if (!userSession || !canViewGoals) return <UnauthorizedPage />;
         return <GoalsPage />;
+      }
+      case '/app/events': {
+        const isSuperAdmin = Boolean(userSession && String(userSession.role || '').toUpperCase().replace(/\\s+/g, '_') === 'SUPER_ADMIN');
+        const canManageEvents = isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage'));
+        if (!userSession || !canManageEvents) return <UnauthorizedPage />;
+        return <CustomerPortalEventsAdminPage />;
       }
       case '/app/notifications':
         return <NotificationsRequestsPage />;

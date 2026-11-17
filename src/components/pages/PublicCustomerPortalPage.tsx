@@ -14,6 +14,7 @@ import { config } from '../../config/env';
 import { CustomerPortalNavigation, CustomerPortalMoreView, CustomerPortalTab } from './CustomerPortalNavigation';
 import './customer-portal-dashboard.css';
 import { CustomerJawwalAutomation } from '../customer/CustomerJawwalAutomation';
+import { CustomerPortalEventsSection } from './CustomerPortalEventsSection';
 
 const ReceiptTextFallback = () => <CreditCard size={17} aria-hidden="true" />;
 const CalendarDaysFallback = () => <History size={18} aria-hidden="true" />;
@@ -101,7 +102,7 @@ type PortalActivity = {
   session: { created_at: string; expires_at: string } | null;
   last_login_at: string | null;
 };
-type PortalEventRow = { id: string; created_at: string; title: string; detail: string };
+type PortalEventRow = { id: string; created_at: string; title: string; detail: string; target?: 'events' };
 
 export interface PublicCustomerPortalPageProps { token: string; onLogout?: () => void }
 
@@ -206,7 +207,8 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
   const [activeTab, setActiveTab] = useState<CustomerPortalTab>(initialTab);
   const notificationOrderNumber = initialPortalQuery.get('orderNumber') || '';
   const notificationOrderCreatedAt = initialPortalQuery.get('orderCreatedAt') || '';
-  const [moreView, setMoreView] = useState<CustomerPortalMoreView>('profile');
+  const requestedMoreView = initialPortalQuery.get('view');
+  const [moreView, setMoreView] = useState<CustomerPortalMoreView>(requestedMoreView === 'events' ? 'events' : 'profile');
   const [settingsSubpage, setSettingsSubpage] = useState<'main' | 'security' | 'about' | 'payment'>('main');
   const [activity, setActivity] = useState<PortalActivity | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -868,6 +870,7 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       DEBT_PAYMENT_REMINDER: ['تذكير باستحقاق الدفع', 'Payment reminder'],
       HISTORY_ACCESS_APPROVED: ['تمت الموافقة على كشف الطلبات التاريخية لمدة 24 ساعة', 'Historical order access approved for 24 hours'],
       HISTORY_ACCESS_REJECTED: ['تم رفض طلب كشف الطلبات التاريخية', 'Historical order access rejected'],
+      CUSTOMER_PORTAL_EVENT_PUBLISHED: ['حدث جديد', 'New event'],
     };
     return labels[type]?.[isAr ? 0 : 1] || (isAr ? 'تحديث في الحساب' : 'Account update');
   };
@@ -901,9 +904,12 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
       id: 'account-event-' + event.id,
       created_at: event.created_at,
       title: translateAccountEvent(event.event_type),
+      ...(event.event_type === 'CUSTOMER_PORTAL_EVENT_PUBLISHED' ? { target: 'events' as const } : {}),
       detail: event.event_type === 'DEBT_PAYMENT_REMINDER' && Number.isFinite(Number(event.payload?.balance_minor))
         ? (isAr ? 'المبلغ المستحق: ' : 'Amount due: ') + money(Number(event.payload?.balance_minor), locale)
-        : safeDate(event.created_at, locale),
+        : event.event_type === 'CUSTOMER_PORTAL_EVENT_PUBLISHED'
+          ? String(isAr ? (event.payload?.title_ar || 'تمت إضافة حدث جديد') : (event.payload?.title_en || event.payload?.title_ar || 'A new event was published'))
+          : safeDate(event.created_at, locale),
     })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
 
@@ -1106,16 +1112,13 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
               <div className="cp-portal-subsection"><h2 className="font-bold">{isAr ? 'أمان الحساب' : 'Account security'}</h2><p className="mt-2 text-sm cp-portal-muted">{isAr ? 'إعادة تعيين كلمة المرور تحتاج موافقة الإدارة، وبعد الموافقة يجب اختيار كلمة مرور جديدة.' : 'Password reset requires administrator approval. After approval, you must set a new password.'}</p><button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable || resetRequestBusy} onClick={() => void requestPasswordReset()}>{resetRequestBusy ? <RefreshCw size={17} className="animate-spin" /> : <KeyRound size={17} />}{isAr ? 'طلب إعادة تعيين كلمة المرور' : 'Request password reset'}</button></div>
             </section>}
 
-            {activeTab === 'more' && moreView === 'events' && <section className="cp-portal-section">
-              <p className="cp-portal-eyebrow">{isAr ? 'قريبًا' : 'COMING SOON'}</p><h1 className="cp-portal-heading">{isAr ? 'الأحداث' : 'Events'}</h1>
-              <div className="cp-portal-notice"><CalendarDaysFallback /><div><p className="font-bold">{isAr ? 'هذه الصفحة قيد التطوير' : 'This page is under development'}</p><p className="mt-1 text-sm cp-portal-muted">{isAr ? 'نعمل على تجهيز قسم الأحداث، وسيظهر هنا عند اكتماله.' : 'We are preparing the events section. It will appear here when ready.'}</p></div></div>
-            </section>}
+            {activeTab === 'more' && moreView === 'events' && <CustomerPortalEventsSection token={token} online={online} serverAvailable={serverAvailable} />}
 
             {activeTab === 'more' && moreView === 'notifications' && <section className="cp-portal-section">
               <div className="flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><p className="cp-portal-eyebrow">{isAr ? 'آخر المستجدات' : 'LATEST UPDATES'}</p><h1 className="cp-portal-heading">{isAr ? 'الإشعارات' : 'Notifications'}</h1></div><button type="button" className="cp-portal-secondary-button" disabled={!online || !serverAvailable || activityLoading || eventRows.length === 0} onClick={() => void markAllNotificationsRead()}><CheckCircle2 size={16}/>{isAr ? 'تعليم الكل كمقروء' : 'Mark all as read'}</button></div>
               {notificationsMessage && <p role="status" className="mt-2 text-sm cp-portal-muted">{notificationsMessage}</p>}
               {activity?.events.some((event) => event.event_type === 'TEMP_PASSWORD_ISSUED') && <div className="cp-portal-notice"><Bell size={18} /><p>{isAr ? 'تمت الموافقة على طلب إعادة تعيين كلمة المرور. اتبع تعليمات تغيير كلمة المرور عند تسجيل الدخول.' : 'Your password-reset request was approved. Follow the password-change instructions when signing in.'}</p></div>}
-              {eventRows.length ? <div className="cp-portal-timeline">{eventRows.map((event)=><div key={event.id} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" /><div className="min-w-0 flex-1"><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail} · {safeDate(event.created_at, locale)}</p></div></div>)}</div> : <p className="cp-portal-empty">{isAr ? 'لا توجد إشعارات حتى الآن.' : 'No notifications yet.'}</p>}
+              {eventRows.length ? <div className="cp-portal-timeline">{eventRows.map((event)=><div key={event.id} className="cp-portal-timeline__row"><span className="cp-portal-timeline__dot" />{event.target === 'events' ? <button type="button" className="min-w-0 flex-1 text-start" onClick={() => { setActiveTab('more'); setMoreView('events'); }}><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail} · {safeDate(event.created_at, locale)}</p></button> : <div className="min-w-0 flex-1"><p className="font-semibold">{event.title}</p><p className="mt-1 text-xs cp-portal-muted">{event.detail} · {safeDate(event.created_at, locale)}</p></div>}</div>)}</div> : <p className="cp-portal-empty">{isAr ? 'لا توجد إشعارات حتى الآن.' : 'No notifications yet.'}</p>}
             </section>}
 
 

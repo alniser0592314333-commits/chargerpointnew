@@ -44,7 +44,7 @@ export const CustomerPortalNavigation: React.FC<Props & { isAr: boolean }> = ({
               <button type="button" aria-label={isAr ? 'إغلاق القائمة' : 'Close menu'} onClick={() => setMenuOpen(false)}><X size={17} /></button>
             </div>
             {moreItems.map(({ id, labelAr, labelEn, Icon }) => (
-              <button key={id} type="button" role="menuitem" className={`cp-portal-more-menu__item ${(id === 'finance' ? activeTab === 'finance' : moreView === id) ? 'is-active' : ''}`}
+              <button key={id} type="button" role="menuitem" className={`cp-portal-more-menu__item ${(id !== 'finance' && moreView === id) ? 'is-active' : ''}`}
                 onClick={() => { if (id === 'finance') onTabChange('finance'); else onMoreViewChange(id); setMenuOpen(false); }}> 
                 <span className="cp-portal-more-menu__icon"><Icon size={18} /></span>
                 <span>{isAr ? labelAr : labelEn}</span>

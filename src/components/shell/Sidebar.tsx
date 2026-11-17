@@ -25,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, userSession, onNa
     { id: '/app/purchases', label: locale === 'ar' ? 'دفتر المشتريات' : 'Purchase Book' },
     { id: '/app/messages', label: locale === 'ar' ? 'الرسائل والتواصل' : 'Messages & Communication' },
     { id: '/app/financials', label: t('navFinancials') },
+    ...(isSuperAdmin || Boolean(userSession?.permissions?.includes('admin:manage')) ? [{ id: '/app/events', label: locale === 'ar' ? 'الأحداث' : 'Events' }] : []),
     ...(isSuperAdmin || Boolean(userSession?.permissions?.some((permission) => ['goals:view', 'goals:requests:view', 'goals:manage', 'goals:approve'].includes(permission))) ? [{ id: '/app/goals', label: t('navGoals') }] : []),
     { id: '/app/notifications', label: t('navNotificationsRequests'), badge: notificationCount },
     ...(canManageCustomerAccounts ? [{ id: '/app/customer-accounts', label: locale === 'ar' ? 'حسابات العملاء وكلمات السر' : 'Customer Accounts & Passwords', badge: customerAccountCount }] : []),

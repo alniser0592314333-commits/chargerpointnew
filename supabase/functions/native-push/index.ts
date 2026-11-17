@@ -319,6 +319,7 @@ Deno.serve(async (request: Request) => {
         DEBT_PAYMENT_REMINDER: ["تذكير باستحقاق الدفع", "Payment reminder", "افتح التطبيق لمراجعة المبلغ المستحق عليك.", "Open the app to review your outstanding amount."],
         HISTORY_ACCESS_APPROVED: ["تمت الموافقة على كشف الطلبات التاريخية", "Historical order access approved", "يمكنك عرض طلباتك التاريخية خلال 24 ساعة.", "Your historical orders are available for the next 24 hours."],
         HISTORY_ACCESS_REJECTED: ["تم رفض طلب كشف الطلبات التاريخية", "Historical order access request rejected", "افتح التطبيق لمراجعة الإشعارات.", "Open the app to review your notifications."],
+        CUSTOMER_PORTAL_EVENT_PUBLISHED: ["حدث جديد", "New event", "تمت إضافة حدث جديد إلى صفحة الأحداث.", "A new event has been added to the events page."],
         ACCOUNT_FROZEN: ["تم إيقاف الحساب مؤقتًا", "Account temporarily frozen", "تواصل مع الإدارة لمعرفة التفاصيل.", "Contact the administrator for details."],
         ACCOUNT_CANCELLED: ["تم إلغاء الحساب", "Account cancelled", "تواصل مع الإدارة إذا كنت تعتقد أن هذا خطأ.", "Contact the administrator if you believe this is an error."],
         ACCOUNT_REACTIVATED: ["تمت إعادة تفعيل الحساب", "Account reactivated", "يمكنك تسجيل الدخول مجددًا.", "You can sign in again."],
@@ -329,6 +330,13 @@ Deno.serve(async (request: Request) => {
       if (!message) return json(200, { ok: true, skipped: true });
       allowRevokedCustomerNotice = ["TEMP_PASSWORD_ISSUED", "EMAIL_RESET_SENT", "ACCOUNT_FROZEN", "ACCOUNT_CANCELLED", "ACCOUNT_REACTIVATED"].includes(eventType);
       titleAr = message[0]; titleEn = message[1]; bodyAr = message[2]; bodyEn = message[3];
+      if (eventType === "CUSTOMER_PORTAL_EVENT_PUBLISHED") {
+        const eventPayload = event.payload && typeof event.payload === "object" && !Array.isArray(event.payload) ? event.payload as Record<string, unknown> : {};
+        if (typeof eventPayload.title_ar === "string" && eventPayload.title_ar.trim()) titleAr = eventPayload.title_ar.trim().slice(0, 120);
+        if (typeof eventPayload.title_en === "string" && eventPayload.title_en.trim()) titleEn = eventPayload.title_en.trim().slice(0, 120);
+        if (typeof eventPayload.preview_ar === "string" && eventPayload.preview_ar.trim()) bodyAr = eventPayload.preview_ar.trim().slice(0, 240);
+        if (typeof eventPayload.preview_en === "string" && eventPayload.preview_en.trim()) bodyEn = eventPayload.preview_en.trim().slice(0, 240);
+      }
       if (eventType === "DEBT_PAYMENT_REMINDER") {
         // Keep reminders deliverable after the app's short-lived portal session expires,
         // while the SQL verifier still requires a live Supabase Auth session and active account.
@@ -341,6 +349,7 @@ Deno.serve(async (request: Request) => {
         }
       }
       targetPath = eventType === "DEBT_PAYMENT_REMINDER" ? "/customer/finance" : "/public/about";
+      if (eventType === "CUSTOMER_PORTAL_EVENT_PUBLISHED") targetPath = "/public/about?section=events";
       const { data, error: recipientError } = await admin.from("native_push_devices")
         .select("id,device_id,token,locale,app_variant,principal_id,customer_id")
         .eq("app_variant", "customer").eq("customer_id", event.customer_id).is("disabled_at", null);
