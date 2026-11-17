@@ -394,3 +394,11 @@ BEGIN
   RETURN jsonb_build_object('ok',true,'goal_id',p_goal_id,'status','CANCELLED');
 END;
 $function$;
+
+-- The existing customer-account handler already treats 23505 as an idempotent
+-- "request already pending" result. Enforce that invariant in PostgreSQL so
+-- concurrent requests cannot create duplicate pending goal-creation requests.
+-- Production audit found one pending row and no duplicate customer groups.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_goal_requests_one_pending_customer
+  ON public.goal_requests(customer_id)
+  WHERE status = 'PENDING';
