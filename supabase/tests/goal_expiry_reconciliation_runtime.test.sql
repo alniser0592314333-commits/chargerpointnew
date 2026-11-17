@@ -14,7 +14,7 @@ VALUES
 -- concurrent submissions; a later request is allowed after review.
 INSERT INTO public.goal_requests(id, customer_id, requested_target, status)
 VALUES ('70000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 10, 'PENDING');
-DO $
+DO $$
 DECLARE
   v_rejected boolean := false;
 BEGIN
@@ -28,7 +28,7 @@ BEGIN
     RAISE EXCEPTION 'A second pending goal request for the same customer was accepted';
   END IF;
 END;
-$;
+$$;
 UPDATE public.goal_requests SET status = 'APPROVED'
 WHERE id = '70000000-0000-4000-8000-000000000001';
 INSERT INTO public.goal_requests(id, customer_id, requested_target, status)
