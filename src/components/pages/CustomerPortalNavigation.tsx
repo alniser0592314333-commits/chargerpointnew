@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, CalendarDays, House, Menu, Package, ReceiptText, Settings, Target, UserRound, X } from 'lucide-react';
+import { Bell, CalendarDays, Globe, House, Menu, Package, ReceiptText, Settings, Target, UserRound, X } from 'lucide-react';
 import './customer-portal-navigation.css';
 
 export type CustomerPortalTab = 'home' | 'orders' | 'finance' | 'goals' | 'more';
@@ -13,15 +13,16 @@ type Props = {
   notificationCount?: number;
 };
 
-const items = [
-  { id: 'orders' as const, labelAr: 'الطلبات', labelEn: 'Orders', Icon: Package },
-  { id: 'finance' as const, labelAr: 'الدفع', labelEn: 'Payments', Icon: ReceiptText },
-  { id: 'home' as const, labelAr: 'الرئيسية', labelEn: 'Home', Icon: House },
+const items: Array<{ id: CustomerPortalTab | 'public'; labelAr: string; labelEn: string; Icon: React.ComponentType<{ size?: number; strokeWidth?: number }> }> = [
+  { id: 'orders', labelAr: 'الطلبات', labelEn: 'Orders', Icon: Package },
+  { id: 'public', labelAr: 'الصفحة العامة', labelEn: 'Public page', Icon: Globe },
+  { id: 'home', labelAr: 'الرئيسية', labelEn: 'Home', Icon: House },
   { id: 'goals' as const, labelAr: 'الأهداف', labelEn: 'Goals', Icon: Target },
   { id: 'more' as const, labelAr: 'المزيد', labelEn: 'More', Icon: Menu },
 ];
 
 const moreItems = [
+  { id: 'finance' as const, labelAr: 'الدفع', labelEn: 'Payments', Icon: ReceiptText },
   { id: 'profile' as const, labelAr: 'حسابي', labelEn: 'My account', Icon: UserRound },
   { id: 'events' as const, labelAr: 'الأحداث', labelEn: 'Events', Icon: CalendarDays },
   { id: 'notifications' as const, labelAr: 'الإشعارات', labelEn: 'Notifications', Icon: Bell },
@@ -43,8 +44,8 @@ export const CustomerPortalNavigation: React.FC<Props & { isAr: boolean }> = ({
               <button type="button" aria-label={isAr ? 'إغلاق القائمة' : 'Close menu'} onClick={() => setMenuOpen(false)}><X size={17} /></button>
             </div>
             {moreItems.map(({ id, labelAr, labelEn, Icon }) => (
-              <button key={id} type="button" role="menuitem" className={`cp-portal-more-menu__item ${moreView === id ? 'is-active' : ''}`}
-                onClick={() => { onMoreViewChange(id); setMenuOpen(false); }}>
+              <button key={id} type="button" role="menuitem" className={`cp-portal-more-menu__item ${(id === 'finance' ? activeTab === 'finance' : moreView === id) ? 'is-active' : ''}`}
+                onClick={() => { if (id === 'finance') onTabChange('finance'); else onMoreViewChange(id); setMenuOpen(false); }}> 
                 <span className="cp-portal-more-menu__icon"><Icon size={18} /></span>
                 <span>{isAr ? labelAr : labelEn}</span>
                 {id === 'notifications' && notificationCount > 0 && <span className="cp-portal-more-menu__count">{Math.min(notificationCount, 99)}</span>}
@@ -62,6 +63,10 @@ export const CustomerPortalNavigation: React.FC<Props & { isAr: boolean }> = ({
                 aria-current={selected ? 'page' : undefined}
                 aria-label={isAr ? labelAr : labelEn}
                 onClick={() => {
+                  if (id === 'public') {
+                    window.location.assign('/public/about');
+                    return;
+                  }
                   onTabChange(id);
                   if (id === 'more') setMenuOpen((open) => !open);
                   else setMenuOpen(false);
