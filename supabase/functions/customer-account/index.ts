@@ -528,6 +528,11 @@ Deno.serve(async (request: Request) => {
       }
 
       if (action === "request-goal-cancellation") {
+        // This action invokes a service-role-only RPC. A valid Supabase JWT is
+        // not enough: require the customer's currently registered, unrevoked
+        // application session before using elevated database privileges.
+        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+
         const goalId = typeof input.goal_id === "string" ? input.goal_id.trim() : "";
         const reason = typeof input.reason === "string" ? input.reason.trim() : "";
         if (!/^[0-9a-f-]{36}$/i.test(goalId) || reason.length < 3 || reason.length > 500) {
