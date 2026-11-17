@@ -27,8 +27,12 @@
 
 ## Remaining release blockers requiring isolated regression tests
 
-1. **Pending-request duplication:** `goal_requests` currently has only its primary-key index; it has no database uniqueness guard for one PENDING request per customer. Confirm the intended product rule, then enforce it atomically if only one pending request is allowed.
-3. **Legacy RPC closure:** the authenticated `execute_sync_command` entry point delegates through the session-guarded wrapper to the canonical dispatcher. The older `execute_sync_command_impl` wrapper and its unlocked implementation are not executable by `authenticated`, but `service_role` still has EXECUTE on the wrapper. Audit any service-role callers before revoking that legacy path.
+1. **Legacy RPC closure:** the authenticated `execute_sync_command` entry point delegates through the session-guarded wrapper to the canonical dispatcher. The older `execute_sync_command_impl` wrapper and its unlocked implementation are not executable by `authenticated`, but `service_role` still has EXECUTE on the wrapper. No database function depends on the legacy wrapper, but external/service-role callers cannot be ruled out from database metadata alone. Audit those callers before revoking that legacy path.
+
+## Follow-up hardening included with admin-controlled cancellation
+
+- The customer-account cancellation action now checks the authenticated customer's registered, unrevoked application session before invoking the service-role-only cancellation-request RPC. A valid Supabase JWT alone is not sufficient.
+- The existing product behavior already treats a second pending goal-creation request as an idempotent duplicate (the Edge Function handles PostgreSQL `23505`). The migration now enforces that rule with the partial unique index `uq_goal_requests_one_pending_customer`; the isolated PostgreSQL test verifies duplicate rejection and allows a new request after the previous one is reviewed.
 
 ## Cost and rollout rules
 
