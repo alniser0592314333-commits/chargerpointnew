@@ -10,6 +10,30 @@ VALUES
   ('20000000-0000-4000-8000-000000000003', 'Portal Completion Customer', true, 'ACTIVE'),
   ('20000000-0000-4000-8000-000000000004', 'Normal Push Customer', true, 'ACTIVE');
 
+-- Only one pending goal-creation request per customer is allowed, including
+-- concurrent submissions; a later request is allowed after review.
+INSERT INTO public.goal_requests(id, customer_id, requested_target, status)
+VALUES ('70000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 10, 'PENDING');
+DO $
+DECLARE
+  v_rejected boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO public.goal_requests(id, customer_id, requested_target, status)
+    VALUES ('70000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 12, 'PENDING');
+  EXCEPTION WHEN unique_violation THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'A second pending goal request for the same customer was accepted';
+  END IF;
+END;
+$;
+UPDATE public.goal_requests SET status = 'APPROVED'
+WHERE id = '70000000-0000-4000-8000-000000000001';
+INSERT INTO public.goal_requests(id, customer_id, requested_target, status)
+VALUES ('70000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 12, 'PENDING');
+
 INSERT INTO public.goals(
   id, customer_id, target_quantity, current_progress, bonus_amount_minor,
   duration_days, status, started_at, expires_at, created_at, updated_at, version
