@@ -15,6 +15,8 @@ import { Button } from '../ui/Button';
 import { authService, UserSession } from '../../services/auth/authService';
 import {
   approveGoalRequestForAdmin,
+  cancelGoalForAdmin,
+  reviewGoalCancellationForAdmin,
   createGoalForAdmin,
   generateCustomerGoalProposalForAdmin,
   getGoalsPageData,
@@ -299,6 +301,7 @@ export const GoalsPage: React.FC = () => {
   const statusLabel = (status: GoalEntity['status']) => {
     if (status === 'ACTIVE') return copy.activeStatus;
     if (status === 'COMPLETED') return copy.completedStatus;
+    if (status === 'CANCELLED') return locale === 'ar' ? 'ملغي من الإدارة' : 'Cancelled by admin';
     return copy.failedStatus;
   };
 
@@ -353,7 +356,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await generateCustomerGoalProposalForAdmin(selectedCustomerId);
-      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
+      if (!result.success) throw new Error(result.error);
       setTargetQuantity(String(result.data.targetQuantity));
       setDurationDays(String(result.data.durationDays));
       setBonusIls((result.data.bonusAmountMinor / 100).toFixed(2));
@@ -387,7 +390,7 @@ export const GoalsPage: React.FC = () => {
     setSuccess('');
     try {
       const result = await createGoalForAdmin(selectedCustomerId, target, duration, bonusMinor);
-      if (!result.success) throw new Error(result.code ? `${result.code}: ${result.error}` : result.error);
+      if (!result.success) throw new Error(result.error);
       setSuccess(copy.created);
       setSelectedCustomerId('');
       await refresh();
@@ -486,6 +489,51 @@ export const GoalsPage: React.FC = () => {
       await refresh();
     } catch (cause) {
       reportOperationError('goal mutation', cause);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+
+  const reviewCancellation = async (goal: GoalEntity, approve: boolean) => {
+    if (!canApprove) return;
+    const message = approve
+      ? (locale === 'ar' ? 'تأكيد الموافقة على طلب إلغاء الهدف؟' : 'Approve this goal cancellation request?')
+      : (locale === 'ar' ? 'تأكيد رفض طلب إلغاء الهدف؟' : 'Reject this goal cancellation request?');
+    if (!window.confirm(message)) return;
+    setActionLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const result = await reviewGoalCancellationForAdmin(goal.id, approve);
+      if (!result.success) throw new Error(result.error);
+      setSuccess(approve
+        ? (locale === 'ar' ? 'تمت الموافقة على طلب الإلغاء وإلغاء الهدف.' : 'Cancellation approved; the goal is cancelled.')
+        : (locale === 'ar' ? 'تم رفض طلب الإلغاء وبقي الهدف نشطًا.' : 'Cancellation rejected; the goal remains active.'));
+      await refresh();
+    } catch (cause) {
+      reportOperationError('review goal cancellation', cause);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const cancelGoalDirectly = async (goal: GoalEntity) => {
+    if (!canManage) return;
+    const message = locale === 'ar'
+      ? 'هل تريد إلغاء الهدف مباشرة؟ لن تُصرف مكافأة لهذا الهدف.'
+      : 'Cancel this goal now? No reward will be issued for this goal.';
+    if (!window.confirm(message)) return;
+    setActionLoading(true);
+    setError('');
+    setSuccess('');
+    try {
+      const result = await cancelGoalForAdmin(goal.id);
+      if (!result.success) throw new Error(result.error);
+      setSuccess(locale === 'ar' ? 'تم إلغاء الهدف من الإدارة.' : 'Goal cancelled by the administrator.');
+      await refresh();
+    } catch (cause) {
+      reportOperationError('cancel goal', cause);
     } finally {
       setActionLoading(false);
     }
@@ -608,6 +656,7 @@ export const GoalsPage: React.FC = () => {
               <option value="ACTIVE">{copy.activeStatus}</option>
               <option value="COMPLETED">{copy.completedStatus}</option>
               <option value="FAILED">{copy.failedStatus}</option>
+              <option value="CANCELLED">{locale === 'ar' ? 'ملغي من الإدارة' : 'Cancelled by admin'}</option>
             </select>
           </div>
 
@@ -639,7 +688,21 @@ export const GoalsPage: React.FC = () => {
                       <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#0b302a]"><div className="text-xs text-gray-500 dark:text-[#8eb698]">{copy.starts}</div><div className="mt-1 text-xs font-medium text-gray-900 dark:text-[#daf1de]">{formatDate(goal.startedAt)}</div></div>
                       <div className="rounded-xl bg-gray-50 p-3 dark:bg-[#0b302a]"><div className="text-xs text-gray-500 dark:text-[#8eb698]">{copy.expires}</div><div className="mt-1 text-xs font-medium text-gray-900 dark:text-[#daf1de]">{formatDate(goal.expiresAt)}</div>{goal.status === 'ACTIVE' && <div className={`mt-1 text-xs ${daysLeft < 0 ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-[#8eb698]'}`}>{daysLeft < 0 ? copy.expired : `${daysLeft} ${copy.daysLeft}`}</div>}</div>
                     </div>
-                    {canManage && goal.status === 'ACTIVE' && <div className="mt-4 flex justify-end"><Button variant="outline" size="sm" onClick={() => beginEdit(goal)}><Settings2 className="h-4 w-4" />{copy.edit}</Button></div>}
+                    {goal.cancellationRequestStatus === 'PENDING' && (
+                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+                        <div className="font-semibold">{locale === 'ar' ? 'طلب إلغاء من العميل بانتظار قرارك' : 'Customer cancellation request awaiting your decision'}</div>
+                        <p className="mt-1">{goal.cancellationRequestReason || '—'}</p>
+                        <p className="mt-1 text-xs opacity-75">{formatDate(goal.cancellationRequestedAt)}</p>
+                        {canApprove && <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm" disabled={actionLoading} onClick={() => reviewCancellation(goal, true)}>{locale === 'ar' ? 'موافقة وإلغاء الهدف' : 'Approve & cancel goal'}</Button>
+                          <Button size="sm" variant="outline" disabled={actionLoading} onClick={() => reviewCancellation(goal, false)}>{locale === 'ar' ? 'رفض الطلب' : 'Reject request'}</Button>
+                        </div>}
+                      </div>
+                    )}
+                    {canManage && goal.status === 'ACTIVE' && <div className="mt-4 flex flex-wrap justify-end gap-2">
+                      <Button variant="outline" size="sm" disabled={actionLoading} onClick={() => beginEdit(goal)}><Settings2 className="h-4 w-4" />{copy.edit}</Button>
+                      <Button variant="outline" size="sm" disabled={actionLoading} onClick={() => cancelGoalDirectly(goal)}><X className="h-4 w-4" />{locale === 'ar' ? 'إلغاء الهدف مباشرة' : 'Cancel goal'}</Button>
+                    </div>}
                   </article>
                 );
               })}

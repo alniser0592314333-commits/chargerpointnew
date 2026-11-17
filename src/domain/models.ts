@@ -11,7 +11,7 @@ export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'OPERATOR' | 'FINAN
 export type CustomerStatus = 'ACTIVE' | 'DELETED';
 export type DeviceTypeStatus = 'ACTIVE' | 'RETIRED';
 export type BusinessDayStatus = 'OPEN' | 'CLOSED';
-export type GoalStatus = 'ACTIVE' | 'COMPLETED' | 'FAILED';
+export type GoalStatus = 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 export type GoalRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export type OrderStatus = 'pending' | 'charging' | 'delivered' | 'cancelled';
@@ -178,6 +178,12 @@ export interface GoalEntity extends BaseEntity {
   expiresAt: Timestamp;
   completedAt?: Timestamp;
   bonusLedgerId?: ID;
+  cancellationRequestedAt?: Timestamp;
+  cancellationRequestReason?: string;
+  cancellationRequestStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  cancellationReviewedAt?: Timestamp;
+  cancellationReviewedBy?: ID;
+  cancellationReviewReason?: string;
 }
 
 export interface GoalRequestEntity extends BaseEntity {

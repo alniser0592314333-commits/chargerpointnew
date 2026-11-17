@@ -7,14 +7,14 @@ import {
 } from './rules';
 
 describe('smart goal policy', () => {
-  it('chooses a random integer duration from 3 through 15 inclusive', () => {
-    expect(randomGoalDurationDays(() => 0)).toBe(3);
-    expect(randomGoalDurationDays(() => 0.5)).toBe(9);
+  it('chooses a randomized integer duration from 5 through 15 inclusive', () => {
+    expect(randomGoalDurationDays(() => 0)).toBe(5);
+    expect(randomGoalDurationDays(() => 0.5)).toBe(10);
     expect(randomGoalDurationDays(() => 0.999999)).toBe(15);
     for (let sample = 0; sample < 1; sample += 0.01) {
       const days = randomGoalDurationDays(() => sample);
       expect(Number.isInteger(days)).toBe(true);
-      expect(days).toBeGreaterThanOrEqual(3);
+      expect(days).toBeGreaterThanOrEqual(5);
       expect(days).toBeLessThanOrEqual(15);
     }
   });
@@ -80,15 +80,15 @@ describe('smart goal policy', () => {
     }
   });
 
-  it('uses the established 8–13 agorot/device reward band while reflecting challenge difficulty', () => {
+  it('uses the current 15–20 agorot/device reward band while reflecting challenge difficulty', () => {
     const easyBand = generateGoalProposal(70, {
       customDurationDays: 7,
-      customRatePerDeviceMinor: 8,
+      customRatePerDeviceMinor: 15,
       startedAt: '2026-01-01T00:00:00.000Z',
     });
     const hardBand = generateGoalProposal(70, {
       customDurationDays: 7,
-      customRatePerDeviceMinor: 13,
+      customRatePerDeviceMinor: 20,
       startedAt: '2026-01-01T00:00:00.000Z',
     });
     expect(hardBand.bonusAmountMinor).toBeGreaterThan(easyBand.bonusAmountMinor);

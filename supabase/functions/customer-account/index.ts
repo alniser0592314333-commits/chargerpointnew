@@ -342,7 +342,7 @@ Deno.serve(async (request: Request) => {
       return respond(200, { ok: true, must_change_password: false, session_expires_at: await activeSessionExpiresAt(link, authenticated.user.id, authenticated.claims) });
     }
 
-    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "reauthenticate") {
+    if (action === "register-session" || action === "verify-session" || action === "portal-data" || action === "customer-activity" || action === "mark-notifications-read" || action === "request-goal" || action === "request-goal-cancellation" || action === "request-history" || action === "complete-password-change" || action === "logout" || action === "accept-terms" || action === "reauthenticate") {
       const authenticated = await userFromBearer();
       if (!authenticated) return genericFailure();
       const link = await linkForUser(authenticated.user.id);
@@ -525,6 +525,40 @@ Deno.serve(async (request: Request) => {
         }
         if (!(await ensureGoalRequestEvent(created.id))) return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
         return respond(200, { ok: true, already_pending: false, request: created });
+      }
+
+      if (action === "request-goal-cancellation") {
+        // This action invokes a service-role-only RPC. A valid Supabase JWT is
+        // not enough: require the customer's currently registered, unrevoked
+        // application session before using elevated database privileges.
+        if (!(await sessionIsActive(link, authenticated.user.id, authenticated.claims))) return genericFailure();
+
+        const goalId = typeof input.goal_id === "string" ? input.goal_id.trim() : "";
+        const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+        if (!/^[0-9a-f-]{36}$/i.test(goalId) || reason.length < 3 || reason.length > 500) {
+          return respond(400, { ok: false, error: "INVALID_REQUEST" });
+        }
+
+        // The authenticated account link supplies customer_id; the browser cannot
+        // choose another customer's goal. The DB RPC locks the goal and writes
+        // the request + version atomically without granting direct table writes.
+        const { data: result, error: requestError } = await admin.rpc(
+          "customer_request_goal_cancellation",
+          { p_customer_id: link.customer_id, p_goal_id: goalId, p_reason: reason },
+        );
+        if (requestError) {
+          const code = String(requestError.code || "");
+          if (code === "P0002") return genericFailure();
+          if (code === "P0001") return respond(409, { ok: false, error: "GOAL_NOT_AVAILABLE" });
+          if (code === "22023") return respond(400, { ok: false, error: "INVALID_REQUEST" });
+          console.error("Goal cancellation request could not be recorded");
+          return respond(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
+        }
+        return respond(200, {
+          ok: true,
+          already_pending: Boolean(result?.already_pending),
+          status: "PENDING",
+        });
       }
 
       if (action === "mark-notifications-read") {

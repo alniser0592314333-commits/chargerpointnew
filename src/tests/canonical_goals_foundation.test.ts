@@ -121,25 +121,25 @@ describe('Canonical Goals Domain & Foundation Invariants', () => {
   });
 
   it('1. Goal Generation Proposal: Deterministically calculates target, variable duration, and reconciled bonus formula', () => {
-    // 0 past items -> baseline minimum 10 target, default 10 minor/device rate = 100 minor bonus (1.00 ILS / 10 devices)
-    const proposalZero = generateGoalProposal(0, { customDurationDays: 7, customRatePerDeviceMinor: 10, startedAt: '2026-10-01T00:00:00.000Z' });
+    // 0 past items -> baseline minimum 10 target, proposal floor of 150 minor units (1.50 ILS)
+    const proposalZero = generateGoalProposal(0, { customDurationDays: 7, customRatePerDeviceMinor: 15, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposalZero.targetQuantity).toBe(10);
     expect(proposalZero.durationDays).toBe(7);
-    expect(proposalZero.bonusAmountMinor).toBe(100);
+    expect(proposalZero.bonusAmountMinor).toBe(150);
     expect(Number.isInteger(proposalZero.bonusAmountMinor)).toBe(true);
 
     // Baseline 8 items -> target = max(10, 8+10, ceil(8*1.25)) = 18 target
-    const proposal8 = generateGoalProposal(8, { customRatePerDeviceMinor: 8, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
+    const proposal8 = generateGoalProposal(8, { customRatePerDeviceMinor: 15, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposal8.targetQuantity).toBe(18);
-    // Rate 8 minor/device (0.80 ILS per 10 devices) -> 18 * 8 = 144 minor units (1.44 ILS)
-    expect(proposal8.bonusAmountMinor).toBe(144);
+    // Rate 15 minor/device -> 18 * 15 = 270 minor units (2.70 ILS)
+    expect(proposal8.bonusAmountMinor).toBe(270);
 
     // Baseline 20 items -> target = max(10, 20+10, ceil(20*1.25)) = 30 target
-    const proposal20 = generateGoalProposal(20, { customRatePerDeviceMinor: 13, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
+    const proposal20 = generateGoalProposal(20, { customRatePerDeviceMinor: 20, customDurationDays: 7, startedAt: '2026-10-01T00:00:00.000Z' });
     expect(proposal20.targetQuantity).toBe(30);
     expect(proposal20.durationDays).toBe(7);
-    // Rate 13 minor/device (1.30 ILS per 10 devices) -> 30 * 13 = 390 minor units (3.90 ILS)
-    expect(proposal20.bonusAmountMinor).toBe(390);
+    // Rate 20 minor/device -> 30 * 20 = 600 minor units (6.00 ILS)
+    expect(proposal20.bonusAmountMinor).toBe(600);
 
     // Verify whole-number minor units invariant
     expect(proposal20.bonusAmountMinor % 1).toBe(0);

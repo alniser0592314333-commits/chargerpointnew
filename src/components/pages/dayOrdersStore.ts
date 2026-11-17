@@ -927,8 +927,14 @@ export const applyRemoteChange = (change: {
       status: String(p.status || previousGoal?.status || 'ACTIVE').toUpperCase() as GoalEntity['status'],
       startedAt: p.startedAt || p.started_at || previousGoal?.startedAt || new Date().toISOString(),
       expiresAt: p.expiresAt || p.expires_at || previousGoal?.expiresAt || new Date().toISOString(),
-      completedAt: p.completedAt || p.completed_at || undefined,
-      bonusLedgerId: p.bonusLedgerId || p.bonus_ledger_id || undefined,
+      completedAt: p.completedAt || p.completed_at || previousGoal?.completedAt || undefined,
+      bonusLedgerId: p.bonusLedgerId || p.bonus_ledger_id || previousGoal?.bonusLedgerId || undefined,
+      cancellationRequestedAt: p.cancellationRequestedAt || p.cancellation_requested_at || previousGoal?.cancellationRequestedAt || undefined,
+      cancellationRequestReason: p.cancellationRequestReason || p.cancellation_request_reason || previousGoal?.cancellationRequestReason || undefined,
+      cancellationRequestStatus: p.cancellationRequestStatus || p.cancellation_request_status || previousGoal?.cancellationRequestStatus || undefined,
+      cancellationReviewedAt: p.cancellationReviewedAt || p.cancellation_reviewed_at || previousGoal?.cancellationReviewedAt || undefined,
+      cancellationReviewedBy: p.cancellationReviewedBy || p.cancellation_reviewed_by || previousGoal?.cancellationReviewedBy || undefined,
+      cancellationReviewReason: p.cancellationReviewReason || p.cancellation_review_reason || previousGoal?.cancellationReviewReason || undefined,
       createdAt: p.createdAt || p.created_at || previousGoal?.createdAt || new Date().toISOString(),
       updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
       version: incomingGoalVersion,
@@ -1955,6 +1961,12 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         expiresAt: row.expires_at,
         completedAt: row.completed_at ?? undefined,
         bonusLedgerId: row.bonus_ledger_id ?? undefined,
+        cancellationRequestedAt: row.cancellation_requested_at ?? undefined,
+        cancellationRequestReason: row.cancellation_request_reason ?? undefined,
+        cancellationRequestStatus: row.cancellation_request_status ?? undefined,
+        cancellationReviewedAt: row.cancellation_reviewed_at ?? undefined,
+        cancellationReviewedBy: row.cancellation_reviewed_by ?? undefined,
+        cancellationReviewReason: row.cancellation_review_reason ?? undefined,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         version: Number(row.version ?? 1),
@@ -3725,6 +3737,12 @@ export const getGoalsPageData = async (access: {
     expiresAt: row.expiresAt ?? row.expires_at ?? '',
     completedAt: row.completedAt ?? row.completed_at ?? undefined,
     bonusLedgerId: row.bonusLedgerId ?? row.bonus_ledger_id ?? undefined,
+    cancellationRequestedAt: row.cancellationRequestedAt ?? row.cancellation_requested_at ?? undefined,
+    cancellationRequestReason: row.cancellationRequestReason ?? row.cancellation_request_reason ?? undefined,
+    cancellationRequestStatus: row.cancellationRequestStatus ?? row.cancellation_request_status ?? undefined,
+    cancellationReviewedAt: row.cancellationReviewedAt ?? row.cancellation_reviewed_at ?? undefined,
+    cancellationReviewedBy: row.cancellationReviewedBy ?? row.cancellation_reviewed_by ?? undefined,
+    cancellationReviewReason: row.cancellationReviewReason ?? row.cancellation_review_reason ?? undefined,
     createdAt: row.createdAt ?? row.created_at ?? '',
     updatedAt: row.updatedAt ?? row.updated_at ?? '',
     version: Number(row.version ?? 1),
@@ -3850,6 +3868,29 @@ export const approveGoalRequestForAdmin = async (
 export const rejectGoalRequestForAdmin = async (requestId: string, rejectionReason: string) => {
   await ensureStoreHydrated();
   return phase5UseCases.rejectGoalRequest(getAuthorizedAdminContext(), requestId, rejectionReason);
+};
+
+export const cancelGoalForAdmin = async (goalId: string, reason?: string) => {
+  const { data, error } = await invokeSupabaseRpc<any>('admin_cancel_goal', {
+    p_goal_id: goalId,
+    p_reason: reason?.trim() || null,
+  });
+  if (error) return { success: false, error };
+  return { success: true, data };
+};
+
+export const reviewGoalCancellationForAdmin = async (
+  goalId: string,
+  approve: boolean,
+  reason?: string
+) => {
+  const { data, error } = await invokeSupabaseRpc<any>('admin_review_goal_cancellation', {
+    p_goal_id: goalId,
+    p_approve: approve,
+    p_reason: reason?.trim() || null,
+  });
+  if (error) return { success: false, error };
+  return { success: true, data };
 };
 
 // Test-only compatibility actor. It is deliberately unauthorised in production.
