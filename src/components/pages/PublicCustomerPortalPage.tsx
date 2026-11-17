@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { AlertTriangle, ArrowLeft, Bell, CheckCircle2, CreditCard, Globe, History, Info, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Bell, CheckCircle2, CreditCard, Download, Globe, History, Info, KeyRound, Moon, RefreshCw, ShieldCheck, Sun, Target, UserRound, Wallet, WifiOff } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { callCustomerAccount, customerAuth } from '../../services/customer/customerAuth';
 import { startNativePushNotifications, stopNativePushNotifications } from '../../services/nativePushNotifications';
@@ -11,6 +11,7 @@ import { AppLogo } from '../qr/AppLogo';
 import { CustomerAuthScene } from './CustomerAuthScene';
 import { useTheme } from '../../theme/themeContext';
 import { config } from '../../config/env';
+import { getAppDownloadEndpoint } from '../../services/appReleasePolicy';
 import { CustomerPortalNavigation, CustomerPortalMoreView, CustomerPortalTab } from './CustomerPortalNavigation';
 import './customer-portal-dashboard.css';
 import { CustomerJawwalAutomation } from '../customer/CustomerJawwalAutomation';
@@ -925,6 +926,14 @@ export const PublicCustomerPortalPage: React.FC<PublicCustomerPortalPageProps> =
             <AppLogo size={40} variant="auto" className="shrink-0" />
             <div><p className="font-bold">{isAr ? 'نقطة الشحن' : 'Charging Point'}</p></div>
           </div>
+          <a
+            href={getAppDownloadEndpoint('customer')}
+            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-[#dfcfb8] bg-[#f7f1e7] px-3.5 text-sm font-semibold text-[#765a37] shadow-sm transition hover:bg-[#efe4d3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b89464] dark:border-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-100 dark:hover:bg-emerald-900"
+            aria-label={isAr ? 'تحميل تطبيق نقطة الشحن' : 'Download Charging Point app'}
+          >
+            <Download size={16} aria-hidden="true" />
+            <span>{isAr ? 'تحميل' : 'Download'}</span>
+          </a>
         </div>
       </header>
 
