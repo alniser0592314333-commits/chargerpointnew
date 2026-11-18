@@ -100,7 +100,7 @@ describe('Purchase book local-first architecture contract', () => {
     expect(service).toContain('row.adminId===adminId&&row.id===input.supplierId&&row.isActive');
     expect(service).toContain('row.adminId===adminId&&row.id===input.itemId&&row.isActive');
     expect(service).toContain('row.adminId===adminId&&row.id===method&&row.isActive');
-    expect(service).toContain('weeks.filter(row=>!row.isClosed');
+    expect(service).toContain('ownedWeeks.filter(row=>!row.isClosed');
     expect(service).toContain('PURCHASE_WEEK_OVERLAP');
     expect(service).toContain('nextAfterLast');
     expect(service).toContain('const weekStartDay=await getPurchaseWeekStartDay()');
