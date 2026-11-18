@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { isBinRequiredOutboxCommand } from '../infrastructure/sync/binAuthorization';
+import {
+  isBinRequiredOutboxCommand,
+  redactAuthorizationSecretsFromPayload,
+} from '../infrastructure/sync/binAuthorization';
 
 describe('queued BIN authorization classification', () => {
   it('holds offline customer payments until a BIN is supplied', () => {
@@ -7,6 +10,27 @@ describe('queued BIN authorization classification', () => {
       commandType: 'CREATE_PAYMENT',
       payload: { deferBinVerification: true },
     })).toBe(true);
+  });
+
+  it('holds legacy payment commands without a BIN even before their first server rejection', () => {
+    expect(isBinRequiredOutboxCommand({
+      commandType: 'CREATE_PAYMENT',
+      payload: {},
+    })).toBe(true);
+  });
+
+  it('redacts BIN credentials and local-only flags while preserving payment data', () => {
+    expect(redactAuthorizationSecretsFromPayload({
+      amountMinor: 500,
+      customerId: 'customer-1',
+      bin: '1234',
+      adminBin: '1234',
+      deferBinVerification: true,
+      offlinePendingApproval: true,
+    })).toEqual({
+      amountMinor: 500,
+      customerId: 'customer-1',
+    });
   });
 
   it('recovers legacy payment commands rejected by the server for a missing BIN', () => {

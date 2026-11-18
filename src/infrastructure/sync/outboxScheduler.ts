@@ -111,6 +111,31 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
       }
     };
 
+    // Purchase book records have structural prerequisites just like orders.
+    // Explicitly model these links so a purchase cannot reach Supabase before
+    // its day/week/month or newly-created catalog references are accepted.
+    if (item.commandType === 'SAVE_PURCHASE_WEEK') {
+      const monthId = payload.monthId || payload.month_id;
+      if (monthId) checkCandidate(monthId, ['SAVE_PURCHASE_MONTH'], true);
+    } else if (item.commandType === 'SAVE_PURCHASE_DAY') {
+      const weekId = payload.weekId || payload.week_id;
+      if (weekId) checkCandidate(weekId, ['SAVE_PURCHASE_WEEK'], true);
+    } else if (item.commandType === 'SAVE_PURCHASE_ORDER') {
+      const purchaseDayId = payload.purchaseDayId || payload.purchase_day_id;
+      const supplierId = payload.supplierId || payload.supplier_id;
+      const itemId = payload.itemId || payload.item_id;
+      const paymentMethodId = payload.paymentMethodId || payload.payment_method_id;
+      if (purchaseDayId) checkCandidate(purchaseDayId, ['SAVE_PURCHASE_DAY'], true);
+      if (supplierId) checkCandidate(supplierId, ['SAVE_PURCHASE_SUPPLIER'], false);
+      if (itemId) checkCandidate(itemId, ['SAVE_PURCHASE_ITEM'], false);
+      if (paymentMethodId) checkCandidate(paymentMethodId, ['SAVE_PURCHASE_PAYMENT_METHOD'], false);
+    } else if (item.commandType === 'MARK_PURCHASE_ORDER_PAID') {
+      const orderId = payload.id || payload.orderId || payload.order_id;
+      const paymentMethodId = payload.paymentMethodId || payload.payment_method_id;
+      if (orderId) checkCandidate(orderId, ['SAVE_PURCHASE_ORDER', 'MARK_PURCHASE_ORDER_PAID'], true);
+      if (paymentMethodId) checkCandidate(paymentMethodId, ['SAVE_PURCHASE_PAYMENT_METHOD'], false);
+    }
+
     // CREATE_ORDER depends on CREATE_DAY / OPEN_DAY (dayId) and CREATE_CUSTOMER (customerId)
     if (item.commandType === 'CREATE_ORDER') {
       if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY', 'business_days'], true);
@@ -435,6 +460,13 @@ export class OutboxScheduler {
               existsInItems,
               existsInGoals,
               existsInGoalRequests,
+              existsInPurchaseMonths,
+              existsInPurchaseWeeks,
+              existsInPurchaseDays,
+              existsInPurchaseSuppliers,
+              existsInPurchaseItems,
+              existsInPurchaseMethods,
+              existsInPurchaseOrders,
             ] = await Promise.all([
               localDb.get('businessDays', depId).catch(() => null),
               localDb.get('orders', depId).catch(() => null),
@@ -443,6 +475,13 @@ export class OutboxScheduler {
               localDb.get('orderItems', depId).catch(() => null),
               localDb.get('goals', depId).catch(() => null),
               localDb.get('goalRequests', depId).catch(() => null),
+              localDb.get('purchaseMonths', depId).catch(() => null),
+              localDb.get('purchaseWeeks', depId).catch(() => null),
+              localDb.get('purchaseDays', depId).catch(() => null),
+              localDb.get('purchaseSuppliers', depId).catch(() => null),
+              localDb.get('purchaseItems', depId).catch(() => null),
+              localDb.get('purchasePaymentMethods', depId).catch(() => null),
+              localDb.get('purchaseOrders', depId).catch(() => null),
             ]);
 
             const entityExistsLocally = Boolean(
@@ -452,7 +491,14 @@ export class OutboxScheduler {
               existsInCustomers ||
               existsInDevices ||
               existsInGoals ||
-              existsInGoalRequests
+              existsInGoalRequests ||
+              existsInPurchaseMonths ||
+              existsInPurchaseWeeks ||
+              existsInPurchaseDays ||
+              existsInPurchaseSuppliers ||
+              existsInPurchaseItems ||
+              existsInPurchaseMethods ||
+              existsInPurchaseOrders
             );
 
             if (!entityExistsLocally) {
@@ -469,13 +515,30 @@ export class OutboxScheduler {
               const isItemDep =
                 (candidate.commandType === 'DELIVER_ORDER_ITEM' || candidate.commandType === 'CANCEL_ORDER_ITEM' || (candidate.payload as any)?.itemId || (candidate.payload as any)?.orderItemId) &&
                 ((candidate.payload as any)?.itemId === depId || (candidate.payload as any)?.orderItemId === depId);
+              const candidatePayload = (candidate.payload || {}) as any;
+              const isPurchaseMonthDep =
+                candidate.commandType === 'SAVE_PURCHASE_WEEK' &&
+                (candidatePayload.monthId === depId || candidatePayload.month_id === depId);
+              const isPurchaseWeekDep =
+                candidate.commandType === 'SAVE_PURCHASE_DAY' &&
+                (candidatePayload.weekId === depId || candidatePayload.week_id === depId);
+              const isPurchaseDayDep =
+                candidate.commandType === 'SAVE_PURCHASE_ORDER' &&
+                (candidatePayload.purchaseDayId === depId || candidatePayload.purchase_day_id === depId);
+              const isPurchaseOrderDep =
+                candidate.commandType === 'MARK_PURCHASE_ORDER_PAID' &&
+                (candidatePayload.id === depId || candidatePayload.orderId === depId || candidatePayload.order_id === depId);
               const isExplicitDep =
                 candidate.dependencyCommandId === depId ||
                 candidate.dependencyCommandIds?.includes(depId) ||
                 candidate.dependencies?.includes(depId) ||
                 (candidate.payload as any)?.dependencyCommandId === depId;
 
-              if (isDayDep || isOrderDep || isItemDep || isExplicitDep) {
+              if (
+                isDayDep || isOrderDep || isItemDep ||
+                isPurchaseMonthDep || isPurchaseWeekDep || isPurchaseDayDep || isPurchaseOrderDep ||
+                isExplicitDep
+              ) {
                 unsatisfied.push(depId);
               }
             }

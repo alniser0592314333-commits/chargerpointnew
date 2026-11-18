@@ -1544,33 +1544,44 @@ export class FinalUseCases {
       createdAt: new Date().toISOString(),
     };
 
-    const mutationKey = `customer:${customerId}`;
+    const deferredAuthorization = options?.deferBinVerification === true;
 
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(commandId, [
-        { table: 'payments', id: commandId, existed: false },
-      ]);
-    }
+    // A deferred offline payment is only a local approval request. Do not
+    // project it into payments or the financial ledger: until a fresh BIN is
+    // verified, it must not change the customer's balance or payment history.
+    if (!deferredAuthorization) {
+      const mutationKey = `customer:${customerId}`;
 
-    // 1. Overlay Payment
-    await this.createOverlay(commandId, mutationKey, 'payments', commandId, 'CREATE', payment as unknown as Record<string, unknown>);
+      if (this.deps.mutationSnapshotRepo) {
+        await this.deps.mutationSnapshotRepo.capture(commandId, [
+          { table: 'payments', id: commandId, existed: false },
+        ]);
+      }
 
-    // 2. Overlay Ledger
-    const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
+      // 1. Overlay Payment
+      await this.createOverlay(commandId, mutationKey, 'payments', commandId, 'CREATE', payment as unknown as Record<string, unknown>);
+
+      // 2. Overlay Ledger
+      const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
         eventType: 'PAYMENT',
         amountMinor,
         customerId,
         actorAdminId: actor.id,
         referenceId: payment.id,
-    };
-    await this.createOverlay(`${commandId}:ledger`, mutationKey, 'ledger', commandId, 'CREATE', ledgerEvent as unknown as Record<string, unknown>);
+      };
+      await this.createOverlay(`${commandId}:ledger`, mutationKey, 'ledger', commandId, 'CREATE', ledgerEvent as unknown as Record<string, unknown>);
+    }
 
-    // 3. Outbox Recording
+    // 3. Outbox Recording. Offline payments remain here until a BIN is
+    // verified from the Pending Payments page and the server accepts them.
     await this.deps.commandRepo.record(commandId, 'CREATE_PAYMENT', {
       ...payment,
       resetGeneration,
       ...(bin ? { bin } : {}),
-      ...(options?.deferBinVerification ? { deferBinVerification: true } : {})
+      ...(options?.deferBinVerification ? {
+        deferBinVerification: true,
+        offlinePendingApproval: true,
+      } : {})
     });
 
     return { success: true, data: payment };

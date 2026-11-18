@@ -1797,6 +1797,56 @@ export class IndexedDBLocalDatabase {
     }
   }
 
+  markOverlaysForCommandAcceptedWithTx(tx: IDBTransaction | null, commandId: ID): void {
+    const matching = Array.from(this.memoryOverlays.values()).filter((overlay) =>
+      overlay.commandId === commandId || overlay.commandId.startsWith(`${commandId}:`)
+    );
+    for (const overlay of matching) {
+      const accepted: OptimisticOverlayRecord = { ...overlay, status: 'ACCEPTED' };
+      this.memoryOverlays.set(overlay.commandId, accepted);
+      if (tx && tx.db.objectStoreNames.contains('optimisticOverlays')) {
+        try {
+          tx.objectStore('optimisticOverlays').put(accepted);
+        } catch (err) {
+          console.warn('Failed to mark optimistic overlay accepted in TX:', err);
+          throw err;
+        }
+      }
+    }
+  }
+
+  removeAcceptedOverlaysForEntityWithTx(
+    tx: IDBTransaction | null,
+    entityType: string,
+    entityId: ID,
+    authoritativeVersion?: number,
+  ): void {
+    const aliases = new Set([
+      entityType,
+      entityType === 'orderItems' ? 'order_items' : entityType === 'order_items' ? 'orderItems' : entityType,
+    ]);
+    const idsToRemove = Array.from(this.memoryOverlays.values())
+      .filter((overlay) => {
+        if (overlay.status !== 'ACCEPTED' || !aliases.has(overlay.entityType) || overlay.entityId !== entityId) return false;
+        if (authoritativeVersion === undefined || !Number.isFinite(authoritativeVersion)) return true;
+        const payload = overlay.patch || overlay.entityPayload || {};
+        const overlayVersion = Number(payload.version ?? 0);
+        return overlayVersion <= authoritativeVersion;
+      })
+      .map((overlay) => overlay.commandId);
+
+    for (const id of idsToRemove) this.memoryOverlays.delete(id);
+    if (tx && tx.db.objectStoreNames.contains('optimisticOverlays')) {
+      try {
+        const store = tx.objectStore('optimisticOverlays');
+        for (const id of idsToRemove) store.delete(id);
+      } catch (err) {
+        console.warn('Failed to remove reconciled optimistic overlays in TX:', err);
+        throw err;
+      }
+    }
+  }
+
   async removeOverlaysForCommand(commandId: ID): Promise<void> {
     await this.ensureHydrated();
     const idsToRemove: ID[] = [];
@@ -1831,7 +1881,7 @@ export class IndexedDBLocalDatabase {
     const base = await this.get(entityType, entityId);
     const allOverlays = await this.listOverlays();
     const activeOverlays = allOverlays
-      .filter(o => o.entityType === entityType && o.entityId === entityId && o.status === 'PENDING')
+      .filter(o => o.entityType === entityType && o.entityId === entityId && (o.status === 'PENDING' || o.status === 'ACCEPTED'))
       .sort((a, b) => {
         if (a.sequence !== b.sequence) return a.sequence - b.sequence;
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();

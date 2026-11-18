@@ -13,13 +13,22 @@ const actor = {
 
 function makeUseCases() {
   const recorded: any[] = [];
+  const overlays: any[] = [];
+  const snapshots: any[] = [];
   const useCases = new FinalUseCases({
     customerRepo: { findById: async () => ({ id: 'customer-1', isActive: true }) },
     ledgerRepo: { findByCustomer: async () => [] },
     paymentRepo: { findAllAllocations: async () => [] },
+    overlayRepo: {
+      getNextSequence: async () => overlays.length + 1,
+      save: async (overlay: any) => { overlays.push(overlay); },
+    },
+    mutationSnapshotRepo: {
+      capture: async (...args: any[]) => { snapshots.push(args); },
+    },
     commandRepo: { record: async (...args: any[]) => { recorded.push(args); } },
   } as any);
-  return { useCases, recorded };
+  return { useCases, recorded, overlays, snapshots };
 }
 
 describe('offline customer payment BIN enforcement', () => {
@@ -42,7 +51,7 @@ describe('offline customer payment BIN enforcement', () => {
   });
 
   it('allows an offline local projection only when explicitly marked for deferred BIN verification', async () => {
-    const { useCases, recorded } = makeUseCases();
+    const { useCases, recorded, overlays, snapshots } = makeUseCases();
     const auth = new AuthorizationContext(actor);
 
     const result = await useCases.recordPayment(
@@ -59,8 +68,13 @@ describe('offline customer payment BIN enforcement', () => {
 
     expect(result.success).toBe(true);
     expect(recorded[0]?.[1]).toBe('CREATE_PAYMENT');
-    expect(recorded[0]?.[2]).toMatchObject({ deferBinVerification: true });
+    expect(recorded[0]?.[2]).toMatchObject({
+      deferBinVerification: true,
+      offlinePendingApproval: true,
+    });
     expect(recorded[0]?.[2]).not.toHaveProperty('bin');
+    expect(overlays).toHaveLength(0);
+    expect(snapshots).toHaveLength(0);
   });
 
   it('does not allow the deferred flag to bypass BIN verification on a normal online call', async () => {

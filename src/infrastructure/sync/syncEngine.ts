@@ -7,6 +7,7 @@ import { installSyncDiagnosticGlobalHandlers, recordSyncDiagnosticEvent } from '
 
 installSyncDiagnosticGlobalHandlers();
 import { localDb, OutboxRecord, SyncHistoryRecord } from '../localDb/localDb';
+import { isBinRequiredOutboxCommand, redactAuthorizationSecretsFromPayload } from './binAuthorization';
 import {
   OutboxScheduler,
   extractCommandDependencies,
@@ -501,13 +502,15 @@ export class SyncEngine {
     let count = 0;
     for (const item of outboxItems) {
       if (
-        item.status === 'syncing' ||
-        item.status === 'conflict' ||
-        item.status === 'blocked' ||
-        (item.status === 'rejected' && (
+        !isBinRequiredOutboxCommand(item) && (
+          item.status === 'syncing' ||
+          item.status === 'conflict' ||
+          item.status === 'blocked' ||
+          (item.status === 'rejected' && (
           isAuthOrNetworkError(item.lastError) ||
           isRejectedPurchaseCommandFromMissingDispatcher(item)
-        ))
+          ))
+        )
       ) {
         item.status = 'pending';
         await localDb.saveOutbox(item);
@@ -734,6 +737,16 @@ export class SyncEngine {
                   localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
                 }
               }
+              if (change.entityType === 'orders' || change.entityType === 'order_items' || change.entityType === 'orderItems') {
+                const rawVersion = change.version ?? (change.payload as any)?.version;
+                const authoritativeVersion = rawVersion === undefined || rawVersion === null ? undefined : Number(rawVersion);
+                localDb.removeAcceptedOverlaysForEntityWithTx(
+                  tx,
+                  change.entityType,
+                  change.entityId,
+                  authoritativeVersion !== undefined && Number.isFinite(authoritativeVersion) ? authoritativeVersion : undefined,
+                );
+              }
             } catch (deltaErr) {
               console.error(`Failed to apply delta change sequence ${change.sequenceId}:`, deltaErr);
               throw deltaErr;
@@ -853,38 +866,34 @@ export class SyncEngine {
 
         const outboxItems = await localDb.listOutbox();
 
-        // Offline-sensitive commands may be created without a BIN because the
-        // server cannot be contacted while offline. Never send such a command
-        // with an empty credential. Keep it visibly blocked until the admin
-        // supplies the BIN once connectivity is restored.
+        // Any command classified as requiring a BIN must stay out of the
+        // transport queue until the admin explicitly authorizes it. This also
+        // catches legacy CREATE_PAYMENT rows that predate deferBinVerification.
         for (const item of outboxItems) {
-          const payload = (item.payload || {}) as any;
-          if (
-            (item.status === 'pending' || item.status === 'blocked' || item.status === 'syncing') &&
-            payload?.deferBinVerification === true &&
-            (!payload?.bin || String(payload.bin).trim().length < 4)
-          ) {
-            item.status = 'blocked';
-            item.lastError = 'BIN_REQUIRED';
-            await localDb.saveOutbox(item);
-            const hist = await localDb.getHistoryByCommandId(item.commandId);
-            if (hist) {
-              hist.state = 'BLOCKED';
-              hist.errorClass = 'AUTHORIZATION';
-              hist.errorMessage = 'BIN_REQUIRED';
-              hist.retryEligible = false;
-              hist.updatedAt = new Date().toISOString();
-              await localDb.saveHistory(hist);
-            }
-            syncEventEmitter.emit({
-              type: 'command_status_changed',
-              commandId: item.commandId,
-              groupId: item.groupId,
-              newState: 'BLOCKED',
-              error: 'BIN_REQUIRED',
-              timestamp: new Date().toISOString(),
-            });
+          if (item.status === 'accepted' || !isBinRequiredOutboxCommand(item)) continue;
+          const needsStateUpdate = item.status !== 'blocked' || item.lastError !== 'BIN_REQUIRED';
+          if (!needsStateUpdate) continue;
+
+          item.status = 'blocked';
+          item.lastError = 'BIN_REQUIRED';
+          await localDb.saveOutbox(item);
+          const hist = await localDb.getHistoryByCommandId(item.commandId);
+          if (hist) {
+            hist.state = 'BLOCKED';
+            hist.errorClass = 'AUTHORIZATION';
+            hist.errorMessage = 'BIN_REQUIRED';
+            hist.retryEligible = false;
+            hist.updatedAt = new Date().toISOString();
+            await localDb.saveHistory(hist);
           }
+          syncEventEmitter.emit({
+            type: 'command_status_changed',
+            commandId: item.commandId,
+            groupId: item.groupId,
+            newState: 'BLOCKED',
+            error: 'BIN_REQUIRED',
+            timestamp: new Date().toISOString(),
+          });
         }
 
         const activePurchaseAdminId = getActiveAdminIdForPurchaseSync();
@@ -892,7 +901,7 @@ export class SyncEngine {
           i =>
             (!isPurchaseOutboxCommand(i.commandType) || Boolean(activePurchaseAdminId && i.actorAdminId === activePurchaseAdminId)) &&
             !processedInCycle.has(i.commandId) &&
-            !((i.payload as any)?.deferBinVerification === true && (!((i.payload as any)?.bin) || String((i.payload as any)?.bin).trim().length < 4)) &&
+            !isBinRequiredOutboxCommand(i) &&
             (i.status === 'pending' ||
               i.status === 'blocked' ||
               i.status === 'conflict' ||
@@ -1097,15 +1106,24 @@ export class SyncEngine {
 
           if (res.success) {
             item.status = 'accepted';
+            item.payload = redactAuthorizationSecretsFromPayload(item.payload);
             item.lastError = undefined;
             item.serverProcessedAt = new Date().toISOString();
             pushedCount++;
 
-            // The server is now authoritative. Discard only the rollback snapshot and optimistic overlays;
-            // remote deltas remain responsible for authoritative entity hydration.
+            // Keep newly-created orders and their items projected locally until
+            // their authoritative change-log rows are applied. The sync cycle
+            // pulls before it pushes, so removing these overlays here made
+            // successful offline orders disappear until a later sync cycle.
+            const keepOrderProjectionUntilDelta =
+              item.commandType === 'CREATE_ORDER' || item.commandType === 'ADD_ORDER_ITEM';
             await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
               localDb.deleteMutationSnapshotWithTx(tx, item.commandId);
-              localDb.removeOverlaysForCommandWithTx(tx, item.commandId);
+              if (keepOrderProjectionUntilDelta) {
+                localDb.markOverlaysForCommandAcceptedWithTx(tx, item.commandId);
+              } else {
+                localDb.removeOverlaysForCommandWithTx(tx, item.commandId);
+              }
             });
 
             history.state = 'SUCCESS';
@@ -1150,6 +1168,9 @@ export class SyncEngine {
             }
             item.retryCount = history.attemptCount;
             item.lastError = res.error;
+            if (classification.errorClass === 'AUTHORIZATION') {
+              item.payload = redactAuthorizationSecretsFromPayload(item.payload);
+            }
 
             if (!classification.retryEligible) {
               await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
@@ -1235,7 +1256,7 @@ export class SyncEngine {
           if (!Number.isSafeInteger(maxSeq) || maxSeq <= finalCursor) {
             throw new Error('FINAL_PULL_INVALID_SEQUENCE: cursor did not advance');
           }
-          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+          await localDb.runTransaction(['kvStore', 'syncState', 'optimisticOverlays'], 'readwrite', async (tx) => {
             for (const change of sortedFinalChanges) {
               if (this.onDeltaApplied) {
                 await this.onDeltaApplied(change, tx);

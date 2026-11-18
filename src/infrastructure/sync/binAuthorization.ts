@@ -19,6 +19,10 @@ export const isBinRequiredOutboxCommand = (item: BinRequiredOutboxItem): boolean
   const bin = String(payload.bin || '').trim();
   if (bin.length >= 4 && payload.deferBinVerification !== true) return false;
 
+  // CREATE_PAYMENT is never valid without a BIN, including legacy outbox
+  // records created before deferred authorization was explicitly marked.
+  if (item.commandType === 'CREATE_PAYMENT' && bin.length < 4) return true;
+
   const error = String(item.lastError || '');
   return (
     payload.deferBinVerification === true ||
@@ -27,3 +31,28 @@ export const isBinRequiredOutboxCommand = (item: BinRequiredOutboxItem): boolean
     /Authorization required:\\s*BIN/i.test(error)
   );
 };
+
+
+const AUTHORIZATION_SECRET_KEYS = [
+  'bin',
+  'adminBin',
+  'admin_bin',
+  'BIN',
+  'ADMIN_BIN',
+  'AdminBin',
+  'deferBinVerification',
+  'offlinePendingApproval',
+] as const;
+
+/**
+ * Remove credentials and local-only approval flags from a command once it no
+ * longer needs them. Pending transport failures keep their BIN for retry;
+ * accepted or authorization-rejected commands do not.
+ */
+export function redactAuthorizationSecretsFromPayload(payload: unknown): Record<string, unknown> {
+  const safePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? { ...(payload as Record<string, unknown>) }
+    : {};
+  for (const key of AUTHORIZATION_SECRET_KEYS) delete safePayload[key];
+  return safePayload;
+}
