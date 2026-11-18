@@ -28,6 +28,7 @@ COMMENT ON FUNCTION public.redact_sensitive_change_log_payload() IS
   'Redacts administrator BIN credentials and local-only authorization markers from sync change-log payloads.';
 
 REVOKE ALL ON FUNCTION public.redact_sensitive_change_log_payload() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.redact_sensitive_change_log_payload() TO service_role;
 
 DROP TRIGGER IF EXISTS trg_redact_sensitive_change_log_payload ON public.change_log;
 
