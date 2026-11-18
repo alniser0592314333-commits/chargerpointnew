@@ -6,7 +6,7 @@ import {
   getCustomerFinancialHistory,
   topUpCustomerBalance,
   validateBinFormat,
-  getAuthoritativeBinVerifier,
+  getCurrentAdminAuthorizationContext,
   UICustomerDetail,
   UICustomerOrderSummary,
   UICustomerFinancialItem,
@@ -61,6 +61,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
   const [amountInput, setAmountInput] = useState('');
   const [noteInput, setNoteInput] = useState('');
   const [topUpError, setTopUpError] = useState('');
+  const [topUpNotice, setTopUpNotice] = useState('');
   const [isSubmittingTopUp, setIsSubmittingTopUp] = useState(false);
   const idempotencyKeyRef = useRef<string>('');
 
@@ -114,6 +115,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
     setAmountInput('');
     setNoteInput('');
     setTopUpError('');
+    setTopUpNotice('');
     idempotencyKeyRef.current = crypto.randomUUID();
   };
 
@@ -142,29 +144,10 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
     }
 
     setIsValidatingBin(true);
-    const verifier = getAuthoritativeBinVerifier();
-    if (!verifier) {
-      setTopUpError('نظام التحقق غير متوفر حالياً');
-      setIsValidatingBin(false);
-      return;
-    }
-
     try {
-      const isValid = await verifier(binInput, {
-        id: 'admin_authenticated',
-        username: 'admin',
-        fullName: 'مدير المنظومة',
-        role: 'SUPER_ADMIN',
-        permissions: [],
-        isSuperAdmin: true,
-      });
-
-      if (!isValid) {
-        setTopUpError(t('invalidBinError') || 'رمز التحقق (BIN) غير صحيح');
-        setIsValidatingBin(false);
-        return;
-      }
-
+      const auth = getCurrentAdminAuthorizationContext();
+      auth.assertPermission('finance:create-payment');
+      await auth.verifyBin(binInput);
       setTopUpStep(2);
     } catch (err) {
       setTopUpError(t('invalidBinError') || 'رمز التحقق (BIN) غير صحيح');
@@ -209,7 +192,14 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
         return;
       }
 
-      // Refresh in place
+      if (res.pendingApproval) {
+        setTopUpNotice(locale === 'en'
+          ? 'Internet is disconnected. The payment was saved as pending and did not change the customer balance. Approve it from Finance > Pending Payments after reconnecting.'
+          : 'الإنترنت مفصول. تم حفظ الدفعة كدفعة معلّقة ولم يتغير رصيد الزبون. بعد رجوع الإنترنت اعتمدها من المالية > الدفعات المعلّقة.');
+      }
+
+      // Refresh in place. Deferred offline payments intentionally have no
+      // financial projection until the Pending Payments approval succeeds.
       await loadData();
       setIsSubmittingTopUp(false);
       handleCloseTopUp();
@@ -243,6 +233,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
   const parsedAmount = parseFloat(amountInput) || 0;
   const topUpMinor = Math.round(parsedAmount * 100);
   const resultingBalanceMinor = customer.currentBalanceMinor + topUpMinor;
+  const isOfflineTopUp = typeof navigator !== 'undefined' && navigator.onLine === false;
 
   const getPaymentStatusBadge = (status: 'PAID' | 'PARTIAL' | 'UNPAID') => {
     switch (status) {
@@ -273,6 +264,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-20 px-4 sm:px-6 text-gray-900 dark:text-[#daf1de]">
+      {topUpNotice && <div role="status" className="border-y border-amber-300 py-3 text-xs leading-6 text-amber-800 dark:border-amber-800 dark:text-amber-300">{topUpNotice}</div>}
       {/* 1. Header: Single Profile Surface (Customer Name + ID + Balance + Top-up Button) */}
       <section className="bg-white dark:bg-[#082622] rounded-xl border border-gray-200 dark:border-[#14423b] p-5 sm:p-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -772,6 +764,13 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                   </div>
                 </div>
 
+                {isOfflineTopUp && <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{locale === 'en'
+                    ? 'Internet is disconnected. Enter the amount; it will be saved as a pending payment. It will not change the balance or sync until you approve it with your BIN.'
+                    : 'الإنترنت مفصول. أدخل المبلغ وسيتم حفظه كدفعة معلّقة. لن يتغير الرصيد ولن تتم المزامنة قبل اعتمادها باستخدام BIN.'}</span>
+                </div>}
+
                 {/* Amount Input */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-gray-700 dark:text-[#8eb698] block">
@@ -804,7 +803,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                 </div>
 
                 <div className="pt-2 flex items-center justify-between gap-2">
-                  <Button
+                  {!isOfflineTopUp && <Button
                     type="button"
                     variant="outline"
                     size="sm"
@@ -812,7 +811,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                     className="text-xs"
                   >
                     {t('previousStep')}
-                  </Button>
+                  </Button>}
                   <Button
                     type="submit"
                     variant="primary"
@@ -838,45 +837,42 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
                   </p>
                 </div>
 
-                {/* Mathematical Resulting Balance Breakdown */}
-                <div className="p-3.5 bg-gray-50 dark:bg-[#06201c] border border-gray-200/70 dark:border-[#14423b]/70 rounded-xl space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-gray-600 dark:text-[#8eb698]">
-                    <span>{t('currentBalance')}:</span>
-                    <span className="font-mono font-bold">
-                      {formatCurrency(customer.currentBalanceMinor)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-bold">
-                    <span>{t('topUpAmount')}:</span>
-                    <span className="font-mono">
-                      +{formatCurrency(topUpMinor)}
-                    </span>
-                  </div>
-
-                  {noteInput && (
-                    <div className="flex justify-between items-center text-gray-500 dark:text-[#5e8674] text-[11px] pt-1 border-t border-gray-200/40 dark:border-[#14423b]/40">
-                      <span>{t('topUpNoteOptional')}:</span>
-                      <span>{noteInput}</span>
+                {isOfflineTopUp ? (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs leading-6 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+                    <p className="font-bold">{locale === 'en' ? 'Pending payment' : 'دفعة معلّقة'}</p>
+                    <p>{locale === 'en'
+                      ? 'The amount will be saved locally only. The customer balance remains unchanged until a manager enters the BIN and approves the payment from Finance > Pending Payments.'
+                      : 'سيتم حفظ المبلغ محلياً فقط. سيبقى رصيد الزبون كما هو حتى يتم إدخال BIN واعتماد الدفعة من المالية > الدفعات المعلّقة.'}</p>
+                    <div className="mt-2 flex justify-between border-t border-amber-300/70 pt-2 dark:border-amber-800/60">
+                      <span>{t('currentBalance')}:</span>
+                      <strong className="font-mono">{formatCurrency(customer.currentBalanceMinor)}</strong>
                     </div>
-                  )}
-
-                  <div className="flex justify-between items-center text-sm font-bold pt-2 border-t border-gray-200 dark:border-[#14423b]">
-                    <span>{t('resultingBalance')}:</span>
-                    <span
-                      className={`font-mono text-base ${
-                        resultingBalanceMinor < 0
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : resultingBalanceMinor > 0
-                          ? 'text-emerald-600 dark:text-[#8eb698]'
-                          : 'text-gray-900 dark:text-[#daf1de]'
-                      }`}
-                    >
-                      {resultingBalanceMinor > 0 ? '+' : ''}
-                      {formatCurrency(resultingBalanceMinor)}
-                    </span>
                   </div>
-                </div>
+                ) : (
+                  <div className="p-3.5 bg-gray-50 dark:bg-[#06201c] border border-gray-200/70 dark:border-[#14423b]/70 rounded-xl space-y-2 text-xs">
+                    <div className="flex justify-between items-center text-gray-600 dark:text-[#8eb698]">
+                      <span>{t('currentBalance')}:</span>
+                      <span className="font-mono font-bold">{formatCurrency(customer.currentBalanceMinor)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-bold">
+                      <span>{t('topUpAmount')}:</span>
+                      <span className="font-mono">+{formatCurrency(topUpMinor)}</span>
+                    </div>
+                    {noteInput && <div className="flex justify-between items-center text-gray-500 dark:text-[#5e8674] text-[11px] pt-1 border-t border-gray-200/40 dark:border-[#14423b]/40">
+                      <span>{t('topUpNoteOptional')}:</span><span>{noteInput}</span>
+                    </div>}
+                    <div className="flex justify-between items-center text-sm font-bold pt-2 border-t border-gray-200 dark:border-[#14423b]">
+                      <span>{t('resultingBalance')}:</span>
+                      <span className={`font-mono text-base ${
+                        resultingBalanceMinor < 0 ? 'text-rose-600 dark:text-rose-400'
+                          : resultingBalanceMinor > 0 ? 'text-emerald-600 dark:text-[#8eb698]'
+                          : 'text-gray-900 dark:text-[#daf1de]'
+                      }`}>
+                        {resultingBalanceMinor > 0 ? '+' : ''}{formatCurrency(resultingBalanceMinor)}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-2 flex items-center justify-end gap-2">
                   <Button
