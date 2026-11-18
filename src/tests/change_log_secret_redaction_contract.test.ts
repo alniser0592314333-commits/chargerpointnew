@@ -18,6 +18,7 @@ describe('sync change-log secret redaction', () => {
     expect(sql).toContain("'deferBinVerification'");
     expect(sql).toContain("'offlinePendingApproval'");
     expect(sql).toContain('REVOKE ALL ON FUNCTION public.redact_sensitive_change_log_payload() FROM PUBLIC, anon, authenticated;');
+    expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.redact_sensitive_change_log_payload() TO service_role;');
   });
 
   it('scrubs historical change-log payloads without updating financial records', () => {
