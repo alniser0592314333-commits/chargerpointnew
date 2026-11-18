@@ -202,7 +202,7 @@ const purchaseMaps: Record<PurchaseBookTable, Map<string, PurchaseBookEntity>> =
  * is not guaranteed, and applying a stale CREATE after a later PATCH can resurrect
  * removed devices or hide the current order state.
  */
-export const buildEffectiveOrderItemReadModel = (
+export export const buildEffectiveOrderItemReadModel = (
   baseOrders: Iterable<OrderEntity>,
   baseItems: Iterable<OrderItemEntity>,
   overlays: readonly OptimisticOverlayRecord[]
