@@ -2,7 +2,29 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Clock3, Plus, RefreshCw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { useI18n } from '../../i18n/i18nContext';
 import { invokeSupabaseRpc } from '../../services/supabase/client';
-import { searchFinancialCustomers, UIFinancialCustomerItem } from './dayOrdersStore';
+import {
+  getCurrentAdminAuthorizationContext,
+  getCustomerDetail,
+  searchFinancialCustomers,
+  UIFinancialCustomerItem,
+} from './dayOrdersStore';
+import { localDb } from '../../infrastructure/localDb/localDb';
+import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
+import { syncEventEmitter } from '../../infrastructure/sync/syncEngine';
+import { isBinRequiredOutboxCommand } from '../../infrastructure/sync/binAuthorization';
+
+type OfflinePendingPayment = {
+  id: string;
+  customer_id: string;
+  customer_name: string;
+  customer_code: string;
+  amount_minor: number;
+  note: string | null;
+  created_at: string;
+  status: string;
+  last_error: string | null;
+  bin_attached: boolean;
+};
 
 type ManualPayment = {
   id: string;
@@ -32,6 +54,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
   const { locale, formatCurrency, formatDateTime } = useI18n();
   const isAr = locale === 'ar';
   const [rows, setRows] = useState<ManualPayment[]>([]);
+  const [offlineRows, setOfflineRows] = useState<OfflinePendingPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
@@ -49,6 +72,54 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
   const loadRows = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true); else setLoading(true);
     setError('');
+
+    // Local offline payments are read directly from IndexedDB and remain
+    // available even when the server-backed manual-payment list cannot load.
+    try {
+      const outbox = await localDb.listOutbox();
+      const pendingCommands = outbox.filter((item) => {
+        if (item.commandType !== 'CREATE_PAYMENT' || item.status === 'accepted') return false;
+        const payload = (item.payload || {}) as Record<string, unknown>;
+        return isBinRequiredOutboxCommand(item) || payload.offlinePendingApproval === true;
+      });
+      const customerCache = new Map<string, Awaited<ReturnType<typeof getCustomerDetail>>>();
+      const localRows = await Promise.all(pendingCommands.map(async (item) => {
+        const payload = (item.payload || {}) as Record<string, unknown>;
+        const customerId = String(payload.customerId || payload.customer_id || '');
+        let customer = customerCache.get(customerId);
+        if (customer === undefined) {
+          customer = customerId ? await getCustomerDetail(customerId).catch(() => null) : null;
+          customerCache.set(customerId, customer);
+        }
+        return {
+          id: item.commandId,
+          customer_id: customerId,
+          customer_name: customer?.name || customerId || (isAr ? 'زبون غير معروف' : 'Unknown customer'),
+          customer_code: customer?.code || '',
+          amount_minor: Number(payload.amountMinor ?? payload.amount_minor ?? 0),
+          note: payload.reference == null ? null : String(payload.reference),
+          created_at: String(payload.createdAt || item.createdAt || ''),
+          status: item.status,
+          last_error: item.lastError || null,
+          bin_attached: Boolean(String(payload.bin || '').trim()) && payload.deferBinVerification !== true,
+        } satisfies OfflinePendingPayment;
+      }));
+      setOfflineRows(localRows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    } catch (e) {
+      console.warn('Could not read local offline payment queue', e);
+      setOfflineRows([]);
+    }
+
+    const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+    if (!online) {
+      setError(isAr
+        ? 'الإنترنت مفصول. الدفعات المحفوظة محلياً ظاهرة بالأعلى، أما الدفعات المرسلة من الخادم فتحتاج اتصالاً.'
+        : 'Internet is disconnected. Locally saved payments are shown above; server payments require a connection.');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       const { data, error: rpcError } = await invokeSupabaseRpc<Array<Record<string, unknown>>>(
         'list_admin_manual_customer_payments', {},
@@ -71,7 +142,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
       })).filter((row) => row.id));
     } catch (e) {
       console.error('Could not load manually recorded customer payments', e);
-      setError(isAr ? 'تعذّر تحميل الدفعات. تحقق من الاتصال وصلاحيات المالية ثم أعد المحاولة.' : 'Could not load payments. Check your connection and finance permissions, then retry.');
+      setError(isAr ? 'تعذّر تحميل الدفعات من الخادم. الدفعات المحلية المحفوظة ما زالت متاحة بالأعلى.' : 'Could not load server payments. Locally saved payments remain available above.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -79,6 +150,10 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
   }, [isAr]);
 
   useEffect(() => { void loadRows(); }, [loadRows]);
+
+  useEffect(() => syncEventEmitter.subscribe((event) => {
+    if (event.type === 'sync_finished') void loadRows(true);
+  }), [loadRows]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -160,7 +235,84 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
     } finally { setProcessingId(null); }
   };
 
-  const pendingCount = rows.filter((row) => row.status === 'PENDING').length;
+  const approveOfflinePayment = async (row: OfflinePendingPayment) => {
+    if (processingId) return;
+    setError(''); setMessage('');
+    const bin = (bins[row.id] || '').trim();
+    if (!bin) {
+      setError(isAr ? 'أدخل BIN لاعتماد الدفعة.' : 'Enter your BIN to approve this payment.');
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setError(isAr ? 'لا يمكن اعتماد الدفعة بدون إنترنت. ستبقى محفوظة كمعلّقة.' : 'Approval requires internet. The payment will remain safely pending.');
+      return;
+    }
+    if (!window.confirm(isAr ? 'تأكيد اعتماد الدفعة ومزامنتها وإضافتها للرصيد؟' : 'Approve and sync this payment into the customer balance?')) return;
+
+    setProcessingId(row.id);
+    try {
+      const auth = getCurrentAdminAuthorizationContext();
+      auth.assertPermission('finance:create-payment');
+      await auth.verifyBin(bin);
+
+      const latestOutbox = await localDb.listOutbox();
+      const target = latestOutbox.find((item) => item.commandId === row.id);
+      if (!target || target.commandType !== 'CREATE_PAYMENT' || target.status === 'accepted') {
+        setMessage(isAr ? 'الدفعة تمت مزامنتها بالفعل أو لم تعد معلّقة.' : 'This payment has already synced or is no longer pending.');
+        await loadRows(true);
+        return;
+      }
+
+      const payload = (target.payload || {}) as Record<string, unknown>;
+      target.payload = {
+        ...payload,
+        bin,
+        deferBinVerification: false,
+        offlinePendingApproval: true,
+      };
+      target.status = 'pending';
+      target.retryCount = 0;
+      target.lastError = undefined;
+      await localDb.saveOutbox(target);
+
+      const history = await localDb.getHistoryByCommandId(target.commandId);
+      if (history) {
+        history.state = 'PENDING';
+        history.errorClass = undefined;
+        history.errorMessage = undefined;
+        history.errorDetails = undefined;
+        history.errorHint = undefined;
+        history.failureStage = undefined;
+        history.retryEligible = undefined;
+        history.updatedAt = new Date().toISOString();
+        await localDb.saveHistory(history);
+      }
+
+      await globalSyncBridge.requestManualSync();
+      await globalSyncBridge.requestLatestDataReload();
+
+      const afterSync = (await localDb.listOutbox()).find((item) => item.commandId === row.id);
+      setBins((prev) => ({ ...prev, [row.id]: '' }));
+      if (!afterSync || afterSync.status === 'accepted') {
+        setMessage(isAr ? 'تم اعتماد الدفعة ومزامنتها وتحديث الرصيد.' : 'Payment approved, synced and balance refreshed.');
+      } else {
+        setError(isAr
+          ? 'تم التحقق من BIN، لكن المزامنة لم تكتمل بعد. بقيت الدفعة محفوظة ولن تضيع.'
+          : 'BIN verified, but sync is not complete yet. The payment remains safely queued.');
+      }
+      await loadRows(true);
+    } catch (e) {
+      console.error('Could not authorize offline pending payment', e);
+      setError(isAr
+        ? 'تعذّر اعتماد الدفعة. تحقق من صحة BIN والاتصال، وستبقى الدفعة محفوظة دون تغيير الرصيد.'
+        : 'Could not approve the payment. Check the BIN and connection; the payment remains saved without changing the balance.');
+      await loadRows(true);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const pendingCount = rows.filter((row) => row.status === 'PENDING').length + offlineRows.length;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 pb-24 pt-2 text-gray-900 dark:text-[#daf1de] sm:px-6">
@@ -172,6 +324,45 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
         </div>
         <button type="button" onClick={() => void loadRows(true)} disabled={refreshing} className="p-2 text-gray-500 hover:text-emerald-600" aria-label={isAr ? 'تحديث' : 'Refresh'}><RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} /></button>
       </header>
+
+      {offlineRows.length > 0 && <section className="space-y-3 border-b border-gray-200 pb-5 dark:border-[#14423b]">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-bold">{isAr ? 'دفعات محفوظة بدون إنترنت' : 'Offline saved payments'}</h2>
+          <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{offlineRows.length}</span>
+        </div>
+        <p className="text-xs leading-6 text-gray-500 dark:text-[#8eb698]">
+          {isAr
+            ? 'هذه الدفعات محفوظة على الجهاز فقط. لا تدخل في رصيد الزبون ولا تُرسل إلى الخادم قبل إدخال BIN واعتمادها.'
+            : 'These payments are stored on this device only. They do not affect the customer balance or reach the server until a BIN is entered and approval is confirmed.'}
+        </p>
+        <div className="divide-y divide-gray-200 dark:divide-[#164238]">
+          {offlineRows.map((row) => <article key={row.id} className="space-y-3 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold">{row.customer_name}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{row.customer_code || row.customer_id} · {formatDateTime(row.created_at)}</p>
+                {row.note && <p className="mt-2 text-xs text-gray-600 dark:text-[#b1d4bf]">{row.note}</p>}
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  {row.bin_attached
+                    ? (isAr ? 'تم إدخال BIN سابقاً — بانتظار اكتمال المزامنة' : 'BIN supplied — waiting for sync')
+                    : (isAr ? 'بانتظار إدخال BIN والاعتماد' : 'Awaiting BIN approval')}
+                </p>
+              </div>
+              <p className="shrink-0 text-base font-bold tabular-nums">{formatCurrency(row.amount_minor)}</p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="min-w-[180px] flex-1 text-xs font-semibold">
+                {isAr ? 'رمز BIN للاعتماد' : 'BIN for approval'}
+                <input type="password" inputMode="numeric" autoComplete="off" value={bins[row.id] || ''} onChange={(e) => setBins((prev) => ({ ...prev, [row.id]: e.target.value }))} className="mt-1 w-full border-b border-gray-300 bg-transparent py-2 text-sm outline-none focus:border-emerald-500 dark:border-[#28584c]" placeholder={isAr ? 'أدخل BIN' : 'Enter BIN'} />
+              </label>
+              <button type="button" disabled={processingId === row.id || (typeof navigator !== 'undefined' && navigator.onLine === false)} onClick={() => void approveOfflinePayment(row)} className="inline-flex items-center gap-1.5 border-b-2 border-emerald-700 px-1 py-2 text-xs font-bold text-emerald-800 disabled:opacity-40 dark:border-emerald-400 dark:text-emerald-300">
+                {processingId === row.id ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                {isAr ? 'اعتماد الدفعة ومزامنتها' : 'Approve and sync'}
+              </button>
+            </div>
+          </article>)}
+        </div>
+      </section>}
 
       <section className="space-y-4">
         <h2 className="flex items-center gap-2 text-sm font-bold"><Plus size={17} />{isAr ? 'تسجيل دفعة معلّقة' : 'Record pending payment'}</h2>
