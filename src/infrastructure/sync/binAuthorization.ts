@@ -19,6 +19,10 @@ export const isBinRequiredOutboxCommand = (item: BinRequiredOutboxItem): boolean
   const bin = String(payload.bin || '').trim();
   if (bin.length >= 4 && payload.deferBinVerification !== true) return false;
 
+  // CREATE_PAYMENT is never valid without a BIN, including legacy outbox
+  // records created before deferred authorization was explicitly marked.
+  if (item.commandType === 'CREATE_PAYMENT' && bin.length < 4) return true;
+
   const error = String(item.lastError || '');
   return (
     payload.deferBinVerification === true ||
