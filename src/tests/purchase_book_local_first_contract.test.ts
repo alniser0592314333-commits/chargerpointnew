@@ -172,6 +172,9 @@ describe('Purchase book local-first architecture contract', () => {
     expect(store).toContain("row?.admin_id !== activeAdminId");
     expect(store).toContain("localDb.runTransaction(['kvStore'], 'readwrite'");
     expect(store).toContain('pendingIds');
+    expect(store).toContain('purchaseBookLocalMutationRevision');
+    expect(store).toContain('serverProcessedAt');
+    expect(store).toContain('purchaseBookLocalMutationRevision !== refreshMutationRevision');
     expect(page).toContain('refreshPurchaseBookFromRemote()');
   });
 
