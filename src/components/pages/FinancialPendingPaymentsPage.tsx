@@ -74,9 +74,9 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
           (Boolean(payload.bin) && item.status !== 'rejected') ||
           (item.status === 'rejected' && /BIN|AUTHORIZATION/i.test(String(item.lastError || '')));
       });
-      const customerIds = Array.from(new Set(pending.map((item) =>
-        String(((item.payload || {}) as Record<string, unknown>).customerId || '')
-      ).filter(Boolean));
+      const customerIds = Array.from(new Set(
+        pending.map((item) => String(((item.payload || {}) as Record<string, unknown>).customerId || '')).filter(Boolean)
+      ));
       const customerResults = await Promise.all(customerIds.map((id) => searchFinancialCustomers(id)));
       const customerById = new Map<string, UIFinancialCustomerItem>();
       for (const result of customerResults) {
