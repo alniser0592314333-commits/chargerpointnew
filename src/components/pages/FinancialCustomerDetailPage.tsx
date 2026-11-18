@@ -62,6 +62,8 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
   const [noteInput, setNoteInput] = useState('');
   const [topUpError, setTopUpError] = useState('');
   const [isSubmittingTopUp, setIsSubmittingTopUp] = useState(false);
+  const [isOfflineTopUp, setIsOfflineTopUp] = useState(false);
+  const [topUpNotice, setTopUpNotice] = useState('');
   const idempotencyKeyRef = useRef<string>('');
 
   const loadData = async () => {
@@ -108,8 +110,11 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
 
   // Open Top-up Modal Flow
   const handleOpenTopUp = () => {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    setIsOfflineTopUp(offline);
+    setTopUpNotice('');
     setIsTopUpOpen(true);
-    setTopUpStep(typeof navigator !== 'undefined' && navigator.onLine === false ? 2 : 1);
+    setTopUpStep(offline ? 2 : 1);
     setBinInput('');
     setAmountInput('');
     setNoteInput('');
@@ -193,6 +198,20 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
 
     const parsedAmount = parseFloat(amountInput);
     const amountMinor = Math.round(parsedAmount * 100);
+    const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (isOfflineTopUp && !offlineNow) {
+      setIsOfflineTopUp(false);
+      setTopUpStep(1);
+      setTopUpError(locale === 'ar'
+        ? 'عاد الاتصال بالإنترنت. أدخل BIN للتحقق قبل تسجيل الدفعة.'
+        : 'Connection restored. Enter your BIN before recording the payment.');
+      setIsSubmittingTopUp(false);
+      return;
+    }
+    if (offlineNow) {
+      setIsOfflineTopUp(true);
+      setBinInput('');
+    }
 
     try {
       const res = await topUpCustomerBalance({
@@ -209,9 +228,15 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
         return;
       }
 
-      // Refresh in place
+      // Offline payments are stored only in the local outbox. They do not alter
+      // the customer balance until a fresh BIN is entered from Pending Payments.
       await loadData();
       setIsSubmittingTopUp(false);
+      if (isOfflineTopUp || offlineNow) {
+        setTopUpNotice(locale === 'ar'
+          ? 'لا يوجد اتصال بالإنترنت. تم حفظ الدفعة كمعلّقة على هذا الجهاز، ولم يتغير رصيد الزبون. اعتمدها من المالية ← دفعات الزبائن باستخدام BIN عند عودة الإنترنت.'
+          : 'You are offline. The payment was saved locally as pending and the customer balance was not changed. Approve it from Finance → Customer Payments with a BIN when you are online.');
+      }
       handleCloseTopUp();
     } catch (err) {
       console.error('Commit topup error:', err);
@@ -242,7 +267,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
 
   const parsedAmount = parseFloat(amountInput) || 0;
   const topUpMinor = Math.round(parsedAmount * 100);
-  const resultingBalanceMinor = customer.currentBalanceMinor + topUpMinor;
+  const resultingBalanceMinor = isOfflineTopUp ? customer.currentBalanceMinor : customer.currentBalanceMinor + topUpMinor;
 
   const getPaymentStatusBadge = (status: 'PAID' | 'PARTIAL' | 'UNPAID') => {
     switch (status) {
@@ -273,6 +298,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-20 px-4 sm:px-6 text-gray-900 dark:text-[#daf1de]">
+      {topUpNotice && <p role="status" className="border-y border-amber-300 py-3 text-xs leading-6 text-amber-800 dark:border-amber-800 dark:text-amber-300">{topUpNotice}</p>}
       {/* 1. Header: Single Profile Surface (Customer Name + ID + Balance + Top-up Button) */}
       <section className="bg-white dark:bg-[#082622] rounded-xl border border-gray-200 dark:border-[#14423b] p-5 sm:p-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -750,6 +776,11 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
             {/* STEP 2: TOP-UP AMOUNT */}
             {topUpStep === 2 && (
               <form onSubmit={handleAmountStep} className="p-4 sm:p-5 space-y-4">
+                {isOfflineTopUp && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+                  {locale === 'ar'
+                    ? 'لا يوجد اتصال بالإنترنت. أدخل المبلغ الآن؛ سيتم حفظ الدفعة كمعلّقة فقط، ولن يتغير رصيد الزبون قبل اعتمادها باستخدام BIN بعد عودة الإنترنت.'
+                    : 'No internet connection. Enter the amount now; it will be saved as pending only and will not change the customer balance until approved with a BIN after connectivity returns.'}
+                </div>}
                 {/* Customer Context Summary */}
                 <div className="p-3 bg-gray-50 dark:bg-[#06201c] border border-gray-200/70 dark:border-[#14423b]/70 rounded-xl space-y-1.5 text-xs">
                   <div className="flex justify-between items-center text-gray-500 dark:text-[#8eb698]">
@@ -829,6 +860,11 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
             {/* STEP 3: CONFIRMATION & RESULTING BALANCE */}
             {topUpStep === 3 && (
               <div className="p-4 sm:p-5 space-y-4">
+                {isOfflineTopUp && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+                  {locale === 'ar'
+                    ? 'هذه دفعة معلّقة فقط. الرصيد الحالي سيبقى كما هو حتى تعتمد الدفعة من صفحة دفعات الزبائن باستخدام BIN.'
+                    : 'This is a pending payment only. The current balance remains unchanged until you approve it from Customer Payments using a BIN.'}
+                </div>}
                 <div className="text-center space-y-1">
                   <h4 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">
                     {t('confirmTopUp')}

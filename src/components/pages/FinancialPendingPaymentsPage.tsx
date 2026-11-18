@@ -3,6 +3,9 @@ import { ArrowLeft, CheckCircle2, Clock3, Plus, RefreshCw, Search, ShieldCheck, 
 import { useI18n } from '../../i18n/i18nContext';
 import { invokeSupabaseRpc } from '../../services/supabase/client';
 import { searchFinancialCustomers, UIFinancialCustomerItem } from './dayOrdersStore';
+import { localDb } from '../../infrastructure/localDb/localDb';
+import { isBinRequiredOutboxCommand } from '../../infrastructure/sync/binAuthorization';
+import { globalSyncBridge } from '../../infrastructure/sync/syncBridge';
 
 type ManualPayment = {
   id: string;
@@ -20,6 +23,19 @@ type ManualPayment = {
   submission_source?: string | null;
 };
 
+type OfflinePendingPayment = {
+  commandId: string;
+  customer_id: string;
+  customer_name: string;
+  customer_code: string;
+  amount_minor: number;
+  note: string | null;
+  created_at: string;
+  last_error?: string;
+  status: string;
+  authorizationInFlight: boolean;
+};
+
 const parseAmountMinor = (value: string): number | null => {
   const normalized = value.trim().replace(',', '.');
   if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(normalized)) return null;
@@ -32,6 +48,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
   const { locale, formatCurrency, formatDateTime } = useI18n();
   const isAr = locale === 'ar';
   const [rows, setRows] = useState<ManualPayment[]>([]);
+  const [offlineRows, setOfflineRows] = useState<OfflinePendingPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
@@ -45,6 +62,47 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
   const [bins, setBins] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const loadOfflineRows = useCallback(async () => {
+    try {
+      const outbox = await localDb.listOutbox();
+      const pending = outbox.filter((item) => {
+        if (item.commandType !== 'CREATE_PAYMENT' || item.status === 'accepted') return false;
+        const payload = (item.payload || {}) as Record<string, unknown>;
+        return payload.deferBinVerification === true ||
+          isBinRequiredOutboxCommand(item) ||
+          (Boolean(payload.bin) && item.status !== 'rejected') ||
+          (item.status === 'rejected' && /BIN|AUTHORIZATION/i.test(String(item.lastError || '')));
+      });
+      const customerIds = Array.from(new Set(
+        pending.map((item) => String(((item.payload || {}) as Record<string, unknown>).customerId || '')).filter(Boolean)
+      ));
+      const customerResults = await Promise.all(customerIds.map((id) => searchFinancialCustomers(id)));
+      const customerById = new Map<string, UIFinancialCustomerItem>();
+      for (const result of customerResults) {
+        for (const customer of result) customerById.set(customer.id, customer);
+      }
+      setOfflineRows(pending.map((item) => {
+        const payload = (item.payload || {}) as Record<string, unknown>;
+        const customerId = String(payload.customerId || '');
+        const customer = customerById.get(customerId);
+        return {
+          commandId: item.commandId,
+          customer_id: customerId,
+          customer_name: customer?.name || customerId,
+          customer_code: customer?.code || '',
+          amount_minor: Number(payload.amountMinor || 0),
+          note: payload.reference == null ? null : String(payload.reference),
+          created_at: String(item.createdAt || ''),
+          last_error: item.lastError,
+          status: item.status,
+          authorizationInFlight: Boolean(payload.bin) && item.status !== 'rejected',
+        };
+      }));
+    } catch (e) {
+      console.warn('Could not load offline pending payments from the local outbox', e);
+    }
+  }, []);
 
   const loadRows = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true); else setLoading(true);
@@ -73,10 +131,11 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
       console.error('Could not load manually recorded customer payments', e);
       setError(isAr ? 'تعذّر تحميل الدفعات. تحقق من الاتصال وصلاحيات المالية ثم أعد المحاولة.' : 'Could not load payments. Check your connection and finance permissions, then retry.');
     } finally {
+      await loadOfflineRows();
       setLoading(false);
       setRefreshing(false);
     }
-  }, [isAr]);
+  }, [isAr, loadOfflineRows]);
 
   useEffect(() => { void loadRows(); }, [loadRows]);
 
@@ -160,7 +219,52 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
     } finally { setProcessingId(null); }
   };
 
-  const pendingCount = rows.filter((row) => row.status === 'PENDING').length;
+  const approveOfflinePayment = async (row: OfflinePendingPayment) => {
+    const binKey = `offline:${row.commandId}`;
+    const bin = (bins[binKey] || '').trim();
+    if (!/^\d{4,}$/.test(bin)) {
+      setError(isAr ? 'أدخل BIN صحيحاً (4 أرقام على الأقل) لاعتماد الدفعة.' : 'Enter a valid BIN (at least 4 digits) to approve this payment.');
+      return;
+    }
+    if (processingId) return;
+    if (!window.confirm(isAr ? 'تأكيد اعتماد الدفعة ومزامنتها؟ لن يتغير رصيد الزبون قبل نجاح الاعتماد.' : 'Approve and sync this payment? The customer balance will not change until approval succeeds.')) return;
+    setError(''); setMessage(''); setProcessingId(binKey);
+    try {
+      const outbox = await localDb.listOutbox();
+      const target = outbox.find((item) => item.commandId === row.commandId);
+      if (!target || target.commandType !== 'CREATE_PAYMENT') throw new Error('PENDING_PAYMENT_NOT_FOUND');
+      const payload = (target.payload || {}) as Record<string, unknown>;
+      if (target.status !== 'rejected' && payload.bin && payload.deferBinVerification !== true) {
+        throw new Error('PAYMENT_AUTHORIZATION_ALREADY_SENT: check Sync Center before changing the BIN.');
+      }
+      target.payload = { ...payload, bin, deferBinVerification: false };
+      target.status = 'pending';
+      target.retryCount = 0;
+      target.lastError = undefined;
+      await localDb.saveOutbox(target);
+      await globalSyncBridge.requestManualSync();
+      const afterSync = (await localDb.listOutbox()).find((item) => item.commandId === row.commandId);
+      if (afterSync?.status === 'accepted') {
+        setBins((prev) => ({ ...prev, [binKey]: '' }));
+        setMessage(isAr ? 'تم اعتماد الدفعة ومزامنتها بنجاح.' : 'Payment approved and synchronized.');
+      } else {
+        setError(isAr
+          ? 'لم يؤكد الخادم اعتماد الدفعة بعد. بقيت العملية محفوظة؛ راجع تفاصيلها في صفحة المزامنة ولا تسجلها مرة ثانية.'
+          : 'The server has not confirmed this payment yet. It remains saved; review it in Sync Center and do not record it again.');
+      }
+      await loadRows(true);
+    } catch (e) {
+      console.error('Could not authorize offline payment', e);
+      setError(isAr
+        ? 'تعذّر اعتماد الدفعة. بقيت محفوظة محلياً؛ راجع صفحة المزامنة قبل إعادة المحاولة.'
+        : 'Could not approve the payment. It remains saved locally; check Sync Center before retrying.');
+      await loadOfflineRows();
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const pendingCount = rows.filter((row) => row.status === 'PENDING').length + offlineRows.length;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 pb-24 pt-2 text-gray-900 dark:text-[#daf1de] sm:px-6">
@@ -199,6 +303,37 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
       </section>
 
       {(error || message) && <p role="status" className={`border-y py-3 text-sm ${error ? 'border-rose-300 text-rose-700 dark:text-rose-300' : 'border-emerald-300 text-emerald-800 dark:text-emerald-300'}`}>{error || message}</p>}
+
+      {offlineRows.length > 0 && <section className="space-y-3">
+        <div className="flex items-center justify-between border-b border-amber-300 pb-3 dark:border-amber-800">
+          <h2 className="text-sm font-bold">{isAr ? 'دفعات أوفلاين بانتظار الاعتماد' : 'Offline payments awaiting approval'}</h2>
+          <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">{offlineRows.length}</span>
+        </div>
+        <p className="text-xs leading-6 text-gray-500 dark:text-[#8eb698]">{isAr ? 'هذه الدفعات محفوظة على الجهاز فقط، ولم تؤثر على رصيد الزبون. أدخل BIN لاعتماد كل دفعة وإرسالها للخادم.' : 'These payments are saved on this device only and have not affected the customer balance. Enter a BIN to approve each payment and send it to the server.'}</p>
+        <div className="divide-y divide-amber-200 dark:divide-amber-900/60">
+          {offlineRows.map((row) => {
+            const binKey = `offline:${row.commandId}`;
+            const awaitingNetwork = row.authorizationInFlight;
+            return <article key={row.commandId} className="space-y-3 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold">{row.customer_name}</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{row.customer_code || row.customer_id} · {row.created_at ? formatDateTime(row.created_at) : ''}</p>
+                  {row.note && <p className="mt-2 text-xs text-gray-600 dark:text-[#b1d4bf]">{row.note}</p>}
+                  <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{isAr ? 'غير معتمدة — لا تؤثر على الرصيد' : 'Not approved — does not affect balance'}</p>
+                </div>
+                <p className="shrink-0 text-base font-bold tabular-nums">{formatCurrency(row.amount_minor)}</p>
+              </div>
+              <div className="space-y-2 border-s-2 border-amber-400 ps-3">
+                <label className="block text-xs font-semibold">{isAr ? 'رمز BIN لاعتماد الدفعة' : 'BIN to approve payment'}</label>
+                <input type="password" inputMode="numeric" autoComplete="off" value={bins[binKey] || ''} onChange={(e) => setBins((prev) => ({ ...prev, [binKey]: e.target.value }))} className="w-full border-b border-gray-300 bg-transparent py-2 text-sm outline-none focus:border-emerald-500 dark:border-[#28584c]" placeholder={isAr ? 'أدخل BIN' : 'Enter BIN'} disabled={awaitingNetwork} />
+                <button type="button" disabled={processingId !== null || awaitingNetwork} onClick={() => void approveOfflinePayment(row)} className="inline-flex items-center gap-1.5 py-2 text-xs font-bold text-emerald-700 disabled:opacity-50 dark:text-emerald-300"><ShieldCheck size={15} />{awaitingNetwork ? (isAr ? 'بانتظار تأكيد المزامنة' : 'Waiting for sync confirmation') : (isAr ? 'اعتماد ومزامنة الدفعة' : 'Approve and sync payment')}</button>
+                {row.last_error && <p className="text-[11px] text-rose-600 dark:text-rose-300">{row.last_error}</p>}
+              </div>
+            </article>;
+          })}
+        </div>
+      </section>}
 
       <section className="space-y-2">
         <div className="flex items-center justify-between border-b border-gray-200 pb-3 dark:border-[#14423b]">
