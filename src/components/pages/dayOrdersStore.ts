@@ -195,6 +195,9 @@ const goalsMap = new Map<string, GoalEntity>();
 const goalRequestsMap = new Map<string, GoalRequestEntity>();
 const purchaseTableKeys: Record<PurchaseBookTable, string> = { suppliers: 'purchaseSuppliers', items: 'purchaseItems', methods: 'purchasePaymentMethods', months: 'purchaseMonths', weeks: 'purchaseWeeks', days: 'purchaseDays', orders: 'purchaseOrders' };
 const purchaseMaps: Record<PurchaseBookTable, Map<string, PurchaseBookEntity>> = { suppliers: new Map(), items: new Map(), methods: new Map(), months: new Map(), weeks: new Map(), days: new Map(), orders: new Map() };
+// Incremented before every local Purchase Book write so an in-flight remote
+// snapshot cannot overwrite a mutation that happened while it was being fetched.
+let purchaseBookLocalMutationRevision = 0;
 
 /**
  * Builds the effective local-first order read model from persisted entities plus
@@ -384,6 +387,7 @@ export const refreshPurchaseBookFromRemote = async (force = false): Promise<bool
   if (!force && Date.now() - lastPurchaseBookSnapshotRefreshAt < 30_000) return false;
   if (purchaseBookSnapshotRefreshPromise) return purchaseBookSnapshotRefreshPromise;
 
+  const refreshMutationRevision = purchaseBookLocalMutationRevision;
   const refreshPromise = (async (): Promise<boolean> => {
     let activeAdminId = getCachedPurchaseAdminId();
     if (!activeAdminId) activeAdminId = (await authService.getCurrentSession(true))?.userId;
@@ -426,10 +430,17 @@ export const refreshPurchaseBookFromRemote = async (force = false): Promise<bool
       ...specs.map((spec) => localDb.list<any>(spec.key)),
     ]);
     const pendingIds = new Set<string>();
+    const recentAcceptanceCutoff = Date.now() - 15 * 60 * 1000;
     for (const command of outbox as any[]) {
-      const pending = ['pending', 'PENDING_RECONCILIATION', 'syncing', 'blocked', 'conflict'].includes(String(command.status));
+      const status = String(command.status);
+      const pending = ['pending', 'PENDING_RECONCILIATION', 'syncing', 'blocked', 'conflict'].includes(status);
+      const processedAt = Date.parse(String(command.serverProcessedAt || ''));
+      // A command may become accepted after the server snapshot was captured but
+      // before this local outbox read. Preserve its local row briefly if the
+      // snapshot cannot yet contain it; the next snapshot will reconcile it.
+      const recentlyAccepted = status === 'accepted' && Number.isFinite(processedAt) && processedAt >= recentAcceptanceCutoff;
       const purchaseCommand = String(command.commandType || '').startsWith('SAVE_PURCHASE_') || command.commandType === 'MARK_PURCHASE_ORDER_PAID';
-      if (pending && purchaseCommand) {
+      if ((pending || recentlyAccepted) && purchaseCommand) {
         const id = command.aggregateId || command.payload?.id;
         if (typeof id === 'string' && id) pendingIds.add(id);
       }
@@ -473,7 +484,12 @@ export const refreshPurchaseBookFromRemote = async (force = false): Promise<bool
       nextRows.set(spec.table, Array.from(merged.values()));
     });
 
+    let snapshotApplied = false;
     await localDb.runTransaction(['kvStore'], 'readwrite', (tx) => {
+      // If a local purchase write began while the snapshot was in flight, discard
+      // the stale snapshot instead of replacing the newer local-first state.
+      if (purchaseBookLocalMutationRevision !== refreshMutationRevision) return;
+      snapshotApplied = true;
       specs.forEach((spec, index) => {
         const persisted = persistedTables[index] as any[];
         const rows = nextRows.get(spec.table) || [];
@@ -486,6 +502,8 @@ export const refreshPurchaseBookFromRemote = async (force = false): Promise<bool
         for (const row of rows) localDb.setWithTx(tx, spec.key, row.id, row);
       });
     });
+
+    if (!snapshotApplied || purchaseBookLocalMutationRevision !== refreshMutationRevision) return false;
 
     for (const spec of specs) {
       const map = purchaseMaps[spec.table];
@@ -2918,6 +2936,7 @@ function createTransactionalRepoContext(
         if (!activeAdminId || entity.adminId !== activeAdminId) {
           throw new Error('Purchase Book write rejected: entity owner does not match the active admin session.');
         }
+        purchaseBookLocalMutationRevision += 1;
         purchaseMaps[table].set(entity.id, entity);
         localDb.setWithTx(tx, purchaseTableKeys[table], entity.id, entity);
         postCommitActions.push(() => notifyStore('purchaseBook', entity.id));
