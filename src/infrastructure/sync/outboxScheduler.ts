@@ -137,7 +137,12 @@ export function extractCommandDependencies(item: OutboxRecord, allOutbox: Outbox
       if (payload.dayId) checkCandidate(payload.dayId, ['CREATE_DAY', 'OPEN_DAY'], false);
     }
     // Item commands (DELIVER_ORDER_ITEM, CANCEL_ORDER_ITEM, etc.) depend on ADD_ORDER_ITEM (itemId / orderItemId)
-    else if (item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM' || payload.itemId || payload.orderItemId) {
+    else if (item.commandType === 'SAVE_PURCHASE_ORDER') {
+      // Purchase Book itemId references purchase_items, never order_items.
+      // Only a pending SAVE_PURCHASE_ITEM creator may block this purchase.
+      if (payload.itemId) checkCandidate(payload.itemId, ['SAVE_PURCHASE_ITEM'], true);
+    }
+    else if (item.commandType === 'DELIVER_ORDER_ITEM' || item.commandType === 'CANCEL_ORDER_ITEM' || payload.orderItemId) {
       const targetItemId = payload.itemId || payload.orderItemId;
       if (targetItemId) {
         checkCandidate(targetItemId, ['ADD_ORDER_ITEM'], true);
@@ -435,6 +440,7 @@ export class OutboxScheduler {
               existsInItems,
               existsInGoals,
               existsInGoalRequests,
+              existsInPurchaseItems,
             ] = await Promise.all([
               localDb.get('businessDays', depId).catch(() => null),
               localDb.get('orders', depId).catch(() => null),
@@ -443,6 +449,7 @@ export class OutboxScheduler {
               localDb.get('orderItems', depId).catch(() => null),
               localDb.get('goals', depId).catch(() => null),
               localDb.get('goalRequests', depId).catch(() => null),
+              localDb.get('purchaseItems', depId).catch(() => null),
             ]);
 
             const entityExistsLocally = Boolean(
@@ -452,7 +459,8 @@ export class OutboxScheduler {
               existsInCustomers ||
               existsInDevices ||
               existsInGoals ||
-              existsInGoalRequests
+              existsInGoalRequests ||
+              existsInPurchaseItems
             );
 
             if (!entityExistsLocally) {
@@ -467,8 +475,9 @@ export class OutboxScheduler {
                 (candidate.commandType === 'ADD_ORDER_ITEM' || candidate.aggregateType === 'order_items') &&
                 (candidate.payload as any)?.orderId === depId;
               const isItemDep =
-                (candidate.commandType === 'DELIVER_ORDER_ITEM' || candidate.commandType === 'CANCEL_ORDER_ITEM' || (candidate.payload as any)?.itemId || (candidate.payload as any)?.orderItemId) &&
-                ((candidate.payload as any)?.itemId === depId || (candidate.payload as any)?.orderItemId === depId);
+                ((candidate.commandType === 'DELIVER_ORDER_ITEM' || candidate.commandType === 'CANCEL_ORDER_ITEM' || (candidate.payload as any)?.orderItemId) &&
+                  ((candidate.payload as any)?.itemId === depId || (candidate.payload as any)?.orderItemId === depId)) ||
+                (candidate.commandType === 'SAVE_PURCHASE_ORDER' && (candidate.payload as any)?.itemId === depId);
               const isExplicitDep =
                 candidate.dependencyCommandId === depId ||
                 candidate.dependencyCommandIds?.includes(depId) ||
