@@ -112,6 +112,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
 
     const online = typeof navigator === 'undefined' || navigator.onLine !== false;
     if (!online) {
+      setRows([]);
       setError(isAr
         ? 'الإنترنت مفصول. الدفعات المحفوظة محلياً ظاهرة بالأعلى، أما الدفعات المرسلة من الخادم فتحتاج اتصالاً.'
         : 'Internet is disconnected. Locally saved payments are shown above; server payments require a connection.');
