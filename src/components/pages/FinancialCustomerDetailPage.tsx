@@ -171,6 +171,14 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
   // Step 3: Commit Top-up
   const handleCommitTopUp = async () => {
     if (isSubmittingTopUp || !customer) return;
+    const currentlyOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (!currentlyOffline && !binInput.trim()) {
+      setTopUpStep(1);
+      setTopUpError(locale === 'en'
+        ? 'Internet is available again. Verify your BIN before submitting this payment.'
+        : 'رجع الإنترنت. لازم تتحقق من BIN قبل تسجيل الدفعة.');
+      return;
+    }
     setIsSubmittingTopUp(true);
     setTopUpError('');
 
