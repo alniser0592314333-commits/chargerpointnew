@@ -7,7 +7,7 @@ import { installSyncDiagnosticGlobalHandlers, recordSyncDiagnosticEvent } from '
 
 installSyncDiagnosticGlobalHandlers();
 import { localDb, OutboxRecord, SyncHistoryRecord } from '../localDb/localDb';
-import { isBinRequiredOutboxCommand } from './binAuthorization';
+import { isBinRequiredOutboxCommand, redactAuthorizationSecretsFromPayload } from './binAuthorization';
 import {
   OutboxScheduler,
   extractCommandDependencies,
@@ -1106,6 +1106,7 @@ export class SyncEngine {
 
           if (res.success) {
             item.status = 'accepted';
+            item.payload = redactAuthorizationSecretsFromPayload(item.payload);
             item.lastError = undefined;
             item.serverProcessedAt = new Date().toISOString();
             pushedCount++;
@@ -1167,6 +1168,9 @@ export class SyncEngine {
             }
             item.retryCount = history.attemptCount;
             item.lastError = res.error;
+            if (classification.errorClass === 'AUTHORIZATION') {
+              item.payload = redactAuthorizationSecretsFromPayload(item.payload);
+            }
 
             if (!classification.retryEligible) {
               await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
