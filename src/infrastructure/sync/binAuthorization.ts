@@ -31,3 +31,28 @@ export const isBinRequiredOutboxCommand = (item: BinRequiredOutboxItem): boolean
     /Authorization required:\\s*BIN/i.test(error)
   );
 };
+
+
+const AUTHORIZATION_SECRET_KEYS = [
+  'bin',
+  'adminBin',
+  'admin_bin',
+  'BIN',
+  'ADMIN_BIN',
+  'AdminBin',
+  'deferBinVerification',
+  'offlinePendingApproval',
+] as const;
+
+/**
+ * Remove credentials and local-only approval flags from a command once it no
+ * longer needs them. Pending transport failures keep their BIN for retry;
+ * accepted or authorization-rejected commands do not.
+ */
+export function redactAuthorizationSecretsFromPayload(payload: unknown): Record<string, unknown> {
+  const safePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? { ...(payload as Record<string, unknown>) }
+    : {};
+  for (const key of AUTHORIZATION_SECRET_KEYS) delete safePayload[key];
+  return safePayload;
+}
