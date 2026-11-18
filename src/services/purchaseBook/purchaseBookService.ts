@@ -110,11 +110,13 @@ export async function savePurchaseCatalog(
     const cleanName=name.trim();
     if (!cleanName) throw new PurchaseBookOperationError('PURCHASE_NAME_REQUIRED','الاسم مطلوب.');
     if (cleanName.length>120) throw new PurchaseBookOperationError('PURCHASE_NAME_TOO_LONG','الاسم طويل جداً.');
-    const rows=await repoContext.purchaseRepo!.findAll(table) as PurchaseCatalogEntity[];
+    const adminId=await currentPurchaseAdminId();
+    const rows=(await repoContext.purchaseRepo!.findAll(table) as PurchaseCatalogEntity[])
+      .filter(row=>row.adminId===adminId);
+    if (existing && existing.adminId!==adminId) throw new PurchaseBookOperationError('PURCHASE_OWNER_MISMATCH','هذا السجل تابع لحساب أدمن آخر.');
     if (rows.some(row=>row.id!==existing?.id && row.isActive && row.name.trim().toLocaleLowerCase()===cleanName.toLocaleLowerCase())) {
       throw new PurchaseBookOperationError('PURCHASE_NAME_DUPLICATE','هذا الاسم موجود مسبقاً.');
     }
-    const adminId=await currentPurchaseAdminId();
     if (existing?.adminId && existing.adminId !== adminId) throw new PurchaseBookOperationError('PURCHASE_OWNER_MISMATCH','هذا السجل تابع لحساب أدمن آخر.');
     const timestamp=nowIso();
     const entity: PurchaseCatalogEntity={
@@ -130,6 +132,8 @@ export async function savePurchaseCatalog(
 
 export async function hidePurchaseCatalog(table:'suppliers'|'items'|'methods', entity:PurchaseCatalogEntity):Promise<void>{
   return runPurchaseOperation('إخفاء الإضافة',async()=>{
+    const adminId=await currentPurchaseAdminId();
+    if(entity.adminId!==adminId) throw new PurchaseBookOperationError('PURCHASE_OWNER_MISMATCH','هذا السجل تابع لحساب أدمن آخر.');
     const updated:PurchaseCatalogEntity={...entity,isActive:false,deletedAt:nowIso(),updatedAt:nowIso(),version:entity.version+1};
     await repoContext.transactionManager.runInTransaction((ctx)=>{
       saveInTransaction(ctx,table,updated,entity);
@@ -173,14 +177,17 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
   const months=await repoContext.purchaseRepo!.findAll('months') as PurchaseMonthEntity[];
   const weeks=await repoContext.purchaseRepo!.findAll('weeks') as PurchaseWeekEntity[];
   const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
-  const existingDay=days.find(day=>day.purchaseDate===date);
+  const ownedMonths=months.filter(row=>row.adminId===adminId);
+  const ownedWeeks=weeks.filter(row=>row.adminId===adminId);
+  const ownedDays=days.filter(row=>row.adminId===adminId);
+  const existingDay=ownedDays.find(day=>day.purchaseDate===date);
   if(existingDay) return existingDay;
 
   const parsed=parseDate(date);
   const year=parsed.getFullYear(), month=parsed.getMonth()+1;
   const range=monthRange(year,month);
   const monthId=stableCalendarId(`purchase-month:${adminId}:${year}-${pad(month)}`);
-  const existingMonth=months.find(row=>row.id===monthId) || {
+  const existingMonth=ownedMonths.find(row=>row.id===monthId) || {
     id:monthId,adminId,year,month,startDate:range.start,endDate:range.end,isClosed:false,
     createdAt:nowIso(),updatedAt:nowIso(),version:1,
   } as PurchaseMonthEntity;
@@ -196,12 +203,12 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
   let end=dateString(endDate);
   if(end>range.end) end=range.end;
   const weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}`);
-  let targetWeek=weeks.find(row=>!row.isClosed && row.monthId===monthId && date>=row.startDate && date<=row.endDate) || null;
-  const openWeeks=weeks.filter(row=>!row.isClosed && row.id!==targetWeek?.id);
+  let targetWeek=ownedWeeks.find(row=>!row.isClosed && row.monthId===monthId && date>=row.startDate && date<=row.endDate) || null;
+  const openWeeks=ownedWeeks.filter(row=>!row.isClosed && row.id!==targetWeek?.id);
   if(!targetWeek){
     let nextId=weekId;
     let suffix=2;
-    while(weeks.some(row=>row.id===nextId)) nextId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}:${suffix++}`);
+    while(ownedWeeks.some(row=>row.id===nextId)) nextId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}:${suffix++}`);
     targetWeek={
       id:nextId,adminId,monthId,startDate:start,endDate:end,isClosed:false,
       createdAt:nowIso(),updatedAt:nowIso(),version:1,
@@ -214,12 +221,12 @@ async function createCalendarDay(date:string,manualWeek=false):Promise<PurchaseD
     createdAt:timestamp,updatedAt:timestamp,version:1,
   };
   await repoContext.transactionManager.runInTransaction((ctx)=>{
-    if(!months.some(row=>row.id===monthId)) saveInTransaction(ctx,'months',existingMonth as PurchaseMonthEntity);
+    if(!ownedMonths.some(row=>row.id===monthId)) saveInTransaction(ctx,'months',existingMonth as PurchaseMonthEntity);
     for(const week of openWeeks){
       const closed={...week,isClosed:true,updatedAt:timestamp,version:week.version+1};
       saveInTransaction(ctx,'weeks',closed,week);
     }
-    if(!weeks.some(row=>row.id===targetWeek!.id)) saveInTransaction(ctx,'weeks',targetWeek as PurchaseWeekEntity);
+    if(!ownedWeeks.some(row=>row.id===targetWeek!.id)) saveInTransaction(ctx,'weeks',targetWeek as PurchaseWeekEntity);
     saveInTransaction(ctx,'days',day);
   });
   return day;
@@ -242,9 +249,10 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
     const month=months.find(row=>row.id===monthId && row.adminId===adminId);
     if(!month) throw new PurchaseBookOperationError('PURCHASE_MONTH_NOT_FOUND','الشهر غير موجود.');
     const timestamp=nowIso();
-    const openWeeks=weeks.filter(row=>!row.isClosed);
+    const ownedWeeks=weeks.filter(row=>row.adminId===adminId);
+    const openWeeks=ownedWeeks.filter(row=>!row.isClosed);
     const today=getLocalBusinessDateStr();
-    const lastWeek=weeks.filter(row=>row.monthId===monthId).sort((a,b)=>b.endDate.localeCompare(a.endDate))[0];
+    const lastWeek=ownedWeeks.filter(row=>row.monthId===monthId).sort((a,b)=>b.endDate.localeCompare(a.endDate))[0];
     const nextAfterLast=lastWeek?dateString(new Date(parseDate(lastWeek.endDate).getTime()+86400000)):null;
     // Respect the configured week-start day (Saturday by default). If this
     // month already has a week, continue after its end so a manual "add week"
@@ -258,20 +266,20 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
       ? (nextAfterLast && nextAfterLast>alignedCurrentStart ? nextAfterLast : alignedCurrentStart)
       : (nextAfterLast || month.startDate);
     if(start>month.endDate) throw new PurchaseBookOperationError('PURCHASE_MONTH_FULL','لا توجد مساحة لبدء أسبوع جديد داخل هذا الشهر.');
-    if(weeks.some(row=>row.monthId===monthId && start<=row.endDate && row.startDate<=start)) {
+    if(ownedWeeks.some(row=>row.monthId===monthId && start<=row.endDate && row.startDate<=start)) {
       throw new PurchaseBookOperationError('PURCHASE_WEEK_OVERLAP','يوجد أسبوع يغطي هذا التاريخ بالفعل.');
     }
     const endCandidate=parseDate(start);endCandidate.setDate(endCandidate.getDate()+6);
     const weekEnd=dateString(endCandidate)>month.endDate?month.endDate:dateString(endCandidate);
     let weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}`);
-    let suffix=2;while(weeks.some(row=>row.id===weekId)) weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}:${suffix++}`);
+    let suffix=2;while(ownedWeeks.some(row=>row.id===weekId)) weekId=stableCalendarId(`purchase-week:${adminId}:${monthId}:${start}:${suffix++}`);
     const week:PurchaseWeekEntity={
       id:weekId,adminId,monthId,startDate:start,endDate:weekEnd,isClosed:false,
       createdAt:timestamp,updatedAt:timestamp,version:1,
     };
     await repoContext.transactionManager.runInTransaction((ctx)=>{
       for(const old of openWeeks) saveInTransaction(ctx,'weeks',{...old,isClosed:true,updatedAt:timestamp,version:old.version+1},old);
-      const existing=weeks.find(row=>row.id===week.id);
+      const existing=ownedWeeks.find(row=>row.id===week.id);
       if(!existing) saveInTransaction(ctx,'weeks',week);
     });
     return week;
@@ -280,9 +288,10 @@ export async function createPurchaseWeek(monthId:string):Promise<PurchaseWeekEnt
 
 export async function getCurrentPurchaseDay():Promise<PurchaseDayEntity|null>{
   return runPurchaseOperation('التحقق من يوم المشتريات الحالي',async()=>{
+    const adminId=await currentPurchaseAdminId();
     const today=getLocalBusinessDateStr();
     const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
-    return days.find(day=>day.purchaseDate===today) || null;
+    return days.find(day=>day.adminId===adminId && day.purchaseDate===today) || null;
   });
 }
 
@@ -300,11 +309,11 @@ export async function addPurchaseOrder(input:{
     const items=await repoContext.purchaseRepo!.findAll('items') as PurchaseCatalogEntity[];
     const methods=await repoContext.purchaseRepo!.findAll('methods') as PurchaseCatalogEntity[];
     const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
-    if(!suppliers.some(row=>row.id===input.supplierId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_SUPPLIER_INVALID','الجهة غير موجودة أو مخفية.');
-    if(!items.some(row=>row.id===input.itemId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_ITEM_INVALID','العنصر غير موجود أو مخفي.');
-    if(input.paymentMethodId&&!methods.some(row=>row.id===input.paymentMethodId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_METHOD_INVALID','طريقة الدفع غير موجودة أو مخفية.');
+    if(!suppliers.some(row=>row.adminId===adminId&&row.id===input.supplierId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_SUPPLIER_INVALID','الجهة غير موجودة أو مخفية.');
+    if(!items.some(row=>row.adminId===adminId&&row.id===input.itemId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_ITEM_INVALID','العنصر غير موجود أو مخفي.');
+    if(input.paymentMethodId&&!methods.some(row=>row.adminId===adminId&&row.id===input.paymentMethodId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_METHOD_INVALID','طريقة الدفع غير موجودة أو مخفية.');
     const purchasedAt=nowIso();
-    const day=days.find(row=>row.purchaseDate===getLocalBusinessDateStr());
+    const day=days.find(row=>row.adminId===adminId&&row.purchaseDate===getLocalBusinessDateStr());
     if(!day) throw new PurchaseBookOperationError('PURCHASE_DAY_MISSING','لا يوجد يوم حالي. أنشئ اليوم ثم أعد إضافة الطلب.');
     if(day.isClosed) throw new PurchaseBookOperationError('PURCHASE_DAY_CLOSED','يوم المشتريات الحالي مغلق ولا يمكن إضافة طلب جديد.');
     const order:PurchaseOrderEntity={
@@ -321,7 +330,11 @@ export async function addPurchaseOrder(input:{
 
 export async function markPurchaseOrderPaid(order:PurchaseOrderEntity,paymentMethodId?:string):Promise<PurchaseOrderEntity>{
   return runPurchaseOperation('تحويل طلب إلى مدفوع',async()=>{
+    const adminId=await currentPurchaseAdminId();
+    if(order.adminId!==adminId) throw new PurchaseBookOperationError('PURCHASE_OWNER_MISMATCH','هذا الطلب تابع لحساب أدمن آخر.');
+    const methods=await repoContext.purchaseRepo!.findAll('methods') as PurchaseCatalogEntity[];
     const method=paymentMethodId || order.paymentMethodId;
+    if(!methods.some(row=>row.adminId===adminId&&row.id===method&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_METHOD_INVALID','طريقة الدفع غير موجودة أو مخفية.');
     if(!method) throw new PurchaseBookOperationError('PURCHASE_METHOD_REQUIRED','اختر طريقة الدفع قبل تحويل الطلب إلى مدفوع.');
     if(order.paymentStatus==='PAID') return order;
     const updated:PurchaseOrderEntity={...order,paymentMethodId:method,paymentStatus:'PAID',paidAt:nowIso(),updatedAt:nowIso(),version:order.version+1};
