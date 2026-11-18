@@ -101,7 +101,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
           created_at: String(payload.createdAt || item.createdAt || ''),
           status: item.status,
           last_error: item.lastError || null,
-          bin_attached: Boolean(String(payload.bin || '').trim()) && payload.deferBinVerification !== true,
+          bin_attached: Boolean(String(payload.bin || '').trim()) && payload.deferBinVerification !== true && item.status !== 'rejected',
         } satisfies OfflinePendingPayment;
       }));
       setOfflineRows(localRows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
@@ -289,17 +289,31 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
         await localDb.saveHistory(history);
       }
 
-      await globalSyncBridge.requestManualSync();
-      await globalSyncBridge.requestLatestDataReload();
+      let syncError: unknown = null;
+      try {
+        await globalSyncBridge.requestManualSync();
+      } catch (error) {
+        syncError = error;
+      }
+      let refreshFailed = false;
+      try {
+        await globalSyncBridge.requestLatestDataReload();
+      } catch (error) {
+        refreshFailed = true;
+        console.warn('Payment synced but balance refresh is waiting for the next pull', error);
+      }
 
       const afterSync = (await localDb.listOutbox()).find((item) => item.commandId === row.id);
       setBins((prev) => ({ ...prev, [row.id]: '' }));
       if (!afterSync || afterSync.status === 'accepted') {
-        setMessage(isAr ? 'تم اعتماد الدفعة ومزامنتها وتحديث الرصيد.' : 'Payment approved, synced and balance refreshed.');
+        setMessage(refreshFailed
+          ? (isAr ? 'تم اعتماد الدفعة ومزامنتها. تحديث الرصيد سيكتمل عند نجاح السحب التالي.' : 'Payment approved and synced. The balance will refresh on the next successful pull.')
+          : (isAr ? 'تم اعتماد الدفعة ومزامنتها وتحديث الرصيد.' : 'Payment approved, synced and balance refreshed.'));
       } else {
         setError(isAr
           ? 'تم التحقق من BIN، لكن المزامنة لم تكتمل بعد. بقيت الدفعة محفوظة ولن تضيع.'
           : 'BIN verified, but sync is not complete yet. The payment remains safely queued.');
+        if (syncError) console.warn('Offline payment sync is still pending', syncError);
       }
       await loadRows(true);
     } catch (e) {
@@ -344,9 +358,11 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
                 <p className="mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{row.customer_code || row.customer_id} · {formatDateTime(row.created_at)}</p>
                 {row.note && <p className="mt-2 text-xs text-gray-600 dark:text-[#b1d4bf]">{row.note}</p>}
                 <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                  {row.bin_attached
-                    ? (isAr ? 'تم إدخال BIN سابقاً — بانتظار اكتمال المزامنة' : 'BIN supplied — waiting for sync')
-                    : (isAr ? 'بانتظار إدخال BIN والاعتماد' : 'Awaiting BIN approval')}
+                  {row.status === 'rejected'
+                    ? (isAr ? 'تعذّر اعتماد المحاولة السابقة — أدخل BIN صحيحاً' : 'Previous approval failed — enter a valid BIN')
+                    : row.bin_attached
+                      ? (isAr ? 'تم إدخال BIN سابقاً — بانتظار اكتمال المزامنة' : 'BIN supplied — waiting for sync')
+                      : (isAr ? 'بانتظار إدخال BIN والاعتماد' : 'Awaiting BIN approval')}
                 </p>
               </div>
               <p className="shrink-0 text-base font-bold tabular-nums">{formatCurrency(row.amount_minor)}</p>
