@@ -29,3 +29,14 @@ describe('sync change-log secret redaction', () => {
     expect(sql).not.toContain('UPDATE public.financial_ledger');
   });
 });
+
+
+describe('local diagnostic credential redaction', () => {
+  it('redacts camelCase admin BIN and deferred approval markers', () => {
+    const diagnosticPath = path.resolve(process.cwd(), 'src/infrastructure/sync/syncDiagnosticExport.ts');
+    const source = fs.readFileSync(diagnosticPath, 'utf8');
+    expect(source).toContain('admin.?bin');
+    expect(source).toContain('deferBinVerification');
+    expect(source).toContain('offlinePendingApproval');
+  });
+});
