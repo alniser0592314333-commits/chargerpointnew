@@ -1578,7 +1578,10 @@ export class FinalUseCases {
       ...payment,
       resetGeneration,
       ...(bin ? { bin } : {}),
-      ...(options?.deferBinVerification ? { deferBinVerification: true } : {})
+      ...(options?.deferBinVerification ? {
+        deferBinVerification: true,
+        offlinePendingApproval: true,
+      } : {})
     });
 
     return { success: true, data: payment };
