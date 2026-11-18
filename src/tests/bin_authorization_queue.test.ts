@@ -9,6 +9,13 @@ describe('queued BIN authorization classification', () => {
     })).toBe(true);
   });
 
+  it('holds legacy payment commands without a BIN even before their first server rejection', () => {
+    expect(isBinRequiredOutboxCommand({
+      commandType: 'CREATE_PAYMENT',
+      payload: {},
+    })).toBe(true);
+  });
+
   it('recovers legacy payment commands rejected by the server for a missing BIN', () => {
     expect(isBinRequiredOutboxCommand({
       commandType: 'CREATE_PAYMENT',
