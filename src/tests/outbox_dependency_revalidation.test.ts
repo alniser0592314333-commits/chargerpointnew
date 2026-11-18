@@ -241,7 +241,7 @@ describe('Outbox Dependency Revalidation & Automated Unblocking (Phase 2)', () =
     await engine.queueCommand('cmd_2', 'ADD_ORDER_ITEM', 'order_items', 'item_1', { orderId: 'ord_1' }, 'dev_1', 'admin_1', undefined, {
       dependencyCommandId: 'cmd_1',
     });
-    await engine.queueCommand('cmd_3', 'CREATE_PAYMENT', 'payments', 'pay_1', { orderId: 'ord_1' }, 'dev_1', 'admin_1', undefined, {
+    await engine.queueCommand('cmd_3', 'CREATE_PAYMENT', 'payments', 'pay_1', { orderId: 'ord_1', bin: '1234' }, 'dev_1', 'admin_1', undefined, {
       dependencyCommandId: 'cmd_2',
     });
     await engine.queueCommand('cmd_4', 'PAYMENT_ALLOCATION', 'payment_allocations', 'alloc_1', { paymentId: 'pay_1' }, 'dev_1', 'admin_1', undefined, {
@@ -346,7 +346,7 @@ describe('Outbox Dependency Revalidation & Automated Unblocking (Phase 2)', () =
 
     // 3. Go offline again, queue more
     isOnline = false;
-    await engine.queueCommand('cmd_x3', 'CREATE_PAYMENT', 'payments', 'pay_x', {}, 'dev_1', 'admin_1', undefined, {
+    await engine.queueCommand('cmd_x3', 'CREATE_PAYMENT', 'payments', 'pay_x', { bin: '1234' }, 'dev_1', 'admin_1', undefined, {
       dependencyCommandId: 'cmd_x2',
     });
     await engine.synchronize();
