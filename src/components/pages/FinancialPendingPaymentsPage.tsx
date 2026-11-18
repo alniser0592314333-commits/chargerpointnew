@@ -222,7 +222,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
   const approveOfflinePayment = async (row: OfflinePendingPayment) => {
     const binKey = `offline:${row.commandId}`;
     const bin = (bins[binKey] || '').trim();
-    if (!/^\\d{4,}$/.test(bin)) {
+    if (!/^\d{4,}$/.test(bin)) {
       setError(isAr ? 'أدخل BIN صحيحاً (4 أرقام على الأقل) لاعتماد الدفعة.' : 'Enter a valid BIN (at least 4 digits) to approve this payment.');
       return;
     }
