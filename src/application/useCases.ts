@@ -1573,7 +1573,7 @@ export class FinalUseCases {
     await this.deps.commandRepo.record(commandId, 'CREATE_PAYMENT', {
       ...payment,
       resetGeneration,
-      ...(bin ? { bin } : {}),
+      ...(!options?.deferBinVerification && bin ? { bin } : {}),
       ...(options?.deferBinVerification ? { deferBinVerification: true } : {})
     });
 
