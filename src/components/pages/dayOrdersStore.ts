@@ -211,7 +211,7 @@ export const buildEffectiveOrderItemReadModel = (
   const items = new Map<string, OrderItemEntity>(Array.from(baseItems, (item) => [item.id, item] as const));
 
   const orderedOverlays = overlays
-    .filter((overlay) => overlay.status === 'PENDING')
+    .filter((overlay) => overlay.status === 'PENDING' || overlay.status === 'ACCEPTED')
     .slice()
     .sort((a, b) => {
       const seqA = Number(a.sequence ?? 0);
@@ -2682,7 +2682,7 @@ function createTransactionalRepoContext(
 
         const overlays = localDb.listOverlaysSync()
           .filter((overlay) =>
-            overlay.status === 'PENDING' &&
+            (overlay.status === 'PENDING' || overlay.status === 'ACCEPTED') &&
             overlay.entityType === 'order_items' &&
             overlay.entityId === id
           )
@@ -3106,7 +3106,7 @@ export const repoContext: RepositoryContext = {
       await ensureStoreHydrated();
       let effective = ordersMap.get(id) || null;
       const overlays = localDb.listOverlaysSync()
-        .filter((overlay) => overlay.status === 'PENDING' && overlay.entityType === 'orders' && overlay.entityId === id)
+        .filter((overlay) => (overlay.status === 'PENDING' || overlay.status === 'ACCEPTED') && overlay.entityType === 'orders' && overlay.entityId === id)
         .sort((a, b) => a.sequence !== b.sequence ? a.sequence - b.sequence : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       for (const overlay of overlays) {
         if (overlay.operation === 'DELETE') {
@@ -3207,7 +3207,7 @@ export const repoContext: RepositoryContext = {
 
       const overlays = localDb.listOverlaysSync()
         .filter((overlay) =>
-          overlay.status === 'PENDING' &&
+          (overlay.status === 'PENDING' || overlay.status === 'ACCEPTED') &&
           overlay.entityType === 'order_items' &&
           overlay.entityId === id
         )
@@ -6569,6 +6569,7 @@ export interface TopUpCustomerBalanceResult {
   success: boolean;
   newBalanceMinor: number;
   transactionId?: string;
+  pendingApproval?: boolean;
   error?: string;
 }
 
@@ -6680,6 +6681,7 @@ export const topUpCustomerBalance = async (
         success: true,
         transactionId: (existingPayload as any)?.transactionId || commandId,
         newBalanceMinor: custBalance,
+        pendingApproval: Boolean(existingPayload.deferBinVerification || existingPayload.offlinePendingApproval),
       };
     }
   }
@@ -6690,7 +6692,7 @@ export const topUpCustomerBalance = async (
   try {
     // recordPayment enforces BIN verification for online execution. Offline
     // payments remain local-only and carry an explicit deferred-authorization
-    // marker so SyncEngine blocks them until Sync Center receives a fresh BIN.
+    // marker so SyncEngine blocks them until Finance > Pending Payments receives a fresh BIN.
 
     // A customer payment is a real payment, not an administrative credit adjustment.
     // Keep the existing credit-adjustment command reserved for explicit credit operations.
@@ -6723,6 +6725,7 @@ export const topUpCustomerBalance = async (
       success: true,
       newBalanceMinor,
       transactionId: result.data?.id,
+      pendingApproval: offline,
     };
   } catch (err: unknown) {
     const msg = presentError(err);
