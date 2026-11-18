@@ -296,7 +296,7 @@ export async function getCurrentPurchaseDay():Promise<PurchaseDayEntity|null>{
 }
 
 export async function addPurchaseOrder(input:{
-  supplierId:string;itemId:string;paymentMethodId?:string;amount:number;currency:PurchaseCurrency;paymentStatus:'PAID'|'UNPAID';
+  supplierId:string;itemId?:string;itemName?:string;paymentMethodId?:string;amount:number;currency:PurchaseCurrency;paymentStatus:'PAID'|'UNPAID';
 }):Promise<PurchaseOrderEntity>{
   return runPurchaseOperation('إضافة طلب شراء',async()=>{
     if(!Number.isFinite(input.amount)||input.amount<=0) throw new PurchaseBookOperationError('PURCHASE_AMOUNT_INVALID','السعر يجب أن يكون رقماً أكبر من صفر.');
@@ -310,18 +310,30 @@ export async function addPurchaseOrder(input:{
     const methods=await repoContext.purchaseRepo!.findAll('methods') as PurchaseCatalogEntity[];
     const days=await repoContext.purchaseRepo!.findAll('days') as PurchaseDayEntity[];
     if(!suppliers.some(row=>row.adminId===adminId&&row.id===input.supplierId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_SUPPLIER_INVALID','الجهة غير موجودة أو مخفية.');
-    if(!items.some(row=>row.adminId===adminId&&row.id===input.itemId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_ITEM_INVALID','العنصر غير موجود أو مخفي.');
+    const oneTimeName=input.itemName?.trim();
+    if (Boolean(input.itemId) === Boolean(oneTimeName)) throw new PurchaseBookOperationError('PURCHASE_ITEM_REQUIRED','اختر صنفاً ثابتاً أو اكتب صنفاً/ملاحظة لمرة واحدة.');
+    if (oneTimeName && oneTimeName.length>120) throw new PurchaseBookOperationError('PURCHASE_ITEM_NAME_TOO_LONG','اسم الصنف أو الملاحظة طويل جداً.');
+    if(input.itemId&&!items.some(row=>row.adminId===adminId&&row.id===input.itemId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_ITEM_INVALID','العنصر غير موجود أو مخفي.');
     if(input.paymentMethodId&&!methods.some(row=>row.adminId===adminId&&row.id===input.paymentMethodId&&row.isActive)) throw new PurchaseBookOperationError('PURCHASE_METHOD_INVALID','طريقة الدفع غير موجودة أو مخفية.');
     const purchasedAt=nowIso();
     const day=days.find(row=>row.adminId===adminId&&row.purchaseDate===getLocalBusinessDateStr());
     if(!day) throw new PurchaseBookOperationError('PURCHASE_DAY_MISSING','لا يوجد يوم حالي. أنشئ اليوم ثم أعد إضافة الطلب.');
     if(day.isClosed) throw new PurchaseBookOperationError('PURCHASE_DAY_CLOSED','يوم المشتريات الحالي مغلق ولا يمكن إضافة طلب جديد.');
+    const oneTimeItem:PurchaseCatalogEntity|undefined=oneTimeName?{
+      id:uuid(),adminId,name:oneTimeName,isActive:false,deletedAt:purchasedAt,
+      createdAt:purchasedAt,updatedAt:purchasedAt,version:1,
+    }:undefined;
+    const resolvedItemId=input.itemId || oneTimeItem!.id;
     const order:PurchaseOrderEntity={
-      id:uuid(),adminId,purchaseDayId:day.id,supplierId:input.supplierId,itemId:input.itemId,paymentMethodId:input.paymentMethodId,
+      id:uuid(),adminId,purchaseDayId:day.id,supplierId:input.supplierId,itemId:resolvedItemId,paymentMethodId:input.paymentMethodId,
       amountMinor,currency:input.currency,paymentStatus:input.paymentStatus,purchasedAt,
       paidAt:input.paymentStatus==='PAID'?purchasedAt:undefined,createdAt:purchasedAt,updatedAt:purchasedAt,version:1,
     };
     await repoContext.transactionManager.runInTransaction((ctx)=>{
+      // Persist a one-off description as an inactive catalog row in the same
+      // local transaction. It remains linked to its historical order but is
+      // never offered as a reusable catalog choice.
+      if(oneTimeItem) saveInTransaction(ctx,'items',oneTimeItem);
       saveInTransaction(ctx,'orders',order);
     });
     return order;
