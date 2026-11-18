@@ -33,6 +33,7 @@ type OfflinePendingPayment = {
   created_at: string;
   last_error?: string;
   status: string;
+  authorizationInFlight: boolean;
 };
 
 const parseAmountMinor = (value: string): number | null => {
@@ -70,6 +71,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
         const payload = (item.payload || {}) as Record<string, unknown>;
         return payload.deferBinVerification === true ||
           isBinRequiredOutboxCommand(item) ||
+          (Boolean(payload.bin) && item.status !== 'rejected') ||
           (item.status === 'rejected' && /BIN|AUTHORIZATION/i.test(String(item.lastError || '')));
       });
       const customerIds = Array.from(new Set(pending.map((item) =>
@@ -94,6 +96,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
           created_at: String(item.createdAt || ''),
           last_error: item.lastError,
           status: item.status,
+          authorizationInFlight: Boolean(payload.bin) && item.status !== 'rejected',
         };
       }));
     } catch (e) {
@@ -310,7 +313,7 @@ export const FinancialPendingPaymentsPage: React.FC<{ onBack?: () => void }> = (
         <div className="divide-y divide-amber-200 dark:divide-amber-900/60">
           {offlineRows.map((row) => {
             const binKey = `offline:${row.commandId}`;
-            const awaitingNetwork = Boolean(((row as any).status === 'pending' || (row as any).status === 'conflict') && row.last_error);
+            const awaitingNetwork = row.authorizationInFlight;
             return <article key={row.commandId} className="space-y-3 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
