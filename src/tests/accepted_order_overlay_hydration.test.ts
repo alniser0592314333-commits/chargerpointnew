@@ -62,7 +62,7 @@ describe('accepted offline order overlays', () => {
     await localDb.set('orders', order.id, { ...order, version: 1 });
     localDb.removeAcceptedOverlaysForEntityWithTx(null, 'orders', order.id, 1);
     const hydrated = buildEffectiveOrderItemReadModel(
-      [await localDb.get('orders', order.id)],
+      [(await localDb.get('orders', order.id)) as any],
       [],
       localDb.listOverlaysSync(),
     );
