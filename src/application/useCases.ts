@@ -1546,24 +1546,28 @@ export class FinalUseCases {
 
     const mutationKey = `customer:${customerId}`;
 
-    if (this.deps.mutationSnapshotRepo) {
-      await this.deps.mutationSnapshotRepo.capture(commandId, [
-        { table: 'payments', id: commandId, existed: false },
-      ]);
-    }
+    // A deferred offline payment is only a local authorization request. It must
+    // not enter the payments or ledger read models, because that would change the
+    // customer's balance before a fresh BIN has been verified by the server.
+    // The durable outbox record is the pending-payment record until approval.
+    if (!options?.deferBinVerification) {
+      if (this.deps.mutationSnapshotRepo) {
+        await this.deps.mutationSnapshotRepo.capture(commandId, [
+          { table: 'payments', id: commandId, existed: false },
+        ]);
+      }
 
-    // 1. Overlay Payment
-    await this.createOverlay(commandId, mutationKey, 'payments', commandId, 'CREATE', payment as unknown as Record<string, unknown>);
+      await this.createOverlay(commandId, mutationKey, 'payments', commandId, 'CREATE', payment as unknown as Record<string, unknown>);
 
-    // 2. Overlay Ledger
-    const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
+      const ledgerEvent: Omit<FinancialLedgerEntity, 'id' | 'createdAt'> = {
         eventType: 'PAYMENT',
         amountMinor,
         customerId,
         actorAdminId: actor.id,
         referenceId: payment.id,
-    };
-    await this.createOverlay(`${commandId}:ledger`, mutationKey, 'ledger', commandId, 'CREATE', ledgerEvent as unknown as Record<string, unknown>);
+      };
+      await this.createOverlay(`${commandId}:ledger`, mutationKey, 'ledger', commandId, 'CREATE', ledgerEvent as unknown as Record<string, unknown>);
+    }
 
     // 3. Outbox Recording
     await this.deps.commandRepo.record(commandId, 'CREATE_PAYMENT', {
