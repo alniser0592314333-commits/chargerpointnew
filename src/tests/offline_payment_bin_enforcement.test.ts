@@ -62,7 +62,7 @@ describe('offline customer payment BIN enforcement', () => {
       'CASH',
       undefined,
       undefined,
-      '',
+      '1234',
       { deferBinVerification: true }
     );
 
