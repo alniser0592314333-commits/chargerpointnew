@@ -1101,12 +1101,18 @@ export class SyncEngine {
             item.serverProcessedAt = new Date().toISOString();
             pushedCount++;
 
-            // The server is now authoritative. Discard only the rollback snapshot and optimistic overlays;
-            // remote deltas remain responsible for authoritative entity hydration.
-            await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
-              localDb.deleteMutationSnapshotWithTx(tx, item.commandId);
-              localDb.removeOverlaysForCommandWithTx(tx, item.commandId);
-            });
+            // Keep optimistic overlays visible until the final authoritative pull
+            // has committed. Removing them here creates a gap: the command is accepted,
+            // but its canonical delta has not yet hydrated the base read model.
+            // The accepted outbox record is cleaned up after that pull succeeds.
+            const acceptedPayload = item.payload && typeof item.payload === 'object'
+              ? { ...(item.payload as Record<string, unknown>) }
+              : {};
+            if (Object.prototype.hasOwnProperty.call(acceptedPayload, 'bin')) {
+              delete acceptedPayload.bin;
+              delete acceptedPayload.deferBinVerification;
+              item.payload = acceptedPayload;
+            }
 
             history.state = 'SUCCESS';
             history.completedAt = new Date().toISOString();
@@ -1271,6 +1277,19 @@ export class SyncEngine {
           ) {
             throw new Error('FINAL_PULL_RESET_GENERATION_CHANGED: authoritative reconciliation required');
           }
+        }
+
+        // The authoritative pull has now committed every available delta page.
+        // Only now may accepted commands lose their optimistic overlays; if this pull
+        // fails, the overlays remain visible and the next sync cycle retries hydration.
+        const acceptedOutbox = (await localDb.listOutbox()).filter((entry) => entry.status === 'accepted');
+        if (acceptedOutbox.length > 0) {
+          await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
+            for (const entry of acceptedOutbox) {
+              localDb.deleteMutationSnapshotWithTx(tx, entry.commandId);
+              localDb.removeOverlaysForCommandWithTx(tx, entry.commandId);
+            }
+          });
         }
 
         // Even an empty final page is a successful server check. Persist READY
