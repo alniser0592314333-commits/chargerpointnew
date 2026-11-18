@@ -198,6 +198,20 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
 
     const parsedAmount = parseFloat(amountInput);
     const amountMinor = Math.round(parsedAmount * 100);
+    const offlineNow = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (isOfflineTopUp && !offlineNow) {
+      setIsOfflineTopUp(false);
+      setTopUpStep(1);
+      setTopUpError(locale === 'ar'
+        ? 'عاد الاتصال بالإنترنت. أدخل BIN للتحقق قبل تسجيل الدفعة.'
+        : 'Connection restored. Enter your BIN before recording the payment.');
+      setIsSubmittingTopUp(false);
+      return;
+    }
+    if (offlineNow) {
+      setIsOfflineTopUp(true);
+      setBinInput('');
+    }
 
     try {
       const res = await topUpCustomerBalance({
@@ -218,7 +232,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
       // the customer balance until a fresh BIN is entered from Pending Payments.
       await loadData();
       setIsSubmittingTopUp(false);
-      if (isOfflineTopUp) {
+      if (isOfflineTopUp || offlineNow) {
         setTopUpNotice(locale === 'ar'
           ? 'لا يوجد اتصال بالإنترنت. تم حفظ الدفعة كمعلّقة على هذا الجهاز، ولم يتغير رصيد الزبون. اعتمدها من المالية ← دفعات الزبائن باستخدام BIN عند عودة الإنترنت.'
           : 'You are offline. The payment was saved locally as pending and the customer balance was not changed. Approve it from Finance → Customer Payments with a BIN when you are online.');
@@ -253,7 +267,7 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
 
   const parsedAmount = parseFloat(amountInput) || 0;
   const topUpMinor = Math.round(parsedAmount * 100);
-  const resultingBalanceMinor = customer.currentBalanceMinor + topUpMinor;
+  const resultingBalanceMinor = isOfflineTopUp ? customer.currentBalanceMinor : customer.currentBalanceMinor + topUpMinor;
 
   const getPaymentStatusBadge = (status: 'PAID' | 'PARTIAL' | 'UNPAID') => {
     switch (status) {
@@ -846,6 +860,11 @@ export const FinancialCustomerDetailPage: React.FC<FinancialCustomerDetailPagePr
             {/* STEP 3: CONFIRMATION & RESULTING BALANCE */}
             {topUpStep === 3 && (
               <div className="p-4 sm:p-5 space-y-4">
+                {isOfflineTopUp && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+                  {locale === 'ar'
+                    ? 'هذه دفعة معلّقة فقط. الرصيد الحالي سيبقى كما هو حتى تعتمد الدفعة من صفحة دفعات الزبائن باستخدام BIN.'
+                    : 'This is a pending payment only. The current balance remains unchanged until you approve it from Customer Payments using a BIN.'}
+                </div>}
                 <div className="text-center space-y-1">
                   <h4 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">
                     {t('confirmTopUp')}
