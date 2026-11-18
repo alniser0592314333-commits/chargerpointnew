@@ -7,6 +7,7 @@ import { installSyncDiagnosticGlobalHandlers, recordSyncDiagnosticEvent } from '
 
 installSyncDiagnosticGlobalHandlers();
 import { localDb, OutboxRecord, SyncHistoryRecord } from '../localDb/localDb';
+import { isBinRequiredOutboxCommand } from './binAuthorization';
 import {
   OutboxScheduler,
   extractCommandDependencies,
@@ -501,13 +502,15 @@ export class SyncEngine {
     let count = 0;
     for (const item of outboxItems) {
       if (
-        item.status === 'syncing' ||
-        item.status === 'conflict' ||
-        item.status === 'blocked' ||
-        (item.status === 'rejected' && (
+        !isBinRequiredOutboxCommand(item) && (
+          item.status === 'syncing' ||
+          item.status === 'conflict' ||
+          item.status === 'blocked' ||
+          (item.status === 'rejected' && (
           isAuthOrNetworkError(item.lastError) ||
           isRejectedPurchaseCommandFromMissingDispatcher(item)
-        ))
+          ))
+        )
       ) {
         item.status = 'pending';
         await localDb.saveOutbox(item);
@@ -733,6 +736,16 @@ export class SyncEngine {
                 } else {
                   localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
                 }
+              }
+              if (change.entityType === 'orders' || change.entityType === 'order_items' || change.entityType === 'orderItems') {
+                const rawVersion = change.version ?? (change.payload as any)?.version;
+                const authoritativeVersion = rawVersion === undefined || rawVersion === null ? undefined : Number(rawVersion);
+                localDb.removeAcceptedOverlaysForEntityWithTx(
+                  tx,
+                  change.entityType,
+                  change.entityId,
+                  authoritativeVersion !== undefined && Number.isFinite(authoritativeVersion) ? authoritativeVersion : undefined,
+                );
               }
             } catch (deltaErr) {
               console.error(`Failed to apply delta change sequence ${change.sequenceId}:`, deltaErr);
@@ -1101,11 +1114,19 @@ export class SyncEngine {
             item.serverProcessedAt = new Date().toISOString();
             pushedCount++;
 
-            // The server is now authoritative. Discard only the rollback snapshot and optimistic overlays;
-            // remote deltas remain responsible for authoritative entity hydration.
+            // Keep newly-created orders and their items projected locally until
+            // their authoritative change-log rows are applied. The sync cycle
+            // pulls before it pushes, so removing these overlays here made
+            // successful offline orders disappear until a later sync cycle.
+            const keepOrderProjectionUntilDelta =
+              item.commandType === 'CREATE_ORDER' || item.commandType === 'ADD_ORDER_ITEM';
             await localDb.runTransaction(['kvStore', 'mutationSnapshots', 'optimisticOverlays'], 'readwrite', (tx) => {
               localDb.deleteMutationSnapshotWithTx(tx, item.commandId);
-              localDb.removeOverlaysForCommandWithTx(tx, item.commandId);
+              if (keepOrderProjectionUntilDelta) {
+                localDb.markOverlaysForCommandAcceptedWithTx(tx, item.commandId);
+              } else {
+                localDb.removeOverlaysForCommandWithTx(tx, item.commandId);
+              }
             });
 
             history.state = 'SUCCESS';
@@ -1235,7 +1256,7 @@ export class SyncEngine {
           if (!Number.isSafeInteger(maxSeq) || maxSeq <= finalCursor) {
             throw new Error('FINAL_PULL_INVALID_SEQUENCE: cursor did not advance');
           }
-          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+          await localDb.runTransaction(['kvStore', 'syncState', 'optimisticOverlays'], 'readwrite', async (tx) => {
             for (const change of sortedFinalChanges) {
               if (this.onDeltaApplied) {
                 await this.onDeltaApplied(change, tx);
