@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildEffectiveOrderItemReadModel } from '../components/pages/dayOrdersStore';
 import { localDb, OptimisticOverlayRecord } from '../infrastructure/localDb/localDb';
@@ -107,4 +109,12 @@ describe('accepted offline order overlays', () => {
     );
     expect(effective.orders.get('order-1')?.displayNumber).toBe(8);
   });
+  it('keeps accepted create overlays until the sync engine applies their matching server deltas', () => {
+    const syncEnginePath = path.resolve(process.cwd(), 'src/infrastructure/sync/syncEngine.ts');
+    const source = fs.readFileSync(syncEnginePath, 'utf8');
+    expect(source).toContain('markOverlaysForCommandAcceptedWithTx');
+    expect(source).toContain('removeAcceptedOverlaysForEntityWithTx');
+    expect(source).toContain("item.commandType === 'CREATE_ORDER' || item.commandType === 'ADD_ORDER_ITEM'");
+  });
+
 });
