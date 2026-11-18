@@ -57,6 +57,79 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     expect(outbox[0].status).toBe('accepted');
   });
 
+  it('keeps accepted optimistic rows visible until the final authoritative pull commits', async () => {
+    const commandId = 'cmd-overlay-final-pull';
+    await localDb.saveOverlay({
+      commandId,
+      mutationKey: 'order:overlay-final-pull',
+      entityType: 'orders',
+      entityId: 'order-overlay-final-pull',
+      operation: 'CREATE',
+      entityPayload: { id: 'order-overlay-final-pull', displayNumber: 1 },
+      sequence: await localDb.getNextSequence(),
+      createdAt: new Date().toISOString(),
+      status: 'PENDING',
+    });
+
+    let pushCompleted = false;
+    let pullCount = 0;
+    const checkingTransport = {
+      pushCommand: async () => {
+        pushCompleted = true;
+        return { success: true, rpcReached: true };
+      },
+      pullChanges: async () => {
+        pullCount++;
+        if (pushCompleted) {
+          expect(await localDb.getOverlay(commandId)).toBeTruthy();
+        }
+        return { changes: [], latestSequence: 0, serverResetGeneration: 1 };
+      },
+    };
+    const checkingEngine = new SyncEngine(checkingTransport);
+    await checkingEngine.queueCommand(commandId, 'CREATE_ORDER', 'orders', 'order-overlay-final-pull', {
+      id: 'order-overlay-final-pull',
+    }, 'device-1', 'admin-1');
+
+    await checkingEngine.synchronize();
+
+    expect(pullCount).toBeGreaterThanOrEqual(2);
+    expect(await localDb.getOverlay(commandId)).toBeNull();
+  });
+
+  it('retains accepted optimistic rows when the final authoritative pull fails', async () => {
+    const commandId = 'cmd-overlay-pull-failure';
+    await localDb.saveOverlay({
+      commandId,
+      mutationKey: 'order:overlay-pull-failure',
+      entityType: 'orders',
+      entityId: 'order-overlay-pull-failure',
+      operation: 'CREATE',
+      entityPayload: { id: 'order-overlay-pull-failure', displayNumber: 2 },
+      sequence: await localDb.getNextSequence(),
+      createdAt: new Date().toISOString(),
+      status: 'PENDING',
+    });
+
+    let pullCount = 0;
+    const failingFinalPullTransport = {
+      pushCommand: async () => ({ success: true, rpcReached: true }),
+      pullChanges: async () => {
+        pullCount++;
+        if (pullCount === 1) return { changes: [], latestSequence: 0, serverResetGeneration: 1 };
+        throw new Error('final authoritative pull unavailable');
+      },
+    };
+    const failingFinalPullEngine = new SyncEngine(failingFinalPullTransport);
+    await failingFinalPullEngine.queueCommand(commandId, 'CREATE_ORDER', 'orders', 'order-overlay-pull-failure', {
+      id: 'order-overlay-pull-failure',
+    }, 'device-1', 'admin-1');
+
+    await failingFinalPullEngine.synchronize();
+
+    expect((await localDb.getOverlay(commandId))?.entityId).toBe('order-overlay-pull-failure');
+  });
+
   it('4 & 5. Idempotency and payload conflict handling', async () => {
     await engine.queueCommand('cmd_3', 'PAYMENT', 'payment', 'pay_1', { amount: 500 }, 'dev_1', 'admin_1');
     await engine.synchronize();
