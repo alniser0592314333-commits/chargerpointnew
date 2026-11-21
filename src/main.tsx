@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
-import { isCustomerPortalPath } from './services/publicPortalOrigin';
+import { getPortalHostRedirect, isCustomerPortalPath } from './services/publicPortalOrigin';
 
 const root = createRoot(document.getElementById('root')!);
 const pathnameAtEntry = window.location.pathname;
@@ -9,34 +9,36 @@ const hostname = window.location.hostname.toLowerCase();
 const isCustomerHost = hostname === 'www.monther.work' || hostname === 'monther.work';
 const isAdminHost = hostname === 'admin.monther.work';
 const isApiPath = pathnameAtEntry === '/api' || pathnameAtEntry.startsWith('/api/');
-const hostRedirect = !isApiPath && isCustomerHost && !isCustomerPortalPath(pathnameAtEntry)
-  ? 'https://www.monther.work/public/about'
-  : !isApiPath && isAdminHost && isCustomerPortalPath(pathnameAtEntry)
-    ? 'https://www.monther.work' + pathnameAtEntry + window.location.search + window.location.hash
-    : null;
+const hostRedirect = isApiPath ? null : getPortalHostRedirect({
+  hostname,
+  pathname: pathnameAtEntry,
+  search: window.location.search,
+  hash: window.location.hash,
+});
 
 if (isAdminHost && pathnameAtEntry === '/') {
   // Force a fresh request to the admin entry route instead of relying on
   // history-only navigation at the shared root, which can preserve a stale PWA shell.
-  window.location.replace('/app');
+  window.location.replace('/app' + window.location.search + window.location.hash);
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
 } else if (isCustomerHost && pathnameAtEntry === '/') {
-  window.location.replace('/public/about');
+  window.location.replace('/public/about' + window.location.search + window.location.hash);
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
 } else if (isApiPath) {
   // Fail closed if a hosting or service-worker misconfiguration ever serves
   // index.html for an API URL: API paths must never mount either application.
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
 } else if (hostRedirect) {
-  // Do not mount the admin application even for a single frame on the customer host.
+  // Never mount the wrong app: legacy admin URLs move to the admin origin,
+  // and public capability URLs move to the customer origin.
   window.location.replace(hostRedirect);
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
 } else {
 const appVariant = import.meta.env.VITE_APP_VARIANT;
 let pathname = window.location.pathname;
 
-// On the shared production domains, the root is selected by hostname.
-// The admin PWA starts at /app; customer web starts at /public/about.
+// Production roots are selected by hostname. The admin PWA starts at /app;
+// the customer web portal starts at /public/about.
 if (pathname === '/') {
   const startPath = appVariant === 'admin' || isAdminHost ? '/app' : '/public/about';
   window.history.replaceState({ path: startPath }, '', startPath + window.location.search + window.location.hash);
@@ -81,7 +83,7 @@ if (appVariant === 'customer') {
       initializeNativePushNotificationListeners('customer', document.documentElement.lang))
     .catch((error) => console.warn('Customer push initialization failed; portal remains available.', error));
 } else if (isPublicPortalRoute) {
-  // Public customer routes are a first-class installable PWA on the shared origin.
+  // Public customer routes are a first-class installable PWA on the customer origin.
   prepareCustomerIdentity(true);
   void import('./services/pwaInstallService').then(({ initializePWAInstallCapture }) => {
     initializePWAInstallCapture();
@@ -90,8 +92,8 @@ if (appVariant === 'customer') {
     root.render(<StrictMode><PublicPortalApp /></StrictMode>);
   }).catch((error) => console.error('Public customer portal failed to load.', error));
 } else {
-  // The admin PWA starts at /app and shares the same origin without redirecting
-  // customer routes to a separate hostname.
+  // The admin PWA is served from admin.monther.work; customer links never
+  // mount the administrator bundle.
   void import('./services/pwaInstallService').then(({ initializePWAInstallCapture }) => {
     initializePWAInstallCapture();
   });

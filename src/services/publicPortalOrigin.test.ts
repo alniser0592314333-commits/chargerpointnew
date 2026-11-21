@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getPublicPortalOrigin, isCustomerPortalPath } from './publicPortalOrigin';
+import {
+  getPortalHostRedirect,
+  getPublicPortalOrigin,
+  isCustomerPortalPath,
+} from './publicPortalOrigin';
 
 describe('getPublicPortalOrigin', () => {
   it('routes customer QR links from the admin origin to the customer portal', () => {
@@ -48,5 +52,52 @@ describe('isCustomerPortalPath', () => {
     for (const path of ['/', '/app', '/app/settings', '/login', '/reset-password', '/customers']) {
       expect(isCustomerPortalPath(path), path).toBe(false);
     }
+  });
+});
+
+describe('getPortalHostRedirect', () => {
+  const www = 'www.monther.work';
+  const admin = 'admin.monther.work';
+
+  it.each(['/app', '/app/settings', '/login', '/reset-password', '/customers'])(
+    'moves legacy admin route %s from www to the admin origin',
+    (pathname) => {
+      expect(getPortalHostRedirect({
+        hostname: www,
+        pathname,
+        search: '?from=shortcut',
+        hash: '#section',
+      })).toBe(`https://${admin}${pathname}?from=shortcut#section`);
+    },
+  );
+
+  it('keeps every recognized public customer route on www', () => {
+    for (const pathname of ['/public/about', '/download', '/public/services', '/c/token', '/o/token', '/pay/token']) {
+      expect(getPortalHostRedirect({ hostname: www, pathname, search: '', hash: '' })).toBeNull();
+    }
+  });
+
+  it('moves accidental public routes from the admin origin to www', () => {
+    expect(getPortalHostRedirect({
+      hostname: admin,
+      pathname: '/o/order-token',
+      search: '?source=qr',
+      hash: '',
+    })).toBe('https://www.monther.work/o/order-token?source=qr');
+  });
+
+  it('does not redirect the root or API endpoints', () => {
+    for (const pathname of ['/', '/api', '/api/download/admin']) {
+      expect(getPortalHostRedirect({ hostname: www, pathname, search: '', hash: '' })).toBeNull();
+    }
+  });
+
+  it('does not rewrite preview or unrelated hosts', () => {
+    expect(getPortalHostRedirect({
+      hostname: 'chargerpointnew-preview.vercel.app',
+      pathname: '/app',
+      search: '',
+      hash: '',
+    })).toBeNull();
   });
 });
