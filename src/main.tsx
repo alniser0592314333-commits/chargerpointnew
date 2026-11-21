@@ -19,10 +19,10 @@ const hostRedirect = isApiPath ? null : getPortalHostRedirect({
 if (isAdminHost && pathnameAtEntry === '/') {
   // Force a fresh request to the admin entry route instead of relying on
   // history-only navigation at the shared root, which can preserve a stale PWA shell.
-  window.location.replace('/app');
+  window.location.replace('/app' + window.location.search + window.location.hash);
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
 } else if (isCustomerHost && pathnameAtEntry === '/') {
-  window.location.replace('/public/about');
+  window.location.replace('/public/about' + window.location.search + window.location.hash);
   root.render(<main role="status" style={{ minHeight: '100vh' }} />);
 } else if (isApiPath) {
   // Fail closed if a hosting or service-worker misconfiguration ever serves
