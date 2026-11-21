@@ -1,4 +1,5 @@
 const CANONICAL_CUSTOMER_ORIGIN = 'https://www.monther.work';
+const CANONICAL_ADMIN_ORIGIN = 'https://admin.monther.work';
 const PRODUCTION_HOST_ALIASES = new Set([
   'www.monther.work',
   'monther.work',
@@ -7,6 +8,7 @@ const PRODUCTION_HOST_ALIASES = new Set([
 ]);
 
 type PublicOriginLocation = Pick<Location, 'origin' | 'hostname'>;
+type PortalRouteLocation = Pick<Location, 'hostname' | 'pathname' | 'search' | 'hash'>;
 
 /**
  * Customer-facing links must always open the public customer portal, never the
@@ -39,4 +41,29 @@ export function isCustomerPortalPath(pathname: string): boolean {
     pathname.startsWith('/public/order/') ||
     pathname.startsWith('/public/qr/customer/') ||
     pathname.startsWith('/public/qr/order/');
+}
+
+/**
+ * Preserve legacy admin PWA/bookmark URLs on the customer hostname by moving
+ * them to the canonical admin origin. Public customer routes stay on www.
+ * The root path is intentionally handled by the entry-point defaults instead.
+ */
+export function getPortalHostRedirect(locationLike?: PortalRouteLocation): string | null {
+  const current = locationLike ?? (typeof window !== 'undefined' ? window.location : undefined);
+  if (!current) return null;
+
+  const hostname = current.hostname.toLowerCase();
+  const { pathname, search, hash } = current;
+  if (pathname === '/' || pathname === '/api' || pathname.startsWith('/api/')) return null;
+
+  if (hostname === 'www.monther.work' || hostname === 'monther.work') {
+    if (isCustomerPortalPath(pathname)) return null;
+    return CANONICAL_ADMIN_ORIGIN + pathname + search + hash;
+  }
+
+  if (hostname === 'admin.monther.work' && isCustomerPortalPath(pathname)) {
+    return CANONICAL_CUSTOMER_ORIGIN + pathname + search + hash;
+  }
+
+  return null;
 }
