@@ -17,19 +17,23 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <script>
-      // One origin serves both installable apps. Route identity selects the
-      // manifest; no hostname-based redirects are allowed.
+      // Select the install identity by canonical host. An old admin shortcut
+      // opened on www is handed off to admin.monther.work by main.tsx and must
+      // not accidentally install a second customer-origin app as "admin".
       (function() {
+        var host = window.location.hostname.toLowerCase();
         var path = window.location.pathname;
+        var isCustomerHost = host === 'www.monther.work' || host === 'monther.work';
+        var isAdminHost = host === 'admin.monther.work';
         var isCustomerRoute = path === '/public/about' || path === '/download' || path === '/public/services' ||
           path.indexOf('/public/services/') === 0 || path.indexOf('/c/') === 0 ||
           path.indexOf('/o/') === 0 || path.indexOf('/pay/') === 0 ||
           path.indexOf('/public/order/') === 0 || path.indexOf('/public/qr/customer/') === 0 ||
           path.indexOf('/public/qr/order/') === 0;
-        var isAdminRoute = path === '/app' || path.indexOf('/app/') === 0 ||
-          path === '/login' || path === '/reset-password';
-        // Do not redirect "/" before the app variant is known. main.tsx
-        // routes admin builds to /app and customer builds to /public/about.
+        var isAdminRoute = isAdminHost || (!isCustomerHost && (
+          path === '/app' || path.indexOf('/app/') === 0 ||
+          path === '/login' || path === '/reset-password'
+        ));
         var manifestLink = document.createElement('link');
         manifestLink.rel = 'manifest';
         manifestLink.href = isAdminRoute && !isCustomerRoute ? '/manifest-admin.webmanifest' : '/manifest.webmanifest';
