@@ -22,7 +22,14 @@ on:
       - 'src/components/pages/first-visit-welcome.css'
       - 'src/services/nativePushNotifications.ts'
       - 'src/services/auth/accountBiometric.ts'
+      - 'src/services/auth/authService.ts'
+      - 'src/services/auth/accountSessionService.ts'
+      - 'src/services/supabase/client.ts'
+      - 'src/components/pages/LoginPage.tsx'
       - 'src/components/pages/SettingsPage.tsx'
+      - 'src/components/settings/AccountSessionsManager.tsx'
+      - 'src/tests/admin_session_lifecycle_regression.test.ts'
+      - 'supabase/migrations/*admin_session_idle_expiry_policy.sql'
       - 'src/components/pages/PublicCustomerPortalPage.tsx'
       - 'src/components/pages/CustomerAccountPage.tsx'
       - 'src/components/pages/CustomerPortalNavigation.tsx'
@@ -76,8 +83,11 @@ jobs:
       - name: Typecheck application and native notification integration
         run: npm run lint
 
-      - name: Test native notification registration and customer portal regressions
-        run: npx vitest run src/tests/native_push_notifications.test.ts src/tests/customer_portal_polish.test.ts src/tests/local_payment_helper_code.test.ts
+      - name: Test native notification, auth lifecycle and customer portal regressions
+        env:
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
+        run: npx vitest run src/tests/native_push_notifications.test.ts src/tests/customer_portal_polish.test.ts src/tests/local_payment_helper_code.test.ts src/tests/admin_session_lifecycle_regression.test.ts
 
       - name: Typecheck native push Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/native-push/index.ts
@@ -99,6 +109,11 @@ jobs:
           parse_sql(migration)
           biometric_migration = Path("supabase/migrations/20261022100000_server_verified_biometric_credentials.sql").read_text()
           parse_sql(biometric_migration)
+          session_migration = Path("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql").read_text()
+          parse_sql(session_migration)
+          for required in ("interval '30 days'", "interval '7 days'", "SESSION_IDLE_EXPIRED", "reactivate_my_account_session", "session_expires_at <= now()"):
+              if required not in session_migration:
+                  raise SystemExit(f"Admin session idle-expiry migration is missing: {required}")
           for table in ("account_biometric_credentials", "account_biometric_challenges"):
               if f"REVOKE ALL ON TABLE public.{table} FROM PUBLIC, anon, authenticated" not in biometric_migration:
                   raise SystemExit(f"Biometric table {table} is missing direct-access revocation")
