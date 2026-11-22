@@ -298,6 +298,10 @@ describe('Server-Authoritative BIN Attempt Tracking & Fail-Closed Security (Test
 
   it('TEST 7: Valid BIN before any failures -> login continues normally and returns UserSession', async () => {
     vi.spyOn(accountSessionService, 'reactivateMyAccountSession').mockResolvedValue(undefined);
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: { success: true },
+      error: null,
+    } as any);
     const adminDb: TestAdminRecord = {
       id: 'admin_1',
       authUserId: 'user_1',
