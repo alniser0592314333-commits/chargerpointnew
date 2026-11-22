@@ -43,6 +43,7 @@ import {
 import { SyncEngine, syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTransport';
 import { BOOTSTRAP_COLLECTIONS, fetchAuthoritativeBootstrapSnapshot } from '../../infrastructure/sync/bootstrapSnapshot';
+import { clearBootstrapStagingSession } from '../../infrastructure/sync/bootstrapStagingStore';
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
@@ -2072,6 +2073,15 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     });
     if (updatedAny) {
       await localDb.setInitialHydrationCompleted(true);
+    }
+    try {
+      if (snapshot.bootstrap_session_id) {
+        await clearBootstrapStagingSession(String(snapshot.bootstrap_session_id));
+      }
+    } catch (cleanupError) {
+      // The operational snapshot is already committed and READY. A staging
+      // cleanup failure is a storage leak only; it must not invalidate data.
+      console.warn('Bootstrap staging cleanup deferred:', cleanupError);
     }
     publishStoreBootstrapProgress({
       phase: 'READY',
