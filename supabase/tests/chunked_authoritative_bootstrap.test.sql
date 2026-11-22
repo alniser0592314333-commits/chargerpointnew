@@ -12,6 +12,7 @@ DECLARE
 BEGIN
   v_manifest := public.begin_sync_bootstrap();
   IF (v_manifest->>'schema_version')::integer <> 2
+     OR v_manifest->>'admin_id' <> '00000000-0000-4000-8000-000000000001'
      OR (v_manifest->>'server_reset_generation')::bigint <> 17
      OR (v_manifest->>'max_change_sequence')::bigint <> 23
      OR (v_manifest->>'page_size')::integer <> 500
