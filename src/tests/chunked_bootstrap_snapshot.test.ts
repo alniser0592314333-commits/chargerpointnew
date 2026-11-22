@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { clearActiveBootstrapStagingSession } from '../infrastructure/sync/bootstrapStagingStore';
 import * as supabaseClient from '../services/supabase/client';
 import {
   BOOTSTRAP_COLLECTIONS,
@@ -7,7 +8,8 @@ import {
 } from '../infrastructure/sync/bootstrapSnapshot';
 
 describe('Chunked authoritative bootstrap protocol', () => {
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(async () => { await clearActiveBootstrapStagingSession(); });
+  afterEach(async () => { vi.restoreAllMocks(); await clearActiveBootstrapStagingSession(); });
 
   it('pins one manifest and fetches every allow-listed collection using bounded pages', async () => {
     const calls: Array<{ name: string; args: any }> = [];
