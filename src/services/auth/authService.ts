@@ -767,7 +767,7 @@ class DefaultAuthService implements AuthService {
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.access_token || !data?.refresh_token || !data?.user?.id) {
-      await vault.deleteAdminQuickLoginToken(cleanIdentifier).catch(() => undefined);
+      await vault.removeSavedAdminQuickLoginAccount(cleanIdentifier).catch(() => undefined);
       throw new Error("SAVED_LOGIN_EXPIRED");
     }
     const refreshed: SupabaseAuthSession = {
