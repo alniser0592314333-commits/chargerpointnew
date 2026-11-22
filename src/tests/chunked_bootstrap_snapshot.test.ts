@@ -103,6 +103,51 @@ describe('Chunked authoritative bootstrap protocol', () => {
     expect(offlineRpc).not.toHaveBeenCalled();
   });
 
+  it('never reuses a completed staging session belonging to another admin', async () => {
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (name: string, args: any) => {
+      if (name === 'begin_sync_bootstrap') {
+        return {
+          data: {
+            schema_version: 2,
+            admin_id: 'admin-A',
+            captured_at: '2026-11-22T00:00:00.000Z',
+            server_reset_generation: 12,
+            max_change_sequence: 1300,
+            page_size: BOOTSTRAP_PAGE_SIZE,
+            collections: [...BOOTSTRAP_COLLECTIONS],
+          },
+          error: null,
+        } as any;
+      }
+      return { data: { entity_type: args.p_entity_type, rows: [], next_cursor: null, has_more: false }, error: null } as any;
+    });
+    const adminASnapshot = await fetchAuthoritativeBootstrapSnapshot(undefined, 'admin-A');
+
+    vi.restoreAllMocks();
+    const adminBRpc = vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (name: string, args: any) => {
+      if (name === 'begin_sync_bootstrap') {
+        return {
+          data: {
+            schema_version: 2,
+            admin_id: 'admin-B',
+            captured_at: '2026-11-22T00:00:01.000Z',
+            server_reset_generation: 12,
+            max_change_sequence: 1400,
+            page_size: BOOTSTRAP_PAGE_SIZE,
+            collections: [...BOOTSTRAP_COLLECTIONS],
+          },
+          error: null,
+        } as any;
+      }
+      return { data: { entity_type: args.p_entity_type, rows: [], next_cursor: null, has_more: false }, error: null } as any;
+    });
+    const adminBSnapshot = await fetchAuthoritativeBootstrapSnapshot(undefined, 'admin-B');
+
+    expect(adminBRpc).toHaveBeenCalledWith('begin_sync_bootstrap', {});
+    expect(adminBSnapshot.bootstrap_session_id).not.toBe(adminASnapshot.bootstrap_session_id);
+    expect(adminBSnapshot.admin_id).toBeUndefined();
+  });
+
   it('resumes from the last durably committed page and retains the original high-water mark', async () => {
     let attempt = 1;
     let firstPageCalls = 0;
