@@ -96,7 +96,7 @@ jobs:
           # Test runs must never use the production Supabase project.
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run src/tests/sync.test.ts src/tests/delta_pull_batch_size.test.ts src/tests/canonical_architecture_foundation.test.ts src/tests/syncBridge.test.ts src/tests/central_sync_bridge_enforcement.test.ts src/tests/order_item_concurrent_conflict.test.ts src/tests/outbox_dependency_revalidation.test.ts src/tests/phase6_13_remote_sync_hydration.test.ts src/tests/phase_sync_ux_and_background_trigger.test.ts src/tests/command_identity_renovation.test.ts src/tests/fifo_payment_status_allocation.test.ts src/tests/update_device_type_repair.test.ts src/tests/cursor_atomicity.test.ts src/tests/clean_bootstrap_reconciliation.test.ts src/tests/execute_sync_command_wrapper_forensic.test.ts
+        run: npx vitest run src/tests/chunked_bootstrap_snapshot.test.ts src/tests/bootstrap_partial_delta_replay.test.ts src/tests/sync.test.ts src/tests/delta_pull_batch_size.test.ts src/tests/canonical_architecture_foundation.test.ts src/tests/syncBridge.test.ts src/tests/central_sync_bridge_enforcement.test.ts src/tests/order_item_concurrent_conflict.test.ts src/tests/outbox_dependency_revalidation.test.ts src/tests/phase6_13_remote_sync_hydration.test.ts src/tests/phase_sync_ux_and_background_trigger.test.ts src/tests/command_identity_renovation.test.ts src/tests/fifo_payment_status_allocation.test.ts src/tests/update_device_type_repair.test.ts src/tests/cursor_atomicity.test.ts src/tests/clean_bootstrap_reconciliation.test.ts src/tests/execute_sync_command_wrapper_forensic.test.ts
       - name: Run Purchase Book per-admin isolation contracts
         env:
           VITE_SUPABASE_URL: ''
@@ -638,6 +638,104 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d authoritative_snapshot_test -v ON_ERROR_STOP=1 -f supabase/tests/authoritative_snapshot_timeout_runtime.test.sql
+      - name: Create isolated database for chunked authoritative bootstrap
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres chunked_bootstrap_test
+      - name: Prepare isolated chunked bootstrap schema and tenant fixtures
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d chunked_bootstrap_test -v ON_ERROR_STOP=1 <<'SQL'
+          DO $roles$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role; END IF;
+          END
+          $roles$;
+          CREATE SCHEMA auth;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $uid$
+            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+          $uid$;
+          CREATE TABLE public.admins (id uuid PRIMARY KEY, auth_user_id uuid NOT NULL, is_active boolean NOT NULL);
+          CREATE TABLE public.system_settings (
+            key text PRIMARY KEY, value_type text, value_string text, value_number bigint,
+            value_boolean boolean, value_json jsonb, updated_at timestamptz, updated_by uuid
+          );
+          CREATE TABLE public.change_log (
+            sequence_id bigserial PRIMARY KEY, entity_type text NOT NULL, entity_id uuid NOT NULL,
+            action text NOT NULL, payload jsonb NOT NULL, version integer NOT NULL, changed_at timestamptz NOT NULL
+          );
+          CREATE FUNCTION public.record_canonical_change(text,uuid,text,jsonb,integer)
+          RETURNS bigint LANGUAGE plpgsql AS $record_text$
+          DECLARE v_seq bigint;
+          BEGIN
+            INSERT INTO public.change_log(entity_type,entity_id,action,payload,version,changed_at)
+            VALUES($1,$2,$3,COALESCE($4,'{}'::jsonb),COALESCE($5,1),NOW()) RETURNING sequence_id INTO v_seq;
+            RETURN v_seq;
+          END
+          $record_text$;
+          CREATE FUNCTION public.record_canonical_change(character varying,uuid,character varying,jsonb,integer DEFAULT 1)
+          RETURNS bigint LANGUAGE plpgsql AS $record_varchar$
+          DECLARE v_seq bigint;
+          BEGIN
+            INSERT INTO public.change_log(entity_type,entity_id,action,payload,version,changed_at)
+            VALUES($1,$2,$3,COALESCE($4,'{}'::jsonb),COALESCE($5,1),NOW()) RETURNING sequence_id INTO v_seq;
+            RETURN v_seq;
+          END
+          $record_varchar$;
+          CREATE FUNCTION public._cp_assert_active_admin_permission(text DEFAULT NULL)
+          RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER AS $guard$
+          DECLARE v_admin_id uuid;
+          BEGIN
+            SELECT id INTO v_admin_id FROM public.admins
+            WHERE auth_user_id=auth.uid() AND is_active IS TRUE LIMIT 1;
+            IF v_admin_id IS NULL THEN RAISE EXCEPTION 'Active admin required' USING ERRCODE='42501'; END IF;
+            RETURN v_admin_id;
+          END
+          $guard$;
+          CREATE TABLE public.business_days (id uuid PRIMARY KEY);
+          CREATE TABLE public.customers (id uuid PRIMARY KEY, name text);
+          CREATE TABLE public.device_types (id uuid PRIMARY KEY);
+          CREATE TABLE public.orders (id uuid PRIMARY KEY);
+          CREATE TABLE public.order_items (id uuid PRIMARY KEY);
+          CREATE TABLE public.financial_ledger (id uuid PRIMARY KEY);
+          CREATE TABLE public.payments (id uuid PRIMARY KEY);
+          CREATE TABLE public.payment_allocations (id uuid PRIMARY KEY);
+          CREATE TABLE public.order_number_reservations (id uuid PRIMARY KEY);
+          CREATE TABLE public.qr_tokens (id uuid PRIMARY KEY);
+          CREATE TABLE public.goals (id uuid PRIMARY KEY);
+          CREATE TABLE public.goal_requests (id uuid PRIMARY KEY);
+          CREATE TABLE public.purchase_suppliers (id uuid PRIMARY KEY, admin_id uuid NOT NULL);
+          CREATE TABLE public.purchase_items (id uuid PRIMARY KEY, admin_id uuid NOT NULL);
+          CREATE TABLE public.purchase_payment_methods (id uuid PRIMARY KEY, admin_id uuid NOT NULL);
+          CREATE TABLE public.purchase_months (id uuid PRIMARY KEY, admin_id uuid NOT NULL);
+          CREATE TABLE public.purchase_weeks (id uuid PRIMARY KEY, admin_id uuid NOT NULL);
+          CREATE TABLE public.purchase_days (id uuid PRIMARY KEY, admin_id uuid NOT NULL);
+          CREATE TABLE public.purchase_orders (id uuid PRIMARY KEY, admin_id uuid NOT NULL);
+          INSERT INTO public.admins VALUES
+            ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001',true),
+            ('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000002',true);
+          INSERT INTO public.system_settings(key,value_number) VALUES ('server_reset_generation',17);
+          INSERT INTO public.change_log(sequence_id,entity_type,entity_id,action,payload,version,changed_at)
+          VALUES (23,'fixture','00000000-0000-4000-8000-000000000099','INSERT','{}'::jsonb,1,NOW());
+          SELECT setval(pg_get_serial_sequence('public.change_log','sequence_id'),23,true);
+          INSERT INTO public.customers(id,name)
+          SELECT ('00000000-0000-4000-8000-' || lpad(g::text,12,'0'))::uuid, 'Customer ' || g
+          FROM generate_series(1,501) g;
+          INSERT INTO public.purchase_orders VALUES
+            ('10000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001'),
+            ('10000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000002');
+          SQL
+      - name: Apply chunked authoritative bootstrap migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d chunked_bootstrap_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261122110000_chunked_authoritative_bootstrap_v2.sql
+      - name: Verify chunking, checkpoint pinning, tenant isolation, and RPC grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d chunked_bootstrap_test -v ON_ERROR_STOP=1 -f supabase/tests/chunked_authoritative_bootstrap.test.sql
       - name: Create isolated database for UUID delivery migration compatibility
         env:
           PGPASSWORD: postgres

@@ -42,13 +42,15 @@ import {
 } from '../../services/supabase/client';
 import { SyncEngine, syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTransport';
+import { BOOTSTRAP_COLLECTIONS, fetchAuthoritativeBootstrapSnapshot } from '../../infrastructure/sync/bootstrapSnapshot';
+import { clearActiveBootstrapStagingSession, clearBootstrapStagingSession } from '../../infrastructure/sync/bootstrapStagingStore';
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
 import { authService } from '../../services/auth/authService';
 import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrder } from '../../domain/financialPresentation';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
-import { setActiveQrDesign } from '../qr/defaultDesigns';
+import { resetActiveQrDesign, setActiveQrDesign } from '../qr/defaultDesigns';
 import { normalizeCustomerSearchText } from '../../utils/customerSearch';
 import { mergeCustomerRemoteDelta } from '../../utils/customerRemoteMerge';
 
@@ -193,6 +195,8 @@ const allocationsList: PaymentAllocationEntity[] = [];
 const reservationsMap = new Map<string, OrderNumberReservationEntity>();
 const goalsMap = new Map<string, GoalEntity>();
 const goalRequestsMap = new Map<string, GoalRequestEntity>();
+const BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE = 500;
+
 const purchaseTableKeys: Record<PurchaseBookTable, string> = { suppliers: 'purchaseSuppliers', items: 'purchaseItems', methods: 'purchasePaymentMethods', months: 'purchaseMonths', weeks: 'purchaseWeeks', days: 'purchaseDays', orders: 'purchaseOrders' };
 const purchaseMaps: Record<PurchaseBookTable, Map<string, PurchaseBookEntity>> = { suppliers: new Map(), items: new Map(), methods: new Map(), months: new Map(), weeks: new Map(), days: new Map(), orders: new Map() };
 // Incremented before every local Purchase Book write so an in-flight remote
@@ -690,6 +694,12 @@ export const applyRemoteChange = (change: {
     const designType: QRDesignType | null =
       key === 'app_qr_design_config_CUSTOMER' ? 'CUSTOMER' :
       key === 'app_qr_design_config_ORDER' ? 'ORDER' : null;
+    if (isDelete && !designType) {
+      localDb.removeWithTx(tx as any, 'system_settings', key || change.entityId);
+      localDb.removeWithTx(tx as any, 'systemSettings', key || change.entityId);
+      notifyStoreAfterTransaction('all', key || change.entityId, tx);
+      return;
+    }
     if (!designType) {
       localDb.setWithTx(tx, 'system_settings', key || change.entityId, p);
       localDb.setWithTx(tx, 'systemSettings', key || change.entityId, p);
@@ -697,8 +707,15 @@ export const applyRemoteChange = (change: {
       return;
     }
     if (isDelete) {
-      // QR design settings are not deleted by normal sync commands; ignore tombstones
-      // rather than silently resetting a design that may have been changed locally.
+      localDb.removeWithTx(tx as any, 'system_settings', key);
+      localDb.removeWithTx(tx as any, 'systemSettings', key);
+      const resetDesign = () => resetActiveQrDesign(designType);
+      if (tx && typeof tx.addEventListener === 'function') {
+        tx.addEventListener('complete', resetDesign, { once: true });
+      } else {
+        resetDesign();
+      }
+      notifyStoreAfterTransaction('all', key, tx);
       return;
     }
     const incoming = p.valueJson ?? p.value_json;
@@ -726,22 +743,25 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('businessDays', change.entityId, tx);
       return;
     }
+    const previousDay = daysMap.get(change.entityId);
     const resolvedDate =
       p.businessDate ||
       p.business_date ||
       p.date ||
       (p.id?.startsWith('day-') ? p.id.slice(4) : p.id) ||
+      previousDay?.businessDate ||
       (change.entityId?.startsWith('day-') ? change.entityId.slice(4) : change.entityId) ||
       getLocalBusinessDateStr();
+    const payloadClosedStatus = String(p.status || '').toUpperCase();
     const entity: BusinessDayEntity = {
       id: p.id || change.entityId,
       businessDate: resolvedDate,
-      isClosed: p.isClosed ?? p.is_closed ?? false,
-      closedAt: p.closedAt || p.closed_at || undefined,
-      closedBy: p.closedBy || p.closed_by || undefined,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      version: p.version || 1,
+      isClosed: p.isClosed ?? p.is_closed ?? (payloadClosedStatus ? payloadClosedStatus === 'CLOSED' : previousDay?.isClosed ?? false),
+      closedAt: p.closedAt || p.closed_at || previousDay?.closedAt || undefined,
+      closedBy: p.closedBy || p.closed_by || previousDay?.closedBy || undefined,
+      createdAt: p.createdAt || p.created_at || previousDay?.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousDay?.updatedAt || new Date().toISOString(),
+      version: Number(p.version ?? change.version ?? previousDay?.version ?? 1),
     };
     localDb.setWithTx(tx, 'businessDays', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'businessDays', daysMap, entity.id);
@@ -771,22 +791,24 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('deviceTypes', change.entityId, tx);
       return;
     }
+    const previousDevice = devicesMap.get(change.entityId);
+    const deviceStatus = p.status ?? previousDevice?.status;
     const entity: DeviceTypeEntity = {
       id: p.id || change.entityId,
-      name: p.name,
-      nameAr: p.nameAr ?? p.name_ar ?? undefined,
-      nameEn: p.nameEn ?? p.name_en ?? undefined,
-      icon: p.icon || 'smartphone',
-      basePriceMinor: p.basePriceMinor ?? p.base_price_minor ?? 0,
-      chargerFeeEnabled: p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true,
-      chargerFeeApplicable: p.chargerFeeApplicable ?? p.charger_fee_applicable ?? (p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true),
-      status: p.status ?? undefined,
-      isActive: p.isActive ?? p.is_active ?? true,
-      sortOrder: p.sortOrder ?? p.sort_order ?? 0,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      deletedAt: p.deletedAt || p.deleted_at || undefined,
-      version: p.version || 1,
+      name: p.name ?? previousDevice?.name ?? '',
+      nameAr: p.nameAr ?? p.name_ar ?? previousDevice?.nameAr ?? undefined,
+      nameEn: p.nameEn ?? p.name_en ?? previousDevice?.nameEn ?? undefined,
+      icon: p.icon || previousDevice?.icon || 'smartphone',
+      basePriceMinor: p.basePriceMinor ?? p.base_price_minor ?? previousDevice?.basePriceMinor ?? 0,
+      chargerFeeEnabled: p.chargerFeeEnabled ?? p.charger_fee_enabled ?? previousDevice?.chargerFeeEnabled ?? true,
+      chargerFeeApplicable: p.chargerFeeApplicable ?? p.charger_fee_applicable ?? previousDevice?.chargerFeeApplicable ?? (p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true),
+      status: deviceStatus ?? undefined,
+      isActive: p.isActive ?? p.is_active ?? (String(deviceStatus || '').toUpperCase() === 'RETIRED' ? false : previousDevice?.isActive ?? true),
+      sortOrder: p.sortOrder ?? p.sort_order ?? previousDevice?.sortOrder ?? 0,
+      createdAt: p.createdAt || p.created_at || previousDevice?.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousDevice?.updatedAt || new Date().toISOString(),
+      deletedAt: p.deletedAt || p.deleted_at || previousDevice?.deletedAt || undefined,
+      version: Number(p.version ?? change.version ?? previousDevice?.version ?? 1),
     };
     localDb.setWithTx(tx, 'deviceTypes', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'deviceTypes', devicesMap, entity.id);
@@ -900,22 +922,22 @@ export const applyRemoteChange = (change: {
       status: normalizedStatus,
       financialStatus: p.financialStatus || p.financial_status || previousItem?.financialStatus || (normalizedStatus === 'delivered' ? 'RECOGNIZED' : 'UNRECOGNIZED'),
       paymentStatus: p.paymentStatus || p.payment_status || previousItem?.paymentStatus || 'UNPAID',
-      deviceNameSnapshot: p.deviceNameSnapshot || p.device_name_snapshot || '',
-      deviceIconSnapshot: p.deviceIconSnapshot || p.device_icon_snapshot || 'smartphone',
-      basePriceSnapshotMinor: p.basePriceSnapshotMinor ?? p.base_price_snapshot_minor ?? 0,
-      chargerFeeEnabledSnapshot: p.chargerFeeEnabledSnapshot ?? p.charger_fee_enabled_snapshot ?? true,
-      customerChargerFeeExemptSnapshot: p.customerChargerFeeExemptSnapshot ?? p.customer_charger_fee_exempt_snapshot ?? false,
-      chargerFeeSnapshotMinor: p.chargerFeeSnapshotMinor ?? p.charger_fee_snapshot_minor ?? 0,
-      hasCharger: p.hasCharger ?? p.has_charger ?? false,
-      unitPriceMinor: p.unitPriceMinor ?? p.unit_price_minor ?? 0,
-      totalPriceMinor: p.totalPriceMinor ?? p.total_price_minor ?? 0,
-      replacementOfItemId: p.replacementOfItemId || p.replacement_of_item_id || undefined,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      deliveredAt: p.deliveredAt || p.delivered_at || undefined,
-      financiallyRecognizedAt: p.financiallyRecognizedAt || p.financially_recognized_at || undefined,
-      cancelledAt: p.cancelledAt || p.cancelled_at || undefined,
-      deletedAt: p.deletedAt || p.deleted_at || undefined,
+      deviceNameSnapshot: p.deviceNameSnapshot || p.device_name_snapshot || previousItem?.deviceNameSnapshot || '',
+      deviceIconSnapshot: p.deviceIconSnapshot || p.device_icon_snapshot || previousItem?.deviceIconSnapshot || 'smartphone',
+      basePriceSnapshotMinor: p.basePriceSnapshotMinor ?? p.base_price_snapshot_minor ?? previousItem?.basePriceSnapshotMinor ?? 0,
+      chargerFeeEnabledSnapshot: p.chargerFeeEnabledSnapshot ?? p.charger_fee_enabled_snapshot ?? previousItem?.chargerFeeEnabledSnapshot ?? true,
+      customerChargerFeeExemptSnapshot: p.customerChargerFeeExemptSnapshot ?? p.customer_charger_fee_exempt_snapshot ?? previousItem?.customerChargerFeeExemptSnapshot ?? false,
+      chargerFeeSnapshotMinor: p.chargerFeeSnapshotMinor ?? p.charger_fee_snapshot_minor ?? previousItem?.chargerFeeSnapshotMinor ?? 0,
+      hasCharger: p.hasCharger ?? p.has_charger ?? previousItem?.hasCharger ?? false,
+      unitPriceMinor: p.unitPriceMinor ?? p.unit_price_minor ?? previousItem?.unitPriceMinor ?? 0,
+      totalPriceMinor: p.totalPriceMinor ?? p.total_price_minor ?? previousItem?.totalPriceMinor ?? 0,
+      replacementOfItemId: p.replacementOfItemId || p.replacement_of_item_id || previousItem?.replacementOfItemId || undefined,
+      createdAt: p.createdAt || p.created_at || previousItem?.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousItem?.updatedAt || new Date().toISOString(),
+      deliveredAt: p.deliveredAt || p.delivered_at || previousItem?.deliveredAt || undefined,
+      financiallyRecognizedAt: p.financiallyRecognizedAt || p.financially_recognized_at || previousItem?.financiallyRecognizedAt || undefined,
+      cancelledAt: p.cancelledAt || p.cancelled_at || previousItem?.cancelledAt || undefined,
+      deletedAt: p.deletedAt || p.deleted_at || previousItem?.deletedAt || undefined,
       version: incomingItemVersion,
     };
     localDb.setWithTx(tx, 'orderItems', entity.id, entity);
@@ -937,11 +959,11 @@ export const applyRemoteChange = (change: {
     }
     const entity: GoalEntity = {
       id: p.id || change.entityId,
-      customerId: p.customerId || p.customer_id,
-      targetQuantity: Number(p.targetQuantity ?? p.target_quantity ?? 0),
-      currentProgress: Number(p.currentProgress ?? p.current_progress ?? 0),
-      bonusAmountMinor: Number(p.bonusAmountMinor ?? p.bonus_amount_minor ?? 0),
-      durationDays: Number(p.durationDays ?? p.duration_days ?? 0),
+      customerId: p.customerId || p.customer_id || previousGoal?.customerId || '',
+      targetQuantity: Number(p.targetQuantity ?? p.target_quantity ?? previousGoal?.targetQuantity ?? 0),
+      currentProgress: Number(p.currentProgress ?? p.current_progress ?? previousGoal?.currentProgress ?? 0),
+      bonusAmountMinor: Number(p.bonusAmountMinor ?? p.bonus_amount_minor ?? previousGoal?.bonusAmountMinor ?? 0),
+      durationDays: Number(p.durationDays ?? p.duration_days ?? previousGoal?.durationDays ?? 0),
       status: String(p.status || previousGoal?.status || 'ACTIVE').toUpperCase() as GoalEntity['status'],
       startedAt: p.startedAt || p.started_at || previousGoal?.startedAt || new Date().toISOString(),
       expiresAt: p.expiresAt || p.expires_at || previousGoal?.expiresAt || new Date().toISOString(),
@@ -954,7 +976,7 @@ export const applyRemoteChange = (change: {
       cancellationReviewedBy: p.cancellationReviewedBy || p.cancellation_reviewed_by || previousGoal?.cancellationReviewedBy || undefined,
       cancellationReviewReason: p.cancellationReviewReason || p.cancellation_review_reason || previousGoal?.cancellationReviewReason || undefined,
       createdAt: p.createdAt || p.created_at || previousGoal?.createdAt || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousGoal?.updatedAt || new Date().toISOString(),
       version: incomingGoalVersion,
     };
     localDb.setWithTx(tx, 'goals', entity.id, entity);
@@ -976,15 +998,15 @@ export const applyRemoteChange = (change: {
     }
     const entity: GoalRequestEntity = {
       id: p.id || change.entityId,
-      customerId: p.customerId || p.customer_id,
-      requestedTarget: p.requestedTarget ?? p.requested_target ?? undefined,
+      customerId: p.customerId || p.customer_id || previousRequest?.customerId || '',
+      requestedTarget: p.requestedTarget ?? p.requested_target ?? previousRequest?.requestedTarget ?? undefined,
       status: String(p.status || previousRequest?.status || 'PENDING').toUpperCase() as GoalRequestEntity['status'],
-      reviewedBy: p.reviewedBy || p.reviewed_by || undefined,
-      reviewedAt: p.reviewedAt || p.reviewed_at || undefined,
-      rejectionReason: p.rejectionReason || p.rejection_reason || undefined,
-      resultingGoalId: p.resultingGoalId || p.resulting_goal_id || undefined,
+      reviewedBy: p.reviewedBy || p.reviewed_by || previousRequest?.reviewedBy || undefined,
+      reviewedAt: p.reviewedAt || p.reviewed_at || previousRequest?.reviewedAt || undefined,
+      rejectionReason: p.rejectionReason || p.rejection_reason || previousRequest?.rejectionReason || undefined,
+      resultingGoalId: p.resultingGoalId || p.resulting_goal_id || previousRequest?.resultingGoalId || undefined,
       createdAt: p.createdAt || p.created_at || previousRequest?.createdAt || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousRequest?.updatedAt || new Date().toISOString(),
       version: incomingRequestVersion,
     };
     localDb.setWithTx(tx, 'goalRequests', entity.id, entity);
@@ -1002,12 +1024,13 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('financialLedger', change.entityId, tx);
       return;
     }
-    const ledgerEventType = p.eventType || p.event_type;
-    const ledgerOrderId = p.orderId || p.order_id || undefined;
-    const ledgerOrderItemId = p.orderItemId || p.order_item_id || undefined;
+    const previousLedger = ledgerList.find((item) => item.id === change.entityId);
+    const ledgerEventType = p.eventType || p.event_type || previousLedger?.eventType;
+    const ledgerOrderId = p.orderId || p.order_id || previousLedger?.orderId || undefined;
+    const ledgerOrderItemId = p.orderItemId || p.order_item_id || previousLedger?.orderItemId || undefined;
     const derivedOrder = ledgerOrderId ? ordersMap.get(ledgerOrderId) : undefined;
     const derivedItem = ledgerOrderItemId ? itemsMap.get(ledgerOrderItemId) : undefined;
-    const rawLedgerAmount = Number(p.amountMinor ?? p.amount_minor ?? 0);
+    const rawLedgerAmount = Number(p.amountMinor ?? p.amount_minor ?? previousLedger?.amountMinor ?? 0);
     const normalizedLedgerAmount =
       (ledgerEventType === 'CHARGE' || ledgerEventType === 'ORDER_ITEM_CHARGE') && rawLedgerAmount > 0
         ? -rawLedgerAmount
@@ -1025,6 +1048,7 @@ export const applyRemoteChange = (change: {
     const derivedCustomerId =
       p.customerId ||
       p.customer_id ||
+      previousLedger?.customerId ||
       derivedOrder?.customerId ||
       (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined) ||
       referencedGoal?.customerId;
@@ -1039,10 +1063,10 @@ export const applyRemoteChange = (change: {
       orderId: ledgerOrderId || derivedItem?.orderId,
       orderItemId: ledgerOrderItemId,
       customerId: derivedCustomerId,
-      actorAdminId: p.actorAdminId || p.actor_admin_id || undefined,
-      referenceId: p.referenceId || p.reference_id || undefined,
-      metadata: p.metadata ?? undefined,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+      actorAdminId: p.actorAdminId || p.actor_admin_id || previousLedger?.actorAdminId || undefined,
+      referenceId: p.referenceId || p.reference_id || previousLedger?.referenceId || undefined,
+      metadata: p.metadata ?? previousLedger?.metadata ?? undefined,
+      createdAt: p.createdAt || p.created_at || previousLedger?.createdAt || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'financialLedger', entity.id, entity);
     snapshotRemoteArray(tx, 'financialLedger', ledgerList);
@@ -1061,15 +1085,16 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('payments', change.entityId, tx);
       return;
     }
+    const previousPayment = paymentsMap.get(change.entityId);
     const entity: PaymentEntity = {
       id: p.id || change.entityId,
-      customerId: p.customerId || p.customer_id,
-      amountMinor: p.amountMinor ?? p.amount_minor ?? 0,
-      paymentMethod: p.paymentMethod || p.payment_method,
-      reference: p.reference ?? undefined,
-      actorAdminId: p.actorAdminId || p.actor_admin_id,
-      commandId: p.commandId || p.command_id,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+      customerId: p.customerId || p.customer_id || previousPayment?.customerId,
+      amountMinor: p.amountMinor ?? p.amount_minor ?? previousPayment?.amountMinor ?? 0,
+      paymentMethod: p.paymentMethod || p.payment_method || previousPayment?.paymentMethod,
+      reference: p.reference ?? previousPayment?.reference ?? undefined,
+      actorAdminId: p.actorAdminId || p.actor_admin_id || previousPayment?.actorAdminId,
+      commandId: p.commandId || p.command_id || previousPayment?.commandId,
+      createdAt: p.createdAt || p.created_at || previousPayment?.createdAt || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'payments', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'payments', paymentsMap, entity.id);
@@ -1086,13 +1111,14 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('paymentAllocations', change.entityId, tx);
       return;
     }
+    const previousAllocation = allocationsList.find((item) => item.id === change.entityId);
     const entity: PaymentAllocationEntity = {
       id: p.id || change.entityId,
-      paymentId: p.paymentId || p.payment_id,
-      orderItemId: p.orderItemId || p.order_item_id,
-      orderId: p.orderId || p.order_id,
-      allocatedAmountMinor: p.allocatedAmountMinor ?? p.allocated_amount_minor ?? 0,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+      paymentId: p.paymentId || p.payment_id || previousAllocation?.paymentId,
+      orderItemId: p.orderItemId || p.order_item_id || previousAllocation?.orderItemId,
+      orderId: p.orderId || p.order_id || previousAllocation?.orderId,
+      allocatedAmountMinor: p.allocatedAmountMinor ?? p.allocated_amount_minor ?? previousAllocation?.allocatedAmountMinor ?? 0,
+      createdAt: p.createdAt || p.created_at || previousAllocation?.createdAt || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'paymentAllocations', entity.id, entity);
     snapshotRemoteArray(tx, 'paymentAllocations', allocationsList);
@@ -1549,42 +1575,26 @@ export const subscribeStoreBootstrapProgress = (
 export const hydrateFromRemoteTables = async (): Promise<boolean> => {
   if (!getSupabaseStatus().isConfigured) return false;
 
-  publishStoreBootstrapProgress({ phase: 'FETCHING', percent: 5, completedRows: 0, totalRows: 0, message: 'جارٍ جلب لقطة موحّدة من السحابة…' });
+  publishStoreBootstrapProgress({ phase: 'FETCHING', percent: 5, completedRows: 0, totalRows: 0, message: 'جارٍ تحميل بيانات السحابة على دفعات…' });
 
   // Before the first local mutation, read failures can safely fall back to a
   // previously persisted offline dataset. Once replacement starts, failures
   // must propagate so the boot gate never exposes a partially replaced store.
   let localMutationStarted = false;
   try {
-    // One server-side statement captures every bootstrap collection and its
-    // change-log high-water mark under the same PostgreSQL snapshot. Independent
-    // REST reads cannot safely be paired with a cursor because rows can change
-    // between requests.
-    const { data: rawSnapshot, error: snapshotError } = await invokeSupabaseRpc<any>(
-      'capture_sync_bootstrap_snapshot',
-      {}
-    );
-    if (snapshotError) {
-      console.warn('Authoritative bootstrap snapshot RPC failed:', snapshotError);
-      publishStoreBootstrapProgress({ phase: 'FAILED', percent: 0, completedRows: 0, totalRows: 0, message: 'فشل الاتصال بقاعدة البيانات السحابية.' });
-      return false;
-    }
-    const snapshot = (Array.isArray(rawSnapshot) ? rawSnapshot[0] : rawSnapshot) as any;
-    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-      console.warn('Authoritative bootstrap snapshot RPC returned an invalid response.');
-      publishStoreBootstrapProgress({ phase: 'FAILED', percent: 0, completedRows: 0, totalRows: 0, message: 'استجابة قاعدة البيانات غير صالحة.' });
-      return false;
-    }
-
-    // These collections were added by the purchase-book migration. Older
-    // deployments may not expose them yet, so treat them as empty until the
-    // migration is installed rather than blocking the whole app bootstrap.
-    for (const collection of [
-      'system_settings','purchase_suppliers','purchase_items','purchase_payment_methods',
-      'purchase_months','purchase_weeks','purchase_days','purchase_orders',
-    ]) {
-      if (!Array.isArray(snapshot[collection])) snapshot[collection] = [];
-    }
+    // The server first pins resetGeneration + change-log high-water mark,
+    // then returns each collection through bounded keyset pages. The local
+    // installer below still receives the same collection shape, but no single
+    // PostgREST response has to serialize the complete business database.
+    const snapshot = await fetchAuthoritativeBootstrapSnapshot((collection, completedRows, completedCollections) => {
+      publishStoreBootstrapProgress({
+        phase: 'FETCHING',
+        percent: Math.min(9, 5 + Math.floor((completedCollections / BOOTSTRAP_COLLECTIONS.length) * 4)),
+        completedRows,
+        totalRows: 0,
+        message: `جارٍ تحميل ${collection} على دفعات…`,
+      });
+    }, getCachedPurchaseAdminId()) as any;
 
     const requiredCollections: Record<string, unknown> = {
       business_days: snapshot.business_days,
@@ -1612,7 +1622,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const snapshotGeneration = Number(snapshot.server_reset_generation);
     const snapshotSequence = Number(snapshot.max_change_sequence);
     if (
-      Number(snapshot.schema_version) !== 1 ||
+      Number(snapshot.schema_version) !== 2 ||
       invalidCollection ||
       !Number.isSafeInteger(snapshotGeneration) || snapshotGeneration < 0 ||
       !Number.isSafeInteger(snapshotSequence) || snapshotSequence < 0
@@ -2063,15 +2073,39 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       totalRows,
       message: 'جارٍ حفظ اللقطة كاملة في القاعدة المحلية…',
     });
-    // Commit every collection and its cursor in one IndexedDB transaction. If
-    // any put fails, the transaction rolls back and the durable INITIALIZING
-    // barrier remains in place for a safe retry on the next boot.
-    await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
-      for (const write of installWrites) {
-        localDb.setWithTx(tx, write.table, write.id, write.item);
+    // The durable INITIALIZING barrier was written before replacement began.
+    // Persist bounded batches so a large first install does not require one
+    // enormous IndexedDB transaction. READY + the high-water cursor are written
+    // only with the final batch; any earlier failure leaves the barrier closed,
+    // and the durable staging session can safely replay the installation.
+    const totalInstallBatches = Math.ceil(installWrites.length / BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE);
+    if (installWrites.length === 0) {
+      await localDb.runTransaction(['syncState'], 'readwrite', (tx) => {
+        localDb.setSyncStateWithTx(tx, snapshotSyncState);
+      });
+    } else {
+      for (let offset = 0; offset < installWrites.length; offset += BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE) {
+        const batch = installWrites.slice(offset, offset + BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE);
+        const isFinalBatch = offset + batch.length >= installWrites.length;
+        await localDb.runTransaction(
+          isFinalBatch ? ['kvStore', 'syncState'] : ['kvStore'],
+          'readwrite',
+          (tx) => {
+            for (const write of batch) {
+              localDb.setWithTx(tx, write.table, write.id, write.item);
+            }
+            if (isFinalBatch) localDb.setSyncStateWithTx(tx, snapshotSyncState);
+          }
+        );
+        publishStoreBootstrapProgress({
+          phase: 'INSTALLING',
+          percent: 85 + Math.floor((Math.min(offset + batch.length, installWrites.length) / Math.max(1, installWrites.length)) * 10),
+          completedRows: Math.min(offset + batch.length, installWrites.length),
+          totalRows: installWrites.length,
+          message: `جارٍ حفظ الدفعة ${Math.floor(offset / BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE) + 1} من ${totalInstallBatches}…`,
+        });
       }
-      localDb.setSyncStateWithTx(tx, snapshotSyncState);
-    });
+    }
 
     publishStoreBootstrapProgress({
       phase: 'INSTALLING',
@@ -2082,6 +2116,15 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     });
     if (updatedAny) {
       await localDb.setInitialHydrationCompleted(true);
+    }
+    try {
+      if (snapshot.bootstrap_session_id) {
+        await clearBootstrapStagingSession(String(snapshot.bootstrap_session_id));
+      }
+    } catch (cleanupError) {
+      // The operational snapshot is already committed and READY. A staging
+      // cleanup failure is a storage leak only; it must not invalidate data.
+      console.warn('Bootstrap staging cleanup deferred:', cleanupError);
     }
     publishStoreBootstrapProgress({
       phase: 'READY',
@@ -2419,6 +2462,17 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     if (getSupabaseStatus().isConfigured) {
       const isResetCompleted = await localDb.isLocalResetCompleted();
       const isInitialHydrationDone = await localDb.isInitialHydrationCompleted();
+
+      // If a prior install committed READY but the browser closed before its
+      // staging cleanup, the active local checkpoint is authoritative and the
+      // orphaned staging generation can now be safely reclaimed.
+      if (isInitialHydrationDone) {
+        const readyCheckpoint = await localDb.getSyncState('global');
+        if (readyCheckpoint?.status === 'READY') {
+          try { await clearActiveBootstrapStagingSession(); }
+          catch (cleanupError) { console.warn('Deferred bootstrap staging cleanup failed:', cleanupError); }
+        }
+      }
 
       if (!isResetCompleted && !isInitialHydrationDone) {
         // Initial bootstrap is required for a truly empty client. If the remote

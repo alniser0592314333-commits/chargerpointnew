@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { clearActiveBootstrapStagingSession } from '../infrastructure/sync/bootstrapStagingStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { backupService } from '../services/backup/backupService';
 import { AuthorizationContext, ActorAdmin } from '../application/authContext';
 import * as dayOrdersStore from '../components/pages/dayOrdersStore';
 import * as supabaseClient from '../services/supabase/client';
 import { config } from '../config/env';
+import { mockChunkedBootstrapRpc } from './utils/mockChunkedBootstrap';
 
 describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation', () => {
   const originalUrl = config.supabaseUrl;
@@ -24,6 +26,7 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
   const superAdminAuth = new AuthorizationContext(superAdminActor, binVerifier);
 
   beforeEach(async () => {
+    await clearActiveBootstrapStagingSession();
     config.supabaseUrl = 'https://example.supabase.co';
     config.supabaseAnonKey = 'mock-anon-key';
     if (typeof localStorage !== 'undefined') {
@@ -53,11 +56,7 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
       status: 'connected',
     });
 
-    const snapshot = {
-      schema_version: 1,
-      captured_at: '2026-10-14T06:00:00.000Z',
-      server_reset_generation: 0,
-      max_change_sequence: 31168,
+    const rpcSpy = mockChunkedBootstrapRpc({
       customers: [{
         id: 'fresh-cloud-customer',
         name: 'Fresh Cloud Customer',
@@ -69,23 +68,7 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
         updated_at: '2026-10-14T06:00:00.000Z',
         version: 1,
       }],
-      business_days: [],
-      device_types: [],
-      orders: [],
-      order_items: [],
-      financial_ledger: [],
-      payments: [],
-      payment_allocations: [],
-      order_number_reservations: [],
-      qr_tokens: [],
-      goals: [],
-      goal_requests: [],
-    };
-
-    const rpcSpy = vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
-      data: snapshot,
-      error: null,
-    } as any);
+    }, { server_reset_generation: 0, max_change_sequence: 31168 });
 
     expect(await localDb.isLocalResetCompleted()).toBe(false);
     expect(await localDb.list('customers')).toHaveLength(0);
@@ -93,7 +76,8 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
     // This follows the real app entry path: clean-boot migration, then store hydration.
     await dayOrdersStore.ensureStoreHydrated();
 
-    expect(rpcSpy).toHaveBeenCalledWith('capture_sync_bootstrap_snapshot', {});
+    expect(rpcSpy).toHaveBeenCalledWith('begin_sync_bootstrap', {});
+    expect(rpcSpy).toHaveBeenCalledWith('read_sync_bootstrap_page', { p_entity_type: 'customers', p_after_id: null, p_limit: 500 });
     expect(await localDb.isLocalResetCompleted()).toBe(false);
     expect(await localDb.list<any>('customers')).toMatchObject([
       { id: 'fresh-cloud-customer', name: 'Fresh Cloud Customer' },
