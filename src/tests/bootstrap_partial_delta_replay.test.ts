@@ -68,6 +68,28 @@ describe('Canonical partial-delta replay preserves snapshot fields', () => {
     });
   });
 
+  it('applies canonical system-setting tombstones to both local setting stores', async () => {
+    const key = 'public_landing_title';
+    const setting = { key, value_type: 'string', value_string: 'Old title' };
+    await localDb.set('system_settings', key, setting);
+    await localDb.set('systemSettings', key, setting);
+
+    await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+      applyRemoteChange({
+        sequenceId: 106,
+        entityType: 'system_settings',
+        entityId: '00000000-0000-4000-8000-000000000401',
+        action: 'DELETE',
+        payload: setting,
+        version: 1,
+        changedAt: '2026-11-03T00:00:00.000Z',
+      }, tx);
+    });
+
+    expect(await localDb.get('system_settings', key)).toBeUndefined();
+    expect(await localDb.get('systemSettings', key)).toBeUndefined();
+  });
+
   it('preserves day and device configuration when canonical commands emit status-only patches', async () => {
     const dayId = 'day-2026-11-01';
     const deviceId = '00000000-0000-4000-8000-000000000301';
