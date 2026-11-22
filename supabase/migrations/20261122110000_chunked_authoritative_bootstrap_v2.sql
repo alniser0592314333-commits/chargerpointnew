@@ -20,7 +20,7 @@ BEGIN
   PERFORM public._cp_assert_active_admin_permission('sync:manage');
 
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '45001';
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
   END IF;
 
   SELECT a.id, a.is_active
@@ -30,7 +30,7 @@ BEGIN
   LIMIT 1;
 
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN
-    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '45001';
+    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '42501';
   END IF;
 
   -- STABLE function reads use one PostgreSQL statement snapshot, so the reset
@@ -75,7 +75,7 @@ BEGIN
   PERFORM public._cp_assert_active_admin_permission('sync:manage');
 
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '45001';
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
   END IF;
 
   SELECT a.id, a.is_active
@@ -85,7 +85,7 @@ BEGIN
   LIMIT 1;
 
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN
-    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '45001';
+    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '42501';
   END IF;
 
   IF p_entity_type IS NULL OR p_entity_type = '' THEN
