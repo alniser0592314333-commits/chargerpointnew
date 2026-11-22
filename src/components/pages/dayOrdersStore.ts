@@ -1576,16 +1576,6 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       });
     }) as any;
 
-    // These collections were added by the purchase-book migration. Older
-    // deployments may not expose them yet, so treat them as empty until the
-    // migration is installed rather than blocking the whole app bootstrap.
-    for (const collection of [
-      'system_settings','purchase_suppliers','purchase_items','purchase_payment_methods',
-      'purchase_months','purchase_weeks','purchase_days','purchase_orders',
-    ]) {
-      if (!Array.isArray(snapshot[collection])) snapshot[collection] = [];
-    }
-
     const requiredCollections: Record<string, unknown> = {
       business_days: snapshot.business_days,
       customers: snapshot.customers,
