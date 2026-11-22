@@ -111,7 +111,7 @@ jobs:
           parse_sql(biometric_migration)
           session_migration = Path("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql").read_text()
           parse_sql(session_migration)
-          for required in ("interval '30 days'", "interval '7 days'", "SESSION_IDLE_EXPIRED", "reactivate_my_account_session", "session_expires_at <= now()"):
+          for required in ("interval '30 days'", "interval '7 days'", "SESSION_IDLE_EXPIRED", "reactivate_my_account_session", "get_my_admin_login_gate", "session_expires_at <= now()"):
               if required not in session_migration:
                   raise SystemExit(f"Admin session idle-expiry migration is missing: {required}")
           for table in ("account_biometric_credentials", "account_biometric_challenges"):
