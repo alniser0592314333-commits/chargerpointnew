@@ -213,12 +213,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
   };
 
   const finishSuccessfulLogin = async (identifier: string, remember: boolean) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       if (remember) {
         if (Capacitor.isNativePlatform()) {
           const currentAuth = await authService.getSupabaseAuthSession();
-          if (!currentAuth?.refresh_token) throw new Error("SECURE_QUICK_LOGIN_UNAVAILABLE");
-          await saveAdminQuickLoginToken(identifier, currentAuth.refresh_token);
+          if (!currentAuth?.refresh_token || !currentAuth.user?.id) throw new Error("SECURE_QUICK_LOGIN_UNAVAILABLE");
+          await saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id);
         }
         saveAdminAccountIdentifier(identifier);
         setSavedAdminAccounts(readSavedAdminAccounts());
@@ -226,13 +228,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       setPendingRememberIdentifier(null);
       setPassword("");
       setIsSavedQuickLogin(false);
-      // Biometric enrollment is managed explicitly in account security settings.
-      // Normal login and declining account saving must never trigger enrollment.
+      // Keep the real bootstrap progress visible after the credential/BIN form
+      // has completed. Authentication success is not the same as app readiness.
       await onLoginSuccess();
     } catch (finishError: any) {
       setError(finishError?.message === "SECURE_QUICK_LOGIN_UNAVAILABLE"
-        ? (locale === "en" ? "Secure quick sign-in could not be saved on this device. Your account is still signed in." : "تعذر حفظ الدخول السريع الآمن على هذا الجهاز. حسابك ما زال مسجل الدخول.")
+        ? (locale === "en" ? "Secure quick sign-in could not be saved. Choose “Not now” to continue without saving." : "تعذر حفظ الدخول السريع الآمن. اختر «ليس الآن» للمتابعة دون حفظ الحساب.")
         : finishError?.message || (locale === "en" ? "Could not finish opening the app." : "تعذر إكمال فتح التطبيق."));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -289,6 +293,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       const authSession = result.session as SupabaseAuthSession | undefined;
       if (!authSession?.access_token || !authSession.refresh_token) throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
       await authService.acceptBiometricSession(authSession);
+      setIsSavedQuickLogin(false);
       setBin("");
       setShowBiometricBin(false);
       setPassword("");
@@ -296,7 +301,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
       await onLoginSuccess();
     } catch (e) {
       const code = e instanceof Error ? e.message : "";
-      if (code === "MULTIPLE_ADMIN_BIOMETRIC_KEYS") {
+      if (code === "SUPER_ADMIN_BIN_REQUIRED") {
+        // Biometric proof is only the first factor for Super Admin. Keep the
+        // temporary session in memory and route through the existing BIN gate.
+        setIsSavedQuickLogin(true);
+        setBin("");
+        setError("");
+        setShowSavedAccounts(false);
+        setUiState("SUPER_ADMIN_BIN_REQUIRED");
+      } else if (code === "MULTIPLE_ADMIN_BIOMETRIC_KEYS") {
         setError(locale === "en"
           ? "More than one administrator fingerprint key exists on this device. Sign in with your password and register one administrator account fingerprint again."
           : "يوجد أكثر من مفتاح بصمة إداري على هذا الجهاز. سجّل الدخول بكلمة المرور وأعد تسجيل بصمة لحساب إداري واحد فقط.");
