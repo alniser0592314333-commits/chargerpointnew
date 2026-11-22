@@ -56,7 +56,7 @@ CREATE OR REPLACE FUNCTION public.read_sync_bootstrap_page(
 )
 RETURNS jsonb
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
@@ -65,6 +65,7 @@ DECLARE
   v_table_name text;
   v_key_column text := 'id';
   v_key_type text := 'uuid';
+  v_cursor_predicate text;
   v_purchase_scoped boolean := false;
   v_scope_predicate text;
   v_sql text;
@@ -91,6 +92,13 @@ BEGIN
   END IF;
 
   v_limit := p_limit;
+  IF p_after_id IS NULL THEN
+    v_cursor_predicate := 'TRUE';
+  ELSIF v_key_type = 'uuid' THEN
+    v_cursor_predicate := format('%I > $1::uuid', v_key_column);
+  ELSE
+    v_cursor_predicate := format('%I > $1', v_key_column);
+  END IF;
 
   CASE p_entity_type
     WHEN 'business_days' THEN v_table_name := 'business_days';
@@ -132,7 +140,7 @@ BEGIN
     v_sql := format(
       'WITH page AS MATERIALIZED (
          SELECT * FROM public.%I
-         WHERE ($1 IS NULL OR %I > $1::uuid) %s
+         WHERE %s %s
          ORDER BY %I ASC
          LIMIT ($3 + 1)
        ),
@@ -144,14 +152,14 @@ BEGIN
          ''next_cursor'', (SELECT b.%I::text FROM bounded b ORDER BY b.%I DESC LIMIT 1),
          ''has_more'', (SELECT count(*) > $3 FROM page)
        )',
-      v_table_name, v_key_column, v_scope_predicate,
+      v_table_name, v_cursor_predicate, v_scope_predicate,
       v_key_column, v_key_column, v_key_column, v_key_column, v_key_column
     );
   ELSE
     v_sql := format(
       'WITH page AS MATERIALIZED (
          SELECT * FROM public.%I
-         WHERE ($1 IS NULL OR %I > $1) %s
+         WHERE %s %s
          ORDER BY %I ASC
          LIMIT ($3 + 1)
        ),
@@ -173,6 +181,15 @@ BEGIN
     || jsonb_build_object('entity_type', p_entity_type);
 END;
 $function$;
+
+-- Tenant-first composite indexes keep purchase-book keyset pages bounded.
+CREATE INDEX IF NOT EXISTS purchase_suppliers_admin_id_id_bootstrap_idx ON public.purchase_suppliers (admin_id, id);
+CREATE INDEX IF NOT EXISTS purchase_items_admin_id_id_bootstrap_idx ON public.purchase_items (admin_id, id);
+CREATE INDEX IF NOT EXISTS purchase_payment_methods_admin_id_id_bootstrap_idx ON public.purchase_payment_methods (admin_id, id);
+CREATE INDEX IF NOT EXISTS purchase_months_admin_id_id_bootstrap_idx ON public.purchase_months (admin_id, id);
+CREATE INDEX IF NOT EXISTS purchase_weeks_admin_id_id_bootstrap_idx ON public.purchase_weeks (admin_id, id);
+CREATE INDEX IF NOT EXISTS purchase_days_admin_id_id_bootstrap_idx ON public.purchase_days (admin_id, id);
+CREATE INDEX IF NOT EXISTS purchase_orders_admin_id_id_bootstrap_idx ON public.purchase_orders (admin_id, id);
 
 -- system_settings is part of the bootstrap read model but historically had
 -- only a write-order trigger. Capture every direct writer, not only the
