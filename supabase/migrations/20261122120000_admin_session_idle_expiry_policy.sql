@@ -152,6 +152,17 @@ BEGIN
       USING ERRCODE = '28000';
   END IF;
 
+  -- Browser sessions must authenticate with a fresh password after idle expiry.
+  -- Native/PWA saved-login reactivation is a separate explicit credential flow.
+  IF v_client_type = 'browser' AND EXISTS (
+    SELECT 1 FROM public.account_sessions a
+    WHERE a.session_id = v_session_id AND a.user_id = v_user_id
+      AND a.session_expires_at <= now()
+  ) THEN
+    RAISE EXCEPTION 'SESSION_IDLE_EXPIRED'
+      USING ERRCODE = '28000';
+  END IF;
+
   INSERT INTO public.account_sessions(
     session_id, user_id, user_agent, created_at, last_seen_at, client_type, session_expires_at
   )
