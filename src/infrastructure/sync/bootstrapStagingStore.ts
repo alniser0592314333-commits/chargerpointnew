@@ -90,7 +90,19 @@ export const beginOrResumeBootstrapStagingSession = async (
   manifest: BootstrapManifestV2
 ): Promise<{ session: BootstrapStagingSession; resumed: boolean }> => {
   const existing = await getActiveBootstrapStagingSession();
-  if (existing && compatibleManifest(existing.manifest, manifest)) {
+  const hasValidProgressState = Boolean(
+    existing &&
+    existing.cursors &&
+    existing.completed &&
+    existing.rowCounts &&
+    manifest.collections.every((collection) =>
+      Object.prototype.hasOwnProperty.call(existing.cursors, collection) &&
+      typeof existing.completed[collection] === 'boolean' &&
+      Number.isSafeInteger(existing.rowCounts[collection]) &&
+      existing.rowCounts[collection] >= 0
+    )
+  );
+  if (existing && hasValidProgressState && compatibleManifest(existing.manifest, manifest)) {
     return { session: existing, resumed: true };
   }
 
