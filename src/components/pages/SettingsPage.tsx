@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useI18n } from "../../i18n/i18nContext";
 import { useTheme } from "../../theme/themeContext";
 import { AppLogo } from "../qr/AppLogo";
@@ -58,13 +59,33 @@ import {
 
 export interface SettingsPageProps {
   onNavigate?: (path: string) => void;
-  onLogout?: () => void | Promise<void>;
+  onLogout?: (mode: "save" | "forget" | "revoked") => void | Promise<void>;
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, setTheme } = useTheme();
   const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | "releases" | null>(null);
+  const [showLogoutOptions, setShowLogoutOptions] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+
+  const completeLogout = async (mode: "save" | "forget") => {
+    if (logoutBusy) return;
+    setLogoutBusy(true);
+    setLogoutError("");
+    try {
+      await onLogout?.(mode);
+      setShowLogoutOptions(false);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      setLogoutError(code === "SECURE_QUICK_LOGIN_NATIVE_ONLY"
+        ? (locale === "ar" ? "الحفظ الآمن للدخول السريع متاح في تطبيق APK فقط." : "Secure quick sign-in can only be saved in the APK.")
+        : (locale === "ar" ? "تعذر إكمال تسجيل الخروج. بقي الحساب مفتوحًا؛ تحقق من الاتصال وحاول مجددًا." : "Sign-out could not be completed. Your account remains open; check the connection and try again."));
+    } finally {
+      setLogoutBusy(false);
+    }
+  };
 
   const [session, setSession] = useState<UserSession | null>(null);
   useEffect(() => {
@@ -526,10 +547,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
               </button>
             </div>
             <div className="pt-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => onLogout?.()} className="w-full h-12 justify-center gap-2 rounded-xl border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50">
+              <Button type="button" variant="outline" size="sm" onClick={() => { setLogoutError(""); setShowLogoutOptions(true); }} className="w-full h-12 justify-center gap-2 rounded-xl border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50">
                 <LogOut className="w-4 h-4" />
                 <span>{t("logout") || (locale === "ar" ? "تسجيل الخروج" : "Log out")}</span>
               </Button>
+              {showLogoutOptions && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-4" role="presentation">
+                <div role="dialog" aria-modal="true" aria-labelledby="logout-options-title" className="w-full max-w-sm space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl dark:border-[#285347] dark:bg-[#061e1a]">
+                  <div className="space-y-1">
+                    <h3 id="logout-options-title" className="text-base font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "تسجيل الخروج" : "Sign out"}</h3>
+                    <p className="text-sm leading-6 text-gray-600 dark:text-[#8eb698]">{locale === "ar" ? "اختر إذا كنت تريد الاحتفاظ بالدخول السريع لهذا الحساب على هذا الجهاز." : "Choose whether to keep secure quick sign-in for this account on this device."}</p>
+                  </div>
+                  {!Capacitor.isNativePlatform() && <p className="text-xs leading-5 text-amber-700 dark:text-amber-300">{locale === "ar" ? "الحفظ السريع الآمن متاح في تطبيق APK فقط. في المتصفح أو PWA سيُطلب تسجيل الدخول مجددًا بعد الخروج." : "Secure quick sign-in is available in the APK only. Browser and PWA sign-out will require signing in again."}</p>}
+                  {logoutError && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{logoutError}</p>}
+                  <div className="space-y-2">
+                    {Capacitor.isNativePlatform() && <Button type="button" disabled={logoutBusy} onClick={() => void completeLogout("save")} className="w-full">{locale === "ar" ? "حفظ الحساب وتسجيل الخروج" : "Save account & sign out"}</Button>}
+                    <Button type="button" disabled={logoutBusy} variant="outline" onClick={() => void completeLogout("forget")} className="w-full">{locale === "ar" ? "تسجيل خروج فقط" : "Sign out only"}</Button>
+                    <Button type="button" disabled={logoutBusy} variant="ghost" onClick={() => setShowLogoutOptions(false)} className="w-full">{locale === "ar" ? "إلغاء" : "Cancel"}</Button>
+                  </div>
+                </div>
+              </div>}
             </div>
           </div>
         )}
@@ -1293,7 +1329,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
               </div>
             )}
 
-            <AccountSessionsManager onLogout={onLogout} />
+            <AccountSessionsManager onLogout={() => onLogout?.("revoked")} />
 
             {/* PART 1: Secure 2-Step BIN Change Area */}
             <div className="pt-3 space-y-3">
