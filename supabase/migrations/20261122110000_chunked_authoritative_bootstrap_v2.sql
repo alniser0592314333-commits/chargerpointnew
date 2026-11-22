@@ -224,7 +224,10 @@ BEGIN
     IF v_seq IS NOT NULL THEN RETURN v_seq; END IF;
   END IF;
 
-  IF p_entity_type IN ('goals', 'goal_requests', 'financial_ledger') THEN
+  IF p_entity_type IN (
+    'customers', 'business_days', 'device_types', 'orders', 'order_items',
+    'financial_ledger', 'payments', 'payment_allocations', 'goals', 'goal_requests'
+  ) THEN
     SELECT cl.sequence_id INTO v_seq
     FROM public.change_log cl
     WHERE cl.entity_type = p_entity_type
@@ -266,6 +269,22 @@ BEGIN
     WHERE cl.entity_type = 'system_settings'
       AND cl.action = p_action
       AND cl.payload->>'key' = p_payload->>'key'
+      AND cl.xmin = pg_current_xact_id()::xid
+    ORDER BY cl.sequence_id DESC
+    LIMIT 1;
+    IF v_seq IS NOT NULL THEN RETURN v_seq; END IF;
+  END IF;
+
+  IF p_entity_type IN (
+    'customers', 'business_days', 'device_types', 'orders', 'order_items',
+    'financial_ledger', 'payments', 'payment_allocations', 'goals', 'goal_requests'
+  ) THEN
+    SELECT cl.sequence_id INTO v_seq
+    FROM public.change_log cl
+    WHERE cl.entity_type = p_entity_type
+      AND cl.entity_id = p_entity_id
+      AND cl.action = p_action
+      AND cl.version IS NOT DISTINCT FROM COALESCE(p_version, 1)
       AND cl.xmin = pg_current_xact_id()::xid
     ORDER BY cl.sequence_id DESC
     LIMIT 1;
