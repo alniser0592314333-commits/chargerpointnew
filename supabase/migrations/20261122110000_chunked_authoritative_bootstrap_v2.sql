@@ -9,29 +9,17 @@ BEGIN;
 CREATE OR REPLACE FUNCTION public.begin_sync_bootstrap()
 RETURNS jsonb
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
 DECLARE
-  v_admin_id uuid;
-  v_active boolean;
 BEGIN
-  PERFORM public._cp_assert_active_admin_permission('sync:manage');
-
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
   END IF;
 
-  SELECT a.id, a.is_active
-    INTO v_admin_id, v_active
-  FROM public.admins a
-  WHERE a.auth_user_id = auth.uid()
-  LIMIT 1;
-
-  IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN
-    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '42501';
-  END IF;
+  PERFORM public._cp_assert_active_admin_permission('sync:manage');
 
   -- STABLE function reads use one PostgreSQL statement snapshot, so the reset
   -- generation and change-log high-water mark describe the same DB snapshot.
@@ -62,7 +50,6 @@ SET search_path = ''
 AS $function$
 DECLARE
   v_admin_id uuid;
-  v_active boolean;
   v_table_name text;
   v_key_column text := 'id';
   v_key_type text := 'uuid';
@@ -72,19 +59,12 @@ DECLARE
   v_result jsonb;
   v_limit integer;
 BEGIN
-  PERFORM public._cp_assert_active_admin_permission('sync:manage');
-
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
   END IF;
 
-  SELECT a.id, a.is_active
-    INTO v_admin_id, v_active
-  FROM public.admins a
-  WHERE a.auth_user_id = auth.uid()
-  LIMIT 1;
-
-  IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN
+  v_admin_id := public._cp_assert_active_admin_permission('sync:manage');
+  IF v_admin_id IS NULL THEN
     RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '42501';
   END IF;
 
