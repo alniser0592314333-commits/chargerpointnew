@@ -727,22 +727,25 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('businessDays', change.entityId, tx);
       return;
     }
+    const previousDay = daysMap.get(change.entityId);
     const resolvedDate =
       p.businessDate ||
       p.business_date ||
       p.date ||
       (p.id?.startsWith('day-') ? p.id.slice(4) : p.id) ||
+      previousDay?.businessDate ||
       (change.entityId?.startsWith('day-') ? change.entityId.slice(4) : change.entityId) ||
       getLocalBusinessDateStr();
+    const payloadClosedStatus = String(p.status || '').toUpperCase();
     const entity: BusinessDayEntity = {
       id: p.id || change.entityId,
       businessDate: resolvedDate,
-      isClosed: p.isClosed ?? p.is_closed ?? false,
-      closedAt: p.closedAt || p.closed_at || undefined,
-      closedBy: p.closedBy || p.closed_by || undefined,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      version: p.version || 1,
+      isClosed: p.isClosed ?? p.is_closed ?? (payloadClosedStatus ? payloadClosedStatus === 'CLOSED' : previousDay?.isClosed ?? false),
+      closedAt: p.closedAt || p.closed_at || previousDay?.closedAt || undefined,
+      closedBy: p.closedBy || p.closed_by || previousDay?.closedBy || undefined,
+      createdAt: p.createdAt || p.created_at || previousDay?.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousDay?.updatedAt || new Date().toISOString(),
+      version: Number(p.version ?? change.version ?? previousDay?.version ?? 1),
     };
     localDb.setWithTx(tx, 'businessDays', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'businessDays', daysMap, entity.id);
@@ -772,22 +775,24 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('deviceTypes', change.entityId, tx);
       return;
     }
+    const previousDevice = devicesMap.get(change.entityId);
+    const deviceStatus = p.status ?? previousDevice?.status;
     const entity: DeviceTypeEntity = {
       id: p.id || change.entityId,
-      name: p.name,
-      nameAr: p.nameAr ?? p.name_ar ?? undefined,
-      nameEn: p.nameEn ?? p.name_en ?? undefined,
-      icon: p.icon || 'smartphone',
-      basePriceMinor: p.basePriceMinor ?? p.base_price_minor ?? 0,
-      chargerFeeEnabled: p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true,
-      chargerFeeApplicable: p.chargerFeeApplicable ?? p.charger_fee_applicable ?? (p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true),
-      status: p.status ?? undefined,
-      isActive: p.isActive ?? p.is_active ?? true,
-      sortOrder: p.sortOrder ?? p.sort_order ?? 0,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
-      deletedAt: p.deletedAt || p.deleted_at || undefined,
-      version: p.version || 1,
+      name: p.name ?? previousDevice?.name ?? '',
+      nameAr: p.nameAr ?? p.name_ar ?? previousDevice?.nameAr ?? undefined,
+      nameEn: p.nameEn ?? p.name_en ?? previousDevice?.nameEn ?? undefined,
+      icon: p.icon || previousDevice?.icon || 'smartphone',
+      basePriceMinor: p.basePriceMinor ?? p.base_price_minor ?? previousDevice?.basePriceMinor ?? 0,
+      chargerFeeEnabled: p.chargerFeeEnabled ?? p.charger_fee_enabled ?? previousDevice?.chargerFeeEnabled ?? true,
+      chargerFeeApplicable: p.chargerFeeApplicable ?? p.charger_fee_applicable ?? previousDevice?.chargerFeeApplicable ?? (p.chargerFeeEnabled ?? p.charger_fee_enabled ?? true),
+      status: deviceStatus ?? undefined,
+      isActive: p.isActive ?? p.is_active ?? (String(deviceStatus || '').toUpperCase() === 'RETIRED' ? false : previousDevice?.isActive ?? true),
+      sortOrder: p.sortOrder ?? p.sort_order ?? previousDevice?.sortOrder ?? 0,
+      createdAt: p.createdAt || p.created_at || previousDevice?.createdAt || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousDevice?.updatedAt || new Date().toISOString(),
+      deletedAt: p.deletedAt || p.deleted_at || previousDevice?.deletedAt || undefined,
+      version: Number(p.version ?? change.version ?? previousDevice?.version ?? 1),
     };
     localDb.setWithTx(tx, 'deviceTypes', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'deviceTypes', devicesMap, entity.id);
