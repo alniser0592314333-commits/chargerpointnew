@@ -43,7 +43,7 @@ import {
 import { SyncEngine, syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTransport';
 import { BOOTSTRAP_COLLECTIONS, fetchAuthoritativeBootstrapSnapshot } from '../../infrastructure/sync/bootstrapSnapshot';
-import { clearBootstrapStagingSession } from '../../infrastructure/sync/bootstrapStagingStore';
+import { clearActiveBootstrapStagingSession, clearBootstrapStagingSession } from '../../infrastructure/sync/bootstrapStagingStore';
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
@@ -2419,6 +2419,14 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     if (getSupabaseStatus().isConfigured) {
       const isResetCompleted = await localDb.isLocalResetCompleted();
       const isInitialHydrationDone = await localDb.isInitialHydrationCompleted();
+
+      // If a prior install committed READY but the browser closed before its
+      // staging cleanup, the active local checkpoint is authoritative and the
+      // orphaned staging generation can now be safely reclaimed.
+      if (isInitialHydrationDone) {
+        try { await clearActiveBootstrapStagingSession(); }
+        catch (cleanupError) { console.warn('Deferred bootstrap staging cleanup failed:', cleanupError); }
+      }
 
       if (!isResetCompleted && !isInitialHydrationDone) {
         // Initial bootstrap is required for a truly empty client. If the remote
