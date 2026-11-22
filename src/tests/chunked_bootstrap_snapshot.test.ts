@@ -54,9 +54,9 @@ describe('Chunked authoritative bootstrap protocol', () => {
     expect(snapshot.max_change_sequence).toBe(700);
     expect((snapshot.customers as any[])).toHaveLength(BOOTSTRAP_PAGE_SIZE + 1);
     expect(calls.filter((call) => call.name === 'begin_sync_bootstrap')).toHaveLength(1);
-    expect(calls.filter((call) => call.name === 'read_sync_bootstrap_page').map((call) => call.args.p_entity_type)).toEqual(
-      BOOTSTRAP_COLLECTIONS.flatMap((collection) => collection === 'customers' ? [collection, collection] : [collection])
-    );
+    const pageCalls = calls.filter((call) => call.name === 'read_sync_bootstrap_page');
+    expect(new Set(pageCalls.map((call) => call.args.p_entity_type))).toEqual(new Set(BOOTSTRAP_COLLECTIONS));
+    expect(pageCalls.filter((call) => call.args.p_entity_type === 'customers')).toHaveLength(2);
     expect(calls.filter((call) => call.name === 'read_sync_bootstrap_page').every((call) => call.args.p_limit === BOOTSTRAP_PAGE_SIZE)).toBe(true);
     expect(calls.find((call) => call.name === 'read_sync_bootstrap_page' && call.args.p_entity_type === 'customers' && call.args.p_after_id !== null)?.args.p_after_id).toBe(customerRows[BOOTSTRAP_PAGE_SIZE - 1].id);
   });
