@@ -71,13 +71,15 @@ const callBootstrapRpc = async (name: string, args: Record<string, unknown>): Pr
  * manifest high-water mark after the snapshot has been installed.
  */
 export const fetchAuthoritativeBootstrapSnapshot = async (
-  onProgress?: BootstrapProgress
+  onProgress?: BootstrapProgress,
+  expectedAdminId?: string
 ): Promise<AuthoritativeBootstrapSnapshot> => {
   const isValidManifest = (candidate: any): candidate is BootstrapManifestV2 => {
     const generation = Number(candidate?.server_reset_generation);
     const sequence = Number(candidate?.max_change_sequence);
     return (
       Number(candidate?.schema_version) === 2 &&
+      typeof candidate?.admin_id === 'string' && candidate.admin_id.length > 0 &&
       Number(candidate?.page_size) === BOOTSTRAP_PAGE_SIZE &&
       Array.isArray(candidate?.collections) &&
       candidate.collections.length === BOOTSTRAP_COLLECTIONS.length &&
@@ -92,6 +94,7 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
   const existingSessionComplete = Boolean(
     existingSession &&
     isValidManifest(existingSession.manifest) &&
+    Boolean(expectedAdminId && existingSession.manifest.admin_id === expectedAdminId) &&
     existingSession.rowCounts &&
     BOOTSTRAP_COLLECTIONS.every((collection) =>
       existingSession.completed[collection] === true &&
@@ -109,6 +112,9 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     const manifest = await callBootstrapRpc('begin_sync_bootstrap', {});
     if (!isValidManifest(manifest)) {
       throw new Error('BOOTSTRAP_MANIFEST_INVALID: missing protocol version or authoritative checkpoint');
+    }
+    if (expectedAdminId && manifest.admin_id !== expectedAdminId) {
+      throw new Error('BOOTSTRAP_TENANT_MISMATCH: server manifest does not belong to the active admin');
     }
     const started = await beginOrResumeBootstrapStagingSession(manifest);
     session = started.session;
