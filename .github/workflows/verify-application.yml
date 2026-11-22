@@ -659,8 +659,32 @@ jobs:
             SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
           $uid$;
           CREATE TABLE public.admins (id uuid PRIMARY KEY, auth_user_id uuid NOT NULL, is_active boolean NOT NULL);
-          CREATE TABLE public.system_settings (key text PRIMARY KEY, value_number bigint);
-          CREATE TABLE public.change_log (sequence_id bigint PRIMARY KEY, payload text NOT NULL);
+          CREATE TABLE public.system_settings (
+            key text PRIMARY KEY, value_type text, value_string text, value_number bigint,
+            value_boolean boolean, value_json jsonb, updated_at timestamptz, updated_by uuid
+          );
+          CREATE TABLE public.change_log (
+            sequence_id bigserial PRIMARY KEY, entity_type text NOT NULL, entity_id uuid NOT NULL,
+            action text NOT NULL, payload jsonb NOT NULL, version integer NOT NULL, changed_at timestamptz NOT NULL
+          );
+          CREATE FUNCTION public.record_canonical_change(text,uuid,text,jsonb,integer)
+          RETURNS bigint LANGUAGE plpgsql AS $record_text$
+          DECLARE v_seq bigint;
+          BEGIN
+            INSERT INTO public.change_log(entity_type,entity_id,action,payload,version,changed_at)
+            VALUES($1,$2,$3,COALESCE($4,'{}'::jsonb),COALESCE($5,1),NOW()) RETURNING sequence_id INTO v_seq;
+            RETURN v_seq;
+          END
+          $record_text$;
+          CREATE FUNCTION public.record_canonical_change(character varying,uuid,character varying,jsonb,integer DEFAULT 1)
+          RETURNS bigint LANGUAGE plpgsql AS $record_varchar$
+          DECLARE v_seq bigint;
+          BEGIN
+            INSERT INTO public.change_log(entity_type,entity_id,action,payload,version,changed_at)
+            VALUES($1,$2,$3,COALESCE($4,'{}'::jsonb),COALESCE($5,1),NOW()) RETURNING sequence_id INTO v_seq;
+            RETURN v_seq;
+          END
+          $record_varchar$;
           CREATE FUNCTION public._cp_assert_active_admin_permission(text DEFAULT NULL)
           RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER AS $guard$
           DECLARE v_admin_id uuid;
@@ -693,8 +717,10 @@ jobs:
           INSERT INTO public.admins VALUES
             ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001',true),
             ('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000002',true);
-          INSERT INTO public.system_settings VALUES ('server_reset_generation',17);
-          INSERT INTO public.change_log VALUES (23,'fixture');
+          INSERT INTO public.system_settings(key,value_number) VALUES ('server_reset_generation',17);
+          INSERT INTO public.change_log(sequence_id,entity_type,entity_id,action,payload,version,changed_at)
+          VALUES (23,'fixture','00000000-0000-4000-8000-000000000099','INSERT','{}'::jsonb,1,NOW());
+          SELECT setval(pg_get_serial_sequence('public.change_log','sequence_id'),23,true);
           INSERT INTO public.customers(id,name)
           SELECT ('00000000-0000-4000-8000-' || lpad(g::text,12,'0'))::uuid, 'Customer ' || g
           FROM generate_series(1,501) g;
