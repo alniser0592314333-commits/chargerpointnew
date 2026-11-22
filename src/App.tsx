@@ -358,44 +358,56 @@ export default function App() {
     });
   }, []);
 
-  // Lightweight visibility/focus lifecycle verification
+  // Revalidate the server session and permissions whenever the app returns
+  // from background. Focus and visibility events can fire together, so serialize
+  // the check to avoid duplicate token refreshes from the same WebView.
   useEffect(() => {
+    let checkingSession = false;
     const handleFocus = async () => {
-      if (isAuthenticated && !isSuspended) {
+      if (!isAuthenticated || isSuspended || checkingSession) return;
+      checkingSession = true;
+      try {
         try {
-          try {
-            const sessionActive = await isCurrentAccountSessionActive();
-            if (!sessionActive) {
-              await stopNativePushNotifications();
-              await authService.logout();
-              setIsAuthenticated(false);
-              setUserSession(null);
-              navigate('/app', true);
-              return;
-            }
-          } catch (sessionCheckError) {
-            // The registry may not be deployed yet, or the network may be temporarily unavailable.
-            console.warn('Account session verification temporarily unavailable.', sessionCheckError);
-          }
-          const session = await authService.getCurrentSession(true); // Authoritatively refresh role and permissions
-          if (!session) {
+          const sessionActive = await isCurrentAccountSessionActive();
+          if (!sessionActive) {
             await stopNativePushNotifications();
+            await authService.logout();
             setIsAuthenticated(false);
             setUserSession(null);
-            setIsSuspended(false);
-            navigate('/login', true);
+            navigate('/app', true);
             return;
           }
-          // Apply the server-refreshed role/permissions to React state. Merely
-          // fetching the profile without updating this state leaves stale UI grants.
-          setUserSession(session);
-        } catch {
-          // Fail-closed/safe: ignore transient network issues but let authService handle rehydration
+        } catch (sessionCheckError) {
+          // A network/RPC failure is not proof that the session was revoked.
+          console.warn('Account session verification temporarily unavailable.', sessionCheckError);
         }
+        const session = await authService.getCurrentSession(true); // Authoritatively refresh role and permissions
+        if (!session) {
+          await stopNativePushNotifications();
+          setIsAuthenticated(false);
+          setUserSession(null);
+          setIsSuspended(false);
+          navigate('/login', true);
+          return;
+        }
+        // Apply the server-refreshed role/permissions to React state. Merely
+        // fetching the profile without updating this state leaves stale UI grants.
+        setUserSession(session);
+      } catch {
+        // A transient network failure is not treated as confirmed session revocation.
+      } finally {
+        checkingSession = false;
       }
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void handleFocus();
+    };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [isAuthenticated, isSuspended]);
 
   // Back actions use the route's semantic parent, never the raw visit stack.
