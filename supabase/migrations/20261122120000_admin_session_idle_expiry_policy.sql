@@ -252,7 +252,7 @@ BEGIN
 
   -- Throttle activity writes to one update per five minutes per active session.
   -- This keeps the expiry sliding without writing on every protected RPC.
-  IF v_account_session.last_seen_at < now() - interval '5 minutes' THEN
+  IF v_account_session.last_seen_at IS NULL OR v_account_session.last_seen_at < now() - interval '5 minutes' THEN
     UPDATE public.account_sessions
     SET last_seen_at = now(),
         session_expires_at = now() + CASE
