@@ -1583,7 +1583,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         totalRows: 0,
         message: `جارٍ تحميل ${collection} على دفعات…`,
       });
-    }) as any;
+    }, getCachedPurchaseAdminId()) as any;
 
     const requiredCollections: Record<string, unknown> = {
       business_days: snapshot.business_days,
