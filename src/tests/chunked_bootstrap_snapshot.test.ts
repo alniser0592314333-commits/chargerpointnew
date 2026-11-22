@@ -65,6 +65,82 @@ describe('Chunked authoritative bootstrap protocol', () => {
     expect(calls.find((call) => call.name === 'read_sync_bootstrap_page' && call.args.p_entity_type === 'customers' && call.args.p_after_id !== null)?.args.p_after_id).toBe(customerRows[BOOTSTRAP_PAGE_SIZE - 1].id);
   });
 
+  it('resumes from the last durably committed page and retains the original high-water mark', async () => {
+    let attempt = 1;
+    let firstPageCalls = 0;
+    let interruptedPageCalls = 0;
+    let resumedPageCalls = 0;
+    const rows = Array.from({ length: BOOTSTRAP_PAGE_SIZE + 1 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      name: `Day ${index + 1}`,
+    }));
+
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (name: string, args: any) => {
+      if (name === 'begin_sync_bootstrap') {
+        return {
+          data: {
+            schema_version: 2,
+            captured_at: `2026-11-22T00:00:0${attempt}.000Z`,
+            server_reset_generation: 9,
+            max_change_sequence: attempt === 1 ? 700 : 900,
+            page_size: BOOTSTRAP_PAGE_SIZE,
+            collections: [...BOOTSTRAP_COLLECTIONS],
+          },
+          error: null,
+        } as any;
+      }
+
+      const collection = args.p_entity_type;
+      if (collection !== 'business_days') {
+        return {
+          data: { entity_type: collection, rows: [], next_cursor: null, has_more: false },
+          error: null,
+        } as any;
+      }
+
+      if (args.p_after_id === null) {
+        firstPageCalls += 1;
+        return {
+          data: {
+            entity_type: collection,
+            rows: rows.slice(0, BOOTSTRAP_PAGE_SIZE),
+            next_cursor: rows[BOOTSTRAP_PAGE_SIZE - 1].id,
+            has_more: true,
+          },
+          error: null,
+        } as any;
+      }
+
+      if (attempt === 1) {
+        interruptedPageCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { data: null, error: 'simulated interruption' } as any;
+      }
+
+      resumedPageCalls += 1;
+      return {
+        data: {
+          entity_type: collection,
+          rows: rows.slice(BOOTSTRAP_PAGE_SIZE),
+          next_cursor: rows[BOOTSTRAP_PAGE_SIZE].id,
+          has_more: false,
+        },
+        error: null,
+      } as any;
+    });
+
+    await expect(fetchAuthoritativeBootstrapSnapshot()).rejects.toThrow(/simulated interruption/);
+    attempt = 2;
+
+    const resumed = await fetchAuthoritativeBootstrapSnapshot();
+    expect(resumed.max_change_sequence).toBe(700);
+    expect(resumed.server_reset_generation).toBe(9);
+    expect((resumed.business_days as any[])).toHaveLength(BOOTSTRAP_PAGE_SIZE + 1);
+    expect(firstPageCalls).toBe(1);
+    expect(interruptedPageCalls).toBe(1);
+    expect(resumedPageCalls).toBe(1);
+  });
+
   it('rejects a manifest that omits or reorders a required collection', async () => {
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
       data: {
