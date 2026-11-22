@@ -47,15 +47,27 @@ type BootstrapProgress = (collection: BootstrapCollection, completedRows: number
 
 const unwrapRpc = (value: any): any => Array.isArray(value) ? value[0] : value;
 
+const describeBootstrapError = (error: unknown): string => {
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object') {
+    const value = error as Record<string, unknown>;
+    const details = [value.message, value.code, value.details, value.hint]
+      .filter((part) => typeof part === 'string' && part.length > 0)
+      .join(' ');
+    return details || JSON.stringify(value);
+  }
+  return String(error);
+};
+
 const isRetryableReadError = (error: string): boolean =>
-  /timeout|network|fetch|\b500\b|\b502\b|\b503\b|\b504\b|57014|ECONNRESET|temporar/i.test(error);
+  /timeout|network|fetch|\b429\b|\b500\b|\b502\b|\b503\b|\b504\b|57014|53300|57P01|ECONNRESET|temporar|connection/i.test(error);
 
 const callBootstrapRpc = async (name: string, args: Record<string, unknown>): Promise<any> => {
   let lastError = 'UNKNOWN_BOOTSTRAP_RPC_ERROR';
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const { data, error } = await invokeSupabaseRpc<any>(name, args);
     if (!error) return unwrapRpc(data);
-    lastError = String(error);
+    lastError = describeBootstrapError(error);
     if (attempt === 2 || !isRetryableReadError(lastError)) break;
     await new Promise((resolve) => setTimeout(resolve, 250 * (2 ** attempt)));
   }
