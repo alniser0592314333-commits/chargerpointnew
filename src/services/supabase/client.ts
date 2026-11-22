@@ -353,7 +353,12 @@ export async function supabaseRefreshToken(): Promise<{ session: SupabaseAuthSes
         const vault = await import("../auth/accountBiometric");
         await vault.syncSavedAdminQuickLoginTokenForSession(newSession);
       } catch (vaultSyncError) {
-        console.warn("Could not synchronize the saved admin refresh token with Android Keystore.", vaultSyncError);
+        // Do not leave a known-stale quick-login token visible as if it were usable.
+        try {
+          const vault = await import("../auth/accountBiometric");
+          await vault.removeSavedAdminQuickLoginTokensForUser(newSession.user.id, newSession.user.email);
+        } catch {}
+        console.warn("Saved quick sign-in was removed because its rotated token could not be secured in Android Keystore.", vaultSyncError);
       }
       return newSession;
     } catch (err) {
