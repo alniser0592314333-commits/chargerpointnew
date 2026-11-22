@@ -938,11 +938,11 @@ export const applyRemoteChange = (change: {
     }
     const entity: GoalEntity = {
       id: p.id || change.entityId,
-      customerId: p.customerId || p.customer_id,
-      targetQuantity: Number(p.targetQuantity ?? p.target_quantity ?? 0),
-      currentProgress: Number(p.currentProgress ?? p.current_progress ?? 0),
-      bonusAmountMinor: Number(p.bonusAmountMinor ?? p.bonus_amount_minor ?? 0),
-      durationDays: Number(p.durationDays ?? p.duration_days ?? 0),
+      customerId: p.customerId || p.customer_id || previousGoal?.customerId || '',
+      targetQuantity: Number(p.targetQuantity ?? p.target_quantity ?? previousGoal?.targetQuantity ?? 0),
+      currentProgress: Number(p.currentProgress ?? p.current_progress ?? previousGoal?.currentProgress ?? 0),
+      bonusAmountMinor: Number(p.bonusAmountMinor ?? p.bonus_amount_minor ?? previousGoal?.bonusAmountMinor ?? 0),
+      durationDays: Number(p.durationDays ?? p.duration_days ?? previousGoal?.durationDays ?? 0),
       status: String(p.status || previousGoal?.status || 'ACTIVE').toUpperCase() as GoalEntity['status'],
       startedAt: p.startedAt || p.started_at || previousGoal?.startedAt || new Date().toISOString(),
       expiresAt: p.expiresAt || p.expires_at || previousGoal?.expiresAt || new Date().toISOString(),
@@ -955,7 +955,7 @@ export const applyRemoteChange = (change: {
       cancellationReviewedBy: p.cancellationReviewedBy || p.cancellation_reviewed_by || previousGoal?.cancellationReviewedBy || undefined,
       cancellationReviewReason: p.cancellationReviewReason || p.cancellation_review_reason || previousGoal?.cancellationReviewReason || undefined,
       createdAt: p.createdAt || p.created_at || previousGoal?.createdAt || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousGoal?.updatedAt || new Date().toISOString(),
       version: incomingGoalVersion,
     };
     localDb.setWithTx(tx, 'goals', entity.id, entity);
@@ -977,15 +977,15 @@ export const applyRemoteChange = (change: {
     }
     const entity: GoalRequestEntity = {
       id: p.id || change.entityId,
-      customerId: p.customerId || p.customer_id,
-      requestedTarget: p.requestedTarget ?? p.requested_target ?? undefined,
+      customerId: p.customerId || p.customer_id || previousRequest?.customerId || '',
+      requestedTarget: p.requestedTarget ?? p.requested_target ?? previousRequest?.requestedTarget ?? undefined,
       status: String(p.status || previousRequest?.status || 'PENDING').toUpperCase() as GoalRequestEntity['status'],
-      reviewedBy: p.reviewedBy || p.reviewed_by || undefined,
-      reviewedAt: p.reviewedAt || p.reviewed_at || undefined,
-      rejectionReason: p.rejectionReason || p.rejection_reason || undefined,
-      resultingGoalId: p.resultingGoalId || p.resulting_goal_id || undefined,
+      reviewedBy: p.reviewedBy || p.reviewed_by || previousRequest?.reviewedBy || undefined,
+      reviewedAt: p.reviewedAt || p.reviewed_at || previousRequest?.reviewedAt || undefined,
+      rejectionReason: p.rejectionReason || p.rejection_reason || previousRequest?.rejectionReason || undefined,
+      resultingGoalId: p.resultingGoalId || p.resulting_goal_id || previousRequest?.resultingGoalId || undefined,
       createdAt: p.createdAt || p.created_at || previousRequest?.createdAt || new Date().toISOString(),
-      updatedAt: p.updatedAt || p.updated_at || new Date().toISOString(),
+      updatedAt: p.updatedAt || p.updated_at || previousRequest?.updatedAt || new Date().toISOString(),
       version: incomingRequestVersion,
     };
     localDb.setWithTx(tx, 'goalRequests', entity.id, entity);
