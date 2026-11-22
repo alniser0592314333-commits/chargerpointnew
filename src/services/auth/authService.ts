@@ -650,47 +650,59 @@ class DefaultAuthService implements AuthService {
         return null;
       }
 
-      // Step 2: Server-Authoritative Identity Profile Resolver
-      const profile = await this.getAdminProfile(signInRes.session.access_token);
-      if (!profile || !profile.authenticated) {
+      // Step 2: Read only the minimum account gate before the BIN decision.
+      // This RPC returns identity/role/active status only, never permissions or
+      // business data, and is safe to call before a Super Admin's second factor.
+      const gate = await this.getAdminLoginGate(signInRes.session.access_token);
+      if (!gate.authenticated) {
         setSupabaseAuthToken(null);
         throw new Error("PROFILE_RPC_FAILED");
       }
-
-      if (!profile.is_admin) {
+      if (!gate.is_admin) {
         setSupabaseAuthToken(null);
         throw new Error("ACCESS_DENIED_NO_ADMIN");
       }
-
-      if (profile.is_active === false) {
+      if (gate.is_active === false) {
         setSupabaseAuthToken(null);
         throw new Error("ACCESS_DENIED_INACTIVE");
       }
 
-      const userRole = (profile.role || "OPERATOR") as UserRole;
+      const userRole = (gate.role || "OPERATOR") as UserRole;
 
-      // Step 3: BIN verification required ONLY for SUPER_ADMIN
+      // Step 3: Super Admin remains temporary and unregistered until BIN succeeds.
       if (userRole === "SUPER_ADMIN") {
-        // Cache temporary session in memory ONLY (never in localStorage before BIN)
         pendingSuperAdminContext = {
           token: signInRes.session.access_token,
           session: signInRes.session,
-          profile,
-          resolvedEmail,
+          profile: gate,
+          resolvedEmail: gate.email || signInRes.session.user.email || resolvedEmail,
           userRole: "SUPER_ADMIN",
           expiresAt: Date.now() + 5 * 60 * 1000,
         };
 
-        if (!cleanBin) {
-          // Tell UI to prompt for BIN
-          throw new Error("SUPER_ADMIN_BIN_REQUIRED");
-        }
-
-        // If cleanBin was provided directly, complete BIN verification immediately with existing context
+        if (!cleanBin) throw new Error("SUPER_ADMIN_BIN_REQUIRED");
         return this.verifySuperAdminBin(cleanBin);
       }
 
-      // Step 4 for non-super admins: Directly commit session
+      // Other administrators are registered only after their identity gate passes.
+      await reactivateMyAccountSession(signInRes.session.access_token);
+      const profile = await this.getAdminProfile(signInRes.session.access_token);
+      if (!profile || !profile.authenticated || !profile.is_admin || profile.is_active === false) {
+        setSupabaseAuthToken(null);
+        throw new Error("PROFILE_RPC_FAILED");
+      }
+      if (profile.role === "SUPER_ADMIN") {
+        pendingSuperAdminContext = {
+          token: signInRes.session.access_token,
+          session: signInRes.session,
+          profile,
+          resolvedEmail: profile.email || signInRes.session.user.email || resolvedEmail,
+          userRole: "SUPER_ADMIN",
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        };
+        throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+      }
+
       saveStoredSupabaseAuthSession(signInRes.session);
       setSupabaseAuthToken(signInRes.session.access_token);
 
@@ -698,7 +710,7 @@ class DefaultAuthService implements AuthService {
         userId: profile.admin_id || signInRes.session.user.id,
         email: profile.email || signInRes.session.user.email || resolvedEmail,
         fullName: profile.full_name || profile.username || resolvedEmail.split("@")[0],
-        role: userRole,
+        role: (profile.role || userRole) as UserRole,
         permissions: profile.permissions || [],
         tokenExpiresAt: createLocalSessionExpiry(),
       };
