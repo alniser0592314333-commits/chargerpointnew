@@ -93,6 +93,18 @@ export function rememberAdminAccountIdentifier(identifier: string) {
   localStorage.setItem(SAVED_ADMIN_ACCOUNTS_KEY, JSON.stringify(next));
 }
 
+export function linkSavedAdminAccountIdentifier(identifier: string, authUserId: string) {
+  const clean = identifier.trim();
+  if (!clean || !authUserId || clean.length > 160 || authUserId.length > 80) return;
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]'); } catch { return []; }
+  })();
+  if (!Array.isArray(saved) || !saved.some((value) => typeof value === 'string' && value.toLowerCase() === clean.toLowerCase())) return;
+  const mapping = readSavedAdminAccountUids();
+  mapping[clean.toLowerCase()] = authUserId;
+  localStorage.setItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY, JSON.stringify(mapping));
+}
+
 export async function saveAdminQuickLoginToken(identifier: string, refreshToken: string, authUserId: string) {
   if (!Capacitor.isNativePlatform()) throw new Error('SECURE_STORAGE_NATIVE_ONLY');
   const cleanIdentifier = identifier.trim();
