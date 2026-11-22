@@ -95,3 +95,12 @@ export async function revokeAllAccountSessions(): Promise<number> {
   }
   return Number(data.revoked_count || 0);
 }
+
+
+export async function revokeCurrentAccountSession(): Promise<void> {
+  const sessions = await getAccountSessions();
+  const current = sessions.find((session) => session.is_current);
+  if (!current) throw new Error("CURRENT_ACCOUNT_SESSION_NOT_FOUND");
+  const result = await revokeAccountSession(current.session_id);
+  if (!result.revoked_current) throw new Error("CURRENT_ACCOUNT_SESSION_REVOCATION_UNCONFIRMED");
+}
