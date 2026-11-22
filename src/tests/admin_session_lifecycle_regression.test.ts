@@ -137,6 +137,7 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(migration).toContain("interval '5 minutes'");
     expect(migration).toContain("SESSION_IDLE_EXPIRED");
     expect(migration).toContain("reactivate_my_account_session");
+    expect(migration).toContain("get_my_admin_login_gate");
     expect(migration).toContain("session_expires_at <= now()");
   });
 
