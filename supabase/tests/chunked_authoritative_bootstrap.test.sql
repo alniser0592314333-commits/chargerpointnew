@@ -9,6 +9,7 @@ DECLARE
   v_first jsonb;
   v_second jsonb;
   v_purchase jsonb;
+  v_order_id uuid := '30000000-0000-4000-8000-000000000001';
 BEGIN
   v_manifest := public.begin_sync_bootstrap();
   IF (v_manifest->>'schema_version')::integer <> 2
@@ -57,6 +58,18 @@ BEGIN
       WHERE entity_type='system_settings' AND action='DELETE'
         AND payload->>'key'='server_reset_generation') <> 1 THEN
     RAISE EXCEPTION 'System-setting delete was not captured';
+  END IF;
+  PERFORM public.record_canonical_change(
+    'orders'::text, v_order_id, 'UPDATE'::text,
+    jsonb_build_object('id', v_order_id, 'status', 'READY', 'version', 2), 2
+  );
+  PERFORM public.record_canonical_change(
+    'orders'::character varying, v_order_id, 'UPDATE'::character varying,
+    jsonb_build_object('id', v_order_id, 'status', 'READY', 'version', 2), 2
+  );
+  IF (SELECT count(*) FROM public.change_log
+      WHERE entity_type='orders' AND entity_id=v_order_id AND action='UPDATE') <> 1 THEN
+    RAISE EXCEPTION 'Trigger/command event deduplication failed for orders';
   END IF;
 
   IF NOT has_function_privilege('authenticated', 'public.begin_sync_bootstrap()', 'EXECUTE')
