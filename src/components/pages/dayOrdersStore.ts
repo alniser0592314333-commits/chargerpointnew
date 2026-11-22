@@ -1024,12 +1024,13 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('financialLedger', change.entityId, tx);
       return;
     }
-    const ledgerEventType = p.eventType || p.event_type;
-    const ledgerOrderId = p.orderId || p.order_id || undefined;
-    const ledgerOrderItemId = p.orderItemId || p.order_item_id || undefined;
+    const previousLedger = ledgerList.find((item) => item.id === change.entityId);
+    const ledgerEventType = p.eventType || p.event_type || previousLedger?.eventType;
+    const ledgerOrderId = p.orderId || p.order_id || previousLedger?.orderId || undefined;
+    const ledgerOrderItemId = p.orderItemId || p.order_item_id || previousLedger?.orderItemId || undefined;
     const derivedOrder = ledgerOrderId ? ordersMap.get(ledgerOrderId) : undefined;
     const derivedItem = ledgerOrderItemId ? itemsMap.get(ledgerOrderItemId) : undefined;
-    const rawLedgerAmount = Number(p.amountMinor ?? p.amount_minor ?? 0);
+    const rawLedgerAmount = Number(p.amountMinor ?? p.amount_minor ?? previousLedger?.amountMinor ?? 0);
     const normalizedLedgerAmount =
       (ledgerEventType === 'CHARGE' || ledgerEventType === 'ORDER_ITEM_CHARGE') && rawLedgerAmount > 0
         ? -rawLedgerAmount
@@ -1047,6 +1048,7 @@ export const applyRemoteChange = (change: {
     const derivedCustomerId =
       p.customerId ||
       p.customer_id ||
+      previousLedger?.customerId ||
       derivedOrder?.customerId ||
       (derivedItem ? ordersMap.get(derivedItem.orderId)?.customerId : undefined) ||
       referencedGoal?.customerId;
@@ -1061,10 +1063,10 @@ export const applyRemoteChange = (change: {
       orderId: ledgerOrderId || derivedItem?.orderId,
       orderItemId: ledgerOrderItemId,
       customerId: derivedCustomerId,
-      actorAdminId: p.actorAdminId || p.actor_admin_id || undefined,
-      referenceId: p.referenceId || p.reference_id || undefined,
-      metadata: p.metadata ?? undefined,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+      actorAdminId: p.actorAdminId || p.actor_admin_id || previousLedger?.actorAdminId || undefined,
+      referenceId: p.referenceId || p.reference_id || previousLedger?.referenceId || undefined,
+      metadata: p.metadata ?? previousLedger?.metadata ?? undefined,
+      createdAt: p.createdAt || p.created_at || previousLedger?.createdAt || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'financialLedger', entity.id, entity);
     snapshotRemoteArray(tx, 'financialLedger', ledgerList);
@@ -1083,15 +1085,16 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('payments', change.entityId, tx);
       return;
     }
+    const previousPayment = paymentsMap.get(change.entityId);
     const entity: PaymentEntity = {
       id: p.id || change.entityId,
-      customerId: p.customerId || p.customer_id,
-      amountMinor: p.amountMinor ?? p.amount_minor ?? 0,
-      paymentMethod: p.paymentMethod || p.payment_method,
-      reference: p.reference ?? undefined,
-      actorAdminId: p.actorAdminId || p.actor_admin_id,
-      commandId: p.commandId || p.command_id,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+      customerId: p.customerId || p.customer_id || previousPayment?.customerId,
+      amountMinor: p.amountMinor ?? p.amount_minor ?? previousPayment?.amountMinor ?? 0,
+      paymentMethod: p.paymentMethod || p.payment_method || previousPayment?.paymentMethod,
+      reference: p.reference ?? previousPayment?.reference ?? undefined,
+      actorAdminId: p.actorAdminId || p.actor_admin_id || previousPayment?.actorAdminId,
+      commandId: p.commandId || p.command_id || previousPayment?.commandId,
+      createdAt: p.createdAt || p.created_at || previousPayment?.createdAt || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'payments', entity.id, entity);
     snapshotRemoteMapEntry(tx, 'payments', paymentsMap, entity.id);
@@ -1108,13 +1111,14 @@ export const applyRemoteChange = (change: {
       notifyStoreAfterTransaction('paymentAllocations', change.entityId, tx);
       return;
     }
+    const previousAllocation = allocationsList.find((item) => item.id === change.entityId);
     const entity: PaymentAllocationEntity = {
       id: p.id || change.entityId,
-      paymentId: p.paymentId || p.payment_id,
-      orderItemId: p.orderItemId || p.order_item_id,
-      orderId: p.orderId || p.order_id,
-      allocatedAmountMinor: p.allocatedAmountMinor ?? p.allocated_amount_minor ?? 0,
-      createdAt: p.createdAt || p.created_at || new Date().toISOString(),
+      paymentId: p.paymentId || p.payment_id || previousAllocation?.paymentId,
+      orderItemId: p.orderItemId || p.order_item_id || previousAllocation?.orderItemId,
+      orderId: p.orderId || p.order_id || previousAllocation?.orderId,
+      allocatedAmountMinor: p.allocatedAmountMinor ?? p.allocated_amount_minor ?? previousAllocation?.allocatedAmountMinor ?? 0,
+      createdAt: p.createdAt || p.created_at || previousAllocation?.createdAt || new Date().toISOString(),
     };
     localDb.setWithTx(tx, 'paymentAllocations', entity.id, entity);
     snapshotRemoteArray(tx, 'paymentAllocations', allocationsList);
