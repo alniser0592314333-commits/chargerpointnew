@@ -21,8 +21,8 @@ BEGIN
 
   PERFORM public._cp_assert_active_admin_permission('sync:manage');
 
-  -- STABLE function reads use one PostgreSQL statement snapshot, so the reset
-  -- generation and change-log high-water mark describe the same DB snapshot.
+  -- Both checkpoint values are read by one SQL statement, so reset generation
+  -- and change-log high-water mark describe the same PostgreSQL snapshot.
   RETURN (
     SELECT jsonb_build_object(
       'schema_version', 2,
