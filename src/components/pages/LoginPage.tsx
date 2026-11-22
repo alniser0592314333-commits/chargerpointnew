@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Download } from "lucide-react";
 import { getPWAInstallState, promptPWAInstall, subscribePWAInstall } from "../../services/pwaInstallService";
-import { loginWithAccountBiometric, saveAdminQuickLoginToken } from "../../services/auth/accountBiometric";
+import { loginWithAccountBiometric, saveAdminQuickLoginToken, linkSavedAdminAccountIdentifier } from "../../services/auth/accountBiometric";
 import { useI18n } from "../../i18n/i18nContext";
 import { useTheme } from "../../theme/themeContext";
 import { authService } from "../../services/auth/authService";
@@ -216,14 +216,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, bootstrapP
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      const currentAuth = Capacitor.isNativePlatform()
+        ? await authService.getSupabaseAuthSession()
+        : null;
       if (remember) {
         if (Capacitor.isNativePlatform()) {
-          const currentAuth = await authService.getSupabaseAuthSession();
           if (!currentAuth?.refresh_token || !currentAuth.user?.id) throw new Error("SECURE_QUICK_LOGIN_UNAVAILABLE");
           await saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id);
         }
         saveAdminAccountIdentifier(identifier);
         setSavedAdminAccounts(readSavedAdminAccounts());
+      } else if (currentAuth?.user?.id) {
+        // Associate pre-existing saved identifiers with the verified account so
+        // "sign out only" can remove legacy vault entries too.
+        linkSavedAdminAccountIdentifier(identifier, currentAuth.user.id);
       }
       setPendingRememberIdentifier(null);
       setPassword("");
