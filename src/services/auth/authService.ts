@@ -6,7 +6,7 @@
 
 import { ID, Timestamp } from "../../types/common";
 import { Capacitor } from "@capacitor/core";
-import { revokeCurrentAccountSession } from "./accountSessionService";
+import { reactivateMyAccountSession, revokeCurrentAccountSession } from "./accountSessionService";
 import {
   getSupabaseStatus,
   supabaseSignInWithPassword,
@@ -797,6 +797,9 @@ class DefaultAuthService implements AuthService {
     }
     pendingSuperAdminContext = null;
     pendingBinChangeSession = null;
+    // A saved refresh credential is an explicit re-authentication path. It may
+    // reactivate an idle-expired but never-revoked session on this device.
+    await reactivateMyAccountSession(refreshed.access_token);
     saveStoredSupabaseAuthSession(refreshed);
     setSupabaseAuthToken(refreshed.access_token);
     const session: UserSession = {
@@ -902,6 +905,10 @@ class DefaultAuthService implements AuthService {
         throw new Error("WRONG_BIN");
       }
     }
+
+    // BIN has now passed. Only at this point register/reactivate the session
+    // for protected application access.
+    await reactivateMyAccountSession(token);
 
     // Success: Commit final authoritative session to storage and memory
     saveStoredSupabaseAuthSession(tempSession);
