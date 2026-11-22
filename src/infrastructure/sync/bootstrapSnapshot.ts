@@ -97,6 +97,7 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     const rows: any[] = [];
     let cursor: string | null = null;
     let pageCount = 0;
+    const seenKeys = new Set<string>();
 
     while (true) {
       pageCount += 1;
@@ -123,16 +124,18 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
       }
 
       const keyName = collection === 'system_settings' ? 'key' : 'id';
-      const pageKeys = new Set<string>();
       for (const row of page.rows) {
         const key = row?.[keyName];
         if (typeof key !== 'string' || !key) {
           throw new Error(`BOOTSTRAP_ROW_KEY_INVALID[${collection}]: row has no ${keyName}`);
         }
-        if (pageKeys.has(key)) {
-          throw new Error(`BOOTSTRAP_DUPLICATE_ROW[${collection}]: duplicate key within page`);
+        if (seenKeys.has(key)) {
+          throw new Error(`BOOTSTRAP_DUPLICATE_ROW[${collection}]: key repeated across bootstrap pages`);
         }
-        pageKeys.add(key);
+        if (collection !== 'system_settings' && cursor !== null && key <= cursor) {
+          throw new Error(`BOOTSTRAP_PAGE_ORDER_INVALID[${collection}]: key did not advance past cursor`);
+        }
+        seenKeys.add(key);
       }
 
       if (page.rows.length > 0) {
