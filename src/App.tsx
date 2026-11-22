@@ -14,6 +14,7 @@ import { AuthenticatedLayout } from './components/shell/AuthenticatedLayout';
 import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
 import { authService } from './services/auth/authService';
+import { saveAdminQuickLoginToken, removeSavedAdminQuickLoginTokensForUser } from './services/auth/accountBiometric';
 import { isCurrentAccountSessionActive, registerCurrentAccountSession } from './services/auth/accountSessionService';
 import { refreshStoreFromRemote, ensureStoreHydrated, subscribeStoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
@@ -376,10 +377,18 @@ export default function App() {
             // The registry may not be deployed yet, or the network may be temporarily unavailable.
             console.warn('Account session verification temporarily unavailable.', sessionCheckError);
           }
-          const session = await authService.getCurrentSession(true); // Authoritatively verify with server
+          const session = await authService.getCurrentSession(true); // Authoritatively refresh role and permissions
           if (!session) {
-            setIsSuspended(true);
+            await stopNativePushNotifications();
+            setIsAuthenticated(false);
+            setUserSession(null);
+            setIsSuspended(false);
+            navigate('/login', true);
+            return;
           }
+          // Apply the server-refreshed role/permissions to React state. Merely
+          fetching the profile without updating this state leaves stale UI grants.
+          setUserSession(session);
         } catch {
           // Fail-closed/safe: ignore transient network issues but let authService handle rehydration
         }
@@ -774,11 +783,27 @@ export default function App() {
       case '/app/customer-accounts':
         return <CustomerAccountNotificationsPanel />;
       case '/app/settings':
-        return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async () => {
+        return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async (mode) => {
+          const currentAuth = await authService.getSupabaseAuthSession();
+          const identifier = currentAuth?.user?.email || userSession?.email || "";
+          if (mode === "save") {
+            if (!Capacitor.isNativePlatform()) throw new Error("SECURE_QUICK_LOGIN_NATIVE_ONLY");
+            if (!currentAuth?.refresh_token || !currentAuth.user?.id || !identifier) {
+              throw new Error("SECURE_QUICK_LOGIN_UNAVAILABLE");
+            }
+            await saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id);
+          } else if (mode === "forget") {
+            if (currentAuth?.user?.id) {
+              await removeSavedAdminQuickLoginTokensForUser(currentAuth.user.id, identifier);
+            }
+            // Revoke the current server session before removing the local tokens.
+            await authService.logout({ revokeCurrentSession: true });
+          }
           await stopNativePushNotifications();
-          await authService.logout();
+          if (mode !== "forget") await authService.logout();
           setIsAuthenticated(false);
           setUserSession(null);
+          setIsSuspended(false);
           navigate("/login", true);
         }} />;
       case '/app/settings/renumber-day': {
