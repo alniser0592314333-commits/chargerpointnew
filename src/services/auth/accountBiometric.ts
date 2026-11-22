@@ -72,11 +72,13 @@ const SAVED_ADMIN_ACCOUNT_UIDS_KEY = 'cp_saved_admin_account_auth_ids_v1';
 
 function readSavedAdminAccountUids(): Record<string, string> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY) || '{}');
+    const parsed: unknown = JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY) || '{}');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([key, value]) =>
-      typeof key === 'string' && typeof value === 'string' && key.length <= 160 && value.length <= 80,
-    ));
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key.length <= 160 && typeof value === 'string' && value.length <= 80) result[key] = value;
+    }
+    return result;
   } catch { return {}; }
 }
 
