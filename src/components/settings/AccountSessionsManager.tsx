@@ -14,7 +14,7 @@ import { Button } from "../ui/Button";
 import { Monitor, Smartphone, Tablet, Globe, RefreshCw, LogOut, ShieldCheck, AlertCircle } from "lucide-react";
 
 interface AccountSessionsManagerProps {
-  onLogout?: () => void | Promise<void>;
+  onLogout?: (mode: "revoked") => void | Promise<void>;
 }
 
 function formatDate(value: string, locale: string): string {
@@ -78,7 +78,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
       }
       if (revokedCurrent) {
         await authService.logout();
-        await onLogout?.();
+        await onLogout?.("revoked");
         return;
       }
       setSuccess(isArabic ? "تم إنهاء الجلسات المحددة." : "Selected sessions were signed out.");
