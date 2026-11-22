@@ -73,8 +73,12 @@ describe('Bin Lock Isolation From Primary Auth Regression Tests', () => {
     expect(errorThrown).not.toBeNull();
     expect(errorThrown.message).toBe('BIN_LOCKED_FROZEN');
 
-    // 3. Primary auth session (Supabase auth token) must remain valid and not be cleared
-    expect(supabaseClient.getSupabaseAuthToken()).toBe('jwt_super_token');
+    // 3. The authenticated session remains only in the temporary in-memory
+    // Super Admin handoff; it must not become a globally active or persisted app session
+    // until the BIN factor succeeds.
+    expect(authService.hasPendingSuperAdminContext()).toBe(true);
+    expect(supabaseClient.getSupabaseAuthToken()).toBeNull();
+    expect(supabaseClient.getStoredSupabaseAuthSession()).toBeNull();
   });
 
   it('TEST B — Invalid password returns null (INVALID_CREDENTIALS)', async () => {
