@@ -42,6 +42,7 @@ import {
 } from '../../services/supabase/client';
 import { SyncEngine, syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTransport';
+import { BOOTSTRAP_COLLECTIONS, fetchAuthoritativeBootstrapSnapshot } from '../../infrastructure/sync/bootstrapSnapshot';
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
@@ -1556,25 +1557,19 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
   // must propagate so the boot gate never exposes a partially replaced store.
   let localMutationStarted = false;
   try {
-    // One server-side statement captures every bootstrap collection and its
-    // change-log high-water mark under the same PostgreSQL snapshot. Independent
-    // REST reads cannot safely be paired with a cursor because rows can change
-    // between requests.
-    const { data: rawSnapshot, error: snapshotError } = await invokeSupabaseRpc<any>(
-      'capture_sync_bootstrap_snapshot',
-      {}
-    );
-    if (snapshotError) {
-      console.warn('Authoritative bootstrap snapshot RPC failed:', snapshotError);
-      publishStoreBootstrapProgress({ phase: 'FAILED', percent: 0, completedRows: 0, totalRows: 0, message: 'فشل الاتصال بقاعدة البيانات السحابية.' });
-      return false;
-    }
-    const snapshot = (Array.isArray(rawSnapshot) ? rawSnapshot[0] : rawSnapshot) as any;
-    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-      console.warn('Authoritative bootstrap snapshot RPC returned an invalid response.');
-      publishStoreBootstrapProgress({ phase: 'FAILED', percent: 0, completedRows: 0, totalRows: 0, message: 'استجابة قاعدة البيانات غير صالحة.' });
-      return false;
-    }
+    // The server first pins resetGeneration + change-log high-water mark,
+    // then returns each collection through bounded keyset pages. The local
+    // installer below still receives the same collection shape, but no single
+    // PostgREST response has to serialize the complete business database.
+    const snapshot = await fetchAuthoritativeBootstrapSnapshot((collection, completedRows, completedCollections) => {
+      publishStoreBootstrapProgress({
+        phase: 'FETCHING',
+        percent: Math.min(30, 5 + Math.floor((completedCollections / BOOTSTRAP_COLLECTIONS.length) * 25)),
+        completedRows,
+        totalRows: 0,
+        message: `جارٍ تحميل ${collection} على دفعات…`,
+      });
+    }) as any;
 
     // These collections were added by the purchase-book migration. Older
     // deployments may not expose them yet, so treat them as empty until the
@@ -1612,7 +1607,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const snapshotGeneration = Number(snapshot.server_reset_generation);
     const snapshotSequence = Number(snapshot.max_change_sequence);
     if (
-      Number(snapshot.schema_version) !== 1 ||
+      Number(snapshot.schema_version) !== 2 ||
       invalidCollection ||
       !Number.isSafeInteger(snapshotGeneration) || snapshotGeneration < 0 ||
       !Number.isSafeInteger(snapshotSequence) || snapshotSequence < 0
