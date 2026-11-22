@@ -31,7 +31,14 @@ BEGIN
         COALESCE((SELECT s.value_number FROM public.system_settings s WHERE s.key = 'server_reset_generation' LIMIT 1), 0),
       'max_change_sequence',
         COALESCE((SELECT max(c.sequence_id) FROM public.change_log c), 0),
-      'page_size', 500
+      'page_size', 500,
+      'collections', jsonb_build_array(
+        'business_days', 'customers', 'device_types', 'orders', 'order_items',
+        'financial_ledger', 'payments', 'payment_allocations', 'order_number_reservations',
+        'qr_tokens', 'goals', 'goal_requests', 'system_settings',
+        'purchase_suppliers', 'purchase_items', 'purchase_payment_methods',
+        'purchase_months', 'purchase_weeks', 'purchase_days', 'purchase_orders'
+      )
     )
   );
 END;
