@@ -141,6 +141,23 @@ export async function syncSavedAdminQuickLoginTokenForSession(session: {
   }
 }
 
+export async function removeSavedAdminQuickLoginAccount(identifier: string) {
+  const clean = identifier.trim().toLowerCase();
+  if (!clean) return;
+  try { await deleteAdminQuickLoginToken(clean); } catch {}
+  const mapping = readSavedAdminAccountUids();
+  delete mapping[clean];
+  localStorage.setItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY, JSON.stringify(mapping));
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]'); } catch { return []; }
+  })();
+  if (Array.isArray(saved)) {
+    localStorage.setItem(SAVED_ADMIN_ACCOUNTS_KEY, JSON.stringify(
+      saved.filter((value) => typeof value === 'string' && value.toLowerCase() !== clean),
+    ));
+  }
+}
+
 export async function removeSavedAdminQuickLoginTokensForUser(authUserId: string, fallbackIdentifier?: string) {
   if (!authUserId) return;
   const mapping = readSavedAdminAccountUids();
@@ -149,9 +166,9 @@ export async function removeSavedAdminQuickLoginTokensForUser(authUserId: string
     .map(([identifier]) => identifier);
   if (fallbackIdentifier?.trim()) identifiers.push(fallbackIdentifier.trim().toLowerCase());
   for (const identifier of [...new Set(identifiers)]) {
-    await deleteAdminQuickLoginToken(identifier);
+    try { await deleteAdminQuickLoginToken(identifier); } catch {}
+    delete mapping[identifier];
   }
-  for (const identifier of identifiers) delete mapping[identifier];
   localStorage.setItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY, JSON.stringify(mapping));
   const saved = (() => {
     try { return JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]'); } catch { return []; }
