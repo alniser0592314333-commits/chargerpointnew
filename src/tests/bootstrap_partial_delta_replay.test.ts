@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { localDb } from '../infrastructure/localDb/localDb';
-import { applyRemoteChange, reloadStoreFromLocal, resetStoreMemory } from '../components/pages/dayOrdersStore';
+import * as supabaseClient from '../services/supabase/client';
+import { mockChunkedBootstrapRpc } from './utils/mockChunkedBootstrap';
+import { setTestAppAuthSession } from './utils/testSetup';
+import { applyRemoteChange, hydrateFromRemoteTables, reloadStoreFromLocal, resetStoreMemory } from '../components/pages/dayOrdersStore';
 
 describe('Canonical partial-delta replay preserves snapshot fields', () => {
   beforeEach(async () => {
@@ -129,31 +132,38 @@ describe('Canonical partial-delta replay preserves snapshot fields', () => {
   it('merges partial goal and goal-request updates without resetting established values', async () => {
     const goalId = '00000000-0000-4000-8000-000000000201';
     const requestId = '00000000-0000-4000-8000-000000000202';
-    await localDb.set('goals', goalId, {
-      id: goalId,
-      customerId: 'customer-1',
-      targetQuantity: 10,
-      currentProgress: 6,
-      bonusAmountMinor: 2500,
-      durationDays: 30,
-      status: 'ACTIVE',
-      startedAt: '2026-11-01T00:00:00.000Z',
-      expiresAt: '2026-12-01T00:00:00.000Z',
-      createdAt: '2026-11-01T00:00:00.000Z',
-      updatedAt: '2026-11-01T00:00:00.000Z',
-      version: 1,
+    setTestAppAuthSession();
+    vi.spyOn(supabaseClient, 'getSupabaseStatus').mockReturnValue({
+      isConfigured: true,
+      url: 'https://example.supabase.co',
+      status: 'connected',
     });
-    await localDb.set('goalRequests', requestId, {
-      id: requestId,
-      customerId: 'customer-1',
-      requestedTarget: 12,
-      status: 'PENDING',
-      createdAt: '2026-11-01T00:00:00.000Z',
-      updatedAt: '2026-11-01T00:00:00.000Z',
-      version: 1,
+    mockChunkedBootstrapRpc({
+      goals: [{
+        id: goalId,
+        customerId: 'customer-1',
+        targetQuantity: 10,
+        currentProgress: 6,
+        bonusAmountMinor: 2500,
+        durationDays: 30,
+        status: 'ACTIVE',
+        startedAt: '2026-11-01T00:00:00.000Z',
+        expiresAt: '2026-12-01T00:00:00.000Z',
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+        version: 1,
+      }],
+      goal_requests: [{
+        id: requestId,
+        customerId: 'customer-1',
+        requestedTarget: 12,
+        status: 'PENDING',
+        createdAt: '2026-11-01T00:00:00.000Z',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+        version: 1,
+      }],
     });
-    resetStoreMemory();
-    await reloadStoreFromLocal();
+    expect(await hydrateFromRemoteTables()).toBe(true);
 
     await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
       applyRemoteChange({
