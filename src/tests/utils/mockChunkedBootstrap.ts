@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import * as supabaseClient from '../../services/supabase/client';
+import { BOOTSTRAP_COLLECTIONS, BOOTSTRAP_PAGE_SIZE } from '../../infrastructure/sync/bootstrapSnapshot';
 
 export const mockChunkedBootstrapRpc = (
   collections: Record<string, any[]> = {},
@@ -12,6 +13,8 @@ export const mockChunkedBootstrapRpc = (
         captured_at: '2026-11-22T00:00:00.000Z',
         server_reset_generation: 7,
         max_change_sequence: 42,
+        page_size: BOOTSTRAP_PAGE_SIZE,
+        collections: [...BOOTSTRAP_COLLECTIONS],
         ...manifest,
       },
       error: null,
