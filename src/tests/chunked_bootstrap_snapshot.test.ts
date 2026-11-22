@@ -145,7 +145,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
 
     expect(adminBRpc).toHaveBeenCalledWith('begin_sync_bootstrap', {});
     expect(adminBSnapshot.bootstrap_session_id).not.toBe(adminASnapshot.bootstrap_session_id);
-    expect(adminBSnapshot.admin_id).toBeUndefined();
+    expect(adminBSnapshot.max_change_sequence).toBe(1400);
   });
 
   it('resumes from the last durably committed page and retains the original high-water mark', async () => {
