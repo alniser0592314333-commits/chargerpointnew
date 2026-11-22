@@ -2456,8 +2456,11 @@ export const ensureStoreHydrated = async (): Promise<void> => {
       // staging cleanup, the active local checkpoint is authoritative and the
       // orphaned staging generation can now be safely reclaimed.
       if (isInitialHydrationDone) {
-        try { await clearActiveBootstrapStagingSession(); }
-        catch (cleanupError) { console.warn('Deferred bootstrap staging cleanup failed:', cleanupError); }
+        const readyCheckpoint = await localDb.getSyncState('global');
+        if (readyCheckpoint?.status === 'READY') {
+          try { await clearActiveBootstrapStagingSession(); }
+          catch (cleanupError) { console.warn('Deferred bootstrap staging cleanup failed:', cleanupError); }
+        }
       }
 
       if (!isResetCompleted && !isInitialHydrationDone) {
