@@ -5,6 +5,8 @@
  */
 
 import { ID, Timestamp } from "../../types/common";
+import { Capacitor } from "@capacitor/core";
+import { revokeCurrentAccountSession } from "./accountSessionService";
 import {
   getSupabaseStatus,
   supabaseSignInWithPassword,
@@ -33,6 +35,23 @@ import {
 import { config } from "../../config/env";
 
 export type UserRole = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "STAFF" | "VIEWER" | "OPERATOR" | "FINANCE";
+
+// This expiry bounds the locally cached role/permission snapshot. Supabase Auth
+// tokens and the server-side account-session guard remain the authority.
+const getLocalSessionCacheTtlMs = (): number => {
+  const longLivedMs = 30 * 24 * 60 * 60 * 1000;
+  if (Capacitor.isNativePlatform()) return longLivedMs;
+  try {
+    const standalone = typeof window !== "undefined"
+      && (window.matchMedia?.("(display-mode: standalone)").matches
+        || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+    return standalone ? longLivedMs : 7 * 24 * 60 * 60 * 1000;
+  } catch {
+    return 7 * 24 * 60 * 60 * 1000;
+  }
+};
+const createLocalSessionExpiry = (): string =>
+  new Date(Date.now() + getLocalSessionCacheTtlMs()).toISOString();
 
 export type Permission =
   | "customers:read"
@@ -173,7 +192,7 @@ export interface AuthService {
   login(email: string, passOrPin: string, bin?: string): Promise<UserSession | null>;
   acceptBiometricSession(session: SupabaseAuthSession): Promise<UserSession>;
   loginWithSavedAccount(identifier: string): Promise<UserSession | null>;
-  logout(): Promise<void>;
+  logout(options?: { revokeCurrentSession?: boolean }): Promise<void>;
   getCurrentSession(forceRefresh?: boolean): Promise<UserSession | null>;
   getSupabaseAuthSession(): Promise<SupabaseAuthSession | null>;
   captureAuthCallback(): Promise<{ session: SupabaseAuthSession | null; error: string | null; type?: string | null }>;
@@ -398,7 +417,7 @@ class DefaultAuthService implements AuthService {
       fullName: profileRes.full_name || cleanFullName,
       role: "SUPER_ADMIN",
       permissions: profileRes.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
 
     inMemorySession = session;
@@ -670,7 +689,7 @@ class DefaultAuthService implements AuthService {
         fullName: profile.full_name || profile.username || resolvedEmail.split("@")[0],
         role: userRole,
         permissions: profile.permissions || [],
-        tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        tokenExpiresAt: createLocalSessionExpiry(),
       };
 
       inMemorySession = session;
@@ -786,7 +805,7 @@ class DefaultAuthService implements AuthService {
       fullName: profile.full_name || profile.username || cleanIdentifier,
       role,
       permissions: profile.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
     inMemorySession = session;
     const storage = getLocalStorage();
@@ -795,27 +814,37 @@ class DefaultAuthService implements AuthService {
   }
 
   async acceptBiometricSession(authSession: SupabaseAuthSession): Promise<UserSession> {
-    if (!this.isSupabaseConfigured() || !authSession?.access_token || !authSession?.user?.id) {
+    if (!this.isSupabaseConfigured() || !authSession?.access_token || !authSession?.refresh_token || !authSession?.user?.id) {
       throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
     }
-    // The biometric Edge Function verifies the registered device signature before
-    // returning this Supabase session. BIN remains separate from sign-in and may
-    // still be required by sensitive operations.
+    // A biometric proof authenticates the account, but it does not replace the
+    // Super Admin's separate BIN factor. Do not persist either token until BIN passes.
     const profile = await this.getAdminProfile(authSession.access_token);
     if (!profile || !profile.authenticated || !profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
     if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
-    pendingSuperAdminContext = null;
+    const role = (profile.role || "OPERATOR") as UserRole;
     pendingBinChangeSession = null;
+    if (role === "SUPER_ADMIN") {
+      pendingSuperAdminContext = {
+        token: authSession.access_token,
+        session: authSession,
+        profile,
+        resolvedEmail: profile.email || authSession.user.email || "",
+        userRole: "SUPER_ADMIN",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+      throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+    }
+    pendingSuperAdminContext = null;
     saveStoredSupabaseAuthSession(authSession);
     setSupabaseAuthToken(authSession.access_token);
-    const role = (profile.role || "OPERATOR") as UserRole;
     const session: UserSession = {
       userId: profile.admin_id || authSession.user.id,
       email: profile.email || authSession.user.email || "",
       fullName: profile.full_name || profile.username || authSession.user.email || "",
       role,
       permissions: profile.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
     inMemorySession = session;
     const storage = getLocalStorage();
@@ -884,7 +913,7 @@ class DefaultAuthService implements AuthService {
       fullName: profile.full_name || profile.username || resolvedEmail.split("@")[0],
       role: userRole,
       permissions: profile.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
 
     inMemorySession = session;
@@ -906,8 +935,12 @@ class DefaultAuthService implements AuthService {
     pendingSuperAdminContext = null;
   }
 
-  async logout(): Promise<void> {
-    // Never retain a short-lived re-auth token across logout.
+  async logout(options?: { revokeCurrentSession?: boolean }): Promise<void> {
+    // Explicit "sign out only" revokes the server session before local credentials
+    // are cleared. Saved sign-out deliberately preserves the refresh credential.
+    if (options?.revokeCurrentSession) {
+      await revokeCurrentAccountSession();
+    }
     pendingBinChangeSession = null;
     clearStoredSupabaseAuthSession();
     inMemorySession = null;
@@ -965,44 +998,52 @@ class DefaultAuthService implements AuthService {
     const storage = getLocalStorage();
     if (storage) {
       const stored = storage.getItem(SESSION_STORAGE_KEY);
+      let storedSession: UserSession | null = null;
       if (stored) {
         try {
-          const storedSession = JSON.parse(stored) as UserSession;
-          if (new Date(storedSession.tokenExpiresAt).getTime() > Date.now()) {
-            const session: UserSession = serverProfile ? {
-              userId: serverProfile.admin_id || storedSession.userId,
-              email: serverProfile.email || storedSession.email,
-              fullName: serverProfile.full_name || serverProfile.username || storedSession.fullName,
-              role: (serverProfile.role as UserRole) || storedSession.role,
-              permissions: serverProfile.permissions || storedSession.permissions,
-              tokenExpiresAt: storedSession.tokenExpiresAt,
-            } : storedSession;
-
-            inMemorySession = session;
-            // Also sync back to storage if updated from server
-            if (serverProfile) {
-              storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-            }
-            return session;
-          }
+          storedSession = JSON.parse(stored) as UserSession;
         } catch {
           storage.removeItem(SESSION_STORAGE_KEY);
         }
-      } else if (serverProfile && this.isSupabaseConfigured()) {
-        // Fallback if session is not in localStorage but serverProfile is active (e.g. forced refresh without storage cache)
+      }
+
+      // A successful server profile read is authoritative even when the local
+      // 24-hour-era cache has expired. Rebuild it and refresh permissions instead
+      // of treating a still-valid Supabase session as logged out.
+      if (serverProfile) {
         const supabaseSession = await this.getSupabaseAuthSession();
         const session: UserSession = {
-          userId: serverProfile.admin_id || supabaseSession?.user.id || "",
-          email: serverProfile.email || supabaseSession?.user.email || "",
-          fullName: serverProfile.full_name || serverProfile.username || "",
-          role: serverProfile.role || "OPERATOR",
+          userId: serverProfile.admin_id || storedSession?.userId || supabaseSession?.user.id || "",
+          email: serverProfile.email || storedSession?.email || supabaseSession?.user.email || "",
+          fullName: serverProfile.full_name || serverProfile.username || storedSession?.fullName || "",
+          role: serverProfile.role || storedSession?.role || "OPERATOR",
           permissions: serverProfile.permissions || [],
-          tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          tokenExpiresAt: createLocalSessionExpiry(),
         };
         inMemorySession = session;
         storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
         return session;
       }
+
+      // A profile timeout is not proof that the account was revoked. Keep the
+      // last known session for offline-first navigation; sensitive server actions
+      // remain protected by the server-side session and permission checks.
+      if (storedSession) {
+        inMemorySession = storedSession;
+        return storedSession;
+      }
+    } else if (serverProfile && this.isSupabaseConfigured()) {
+      const supabaseSession = await this.getSupabaseAuthSession();
+      const session: UserSession = {
+        userId: serverProfile.admin_id || supabaseSession?.user.id || "",
+        email: serverProfile.email || supabaseSession?.user.email || "",
+        fullName: serverProfile.full_name || serverProfile.username || "",
+        role: serverProfile.role || "OPERATOR",
+        permissions: serverProfile.permissions || [],
+        tokenExpiresAt: createLocalSessionExpiry(),
+      };
+      inMemorySession = session;
+      return session;
     }
     return null;
   }
