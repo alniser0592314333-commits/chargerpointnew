@@ -169,6 +169,141 @@ BEGIN
 END;
 $function$;
 
+-- system_settings is part of the bootstrap read model but historically had
+-- only a write-order trigger. Capture every direct writer, not only the
+-- canonical SET_SYSTEM_SETTING command, so page/delta reconciliation is complete.
+
+CREATE OR REPLACE FUNCTION public.record_canonical_change(
+  p_entity_type text,
+  p_entity_id uuid,
+  p_action text,
+  p_payload jsonb,
+  p_version integer
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_seq bigint;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
+
+  IF p_entity_type = 'system_settings' AND COALESCE(p_payload->>'key', '') <> '' THEN
+    SELECT cl.sequence_id INTO v_seq
+    FROM public.change_log cl
+    WHERE cl.entity_type = 'system_settings'
+      AND cl.action = p_action
+      AND cl.payload->>'key' = p_payload->>'key'
+      AND cl.xmin = pg_current_xact_id()::xid
+    ORDER BY cl.sequence_id DESC
+    LIMIT 1;
+    IF v_seq IS NOT NULL THEN RETURN v_seq; END IF;
+  END IF;
+
+  IF p_entity_type IN ('goals', 'goal_requests', 'financial_ledger') THEN
+    SELECT cl.sequence_id INTO v_seq
+    FROM public.change_log cl
+    WHERE cl.entity_type = p_entity_type
+      AND cl.entity_id = p_entity_id
+      AND cl.action = p_action
+      AND cl.version IS NOT DISTINCT FROM COALESCE(p_version, 1)
+      AND cl.xmin = pg_current_xact_id()::xid
+    ORDER BY cl.sequence_id DESC
+    LIMIT 1;
+    IF v_seq IS NOT NULL THEN RETURN v_seq; END IF;
+  END IF;
+
+  INSERT INTO public.change_log(entity_type, entity_id, action, payload, version, changed_at)
+  VALUES (p_entity_type, p_entity_id, p_action, COALESCE(p_payload, '{}'::jsonb), COALESCE(p_version, 1), NOW())
+  RETURNING sequence_id INTO v_seq;
+  RETURN v_seq;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.record_canonical_change(
+  p_entity_type character varying,
+  p_entity_id uuid,
+  p_action character varying,
+  p_payload jsonb,
+  p_version integer DEFAULT 1
+)
+RETURNS bigint
+LANGUAGE plpgsql
+SET search_path = ''
+AS $function$
+DECLARE
+  v_seq bigint;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('chargerpointnew:change_log:commit_order', 0));
+
+  IF p_entity_type = 'system_settings' AND COALESCE(p_payload->>'key', '') <> '' THEN
+    SELECT cl.sequence_id INTO v_seq
+    FROM public.change_log cl
+    WHERE cl.entity_type = 'system_settings'
+      AND cl.action = p_action
+      AND cl.payload->>'key' = p_payload->>'key'
+      AND cl.xmin = pg_current_xact_id()::xid
+    ORDER BY cl.sequence_id DESC
+    LIMIT 1;
+    IF v_seq IS NOT NULL THEN RETURN v_seq; END IF;
+  END IF;
+
+  INSERT INTO public.change_log(entity_type, entity_id, action, payload, version, changed_at)
+  VALUES (p_entity_type, p_entity_id, p_action, COALESCE(p_payload, '{}'::jsonb), COALESCE(p_version, 1), NOW())
+  RETURNING sequence_id INTO v_seq;
+  RETURN v_seq;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.capture_system_settings_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_key text;
+  v_action text;
+  v_payload jsonb;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    v_key := OLD.key;
+    v_action := 'DELETE';
+    v_payload := to_jsonb(OLD);
+  ELSIF TG_OP = 'INSERT' THEN
+    v_key := NEW.key;
+    v_action := 'INSERT';
+    v_payload := to_jsonb(NEW);
+  ELSE
+    v_key := NEW.key;
+    v_action := 'UPDATE';
+    v_payload := to_jsonb(NEW);
+  END IF;
+
+  IF v_key IS NULL OR v_key = '' THEN
+    RAISE EXCEPTION 'system_settings change requires a non-empty key';
+  END IF;
+
+  PERFORM public.record_canonical_change(
+    'system_settings'::text,
+    md5(v_key)::uuid,
+    v_action,
+    v_payload,
+    1
+  );
+
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_system_settings_change_capture ON public.system_settings;
+CREATE TRIGGER trg_system_settings_change_capture
+AFTER INSERT OR UPDATE OR DELETE ON public.system_settings
+FOR EACH ROW EXECUTE FUNCTION public.capture_system_settings_change();
+
 REVOKE ALL ON FUNCTION public.begin_sync_bootstrap() FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.begin_sync_bootstrap() TO authenticated;
 
