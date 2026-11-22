@@ -694,6 +694,12 @@ export const applyRemoteChange = (change: {
     const designType: QRDesignType | null =
       key === 'app_qr_design_config_CUSTOMER' ? 'CUSTOMER' :
       key === 'app_qr_design_config_ORDER' ? 'ORDER' : null;
+    if (isDelete && !designType) {
+      localDb.removeWithTx(tx as any, 'system_settings', key || change.entityId);
+      localDb.removeWithTx(tx as any, 'systemSettings', key || change.entityId);
+      notifyStoreAfterTransaction('all', key || change.entityId, tx);
+      return;
+    }
     if (!designType) {
       localDb.setWithTx(tx, 'system_settings', key || change.entityId, p);
       localDb.setWithTx(tx, 'systemSettings', key || change.entityId, p);
@@ -701,8 +707,8 @@ export const applyRemoteChange = (change: {
       return;
     }
     if (isDelete) {
-      // QR design settings are not deleted by normal sync commands; ignore tombstones
-      // rather than silently resetting a design that may have been changed locally.
+      // QR design settings are not deleted by normal sync commands; keep the
+      // existing design until a complete replacement config arrives.
       return;
     }
     const incoming = p.valueJson ?? p.value_json;
