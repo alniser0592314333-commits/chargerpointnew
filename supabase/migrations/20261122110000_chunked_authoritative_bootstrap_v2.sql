@@ -14,18 +14,20 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 DECLARE
+  v_admin_id uuid;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
   END IF;
 
-  PERFORM public._cp_assert_active_admin_permission('sync:manage');
+  v_admin_id := public._cp_assert_active_admin_permission('sync:manage');
 
   -- Both checkpoint values are read by one SQL statement, so reset generation
   -- and change-log high-water mark describe the same PostgreSQL snapshot.
   RETURN (
     SELECT jsonb_build_object(
       'schema_version', 2,
+      'admin_id', v_admin_id,
       'captured_at', now(),
       'server_reset_generation',
         COALESCE((SELECT s.value_number FROM public.system_settings s WHERE s.key = 'server_reset_generation' LIMIT 1), 0),
