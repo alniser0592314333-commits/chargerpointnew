@@ -10,6 +10,8 @@ import { SupabaseSyncTransport } from '../infrastructure/sync/SupabaseSyncTransp
 import { localDb } from '../infrastructure/localDb/localDb';
 import { initializeCanonicalSyncState, setTestAppAuthSession } from './utils/testSetup';
 import { createNewBusinessDay, getDaysList, ensureStoreHydrated } from '../components/pages/dayOrdersStore';
+import { BOOTSTRAP_COLLECTIONS, BOOTSTRAP_PAGE_SIZE } from '../infrastructure/sync/bootstrapSnapshot';
+import { clearActiveBootstrapStagingSession } from '../infrastructure/sync/bootstrapStagingStore';
 
 const storageMap = new Map<string, string>();
 const localStorageMock = {
@@ -20,22 +22,21 @@ const localStorageMock = {
 };
 (globalThis as any).localStorage = localStorageMock;
 
-const emptyBootstrapSnapshot = () => ({
-  schema_version: 1,
+const emptyBootstrapManifest = () => ({
+  schema_version: 2,
+  admin_id: 'admin_test_session',
+  captured_at: '2026-11-22T00:00:00.000Z',
   server_reset_generation: 1,
   max_change_sequence: 0,
-  customers: [],
-  business_days: [],
-  device_types: [],
-  orders: [],
-  order_items: [],
-  financial_ledger: [],
-  payments: [],
-  payment_allocations: [],
-  order_number_reservations: [],
-  qr_tokens: [],
-  goals: [],
-  goal_requests: [],
+  page_size: BOOTSTRAP_PAGE_SIZE,
+  collections: [...BOOTSTRAP_COLLECTIONS],
+});
+
+const emptyBootstrapPage = (entityType: string) => ({
+  entity_type: entityType,
+  rows: [],
+  next_cursor: null,
+  has_more: false,
 });
 
 const emptyPullPage = () => ({
@@ -46,6 +47,7 @@ const emptyPullPage = () => ({
 
 describe('Phase 6.16: Online Create Day Forensic & Regression Suite', () => {
   beforeEach(async () => {
+    await clearActiveBootstrapStagingSession();
     storageMap.clear();
     await localDb.clear();
     vi.restoreAllMocks();
@@ -79,8 +81,11 @@ describe('Phase 6.16: Online Create Day Forensic & Regression Suite', () => {
 
     let executeCallCount = 0;
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (fnName, payload: any) => {
-      if (fnName === 'capture_sync_bootstrap_snapshot') {
-        return { data: emptyBootstrapSnapshot(), error: null };
+      if (fnName === 'begin_sync_bootstrap') {
+        return { data: emptyBootstrapManifest(), error: null };
+      }
+      if (fnName === 'read_sync_bootstrap_page') {
+        return { data: emptyBootstrapPage(payload.p_entity_type), error: null };
       }
       if (fnName === 'pull_canonical_changes') {
         return { data: emptyPullPage(), error: null };
