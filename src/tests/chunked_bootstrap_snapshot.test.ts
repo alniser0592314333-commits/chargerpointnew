@@ -184,6 +184,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
       data: {
         schema_version: 2,
+        admin_id: 'test-admin',
         captured_at: '2026-11-22T00:00:00.000Z',
         server_reset_generation: 1,
         max_change_sequence: 0,
