@@ -12,6 +12,17 @@ describe('Canonical partial-delta replay preserves snapshot fields', () => {
   beforeEach(async () => {
     await clearActiveBootstrapStagingSession();
     await localDb.clear();
+    // These tests exercise delta application over an already trusted local
+    // replica. Set that prerequisite explicitly instead of inheriting a
+    // READY checkpoint from another test file's shared IndexedDB fixture.
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: '2026-11-01T00:00:00.000Z',
+      resetGeneration: 0,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
     resetStoreMemory();
   });
 
