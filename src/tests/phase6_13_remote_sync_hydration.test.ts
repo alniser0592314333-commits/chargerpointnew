@@ -18,6 +18,7 @@ import {
 } from '../components/pages/dayOrdersStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { setTestAppAuthSession } from './utils/testSetup';
+import { mockChunkedBootstrapRpc } from './utils/mockChunkedBootstrap';
 
 describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () => {
   beforeEach(async () => {
@@ -164,42 +165,13 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
       url: 'https://example.supabase.co',
       status: 'connected',
     });
-    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
-      data: {
-        schema_version: 1,
-        captured_at: '2026-10-13T12:00:00.000Z',
-        server_reset_generation: 7,
-        max_change_sequence: 42,
-        business_days: [],
-        customers: [{ id: 'customer-atomic', name: 'Must roll back' }],
-        device_types: [],
-        orders: [],
-        order_items: [],
-        financial_ledger: [],
-        payments: [],
-        payment_allocations: [],
-        order_number_reservations: [],
-        qr_tokens: [{
-          id: 'qr-atomic',
-          token_hash: 'hash',
-          public_token: 'token',
-          token_type: 'ORDER',
-          target_id: 'order-atomic',
-          is_active: true,
-        }],
-        goals: [],
-        goal_requests: [],
-        system_settings: [],
-        purchase_suppliers: [],
-        purchase_items: [],
-        purchase_payment_methods: [],
-        purchase_months: [],
-        purchase_weeks: [],
-        purchase_days: [],
-        purchase_orders: [],
-      },
-      error: null,
-    } as any);
+    mockChunkedBootstrapRpc({
+      customers: [{ id: 'customer-atomic', name: 'Must roll back' }],
+      qr_tokens: [{
+        id: 'qr-atomic', token_hash: 'hash', public_token: 'token',
+        token_type: 'ORDER', target_id: 'order-atomic', is_active: true,
+      }],
+    });
     localDb.__setWriteHookForTesting((table) => {
       if (table === 'qr_tokens') throw new Error('injected local write failure');
     });
@@ -292,54 +264,18 @@ describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () 
       url: 'https://example.supabase.co',
       status: 'connected',
     });
-    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
-      data: {
-        schema_version: 1,
-        captured_at: '2026-10-13T12:00:00.000Z',
-        server_reset_generation: 7,
-        max_change_sequence: 42,
-        business_days: [],
-        customers: [],
-        device_types: [],
-        orders: [],
-        order_items: [],
-        financial_ledger: [],
-        payments: [],
-        payment_allocations: [],
-        order_number_reservations: [{
-          id: 'reservation-1',
-          business_day_id: 'day-1',
-          device_id: 'device-1',
-          start_number: 1,
-          end_number: 5,
-          next_number: 2,
-          status: 'ACTIVE',
-          created_at: '2026-10-13T12:00:00.000Z',
-          updated_at: '2026-10-13T12:00:00.000Z',
-          version: 1,
-        }],
-        qr_tokens: [{
-          id: 'qr-1',
-          token_hash: 'hash-1',
-          public_token: 'token-1',
-          token_type: 'ORDER',
-          target_id: 'order-1',
-          is_active: true,
-          created_at: '2026-10-13T12:00:00.000Z',
-        }],
-        goals: [],
-        goal_requests: [],
-        system_settings: [],
-        purchase_suppliers: [],
-        purchase_items: [],
-        purchase_payment_methods: [],
-        purchase_months: [],
-        purchase_weeks: [],
-        purchase_days: [],
-        purchase_orders: [],
-      },
-      error: null,
-    } as any);
+    mockChunkedBootstrapRpc({
+      order_number_reservations: [{
+        id: 'reservation-1', business_day_id: 'day-1', device_id: 'device-1',
+        start_number: 1, end_number: 5, next_number: 2, status: 'ACTIVE',
+        created_at: '2026-10-13T12:00:00.000Z', updated_at: '2026-10-13T12:00:00.000Z', version: 1,
+      }],
+      qr_tokens: [{
+        id: 'qr-1', token_hash: 'hash-1', public_token: 'token-1',
+        token_type: 'ORDER', target_id: 'order-1', is_active: true,
+        created_at: '2026-10-13T12:00:00.000Z',
+      }],
+    });
 
     const progressEvents: Array<{ phase: string; percent: number; completedRows: number; totalRows: number }> = [];
     const unsubscribe = subscribeStoreBootstrapProgress((progress) => progressEvents.push(progress));
