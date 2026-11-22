@@ -21,6 +21,9 @@ BEGIN
   END IF;
 
   v_admin_id := public._cp_assert_active_admin_permission('sync:manage');
+  IF v_admin_id IS NULL THEN
+    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '42501';
+  END IF;
 
   -- Both checkpoint values are read by one SQL statement, so reset generation
   -- and change-log high-water mark describe the same PostgreSQL snapshot.
