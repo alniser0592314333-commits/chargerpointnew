@@ -50,7 +50,7 @@ import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
 import { authService } from '../../services/auth/authService';
 import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrder } from '../../domain/financialPresentation';
 import { QRDesignConfig, QRDesignType } from '../qr/types';
-import { setActiveQrDesign } from '../qr/defaultDesigns';
+import { resetActiveQrDesign, setActiveQrDesign } from '../qr/defaultDesigns';
 import { normalizeCustomerSearchText } from '../../utils/customerSearch';
 import { mergeCustomerRemoteDelta } from '../../utils/customerRemoteMerge';
 
@@ -707,8 +707,15 @@ export const applyRemoteChange = (change: {
       return;
     }
     if (isDelete) {
-      // QR design settings are not deleted by normal sync commands; keep the
-      // existing design until a complete replacement config arrives.
+      localDb.removeWithTx(tx as any, 'system_settings', key);
+      localDb.removeWithTx(tx as any, 'systemSettings', key);
+      const resetDesign = () => resetActiveQrDesign(designType);
+      if (tx && typeof tx.addEventListener === 'function') {
+        tx.addEventListener('complete', resetDesign, { once: true });
+      } else {
+        resetDesign();
+      }
+      notifyStoreAfterTransaction('all', key, tx);
       return;
     }
     const incoming = p.valueJson ?? p.value_json;
