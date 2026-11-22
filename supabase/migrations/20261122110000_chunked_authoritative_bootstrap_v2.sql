@@ -171,7 +171,7 @@ BEGIN
          ''next_cursor'', (SELECT b.%I::text FROM bounded b ORDER BY b.%I DESC LIMIT 1),
          ''has_more'', (SELECT count(*) > $3 FROM page)
        )',
-      v_table_name, v_key_column, v_scope_predicate,
+      v_table_name, v_cursor_predicate, v_scope_predicate,
       v_key_column, v_key_column, v_key_column, v_key_column, v_key_column
     );
   END IF;
