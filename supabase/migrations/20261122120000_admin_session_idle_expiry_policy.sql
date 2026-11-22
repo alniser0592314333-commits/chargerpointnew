@@ -206,32 +206,39 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_admin public.admins%ROWTYPE;
+  v_result jsonb;
 BEGIN
   IF auth.uid() IS NULL THEN
     RETURN jsonb_build_object('authenticated', false, 'is_admin', false);
   END IF;
 
-  SELECT * INTO v_admin
-  FROM public.admins a
-  WHERE a.auth_user_id = auth.uid()
-  LIMIT 1;
-
-  IF v_admin.id IS NULL THEN
+  -- Resolve the optional admin relation at execution time. Production always has
+  -- this table; keeping the lookup dynamic lets the migration compile against
+  -- minimal isolated Auth fixtures and still fails closed if the relation is absent.
+  IF to_regclass('public.admins') IS NULL THEN
     RETURN jsonb_build_object('authenticated', true, 'is_admin', false);
   END IF;
 
-  RETURN jsonb_build_object(
-    'authenticated', true,
-    'is_admin', true,
-    'is_active', COALESCE(v_admin.is_active, false),
-    'admin_id', v_admin.id,
-    'auth_user_id', v_admin.auth_user_id,
-    'role', v_admin.role,
-    'email', v_admin.email,
-    'username', v_admin.username,
-    'full_name', v_admin.full_name
-  );
+  EXECUTE $admin_gate$
+    SELECT jsonb_build_object(
+      'authenticated', true,
+      'is_admin', true,
+      'is_active', COALESCE(a.is_active, false),
+      'admin_id', a.id,
+      'auth_user_id', a.auth_user_id,
+      'role', a.role,
+      'email', a.email,
+      'username', a.username,
+      'full_name', a.full_name
+    )
+    FROM public.admins a
+    WHERE a.auth_user_id = $1
+    LIMIT 1
+  $admin_gate$
+  INTO v_result
+  USING auth.uid();
+
+  RETURN COALESCE(v_result, jsonb_build_object('authenticated', true, 'is_admin', false));
 END;
 $$;
 
