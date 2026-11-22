@@ -1550,7 +1550,7 @@ export const subscribeStoreBootstrapProgress = (
 export const hydrateFromRemoteTables = async (): Promise<boolean> => {
   if (!getSupabaseStatus().isConfigured) return false;
 
-  publishStoreBootstrapProgress({ phase: 'FETCHING', percent: 5, completedRows: 0, totalRows: 0, message: 'جارٍ جلب لقطة موحّدة من السحابة…' });
+  publishStoreBootstrapProgress({ phase: 'FETCHING', percent: 5, completedRows: 0, totalRows: 0, message: 'جارٍ تحميل بيانات السحابة على دفعات…' });
 
   // Before the first local mutation, read failures can safely fall back to a
   // previously persisted offline dataset. Once replacement starts, failures
@@ -1564,7 +1564,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const snapshot = await fetchAuthoritativeBootstrapSnapshot((collection, completedRows, completedCollections) => {
       publishStoreBootstrapProgress({
         phase: 'FETCHING',
-        percent: Math.min(30, 5 + Math.floor((completedCollections / BOOTSTRAP_COLLECTIONS.length) * 25)),
+        percent: Math.min(9, 5 + Math.floor((completedCollections / BOOTSTRAP_COLLECTIONS.length) * 4)),
         completedRows,
         totalRows: 0,
         message: `جارٍ تحميل ${collection} على دفعات…`,
