@@ -196,6 +196,45 @@ BEGIN
 END;
 $$;
 
+-- Minimal identity gate for pre-session and pre-BIN authentication flows.
+-- It returns no permissions or business data and is intentionally not wrapped by
+-- the active-session guard so a saved credential can determine whether BIN is needed.
+CREATE OR REPLACE FUNCTION public.get_my_admin_login_gate()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+DECLARE
+  v_admin public.admins%ROWTYPE;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object('authenticated', false, 'is_admin', false);
+  END IF;
+
+  SELECT * INTO v_admin
+  FROM public.admins a
+  WHERE a.auth_user_id = auth.uid()
+  LIMIT 1;
+
+  IF v_admin.id IS NULL THEN
+    RETURN jsonb_build_object('authenticated', true, 'is_admin', false);
+  END IF;
+
+  RETURN jsonb_build_object(
+    'authenticated', true,
+    'is_admin', true,
+    'is_active', COALESCE(v_admin.is_active, false),
+    'admin_id', v_admin.id,
+    'auth_user_id', v_admin.auth_user_id,
+    'role', v_admin.role,
+    'email', v_admin.email,
+    'username', v_admin.username,
+    'full_name', v_admin.full_name
+  );
+END;
+$;
+
 CREATE OR REPLACE FUNCTION public.is_my_account_session_active()
 RETURNS boolean
 LANGUAGE plpgsql
@@ -327,6 +366,8 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.get_my_admin_login_gate() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_admin_login_gate() TO authenticated;
 REVOKE ALL ON FUNCTION public.register_my_account_session_v2(text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.register_my_account_session_v2(text, text) TO authenticated;
 REVOKE ALL ON FUNCTION public.reactivate_my_account_session(text) FROM PUBLIC, anon;
