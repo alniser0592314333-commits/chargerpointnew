@@ -387,7 +387,7 @@ export default function App() {
             return;
           }
           // Apply the server-refreshed role/permissions to React state. Merely
-          fetching the profile without updating this state leaves stale UI grants.
+          // fetching the profile without updating this state leaves stale UI grants.
           setUserSession(session);
         } catch {
           // Fail-closed/safe: ignore transient network issues but let authService handle rehydration
