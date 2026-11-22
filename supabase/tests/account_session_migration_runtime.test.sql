@@ -38,6 +38,51 @@ BEGIN
   END IF;
 END $assert$;
 
+-- Native and installed-PWA sessions receive a longer server-enforced idle window;
+-- ordinary browser sessions remain limited to seven days.
+SELECT public.register_my_account_session_v2('Android WebView', 'native');
+DO $assert$
+DECLARE v_expiry timestamptz; v_type text;
+BEGIN
+  SELECT session_expires_at, client_type INTO v_expiry, v_type
+  FROM public.account_sessions
+  WHERE session_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  IF v_type <> 'native' OR v_expiry < now() + interval '29 days' THEN
+    RAISE EXCEPTION 'Native session did not receive the 30-day idle window';
+  END IF;
+END $assert$;
+
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}',false);
+SELECT public.register_my_account_session_v2('Windows Chrome', 'browser');
+DO $assert$
+DECLARE v_expiry timestamptz; v_type text;
+BEGIN
+  SELECT session_expires_at, client_type INTO v_expiry, v_type
+  FROM public.account_sessions
+  WHERE session_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  IF v_type <> 'browser' OR v_expiry > now() + interval '7 days' THEN
+    RAISE EXCEPTION 'Browser session did not receive the seven-day idle window';
+  END IF;
+END $assert$;
+
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}',false);
+UPDATE public.account_sessions
+SET session_expires_at = now() - interval '1 second'
+WHERE session_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+DO $assert$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Idle-expired native session remained active';
+  END IF;
+END $assert$;
+SELECT public.reactivate_my_account_session('native');
+DO $assert$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Explicit native saved-login reactivation did not restore the session';
+  END IF;
+END $assert$;
+
 -- Revoking the other session expires the auth session and its refresh tokens.
 SELECT public.revoke_my_account_session('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 DO $assert$
