@@ -5,6 +5,17 @@ import { authService } from '../services/auth/authService';
 describe('Server-Authoritative BIN Attempt Tracking & Fail-Closed Security (Tests 1 - 10)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Password login now performs a minimal identity/role gate before BIN.
+    // Keep these tests focused on BIN tracking by mocking that independent gate.
+    vi.spyOn(authService as any, 'getAdminLoginGate').mockResolvedValue({
+      authenticated: true,
+      is_admin: true,
+      is_active: true,
+      admin_id: 'admin_1',
+      role: 'SUPER_ADMIN',
+      email: 'admin@test.local',
+      username: 'admin',
+    });
   });
 
   interface TestAdminRecord {
