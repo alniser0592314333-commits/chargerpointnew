@@ -96,6 +96,10 @@ describe("Admin session lifecycle root-cause regressions", () => {
   });
 
   it("does not persist a Super Admin biometric session until BIN succeeds", async () => {
+    vi.spyOn(authService as any, "getAdminLoginGate").mockResolvedValue(adminProfile({
+      role: "SUPER_ADMIN",
+      permissions: [],
+    }) as any);
     vi.spyOn(authService, "getAdminProfile").mockResolvedValue(adminProfile({
       role: "SUPER_ADMIN",
       permissions: ["admin:manage", "settings:manage"],
