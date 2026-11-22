@@ -61,6 +61,71 @@ describe('Canonical partial-delta replay preserves snapshot fields', () => {
     });
   });
 
+  it('preserves day and device configuration when canonical commands emit status-only patches', async () => {
+    const dayId = 'day-2026-11-01';
+    const deviceId = '00000000-0000-4000-8000-000000000301';
+    await localDb.set('businessDays', dayId, {
+      id: dayId,
+      businessDate: '2026-11-01',
+      isClosed: false,
+      createdAt: '2026-11-01T00:00:00.000Z',
+      updatedAt: '2026-11-01T00:00:00.000Z',
+      version: 1,
+    });
+    await localDb.set('deviceTypes', deviceId, {
+      id: deviceId,
+      name: 'Galaxy Screen',
+      nameAr: 'شاشة جالكسي',
+      nameEn: 'Galaxy Screen',
+      icon: 'smartphone',
+      basePriceMinor: 4200,
+      chargerFeeEnabled: true,
+      chargerFeeApplicable: true,
+      isActive: true,
+      sortOrder: 4,
+      createdAt: '2026-11-01T00:00:00.000Z',
+      updatedAt: '2026-11-01T00:00:00.000Z',
+      version: 1,
+    });
+    resetStoreMemory();
+    await reloadStoreFromLocal();
+
+    await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+      applyRemoteChange({
+        sequenceId: 104,
+        entityType: 'business_days',
+        entityId: dayId,
+        action: 'UPDATE',
+        payload: { id: dayId, status: 'CLOSED' },
+        version: 2,
+        changedAt: '2026-11-02T00:00:00.000Z',
+      }, tx);
+      applyRemoteChange({
+        sequenceId: 105,
+        entityType: 'device_types',
+        entityId: deviceId,
+        action: 'UPDATE',
+        payload: { id: deviceId, status: 'RETIRED' },
+        version: 2,
+        changedAt: '2026-11-02T00:00:00.000Z',
+      }, tx);
+    });
+
+    expect(await localDb.get<any>('businessDays', dayId)).toMatchObject({
+      businessDate: '2026-11-01',
+      isClosed: true,
+      createdAt: '2026-11-01T00:00:00.000Z',
+    });
+    expect(await localDb.get<any>('deviceTypes', deviceId)).toMatchObject({
+      name: 'Galaxy Screen',
+      nameAr: 'شاشة جالكسي',
+      icon: 'smartphone',
+      basePriceMinor: 4200,
+      isActive: false,
+      status: 'RETIRED',
+    });
+  });
+
   it('merges partial goal and goal-request updates without resetting established values', async () => {
     const goalId = '00000000-0000-4000-8000-000000000201';
     const requestId = '00000000-0000-4000-8000-000000000202';
