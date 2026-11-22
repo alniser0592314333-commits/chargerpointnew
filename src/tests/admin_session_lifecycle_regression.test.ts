@@ -159,6 +159,8 @@ describe("Admin session lifecycle root-cause regressions", () => {
     const app = readFileSync("src/App.tsx", "utf8");
     expect(app).toContain("const session = await authService.getCurrentSession(true)");
     expect(app).toContain("setUserSession(session)");
+    expect(app).toContain("checkingSession = true");
+    expect(app).toContain("onVisibilityChange");
   });
   it("keeps native saved-account refresh tokens synchronized after every rotation", () => {
     const client = readFileSync("src/services/supabase/client.ts", "utf8");
