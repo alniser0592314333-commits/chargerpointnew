@@ -71,6 +71,10 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
 
   if (
     Number(manifest?.schema_version) !== 2 ||
+    Number(manifest?.page_size) !== BOOTSTRAP_PAGE_SIZE ||
+    !Array.isArray(manifest?.collections) ||
+    manifest.collections.length !== BOOTSTRAP_COLLECTIONS.length ||
+    !BOOTSTRAP_COLLECTIONS.every((collection, index) => manifest.collections[index] === collection) ||
     !Number.isSafeInteger(generation) || generation < 0 ||
     !Number.isSafeInteger(sequence) || sequence < 0 ||
     typeof manifest?.captured_at !== 'string'
