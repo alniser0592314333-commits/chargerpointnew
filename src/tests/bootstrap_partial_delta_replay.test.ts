@@ -68,6 +68,84 @@ describe('Canonical partial-delta replay preserves snapshot fields', () => {
     });
   });
 
+  it('preserves payment, allocation, and ledger relationships across partial canonical patches', async () => {
+    const paymentId = '00000000-0000-4000-8000-000000000501';
+    const allocationId = '00000000-0000-4000-8000-000000000502';
+    const ledgerId = '00000000-0000-4000-8000-000000000503';
+    await localDb.set('payments', paymentId, {
+      id: paymentId,
+      customerId: 'customer-501',
+      amountMinor: 12500,
+      paymentMethod: 'CASH',
+      reference: 'old-ref',
+      actorAdminId: 'admin-1',
+      commandId: 'cmd-501',
+      createdAt: '2026-11-01T10:00:00.000Z',
+    });
+    await localDb.set('paymentAllocations', allocationId, {
+      id: allocationId,
+      paymentId,
+      orderItemId: 'item-501',
+      orderId: 'order-501',
+      allocatedAmountMinor: 10000,
+      createdAt: '2026-11-01T10:01:00.000Z',
+    });
+    await localDb.set('financialLedger', ledgerId, {
+      id: ledgerId,
+      eventType: 'CHARGE',
+      amountMinor: -12500,
+      customerId: 'customer-501',
+      orderId: 'order-501',
+      orderItemId: 'item-501',
+      actorAdminId: 'admin-1',
+      referenceId: 'ref-501',
+      metadata: { source: 'test' },
+      createdAt: '2026-11-01T10:02:00.000Z',
+    });
+    resetStoreMemory();
+    await reloadStoreFromLocal();
+
+    await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
+      applyRemoteChange({
+        sequenceId: 107, entityType: 'payments', entityId: paymentId, action: 'UPDATE',
+        payload: { id: paymentId, reference: 'new-ref' }, version: 1, changedAt: '2026-11-02T10:00:00.000Z',
+      }, tx);
+      applyRemoteChange({
+        sequenceId: 108, entityType: 'payment_allocations', entityId: allocationId, action: 'INSERT',
+        payload: { id: allocationId, allocated_amount_minor: 11000 }, version: 1, changedAt: '2026-11-02T10:01:00.000Z',
+      }, tx);
+      applyRemoteChange({
+        sequenceId: 109, entityType: 'financial_ledger', entityId: ledgerId, action: 'INSERT',
+        payload: { id: ledgerId, amount_minor: 12500 }, version: 1, changedAt: '2026-11-02T10:02:00.000Z',
+      }, tx);
+    });
+
+    expect(await localDb.get<any>('payments', paymentId)).toMatchObject({
+      customerId: 'customer-501',
+      amountMinor: 12500,
+      paymentMethod: 'CASH',
+      reference: 'new-ref',
+      actorAdminId: 'admin-1',
+      commandId: 'cmd-501',
+    });
+    expect(await localDb.get<any>('paymentAllocations', allocationId)).toMatchObject({
+      paymentId,
+      orderItemId: 'item-501',
+      orderId: 'order-501',
+      allocatedAmountMinor: 11000,
+    });
+    expect(await localDb.get<any>('financialLedger', ledgerId)).toMatchObject({
+      eventType: 'CHARGE',
+      amountMinor: -12500,
+      customerId: 'customer-501',
+      orderId: 'order-501',
+      orderItemId: 'item-501',
+      actorAdminId: 'admin-1',
+      referenceId: 'ref-501',
+      metadata: { source: 'test' },
+    });
+  });
+
   it('applies canonical system-setting tombstones to both local setting stores', async () => {
     const key = 'public_landing_title';
     const setting = { key, value_type: 'string', value_string: 'Old title' };
