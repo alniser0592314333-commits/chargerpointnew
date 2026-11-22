@@ -204,7 +204,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $$
 DECLARE
   v_admin public.admins%ROWTYPE;
 BEGIN
@@ -233,7 +233,7 @@ BEGIN
     'full_name', v_admin.full_name
   );
 END;
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.is_my_account_session_active()
 RETURNS boolean
