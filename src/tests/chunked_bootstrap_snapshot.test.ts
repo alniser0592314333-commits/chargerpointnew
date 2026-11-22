@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as supabaseClient from '../../services/supabase/client';
+import * as supabaseClient from '../services/supabase/client';
 import {
   BOOTSTRAP_COLLECTIONS,
   BOOTSTRAP_PAGE_SIZE,
   fetchAuthoritativeBootstrapSnapshot,
-} from '../../infrastructure/sync/bootstrapSnapshot';
+} from '../infrastructure/sync/bootstrapSnapshot';
 
 describe('Chunked authoritative bootstrap protocol', () => {
   afterEach(() => vi.restoreAllMocks());
