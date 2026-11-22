@@ -276,8 +276,11 @@ describe('Phase 6.16: Online Create Day Forensic & Regression Suite', () => {
 
     let rpcCalledWith: any = null;
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (fnName, payload: any) => {
-      if (fnName === 'capture_sync_bootstrap_snapshot') {
-        return { data: emptyBootstrapSnapshot(), error: null };
+      if (fnName === 'begin_sync_bootstrap') {
+        return { data: emptyBootstrapManifest(), error: null };
+      }
+      if (fnName === 'read_sync_bootstrap_page') {
+        return { data: emptyBootstrapPage(payload.p_entity_type), error: null };
       }
       if (fnName === 'pull_canonical_changes') {
         return { data: emptyPullPage(), error: null };
