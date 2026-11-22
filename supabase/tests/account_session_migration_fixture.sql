@@ -1,18 +1,6 @@
 -- Minimal Supabase Auth schema fixture for account session migration tests.
 CREATE SCHEMA auth;
 
--- Minimal administrator identity relation required by the login-gate RPC
--- introduced by the idle-expiry policy migration.
-CREATE TABLE public.admins (
-  id uuid PRIMARY KEY,
-  auth_user_id uuid NOT NULL,
-  is_active boolean NOT NULL DEFAULT true,
-  role text,
-  email text,
-  username text,
-  full_name text
-);
-
 CREATE TABLE auth.users (
   id uuid PRIMARY KEY,
   email text
