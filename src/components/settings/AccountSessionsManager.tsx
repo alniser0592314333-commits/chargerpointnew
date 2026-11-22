@@ -114,7 +114,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
     try {
       await revokeAllAccountSessions();
       await authService.logout();
-      await onLogout?.();
+      await onLogout?.("revoked");
     } catch (err: any) {
       setError(err?.message || (isArabic ? "تعذّر تسجيل الخروج من جميع الأجهزة." : "Could not sign out all devices."));
       setBusy(false);
