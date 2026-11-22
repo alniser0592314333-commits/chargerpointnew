@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { authService, UserSession } from "../services/auth/authService";
 import * as supabaseClient from "../services/supabase/client";
+import * as accountSessionService from "../services/auth/accountSessionService";
 import { config } from "../config/env";
 
 const storageMap = new Map<string, string>();
@@ -17,6 +18,16 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
     vi.restoreAllMocks();
     storageMap.clear();
     await authService.logout();
+    vi.spyOn(authService as any, "getAdminLoginGate").mockResolvedValue({
+      authenticated: true,
+      is_admin: true,
+      is_active: true,
+      admin_id: "admin_01",
+      auth_user_id: "user_owner_01",
+      email: "owner@system.local",
+      role: "SUPER_ADMIN",
+    });
+    vi.spyOn(accountSessionService, "reactivateMyAccountSession").mockResolvedValue(undefined);
     config.supabaseUrl = "https://ydhcyamtgioyrxfarkwk.supabase.co";
     config.supabaseAnonKey = "sb_publishable_mock_key";
   });
