@@ -1,4 +1,10 @@
 import { invokeSupabaseRpc } from '../../services/supabase/client';
+import {
+  beginOrResumeBootstrapStagingSession,
+  persistBootstrapPage,
+  readBootstrapStagedCollection,
+  BootstrapManifestV2,
+} from './bootstrapStagingStore';
 
 export const BOOTSTRAP_PAGE_SIZE = 500;
 
@@ -32,6 +38,7 @@ export interface AuthoritativeBootstrapSnapshot {
   captured_at: string;
   server_reset_generation: number;
   max_change_sequence: number;
+  bootstrap_session_id: string;
   [collection: string]: unknown;
 }
 
@@ -82,24 +89,26 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     throw new Error('BOOTSTRAP_MANIFEST_INVALID: missing protocol version or authoritative checkpoint');
   }
 
+  const { session, resumed } = await beginOrResumeBootstrapStagingSession(manifest as BootstrapManifestV2);
+  const pinnedManifest = session.manifest;
   const snapshot: Record<string, unknown> = {
     schema_version: 2,
-    captured_at: manifest.captured_at,
-    server_reset_generation: generation,
-    max_change_sequence: sequence,
+    captured_at: pinnedManifest.captured_at,
+    server_reset_generation: pinnedManifest.server_reset_generation,
+    max_change_sequence: pinnedManifest.max_change_sequence,
+    bootstrap_session_id: session.sessionId,
   };
 
   let completedRows = 0;
-  let completedCollections = 0;
+  let completedCollections = BOOTSTRAP_COLLECTIONS.filter((collection) => session.completed[collection]).length;
   const concurrency = 4;
 
   const fetchCollection = async (collection: BootstrapCollection): Promise<void> => {
-    const rows: any[] = [];
-    let cursor: string | null = null;
+    let cursor: string | null = session.cursors[collection] ?? null;
+    let isComplete = session.completed[collection] === true;
     let pageCount = 0;
-    const seenKeys = new Set<string>();
 
-    while (true) {
+    while (!isComplete) {
       pageCount += 1;
       if (pageCount > 100000) {
         throw new Error(`BOOTSTRAP_PAGE_LIMIT_EXCEEDED[${collection}]`);
@@ -124,50 +133,75 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
       }
 
       const keyName = collection === 'system_settings' ? 'key' : 'id';
+      const pageKeys = new Set<string>();
+      const stagedRows: Array<{ rowId: string; item: unknown }> = [];
       for (const row of page.rows) {
         const key = row?.[keyName];
         if (typeof key !== 'string' || !key) {
           throw new Error(`BOOTSTRAP_ROW_KEY_INVALID[${collection}]: row has no ${keyName}`);
         }
-        if (seenKeys.has(key)) {
-          throw new Error(`BOOTSTRAP_DUPLICATE_ROW[${collection}]: key repeated across bootstrap pages`);
+        if (pageKeys.has(key)) {
+          throw new Error(`BOOTSTRAP_DUPLICATE_ROW[${collection}]: duplicate key within page`);
         }
         if (collection !== 'system_settings' && cursor !== null && key <= cursor) {
           throw new Error(`BOOTSTRAP_PAGE_ORDER_INVALID[${collection}]: key did not advance past cursor`);
         }
-        seenKeys.add(key);
+        pageKeys.add(key);
+        stagedRows.push({ rowId: key, item: row });
       }
 
+      let nextCursor: string | null = null;
       if (page.rows.length > 0) {
         const lastKey = String(page.rows[page.rows.length - 1][keyName]);
         if (typeof page.next_cursor !== 'string' || page.next_cursor !== lastKey || page.next_cursor === cursor) {
           throw new Error(`BOOTSTRAP_CURSOR_INVALID[${collection}]: cursor does not match the last row`);
         }
-        rows.push(...page.rows);
-        completedRows += page.rows.length;
-        cursor = page.next_cursor;
+        nextCursor = page.next_cursor;
       } else if (page.next_cursor !== null && page.next_cursor !== undefined) {
         throw new Error(`BOOTSTRAP_CURSOR_INVALID[${collection}]: empty page advanced a cursor`);
       }
 
-      onProgress?.(collection, completedRows, completedCollections);
-      if (!page.has_more) break;
-      if (page.rows.length !== BOOTSTRAP_PAGE_SIZE || !cursor) {
+      if (page.has_more && (page.rows.length !== BOOTSTRAP_PAGE_SIZE || !nextCursor)) {
         throw new Error(`BOOTSTRAP_PAGE_TRUNCATED[${collection}]: server reported more rows without a full advancing page`);
       }
+
+      const persisted = await persistBootstrapPage({
+        sessionId: session.sessionId,
+        collection,
+        expectedCursor: cursor,
+        rows: stagedRows,
+        nextCursor,
+        hasMore: page.has_more,
+      });
+
+      if (!persisted.committed) {
+        cursor = persisted.session.cursors[collection] ?? null;
+        isComplete = persisted.session.completed[collection] === true;
+        continue;
+      }
+
+      completedRows += page.rows.length;
+      cursor = nextCursor;
+      isComplete = !page.has_more;
+      onProgress?.(collection, completedRows, completedCollections);
     }
 
-    snapshot[collection] = rows;
+    snapshot[collection] = await readBootstrapStagedCollection(session.sessionId, collection);
     completedCollections += 1;
     onProgress?.(collection, completedRows, completedCollections);
   };
 
-  // Bound concurrency across independent tables while keeping each table's
-  // keyset pages sequential. This avoids both a request storm and hundreds of
-  // serialized round trips on a fresh install.
+  // Pages are committed to a separate IndexedDB staging database together
+  // with their cursor. A closed tab can resume without re-downloading pages.
+  // Independent collections run with bounded concurrency; pages within one
+  // collection remain sequential and cursor-serialized across tabs.
   for (let offset = 0; offset < BOOTSTRAP_COLLECTIONS.length; offset += concurrency) {
     const batch = BOOTSTRAP_COLLECTIONS.slice(offset, offset + concurrency);
     await Promise.all(batch.map((collection) => fetchCollection(collection)));
+  }
+
+  if (resumed) {
+    onProgress?.(BOOTSTRAP_COLLECTIONS[BOOTSTRAP_COLLECTIONS.length - 1], completedRows, completedCollections);
   }
 
   return snapshot as AuthoritativeBootstrapSnapshot;
