@@ -13,6 +13,7 @@ export interface BootstrapStagingSession {
   manifest: BootstrapManifestV2;
   cursors: Record<string, string | null>;
   completed: Record<string, boolean>;
+  rowCounts: Record<string, number>;
   createdAt: string;
   updatedAt: string;
 }
@@ -97,9 +98,11 @@ export const beginOrResumeBootstrapStagingSession = async (
 
   const cursors: Record<string, string | null> = {};
   const completed: Record<string, boolean> = {};
+  const rowCounts: Record<string, number> = {};
   for (const collection of manifest.collections) {
     cursors[collection] = null;
     completed[collection] = false;
+    rowCounts[collection] = 0;
   }
   const now = new Date().toISOString();
   const session: BootstrapStagingSession = {
@@ -108,6 +111,7 @@ export const beginOrResumeBootstrapStagingSession = async (
     manifest,
     cursors,
     completed,
+    rowCounts,
     createdAt: now,
     updatedAt: now,
   };
@@ -155,6 +159,7 @@ export const persistBootstrapPage = async (args: {
     }
     memorySession.cursors[args.collection] = args.nextCursor;
     memorySession.completed[args.collection] = !args.hasMore;
+    memorySession.rowCounts[args.collection] = (memorySession.rowCounts[args.collection] || 0) + args.rows.length;
     memorySession.updatedAt = new Date().toISOString();
     return { committed: true, session: cloneSession(memorySession) };
   }
@@ -193,6 +198,7 @@ export const persistBootstrapPage = async (args: {
         }
         active.cursors[args.collection] = args.nextCursor;
         active.completed[args.collection] = !args.hasMore;
+        active.rowCounts[args.collection] = (active.rowCounts[args.collection] || 0) + args.rows.length;
         active.updatedAt = new Date().toISOString();
         metaStore.put(active);
         outcome = { committed: true, session: active };
@@ -233,7 +239,7 @@ export const readBootstrapStagedCollection = async (
     try {
       const tx = db.transaction('rows', 'readonly');
       const store = tx.objectStore('rows');
-      const range = IDBKeyRange.bound(prefix, prefix + '\\uffff');
+      const range = IDBKeyRange.bound(prefix, prefix + '\uffff');
       const request = store.getAll(range);
       request.onsuccess = () => {
         const records = (request.result || []) as BootstrapStagingRow[];
@@ -260,7 +266,7 @@ export const clearBootstrapStagingSession = async (sessionId: string): Promise<v
     try {
       const tx = db.transaction(['rows', 'meta'], 'readwrite');
       const rowStore = tx.objectStore('rows');
-      const range = IDBKeyRange.bound(`${sessionId}:`, `${sessionId}:\\uffff`);
+      const range = IDBKeyRange.bound(`${sessionId}:`, `${sessionId}:\uffff`);
       rowStore.delete(range);
       const metaStore = tx.objectStore('meta');
       const request = metaStore.get('active');
