@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { clearActiveBootstrapStagingSession } from '../infrastructure/sync/bootstrapStagingStore';
 import * as supabaseClient from '../services/supabase/client';
 import {
   ensureStoreHydrated,
@@ -22,6 +23,7 @@ import { mockChunkedBootstrapRpc } from './utils/mockChunkedBootstrap';
 
 describe('Phase 6.13: Remote Hydration and Offline Sync Architecture Tests', () => {
   beforeEach(async () => {
+    await clearActiveBootstrapStagingSession();
     vi.restoreAllMocks();
     setTestAppAuthSession();
     resetStoreMemory();
