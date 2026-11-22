@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { clearActiveBootstrapStagingSession } from '../infrastructure/sync/bootstrapStagingStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import { backupService } from '../services/backup/backupService';
 import { AuthorizationContext, ActorAdmin } from '../application/authContext';
@@ -25,6 +26,7 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
   const superAdminAuth = new AuthorizationContext(superAdminActor, binVerifier);
 
   beforeEach(async () => {
+    await clearActiveBootstrapStagingSession();
     config.supabaseUrl = 'https://example.supabase.co';
     config.supabaseAnonKey = 'mock-anon-key';
     if (typeof localStorage !== 'undefined') {
