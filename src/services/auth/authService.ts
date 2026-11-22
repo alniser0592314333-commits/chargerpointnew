@@ -802,12 +802,32 @@ class DefaultAuthService implements AuthService {
     };
     // Persist rotation immediately: Supabase refresh tokens are single-use/rotating.
     await vault.saveAdminQuickLoginToken(cleanIdentifier, refreshed.refresh_token!, refreshed.user.id);
-    const profile = await this.getAdminProfile(refreshed.access_token);
-    if (!profile || !profile.authenticated) throw new Error("PROFILE_RPC_FAILED");
-    if (!profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
-    if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
-    const role = (profile.role || "OPERATOR") as UserRole;
+    const gate = await this.getAdminLoginGate(refreshed.access_token);
+    if (!gate.authenticated) throw new Error("PROFILE_RPC_FAILED");
+    if (!gate.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
+    if (gate.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
+    const role = (gate.role || "OPERATOR") as UserRole;
     if (role === "SUPER_ADMIN") {
+      pendingSuperAdminContext = {
+        token: refreshed.access_token,
+        session: refreshed,
+        profile: gate,
+        resolvedEmail: gate.email || refreshed.user.email || cleanIdentifier,
+        userRole: "SUPER_ADMIN",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+      throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+    }
+    pendingSuperAdminContext = null;
+    pendingBinChangeSession = null;
+    // The minimal gate is available before the idle guard. Reactivate only after
+    // confirming this is not a Super Admin awaiting BIN.
+    await reactivateMyAccountSession(refreshed.access_token);
+    const profile = await this.getAdminProfile(refreshed.access_token);
+    if (!profile || !profile.authenticated || !profile.is_admin || profile.is_active === false) {
+      throw new Error("PROFILE_RPC_FAILED");
+    }
+    if (profile.role === "SUPER_ADMIN") {
       pendingSuperAdminContext = {
         token: refreshed.access_token,
         session: refreshed,
@@ -818,18 +838,13 @@ class DefaultAuthService implements AuthService {
       };
       throw new Error("SUPER_ADMIN_BIN_REQUIRED");
     }
-    pendingSuperAdminContext = null;
-    pendingBinChangeSession = null;
-    // A saved refresh credential is an explicit re-authentication path. It may
-    // reactivate an idle-expired but never-revoked session on this device.
-    await reactivateMyAccountSession(refreshed.access_token);
     saveStoredSupabaseAuthSession(refreshed);
     setSupabaseAuthToken(refreshed.access_token);
     const session: UserSession = {
       userId: profile.admin_id || refreshed.user.id,
       email: profile.email || refreshed.user.email || cleanIdentifier,
       fullName: profile.full_name || profile.username || cleanIdentifier,
-      role,
+      role: (profile.role || role) as UserRole,
       permissions: profile.permissions || [],
       tokenExpiresAt: createLocalSessionExpiry(),
     };
