@@ -32,7 +32,7 @@ describe('Bin Lock Isolation From Primary Auth Regression Tests', () => {
     });
   });
 
-  it('TEST A — Correct password, locked BIN: password passes, BIN challenge throws BIN_LOCKED_FROZEN without clearing primary session', async () => {
+  it('TEST A — Correct password, locked BIN: discards the temporary Super Admin handoff and requires fresh authentication', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
     vi.spyOn(supabaseClient, 'supabaseSignInWithPassword').mockResolvedValue({
       session: {
@@ -73,10 +73,9 @@ describe('Bin Lock Isolation From Primary Auth Regression Tests', () => {
     expect(errorThrown).not.toBeNull();
     expect(errorThrown.message).toBe('BIN_LOCKED_FROZEN');
 
-    // 3. The authenticated session remains only in the temporary in-memory
-    // Super Admin handoff; it must not become a globally active or persisted app session
-    // until the BIN factor succeeds.
-    expect(authService.hasPendingSuperAdminContext()).toBe(true);
+    // A locked BIN invalidates the temporary password-authenticated handoff.
+    // No globally active or persisted Supabase session may survive lockout.
+    expect(authService.hasPendingSuperAdminContext()).toBe(false);
     expect(supabaseClient.getSupabaseAuthToken()).toBeNull();
     expect(supabaseClient.getStoredSupabaseAuthSession()).toBeNull();
   });
