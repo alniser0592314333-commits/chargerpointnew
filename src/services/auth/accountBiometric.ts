@@ -311,6 +311,18 @@ export async function revokeAccountBiometric(accessToken: string) {
   return result;
 }
 
+export async function revokeAdminAccountBiometric(accessToken: string) {
+  const result = await callEndpoint('revoke', {}, accessToken);
+  try {
+    const alias = localStorage.getItem('cp_biometric_alias_admin');
+    if (alias && /^[a-f0-9]{32}$/.test(alias) && Capacitor.isNativePlatform()) {
+      await NativeBiometric.deleteKey({ alias }).catch(() => undefined);
+    }
+    localStorage.removeItem('cp_biometric_alias_admin');
+  } catch {}
+  return result;
+}
+
 export async function getAccountBiometricStatus(accessToken: string): Promise<{ enrolled: boolean; credentialId?: string | null; keyAlias?: string | null }> {
   const result = await callEndpoint('status', {}, accessToken);
   return { enrolled: result.enrolled === true, credentialId: typeof result.credentialId === 'string' ? result.credentialId : null, keyAlias: typeof result.keyAlias === 'string' ? result.keyAlias : null };
