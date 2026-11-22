@@ -19,6 +19,17 @@ describe('Bin Lock Isolation From Primary Auth Regression Tests', () => {
     await authService.logout();
     config.supabaseUrl = 'https://ydhcyamtgioyrxfarkwk.supabase.co';
     config.supabaseAnonKey = 'sb_publishable_mock_key';
+    // Password login now performs a minimal identity/role gate before BIN.
+    // Keep these tests focused on BIN tracking by mocking that independent gate.
+    vi.spyOn(authService as any, 'getAdminLoginGate').mockResolvedValue({
+      authenticated: true,
+      is_admin: true,
+      is_active: true,
+      admin_id: 'admin_super',
+      role: 'SUPER_ADMIN',
+      email: 'super@system.local',
+      username: 'super',
+    });
   });
 
   it('TEST A — Correct password, locked BIN: password passes, BIN challenge throws BIN_LOCKED_FROZEN without clearing primary session', async () => {
