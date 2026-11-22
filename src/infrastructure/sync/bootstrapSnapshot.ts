@@ -92,7 +92,12 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
   const existingSessionComplete = Boolean(
     existingSession &&
     isValidManifest(existingSession.manifest) &&
-    BOOTSTRAP_COLLECTIONS.every((collection) => existingSession.completed[collection] === true)
+    existingSession.rowCounts &&
+    BOOTSTRAP_COLLECTIONS.every((collection) =>
+      existingSession.completed[collection] === true &&
+      Number.isSafeInteger(existingSession.rowCounts[collection]) &&
+      existingSession.rowCounts[collection] >= 0
+    )
   );
 
   let session: Awaited<ReturnType<typeof beginOrResumeBootstrapStagingSession>>['session'];
