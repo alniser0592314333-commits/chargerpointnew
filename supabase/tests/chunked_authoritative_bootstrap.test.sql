@@ -37,6 +37,26 @@ BEGIN
      OR v_purchase->'rows'->0->>'admin_id' <> '00000000-0000-4000-8000-000000000001' THEN
     RAISE EXCEPTION 'Purchase page leaked or omitted another admin record: %', v_purchase;
   END IF;
+  UPDATE public.system_settings SET value_number = 18 WHERE key = 'server_reset_generation';
+  PERFORM public.record_canonical_change(
+    'system_settings'::character varying,
+    '20000000-0000-4000-8000-000000000001'::uuid,
+    'UPDATE'::character varying,
+    jsonb_build_object('key', 'server_reset_generation', 'value_number', 18),
+    1
+  );
+  IF (SELECT count(*) FROM public.change_log
+      WHERE entity_type='system_settings' AND action='UPDATE'
+        AND payload->>'key'='server_reset_generation') <> 1 THEN
+    RAISE EXCEPTION 'System-setting trigger and canonical command produced duplicate or missing events';
+  END IF;
+
+  DELETE FROM public.system_settings WHERE key = 'server_reset_generation';
+  IF (SELECT count(*) FROM public.change_log
+      WHERE entity_type='system_settings' AND action='DELETE'
+        AND payload->>'key'='server_reset_generation') <> 1 THEN
+    RAISE EXCEPTION 'System-setting delete was not captured';
+  END IF;
 
   IF NOT has_function_privilege('authenticated', 'public.begin_sync_bootstrap()', 'EXECUTE')
      OR has_function_privilege('anon', 'public.begin_sync_bootstrap()', 'EXECUTE')
