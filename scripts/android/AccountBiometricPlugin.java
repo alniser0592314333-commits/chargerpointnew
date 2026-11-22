@@ -202,8 +202,13 @@ public class AccountBiometricPlugin extends Plugin {
       byte[] encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
       String packed = Base64.encodeToString(iv, Base64.NO_WRAP) + ":" +
         Base64.encodeToString(encrypted, Base64.NO_WRAP);
-      getContext().getSharedPreferences(VAULT_PREFS, Context.MODE_PRIVATE)
-        .edit().putString("v_" + key, packed).commit();
+      android.content.SharedPreferences preferences =
+        getContext().getSharedPreferences(VAULT_PREFS, Context.MODE_PRIVATE);
+      boolean committed = preferences.edit().putString("v_" + key, packed).commit();
+      if (!committed) throw new IllegalStateException("Secure storage commit failed");
+      // Verify the committed ciphertext is readable before reporting success.
+      String persisted = preferences.getString("v_" + key, null);
+      if (!packed.equals(persisted)) throw new IllegalStateException("Secure storage verification failed");
       JSObject ret = new JSObject(); ret.put("saved", true); call.resolve(ret);
     } catch (Exception ex) { call.reject("Secure storage write failed", ex); }
   }

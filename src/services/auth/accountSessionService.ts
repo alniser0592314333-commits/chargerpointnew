@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { invokeSupabaseRpc } from "../supabase/client";
 
 export interface AccountSession {
@@ -6,6 +7,9 @@ export interface AccountSession {
   created_at: string;
   last_seen_at: string;
   is_current: boolean;
+  client_type?: "browser" | "installed_pwa" | "native";
+  session_expires_at?: string;
+  is_expired?: boolean;
 }
 
 export interface SessionDeviceDescription {
@@ -46,11 +50,34 @@ function getBrowserUserAgent(): string | null {
   return typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 1000) : null;
 }
 
+export function getCurrentClientSessionType(): "browser" | "installed_pwa" | "native" {
+  if (Capacitor.isNativePlatform()) return "native";
+  try {
+    const standalone = typeof window !== "undefined"
+      && (window.matchMedia?.("(display-mode: standalone)").matches
+        || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+    return standalone ? "installed_pwa" : "browser";
+  } catch {
+    return "browser";
+  }
+}
+
 export async function registerCurrentAccountSession(): Promise<void> {
-  const { error } = await invokeSupabaseRpc("register_my_account_session", {
+  const { error } = await invokeSupabaseRpc("register_my_account_session_v2", {
     p_user_agent: getBrowserUserAgent(),
+    p_client_type: getCurrentClientSessionType(),
   });
   if (error) throw new Error(error);
+}
+
+export async function reactivateMyAccountSession(customAuthToken: string): Promise<void> {
+  const { data, error } = await invokeSupabaseRpc<{ success: boolean }>(
+    "reactivate_my_account_session",
+    { p_client_type: getCurrentClientSessionType() },
+    customAuthToken,
+  );
+  if (error) throw new Error(error);
+  if (data?.success !== true) throw new Error("SESSION_REACTIVATION_UNCONFIRMED");
 }
 
 export async function getAccountSessions(): Promise<AccountSession[]> {
@@ -94,4 +121,13 @@ export async function revokeAllAccountSessions(): Promise<number> {
     throw new Error("Revocation of all sessions was not confirmed");
   }
   return Number(data.revoked_count || 0);
+}
+
+
+export async function revokeCurrentAccountSession(): Promise<void> {
+  const sessions = await getAccountSessions();
+  const current = sessions.find((session) => session.is_current);
+  if (!current) throw new Error("CURRENT_ACCOUNT_SESSION_NOT_FOUND");
+  const result = await revokeAccountSession(current.session_id);
+  if (!result.revoked_current) throw new Error("CURRENT_ACCOUNT_SESSION_REVOCATION_UNCONFIRMED");
 }

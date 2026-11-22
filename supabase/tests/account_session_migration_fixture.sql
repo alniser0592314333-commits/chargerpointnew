@@ -1,5 +1,6 @@
 -- Minimal Supabase Auth schema fixture for account session migration tests.
 CREATE SCHEMA auth;
+
 CREATE TABLE auth.users (
   id uuid PRIMARY KEY,
   email text

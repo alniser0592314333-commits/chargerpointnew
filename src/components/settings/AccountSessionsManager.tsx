@@ -14,7 +14,7 @@ import { Button } from "../ui/Button";
 import { Monitor, Smartphone, Tablet, Globe, RefreshCw, LogOut, ShieldCheck, AlertCircle } from "lucide-react";
 
 interface AccountSessionsManagerProps {
-  onLogout?: () => void | Promise<void>;
+  onLogout?: (mode: "revoked") => void | Promise<void>;
 }
 
 function formatDate(value: string, locale: string): string {
@@ -78,7 +78,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
       }
       if (revokedCurrent) {
         await authService.logout();
-        await onLogout?.();
+        await onLogout?.("revoked");
         return;
       }
       setSuccess(isArabic ? "تم إنهاء الجلسات المحددة." : "Selected sessions were signed out.");
@@ -114,7 +114,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
     try {
       await revokeAllAccountSessions();
       await authService.logout();
-      await onLogout?.();
+      await onLogout?.("revoked");
     } catch (err: any) {
       setError(err?.message || (isArabic ? "تعذّر تسجيل الخروج من جميع الأجهزة." : "Could not sign out all devices."));
       setBusy(false);
@@ -203,6 +203,8 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
                     ? (details.device === "Mobile" ? "هاتف" : details.device === "Tablet" ? "جهاز لوحي" : details.device === "Computer" ? "كمبيوتر" : "جهاز غير معروف")
                     : details.device}</span>
                   {session.is_current && <span className="rounded border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300">{isArabic ? "هذا الجهاز" : "This device"}</span>}
+                  {session.client_type && <span className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:border-[#285347] dark:text-[#8eb698]">{session.client_type === "native" ? (isArabic ? "تطبيق APK" : "Native APK") : session.client_type === "installed_pwa" ? "PWA" : (isArabic ? "متصفح" : "Browser")}</span>}
+                  {session.is_expired && <span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-900 dark:text-amber-300">{isArabic ? "انتهت مهلة الجلسة" : "Idle expired"}</span>}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600 dark:text-[#8eb698]">
                   <span>{details.browser}</span><span aria-hidden="true">·</span><span>{details.operatingSystem}</span>
@@ -210,6 +212,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
                 <div className="mt-1.5 space-y-0.5 text-[11px] text-gray-500 dark:text-[#709784]">
                   <p>{isArabic ? "تسجيل الدخول:" : "Signed in:"} {formatDate(session.created_at, locale)}</p>
                   <p>{isArabic ? "آخر نشاط مسجّل:" : "Last recorded activity:"} {formatDate(session.last_seen_at, locale)}</p>
+                  {session.session_expires_at && <p>{isArabic ? "انتهاء مهلة الخمول:" : "Idle expiry:"} {formatDate(session.session_expires_at, locale)}</p>}
                 </div>
               </div>
             </div>

@@ -1,10 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as supabaseClient from '../services/supabase/client';
+import * as accountSessionService from '../services/auth/accountSessionService';
 import { authService } from '../services/auth/authService';
 
 describe('Server-Authoritative BIN Attempt Tracking & Fail-Closed Security (Tests 1 - 10)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Password login now performs a minimal identity/role gate before BIN.
+    // Keep these tests focused on BIN tracking by mocking that independent gate.
+    vi.spyOn(authService as any, 'getAdminLoginGate').mockResolvedValue({
+      authenticated: true,
+      is_admin: true,
+      is_active: true,
+      admin_id: 'admin_1',
+      role: 'SUPER_ADMIN',
+      email: 'admin@test.local',
+      username: 'admin',
+    });
   });
 
   interface TestAdminRecord {
@@ -285,6 +297,11 @@ describe('Server-Authoritative BIN Attempt Tracking & Fail-Closed Security (Test
   });
 
   it('TEST 7: Valid BIN before any failures -> login continues normally and returns UserSession', async () => {
+    vi.spyOn(accountSessionService, 'reactivateMyAccountSession').mockResolvedValue(undefined);
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: { success: true },
+      error: null,
+    } as any);
     const adminDb: TestAdminRecord = {
       id: 'admin_1',
       authUserId: 'user_1',

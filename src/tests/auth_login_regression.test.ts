@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { authService } from "../services/auth/authService";
 import * as supabaseClient from "../services/supabase/client";
+import * as accountSessionService from "../services/auth/accountSessionService";
 import { config } from "../config/env";
 
 const storageMap = new Map<string, string>();
@@ -11,6 +12,11 @@ const localStorageMock = {
   clear: () => storageMap.clear(),
 };
 (globalThis as any).localStorage = localStorageMock;
+
+const mockLoginGate = (profile: Record<string, unknown>) => {
+  vi.spyOn(authService as any, "getAdminLoginGate").mockResolvedValue(profile);
+  vi.spyOn(accountSessionService, "reactivateMyAccountSession").mockResolvedValue(undefined);
+};
 
 describe("Auth Regression Fix Verification (A through F)", () => {
   beforeEach(async () => {
@@ -39,6 +45,10 @@ describe("Auth Regression Fix Verification (A through F)", () => {
       role: "ADMIN",
       permissions: ["orders:view"],
     });
+    mockLoginGate({
+      authenticated: true, is_admin: true, is_active: true, admin_id: "admin_123",
+      role: "ADMIN", email: "al.niser.0592314333@gmail.com",
+    });
 
     const session = await authService.login("superadmin", "validpass123");
 
@@ -64,6 +74,10 @@ describe("Auth Regression Fix Verification (A through F)", () => {
       admin_id: "admin_456",
       role: "ADMIN",
       permissions: ["orders:view"],
+    });
+    mockLoginGate({
+      authenticated: true, is_admin: true, is_active: true, admin_id: "admin_456",
+      role: "ADMIN", email: "al.niser.0592314333@gmail.com",
     });
 
     const session = await authService.login("al.niser.0592314333@gmail.com", "validpass123");
@@ -120,6 +134,10 @@ describe("Auth Regression Fix Verification (A through F)", () => {
       role: "SUPER_ADMIN",
       permissions: ["admin:manage"],
     });
+    mockLoginGate({
+      authenticated: true, is_admin: true, is_active: true, admin_id: "admin_super",
+      role: "SUPER_ADMIN", email: "al.niser.0592314333@gmail.com",
+    });
 
     await expect(authService.login("al.niser.0592314333@gmail.com", "superpass")).rejects.toThrow(
       "SUPER_ADMIN_BIN_REQUIRED"
@@ -142,6 +160,10 @@ describe("Auth Regression Fix Verification (A through F)", () => {
       admin_id: "admin_super",
       role: "SUPER_ADMIN",
       permissions: ["admin:manage"],
+    });
+    mockLoginGate({
+      authenticated: true, is_admin: true, is_active: true, admin_id: "admin_super",
+      role: "SUPER_ADMIN", email: "al.niser.0592314333@gmail.com",
     });
     const verifyBinSpy = vi.spyOn(supabaseClient, "rpcVerifyAdminBinWithTracking").mockResolvedValue({
       success: true,

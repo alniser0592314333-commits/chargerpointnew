@@ -277,6 +277,13 @@ Deno.serve(async (req: Request) => {
         .eq("auth_user_id",consumed.challenge.auth_user_id).is("revoked_at",null).maybeSingle();
       if (!cred || consumed.challenge.credential_id !== cred.id ||
           !(await verifySignature(cred.public_key_spki,consumed.challenge.challenge,signature))) return reply(401,{ok:false,error:"BIOMETRIC_PROOF_INVALID"});
+      // Re-check administrator activation at proof-consumption time. A credential
+      // may have been valid when the challenge was issued but disabled before verify.
+      if (cred.account_type === "admin") {
+        const {data: adminRow,error: adminRowError} = await admin.from("admins").select("id,is_active")
+          .eq("id",cred.subject_id).eq("auth_user_id",cred.auth_user_id).maybeSingle();
+        if (adminRowError || adminRow?.is_active !== true) return reply(403,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
+      }
       const {data: identity} = await admin.auth.admin.getUserById(cred.auth_user_id);
       const email = identity.user?.email;
       if (!email || identity.user?.banned_until && new Date(identity.user.banned_until).getTime()>Date.now()) return reply(401,{ok:false,error:"ACCOUNT_UNAVAILABLE"});

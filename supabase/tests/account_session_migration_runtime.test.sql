@@ -21,6 +21,37 @@ INSERT INTO auth.refresh_tokens(user_id,session_id,revoked) VALUES
  ('11111111-1111-4111-8111-111111111111','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',false),
  ('22222222-2222-4222-8222-222222222222','cccccccc-cccc-4ccc-8ccc-cccccccccccc',false);
 
+-- The minimal login gate resolves role/active status without exposing permissions.
+-- Create the admins relation transactionally so the migration fixture remains
+-- compatible with the later, richer security-hardening fixture.
+BEGIN;
+CREATE TABLE public.admins (
+  id uuid PRIMARY KEY,
+  auth_user_id uuid NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  role text,
+  email text,
+  username text,
+  full_name text
+);
+INSERT INTO public.admins(id,auth_user_id,is_active,role,email,username,full_name)
+VALUES ('99999999-9999-4999-8999-999999999999',
+        '11111111-1111-4111-8111-111111111111',true,'SUPER_ADMIN',
+        'one@example.test','owner','Owner');
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+DO $assert$
+DECLARE v_gate jsonb;
+BEGIN
+  v_gate := public.get_my_admin_login_gate();
+  IF v_gate->>'authenticated' <> 'true'
+     OR v_gate->>'is_admin' <> 'true'
+     OR v_gate->>'role' <> 'SUPER_ADMIN'
+     OR v_gate ? 'permissions' THEN
+    RAISE EXCEPTION 'Minimal login gate returned an invalid or over-broad payload: %', v_gate;
+  END IF;
+END $assert$;
+ROLLBACK;
+
 -- User one sees only own sessions, and the current one is marked correctly.
 SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}',false);
@@ -35,6 +66,51 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_sessions) s WHERE s->>'session_id'='cccccccc-cccc-4ccc-8ccc-cccccccccccc') THEN
     RAISE EXCEPTION 'Session belonging to another account leaked';
+  END IF;
+END $assert$;
+
+-- Native and installed-PWA sessions receive a longer server-enforced idle window;
+-- ordinary browser sessions remain limited to seven days.
+SELECT public.register_my_account_session_v2('Android WebView', 'native');
+DO $assert$
+DECLARE v_expiry timestamptz; v_type text;
+BEGIN
+  SELECT session_expires_at, client_type INTO v_expiry, v_type
+  FROM public.account_sessions
+  WHERE session_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  IF v_type <> 'native' OR v_expiry < now() + interval '29 days' THEN
+    RAISE EXCEPTION 'Native session did not receive the 30-day idle window';
+  END IF;
+END $assert$;
+
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}',false);
+SELECT public.register_my_account_session_v2('Windows Chrome', 'browser');
+DO $assert$
+DECLARE v_expiry timestamptz; v_type text;
+BEGIN
+  SELECT session_expires_at, client_type INTO v_expiry, v_type
+  FROM public.account_sessions
+  WHERE session_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  IF v_type <> 'browser' OR v_expiry > now() + interval '7 days' THEN
+    RAISE EXCEPTION 'Browser session did not receive the seven-day idle window';
+  END IF;
+END $assert$;
+
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}',false);
+UPDATE public.account_sessions
+SET session_expires_at = now() - interval '1 second'
+WHERE session_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+DO $assert$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Idle-expired native session remained active';
+  END IF;
+END $assert$;
+SELECT public.reactivate_my_account_session('native');
+DO $assert$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Explicit native saved-login reactivation did not restore the session';
   END IF;
 END $assert$;
 

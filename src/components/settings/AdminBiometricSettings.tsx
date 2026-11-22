@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { ShieldCheck, Fingerprint, LoaderCircle, LockKeyhole } from 'lucide-react';
 import { authService } from '../../services/auth/authService';
-import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable } from '../../services/auth/accountBiometric';
+import { enrollAccountBiometric, getAccountBiometricStatus, isNativeBiometricAvailable, revokeAdminAccountBiometric } from '../../services/auth/accountBiometric';
 import { useI18n } from '../../i18n/i18nContext';
 
 export const AdminBiometricSettings: React.FC = () => {
@@ -67,13 +67,33 @@ export const AdminBiometricSettings: React.FC = () => {
     } finally { setBusy(false); }
   };
 
+  const handleRevoke = async () => {
+    if (busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      await authService.getCurrentSession(true);
+      const currentAuth = await authService.getSupabaseAuthSession();
+      if (!currentAuth?.access_token) throw new Error('AUTH_REQUIRED');
+      await revokeAdminAccountBiometric(currentAuth.access_token);
+      setEnrolled(false);
+      setOpen(false);
+      setMessage(copy('تم إلغاء البصمة لهذا الحساب على هذا الجهاز.', 'Fingerprint sign-in has been revoked for this account on this device.'));
+      await refresh();
+    } catch {
+      setError(copy('تعذر إلغاء البصمة. تحقق من الاتصال وحاول مجددًا.', 'Could not revoke fingerprint sign-in. Check the connection and try again.'));
+    } finally { setBusy(false); }
+  };
+
   if (!Capacitor.isNativePlatform()) return null;
   return <section className="rounded-2xl border border-gray-200/80 bg-white/70 p-4 space-y-3 dark:border-[#123832] dark:bg-[#061e1a]/70">
     <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-[#0c312b] dark:text-[#8eb698]"><Fingerprint size={21}/></span><div className="min-w-0 flex-1"><h3 className="font-bold text-gray-900 dark:text-[#daf1de]">{copy('الدخول بالبصمة', 'Fingerprint sign-in')}</h3><p className="text-xs text-gray-500 dark:text-[#8eb698]">{enrolled ? copy('البصمة مفعّلة لهذا الحساب على هذا الجهاز.', 'Fingerprint is enabled for this account on this device.') : copy('لم تتم إضافة بصمة لهذا الحساب بعد.', 'No fingerprint is enrolled for this account yet.')}</p></div><ShieldCheck size={18} className={enrolled ? 'text-emerald-600' : 'text-gray-400'}/></div>
     <p className="text-xs leading-5 text-gray-500 dark:text-[#8eb698]">{copy('تُحفظ البصمة على الجهاز فقط. لتغييرها يلزم التحقق من كلمة المرور ورمز BIN.', 'Biometric data stays on the device. Changing it requires your password and BIN.')}</p>
     {message && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{message}</p>}
     {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p>}
-    {!open ? <button type="button" disabled={!available} onClick={() => { setOpen(true); setError(''); setMessage(''); }} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-700/20 px-4 py-3 text-sm font-semibold text-emerald-800 disabled:opacity-50 dark:border-[#285347] dark:text-[#daf1de]"><Fingerprint size={17}/>{enrolled ? copy('تغيير / إعادة إضافة البصمة', 'Change / re-enroll fingerprint') : copy('إضافة البصمة الآن', 'Add fingerprint now')}</button>
+    {!open ? <div className="space-y-2">
+      <button type="button" disabled={!available || busy} onClick={() => { setOpen(true); setError(''); setMessage(''); }} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-700/20 px-4 py-3 text-sm font-semibold text-emerald-800 disabled:opacity-50 dark:border-[#285347] dark:text-[#daf1de]"><Fingerprint size={17}/>{enrolled ? copy('تغيير / إعادة إضافة البصمة', 'Change / re-enroll fingerprint') : copy('إضافة البصمة الآن', 'Add fingerprint now')}</button>
+      {enrolled && <button type="button" disabled={busy} onClick={() => void handleRevoke()} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 disabled:opacity-50 dark:border-red-900/60 dark:text-red-300">{busy ? <LoaderCircle size={16} className="animate-spin"/> : <LockKeyhole size={16} />}{copy('إلغاء البصمة من هذا الجهاز', 'Revoke fingerprint on this device')}</button>}
+      </div>
       : <form onSubmit={(e) => void submit(e)} className="space-y-3">
         <label className="block text-sm font-medium">{copy('كلمة المرور الحالية', 'Current password')}<input type="password" required autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>
         <label className="block text-sm font-medium">{copy('رمز BIN', 'Security BIN')}<input type="password" required inputMode="numeric" pattern="[0-9]{4,}" autoComplete="off" value={bin} onChange={e=>setBin(e.target.value)} className="mt-1 w-full rounded-xl border border-gray-300 bg-transparent px-3 py-2.5 dark:border-[#285347]"/></label>

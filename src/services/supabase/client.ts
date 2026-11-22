@@ -346,6 +346,20 @@ export async function supabaseRefreshToken(): Promise<{ session: SupabaseAuthSes
 
       setSupabaseAuthToken(newSession.access_token);
       saveStoredSupabaseAuthSession(newSession);
+      // A saved native account has a second, device-bound copy of its rotating
+      // refresh token. Keep it in lockstep with Supabase Auth or the next quick
+      // sign-in would attempt to reuse an already-rotated token.
+      try {
+        const vault = await import("../auth/accountBiometric");
+        await vault.syncSavedAdminQuickLoginTokenForSession(newSession);
+      } catch (vaultSyncError) {
+        // Do not leave a known-stale quick-login token visible as if it were usable.
+        try {
+          const vault = await import("../auth/accountBiometric");
+          await vault.removeSavedAdminQuickLoginTokensForUser(newSession.user.id, newSession.user.email);
+        } catch {}
+        console.warn("Saved quick sign-in was removed because its rotated token could not be secured in Android Keystore.", vaultSyncError);
+      }
       return newSession;
     } catch (err) {
       return null;

@@ -5,8 +5,11 @@
  */
 
 import { ID, Timestamp } from "../../types/common";
+import { Capacitor } from "@capacitor/core";
+import { reactivateMyAccountSession, revokeCurrentAccountSession } from "./accountSessionService";
 import {
   getSupabaseStatus,
+  invokeSupabaseRpc,
   supabaseSignInWithPassword,
   supabaseSignUp,
   rpcCheckSystemBootstrapped,
@@ -33,6 +36,23 @@ import {
 import { config } from "../../config/env";
 
 export type UserRole = "SUPER_ADMIN" | "ADMIN" | "MANAGER" | "STAFF" | "VIEWER" | "OPERATOR" | "FINANCE";
+
+// This expiry bounds the locally cached role/permission snapshot. Supabase Auth
+// tokens and the server-side account-session guard remain the authority.
+const getLocalSessionCacheTtlMs = (): number => {
+  const longLivedMs = 30 * 24 * 60 * 60 * 1000;
+  if (Capacitor.isNativePlatform()) return longLivedMs;
+  try {
+    const standalone = typeof window !== "undefined"
+      && (window.matchMedia?.("(display-mode: standalone)").matches
+        || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+    return standalone ? longLivedMs : 7 * 24 * 60 * 60 * 1000;
+  } catch {
+    return 7 * 24 * 60 * 60 * 1000;
+  }
+};
+const createLocalSessionExpiry = (): string =>
+  new Date(Date.now() + getLocalSessionCacheTtlMs()).toISOString();
 
 export type Permission =
   | "customers:read"
@@ -155,6 +175,7 @@ interface PendingSuperAdminContext {
   resolvedEmail: string;
   userRole: UserRole;
   expiresAt: number;
+  binVerifiedAt?: number;
 }
 
 let pendingSuperAdminContext: PendingSuperAdminContext | null = null;
@@ -173,7 +194,7 @@ export interface AuthService {
   login(email: string, passOrPin: string, bin?: string): Promise<UserSession | null>;
   acceptBiometricSession(session: SupabaseAuthSession): Promise<UserSession>;
   loginWithSavedAccount(identifier: string): Promise<UserSession | null>;
-  logout(): Promise<void>;
+  logout(options?: { revokeCurrentSession?: boolean }): Promise<void>;
   getCurrentSession(forceRefresh?: boolean): Promise<UserSession | null>;
   getSupabaseAuthSession(): Promise<SupabaseAuthSession | null>;
   captureAuthCallback(): Promise<{ session: SupabaseAuthSession | null; error: string | null; type?: string | null }>;
@@ -232,6 +253,16 @@ export interface AuthService {
 class DefaultAuthService implements AuthService {
   isSupabaseConfigured(): boolean {
     return getSupabaseStatus().isConfigured;
+  }
+
+  private async getAdminLoginGate(customAuthToken: string): Promise<AdminProfileResult> {
+    const { data, error } = await invokeSupabaseRpc<AdminProfileRpcResult>(
+      "get_my_admin_login_gate",
+      {},
+      customAuthToken,
+    );
+    if (error || !data) throw new Error("PROFILE_RPC_FAILED");
+    return data as AdminProfileResult;
   }
 
   async checkSystemBootstrapped(): Promise<boolean> {
@@ -398,7 +429,7 @@ class DefaultAuthService implements AuthService {
       fullName: profileRes.full_name || cleanFullName,
       role: "SUPER_ADMIN",
       permissions: profileRes.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
 
     inMemorySession = session;
@@ -620,47 +651,59 @@ class DefaultAuthService implements AuthService {
         return null;
       }
 
-      // Step 2: Server-Authoritative Identity Profile Resolver
-      const profile = await this.getAdminProfile(signInRes.session.access_token);
-      if (!profile || !profile.authenticated) {
+      // Step 2: Read only the minimum account gate before the BIN decision.
+      // This RPC returns identity/role/active status only, never permissions or
+      // business data, and is safe to call before a Super Admin's second factor.
+      const gate = await this.getAdminLoginGate(signInRes.session.access_token);
+      if (!gate.authenticated) {
         setSupabaseAuthToken(null);
         throw new Error("PROFILE_RPC_FAILED");
       }
-
-      if (!profile.is_admin) {
+      if (!gate.is_admin) {
         setSupabaseAuthToken(null);
         throw new Error("ACCESS_DENIED_NO_ADMIN");
       }
-
-      if (profile.is_active === false) {
+      if (gate.is_active === false) {
         setSupabaseAuthToken(null);
         throw new Error("ACCESS_DENIED_INACTIVE");
       }
 
-      const userRole = (profile.role || "OPERATOR") as UserRole;
+      const userRole = (gate.role || "OPERATOR") as UserRole;
 
-      // Step 3: BIN verification required ONLY for SUPER_ADMIN
+      // Step 3: Super Admin remains temporary and unregistered until BIN succeeds.
       if (userRole === "SUPER_ADMIN") {
-        // Cache temporary session in memory ONLY (never in localStorage before BIN)
         pendingSuperAdminContext = {
           token: signInRes.session.access_token,
           session: signInRes.session,
-          profile,
-          resolvedEmail,
+          profile: gate,
+          resolvedEmail: gate.email || signInRes.session.user.email || resolvedEmail,
           userRole: "SUPER_ADMIN",
           expiresAt: Date.now() + 5 * 60 * 1000,
         };
 
-        if (!cleanBin) {
-          // Tell UI to prompt for BIN
-          throw new Error("SUPER_ADMIN_BIN_REQUIRED");
-        }
-
-        // If cleanBin was provided directly, complete BIN verification immediately with existing context
+        if (!cleanBin) throw new Error("SUPER_ADMIN_BIN_REQUIRED");
         return this.verifySuperAdminBin(cleanBin);
       }
 
-      // Step 4 for non-super admins: Directly commit session
+      // Other administrators are registered only after their identity gate passes.
+      await reactivateMyAccountSession(signInRes.session.access_token);
+      const profile = await this.getAdminProfile(signInRes.session.access_token);
+      if (!profile || !profile.authenticated || !profile.is_admin || profile.is_active === false) {
+        setSupabaseAuthToken(null);
+        throw new Error("PROFILE_RPC_FAILED");
+      }
+      if (profile.role === "SUPER_ADMIN") {
+        pendingSuperAdminContext = {
+          token: signInRes.session.access_token,
+          session: signInRes.session,
+          profile,
+          resolvedEmail: profile.email || signInRes.session.user.email || resolvedEmail,
+          userRole: "SUPER_ADMIN",
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        };
+        throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+      }
+
       saveStoredSupabaseAuthSession(signInRes.session);
       setSupabaseAuthToken(signInRes.session.access_token);
 
@@ -668,9 +711,9 @@ class DefaultAuthService implements AuthService {
         userId: profile.admin_id || signInRes.session.user.id,
         email: profile.email || signInRes.session.user.email || resolvedEmail,
         fullName: profile.full_name || profile.username || resolvedEmail.split("@")[0],
-        role: userRole,
+        role: (profile.role || userRole) as UserRole,
         permissions: profile.permissions || [],
-        tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        tokenExpiresAt: createLocalSessionExpiry(),
       };
 
       inMemorySession = session;
@@ -748,7 +791,7 @@ class DefaultAuthService implements AuthService {
     });
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.access_token || !data?.refresh_token || !data?.user?.id) {
-      await vault.deleteAdminQuickLoginToken(cleanIdentifier).catch(() => undefined);
+      await vault.removeSavedAdminQuickLoginAccount(cleanIdentifier).catch(() => undefined);
       throw new Error("SAVED_LOGIN_EXPIRED");
     }
     const refreshed: SupabaseAuthSession = {
@@ -759,13 +802,33 @@ class DefaultAuthService implements AuthService {
       user: data.user,
     };
     // Persist rotation immediately: Supabase refresh tokens are single-use/rotating.
-    await vault.saveAdminQuickLoginToken(cleanIdentifier, refreshed.refresh_token!);
-    const profile = await this.getAdminProfile(refreshed.access_token);
-    if (!profile || !profile.authenticated) throw new Error("PROFILE_RPC_FAILED");
-    if (!profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
-    if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
-    const role = (profile.role || "OPERATOR") as UserRole;
+    await vault.saveAdminQuickLoginToken(cleanIdentifier, refreshed.refresh_token!, refreshed.user.id);
+    const gate = await this.getAdminLoginGate(refreshed.access_token);
+    if (!gate.authenticated) throw new Error("PROFILE_RPC_FAILED");
+    if (!gate.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
+    if (gate.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
+    const role = (gate.role || "OPERATOR") as UserRole;
     if (role === "SUPER_ADMIN") {
+      pendingSuperAdminContext = {
+        token: refreshed.access_token,
+        session: refreshed,
+        profile: gate,
+        resolvedEmail: gate.email || refreshed.user.email || cleanIdentifier,
+        userRole: "SUPER_ADMIN",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+      throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+    }
+    pendingSuperAdminContext = null;
+    pendingBinChangeSession = null;
+    // The minimal gate is available before the idle guard. Reactivate only after
+    // confirming this is not a Super Admin awaiting BIN.
+    await reactivateMyAccountSession(refreshed.access_token);
+    const profile = await this.getAdminProfile(refreshed.access_token);
+    if (!profile || !profile.authenticated || !profile.is_admin || profile.is_active === false) {
+      throw new Error("PROFILE_RPC_FAILED");
+    }
+    if (profile.role === "SUPER_ADMIN") {
       pendingSuperAdminContext = {
         token: refreshed.access_token,
         session: refreshed,
@@ -776,17 +839,15 @@ class DefaultAuthService implements AuthService {
       };
       throw new Error("SUPER_ADMIN_BIN_REQUIRED");
     }
-    pendingSuperAdminContext = null;
-    pendingBinChangeSession = null;
     saveStoredSupabaseAuthSession(refreshed);
     setSupabaseAuthToken(refreshed.access_token);
     const session: UserSession = {
       userId: profile.admin_id || refreshed.user.id,
       email: profile.email || refreshed.user.email || cleanIdentifier,
       fullName: profile.full_name || profile.username || cleanIdentifier,
-      role,
+      role: (profile.role || role) as UserRole,
       permissions: profile.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
     inMemorySession = session;
     const storage = getLocalStorage();
@@ -795,27 +856,54 @@ class DefaultAuthService implements AuthService {
   }
 
   async acceptBiometricSession(authSession: SupabaseAuthSession): Promise<UserSession> {
-    if (!this.isSupabaseConfigured() || !authSession?.access_token || !authSession?.user?.id) {
+    if (!this.isSupabaseConfigured() || !authSession?.access_token || !authSession?.refresh_token || !authSession?.user?.id) {
       throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
     }
-    // The biometric Edge Function verifies the registered device signature before
-    // returning this Supabase session. BIN remains separate from sign-in and may
-    // still be required by sensitive operations.
-    const profile = await this.getAdminProfile(authSession.access_token);
-    if (!profile || !profile.authenticated || !profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
-    if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
-    pendingSuperAdminContext = null;
+    // The biometric proof is the first factor. Resolve only the minimal role gate
+    // until a Super Admin has completed the separate BIN factor.
+    const gate = await this.getAdminLoginGate(authSession.access_token);
+    if (!gate.authenticated || !gate.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
+    if (gate.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
+    const role = (gate.role || "OPERATOR") as UserRole;
     pendingBinChangeSession = null;
+    if (role === "SUPER_ADMIN") {
+      pendingSuperAdminContext = {
+        token: authSession.access_token,
+        session: authSession,
+        profile: gate,
+        resolvedEmail: gate.email || authSession.user.email || "",
+        userRole: "SUPER_ADMIN",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+      throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+    }
+
+    pendingSuperAdminContext = null;
+    await reactivateMyAccountSession(authSession.access_token);
+    const profile = await this.getAdminProfile(authSession.access_token);
+    if (!profile || !profile.authenticated || !profile.is_admin || profile.is_active === false) {
+      throw new Error("PROFILE_RPC_FAILED");
+    }
+    if (profile.role === "SUPER_ADMIN") {
+      pendingSuperAdminContext = {
+        token: authSession.access_token,
+        session: authSession,
+        profile,
+        resolvedEmail: profile.email || authSession.user.email || "",
+        userRole: "SUPER_ADMIN",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+      throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+    }
     saveStoredSupabaseAuthSession(authSession);
     setSupabaseAuthToken(authSession.access_token);
-    const role = (profile.role || "OPERATOR") as UserRole;
     const session: UserSession = {
       userId: profile.admin_id || authSession.user.id,
       email: profile.email || authSession.user.email || "",
       fullName: profile.full_name || profile.username || authSession.user.email || "",
-      role,
+      role: (profile.role || role) as UserRole,
       permissions: profile.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
     inMemorySession = session;
     const storage = getLocalStorage();
@@ -834,14 +922,12 @@ class DefaultAuthService implements AuthService {
       throw new Error("SESSION_EXPIRED");
     }
 
-    const { token, session: tempSession, profile, resolvedEmail, userRole } = pendingSuperAdminContext;
+    const { token, session: tempSession, profile: pendingProfile, resolvedEmail, userRole } = pendingSuperAdminContext;
 
-    if (this.isSupabaseConfigured()) {
-      // Authoritative BIN verification using the exact same temporary token!
-      // ZERO calls to supabaseSignInWithPassword!
+    if (this.isSupabaseConfigured() && !pendingSuperAdminContext.binVerifiedAt) {
+      // Authoritative BIN verification using the exact same temporary token.
       const trackingRes = await rpcVerifyAdminBinWithTracking(cleanBin, token);
       if (!trackingRes.success) {
-        // Technical / infrastructure failure -> fail closed without consuming attempts
         if (trackingRes.isTechnicalError || trackingRes.status === "ERROR") {
           const err = new Error("BIN_VERIFICATION_UNAVAILABLE");
           (err as any).technicalError = trackingRes.error;
@@ -850,8 +936,8 @@ class DefaultAuthService implements AuthService {
 
         if (trackingRes.is_locked || trackingRes.status === "LOCKED") {
           pendingSuperAdminContext = null;
-          saveStoredSupabaseAuthSession(tempSession);
-          setSupabaseAuthToken(token);
+          clearStoredSupabaseAuthSession();
+          setSupabaseAuthToken(null);
           const err = new Error("BIN_LOCKED_FROZEN");
           (err as any).remainingAttempts = 0;
           (err as any).failedAttempts = trackingRes.failed_attempts || 3;
@@ -863,28 +949,44 @@ class DefaultAuthService implements AuthService {
         (err as any).failedAttempts = trackingRes.failed_attempts;
         throw err;
       }
-    } else {
-      // Local test fallback
+      // If profile loading or session reactivation fails after a correct BIN,
+      // a retry must resume without consuming another BIN attempt.
+      pendingSuperAdminContext.binVerifiedAt = Date.now();
+    } else if (!this.isSupabaseConfigured()) {
       const isValidBin =
         cleanBin === SUPER_ADMIN_TEST_ACCOUNT.bin ||
         cleanBin === "1234" ||
         cleanBin === "123456";
-      if (!isValidBin) {
-        throw new Error("WRONG_BIN");
-      }
+      if (!isValidBin) throw new Error("WRONG_BIN");
+      pendingSuperAdminContext.binVerifiedAt = Date.now();
     }
 
-    // Success: Commit final authoritative session to storage and memory
+    let finalProfile: AdminProfileResult = pendingProfile;
+    if (this.isSupabaseConfigured()) {
+      const gate = await this.getAdminLoginGate(token);
+      if (!gate.authenticated || !gate.is_admin || gate.is_active === false) {
+        throw new Error("ACCESS_DENIED_INACTIVE");
+      }
+      // BIN has passed. Only now activate the protected server session.
+      await reactivateMyAccountSession(token);
+      const authoritativeProfile = await this.getAdminProfile(token);
+      if (!authoritativeProfile || !authoritativeProfile.authenticated || !authoritativeProfile.is_admin || authoritativeProfile.is_active === false) {
+        throw new Error("PROFILE_RPC_FAILED");
+      }
+      finalProfile = authoritativeProfile;
+    }
+
+    // Commit only after BIN, current account status, and server permissions succeed.
     saveStoredSupabaseAuthSession(tempSession);
     setSupabaseAuthToken(token);
 
     const session: UserSession = {
-      userId: profile.admin_id || tempSession.user.id,
-      email: profile.email || tempSession.user.email || resolvedEmail,
-      fullName: profile.full_name || profile.username || resolvedEmail.split("@")[0],
-      role: userRole,
-      permissions: profile.permissions || [],
-      tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      userId: finalProfile.admin_id || tempSession.user.id,
+      email: finalProfile.email || tempSession.user.email || resolvedEmail,
+      fullName: finalProfile.full_name || finalProfile.username || resolvedEmail.split("@")[0],
+      role: (finalProfile.role || userRole) as UserRole,
+      permissions: finalProfile.permissions || [],
+      tokenExpiresAt: createLocalSessionExpiry(),
     };
 
     inMemorySession = session;
@@ -906,8 +1008,12 @@ class DefaultAuthService implements AuthService {
     pendingSuperAdminContext = null;
   }
 
-  async logout(): Promise<void> {
-    // Never retain a short-lived re-auth token across logout.
+  async logout(options?: { revokeCurrentSession?: boolean }): Promise<void> {
+    // Explicit "sign out only" revokes the server session before local credentials
+    // are cleared. Saved sign-out deliberately preserves the refresh credential.
+    if (options?.revokeCurrentSession) {
+      await revokeCurrentAccountSession();
+    }
     pendingBinChangeSession = null;
     clearStoredSupabaseAuthSession();
     inMemorySession = null;
@@ -965,44 +1071,52 @@ class DefaultAuthService implements AuthService {
     const storage = getLocalStorage();
     if (storage) {
       const stored = storage.getItem(SESSION_STORAGE_KEY);
+      let storedSession: UserSession | null = null;
       if (stored) {
         try {
-          const storedSession = JSON.parse(stored) as UserSession;
-          if (new Date(storedSession.tokenExpiresAt).getTime() > Date.now()) {
-            const session: UserSession = serverProfile ? {
-              userId: serverProfile.admin_id || storedSession.userId,
-              email: serverProfile.email || storedSession.email,
-              fullName: serverProfile.full_name || serverProfile.username || storedSession.fullName,
-              role: (serverProfile.role as UserRole) || storedSession.role,
-              permissions: serverProfile.permissions || storedSession.permissions,
-              tokenExpiresAt: storedSession.tokenExpiresAt,
-            } : storedSession;
-
-            inMemorySession = session;
-            // Also sync back to storage if updated from server
-            if (serverProfile) {
-              storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-            }
-            return session;
-          }
+          storedSession = JSON.parse(stored) as UserSession;
         } catch {
           storage.removeItem(SESSION_STORAGE_KEY);
         }
-      } else if (serverProfile && this.isSupabaseConfigured()) {
-        // Fallback if session is not in localStorage but serverProfile is active (e.g. forced refresh without storage cache)
+      }
+
+      // A successful server profile read is authoritative even when the local
+      // 24-hour-era cache has expired. Rebuild it and refresh permissions instead
+      // of treating a still-valid Supabase session as logged out.
+      if (serverProfile) {
         const supabaseSession = await this.getSupabaseAuthSession();
         const session: UserSession = {
-          userId: serverProfile.admin_id || supabaseSession?.user.id || "",
-          email: serverProfile.email || supabaseSession?.user.email || "",
-          fullName: serverProfile.full_name || serverProfile.username || "",
-          role: serverProfile.role || "OPERATOR",
+          userId: serverProfile.admin_id || storedSession?.userId || supabaseSession?.user.id || "",
+          email: serverProfile.email || storedSession?.email || supabaseSession?.user.email || "",
+          fullName: serverProfile.full_name || serverProfile.username || storedSession?.fullName || "",
+          role: serverProfile.role || storedSession?.role || "OPERATOR",
           permissions: serverProfile.permissions || [],
-          tokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          tokenExpiresAt: createLocalSessionExpiry(),
         };
         inMemorySession = session;
         storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
         return session;
       }
+
+      // A profile timeout is not proof that the account was revoked. Keep the
+      // last known session for offline-first navigation; sensitive server actions
+      // remain protected by the server-side session and permission checks.
+      if (storedSession) {
+        inMemorySession = storedSession;
+        return storedSession;
+      }
+    } else if (serverProfile && this.isSupabaseConfigured()) {
+      const supabaseSession = await this.getSupabaseAuthSession();
+      const session: UserSession = {
+        userId: serverProfile.admin_id || supabaseSession?.user.id || "",
+        email: serverProfile.email || supabaseSession?.user.email || "",
+        fullName: serverProfile.full_name || serverProfile.username || "",
+        role: serverProfile.role || "OPERATOR",
+        permissions: serverProfile.permissions || [],
+        tokenExpiresAt: createLocalSessionExpiry(),
+      };
+      inMemorySession = session;
+      return session;
     }
     return null;
   }

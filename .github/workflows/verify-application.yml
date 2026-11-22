@@ -122,6 +122,13 @@ jobs:
           VITE_SUPABASE_ANON_KEY: test-anon-key
         run: npx vitest run src/tests/phase6_15_auth_token_and_outbox_resume.test.ts src/tests/phase6_12_2_super_admin_bootstrap.test.ts
 
+      - name: Run admin session lifecycle and biometric BIN regressions
+        env:
+          # All auth/RPC calls are mocked. Never target the production Supabase project.
+          VITE_SUPABASE_URL: https://test.supabase.local
+          VITE_SUPABASE_ANON_KEY: test-anon-key
+        run: npx vitest run src/tests/admin_session_lifecycle_regression.test.ts src/tests/auth_login_regression.test.ts src/tests/auth_single_signin_and_error_taxonomy.test.ts src/tests/final_auth_verification.test.ts
+
       - name: Run online create-day pipeline regressions
         env:
           # The RPC transport is mocked; never point this integration-style test at production.
@@ -330,6 +337,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261014130000_account_session_management.sql
+      - name: Apply administrator idle-expiry policy migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql
       - name: Verify account session isolation and revocation behavior
         env:
           PGPASSWORD: postgres

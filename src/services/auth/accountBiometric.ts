@@ -67,12 +67,120 @@ const quickLoginVaultKey = async (identifier: string) => {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 };
 
-export async function saveAdminQuickLoginToken(identifier: string, refreshToken: string) {
+const SAVED_ADMIN_ACCOUNTS_KEY = 'cp_saved_admin_accounts_v1';
+const SAVED_ADMIN_ACCOUNT_UIDS_KEY = 'cp_saved_admin_account_auth_ids_v1';
+
+function readSavedAdminAccountUids(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key.length <= 160 && typeof value === 'string' && value.length <= 80) result[key] = value;
+    }
+    return result;
+  } catch { return {}; }
+}
+
+export function rememberAdminAccountIdentifier(identifier: string) {
+  const clean = identifier.trim();
+  if (!clean || clean.length > 160) throw new Error('SAVED_ACCOUNT_IDENTIFIER_INVALID');
+  const parsed = (() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]'); } catch { return []; }
+  })();
+  const current = Array.isArray(parsed)
+    ? parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 160)
+    : [];
+  const next = [clean, ...current.filter((value) => value.toLowerCase() !== clean.toLowerCase())].slice(0, 5);
+  localStorage.setItem(SAVED_ADMIN_ACCOUNTS_KEY, JSON.stringify(next));
+}
+
+export function linkSavedAdminAccountIdentifier(identifier: string, authUserId: string) {
+  const clean = identifier.trim();
+  if (!clean || !authUserId || clean.length > 160 || authUserId.length > 80) return;
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]'); } catch { return []; }
+  })();
+  if (!Array.isArray(saved) || !saved.some((value) => typeof value === 'string' && value.toLowerCase() === clean.toLowerCase())) return;
+  const mapping = readSavedAdminAccountUids();
+  mapping[clean.toLowerCase()] = authUserId;
+  localStorage.setItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY, JSON.stringify(mapping));
+}
+
+export async function saveAdminQuickLoginToken(identifier: string, refreshToken: string, authUserId: string) {
   if (!Capacitor.isNativePlatform()) throw new Error('SECURE_STORAGE_NATIVE_ONLY');
+  const cleanIdentifier = identifier.trim();
+  if (!cleanIdentifier || !authUserId || authUserId.length > 80) throw new Error('SECURE_STORAGE_IDENTITY_REQUIRED');
   if (!refreshToken || refreshToken.length > 8192) throw new Error('SECURE_STORAGE_INVALID_TOKEN');
-  const key = await quickLoginVaultKey(identifier);
+  const key = await quickLoginVaultKey(cleanIdentifier);
   const result = await NativeBiometric.setSecureValue({ key, value: refreshToken });
   if (result.saved !== true) throw new Error('SECURE_STORAGE_WRITE_FAILED');
+  const verified = await NativeBiometric.getSecureValue({ key });
+  if (verified.value !== refreshToken) throw new Error('SECURE_STORAGE_VERIFY_FAILED');
+  const mapping = readSavedAdminAccountUids();
+  mapping[cleanIdentifier.toLowerCase()] = authUserId;
+  localStorage.setItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY, JSON.stringify(mapping));
+  rememberAdminAccountIdentifier(cleanIdentifier);
+}
+
+export async function syncSavedAdminQuickLoginTokenForSession(session: {
+  refresh_token?: string;
+  user?: { id?: string };
+}) {
+  const userId = session.user?.id;
+  const refreshToken = session.refresh_token;
+  if (!Capacitor.isNativePlatform() || !userId || !refreshToken) return;
+  const mapping = readSavedAdminAccountUids();
+  const identifiers = Object.entries(mapping)
+    .filter(([, mappedUserId]) => mappedUserId === userId)
+    .map(([identifier]) => identifier);
+  for (const identifier of identifiers) {
+    const key = await quickLoginVaultKey(identifier);
+    const result = await NativeBiometric.setSecureValue({ key, value: refreshToken });
+    if (result.saved !== true) throw new Error('SECURE_STORAGE_WRITE_FAILED');
+    const verified = await NativeBiometric.getSecureValue({ key });
+    if (verified.value !== refreshToken) throw new Error('SECURE_STORAGE_VERIFY_FAILED');
+  }
+}
+
+export async function removeSavedAdminQuickLoginAccount(identifier: string) {
+  const clean = identifier.trim().toLowerCase();
+  if (!clean) return;
+  try { await deleteAdminQuickLoginToken(clean); } catch {}
+  const mapping = readSavedAdminAccountUids();
+  delete mapping[clean];
+  localStorage.setItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY, JSON.stringify(mapping));
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]'); } catch { return []; }
+  })();
+  if (Array.isArray(saved)) {
+    localStorage.setItem(SAVED_ADMIN_ACCOUNTS_KEY, JSON.stringify(
+      saved.filter((value) => typeof value === 'string' && value.toLowerCase() !== clean),
+    ));
+  }
+}
+
+export async function removeSavedAdminQuickLoginTokensForUser(authUserId: string, fallbackIdentifier?: string) {
+  if (!authUserId) return;
+  const mapping = readSavedAdminAccountUids();
+  const identifiers = Object.entries(mapping)
+    .filter(([, mappedUserId]) => mappedUserId === authUserId)
+    .map(([identifier]) => identifier);
+  if (fallbackIdentifier?.trim()) identifiers.push(fallbackIdentifier.trim().toLowerCase());
+  for (const identifier of [...new Set(identifiers)]) {
+    try { await deleteAdminQuickLoginToken(identifier); } catch {}
+    delete mapping[identifier];
+  }
+  localStorage.setItem(SAVED_ADMIN_ACCOUNT_UIDS_KEY, JSON.stringify(mapping));
+  const saved = (() => {
+    try { return JSON.parse(localStorage.getItem(SAVED_ADMIN_ACCOUNTS_KEY) || '[]'); } catch { return []; }
+  })();
+  if (Array.isArray(saved)) {
+    const removed = new Set(identifiers.map((value) => value.toLowerCase()));
+    localStorage.setItem(SAVED_ADMIN_ACCOUNTS_KEY, JSON.stringify(
+      saved.filter((value) => typeof value === 'string' && !removed.has(value.toLowerCase())),
+    ));
+  }
 }
 
 export async function getAdminQuickLoginToken(identifier: string): Promise<string | null> {
@@ -230,6 +338,18 @@ export async function revokeAccountBiometric(accessToken: string) {
       }
       localStorage.removeItem('cp_biometric_alias_' + type);
     }
+  } catch {}
+  return result;
+}
+
+export async function revokeAdminAccountBiometric(accessToken: string) {
+  const result = await callEndpoint('revoke', {}, accessToken);
+  try {
+    const alias = localStorage.getItem('cp_biometric_alias_admin');
+    if (alias && /^[a-f0-9]{32}$/.test(alias) && Capacitor.isNativePlatform()) {
+      await NativeBiometric.deleteKey({ alias }).catch(() => undefined);
+    }
+    localStorage.removeItem('cp_biometric_alias_admin');
   } catch {}
   return result;
 }

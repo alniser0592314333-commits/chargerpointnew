@@ -14,6 +14,7 @@ import { AuthenticatedLayout } from './components/shell/AuthenticatedLayout';
 import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
 import { authService } from './services/auth/authService';
+import { saveAdminQuickLoginToken, removeSavedAdminQuickLoginTokensForUser } from './services/auth/accountBiometric';
 import { isCurrentAccountSessionActive, registerCurrentAccountSession } from './services/auth/accountSessionService';
 import { refreshStoreFromRemote, ensureStoreHydrated, subscribeStoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
@@ -357,36 +358,56 @@ export default function App() {
     });
   }, []);
 
-  // Lightweight visibility/focus lifecycle verification
+  // Revalidate the server session and permissions whenever the app returns
+  // from background. Focus and visibility events can fire together, so serialize
+  // the check to avoid duplicate token refreshes from the same WebView.
   useEffect(() => {
+    let checkingSession = false;
     const handleFocus = async () => {
-      if (isAuthenticated && !isSuspended) {
+      if (!isAuthenticated || isSuspended || checkingSession) return;
+      checkingSession = true;
+      try {
         try {
-          try {
-            const sessionActive = await isCurrentAccountSessionActive();
-            if (!sessionActive) {
-              await stopNativePushNotifications();
-              await authService.logout();
-              setIsAuthenticated(false);
-              setUserSession(null);
-              navigate('/app', true);
-              return;
-            }
-          } catch (sessionCheckError) {
-            // The registry may not be deployed yet, or the network may be temporarily unavailable.
-            console.warn('Account session verification temporarily unavailable.', sessionCheckError);
+          const sessionActive = await isCurrentAccountSessionActive();
+          if (!sessionActive) {
+            await stopNativePushNotifications();
+            await authService.logout();
+            setIsAuthenticated(false);
+            setUserSession(null);
+            navigate('/app', true);
+            return;
           }
-          const session = await authService.getCurrentSession(true); // Authoritatively verify with server
-          if (!session) {
-            setIsSuspended(true);
-          }
-        } catch {
-          // Fail-closed/safe: ignore transient network issues but let authService handle rehydration
+        } catch (sessionCheckError) {
+          // A network/RPC failure is not proof that the session was revoked.
+          console.warn('Account session verification temporarily unavailable.', sessionCheckError);
         }
+        const session = await authService.getCurrentSession(true); // Authoritatively refresh role and permissions
+        if (!session) {
+          await stopNativePushNotifications();
+          setIsAuthenticated(false);
+          setUserSession(null);
+          setIsSuspended(false);
+          navigate('/login', true);
+          return;
+        }
+        // Apply the server-refreshed role/permissions to React state. Merely
+        // fetching the profile without updating this state leaves stale UI grants.
+        setUserSession(session);
+      } catch {
+        // A transient network failure is not treated as confirmed session revocation.
+      } finally {
+        checkingSession = false;
       }
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void handleFocus();
+    };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [isAuthenticated, isSuspended]);
 
   // Back actions use the route's semantic parent, never the raw visit stack.
@@ -774,11 +795,27 @@ export default function App() {
       case '/app/customer-accounts':
         return <CustomerAccountNotificationsPanel />;
       case '/app/settings':
-        return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async () => {
+        return <SettingsPage onNavigate={(path) => navigate(path)} onLogout={async (mode) => {
+          const currentAuth = await authService.getSupabaseAuthSession();
+          const identifier = currentAuth?.user?.email || userSession?.email || "";
+          if (mode === "save") {
+            if (!Capacitor.isNativePlatform()) throw new Error("SECURE_QUICK_LOGIN_NATIVE_ONLY");
+            if (!currentAuth?.refresh_token || !currentAuth.user?.id || !identifier) {
+              throw new Error("SECURE_QUICK_LOGIN_UNAVAILABLE");
+            }
+            await saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id);
+          } else if (mode === "forget") {
+            if (currentAuth?.user?.id) {
+              await removeSavedAdminQuickLoginTokensForUser(currentAuth.user.id, identifier);
+            }
+            // Revoke the current server session before removing the local tokens.
+            await authService.logout({ revokeCurrentSession: true });
+          }
           await stopNativePushNotifications();
-          await authService.logout();
+          if (mode !== "forget") await authService.logout();
           setIsAuthenticated(false);
           setUserSession(null);
+          setIsSuspended(false);
           navigate("/login", true);
         }} />;
       case '/app/settings/renumber-day': {
