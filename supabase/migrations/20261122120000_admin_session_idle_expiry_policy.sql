@@ -213,9 +213,25 @@ BEGIN
   FROM public.account_sessions a
   WHERE a.session_id = v_session_id AND a.user_id = v_user_id;
 
-  -- Preserve rollout compatibility for sessions not yet registered by older clients.
+  -- Register a valid legacy session once with the conservative browser policy.
+  -- This prevents unregistered sessions from bypassing the idle-expiry guard forever.
   IF NOT FOUND THEN
-    RETURN true;
+    INSERT INTO public.account_sessions(
+      session_id, user_id, user_agent, created_at, last_seen_at, client_type, session_expires_at
+    )
+    SELECT s.id, s.user_id, s.user_agent, COALESCE(s.created_at, now()), now(),
+      'browser', now() + interval '7 days'
+    FROM auth.sessions s
+    WHERE s.id = v_session_id AND s.user_id = v_user_id
+    ON CONFLICT (session_id) DO NOTHING;
+
+    SELECT * INTO v_account_session
+    FROM public.account_sessions a
+    WHERE a.session_id = v_session_id AND a.user_id = v_user_id;
+
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
   END IF;
 
   IF v_account_session.revoked_at IS NOT NULL
