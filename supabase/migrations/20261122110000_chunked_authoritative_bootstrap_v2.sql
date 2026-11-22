@@ -92,14 +92,6 @@ BEGIN
   END IF;
 
   v_limit := p_limit;
-  IF p_after_id IS NULL THEN
-    v_cursor_predicate := 'TRUE';
-  ELSIF v_key_type = 'uuid' THEN
-    v_cursor_predicate := format('%I > $1::uuid', v_key_column);
-  ELSE
-    v_cursor_predicate := format('%I > $1', v_key_column);
-  END IF;
-
   CASE p_entity_type
     WHEN 'business_days' THEN v_table_name := 'business_days';
     WHEN 'customers' THEN v_table_name := 'customers';
@@ -127,6 +119,14 @@ BEGIN
     ELSE
       RAISE EXCEPTION 'Unsupported bootstrap entity type: %', p_entity_type USING ERRCODE = '22023';
   END CASE;
+
+  IF p_after_id IS NULL THEN
+    v_cursor_predicate := 'TRUE';
+  ELSIF v_key_type = 'uuid' THEN
+    v_cursor_predicate := format('%I > $1::uuid', v_key_column);
+  ELSE
+    v_cursor_predicate := format('%I > $1', v_key_column);
+  END IF;
 
   IF v_purchase_scoped THEN
     v_scope_predicate := 'AND admin_id = $2';
