@@ -1,5 +1,6 @@
 export interface BootstrapManifestV2 {
   schema_version: 2;
+  admin_id: string;
   captured_at: string;
   server_reset_generation: number;
   max_change_sequence: number;
@@ -66,6 +67,7 @@ const cloneSession = (session: BootstrapStagingSession): BootstrapStagingSession
 
 const compatibleManifest = (a: BootstrapManifestV2, b: BootstrapManifestV2): boolean =>
   a.schema_version === b.schema_version &&
+  a.admin_id === b.admin_id &&
   a.server_reset_generation === b.server_reset_generation &&
   a.page_size === b.page_size &&
   a.collections.length === b.collections.length &&
