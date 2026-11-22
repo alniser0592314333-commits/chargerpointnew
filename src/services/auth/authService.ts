@@ -858,14 +858,32 @@ class DefaultAuthService implements AuthService {
     if (!this.isSupabaseConfigured() || !authSession?.access_token || !authSession?.refresh_token || !authSession?.user?.id) {
       throw new Error("BIOMETRIC_SESSION_UNAVAILABLE");
     }
-    // A biometric proof authenticates the account, but it does not replace the
-    // Super Admin's separate BIN factor. Do not persist either token until BIN passes.
-    const profile = await this.getAdminProfile(authSession.access_token);
-    if (!profile || !profile.authenticated || !profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
-    if (profile.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
-    const role = (profile.role || "OPERATOR") as UserRole;
+    // The biometric proof is the first factor. Resolve only the minimal role gate
+    // until a Super Admin has completed the separate BIN factor.
+    const gate = await this.getAdminLoginGate(authSession.access_token);
+    if (!gate.authenticated || !gate.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
+    if (gate.is_active === false) throw new Error("ACCESS_DENIED_INACTIVE");
+    const role = (gate.role || "OPERATOR") as UserRole;
     pendingBinChangeSession = null;
     if (role === "SUPER_ADMIN") {
+      pendingSuperAdminContext = {
+        token: authSession.access_token,
+        session: authSession,
+        profile: gate,
+        resolvedEmail: gate.email || authSession.user.email || "",
+        userRole: "SUPER_ADMIN",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      };
+      throw new Error("SUPER_ADMIN_BIN_REQUIRED");
+    }
+
+    pendingSuperAdminContext = null;
+    await reactivateMyAccountSession(authSession.access_token);
+    const profile = await this.getAdminProfile(authSession.access_token);
+    if (!profile || !profile.authenticated || !profile.is_admin || profile.is_active === false) {
+      throw new Error("PROFILE_RPC_FAILED");
+    }
+    if (profile.role === "SUPER_ADMIN") {
       pendingSuperAdminContext = {
         token: authSession.access_token,
         session: authSession,
@@ -876,14 +894,13 @@ class DefaultAuthService implements AuthService {
       };
       throw new Error("SUPER_ADMIN_BIN_REQUIRED");
     }
-    pendingSuperAdminContext = null;
     saveStoredSupabaseAuthSession(authSession);
     setSupabaseAuthToken(authSession.access_token);
     const session: UserSession = {
       userId: profile.admin_id || authSession.user.id,
       email: profile.email || authSession.user.email || "",
       fullName: profile.full_name || profile.username || authSession.user.email || "",
-      role,
+      role: (profile.role || role) as UserRole,
       permissions: profile.permissions || [],
       tokenExpiresAt: createLocalSessionExpiry(),
     };
