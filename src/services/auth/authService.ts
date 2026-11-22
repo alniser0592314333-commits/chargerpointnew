@@ -9,6 +9,7 @@ import { Capacitor } from "@capacitor/core";
 import { reactivateMyAccountSession, revokeCurrentAccountSession } from "./accountSessionService";
 import {
   getSupabaseStatus,
+  invokeSupabaseRpc,
   supabaseSignInWithPassword,
   supabaseSignUp,
   rpcCheckSystemBootstrapped,
@@ -251,6 +252,16 @@ export interface AuthService {
 class DefaultAuthService implements AuthService {
   isSupabaseConfigured(): boolean {
     return getSupabaseStatus().isConfigured;
+  }
+
+  private async getAdminLoginGate(customAuthToken: string): Promise<AdminProfileResult> {
+    const { data, error } = await invokeSupabaseRpc<AdminProfileRpcResult>(
+      "get_my_admin_login_gate",
+      {},
+      customAuthToken,
+    );
+    if (error || !data) throw new Error("PROFILE_RPC_FAILED");
+    return data as AdminProfileResult;
   }
 
   async checkSystemBootstrapped(): Promise<boolean> {
