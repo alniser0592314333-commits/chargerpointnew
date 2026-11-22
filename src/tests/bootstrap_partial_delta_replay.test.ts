@@ -86,8 +86,8 @@ describe('Canonical partial-delta replay preserves snapshot fields', () => {
       }, tx);
     });
 
-    expect(await localDb.get('system_settings', key)).toBeUndefined();
-    expect(await localDb.get('systemSettings', key)).toBeUndefined();
+    expect(await localDb.get('system_settings', key)).toBeNull();
+    expect(await localDb.get('systemSettings', key)).toBeNull();
   });
 
   it('preserves day and device configuration when canonical commands emit status-only patches', async () => {
