@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import * as supabaseClient from '../../services/supabase/client';
 
 export const mockChunkedBootstrapRpc = (
