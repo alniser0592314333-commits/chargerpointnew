@@ -54,7 +54,7 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
       status: 'connected',
     });
 
-    mockChunkedBootstrapRpc({
+    const rpcSpy = mockChunkedBootstrapRpc({
       customers: [{
         id: 'fresh-cloud-customer',
         name: 'Fresh Cloud Customer',
