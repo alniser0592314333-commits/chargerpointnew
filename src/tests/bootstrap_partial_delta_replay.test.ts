@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { clearActiveBootstrapStagingSession } from '../infrastructure/sync/bootstrapStagingStore';
 import { localDb } from '../infrastructure/localDb/localDb';
 import * as supabaseClient from '../services/supabase/client';
 import { mockChunkedBootstrapRpc } from './utils/mockChunkedBootstrap';
@@ -6,9 +7,10 @@ import { setTestAppAuthSession } from './utils/testSetup';
 import { applyRemoteChange, hydrateFromRemoteTables, reloadStoreFromLocal, resetStoreMemory } from '../components/pages/dayOrdersStore';
 
 describe('Canonical partial-delta replay preserves snapshot fields', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(async () => { vi.restoreAllMocks(); await clearActiveBootstrapStagingSession(); });
 
   beforeEach(async () => {
+    await clearActiveBootstrapStagingSession();
     await localDb.clear();
     resetStoreMemory();
   });
