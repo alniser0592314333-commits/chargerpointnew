@@ -1,6 +1,6 @@
 import { invokeSupabaseRpc } from '../../services/supabase/client';
 
-export const BOOTSTRAP_PAGE_SIZE = 250;
+export const BOOTSTRAP_PAGE_SIZE = 500;
 
 export const BOOTSTRAP_COLLECTIONS = [
   'business_days',
@@ -86,8 +86,10 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
   };
 
   let completedRows = 0;
-  for (let collectionIndex = 0; collectionIndex < BOOTSTRAP_COLLECTIONS.length; collectionIndex += 1) {
-    const collection = BOOTSTRAP_COLLECTIONS[collectionIndex];
+  let completedCollections = 0;
+  const concurrency = 4;
+
+  const fetchCollection = async (collection: BootstrapCollection): Promise<void> => {
     const rows: any[] = [];
     let cursor: string | null = null;
     let pageCount = 0;
@@ -141,7 +143,7 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
         throw new Error(`BOOTSTRAP_CURSOR_INVALID[${collection}]: empty page advanced a cursor`);
       }
 
-      onProgress?.(collection, completedRows, collectionIndex);
+      onProgress?.(collection, completedRows, completedCollections);
       if (!page.has_more) break;
       if (page.rows.length !== BOOTSTRAP_PAGE_SIZE || !cursor) {
         throw new Error(`BOOTSTRAP_PAGE_TRUNCATED[${collection}]: server reported more rows without a full advancing page`);
@@ -149,7 +151,16 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     }
 
     snapshot[collection] = rows;
-    onProgress?.(collection, completedRows, collectionIndex + 1);
+    completedCollections += 1;
+    onProgress?.(collection, completedRows, completedCollections);
+  };
+
+  // Bound concurrency across independent tables while keeping each table's
+  // keyset pages sequential. This avoids both a request storm and hundreds of
+  // serialized round trips on a fresh install.
+  for (let offset = 0; offset < BOOTSTRAP_COLLECTIONS.length; offset += concurrency) {
+    const batch = BOOTSTRAP_COLLECTIONS.slice(offset, offset + concurrency);
+    await Promise.all(batch.map((collection) => fetchCollection(collection)));
   }
 
   return snapshot as AuthoritativeBootstrapSnapshot;
