@@ -778,7 +778,7 @@ class DefaultAuthService implements AuthService {
       user: data.user,
     };
     // Persist rotation immediately: Supabase refresh tokens are single-use/rotating.
-    await vault.saveAdminQuickLoginToken(cleanIdentifier, refreshed.refresh_token!);
+    await vault.saveAdminQuickLoginToken(cleanIdentifier, refreshed.refresh_token!, refreshed.user.id);
     const profile = await this.getAdminProfile(refreshed.access_token);
     if (!profile || !profile.authenticated) throw new Error("PROFILE_RPC_FAILED");
     if (!profile.is_admin) throw new Error("ACCESS_DENIED_NO_ADMIN");
