@@ -1,6 +1,7 @@
 import { invokeSupabaseRpc } from '../../services/supabase/client';
 import {
   beginOrResumeBootstrapStagingSession,
+  getActiveBootstrapStagingSession,
   persistBootstrapPage,
   readBootstrapStagedCollection,
   BootstrapManifestV2,
@@ -89,7 +90,7 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     throw new Error('BOOTSTRAP_MANIFEST_INVALID: missing protocol version or authoritative checkpoint');
   }
 
-  const { session, resumed } = await beginOrResumeBootstrapStagingSession(manifest as BootstrapManifestV2);
+  const { session } = await beginOrResumeBootstrapStagingSession(manifest as BootstrapManifestV2);
   const pinnedManifest = session.manifest;
   const snapshot: Record<string, unknown> = {
     schema_version: 2,
@@ -100,7 +101,7 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
   };
 
   let completedRows = 0;
-  let completedCollections = BOOTSTRAP_COLLECTIONS.filter((collection) => session.completed[collection]).length;
+  let completedCollections = 0;
   const concurrency = 4;
 
   const fetchCollection = async (collection: BootstrapCollection): Promise<void> => {
@@ -186,7 +187,6 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
       onProgress?.(collection, completedRows, completedCollections);
     }
 
-    snapshot[collection] = await readBootstrapStagedCollection(session.sessionId, collection);
     completedCollections += 1;
     onProgress?.(collection, completedRows, completedCollections);
   };
@@ -200,9 +200,23 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     await Promise.all(batch.map((collection) => fetchCollection(collection)));
   }
 
-  if (resumed) {
-    onProgress?.(BOOTSTRAP_COLLECTIONS[BOOTSTRAP_COLLECTIONS.length - 1], completedRows, completedCollections);
+  const finalSession = await getActiveBootstrapStagingSession();
+  if (!finalSession || finalSession.sessionId !== session.sessionId) {
+    throw new Error('BOOTSTRAP_SESSION_SUPERSEDED: staging session changed before final validation');
   }
 
+  for (const collection of BOOTSTRAP_COLLECTIONS) {
+    if (finalSession.completed[collection] !== true) {
+      throw new Error(`BOOTSTRAP_COLLECTION_INCOMPLETE[${collection}]`);
+    }
+    const rows = await readBootstrapStagedCollection(session.sessionId, collection);
+    const expectedCount = finalSession.rowCounts[collection] ?? 0;
+    if (rows.length !== expectedCount) {
+      throw new Error(`BOOTSTRAP_STAGING_COUNT_MISMATCH[${collection}]: expected ${expectedCount}, received ${rows.length}`);
+    }
+    snapshot[collection] = rows;
+  }
+
+  onProgress?.(BOOTSTRAP_COLLECTIONS[BOOTSTRAP_COLLECTIONS.length - 1], completedRows, completedCollections);
   return snapshot as AuthoritativeBootstrapSnapshot;
 };
