@@ -24,6 +24,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
         return {
           data: {
             schema_version: 2,
+            admin_id: 'test-admin',
             captured_at: '2026-11-22T00:00:00.000Z',
             server_reset_generation: 9,
             max_change_sequence: 700,
@@ -71,6 +72,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
         return {
           data: {
             schema_version: 2,
+            admin_id: 'test-admin',
             captured_at: '2026-11-22T00:00:00.000Z',
             server_reset_generation: 11,
             max_change_sequence: 1200,
@@ -86,7 +88,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
       } as any;
     });
 
-    const first = await fetchAuthoritativeBootstrapSnapshot();
+    const first = await fetchAuthoritativeBootstrapSnapshot(undefined, 'test-admin');
     expect(first.max_change_sequence).toBe(1200);
     expect(firstRpc).toHaveBeenCalled();
 
@@ -96,7 +98,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
       error: 'network offline',
     } as any);
 
-    const resumed = await fetchAuthoritativeBootstrapSnapshot();
+    const resumed = await fetchAuthoritativeBootstrapSnapshot(undefined, 'test-admin');
     expect(resumed.max_change_sequence).toBe(1200);
     expect(offlineRpc).not.toHaveBeenCalled();
   });
@@ -116,6 +118,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
         return {
           data: {
             schema_version: 2,
+            admin_id: 'test-admin',
             captured_at: `2026-11-22T00:00:0${attempt}.000Z`,
             server_reset_generation: 9,
             max_change_sequence: attempt === 1 ? 700 : 900,
@@ -197,7 +200,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (name: string) => {
       if (name === 'begin_sync_bootstrap') {
         return {
-          data: { schema_version: 2, captured_at: '2026-11-22T00:00:00.000Z', server_reset_generation: 1, max_change_sequence: 0, page_size: BOOTSTRAP_PAGE_SIZE, collections: [...BOOTSTRAP_COLLECTIONS] },
+          data: { schema_version: 2, admin_id: 'test-admin', captured_at: '2026-11-22T00:00:00.000Z', server_reset_generation: 1, max_change_sequence: 0, page_size: BOOTSTRAP_PAGE_SIZE, collections: [...BOOTSTRAP_COLLECTIONS] },
           error: null,
         } as any;
       }
@@ -217,7 +220,7 @@ describe('Chunked authoritative bootstrap protocol', () => {
         manifestAttempts += 1;
         if (manifestAttempts === 1) return { data: null, error: 'HTTP 500 statement timeout' } as any;
         return {
-          data: { schema_version: 2, captured_at: '2026-11-22T00:00:00.000Z', server_reset_generation: 2, max_change_sequence: 4, page_size: BOOTSTRAP_PAGE_SIZE, collections: [...BOOTSTRAP_COLLECTIONS] },
+          data: { schema_version: 2, admin_id: 'test-admin', captured_at: '2026-11-22T00:00:00.000Z', server_reset_generation: 2, max_change_sequence: 4, page_size: BOOTSTRAP_PAGE_SIZE, collections: [...BOOTSTRAP_COLLECTIONS] },
           error: null,
         } as any;
       }
