@@ -100,7 +100,7 @@ describe("Admin session lifecycle root-cause regressions", () => {
       role: "SUPER_ADMIN",
       permissions: ["admin:manage", "settings:manage"],
     }) as any);
-    vi.spyOn(accountSessionService, "reactivateMyAccountSession").mockResolvedValue();
+    vi.spyOn(accountSessionService, "reactivateMyAccountSession").mockResolvedValue(undefined);
 
     await expect(authService.acceptBiometricSession(authSession)).rejects.toThrow("SUPER_ADMIN_BIN_REQUIRED");
 
