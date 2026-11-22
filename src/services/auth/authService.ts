@@ -175,6 +175,7 @@ interface PendingSuperAdminContext {
   resolvedEmail: string;
   userRole: UserRole;
   expiresAt: number;
+  binVerifiedAt?: number;
 }
 
 let pendingSuperAdminContext: PendingSuperAdminContext | null = null;
@@ -921,14 +922,12 @@ class DefaultAuthService implements AuthService {
       throw new Error("SESSION_EXPIRED");
     }
 
-    const { token, session: tempSession, profile, resolvedEmail, userRole } = pendingSuperAdminContext;
+    const { token, session: tempSession, profile: pendingProfile, resolvedEmail, userRole } = pendingSuperAdminContext;
 
-    if (this.isSupabaseConfigured()) {
-      // Authoritative BIN verification using the exact same temporary token!
-      // ZERO calls to supabaseSignInWithPassword!
+    if (this.isSupabaseConfigured() && !pendingSuperAdminContext.binVerifiedAt) {
+      // Authoritative BIN verification using the exact same temporary token.
       const trackingRes = await rpcVerifyAdminBinWithTracking(cleanBin, token);
       if (!trackingRes.success) {
-        // Technical / infrastructure failure -> fail closed without consuming attempts
         if (trackingRes.isTechnicalError || trackingRes.status === "ERROR") {
           const err = new Error("BIN_VERIFICATION_UNAVAILABLE");
           (err as any).technicalError = trackingRes.error;
@@ -937,8 +936,8 @@ class DefaultAuthService implements AuthService {
 
         if (trackingRes.is_locked || trackingRes.status === "LOCKED") {
           pendingSuperAdminContext = null;
-          saveStoredSupabaseAuthSession(tempSession);
-          setSupabaseAuthToken(token);
+          clearStoredSupabaseAuthSession();
+          setSupabaseAuthToken(null);
           const err = new Error("BIN_LOCKED_FROZEN");
           (err as any).remainingAttempts = 0;
           (err as any).failedAttempts = trackingRes.failed_attempts || 3;
@@ -950,31 +949,43 @@ class DefaultAuthService implements AuthService {
         (err as any).failedAttempts = trackingRes.failed_attempts;
         throw err;
       }
-    } else {
-      // Local test fallback
+      // If profile loading or session reactivation fails after a correct BIN,
+      // a retry must resume without consuming another BIN attempt.
+      pendingSuperAdminContext.binVerifiedAt = Date.now();
+    } else if (!this.isSupabaseConfigured()) {
       const isValidBin =
         cleanBin === SUPER_ADMIN_TEST_ACCOUNT.bin ||
         cleanBin === "1234" ||
         cleanBin === "123456";
-      if (!isValidBin) {
-        throw new Error("WRONG_BIN");
-      }
+      if (!isValidBin) throw new Error("WRONG_BIN");
+      pendingSuperAdminContext.binVerifiedAt = Date.now();
     }
 
-    // BIN has now passed. Only at this point register/reactivate the session
-    // for protected application access.
-    await reactivateMyAccountSession(token);
+    let finalProfile: AdminProfileResult = pendingProfile;
+    if (this.isSupabaseConfigured()) {
+      const gate = await this.getAdminLoginGate(token);
+      if (!gate.authenticated || !gate.is_admin || gate.is_active === false) {
+        throw new Error("ACCESS_DENIED_INACTIVE");
+      }
+      // BIN has passed. Only now activate the protected server session.
+      await reactivateMyAccountSession(token);
+      const authoritativeProfile = await this.getAdminProfile(token);
+      if (!authoritativeProfile || !authoritativeProfile.authenticated || !authoritativeProfile.is_admin || authoritativeProfile.is_active === false) {
+        throw new Error("PROFILE_RPC_FAILED");
+      }
+      finalProfile = authoritativeProfile;
+    }
 
-    // Success: Commit final authoritative session to storage and memory
+    // Commit only after BIN, current account status, and server permissions succeed.
     saveStoredSupabaseAuthSession(tempSession);
     setSupabaseAuthToken(token);
 
     const session: UserSession = {
-      userId: profile.admin_id || tempSession.user.id,
-      email: profile.email || tempSession.user.email || resolvedEmail,
-      fullName: profile.full_name || profile.username || resolvedEmail.split("@")[0],
-      role: userRole,
-      permissions: profile.permissions || [],
+      userId: finalProfile.admin_id || tempSession.user.id,
+      email: finalProfile.email || tempSession.user.email || resolvedEmail,
+      fullName: finalProfile.full_name || finalProfile.username || resolvedEmail.split("@")[0],
+      role: (finalProfile.role || userRole) as UserRole,
+      permissions: finalProfile.permissions || [],
       tokenExpiresAt: createLocalSessionExpiry(),
     };
 
