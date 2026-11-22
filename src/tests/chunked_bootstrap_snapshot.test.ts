@@ -63,6 +63,22 @@ describe('Chunked authoritative bootstrap protocol', () => {
     expect(calls.find((call) => call.name === 'read_sync_bootstrap_page' && call.args.p_entity_type === 'customers' && call.args.p_after_id !== null)?.args.p_after_id).toBe(customerRows[BOOTSTRAP_PAGE_SIZE - 1].id);
   });
 
+  it('rejects a manifest that omits or reorders a required collection', async () => {
+    vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockResolvedValue({
+      data: {
+        schema_version: 2,
+        captured_at: '2026-11-22T00:00:00.000Z',
+        server_reset_generation: 1,
+        max_change_sequence: 0,
+        page_size: BOOTSTRAP_PAGE_SIZE,
+        collections: [...BOOTSTRAP_COLLECTIONS].reverse(),
+      },
+      error: null,
+    } as any);
+
+    await expect(fetchAuthoritativeBootstrapSnapshot()).rejects.toThrow(/BOOTSTRAP_MANIFEST_INVALID/);
+  });
+
   it('rejects a malformed or non-advancing page instead of accepting a partial snapshot', async () => {
     vi.spyOn(supabaseClient, 'invokeSupabaseRpc').mockImplementation(async (name: string) => {
       if (name === 'begin_sync_bootstrap') {
