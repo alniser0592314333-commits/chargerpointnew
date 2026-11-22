@@ -77,7 +77,7 @@ describe('Phase B.5: Intentional Local Reset vs Fresh Client Bootstrap Isolation
     await dayOrdersStore.ensureStoreHydrated();
 
     expect(rpcSpy).toHaveBeenCalledWith('begin_sync_bootstrap', {});
-    expect(rpcSpy).toHaveBeenCalledWith('read_sync_bootstrap_page', { p_entity_type: 'customers', p_after_id: null, p_limit: 250 });
+    expect(rpcSpy).toHaveBeenCalledWith('read_sync_bootstrap_page', { p_entity_type: 'customers', p_after_id: null, p_limit: 500 });
     expect(await localDb.isLocalResetCompleted()).toBe(false);
     expect(await localDb.list<any>('customers')).toMatchObject([
       { id: 'fresh-cloud-customer', name: 'Fresh Cloud Customer' },
