@@ -217,6 +217,5 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     snapshot[collection] = rows;
   }
 
-  onProgress?.(BOOTSTRAP_COLLECTIONS[BOOTSTRAP_COLLECTIONS.length - 1], completedRows, completedCollections);
   return snapshot as AuthoritativeBootstrapSnapshot;
 };
