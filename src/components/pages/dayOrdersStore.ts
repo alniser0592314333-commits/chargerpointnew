@@ -195,6 +195,8 @@ const allocationsList: PaymentAllocationEntity[] = [];
 const reservationsMap = new Map<string, OrderNumberReservationEntity>();
 const goalsMap = new Map<string, GoalEntity>();
 const goalRequestsMap = new Map<string, GoalRequestEntity>();
+const BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE = 500;
+
 const purchaseTableKeys: Record<PurchaseBookTable, string> = { suppliers: 'purchaseSuppliers', items: 'purchaseItems', methods: 'purchasePaymentMethods', months: 'purchaseMonths', weeks: 'purchaseWeeks', days: 'purchaseDays', orders: 'purchaseOrders' };
 const purchaseMaps: Record<PurchaseBookTable, Map<string, PurchaseBookEntity>> = { suppliers: new Map(), items: new Map(), methods: new Map(), months: new Map(), weeks: new Map(), days: new Map(), orders: new Map() };
 // Incremented before every local Purchase Book write so an in-flight remote
@@ -2054,15 +2056,39 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       totalRows,
       message: 'جارٍ حفظ اللقطة كاملة في القاعدة المحلية…',
     });
-    // Commit every collection and its cursor in one IndexedDB transaction. If
-    // any put fails, the transaction rolls back and the durable INITIALIZING
-    // barrier remains in place for a safe retry on the next boot.
-    await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', (tx) => {
-      for (const write of installWrites) {
-        localDb.setWithTx(tx, write.table, write.id, write.item);
+    // The durable INITIALIZING barrier was written before replacement began.
+    // Persist bounded batches so a large first install does not require one
+    // enormous IndexedDB transaction. READY + the high-water cursor are written
+    // only with the final batch; any earlier failure leaves the barrier closed,
+    // and the durable staging session can safely replay the installation.
+    const totalInstallBatches = Math.ceil(installWrites.length / BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE);
+    if (installWrites.length === 0) {
+      await localDb.runTransaction(['syncState'], 'readwrite', (tx) => {
+        localDb.setSyncStateWithTx(tx, snapshotSyncState);
+      });
+    } else {
+      for (let offset = 0; offset < installWrites.length; offset += BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE) {
+        const batch = installWrites.slice(offset, offset + BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE);
+        const isFinalBatch = offset + batch.length >= installWrites.length;
+        await localDb.runTransaction(
+          isFinalBatch ? ['kvStore', 'syncState'] : ['kvStore'],
+          'readwrite',
+          (tx) => {
+            for (const write of batch) {
+              localDb.setWithTx(tx, write.table, write.id, write.item);
+            }
+            if (isFinalBatch) localDb.setSyncStateWithTx(tx, snapshotSyncState);
+          }
+        );
+        publishStoreBootstrapProgress({
+          phase: 'INSTALLING',
+          percent: 85 + Math.floor((Math.min(offset + batch.length, installWrites.length) / Math.max(1, installWrites.length)) * 10),
+          completedRows: Math.min(offset + batch.length, installWrites.length),
+          totalRows: installWrites.length,
+          message: `جارٍ حفظ الدفعة ${Math.floor(offset / BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE) + 1} من ${totalInstallBatches}…`,
+        });
       }
-      localDb.setSyncStateWithTx(tx, snapshotSyncState);
-    });
+    }
 
     publishStoreBootstrapProgress({
       phase: 'INSTALLING',
