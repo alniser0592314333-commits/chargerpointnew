@@ -20,7 +20,7 @@ BEGIN
   PERFORM public._cp_assert_active_admin_permission('sync:manage');
 
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '45001';
   END IF;
 
   SELECT a.id, a.is_active
@@ -30,7 +30,7 @@ BEGIN
   LIMIT 1;
 
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN
-    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '45001';
   END IF;
 
   -- STABLE function reads use one PostgreSQL statement snapshot, so the reset
@@ -43,7 +43,7 @@ BEGIN
         COALESCE((SELECT s.value_number FROM public.system_settings s WHERE s.key = 'server_reset_generation' LIMIT 1), 0),
       'max_change_sequence',
         COALESCE((SELECT max(c.sequence_id) FROM public.change_log c), 0),
-      'page_size', 250
+      'page_size', 500
     )
   );
 END;
@@ -52,7 +52,7 @@ $function$;
 CREATE OR REPLACE FUNCTION public.read_sync_bootstrap_page(
   p_entity_type text,
   p_after_id text DEFAULT NULL,
-  p_limit integer DEFAULT 250
+  p_limit integer DEFAULT 500
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -75,7 +75,7 @@ BEGIN
   PERFORM public._cp_assert_active_admin_permission('sync:manage');
 
   IF auth.uid() IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '45001';
   END IF;
 
   SELECT a.id, a.is_active
@@ -85,14 +85,14 @@ BEGIN
   LIMIT 1;
 
   IF v_admin_id IS NULL OR v_active IS NOT TRUE THEN
-    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '42501';
+    RAISE EXCEPTION 'Active admin profile required' USING ERRCODE = '45001';
   END IF;
 
   IF p_entity_type IS NULL OR p_entity_type = '' THEN
     RAISE EXCEPTION 'Bootstrap entity type is required' USING ERRCODE = '22023';
   END IF;
-  IF p_limit IS NULL OR p_limit < 1 OR p_limit > 250 THEN
-    RAISE EXCEPTION 'Bootstrap page limit must be between 1 and 250' USING ERRCODE = '22023';
+  IF p_limit IS NULL OR p_limit < 1 OR p_limit > 500 THEN
+    RAISE EXCEPTION 'Bootstrap page limit must be between 1 and 500' USING ERRCODE = '22023';
   END IF;
   IF p_after_id = '' THEN
     RAISE EXCEPTION 'Bootstrap cursor cannot be an empty string' USING ERRCODE = '22023';
