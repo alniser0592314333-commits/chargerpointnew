@@ -155,4 +155,37 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(app).toContain("const session = await authService.getCurrentSession(true)");
     expect(app).toContain("setUserSession(session)");
   });
+  it("keeps native saved-account refresh tokens synchronized after every rotation", () => {
+    const client = readFileSync("src/services/supabase/client.ts", "utf8");
+    const vault = readFileSync("src/services/auth/accountBiometric.ts", "utf8");
+    expect(client).toContain("syncSavedAdminQuickLoginTokenForSession(newSession)");
+    expect(client).toContain("removeSavedAdminQuickLoginTokensForUser(newSession.user.id");
+    expect(vault).toContain("mapping[cleanIdentifier.toLowerCase()] = authUserId");
+    expect(vault).toContain("verified.value !== refreshToken");
+  });
+
+  it("uses the server RPC for per-client idle expiry and saved-login reactivation", () => {
+    const service = readFileSync("src/services/auth/accountSessionService.ts", "utf8");
+    const auth = readFileSync("src/services/auth/authService.ts", "utf8");
+    expect(service).toContain('"register_my_account_session_v2"');
+    expect(service).toContain('"reactivate_my_account_session"');
+    expect(auth).toContain("await reactivateMyAccountSession(refreshed.access_token)");
+    expect(auth).toContain("await reactivateMyAccountSession(token)");
+  });
+
+  it("provides separate save-and-sign-out and revoke-and-sign-out choices", () => {
+    const settings = readFileSync("src/components/pages/SettingsPage.tsx", "utf8");
+    const app = readFileSync("src/App.tsx", "utf8");
+    expect(settings).toContain('completeLogout("save")');
+    expect(settings).toContain('completeLogout("forget")');
+    expect(app).toContain("authService.logout({ revokeCurrentSession: true })");
+    expect(app).toContain("saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id)");
+  });
+
+  it("rechecks administrator activation at the time a biometric challenge is consumed", () => {
+    const edge = readFileSync("supabase/functions/account-biometric/index.ts", "utf8");
+    expect(edge).toContain('if (cred.account_type === "admin")');
+    expect(edge).toContain("adminRow?.is_active !== true");
+  });
+
 });
