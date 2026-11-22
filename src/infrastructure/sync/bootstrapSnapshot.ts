@@ -73,25 +73,43 @@ const callBootstrapRpc = async (name: string, args: Record<string, unknown>): Pr
 export const fetchAuthoritativeBootstrapSnapshot = async (
   onProgress?: BootstrapProgress
 ): Promise<AuthoritativeBootstrapSnapshot> => {
-  const manifest = await callBootstrapRpc('begin_sync_bootstrap', {});
-  const generation = Number(manifest?.server_reset_generation);
-  const sequence = Number(manifest?.max_change_sequence);
+  const isValidManifest = (candidate: any): candidate is BootstrapManifestV2 => {
+    const generation = Number(candidate?.server_reset_generation);
+    const sequence = Number(candidate?.max_change_sequence);
+    return (
+      Number(candidate?.schema_version) === 2 &&
+      Number(candidate?.page_size) === BOOTSTRAP_PAGE_SIZE &&
+      Array.isArray(candidate?.collections) &&
+      candidate.collections.length === BOOTSTRAP_COLLECTIONS.length &&
+      BOOTSTRAP_COLLECTIONS.every((collection, index) => candidate.collections[index] === collection) &&
+      Number.isSafeInteger(generation) && generation >= 0 &&
+      Number.isSafeInteger(sequence) && sequence >= 0 &&
+      typeof candidate?.captured_at === 'string'
+    );
+  };
 
-  if (
-    Number(manifest?.schema_version) !== 2 ||
-    Number(manifest?.page_size) !== BOOTSTRAP_PAGE_SIZE ||
-    !Array.isArray(manifest?.collections) ||
-    manifest.collections.length !== BOOTSTRAP_COLLECTIONS.length ||
-    !BOOTSTRAP_COLLECTIONS.every((collection, index) => manifest.collections[index] === collection) ||
-    !Number.isSafeInteger(generation) || generation < 0 ||
-    !Number.isSafeInteger(sequence) || sequence < 0 ||
-    typeof manifest?.captured_at !== 'string'
-  ) {
-    throw new Error('BOOTSTRAP_MANIFEST_INVALID: missing protocol version or authoritative checkpoint');
+  const existingSession = await getActiveBootstrapStagingSession();
+  const existingSessionComplete = Boolean(
+    existingSession &&
+    isValidManifest(existingSession.manifest) &&
+    BOOTSTRAP_COLLECTIONS.every((collection) => existingSession.completed[collection] === true)
+  );
+
+  let session: Awaited<ReturnType<typeof beginOrResumeBootstrapStagingSession>>['session'];
+  if (existingSessionComplete && existingSession) {
+    // A fully staged snapshot can be installed even while offline. Its pinned
+    // generation/cursor will be reconciled on the first successful online pull.
+    session = existingSession;
+  } else {
+    const manifest = await callBootstrapRpc('begin_sync_bootstrap', {});
+    if (!isValidManifest(manifest)) {
+      throw new Error('BOOTSTRAP_MANIFEST_INVALID: missing protocol version or authoritative checkpoint');
+    }
+    const started = await beginOrResumeBootstrapStagingSession(manifest);
+    session = started.session;
   }
-
-  const { session } = await beginOrResumeBootstrapStagingSession(manifest as BootstrapManifestV2);
   const pinnedManifest = session.manifest;
+
   const snapshot: Record<string, unknown> = {
     schema_version: 2,
     captured_at: pinnedManifest.captured_at,
