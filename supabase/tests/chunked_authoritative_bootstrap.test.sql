@@ -13,7 +13,9 @@ BEGIN
   v_manifest := public.begin_sync_bootstrap();
   IF (v_manifest->>'schema_version')::integer <> 2
      OR (v_manifest->>'server_reset_generation')::bigint <> 17
-     OR (v_manifest->>'max_change_sequence')::bigint <> 23 THEN
+     OR (v_manifest->>'max_change_sequence')::bigint <> 23
+     OR (v_manifest->>'page_size')::integer <> 500
+     OR jsonb_array_length(v_manifest->'collections') <> 20 THEN
     RAISE EXCEPTION 'Manifest did not pin the expected checkpoint: %', v_manifest;
   END IF;
 
