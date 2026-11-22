@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { authService } from '../services/auth/authService';
 import * as supabaseClient from '../services/supabase/client';
+import * as accountSessionService from '../services/auth/accountSessionService';
 
 const storageMap = new Map<string, string>();
 const mockStorage = {
@@ -50,6 +51,8 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
     storageMap.clear();
     await authService.logout();
     authService.clearPendingSuperAdminContext();
+    vi.spyOn(authService as any, 'getAdminLoginGate').mockResolvedValue(MOCK_SUPER_ADMIN_PROFILE);
+    vi.spyOn(accountSessionService, 'reactivateMyAccountSession').mockResolvedValue(undefined);
   });
 
   // TEST 1: Username + correct password -> exactly ONE server-mediated username sign-in call
@@ -198,19 +201,16 @@ describe('Auth Architecture: Single Password Authentication & Error Taxonomy', (
     await expect(authService.login('superowner', 'any_password')).rejects.toThrow('RATE_LIMIT');
   });
 
-  // TEST 7: get_current_admin_profile failure after successful password auth -> shows PROFILE_RPC_FAILED, NOT password error
-  it('TEST 7: Profile RPC failure after successful password auth -> throws PROFILE_RPC_FAILED', async () => {
+  // TEST 7: minimal pre-BIN admin gate failure after successful password auth
+  it('TEST 7: Admin login gate failure after successful password auth -> throws PROFILE_RPC_FAILED', async () => {
     vi.spyOn(authService, 'isSupabaseConfigured').mockReturnValue(true);
         vi.spyOn(supabaseClient, 'supabaseSignInWithUsername').mockResolvedValue({
       session: MOCK_SIGN_IN_SESSION,
       error: null,
       statusCode: 200,
     });
-    // Password auth was 200 OK, but profile RPC failed due to PostgREST issue
-    vi.spyOn(supabaseClient, 'rpcGetCurrentAdminProfile').mockResolvedValue({
-      profile: null,
-      error: 'Could not find function public.get_current_admin_profile in schema cache',
-    });
+    // Password auth was 200 OK, but the minimal role gate was unavailable.
+    vi.spyOn(authService as any, 'getAdminLoginGate').mockRejectedValue(new Error('PROFILE_RPC_FAILED'));
 
     await expect(authService.login('superowner', 'correct_password')).rejects.toThrow('PROFILE_RPC_FAILED');
   });
