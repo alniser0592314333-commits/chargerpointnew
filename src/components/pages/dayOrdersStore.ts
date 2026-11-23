@@ -42,8 +42,8 @@ import {
 } from '../../services/supabase/client';
 import { SyncEngine, syncEventEmitter } from '../../infrastructure/sync/syncEngine';
 import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTransport';
-import { BOOTSTRAP_COLLECTIONS, fetchAuthoritativeBootstrapSnapshot } from '../../infrastructure/sync/bootstrapSnapshot';
-import { clearActiveBootstrapStagingSession, clearBootstrapStagingSession } from '../../infrastructure/sync/bootstrapStagingStore';
+import { BOOTSTRAP_COLLECTIONS, BootstrapCollection, fetchAuthoritativeBootstrapSnapshot } from '../../infrastructure/sync/bootstrapSnapshot';
+import { clearActiveBootstrapStagingSession, clearBootstrapStagingSession, readBootstrapStagedCollection } from '../../infrastructure/sync/bootstrapStagingStore';
 import { shouldAttemptBootstrapRecovery } from '../../infrastructure/sync/bootstrapRecovery';
 
 import { Locale } from '../../i18n/translations';
@@ -1595,41 +1595,26 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         totalRows: 0,
         message: `جارٍ تحميل ${collection} على دفعات…`,
       });
-    }, getCachedPurchaseAdminId()) as any;
+    }, getCachedPurchaseAdminId(), { materializeCollections: false }) as any;
 
-    const requiredCollections: Record<string, unknown> = {
-      business_days: snapshot.business_days,
-      customers: snapshot.customers,
-      device_types: snapshot.device_types,
-      orders: snapshot.orders,
-      order_items: snapshot.order_items,
-      financial_ledger: snapshot.financial_ledger,
-      payments: snapshot.payments,
-      payment_allocations: snapshot.payment_allocations,
-      order_number_reservations: snapshot.order_number_reservations,
-      qr_tokens: snapshot.qr_tokens,
-      goals: snapshot.goals,
-      goal_requests: snapshot.goal_requests,
-      system_settings: snapshot.system_settings,
-      purchase_suppliers: snapshot.purchase_suppliers,
-      purchase_items: snapshot.purchase_items,
-      purchase_payment_methods: snapshot.purchase_payment_methods,
-      purchase_months: snapshot.purchase_months,
-      purchase_weeks: snapshot.purchase_weeks,
-      purchase_days: snapshot.purchase_days,
-      purchase_orders: snapshot.purchase_orders,
-    };
-    const invalidCollection = Object.entries(requiredCollections).find(([, rows]) => !Array.isArray(rows));
     const snapshotGeneration = Number(snapshot.server_reset_generation);
     const snapshotSequence = Number(snapshot.max_change_sequence);
+    const bootstrapSessionId = typeof snapshot.bootstrap_session_id === 'string' ? snapshot.bootstrap_session_id : '';
+    const bootstrapRowCounts = snapshot.bootstrap_row_counts as Record<string, number> | undefined;
+    const invalidCollection = BOOTSTRAP_COLLECTIONS.find((collection) =>
+      !bootstrapRowCounts ||
+      !Number.isSafeInteger(bootstrapRowCounts[collection]) ||
+      bootstrapRowCounts[collection] < 0
+    );
     if (
       Number(snapshot.schema_version) !== 2 ||
+      !bootstrapSessionId ||
       invalidCollection ||
       !Number.isSafeInteger(snapshotGeneration) || snapshotGeneration < 0 ||
       !Number.isSafeInteger(snapshotSequence) || snapshotSequence < 0
     ) {
       console.warn('Authoritative bootstrap snapshot is incomplete or has an invalid checkpoint.', {
-        invalidCollection: invalidCollection?.[0],
+        invalidCollection,
         snapshotGeneration,
         snapshotSequence,
       });
@@ -1637,10 +1622,18 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       return false;
     }
 
-    const totalRows = Object.values(requiredCollections).reduce<number>(
-      (total, rows) => total + (rows as unknown[]).length,
+    const totalRows = BOOTSTRAP_COLLECTIONS.reduce(
+      (total, collection) => total + bootstrapRowCounts![collection],
       0
     );
+    const readCollection = async (collection: BootstrapCollection): Promise<any[]> => {
+      const rows = await readBootstrapStagedCollection(bootstrapSessionId, collection);
+      const expectedCount = bootstrapRowCounts![collection];
+      if (rows.length !== expectedCount) {
+        throw new Error(`BOOTSTRAP_STAGING_COUNT_MISMATCH[${collection}]: expected ${expectedCount}, received ${rows.length}`);
+      }
+      return rows;
+    };
     let installedRows = 0;
     let lastPublishedPercent = 10;
     publishStoreBootstrapProgress({
@@ -1665,40 +1658,60 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       }
     };
 
-    const installWrites: Array<{ table: string; id: string; item: unknown }> = [];
+    // Keep only one staged collection in memory at a time. The complete
+    // snapshot remains durable in the staging database until the final install.
+    const daysRes = { data: [] as any[] };
+    const custRes = { data: [] as any[] };
+    const devRes = { data: [] as any[] };
+    const ordRes = { data: [] as any[] };
+    const itemRes = { data: [] as any[] };
+    const ledgRes = { data: [] as any[] };
+    const payRes = { data: [] as any[] };
+    const allocRes = { data: [] as any[] };
+    const reservationsRes = { data: [] as any[] };
+    const qrTokensRes = { data: [] as any[] };
+    const goalsRes = { data: [] as any[] };
+    const goalRequestsRes = { data: [] as any[] };
+    const systemSettingsRes = { data: [] as any[] };
 
-    const daysRes = { data: snapshot.business_days as any[], error: null };
-    const custRes = { data: snapshot.customers as any[], error: null };
-    const devRes = { data: snapshot.device_types as any[], error: null };
-    const ordRes = { data: snapshot.orders as any[], error: null };
-    const itemRes = { data: snapshot.order_items as any[], error: null };
-    const ledgRes = { data: snapshot.financial_ledger as any[], error: null };
-    const payRes = { data: snapshot.payments as any[], error: null };
-    const allocRes = { data: snapshot.payment_allocations as any[], error: null };
-    const reservationsRes = { data: snapshot.order_number_reservations as any[], error: null };
-    const qrTokensRes = { data: snapshot.qr_tokens as any[], error: null };
-    const goalsRes = { data: snapshot.goals as any[], error: null };
-    const goalRequestsRes = { data: snapshot.goal_requests as any[], error: null };
-    const systemSettingsRes = { data: Array.isArray(snapshot.system_settings) ? snapshot.system_settings as any[] : [], error: null };
-    const purchaseSuppliersRes = { data: Array.isArray(snapshot.purchase_suppliers) ? snapshot.purchase_suppliers as any[] : [], error: null };
-    const purchaseItemsRes = { data: Array.isArray(snapshot.purchase_items) ? snapshot.purchase_items as any[] : [], error: null };
-    const purchaseMethodsRes = { data: Array.isArray(snapshot.purchase_payment_methods) ? snapshot.purchase_payment_methods as any[] : [], error: null };
-    const purchaseMonthsRes = { data: Array.isArray(snapshot.purchase_months) ? snapshot.purchase_months as any[] : [], error: null };
-    const purchaseWeeksRes = { data: Array.isArray(snapshot.purchase_weeks) ? snapshot.purchase_weeks as any[] : [], error: null };
-    const purchaseDaysRes = { data: Array.isArray(snapshot.purchase_days) ? snapshot.purchase_days as any[] : [], error: null };
-    const purchaseOrdersRes = { data: Array.isArray(snapshot.purchase_orders) ? snapshot.purchase_orders as any[] : [], error: null };
-    const remoteReads = [
-      daysRes, custRes, devRes, ordRes, itemRes, ledgRes, payRes, allocRes,
-      reservationsRes, qrTokensRes, goalsRes, goalRequestsRes, systemSettingsRes,
-      purchaseSuppliersRes, purchaseItemsRes, purchaseMethodsRes, purchaseMonthsRes, purchaseWeeksRes, purchaseDaysRes, purchaseOrdersRes,
-    ];
-    const failedRemoteRead = remoteReads.find((result) => result.error || !Array.isArray(result.data));
-    if (failedRemoteRead) {
-      // Never clear a healthy local read model because one authoritative table
-      // failed to load. The caller can retry the reconciliation later.
-      console.warn('Authoritative hydration aborted because a required table failed to load:', failedRemoteRead.error);
-      return false;
-    }
+    const installWrites: Array<{ table: string; id: string; item: unknown }> = [];
+    let installWriteCount = 0;
+    let persistedInstallRows = 0;
+    const persistInstallBatch = async (
+      batch: Array<{ table: string; id: string; item: unknown }>,
+      finalState?: Parameters<typeof localDb.setSyncStateWithTx>[1]
+    ): Promise<void> => {
+      await localDb.runTransaction(
+        finalState ? ['kvStore', 'syncState'] : ['kvStore'],
+        'readwrite',
+        (tx) => {
+          for (const write of batch) localDb.setWithTx(tx, write.table, write.id, write.item);
+          if (finalState) localDb.setSyncStateWithTx(tx, finalState);
+        }
+      );
+      persistedInstallRows += batch.length;
+      publishStoreBootstrapProgress({
+        phase: 'INSTALLING',
+        percent: 85 + Math.floor((persistedInstallRows / Math.max(1, installWriteCount || totalRows)) * 10),
+        completedRows: persistedInstallRows,
+        totalRows: installWriteCount || totalRows,
+        message: 'جارٍ حفظ البيانات المحلية على دفعات…',
+      });
+    };
+    const appendInstallWrite = async (write: { table: string; id: string; item: unknown }): Promise<void> => {
+      installWrites.push(write);
+      installWriteCount += 1;
+      reportInstalledRow();
+      // Keep one final batch buffered so READY + the snapshot cursor are
+      // committed atomically with the last data writes.
+      if (installWrites.length > BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE) {
+        const batch = installWrites.splice(0, BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE);
+        await persistInstallBatch(batch);
+      }
+    };
+    const loadCollection = async (collection: BootstrapCollection, target: { data: any[] }): Promise<void> => {
+      target.data = await readCollection(collection);
+    };
 
     let updatedAny = false;
 
@@ -1751,6 +1764,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // can mix generations and silently delete one side of the local model.
 
     // 1. Business Days
+    await loadCollection('business_days', daysRes);
     if (daysRes.data && Array.isArray(daysRes.data)) {
       for (const d of daysRes.data) {
         const resolvedDate =
@@ -1770,13 +1784,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: d.version || 1,
         };
         daysMap.set(entity.id, entity);
-        installWrites.push({ table: 'businessDays', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'businessDays', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    daysRes.data = [];
 
     // 2. Customers
+    await loadCollection('customers', custRes);
     if (custRes.data && Array.isArray(custRes.data)) {
       for (const c of custRes.data) {
         const entity: CustomerEntity = {
@@ -1792,13 +1807,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: c.version || 1,
         };
         customersMap.set(entity.id, entity);
-        installWrites.push({ table: 'customers', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'customers', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    custRes.data = [];
 
     // 3. Device Types
+    await loadCollection('device_types', devRes);
     if (devRes.data && Array.isArray(devRes.data) && devRes.data.length > 0) {
       for (const dev of devRes.data) {
         const entity: DeviceTypeEntity = {
@@ -1818,13 +1834,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: dev.version || 1,
         };
         devicesMap.set(entity.id, entity);
-        installWrites.push({ table: 'deviceTypes', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'deviceTypes', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    devRes.data = [];
 
     // 4. Orders
+    await loadCollection('orders', ordRes);
     if (ordRes.data && Array.isArray(ordRes.data)) {
       for (const o of ordRes.data) {
         const entity: OrderEntity = {
@@ -1846,13 +1863,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: o.version || 1,
         };
         ordersMap.set(entity.id, entity);
-        installWrites.push({ table: 'orders', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'orders', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    ordRes.data = [];
 
     // 5. Order Items
+    await loadCollection('order_items', itemRes);
     if (itemRes.data && Array.isArray(itemRes.data)) {
       for (const it of itemRes.data) {
         const entity: OrderItemEntity = {
@@ -1878,13 +1896,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           version: it.version || 1,
         };
         itemsMap.set(entity.id, entity);
-        installWrites.push({ table: 'orderItems', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'orderItems', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    itemRes.data = [];
 
     // 6. Financial Ledger
+    await loadCollection('financial_ledger', ledgRes);
     if (ledgRes.data && Array.isArray(ledgRes.data)) {
       ledgerList.length = 0;
       for (const l of ledgRes.data) {
@@ -1901,13 +1920,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           createdAt: l.created_at,
         };
         ledgerList.push(entity);
-        installWrites.push({ table: 'financialLedger', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'financialLedger', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    ledgRes.data = [];
 
     // 7. Payments & Allocations
+    await loadCollection('payments', payRes);
     if (payRes.data && Array.isArray(payRes.data)) {
       for (const p of payRes.data) {
         const entity: PaymentEntity = {
@@ -1921,12 +1941,13 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           createdAt: p.created_at,
         };
         paymentsMap.set(entity.id, entity);
-        installWrites.push({ table: 'payments', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'payments', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    payRes.data = [];
 
+    await loadCollection('payment_allocations', allocRes);
     if (allocRes.data && Array.isArray(allocRes.data)) {
       allocationsList.length = 0;
       for (const a of allocRes.data) {
@@ -1939,13 +1960,14 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
           createdAt: a.created_at,
         };
         allocationsList.push(entity);
-        installWrites.push({ table: 'paymentAllocations', id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: 'paymentAllocations', id: entity.id, item: entity });
       }
       updatedAny = true;
     }
+    allocRes.data = [];
 
     // 8. Reservations and QR identities are required bootstrap collections too.
+    await loadCollection('order_number_reservations', reservationsRes);
     for (const row of reservationsRes.data as any[]) {
       const entity: OrderNumberReservationEntity = {
         id: row.id,
@@ -1961,10 +1983,11 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         version: Number(row.version ?? 1),
       };
       reservationsMap.set(entity.id, entity);
-      installWrites.push({ table: 'orderNumberReservations', id: entity.id, item: entity });
-      reportInstalledRow();
+      await appendInstallWrite({ table: 'orderNumberReservations', id: entity.id, item: entity });
     }
+    reservationsRes.data = [];
 
+    await loadCollection('qr_tokens', qrTokensRes);
     for (const row of qrTokensRes.data as any[]) {
       const entity: QrTokenEntity = {
         id: row.id,
@@ -1976,12 +1999,13 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         expiresAt: row.expires_at ?? row.expiresAt ?? undefined,
         createdAt: row.created_at ?? row.createdAt ?? new Date().toISOString(),
       };
-      installWrites.push({ table: 'qr_tokens', id: entity.id, item: entity });
-      reportInstalledRow();
+      await appendInstallWrite({ table: 'qr_tokens', id: entity.id, item: entity });
     }
+    qrTokensRes.data = [];
 
     // 8. Goals and goal requests are part of the same initial authoritative snapshot.
     // Keeping these tables out of bootstrap left fresh clients with an empty local goal model.
+    await loadCollection('goals', goalsRes);
     for (const row of goalsRes.data as any[]) {
       const entity: GoalEntity = {
         id: row.id,
@@ -2006,10 +2030,11 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         version: Number(row.version ?? 1),
       };
       goalsMap.set(entity.id, entity);
-      installWrites.push({ table: 'goals', id: entity.id, item: entity });
-      reportInstalledRow();
+      await appendInstallWrite({ table: 'goals', id: entity.id, item: entity });
     }
+    goalsRes.data = [];
 
+    await loadCollection('goal_requests', goalRequestsRes);
     for (const row of goalRequestsRes.data as any[]) {
       const entity: GoalRequestEntity = {
         id: row.id,
@@ -2025,25 +2050,27 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         version: Number(row.version ?? 1),
       };
       goalRequestsMap.set(entity.id, entity);
-      installWrites.push({ table: 'goalRequests', id: entity.id, item: entity });
-      reportInstalledRow();
+      await appendInstallWrite({ table: 'goalRequests', id: entity.id, item: entity });
     }
     updatedAny = true;
+    goalRequestsRes.data = [];
 
     // Install the snapshot fence only after every required collection has
     // been persisted. The next incremental pull starts strictly after this
     // exact snapshot; it must not treat the new device as generation -1 and
     // clear the just-hydrated data for a redundant full change-log replay.
+    await loadCollection('system_settings', systemSettingsRes);
     for (const row of systemSettingsRes.data as any[]) {
       if (!row?.key) continue;
-      installWrites.push({ table: 'systemSettings', id: String(row.key), item: row });
-      reportInstalledRow();
+      await appendInstallWrite({ table: 'systemSettings', id: String(row.key), item: row });
     }
+    systemSettingsRes.data = [];
 
-    for (const [table, rows] of [
-      ['suppliers', purchaseSuppliersRes.data], ['items', purchaseItemsRes.data], ['methods', purchaseMethodsRes.data],
-      ['months', purchaseMonthsRes.data], ['weeks', purchaseWeeksRes.data], ['days', purchaseDaysRes.data], ['orders', purchaseOrdersRes.data],
-    ] as Array<[PurchaseBookTable, any[]]>) {
+    for (const [table, collection] of [
+      ['suppliers', 'purchase_suppliers'], ['items', 'purchase_items'], ['methods', 'purchase_payment_methods'],
+      ['months', 'purchase_months'], ['weeks', 'purchase_weeks'], ['days', 'purchase_days'], ['orders', 'purchase_orders'],
+    ] as Array<[PurchaseBookTable, BootstrapCollection]>) {
+      const rows = await readCollection(collection);
       for (const row of rows) {
         const base = { id: row.id, adminId: row.admin_id, createdAt: row.created_at, updatedAt: row.updated_at, version: Number(row.version ?? 1) };
         let entity: PurchaseBookEntity;
@@ -2053,8 +2080,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         else if (table === 'days') entity = { ...base, weekId: row.week_id, purchaseDate: row.purchase_date, isClosed: Boolean(row.is_closed) } as PurchaseDayEntity;
         else entity = { ...base, purchaseDayId: row.purchase_day_id, supplierId: row.supplier_id, itemId: row.item_id, paymentMethodId: row.payment_method_id ?? undefined, amountMinor: Number(row.amount_minor), currency: row.currency, paymentStatus: row.payment_status, purchasedAt: row.purchased_at, paidAt: row.paid_at ?? undefined } as PurchaseOrderEntity;
         purchaseMaps[table].set(entity.id, entity);
-        installWrites.push({ table: purchaseTableKeys[table], id: entity.id, item: entity });
-        reportInstalledRow();
+        await appendInstallWrite({ table: purchaseTableKeys[table], id: entity.id, item: entity });
       }
     }
     const existingSyncState = await localDb.getSyncState('global');
@@ -2080,37 +2106,15 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
       message: 'جارٍ حفظ اللقطة كاملة في القاعدة المحلية…',
     });
     // The durable INITIALIZING barrier was written before replacement began.
-    // Persist bounded batches so a large first install does not require one
-    // enormous IndexedDB transaction. READY + the high-water cursor are written
-    // only with the final batch; any earlier failure leaves the barrier closed,
-    // and the durable staging session can safely replay the installation.
-    const totalInstallBatches = Math.ceil(installWrites.length / BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE);
-    if (installWrites.length === 0) {
+    // Persist each bounded batch as it is transformed, retaining only one final
+    // batch in memory so READY + the snapshot cursor commit with the last writes.
+    const finalInstallBatch = installWrites.splice(0);
+    if (finalInstallBatch.length === 0) {
       await localDb.runTransaction(['syncState'], 'readwrite', (tx) => {
         localDb.setSyncStateWithTx(tx, snapshotSyncState);
       });
     } else {
-      for (let offset = 0; offset < installWrites.length; offset += BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE) {
-        const batch = installWrites.slice(offset, offset + BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE);
-        const isFinalBatch = offset + batch.length >= installWrites.length;
-        await localDb.runTransaction(
-          isFinalBatch ? ['kvStore', 'syncState'] : ['kvStore'],
-          'readwrite',
-          (tx) => {
-            for (const write of batch) {
-              localDb.setWithTx(tx, write.table, write.id, write.item);
-            }
-            if (isFinalBatch) localDb.setSyncStateWithTx(tx, snapshotSyncState);
-          }
-        );
-        publishStoreBootstrapProgress({
-          phase: 'INSTALLING',
-          percent: 85 + Math.floor((Math.min(offset + batch.length, installWrites.length) / Math.max(1, installWrites.length)) * 10),
-          completedRows: Math.min(offset + batch.length, installWrites.length),
-          totalRows: installWrites.length,
-          message: `جارٍ حفظ الدفعة ${Math.floor(offset / BOOTSTRAP_INSTALL_WRITE_BATCH_SIZE) + 1} من ${totalInstallBatches}…`,
-        });
-      }
+      await persistInstallBatch(finalInstallBatch, snapshotSyncState);
     }
 
     publishStoreBootstrapProgress({
