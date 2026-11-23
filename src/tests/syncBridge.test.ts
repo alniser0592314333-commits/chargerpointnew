@@ -166,10 +166,10 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
       reconciliationRequired: false,
     });
     const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
-      .mockImplementation(async (cursor: number) => ({
+      .mockImplementation(async (...args: any[]) => ({
         changes: [],
         // Simulate a page containing only purchase changes for other admins.
-        latestSequence: cursor === 0 ? 500 : 500,
+        latestSequence: Number(args[0]) === 0 ? 500 : 500,
         serverResetGeneration: 1,
       }));
 
