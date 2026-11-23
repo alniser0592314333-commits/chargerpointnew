@@ -20,10 +20,15 @@ class TestSyncTransport implements ServerSyncTransport {
 
   async pullChanges(cursor: number, limit?: number): Promise<SyncPullResponse> {
     this.pullCalls.push({ cursor, limit });
-    const matching = this.changesToReturn.filter((c) => c.sequenceId > cursor);
+    const matching = this.changesToReturn
+      .filter((c) => c.sequenceId > cursor)
+      .sort((a, b) => a.sequenceId - b.sequenceId);
+    const page = matching.slice(0, limit ?? 500);
     return {
-      changes: matching,
-      latestSequence: this.latestSequence,
+      changes: page,
+      latestSequence: page.length > 0
+        ? page[page.length - 1].sequenceId
+        : Math.max(cursor, this.latestSequence),
       serverResetGeneration: 1,
     };
   }
