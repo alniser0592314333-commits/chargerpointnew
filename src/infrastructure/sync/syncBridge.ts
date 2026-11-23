@@ -153,29 +153,54 @@ export class SyncBridge {
           ) {
             return { pulled: pulledCount, needsReconciliation: true };
           }
-          if (pullRes.changes.length === 0) break;
 
           const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
-          const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
-          if (!Number.isSafeInteger(maxSeq) || maxSeq <= cursor) {
-            throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: cursor did not advance');
+          const reportedPageCursor = pullRes.latestSequence;
+          const pageCursor = reportedPageCursor === undefined || reportedPageCursor === null
+            ? (sortedChanges.length > 0 ? sortedChanges[sortedChanges.length - 1].sequenceId : cursor)
+            : Number(reportedPageCursor);
+          if (!Number.isSafeInteger(pageCursor) || pageCursor < cursor) {
+            throw new Error('CHANGE_LOG_PULL_INVALID_LATEST_SEQUENCE: invalid server scan cursor');
+          }
+          if (sortedChanges.some((change, index) =>
+            !Number.isSafeInteger(change.sequenceId) ||
+            change.sequenceId <= cursor ||
+            change.sequenceId > pageCursor ||
+            (index > 0 && change.sequenceId <= sortedChanges[index - 1].sequenceId)
+          )) {
+            throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: returned page is not strictly ordered within cursor');
+          }
+          if (pageCursor === cursor) {
+            if (sortedChanges.length > 0) {
+              throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: changes returned without cursor progress');
+            }
+            break;
           }
 
-          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
-            for (const change of sortedChanges) {
-              if (globalSyncEngine.onDeltaApplied) await globalSyncEngine.onDeltaApplied(change, tx);
-              else await applyRemoteChange(change, tx);
-            }
-            localDb.setSyncStateWithTx(tx, {
-              ...syncState,
-              lastAppliedChangeSequence: maxSeq,
-              lastPulledAt: new Date().toISOString(),
+          const pulledAt = new Date().toISOString();
+          const nextState = {
+            ...syncState,
+            lastAppliedChangeSequence: pageCursor,
+            lastPulledAt: pulledAt,
+          };
+          if (sortedChanges.length > 0) {
+            await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+              for (const change of sortedChanges) {
+                if (globalSyncEngine.onDeltaApplied) await globalSyncEngine.onDeltaApplied(change, tx);
+                else await applyRemoteChange(change, tx);
+              }
+              localDb.setSyncStateWithTx(tx, nextState);
             });
-          });
+          } else {
+            // The server scanned a page containing only other admins' purchase
+            // changes. Commit its scan cursor so later visible changes aren't starved.
+            await localDb.runTransaction(['syncState'], 'readwrite', (tx) => {
+              localDb.setSyncStateWithTx(tx, nextState);
+            });
+          }
 
           pulledCount += sortedChanges.length;
-          cursor = maxSeq;
-          if (sortedChanges.length < 500) break;
+          cursor = pageCursor;
         }
         return { pulled: pulledCount };
       } catch (error) {

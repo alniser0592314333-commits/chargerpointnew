@@ -305,6 +305,11 @@ export interface ChangeLogEntry {
 
 export interface SyncPullResponse {
   changes: ChangeLogEntry[];
+  /**
+   * Last global sequence scanned by this page. It may exceed the last visible
+   * change when tenant-filtered purchase rows are omitted; callers must persist
+   * this cursor even when the visible changes array is empty.
+   */
   latestSequence: number;
   serverResetGeneration?: number;
 }
@@ -377,7 +382,9 @@ export class MockServerSyncTransport implements ServerSyncTransport {
     const relevant = this.changeLog.filter(c => c.sequenceId > cursor).slice(0, maxLimit);
     return {
       changes: relevant,
-      latestSequence: this.currentSequence,
+      // Match the production RPC contract: this is the last sequence scanned
+      // in this page, not the global high-water mark beyond any remaining page.
+      latestSequence: relevant.length > 0 ? relevant[relevant.length - 1].sequenceId : cursor,
       serverResetGeneration: 1,
     };
   }
@@ -712,49 +719,75 @@ export class SyncEngine {
         pullRes = rebuiltPull;
       }
 
-      // Drain every available page before pushing outbox commands. A single-page
-      // preflight can leave the local canonical view incomplete (especially after
-      // reset reconciliation) while the same cycle starts sending dependent writes.
-      while (pullRes.changes.length > 0) {
+      // Drain every scanned server page before pushing outbox commands. The server
+      // may omit purchase changes owned by other admins while still advancing
+      // latestSequence over those invisible rows. Checkpoint that scan cursor,
+      // not merely the last visible row, or a trailing hidden page can starve
+      // every later change indefinitely.
+      while (true) {
         const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
-        const maxSeq = sortedChanges[sortedChanges.length - 1].sequenceId;
-        if (!Number.isSafeInteger(maxSeq) || maxSeq <= pullCursor) {
-          throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: cursor did not advance');
+        const reportedPageCursor = pullRes.latestSequence;
+        const pageCursor = reportedPageCursor === undefined || reportedPageCursor === null
+          ? (sortedChanges.length > 0 ? sortedChanges[sortedChanges.length - 1].sequenceId : pullCursor)
+          : Number(reportedPageCursor);
+        if (!Number.isSafeInteger(pageCursor) || pageCursor < pullCursor) {
+          throw new Error('CHANGE_LOG_PULL_INVALID_LATEST_SEQUENCE: invalid server scan cursor');
+        }
+        if (sortedChanges.some((change, index) =>
+          !Number.isSafeInteger(change.sequenceId) ||
+          change.sequenceId <= pullCursor ||
+          change.sequenceId > pageCursor ||
+          (index > 0 && change.sequenceId <= sortedChanges[index - 1].sequenceId)
+        )) {
+          throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: returned page is not strictly ordered within cursor');
+        }
+        if (pageCursor === pullCursor) {
+          if (sortedChanges.length > 0) {
+            throw new Error('CHANGE_LOG_PULL_INVALID_SEQUENCE: changes returned without cursor progress');
+          }
+          break;
         }
 
-        await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
-          for (const change of sortedChanges) {
-            try {
-              if (this.onDeltaApplied) {
-                await this.onDeltaApplied(change, tx);
-              } else {
-                if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+        const pulledAt = new Date().toISOString();
+        const updatedState = {
+          ...syncState,
+          lastAppliedChangeSequence: pageCursor,
+          lastPulledAt: pulledAt,
+        };
+        if (sortedChanges.length > 0) {
+          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+            for (const change of sortedChanges) {
+              try {
+                if (this.onDeltaApplied) {
+                  await this.onDeltaApplied(change, tx);
+                } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
                   localDb.removeWithTx(tx, change.entityType, change.entityId);
                 } else {
                   localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
                 }
+              } catch (deltaErr) {
+                console.error(`Failed to apply delta change sequence ${change.sequenceId}:`, deltaErr);
+                throw deltaErr;
               }
-            } catch (deltaErr) {
-              console.error(`Failed to apply delta change sequence ${change.sequenceId}:`, deltaErr);
-              throw deltaErr;
             }
-          }
-          const updatedState = {
-            ...syncState,
-            lastAppliedChangeSequence: maxSeq,
-            lastPulledAt: new Date().toISOString(),
-          };
-          localDb.setSyncStateWithTx(tx, updatedState);
-        });
+            localDb.setSyncStateWithTx(tx, updatedState);
+          });
+        } else {
+          // This page contained only rows filtered for other admins. Advancing
+          // the cursor is still safe because latestSequence covers every row
+          // scanned by the server page.
+          await localDb.runTransaction(['syncState'], 'readwrite', (tx) => {
+            localDb.setSyncStateWithTx(tx, updatedState);
+          });
+        }
 
-        // Count only committed delta pages; a rolled-back page must not inflate
-        // the reported number of successfully applied changes.
+        // Count only committed visible changes; filtered rows still advance the
+        // durable scan cursor but are not reported as applied business changes.
         pulledCount += sortedChanges.length;
-        pullCursor = maxSeq;
-        syncState.lastAppliedChangeSequence = maxSeq;
-        syncState.lastPulledAt = new Date().toISOString();
+        pullCursor = pageCursor;
+        syncState.lastAppliedChangeSequence = pageCursor;
+        syncState.lastPulledAt = pulledAt;
 
-        if (sortedChanges.length < 500) break;
         pullRes = await this.transport.pullChanges(pullCursor, 500);
         if (pullRes.serverResetGeneration === undefined || pullRes.serverResetGeneration !== serverGen) {
           throw new Error('Authoritative reset generation changed during incremental pull; retry sync');
@@ -1232,44 +1265,63 @@ export class SyncEngine {
           throw new Error('FINAL_PULL_RESET_GENERATION_CHANGED: authoritative reconciliation required');
         }
 
-        // Drain all final pages, not only the first 500 rows. The cursor is
-        // checkpointed with each successfully applied page, so a later failure
-        // safely resumes at the last committed page.
-        while (finalPull.changes.length > 0) {
+        // Drain every scanned page, including pages containing only changes
+        // hidden by tenant filtering. latestSequence is the server's scan cursor,
+        // not necessarily the last sequence visible in this admin's response.
+        while (true) {
           const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
-          const maxSeq = sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId;
-          if (!Number.isSafeInteger(maxSeq) || maxSeq <= finalCursor) {
-            throw new Error('FINAL_PULL_INVALID_SEQUENCE: cursor did not advance');
+          const reportedPageCursor = finalPull.latestSequence;
+          const pageCursor = reportedPageCursor === undefined || reportedPageCursor === null
+            ? (sortedFinalChanges.length > 0 ? sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId : finalCursor)
+            : Number(reportedPageCursor);
+          if (!Number.isSafeInteger(pageCursor) || pageCursor < finalCursor) {
+            throw new Error('FINAL_PULL_INVALID_LATEST_SEQUENCE: invalid server scan cursor');
           }
-          await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
-            for (const change of sortedFinalChanges) {
-              if (this.onDeltaApplied) {
-                await this.onDeltaApplied(change, tx);
-              } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
-                localDb.removeWithTx(tx, change.entityType, change.entityId);
-              } else {
-                localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
-              }
+          if (sortedFinalChanges.some((change, index) =>
+            !Number.isSafeInteger(change.sequenceId) ||
+            change.sequenceId <= finalCursor ||
+            change.sequenceId > pageCursor ||
+            (index > 0 && change.sequenceId <= sortedFinalChanges[index - 1].sequenceId)
+          )) {
+            throw new Error('FINAL_PULL_INVALID_SEQUENCE: returned page is not strictly ordered within cursor');
+          }
+          if (pageCursor === finalCursor) {
+            if (sortedFinalChanges.length > 0) {
+              throw new Error('FINAL_PULL_INVALID_SEQUENCE: changes returned without cursor progress');
             }
-            localDb.setSyncStateWithTx(tx, {
-              ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
-              lastAppliedChangeSequence: maxSeq,
-              lastPulledAt: new Date().toISOString(),
-              status: 'READY',
-              reconciliationRequired: false,
-            });
-          });
-          pulledCount += sortedFinalChanges.length;
-          finalCursor = maxSeq;
-          finalState = {
+            break;
+          }
+
+          const pulledAt = new Date().toISOString();
+          const nextFinalState = {
             ...(finalState || { table: 'global', lastAppliedChangeSequence: 0, lastPulledAt: '' }),
-            lastAppliedChangeSequence: maxSeq,
-            lastPulledAt: new Date().toISOString(),
-            status: 'READY',
+            lastAppliedChangeSequence: pageCursor,
+            lastPulledAt: pulledAt,
+            status: 'READY' as const,
             reconciliationRequired: false,
           };
+          if (sortedFinalChanges.length > 0) {
+            await localDb.runTransaction(['kvStore', 'syncState'], 'readwrite', async (tx) => {
+              for (const change of sortedFinalChanges) {
+                if (this.onDeltaApplied) {
+                  await this.onDeltaApplied(change, tx);
+                } else if (change.action === 'DELETE' || change.action === 'TOMBSTONE') {
+                  localDb.removeWithTx(tx, change.entityType, change.entityId);
+                } else {
+                  localDb.setWithTx(tx, change.entityType, change.entityId, change.payload);
+                }
+              }
+              localDb.setSyncStateWithTx(tx, nextFinalState);
+            });
+          } else {
+            await localDb.runTransaction(['syncState'], 'readwrite', (tx) => {
+              localDb.setSyncStateWithTx(tx, nextFinalState);
+            });
+          }
+          pulledCount += sortedFinalChanges.length;
+          finalCursor = pageCursor;
+          finalState = nextFinalState;
 
-          if (sortedFinalChanges.length < 500) break;
           finalPull = await this.transport.pullChanges(finalCursor);
           if (
             finalPull.serverResetGeneration === undefined ||

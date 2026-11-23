@@ -36,11 +36,12 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
       url: 'Not configured',
       status: 'disconnected',
     });
-    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
-      changes: [],
-      latestSequence: 0,
-      serverResetGeneration: 1,
-    });
+    vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
+      .mockImplementation(async (...args: any[]) => ({
+        changes: [],
+        latestSequence: Number(args[0] ?? 0),
+        serverResetGeneration: 1,
+      }));
     // Simulate app startup before individual tests spy on mutation notifications.
     await ensureStoreHydrated();
     await vi.waitFor(() => expect((globalSyncBridge as any).isSyncing).toBe(false));
@@ -156,6 +157,54 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect(syncSpy).not.toHaveBeenCalled();
   });
 
+  it('advances pull-only cursor across pages with no visible tenant changes', async () => {
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: '',
+      resetGeneration: 1,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
+      .mockImplementation(async (...args: any[]) => {
+        const cursor = Number(args[0] ?? 0);
+        if (cursor === 0) {
+          return {
+            changes: [],
+            // The first global page contains only purchase changes owned by
+            // other admins, so this account has nothing visible to apply yet.
+            latestSequence: 500,
+            serverResetGeneration: 1,
+          };
+        }
+        if (cursor === 500) {
+          return {
+            changes: [{
+              sequenceId: 501,
+              entityType: 'customers',
+              entityId: 'customer-after-filtered-page',
+              action: 'INSERT',
+              payload: { id: 'customer-after-filtered-page', name: 'Visible after filtered page', phone: '' },
+              changedAt: new Date().toISOString(),
+            }],
+            latestSequence: 501,
+            serverResetGeneration: 1,
+          };
+        }
+        return { changes: [], latestSequence: 501, serverResetGeneration: 1 };
+      });
+
+    const result = await globalSyncBridge.requestLatestDataReload();
+
+    expect(result.pulled).toBe(1);
+    expect(pullSpy.mock.calls.map(([cursor]) => cursor)).toEqual([0, 500, 501]);
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
+    expect(await localDb.get('customers', 'customer-after-filtered-page')).toMatchObject({
+      name: 'Visible after filtered page',
+    });
+  });
+
   it('runs queued outbox work if a local commit notifies during pull-only reload', async () => {
     await localDb.setSyncState({
       table: 'global',
@@ -246,12 +295,14 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     }));
     const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
       .mockResolvedValueOnce({ changes: page(0, 500), latestSequence: 500, serverResetGeneration: 1 })
-      .mockResolvedValueOnce({ changes: page(500, 1), latestSequence: 501, serverResetGeneration: 1 });
+      .mockResolvedValueOnce({ changes: page(500, 1), latestSequence: 501, serverResetGeneration: 1 })
+      .mockResolvedValueOnce({ changes: [], latestSequence: 501, serverResetGeneration: 1 });
     const result = await globalSyncBridge.requestLatestDataReload();
     expect(result.pulled).toBe(501);
-    expect(pullSpy).toHaveBeenCalledTimes(2);
+    expect(pullSpy).toHaveBeenCalledTimes(3);
     expect(pullSpy).toHaveBeenNthCalledWith(1, 0, 500);
     expect(pullSpy).toHaveBeenNthCalledWith(2, 500, 500);
+    expect(pullSpy).toHaveBeenNthCalledWith(3, 501, 500);
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
   });
 
@@ -433,18 +484,20 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
       await localDb.setLocalResetMarker(true);
       expect(await localDb.isLocalResetCompleted()).toBe(true);
 
-      const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges').mockResolvedValue({
-        changes: [{
-          sequenceId: 1,
-          entityType: 'customers',
-          entityId: 'cust-after-reset',
-          action: 'INSERT',
-          payload: { id: 'cust-after-reset', name: 'عميل بعد التصفير', phone: '0599333444', isActive: true },
-          changedAt: new Date().toISOString(),
-        }],
-        latestSequence: 1,
-        serverResetGeneration: 1,
-      });
+      const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
+        .mockResolvedValueOnce({
+          changes: [{
+            sequenceId: 1,
+            entityType: 'customers',
+            entityId: 'cust-after-reset',
+            action: 'INSERT',
+            payload: { id: 'cust-after-reset', name: 'عميل بعد التصفير', phone: '0599333444', isActive: true },
+            changedAt: new Date().toISOString(),
+          }],
+          latestSequence: 1,
+          serverResetGeneration: 1,
+        })
+        .mockResolvedValueOnce({ changes: [], latestSequence: 1, serverResetGeneration: 1 });
 
       const resumeSpy = vi.spyOn(globalSyncEngine, 'resumePendingOutbox');
       const hydrateSpy = vi.spyOn(dayOrdersStore, 'hydrateFromRemoteTables');

@@ -171,6 +171,43 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     expect(syncState?.status).toBe('STALE');
   });
 
+  it('checkpoints the server scan cursor beyond the last visible change', async () => {
+    const calls: number[] = [];
+    const transportWithFilteredTail = {
+      pushCommand: async () => ({ success: true, rpcReached: true }),
+      pullChanges: async (cursor: number) => {
+        calls.push(cursor);
+        if (cursor === 0) {
+          return {
+            changes: [{
+              sequenceId: 10,
+              entityType: 'customers',
+              entityId: 'customer-visible',
+              action: 'UPDATE' as const,
+              payload: { id: 'customer-visible', name: 'Visible change' },
+              version: 2,
+              changedAt: new Date().toISOString(),
+            }],
+            // The server scanned through sequence 500, including filtered
+            // purchase rows owned by other admins after the visible change.
+            latestSequence: 500,
+            serverResetGeneration: 1,
+          };
+        }
+        return { changes: [], latestSequence: 500, serverResetGeneration: 1 };
+      },
+    };
+    const cursorEngine = new SyncEngine(transportWithFilteredTail);
+    const applied = vi.fn();
+    cursorEngine.onDeltaApplied = applied;
+
+    await cursorEngine.synchronize();
+
+    expect(applied).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual([0, 500, 500]);
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(500);
+  });
+
   it('22. Sync lock prevents concurrent sync loops', async () => {
     // Start two synchronizations concurrently
     const p1 = engine.synchronize();
@@ -216,8 +253,9 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     const result = await pagedEngine.synchronize();
 
     expect(result.pulled).toBe(501);
-    // The final authoritative verification performs one additional empty read at the committed cursor.
-    expect(requestedCursors).toEqual([0, 500, 501]);
+    // Preflight drains both pages and confirms completion; final verification
+    // performs its own empty read at the committed cursor.
+    expect(requestedCursors).toEqual([0, 500, 501, 501]);
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
     expect(await localDb.get('customers', 'customer-501')).toEqual({
       id: 'customer-501',
@@ -273,7 +311,7 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     const result = await finalPagingEngine.synchronize();
     const state = await localDb.getSyncState('global');
     expect(result.pulled).toBe(501);
-    expect(requestedCursors).toEqual([0, 0, 500]);
+    expect(requestedCursors).toEqual([0, 0, 500, 501]);
     expect(state?.lastAppliedChangeSequence).toBe(501);
     expect(state?.status).toBe('READY');
     expect(await localDb.get('customers', 'final-customer-501')).toBeDefined();
