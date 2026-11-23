@@ -167,17 +167,42 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
       reconciliationRequired: false,
     });
     const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
-      .mockImplementation(async (...args: any[]) => ({
-        changes: [],
-        // Simulate a page containing only purchase changes for other admins.
-        latestSequence: Number(args[0]) === 0 ? 500 : 500,
-        serverResetGeneration: 1,
-      }));
+      .mockImplementation(async (...args: any[]) => {
+        const cursor = Number(args[0] ?? 0);
+        if (cursor === 0) {
+          return {
+            changes: [],
+            // The first global page contains only purchase changes owned by
+            // other admins, so this account has nothing visible to apply yet.
+            latestSequence: 500,
+            serverResetGeneration: 1,
+          };
+        }
+        if (cursor === 500) {
+          return {
+            changes: [{
+              sequenceId: 501,
+              entityType: 'customers',
+              entityId: 'customer-after-filtered-page',
+              action: 'INSERT',
+              payload: { id: 'customer-after-filtered-page', name: 'Visible after filtered page', phone: '' },
+              changedAt: new Date().toISOString(),
+            }],
+            latestSequence: 501,
+            serverResetGeneration: 1,
+          };
+        }
+        return { changes: [], latestSequence: 501, serverResetGeneration: 1 };
+      });
 
-    await globalSyncBridge.requestLatestDataReload();
+    const result = await globalSyncBridge.requestLatestDataReload();
 
-    expect(pullSpy.mock.calls.map(([cursor]) => cursor)).toEqual([0, 500]);
-    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(500);
+    expect(result.pulled).toBe(1);
+    expect(pullSpy.mock.calls.map(([cursor]) => cursor)).toEqual([0, 500, 501]);
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
+    expect(await localDb.get('customers', 'customer-after-filtered-page')).toMatchObject({
+      name: 'Visible after filtered page',
+    });
   });
 
   it('runs queued outbox work if a local commit notifies during pull-only reload', async () => {
