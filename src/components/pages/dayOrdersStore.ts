@@ -1646,7 +1646,7 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     const reportInstalledRow = (): void => {
       installedRows += 1;
       const percent = totalRows === 0 ? 80 : Math.min(80, 10 + Math.floor((installedRows / totalRows) * 70));
-      if (percent !== lastPublishedPercent || installedRows === totalRows) {
+      if (percent > lastPublishedPercent) {
         lastPublishedPercent = percent;
         publishStoreBootstrapProgress({
           phase: 'INSTALLING',
@@ -1690,13 +1690,17 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
         }
       );
       persistedInstallRows += batch.length;
-      publishStoreBootstrapProgress({
-        phase: 'INSTALLING',
-        percent: 85 + Math.floor((persistedInstallRows / Math.max(1, installWriteCount || totalRows)) * 10),
-        completedRows: persistedInstallRows,
-        totalRows: installWriteCount || totalRows,
-        message: 'جارٍ حفظ البيانات المحلية على دفعات…',
-      });
+      const percent = 85 + Math.floor((persistedInstallRows / Math.max(1, totalRows)) * 10);
+      if (percent > lastPublishedPercent) {
+        lastPublishedPercent = percent;
+        publishStoreBootstrapProgress({
+          phase: 'INSTALLING',
+          percent,
+          completedRows: persistedInstallRows,
+          totalRows,
+          message: 'جارٍ حفظ البيانات المحلية على دفعات…',
+        });
+      }
     };
     const appendInstallWrite = async (write: { table: string; id: string; item: unknown }): Promise<void> => {
       installWrites.push(write);
