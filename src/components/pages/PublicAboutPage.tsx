@@ -60,7 +60,7 @@ export const PublicAboutPage: React.FC = () => {
   const [releaseDownloadUrl, setReleaseDownloadUrl] = useState('');
   const [isStartingDownload, setIsStartingDownload] = useState(false);
   const [isPwaInstalled, setIsPwaInstalled] = useState(() => typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true));
-  const [expandedInstallDetails, setExpandedInstallDetails] = useState<'apk' | 'pwa' | null>(null);
+  const [expandedInstallDetails, setExpandedInstallDetails] = useState<'pwa' | null>(null);
 
   useEffect(() => {
     const onBeforeInstallPrompt = (event: Event) => {
@@ -655,50 +655,25 @@ export const PublicAboutPage: React.FC = () => {
                 {/* App download and web-install options: plain navigation rows with inline details. */}
                 {!Capacitor.isNativePlatform() && (
                   <>
-                    <div>
-                      <button
-                        type="button"
-                        onClick={() => setExpandedInstallDetails(expandedInstallDetails === 'apk' ? null : 'apk')}
-                        aria-expanded={expandedInstallDetails === 'apk'}
-                        className="w-full flex items-center justify-between gap-3 p-3.5 text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                          <div>
-                            <span className="block">{isAr ? 'تطبيق الهاتف (APK)' : 'Phone App (APK)'}</span>
-                            <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
-                              {isAr ? 'تنزيل التطبيق الأصلي وتثبيته' : 'Download and install the native app'}
-                            </span>
-                          </div>
+                    <button
+                      type="button"
+                      onClick={() => { setIsDrawerOpen(false); void startDirectApkDownload(); }}
+                      disabled={isStartingDownload}
+                      className="w-full flex items-center justify-between gap-3 p-3.5 text-start font-semibold text-sm text-gray-800 dark:text-[#d5ede8] hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-60 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                        <div>
+                          <span className="block">{isAr ? 'تثبيت التطبيق' : 'Install App'}</span>
+                          <span className="block text-[11px] text-gray-500 dark:text-[#88d2c4] font-normal">
+                            {isStartingDownload
+                              ? (isAr ? 'جارٍ تجهيز التنزيل…' : 'Preparing download…')
+                              : (isAr ? 'تنزيل ملف APK مباشرة' : 'Download APK directly')}
+                          </span>
                         </div>
-                        {isRTL ? <ChevronLeft className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
-                      </button>
-                      {expandedInstallDetails === 'apk' && (
-                        <div className="px-4 pb-4 pt-1 text-[11px] leading-6 text-gray-600 dark:text-[#a8cec5]">
-                          <p className="font-bold text-gray-800 dark:text-white">{isAr ? 'المميزات' : 'Benefits'}</p>
-                          <ul className="list-disc ps-5">
-                            <li>{isAr ? 'تجربة مستقلة من أيقونة التطبيق، بدون شريط المتصفح.' : 'Launches independently from its app icon without browser chrome.'}</li>
-                            <li>{isAr ? 'يدعم وظائف الهاتف التي يوفّرها إصدار APK، مثل البصمة والإشعارات الأصلية عندما تكون مهيأة ومفعّلة.' : 'Supports APK-specific phone features such as biometrics and native notifications when configured and enabled.'}</li>
-                            <li>{isAr ? 'يمكنه عرض البيانات المخزنة محليًا وفق آلية التخزين والمزامنة في التطبيق.' : 'Can display locally cached data according to the app’s storage and sync design.'}</li>
-                          </ul>
-                          <p className="font-bold text-gray-800 dark:text-white mt-2">{isAr ? 'القيود' : 'Limitations'}</p>
-                          <ul className="list-disc ps-5">
-                            <li>{isAr ? 'التثبيت يحتاج تنزيل ملف APK ثم موافقة أندرويد على التثبيت.' : 'Installation requires downloading the APK and confirming installation in Android.'}</li>
-                            <li>{isAr ? 'إجراءات الدفع وتعديل الحسابات تحتاج اتصالًا بالإنترنت حسب قواعد الأمان.' : 'Payments and account changes require internet where security rules demand it.'}</li>
-                            <li>{isAr ? 'بعض الميزات تعتمد على صلاحيات الجهاز وإعدادات التطبيق.' : 'Some features depend on device permissions and app configuration.'}</li>
-                          </ul>
-                          <button
-                            type="button"
-                            onClick={() => { setIsDrawerOpen(false); void startDirectApkDownload(); }}
-                            disabled={isStartingDownload}
-                            className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#0f766e] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0d665f] disabled:opacity-60 transition-colors"
-                          >
-                            <Download className="h-4 w-4" />
-                            {isStartingDownload ? (isAr ? 'جارٍ تجهيز التنزيل…' : 'Preparing download…') : (isAr ? 'تنزيل تطبيق الهاتف (APK)' : 'Download Phone App (APK)')}
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                      {isRTL ? <ChevronLeft className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
+                    </button>
 
                     <div>
                       <button
