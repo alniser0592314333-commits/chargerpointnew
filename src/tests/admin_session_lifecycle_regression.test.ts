@@ -50,6 +50,99 @@ describe("Admin session lifecycle root-cause regressions", () => {
     vi.restoreAllMocks();
   });
 
+  it("switches the active identity instead of returning the previous account's in-memory permissions", async () => {
+    const accountA: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-account-a",
+      refresh_token: "refresh-token-account-a",
+      user: { id: "auth-account-a", email: "account-a@example.test" },
+    };
+    const accountB: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-account-b",
+      refresh_token: "refresh-token-account-b",
+      user: { id: "auth-account-b", email: "account-b@example.test" },
+    };
+
+    supabaseClient.saveStoredSupabaseAuthSession(accountA);
+    const profileSpy = vi.spyOn(authService, "getAdminProfile")
+      .mockResolvedValueOnce(adminProfile({
+        admin_id: "admin-account-a",
+        auth_user_id: "auth-account-a",
+        email: "account-a@example.test",
+        permissions: ["orders:view"],
+      }) as any)
+      .mockResolvedValueOnce(adminProfile({
+        admin_id: "admin-account-b",
+        auth_user_id: "auth-account-b",
+        email: "account-b@example.test",
+        permissions: ["finances:read"],
+      }) as any);
+
+    const first = await authService.getCurrentSession(true);
+    expect(first?.userId).toBe("admin-account-a");
+
+    // Simulate another same-origin tab replacing the shared Supabase session.
+    storageMap.set("supabase_auth_session", JSON.stringify(accountB));
+    const second = await authService.getCurrentSession();
+
+    expect(second?.userId).toBe("admin-account-b");
+    expect(second?.email).toBe("account-b@example.test");
+    expect(second?.permissions).toEqual(["finances:read"]);
+    expect(profileSpy).toHaveBeenLastCalledWith("access-token-account-b");
+    expect(supabaseClient.getSupabaseAuthToken()).toBe("access-token-account-b");
+    expect(JSON.parse(storageMap.get("app_auth_session")!).email).toBe("account-b@example.test");
+  });
+
+  it("never falls back to the previous account's cached role when the newly selected account is offline", async () => {
+    const accountA: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-account-a",
+      user: { id: "auth-account-a", email: "account-a@example.test" },
+    };
+    const accountB: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-account-b",
+      user: { id: "auth-account-b", email: "account-b@example.test" },
+    };
+
+    supabaseClient.saveStoredSupabaseAuthSession(accountA);
+    vi.spyOn(authService, "getAdminProfile").mockResolvedValue(adminProfile({
+      admin_id: "admin-account-a",
+      auth_user_id: "auth-account-a",
+      email: "account-a@example.test",
+    }) as any);
+    const first = await authService.getCurrentSession(true);
+    expect(first?.userId).toBe("admin-account-a");
+
+    storageMap.set("supabase_auth_session", JSON.stringify(accountB));
+    const onlineDescriptor = Object.getOwnPropertyDescriptor(globalThis.navigator, "onLine");
+    Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: false });
+    try {
+      const switched = await authService.getCurrentSession();
+      expect(switched).toBeNull();
+      expect(storageMap.has("app_auth_session")).toBe(false);
+    } finally {
+      if (onlineDescriptor) Object.defineProperty(globalThis.navigator, "onLine", onlineDescriptor);
+      else delete (globalThis.navigator as any).onLine;
+    }
+  });
+
+  it("prefers the latest persisted Supabase token over a stale module-level token", () => {
+    supabaseClient.setSupabaseAuthToken("stale-account-a-token");
+    const accountB = {
+      ...authSession,
+      access_token: "current-account-b-token",
+      user: { id: "auth-account-b", email: "account-b@example.test" },
+    };
+    // A storage event updates localStorage in this context without updating
+    // this module's private variable, exactly as happens in another tab.
+    storageMap.set("supabase_auth_session", JSON.stringify(accountB));
+
+    expect(supabaseClient.resolveAuthBearerToken()).toBe("current-account-b-token");
+    expect(supabaseClient.getSupabaseAuthToken()).toBe("current-account-b-token");
+  });
+
   it("rehydrates an expired local session from a valid server profile and refreshes permissions", async () => {
     supabaseClient.saveStoredSupabaseAuthSession(authSession);
     storageMap.set("app_auth_session", JSON.stringify({
