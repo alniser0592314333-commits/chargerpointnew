@@ -154,11 +154,14 @@ export class SyncBridge {
             return { pulled: pulledCount, needsReconciliation: true };
           }
 
-          const pageCursor = Number(pullRes.latestSequence);
+          const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+          const reportedPageCursor = pullRes.latestSequence;
+          const pageCursor = reportedPageCursor === undefined || reportedPageCursor === null
+            ? (sortedChanges.length > 0 ? sortedChanges[sortedChanges.length - 1].sequenceId : cursor)
+            : Number(reportedPageCursor);
           if (!Number.isSafeInteger(pageCursor) || pageCursor < cursor) {
             throw new Error('CHANGE_LOG_PULL_INVALID_LATEST_SEQUENCE: invalid server scan cursor');
           }
-          const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
           if (sortedChanges.some((change, index) =>
             !Number.isSafeInteger(change.sequenceId) ||
             change.sequenceId <= cursor ||
