@@ -257,7 +257,6 @@ export const readBootstrapStagedCollection = async (
       const request = store.getAll(range);
       request.onsuccess = () => {
         const records = (request.result || []) as BootstrapStagingRow[];
-        records.sort((a, b) => a.rowId.localeCompare(b.rowId));
         resolve(records.map((record) => record.item));
       };
       request.onerror = () => reject(request.error || new Error('BOOTSTRAP_STAGED_READ_FAILED'));
