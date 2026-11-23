@@ -257,10 +257,35 @@ export const readBootstrapStagedCollection = async (
       const request = store.getAll(range);
       request.onsuccess = () => {
         const records = (request.result || []) as BootstrapStagingRow[];
-        records.sort((a, b) => a.rowId.localeCompare(b.rowId));
         resolve(records.map((record) => record.item));
       };
       request.onerror = () => reject(request.error || new Error('BOOTSTRAP_STAGED_READ_FAILED'));
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+export const countBootstrapStagedCollection = async (
+  sessionId: string,
+  collection: string
+): Promise<number> => {
+  const db = await openStagingDb();
+  const prefix = `${sessionId}:${collection}:`;
+  if (!db) {
+    return Array.from(memoryRows.values()).filter(
+      (row) => row.sessionId === sessionId && row.collection === collection
+    ).length;
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction('rows', 'readonly');
+      const range = IDBKeyRange.bound(prefix, prefix + '\\uffff');
+      const request = tx.objectStore('rows').count(range);
+      request.onsuccess = () => resolve(Number(request.result || 0));
+      request.onerror = () => reject(request.error || new Error('BOOTSTRAP_STAGED_COUNT_FAILED'));
+      tx.onerror = () => reject(tx.error || new Error('BOOTSTRAP_STAGED_COUNT_FAILED'));
     } catch (error) {
       reject(error);
     }

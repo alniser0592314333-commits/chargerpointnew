@@ -4,6 +4,7 @@ import {
   getActiveBootstrapStagingSession,
   persistBootstrapPage,
   readBootstrapStagedCollection,
+  countBootstrapStagedCollection,
   BootstrapManifestV2,
 } from './bootstrapStagingStore';
 
@@ -40,6 +41,7 @@ export interface AuthoritativeBootstrapSnapshot {
   server_reset_generation: number;
   max_change_sequence: number;
   bootstrap_session_id: string;
+  bootstrap_row_counts?: Record<string, number>;
   [collection: string]: unknown;
 }
 
@@ -84,7 +86,8 @@ const callBootstrapRpc = async (name: string, args: Record<string, unknown>): Pr
  */
 export const fetchAuthoritativeBootstrapSnapshot = async (
   onProgress?: BootstrapProgress,
-  expectedAdminId?: string
+  expectedAdminId?: string,
+  options: { materializeCollections?: boolean } = {}
 ): Promise<AuthoritativeBootstrapSnapshot> => {
   const isValidManifest = (candidate: any): candidate is BootstrapManifestV2 => {
     const generation = Number(candidate?.server_reset_generation);
@@ -246,17 +249,26 @@ export const fetchAuthoritativeBootstrapSnapshot = async (
     throw new Error('BOOTSTRAP_SESSION_SUPERSEDED: staging session changed before final validation');
   }
 
+  const rowCounts: Record<string, number> = {};
   for (const collection of BOOTSTRAP_COLLECTIONS) {
     if (finalSession.completed[collection] !== true) {
       throw new Error(`BOOTSTRAP_COLLECTION_INCOMPLETE[${collection}]`);
     }
-    const rows = await readBootstrapStagedCollection(session.sessionId, collection);
     const expectedCount = finalSession.rowCounts[collection] ?? 0;
-    if (rows.length !== expectedCount) {
-      throw new Error(`BOOTSTRAP_STAGING_COUNT_MISMATCH[${collection}]: expected ${expectedCount}, received ${rows.length}`);
+    const actualCount = await countBootstrapStagedCollection(session.sessionId, collection);
+    if (actualCount !== expectedCount) {
+      throw new Error(`BOOTSTRAP_STAGING_COUNT_MISMATCH[${collection}]: expected ${expectedCount}, received ${actualCount}`);
     }
-    snapshot[collection] = rows;
+    rowCounts[collection] = expectedCount;
+    if (options.materializeCollections !== false) {
+      const rows = await readBootstrapStagedCollection(session.sessionId, collection);
+      if (rows.length !== expectedCount) {
+        throw new Error(`BOOTSTRAP_STAGING_READ_MISMATCH[${collection}]: expected ${expectedCount}, received ${rows.length}`);
+      }
+      snapshot[collection] = rows;
+    }
   }
+  snapshot.bootstrap_row_counts = rowCounts;
 
   return snapshot as AuthoritativeBootstrapSnapshot;
 };
