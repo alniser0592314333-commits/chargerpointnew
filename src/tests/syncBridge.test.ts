@@ -156,6 +156,29 @@ describe('CENTRAL SYNC BRIDGE + CUSTOMERS PILOT TESTS', () => {
     expect(syncSpy).not.toHaveBeenCalled();
   });
 
+  it('advances pull-only cursor across pages with no visible tenant changes', async () => {
+    await localDb.setSyncState({
+      table: 'global',
+      lastAppliedChangeSequence: 0,
+      lastPulledAt: '',
+      resetGeneration: 1,
+      status: 'READY',
+      reconciliationRequired: false,
+    });
+    const pullSpy = vi.spyOn((globalSyncEngine as any).transport, 'pullChanges')
+      .mockImplementation(async (cursor: number) => ({
+        changes: [],
+        // Simulate a page containing only purchase changes for other admins.
+        latestSequence: cursor === 0 ? 500 : 500,
+        serverResetGeneration: 1,
+      }));
+
+    await globalSyncBridge.requestLatestDataReload();
+
+    expect(pullSpy.mock.calls.map(([cursor]) => cursor)).toEqual([0, 500]);
+    expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(500);
+  });
+
   it('runs queued outbox work if a local commit notifies during pull-only reload', async () => {
     await localDb.setSyncState({
       table: 'global',
