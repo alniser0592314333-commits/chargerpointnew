@@ -78,9 +78,12 @@ describe('Purchase book local-first architecture contract', () => {
     for (const table of ['purchase_suppliers','purchase_items','purchase_payment_methods','purchase_months','purchase_weeks','purchase_days','purchase_orders']) {
       expect(migration).toContain(`'${table}'`);
     }
-    expect(store).toContain('purchaseSuppliersRes');
-    expect(store).toContain('purchaseWeeksRes');
-    expect(store).toContain('purchaseOrdersRes');
+    expect(store).toContain('materializeCollections: false');
+    expect(store).toContain('bootstrap_row_counts');
+    expect(store).toContain('const rows = await readCollection(collection)');
+    expect(store).toContain("['suppliers', 'purchase_suppliers']");
+    expect(store).toContain("['weeks', 'purchase_weeks']");
+    expect(store).toContain("['orders', 'purchase_orders']");
     expect(backup).toContain("localDb.list('purchaseOrders')");
     expect(backup).toContain('currentBackupAdminId');
     expect(backup).toContain('isOwnedPurchaseRow(row, activeAdminId)');
