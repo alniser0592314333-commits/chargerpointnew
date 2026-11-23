@@ -82,6 +82,11 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   },[ar]);
   useEffect(()=>{getPurchaseWeekStartDay().then(setWeekStartDay).catch(e=>setError(e.message));},[]);
   useEffect(()=>{setSupplierIdValue(supplierId || '');},[supplierId]);
+  useEffect(()=>{
+    if(!notice)return;
+    const timeoutId=window.setTimeout(()=>setNotice(''),3000);
+    return ()=>window.clearTimeout(timeoutId);
+  },[notice]);
 
   const activeSuppliers=suppliers.filter(x=>x.isActive);
   const activeItems=items.filter(x=>x.isActive);
@@ -241,7 +246,7 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
       </div>}
 
       {error&&<div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-200 p-3 text-xs flex gap-2"><CircleAlert className="w-4 h-4 shrink-0"/>{error}</div>}
-      {notice&&<div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900 dark:text-emerald-200 p-3 text-xs">{notice}</div>}
+      {notice&&<div role="status" aria-live="polite" className="fixed top-4 left-1/2 -translate-x-1/2 z-[90] max-w-[calc(100vw-2rem)] rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/95 dark:border-emerald-900 dark:text-emerald-200 px-4 py-3 text-xs font-semibold shadow-lg text-center">{notice}</div>}
 
       {loading?<div className="animate-pulse space-y-3"><div className="h-28 rounded-xl bg-gray-100 dark:bg-[#082622]"/><div className="h-48 rounded-xl bg-gray-100 dark:bg-[#082622]"/></div>:<>
         {pageLevel==='months'&&<section className="border-y border-gray-200 dark:border-[#14423b] py-4">
