@@ -305,6 +305,11 @@ export interface ChangeLogEntry {
 
 export interface SyncPullResponse {
   changes: ChangeLogEntry[];
+  /**
+   * Last global sequence scanned by this page. It may exceed the last visible
+   * change when tenant-filtered purchase rows are omitted; callers must persist
+   * this cursor even when the visible changes array is empty.
+   */
   latestSequence: number;
   serverResetGeneration?: number;
 }
