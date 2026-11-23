@@ -58,7 +58,7 @@ import { NotFoundPage } from './components/pages/NotFoundPage';
 import { UnauthorizedPage } from './components/pages/UnauthorizedPage';
 import { AdminManagementPage } from './components/pages/AdminManagementPage';
 import { UserSession } from './services/auth/authService';
-import { getSupabaseAuthToken, registerSuspensionHandler } from './services/supabase/client';
+import { getSupabaseAuthToken, registerSuspensionHandler, setSupabaseAuthToken } from './services/supabase/client';
 import { startNativePushNotifications, stopNativePushNotifications } from './services/nativePushNotifications';
 import { ShieldAlert } from 'lucide-react';
 import { DesignSystemPlayground } from './components/playground/DesignSystemPlayground';
@@ -148,6 +148,43 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
   const [userSession, setUserSession] = useState<UserSession | null>(null);
+
+  // Supabase Auth is persisted per origin, so signing into another account in a
+  // second tab changes the identity shared by every tab. A storage event is not
+  // emitted in the tab that performed the write; the initiating tab continues
+  // through its normal login/logout flow. Other tabs must discard their in-memory
+  // role, permissions and read models by restarting against the newly selected
+  // persisted identity. Token rotation for the same user only updates the bearer.
+  useEffect(() => {
+    const authStorageKey = 'supabase_auth_session';
+    const readIdentity = (raw: string | null): { userId: string; accessToken: string } | null => {
+      if (!raw) return null;
+      try {
+        const value = JSON.parse(raw);
+        const userId = typeof value?.user?.id === 'string' ? value.user.id : '';
+        const accessToken = typeof value?.access_token === 'string' ? value.access_token : '';
+        return userId && accessToken ? { userId, accessToken } : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const handleAuthStorageChange = (event: StorageEvent) => {
+      if (event.key !== authStorageKey) return;
+      const previous = readIdentity(event.oldValue);
+      const next = readIdentity(event.newValue);
+      setSupabaseAuthToken(next?.accessToken || null);
+
+      if (previous?.userId !== next?.userId) {
+        // Do not keep the previous account's React permissions or in-memory
+        // operational maps alive under a different shared Auth identity.
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener('storage', handleAuthStorageChange);
+    return () => window.removeEventListener('storage', handleAuthStorageChange);
+  }, []);
 
   useEffect(() => {
     if (!userSession) return;
