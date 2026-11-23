@@ -93,15 +93,17 @@ export const resolveAuthBearerToken = (customAuthToken?: string): string | null 
   if (customAuthToken && customAuthToken.trim()) {
     return customAuthToken.trim();
   }
-  if (activeAuthToken && activeAuthToken.trim()) {
-    return activeAuthToken.trim();
-  }
+
+  // localStorage is shared by every same-origin tab/WebView. It is therefore
+  // the source of truth for the currently selected account; an in-memory token
+  // may belong to the account that was active before another tab switched users.
   const stored = getStoredSupabaseAuthSession();
   if (stored?.access_token && stored.access_token.trim()) {
     activeAuthToken = stored.access_token.trim();
     return activeAuthToken;
   }
-  return null;
+
+  return activeAuthToken && activeAuthToken.trim() ? activeAuthToken.trim() : null;
 };
 
 export const getSupabaseAuthToken = (): string | null => {
@@ -152,10 +154,17 @@ const getLocalStorage = () => {
 };
 
 export const saveStoredSupabaseAuthSession = (session: SupabaseAuthSession) => {
+  // Keep this execution context aligned with the persisted account immediately.
+  // Other contexts are reconciled by the browser storage event.
+  setSupabaseAuthToken(session?.access_token || null);
   const storage = getLocalStorage();
   if (storage) {
     try {
-      storage.setItem(SUPABASE_AUTH_STORAGE_KEY, JSON.stringify(session));
+      if (session?.access_token && session?.user?.id) {
+        storage.setItem(SUPABASE_AUTH_STORAGE_KEY, JSON.stringify(session));
+      } else {
+        storage.removeItem(SUPABASE_AUTH_STORAGE_KEY);
+      }
     } catch {}
   }
 };
