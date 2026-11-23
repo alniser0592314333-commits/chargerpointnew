@@ -14,7 +14,7 @@ import { clearActiveBootstrapStagingSession } from '../infrastructure/sync/boots
 describe('streamed authoritative bootstrap snapshot', () => {
   beforeEach(() => {
     vi.stubGlobal('indexedDB', undefined);
-    vi.mocked(invokeSupabaseRpc).mockImplementation(async (name: string, args: Record<string, unknown>) => {
+    vi.mocked(invokeSupabaseRpc).mockImplementation(async (name: string, args?: Record<string, unknown>) => {
       if (name === 'begin_sync_bootstrap') {
         return {
           data: {
@@ -32,7 +32,7 @@ describe('streamed authoritative bootstrap snapshot', () => {
       if (name === 'read_sync_bootstrap_page') {
         return {
           data: {
-            entity_type: args.p_entity_type,
+            entity_type: args?.p_entity_type,
             rows: [],
             has_more: false,
             next_cursor: null,
