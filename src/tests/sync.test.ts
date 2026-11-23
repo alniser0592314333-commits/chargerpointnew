@@ -253,8 +253,9 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     const result = await pagedEngine.synchronize();
 
     expect(result.pulled).toBe(501);
-    // The final authoritative verification performs one additional empty read at the committed cursor.
-    expect(requestedCursors).toEqual([0, 500, 501]);
+    // Preflight drains both pages and confirms completion; final verification
+    // performs its own empty read at the committed cursor.
+    expect(requestedCursors).toEqual([0, 500, 501, 501]);
     expect((await localDb.getSyncState('global'))?.lastAppliedChangeSequence).toBe(501);
     expect(await localDb.get('customers', 'customer-501')).toEqual({
       id: 'customer-501',
