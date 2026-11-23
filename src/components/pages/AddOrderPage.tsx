@@ -714,7 +714,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
               variant="outline"
               size="sm"
               onClick={handleAddDeviceRow}
-              className="w-full sm:w-auto gap-1.5 text-xs h-9"
+              className="w-full sm:w-auto gap-1.5 text-xs h-9 backdrop-blur-none transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{t('addDevice')}</span>

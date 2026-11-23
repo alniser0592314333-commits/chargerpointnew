@@ -39,19 +39,39 @@ export function formatWeekday(
   if (!dateInput) return '';
 
   try {
-    let date: Date;
-    if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
-      const [year, month, day] = dateInput.split('-').map(Number);
-      date = new Date(year, month - 1, day);
+    // Business days are calendar dates, not moments in time. Preserve the
+    // YYYY-MM-DD portion from Postgres even if a client serializes it as an
+    // ISO timestamp, and calculate the weekday in UTC to avoid device timezone
+    // differences changing the displayed day.
+    let weekdayIndex: number;
+    if (typeof dateInput === 'string') {
+      const calendarDate = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(dateInput);
+      if (calendarDate) {
+        const year = Number(calendarDate[1]);
+        const month = Number(calendarDate[2]);
+        const day = Number(calendarDate[3]);
+        const utcDate = new Date(Date.UTC(year, month - 1, day));
+        if (
+          utcDate.getUTCFullYear() !== year ||
+          utcDate.getUTCMonth() !== month - 1 ||
+          utcDate.getUTCDate() !== day
+        ) return '';
+
+        weekdayIndex = utcDate.getUTCDay();
+      } else {
+        const date = new Date(dateInput);
+        if (isNaN(date.getTime())) return '';
+        weekdayIndex = date.getDay();
+      }
     } else {
-      date = new Date(dateInput);
+      if (isNaN(dateInput.getTime())) return '';
+      weekdayIndex = dateInput.getDay();
     }
 
-    if (isNaN(date.getTime())) return '';
-
-    return date.toLocaleDateString(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', {
-      weekday: 'long',
-    });
+    const weekdays = locale === 'ar'
+      ? ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']
+      : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return weekdays[weekdayIndex] || '';
   } catch {
     return '';
   }
