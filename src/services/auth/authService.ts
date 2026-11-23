@@ -277,14 +277,14 @@ class DefaultAuthService implements AuthService {
     if (!this.isSupabaseConfigured()) {
       return null;
     }
-    const token = getSupabaseAuthToken();
     const stored = getStoredSupabaseAuthSession();
-    if (stored?.access_token) {
-      if (!token) {
-        setSupabaseAuthToken(stored.access_token);
-      }
+    if (stored?.access_token && stored?.user?.id) {
+      // The persisted session is shared across tabs. Never keep using a token
+      // cached in this module when another tab has selected a different account.
+      setSupabaseAuthToken(stored.access_token);
       return stored;
     }
+    setSupabaseAuthToken(null);
     return null;
   }
 
@@ -1032,13 +1032,29 @@ class DefaultAuthService implements AuthService {
       return null;
     }
 
+    let activeSupabaseSession: SupabaseAuthSession | null = null;
     if (this.isSupabaseConfigured()) {
-      // Validate that Supabase Auth token is active and valid
-      const supabaseSession = await this.getSupabaseAuthSession();
-      if (!supabaseSession?.access_token) {
+      // Validate that Supabase Auth token is active and valid. getSupabaseAuthSession
+      // also reconciles this module's bearer token with the shared persisted session.
+      activeSupabaseSession = await this.getSupabaseAuthSession();
+      if (!activeSupabaseSession?.access_token) {
         await this.logout();
         return null;
       }
+    }
+
+    const activeAuthEmail = activeSupabaseSession?.user?.email?.trim().toLowerCase() || "";
+    if (
+      inMemorySession &&
+      activeAuthEmail &&
+      inMemorySession.email.trim().toLowerCase() !== activeAuthEmail
+    ) {
+      // A different Supabase identity is now active (usually from another tab).
+      // Discard the previous account's cached role/permissions before returning
+      // anything to the UI.
+      inMemorySession = null;
+      const storage = getLocalStorage();
+      storage?.removeItem(SESSION_STORAGE_KEY);
     }
 
     if (!forceRefresh && inMemorySession && new Date(inMemorySession.tokenExpiresAt).getTime() > Date.now()) {
@@ -1078,6 +1094,18 @@ class DefaultAuthService implements AuthService {
         } catch {
           storage.removeItem(SESSION_STORAGE_KEY);
         }
+      }
+
+      // A profile cache is valid only for the Supabase identity that is currently
+      // selected in this origin. Never fall back to another admin's cached role
+      // when the new account's profile request is offline or times out.
+      if (
+        storedSession &&
+        activeAuthEmail &&
+        storedSession.email.trim().toLowerCase() !== activeAuthEmail
+      ) {
+        storedSession = null;
+        storage.removeItem(SESSION_STORAGE_KEY);
       }
 
       // A successful server profile read is authoritative even when the local
