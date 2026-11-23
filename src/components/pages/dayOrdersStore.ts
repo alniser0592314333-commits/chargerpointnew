@@ -44,6 +44,7 @@ import { SyncEngine, syncEventEmitter } from '../../infrastructure/sync/syncEngi
 import { SupabaseSyncTransport } from '../../infrastructure/sync/SupabaseSyncTransport';
 import { BOOTSTRAP_COLLECTIONS, fetchAuthoritativeBootstrapSnapshot } from '../../infrastructure/sync/bootstrapSnapshot';
 import { clearActiveBootstrapStagingSession, clearBootstrapStagingSession } from '../../infrastructure/sync/bootstrapStagingStore';
+import { shouldAttemptBootstrapRecovery } from '../../infrastructure/sync/bootstrapRecovery';
 
 import { Locale } from '../../i18n/translations';
 import { getLocalBusinessDateStr } from '../../utils/dateFormatter';
@@ -1712,14 +1713,19 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     // browser/tab is terminated mid-install, the next boot must not trust an old
     // READY checkpoint against a partially replaced dataset.
     const preBootstrapSyncState = await localDb.getSyncState('global');
-    await localDb.setSyncState({
-      ...(preBootstrapSyncState || {
-        table: 'global',
-        lastAppliedChangeSequence: 0,
-        lastPulledAt: '',
-      }),
-      status: 'INITIALIZING',
-      reconciliationRequired: true,
+    // Commit the durable barrier before touching any operational rows. A plain
+    // setSyncState() only queues an IndexedDB put; it does not await transaction
+    // completion, so a process kill could otherwise race the first clear.
+    await localDb.runTransaction(['syncState'], 'readwrite', (tx) => {
+      localDb.setSyncStateWithTx(tx, {
+        ...(preBootstrapSyncState || {
+          table: 'global',
+          lastAppliedChangeSequence: 0,
+          lastPulledAt: '',
+        }),
+        status: 'INITIALIZING',
+        reconciliationRequired: true,
+      });
     });
     localMutationStarted = true;
     await localDb.clearOperationalData({
@@ -2462,19 +2468,22 @@ export const ensureStoreHydrated = async (): Promise<void> => {
     if (getSupabaseStatus().isConfigured) {
       const isResetCompleted = await localDb.isLocalResetCompleted();
       const isInitialHydrationDone = await localDb.isInitialHydrationCompleted();
+      const priorSyncState = await localDb.getSyncState('global');
+      const shouldRunBootstrapRecovery = shouldAttemptBootstrapRecovery({
+        isResetCompleted,
+        isInitialHydrationDone,
+        syncStatus: priorSyncState?.status,
+      });
 
       // If a prior install committed READY but the browser closed before its
       // staging cleanup, the active local checkpoint is authoritative and the
       // orphaned staging generation can now be safely reclaimed.
-      if (isInitialHydrationDone) {
-        const readyCheckpoint = await localDb.getSyncState('global');
-        if (readyCheckpoint?.status === 'READY') {
-          try { await clearActiveBootstrapStagingSession(); }
-          catch (cleanupError) { console.warn('Deferred bootstrap staging cleanup failed:', cleanupError); }
-        }
+      if (isInitialHydrationDone && priorSyncState?.status === 'READY') {
+        try { await clearActiveBootstrapStagingSession(); }
+        catch (cleanupError) { console.warn('Deferred bootstrap staging cleanup failed:', cleanupError); }
       }
 
-      if (!isResetCompleted && !isInitialHydrationDone) {
+      if (shouldRunBootstrapRecovery) {
         // Initial bootstrap is required for a truly empty client. If the remote
         // read fails before local replacement, an existing persisted cache may
         // still be used offline; a fresh client must not enter with an empty model.
@@ -2482,8 +2491,9 @@ export const ensureStoreHydrated = async (): Promise<void> => {
           persistedCustomers, persistedDevices, persistedDays, persistedOrders,
           persistedItems, persistedLedger, persistedPayments, persistedAllocations,
           persistedReservations, persistedQrTokens, persistedGoals, persistedGoalRequests,
+          persistedPurchaseSuppliers, persistedPurchaseItems, persistedPurchaseMethods,
+          persistedPurchaseMonths, persistedPurchaseWeeks, persistedPurchaseDays, persistedPurchaseOrders,
         ].some((records) => records.length > 0);
-        const priorSyncState = await localDb.getSyncState('global');
         const hasTrustedLocalCheckpoint = Boolean(
           priorSyncState &&
           Number.isSafeInteger(priorSyncState.resetGeneration) &&
