@@ -310,7 +310,7 @@ describe('Phase 4 Offline & Sync Engine Test Suite', () => {
     const result = await finalPagingEngine.synchronize();
     const state = await localDb.getSyncState('global');
     expect(result.pulled).toBe(501);
-    expect(requestedCursors).toEqual([0, 0, 500]);
+    expect(requestedCursors).toEqual([0, 0, 500, 501]);
     expect(state?.lastAppliedChangeSequence).toBe(501);
     expect(state?.status).toBe('READY');
     expect(await localDb.get('customers', 'final-customer-501')).toBeDefined();
