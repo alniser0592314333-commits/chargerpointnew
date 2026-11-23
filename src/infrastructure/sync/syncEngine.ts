@@ -377,7 +377,9 @@ export class MockServerSyncTransport implements ServerSyncTransport {
     const relevant = this.changeLog.filter(c => c.sequenceId > cursor).slice(0, maxLimit);
     return {
       changes: relevant,
-      latestSequence: this.currentSequence,
+      // Match the production RPC contract: this is the last sequence scanned
+      // in this page, not the global high-water mark beyond any remaining page.
+      latestSequence: relevant.length > 0 ? relevant[relevant.length - 1].sequenceId : cursor,
       serverResetGeneration: 1,
     };
   }
@@ -718,11 +720,14 @@ export class SyncEngine {
       // not merely the last visible row, or a trailing hidden page can starve
       // every later change indefinitely.
       while (true) {
-        const pageCursor = Number(pullRes.latestSequence);
+        const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+        const reportedPageCursor = pullRes.latestSequence;
+        const pageCursor = reportedPageCursor === undefined || reportedPageCursor === null
+          ? (sortedChanges.length > 0 ? sortedChanges[sortedChanges.length - 1].sequenceId : pullCursor)
+          : Number(reportedPageCursor);
         if (!Number.isSafeInteger(pageCursor) || pageCursor < pullCursor) {
           throw new Error('CHANGE_LOG_PULL_INVALID_LATEST_SEQUENCE: invalid server scan cursor');
         }
-        const sortedChanges = [...pullRes.changes].sort((a, b) => a.sequenceId - b.sequenceId);
         if (sortedChanges.some((change, index) =>
           !Number.isSafeInteger(change.sequenceId) ||
           change.sequenceId <= pullCursor ||
@@ -1259,11 +1264,14 @@ export class SyncEngine {
         // hidden by tenant filtering. latestSequence is the server's scan cursor,
         // not necessarily the last sequence visible in this admin's response.
         while (true) {
-          const pageCursor = Number(finalPull.latestSequence);
+          const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
+          const reportedPageCursor = finalPull.latestSequence;
+          const pageCursor = reportedPageCursor === undefined || reportedPageCursor === null
+            ? (sortedFinalChanges.length > 0 ? sortedFinalChanges[sortedFinalChanges.length - 1].sequenceId : finalCursor)
+            : Number(reportedPageCursor);
           if (!Number.isSafeInteger(pageCursor) || pageCursor < finalCursor) {
             throw new Error('FINAL_PULL_INVALID_LATEST_SEQUENCE: invalid server scan cursor');
           }
-          const sortedFinalChanges = [...finalPull.changes].sort((a, b) => a.sequenceId - b.sequenceId);
           if (sortedFinalChanges.some((change, index) =>
             !Number.isSafeInteger(change.sequenceId) ||
             change.sequenceId <= finalCursor ||
