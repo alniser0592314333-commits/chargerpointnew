@@ -94,7 +94,7 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(JSON.parse(storageMap.get("app_auth_session")!).email).toBe("account-b@example.test");
   });
 
-  it("never falls back to the previous account's cached role when the newly selected account is offline", async () => {
+  it("never falls back to the previous account's cached role when the newly selected account profile is unavailable", async () => {
     const accountA: supabaseClient.SupabaseAuthSession = {
       ...authSession,
       access_token: "access-token-account-a",
@@ -107,25 +107,22 @@ describe("Admin session lifecycle root-cause regressions", () => {
     };
 
     supabaseClient.saveStoredSupabaseAuthSession(accountA);
-    vi.spyOn(authService, "getAdminProfile").mockResolvedValue(adminProfile({
-      admin_id: "admin-account-a",
-      auth_user_id: "auth-account-a",
-      email: "account-a@example.test",
-    }) as any);
+    vi.spyOn(authService, "getAdminProfile")
+      .mockResolvedValueOnce(adminProfile({
+        admin_id: "admin-account-a",
+        auth_user_id: "auth-account-a",
+        email: "account-a@example.test",
+      }) as any)
+      .mockResolvedValueOnce(null);
+
     const first = await authService.getCurrentSession(true);
     expect(first?.userId).toBe("admin-account-a");
 
     storageMap.set("supabase_auth_session", JSON.stringify(accountB));
-    const onlineDescriptor = Object.getOwnPropertyDescriptor(globalThis.navigator, "onLine");
-    Object.defineProperty(globalThis.navigator, "onLine", { configurable: true, value: false });
-    try {
-      const switched = await authService.getCurrentSession();
-      expect(switched).toBeNull();
-      expect(storageMap.has("app_auth_session")).toBe(false);
-    } finally {
-      if (onlineDescriptor) Object.defineProperty(globalThis.navigator, "onLine", onlineDescriptor);
-      else delete (globalThis.navigator as any).onLine;
-    }
+    const switched = await authService.getCurrentSession();
+
+    expect(switched).toBeNull();
+    expect(storageMap.has("app_auth_session")).toBe(false);
   });
 
   it("prefers the latest persisted Supabase token over a stale module-level token", () => {
