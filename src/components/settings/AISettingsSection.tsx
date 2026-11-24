@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { Button } from "../ui/Button";
 import {
@@ -15,7 +16,7 @@ import {
   type SarahAIProviderConfig,
   type SarahAIGenerationConfig,
 } from "../../services/ai/aiSettingsService";
-import { createSarahIntegrationPackage } from "../../application/ai/sarahIntegrationPackage";
+import { createSarahIntegrationPackage, SARAH_INTEGRATION_PACKAGE_FORMAT, SARAH_INTEGRATION_PACKAGE_VERSION } from "../../application/ai/sarahIntegrationPackage";
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -24,6 +25,8 @@ const errorMessage = (code: string, locale: "ar" | "en") => {
     AUTH_SESSION_REQUIRED: ["الجلسة غير صالحة. سجّل الدخول من جديد.", "Your session is unavailable. Sign in again."],
     AI_MANAGE_PERMISSION_REQUIRED: ["ما عندك صلاحية إدارة إعدادات الذكاء الاصطناعي.", "You do not have permission to manage AI settings."],
     PROVIDER_CONFIGURATION_REJECTED: ["الخادم رفض إعدادات المزود. راجع القيم المدخلة.", "The server rejected the provider settings. Review the supplied values."],
+    INVALID_INTEGRATION_PACKAGE: ["ملف التكامل غير صالح أو غير مدعوم.", "The integration package is invalid or unsupported."],
+    IMPORT_PROVIDER_NOT_IMPLEMENTED: ["الحزمة لمزود غير مفعّل في هذا الإصدار. أضف Adapter للمزود أولًا.", "The package uses a provider that is not installed in this version. Add its adapter first."],
     ADMIN_SESSION_UNAVAILABLE: ["تعذر التحقق من جلسة الأدمن الحالية.", "The current administrator session could not be verified."],
     PROVIDER_NOT_CONFIGURED: ["احفظ إعدادات Gemini ومفتاح API أولًا.", "Save the Gemini settings and API key first."],
     API_KEY_REQUIRED: ["أدخل Gemini API Key لأول مرة.", "Enter a Gemini API key to configure the provider."],
@@ -58,6 +61,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [connection, setConnection] = useState<"connected" | "failed" | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const isArabic = locale === "ar";
 
@@ -186,6 +190,51 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const importPackage = async (file?: File) => {
+    if (!file) return;
+    setError("");
+    setNotice("");
+    try {
+      const parsed = JSON.parse(await file.text()) as Record<string, any>;
+      if (parsed.format !== SARAH_INTEGRATION_PACKAGE_FORMAT ||
+        parsed.schemaVersion !== SARAH_INTEGRATION_PACKAGE_VERSION ||
+        !parsed.provider || typeof parsed.provider !== "object") {
+        throw new Error("INVALID_INTEGRATION_PACKAGE");
+      }
+      if (parsed.provider.providerId !== "gemini") {
+        throw new Error("IMPORT_PROVIDER_NOT_IMPLEMENTED");
+      }
+      const importedModel = typeof parsed.provider.modelId === "string"
+        ? parsed.provider.modelId.trim()
+        : "";
+      const importedConfig = parsed.provider.generationConfig || {};
+      if (!/^[A-Za-z0-9._:-]{1,128}$/.test(importedModel) ||
+        typeof importedConfig !== "object" || Array.isArray(importedConfig)) {
+        throw new Error("INVALID_INTEGRATION_PACKAGE");
+      }
+      const nextTemperature = Number(importedConfig.temperature ?? 0.2);
+      const nextTokens = Number(importedConfig.maxOutputTokens ?? 2048);
+      const nextTimeout = Number(importedConfig.timeoutMs ?? 30000);
+      if (!Number.isFinite(nextTemperature) || nextTemperature < 0 || nextTemperature > 2 ||
+        !Number.isInteger(nextTokens) || nextTokens < 1 || nextTokens > 65536 ||
+        !Number.isInteger(nextTimeout) || nextTimeout < 5000 || nextTimeout > 120000) {
+        throw new Error("INVALID_INTEGRATION_PACKAGE");
+      }
+      setModelId(importedModel);
+      setTemperature(String(nextTemperature));
+      setMaxOutputTokens(String(nextTokens));
+      setTimeoutMs(String(nextTimeout));
+      setApiKey("");
+      setNotice(isArabic
+        ? "تم تحميل إعدادات الحزمة. راجعها ثم احفظها؛ مفتاح API غير موجود في ملف التصدير ويجب إدخاله بشكل منفصل."
+        : "Package settings loaded. Review and save them; the API key is intentionally excluded and must be entered separately.");
+    } catch (cause) {
+      setError(errorMessage(cause instanceof Error ? cause.message : "INVALID_INTEGRATION_PACKAGE", locale));
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
   };
 
   return (
@@ -349,6 +398,17 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
                 {isArabic ? "تصدير حزمة التكامل" : "Export Integration Package"}
               </Button>
             )}
+            <Button type="button" variant="outline" onClick={() => importInputRef.current?.click()} disabled={saving || clearing}>
+              <Upload className="w-4 h-4" />
+              {isArabic ? "استيراد حزمة التكامل" : "Import Integration Package"}
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => void importPackage(event.target.files?.[0])}
+            />
             {config && (
               <Button type="button" variant="danger" onClick={() => void clearConfig()} isLoading={clearing} disabled={saving || testing}>
                 <Trash2 className="w-4 h-4" />
