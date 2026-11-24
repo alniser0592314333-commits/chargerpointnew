@@ -148,6 +148,11 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/wallet_management_security_contract.test.ts src/tests/wallet_activation_flow_contract.test.ts
+      - name: Run Sarah AI provider settings security contracts
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/sarah_ai_settings_contract.test.ts
 
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
@@ -167,6 +172,8 @@ jobs:
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/customer-account/index.ts
       - name: Type-check isolated wallet management Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/wallet-service/index.ts
+      - name: Type-check Sarah AI provider settings Edge Function
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sarah-ai-settings/index.ts
       - name: Type-check shared business-hours Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/business-hours/index.ts
       - name: Type-check authenticated debt reminder Edge Function
