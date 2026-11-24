@@ -1,5 +1,5 @@
 import { config } from "../../config/env";
-import { authService } from "../auth/authService";
+import { getFreshSupabaseAuthToken } from "../supabase/client";
 
 export type SarahAIProviderId = "gemini";
 
@@ -41,8 +41,8 @@ const invoke = async <T extends Record<string, unknown>>(
   action: string,
   payload: Record<string, unknown> = {},
 ): Promise<GatewayResponse<T>> => {
-  const session = await authService.getSupabaseAuthSession();
-  if (!session?.access_token) throw new Error("AUTH_SESSION_REQUIRED");
+  const freshSession = await getFreshSupabaseAuthToken();
+  if (!freshSession.token) throw new Error(freshSession.reason || "AUTH_SESSION_REQUIRED");
 
   let response: Response;
   try {
@@ -50,7 +50,7 @@ const invoke = async <T extends Record<string, unknown>>(
       method: "POST",
       headers: {
         apikey: config.supabaseAnonKey,
-        Authorization: `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${freshSession.token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ action, ...payload }),
