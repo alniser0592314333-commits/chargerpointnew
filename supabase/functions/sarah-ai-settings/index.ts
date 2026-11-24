@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getAIProviderAdapter } from "../_shared/ai/providerRegistry.ts";
 
 type Json = Record<string, unknown>;
 type GenerationConfig = {
@@ -8,7 +9,6 @@ type GenerationConfig = {
 };
 
 const MAX_BODY_BYTES = 16 * 1024;
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -54,19 +54,9 @@ const parseGenerationConfig = (value: unknown): GenerationConfig | null => {
   return result;
 };
 
-const normalizeModelId = (value: unknown): string => {
-  const raw = normalize(value, 128).replace(/^models\//, "");
-  return /^[A-Za-z0-9._:-]{1,128}$/.test(raw) ? raw : "";
-};
 
-const mapGeminiError = (status: number) => {
-  if (status === 400) return "MODEL_REQUEST_REJECTED";
-  if (status === 401 || status === 403) return "GEMINI_API_KEY_REJECTED";
-  if (status === 404) return "GEMINI_MODEL_NOT_FOUND";
-  if (status === 429) return "GEMINI_QUOTA_OR_RATE_LIMIT";
-  if (status >= 500) return "GEMINI_PROVIDER_UNAVAILABLE";
-  return "GEMINI_CONNECTION_FAILED";
-};
+
+
 
 const readRequestBody = async (request: Request): Promise<Json | null> => {
   const declaredLength = Number(request.headers.get("content-length") || 0);
@@ -145,14 +135,15 @@ Deno.serve(async (request: Request) => {
 
   if (action === "save") {
     const providerId = normalize(body.providerId, 64);
-    const modelId = normalizeModelId(body.modelId);
+    const modelId = normalize(body.modelId, 128).replace(/^models\\//, "");
     const generationConfig = parseGenerationConfig(body.generationConfig ?? {});
     const apiKey = body.apiKey === undefined ? null : normalize(body.apiKey, 512);
+    const adapter = getAIProviderAdapter(providerId);
 
-    // Gemini is the first installed adapter. The schema remains provider-neutral,
-    // but an unimplemented provider is never accepted as if it were supported.
-    if (providerId !== "gemini") return respond(400, { ok: false, error: "PROVIDER_NOT_IMPLEMENTED" });
-    if (!modelId || !generationConfig) return respond(400, { ok: false, error: "INVALID_PROVIDER_CONFIGURATION" });
+    if (!adapter) return respond(400, { ok: false, error: "PROVIDER_NOT_IMPLEMENTED" });
+    if (!adapter.validateModelId(modelId) || !generationConfig) {
+      return respond(400, { ok: false, error: "INVALID_PROVIDER_CONFIGURATION" });
+    }
     if (body.apiKey !== undefined && (!apiKey || apiKey.length < 20)) {
       return respond(400, { ok: false, error: "INVALID_API_KEY_FORMAT" });
     }
@@ -182,42 +173,26 @@ Deno.serve(async (request: Request) => {
     if (configError || !configRow || configRow.enabled !== true) {
       return respond(400, { ok: false, error: "PROVIDER_NOT_CONFIGURED" });
     }
-    if (configRow.provider_id !== "gemini") {
-      return respond(400, { ok: false, error: "PROVIDER_NOT_IMPLEMENTED" });
-    }
+    const adapter = getAIProviderAdapter(configRow.provider_id);
+    if (!adapter) return respond(400, { ok: false, error: "PROVIDER_NOT_IMPLEMENTED" });
 
     const { data: secret, error: secretError } = await admin.rpc("sarah_ai_get_provider_secret");
     if (secretError || typeof secret !== "string" || !secret) {
       return respond(503, { ok: false, error: "PROVIDER_CREDENTIAL_UNAVAILABLE" });
     }
 
-    const controller = new AbortController();
-    const timeoutMs = Number((configRow.generation_config as Record<string, unknown>)?.timeoutMs || 15000);
-    const timeout = setTimeout(() => controller.abort(), Math.min(Math.max(timeoutMs, 5000), 120000));
-    try {
-      const response = await fetch(
-        `${GEMINI_API_BASE}/models/${encodeURIComponent(configRow.model_id)}`,
-        {
-          method: "GET",
-          headers: { "x-goog-api-key": secret },
-          signal: controller.signal,
-        },
-      );
-      if (!response.ok) {
-        return respond(200, { ok: true, connected: false, error: mapGeminiError(response.status) });
-      }
-      return respond(200, { ok: true, connected: true, providerId: "gemini", modelId: configRow.model_id });
-    } catch (error) {
-      return respond(200, {
-        ok: true,
-        connected: false,
-        error: error instanceof DOMException && error.name === "AbortError"
-          ? "GEMINI_CONNECTION_TIMEOUT"
-          : "GEMINI_CONNECTION_FAILED",
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
+    const result = await adapter.testConnection({
+      providerId: configRow.provider_id,
+      modelId: configRow.model_id,
+      generationConfig: (configRow.generation_config || {}) as Record<string, unknown>,
+    }, secret);
+    return respond(200, {
+      ok: true,
+      connected: result.connected,
+      providerId: configRow.provider_id,
+      modelId: configRow.model_id,
+      ...(result.error ? { error: result.error } : {}),
+    });
   }
 
   if (action === "clear") {
