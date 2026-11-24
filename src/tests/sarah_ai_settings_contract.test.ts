@@ -32,6 +32,9 @@ describe("Sarah AI provider settings security contract", () => {
     expect(migration).toContain("vault.create_secret");
     expect(migration).toContain("vault.update_secret");
     expect(migration).toContain("DELETE FROM vault.secrets");
+    expect(migration.match(/COMMIT;/g) || []).toHaveLength(1);
+    expect(migration).toContain("maxOutputTokens must be an integer");
+    expect(migration).toContain("timeoutMs must be between 5000 and 120000");
   });
 
   it("validates the active admin session and ai:manage on the server before service-role access", () => {
