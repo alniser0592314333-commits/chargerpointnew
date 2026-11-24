@@ -12,8 +12,8 @@ import {
 import { Button } from "../ui/Button";
 import {
   aiSettingsService,
-  SarahAIProviderConfig,
-  SarahAIGenerationConfig,
+  type SarahAIProviderConfig,
+  type SarahAIGenerationConfig,
 } from "../../services/ai/aiSettingsService";
 import { createSarahIntegrationPackage } from "../../application/ai/sarahIntegrationPackage";
 
@@ -23,6 +23,7 @@ const errorMessage = (code: string, locale: "ar" | "en") => {
   const messages: Record<string, [string, string]> = {
     AUTH_SESSION_REQUIRED: ["الجلسة غير صالحة. سجّل الدخول من جديد.", "Your session is unavailable. Sign in again."],
     AI_MANAGE_PERMISSION_REQUIRED: ["ما عندك صلاحية إدارة إعدادات الذكاء الاصطناعي.", "You do not have permission to manage AI settings."],
+    PROVIDER_CONFIGURATION_REJECTED: ["الخادم رفض إعدادات المزود. راجع القيم المدخلة.", "The server rejected the provider settings. Review the supplied values."],
     ADMIN_SESSION_UNAVAILABLE: ["تعذر التحقق من جلسة الأدمن الحالية.", "The current administrator session could not be verified."],
     PROVIDER_NOT_CONFIGURED: ["احفظ إعدادات Gemini ومفتاح API أولًا.", "Save the Gemini settings and API key first."],
     API_KEY_REQUIRED: ["أدخل Gemini API Key لأول مرة.", "Enter a Gemini API key to configure the provider."],
@@ -43,14 +44,7 @@ const errorMessage = (code: string, locale: "ar" | "en") => {
   return match ? match[locale === "ar" ? 0 : 1] : (locale === "ar" ? "حدث خطأ غير متوقع أثناء حفظ الإعدادات." : "An unexpected error occurred while saving settings.");
 };
 
-export const AISettingsSection: React.FC = () => {
-  const [locale] = useState<"ar" | "en">(() => {
-    try {
-      return document.documentElement.lang?.toLowerCase().startsWith("en") ? "en" : "ar";
-    } catch {
-      return "ar";
-    }
-  });
+export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale }) => {
   const [config, setConfig] = useState<SarahAIProviderConfig | null>(null);
   const [modelId, setModelId] = useState("");
   const [apiKey, setApiKey] = useState("");
