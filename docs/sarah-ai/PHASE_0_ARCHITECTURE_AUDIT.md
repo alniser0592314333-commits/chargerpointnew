@@ -120,6 +120,12 @@ The current registry has no dedicated AI permissions. Add explicit permissions o
 
 Provider management should default to Super Admin only until the dedicated permission is added and enforced server-side. Do not simply reuse `settings:manage` to expose provider credentials or model spend controls to every settings manager.
 
+### Existing authorization gaps that block specific Sarah tools
+
+- **Customer deactivation:** `FinalUseCases.deactivateCustomer()` delegates to `updateCustomer(..., { isActive: false })`. The client use case checks `customers:edit`, and the live canonical dispatcher maps `UPDATE_CUSTOMER` to `customers:edit`; the inspected server function contains no `customers:deactivate` check. The separate permission exists in the permission data but is not enforced on this command path. Do not expose customer deactivation through Sarah until the shared UI/use-case/server contract is corrected and regression-tested.
+- **Credit consumption and goal request/proposal methods:** some methods in `FinalUseCases` require authentication but do not perform their own granular client-side permission assertion. The server dispatcher does enforce some corresponding command permissions, but Sarah must add an explicit permission gate before invoking them and these existing client/server contracts should be reconciled before exposing them.
+- **Purchase Book:** `purchases:manage` exists in the permissions metadata and is required by the canonical server dispatcher, but it was not present in the inspected role-permission assignments or custom permission entries. Do not assume ordinary admins can use Purchase Book; verify the actual effective permission for the actor before exposing any purchase tool.
+
 ## 5. Target architecture for Gemini-first, provider-neutral Sarah
 
 1. **Sarah UI:** chat and diagnostic UI in the admin app; separate Settings section named `إعدادات الذكاء الاصطناعي`.
