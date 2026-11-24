@@ -79,7 +79,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.sarah_ai_provider_config) THEN
     RAISE EXCEPTION 'Provider configuration was not cleared';
   END IF;
-  IF EXISTS (SELECT 1 FROM vault.secrets) THEN
+  IF EXISTS (SELECT 1 FROM vault.decrypted_secrets) THEN
     RAISE EXCEPTION 'Vault secret was not deleted with provider configuration';
   END IF;
 END;
