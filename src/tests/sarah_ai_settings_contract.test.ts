@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 describe("Sarah AI provider settings security contract", () => {
   const migration = read("supabase/migrations/20261124130000_sarah_ai_provider_configuration.sql");
   const edgeFunction = read("supabase/functions/sarah-ai-settings/index.ts");
+  const geminiAdapter = read("supabase/functions/_shared/ai/geminiProviderAdapter.ts");
   const clientService = read("src/services/ai/aiSettingsService.ts");
   const settingsPage = read("src/components/pages/SettingsPage.tsx");
   const settingsSection = read("src/components/settings/AISettingsSection.tsx");
@@ -44,7 +45,7 @@ describe("Sarah AI provider settings security contract", () => {
     expect(edgeFunction).toContain("createClient(url, serviceKey");
     expect(edgeFunction).toContain("body.apiKey");
     expect(edgeFunction).toContain('admin.rpc("sarah_ai_get_provider_secret")');
-    expect(edgeFunction).toContain('"x-goog-api-key": secret');
+    expect(geminiAdapter).toContain('"x-goog-api-key": apiKey');
     expect(edgeFunction).not.toContain("console.log");
   });
 
