@@ -7,7 +7,7 @@
 
 ## 1. Executive findings
 
-1. `@google/genai@^2.4.0` is already a dependency in `package.json`, but dependency presence is not evidence of a working Gemini integration. No Sarah page/service or AI Gateway was found in the reviewed application entry points and known service paths.
+1. `@google/genai@^2.4.0` is already a dependency in `package.json`, but GitHub code searches for `GoogleGenAI`, `@google/genai`, `generateContent`, `Sarah AI`, `aiProvider`, `audioRecorder`, and `MediaRecorder` returned no source matches. The dependency is currently unused in the indexed source; it is not a working Gemini integration. No Sarah page/service or AI Gateway exists in the reviewed repository tree.
 2. The live Supabase project currently has 13 active Edge Functions; none is an AI/Sarah gateway. `supabase/config.toml` also has no AI function entry.
 3. The live `public.system_settings` table has seven existing business/QR/reset settings and no AI configuration key. It is RLS-enabled; the inspected table grants were limited to `postgres` and `service_role`, not browser roles.
 4. The Settings screen already uses a section-based menu and supports Arabic/English, RTL/LTR, and light/dark themes. A dedicated `ai` section can be added without redesigning the whole Settings page.
@@ -15,7 +15,7 @@
 6. The existing `FinalUseCases` class exposes operational mutation methods, but its public method list does not provide a complete read/query API. Read operations need a separate evidence-based mapping to existing read models/selectors before Sarah tools are finalized.
 7. The current IndexedDB schema has durable operational/sync stores, but no Sarah input queue or audio Blob store. Its memory fallback is not suitable for durable AI input retention.
 8. The installed Capacitor dependencies do not currently include an audio recorder or filesystem plugin. Native audio persistence/background upload therefore needs a separate Android capability assessment.
-9. The database has the Supabase Vault extension installed (version 0.3.1), but the extension is documented as public alpha. Its current grants do not provide an obvious browser-safe write path. It must not be treated as ready for direct frontend secret storage.
+9. The database has the Supabase Vault extension installed (version 0.3.1), but the extension is documented as public alpha. The live grants show no `vault` schema access for `authenticated` or `anon`; `service_role` can read/delete the Vault tables, and SECURITY DEFINER `create_secret` / `update_secret` functions are executable by `service_role`. No `delete_secret` helper function is installed. Vault is a plausible server-only secret store, but secret deletion/rotation must be implemented and tested carefully; never expose it directly to the browser.
 
 ## 2. Evidence reviewed
 
@@ -47,8 +47,10 @@ The repository's GitHub code-search index did not return usable source matches d
 - 13 active Edge Functions were listed; no AI/Sarah gateway is present.
 - No AI-related public setting key or AI-named public RPC was found in the metadata query.
 - `public.system_settings`: seven keys, all existing business, QR, or reset settings; RLS enabled; inspected table grants were for `postgres` and `service_role`.
-- `public.permissions` and `public.role_permissions` are not a single simple registry. The role-permission table contains legacy aliases such as `orders:read/write` and `finances:read/write` alongside newer granular keys. `admin_custom_permissions` also contributes per-admin grants/denials.
-- Existing role mappings differ materially: ADMIN/MANAGER role rows contain goal permissions; Super Admin rows contain broad operational permissions. Effective access must be calculated from the actual session and server policy, not inferred from a role label.
+- `public.permissions` and `public.role_permissions` are not a single simple registry. The permissions catalog includes granular keys plus older aliases and several test-looking permission codes; `admin_custom_permissions` also contributes per-admin grants/denials.
+- Live role mappings differ materially: ADMIN/MANAGER role rows contain only goal permissions; Super Admin rows contain broad operational permissions. Per-admin custom grants/denials are also present. Effective access must be calculated from the actual session and server policy, not inferred from a role label.
+- `purchases:manage` exists in the permission catalog and is required by the canonical purchase command dispatcher, but it was absent from the inspected role assignments and custom permission entries. Do not assume a non-Super-Admin can use Purchase Book until their effective permission is proven.
+- `ai:use` and `ai:manage` do not exist yet in the permission catalog, role assignments, or custom grants.
 - The Vault extension is installed. `authenticated` and `anon` have no `vault` schema usage; `service_role` does. The inspected `vault.create_secret` and `vault.update_secret` functions are SECURITY DEFINER with an empty search_path and are executable by `service_role`. This gives a plausible server-only write path, but it still needs a dedicated Edge Function security review and lifecycle tests. Vault is documented as public alpha, so its operational suitability must be consciously accepted.
 
 No business rows or secret values were queried for this audit.
@@ -122,9 +124,11 @@ Provider management should default to Super Admin only until the dedicated permi
 
 ### Existing authorization gaps that block specific Sarah tools
 
-- **Customer deactivation:** `FinalUseCases.deactivateCustomer()` delegates to `updateCustomer(..., { isActive: false })`. The client use case checks `customers:edit`, and the live canonical dispatcher maps `UPDATE_CUSTOMER` to `customers:edit`; the inspected server function contains no `customers:deactivate` check. The separate permission exists in the permission data but is not enforced on this command path. Do not expose customer deactivation through Sarah until the shared UI/use-case/server contract is corrected and regression-tested.
-- **Credit consumption and goal request/proposal methods:** some methods in `FinalUseCases` require authentication but do not perform their own granular client-side permission assertion. The server dispatcher does enforce some corresponding command permissions, but Sarah must add an explicit permission gate before invoking them and these existing client/server contracts should be reconciled before exposing them.
-- **Purchase Book:** `purchases:manage` exists in the permissions metadata and is required by the canonical server dispatcher, but it was not present in the inspected role-permission assignments or custom permission entries. Do not assume ordinary admins can use Purchase Book; verify the actual effective permission for the actor before exposing any purchase tool.
+- **Customer deactivation:** `FinalUseCases.deactivateCustomer()` delegates to `updateCustomer(..., { isActive: false })`. The client use case checks `customers:edit`, and the live canonical dispatcher maps `UPDATE_CUSTOMER` to `customers:edit`; the current live dispatcher contains no `customers:deactivate` check for this command. The separate permission exists in the permission catalog and custom-permission data, but is not enforced on this command path. Do not expose customer deactivation through Sarah until the shared UI/use-case/server contract is corrected and regression-tested.
+- **Goal request mismatch:** `recordGoalRequest()` checks only authentication in the client use case, while the canonical dispatcher maps `RECORD_GOAL_REQUEST` to `goals:manage`; the permission catalog separately defines `goals:request`. The UI/read projection has distinct request-view access. Reconcile this mismatch before exposing goal-request tools.
+- **Credit consumption and goal proposal methods:** `consumeCustomerCredit()` and `generateCustomerGoalProposal()` do not assert a granular client permission themselves. The server dispatcher maps credit consumption to `finance:credit-adjustment`; proposal generation is read/calculation behavior. Sarah must add explicit permission checks at its tool boundary, and the shared UI/use-case/server contracts should be reconciled before exposure.
+- **Read-model authorization:** the reviewed local read helpers (customer search/details/orders/financial history, order/day lists, financial overview, device list) hydrate local maps and generally do not assert permissions themselves. They are safe only behind the app's screen-level gates today. Sarah must wrap them with explicit per-tool permission checks before returning data to the model. Financial history/balances need the stricter finance/customer financial-view gate, not merely customer search access.
+- **Purchase Book:** `purchases:manage` exists in the permission catalog and is required by the canonical server dispatcher, but it was absent from the inspected role-permission assignments and custom permission entries. Do not assume ordinary admins can use Purchase Book; verify the actual effective permission for the actor before exposing any purchase tool.
 
 ## 5. Target architecture for Gemini-first, provider-neutral Sarah
 
@@ -139,6 +143,8 @@ Provider management should default to Super Admin only until the dedicated permi
 
 ### Provider configuration and portability
 
+The Settings page has an in-page section state and menu, currently with personal, general, orders, backup, sync, account, about, and releases sections. A dedicated `ai` section can be added to this pattern, titled `إعدادات الذكاء الاصطناعي`, with bilingual labels. The new section must be gated by a dedicated `ai:manage` permission and server authorization, not just the existing client-side Settings visibility check. The current Settings UI treats Super Admin as a client-side permission bypass; the new provider-management Edge Function must independently validate the real server-side actor and role.
+
 A provider profile should include provider ID, adapter/API format, endpoint/base URL when applicable, model ID, supported capabilities, timeout/retry policy, and bounded generation parameters. Capability flags must be verified against the selected model; audio and tool calling are not assumed to be identical across providers.
 
 The export/import package should contain:
@@ -149,6 +155,8 @@ The export/import package should contain:
 - Permission mapping, safety rules, lifecycle/error contracts, and adapter compatibility/version metadata.
 
 It must **not** contain API keys, Supabase keys, JWTs, BIN/PIN, customer records, chat history, audio recordings, or production data. Credentials are re-entered at the destination. Exporting the integration contract is portable; it does not magically export executable provider adapters or grant a third-party model access to ChargerPointNew. The destination system still needs a compatible adapter and an authenticated tool-execution bridge.
+
+The Settings UI should offer separate actions for exporting the integration package and importing a compatible package. Import must validate schema/version, show a diff/preview, reject unknown or unsafe tool permissions, and never import secrets or automatically grant privileges. A provider switch changes the adapter/profile only; it must not rewrite Sarah's tool schemas, business rules, authorization registry, queue, or command executor.
 
 ### Provider secret storage
 
