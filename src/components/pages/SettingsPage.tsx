@@ -5,6 +5,7 @@ import { useTheme } from "../../theme/themeContext";
 import { AppLogo } from "../qr/AppLogo";
 import { BackupDataManagement } from "../settings/BackupDataManagement";
 import { SyncCenter } from "../settings/SyncCenter";
+import { AISettingsSection } from "../settings/AISettingsSection";
 import { AccountSessionsManager } from "../settings/AccountSessionsManager";
 import { AdminBiometricSettings } from "../settings/AdminBiometricSettings";
 import { PWASettingsCard } from "../settings/PWASettingsCard";
@@ -65,7 +66,7 @@ export interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout }) => {
   const { t, locale, setLocale, isRTL } = useI18n();
   const { theme, setTheme } = useTheme();
-  const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | "releases" | null>(null);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<"personal" | "general" | "orders" | "backup" | "sync" | "account" | "about" | "releases" | "ai" | null>(null);
   const [showLogoutOptions, setShowLogoutOptions] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [logoutError, setLogoutError] = useState("");
@@ -479,6 +480,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
           {!activeSettingsSection ? t("settingsTitle") : ({
             personal: locale === "ar" ? "التفضيلات الشخصية" : "Personal Preferences",
             general: locale === "ar" ? "التفضيلات العامة" : "General Preferences",
+            ai: locale === "ar" ? "إعدادات الذكاء الاصطناعي" : "Artificial Intelligence Settings",
             orders: locale === "ar" ? "إدارة الطلبات والأجهزة" : "Orders & Devices",
             backup: locale === "ar" ? "النسخ الاحتياطية وإدارة البيانات" : "Backups & Data Management",
             sync: locale === "ar" ? "المزامنة وحالة النظام" : "Sync & System Status",
@@ -507,6 +509,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                 <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "التفضيلات العامة" : "General Preferences"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "هوية وشعار وإشعارات التطبيق والإعدادات العامة" : "App identity, branding, notifications and general options"}</span></span>
                 <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
               </button>
+              {hasPermission("ai:manage") && (
+                <button type="button" onClick={() => setActiveSettingsSection("ai")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
+                  <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><Sparkles className="w-5 h-5" /></span>
+                  <span className="flex-1 min-w-0"><span className="block text-sm font-bold text-gray-900 dark:text-[#daf1de]">{locale === "ar" ? "إعدادات الذكاء الاصطناعي" : "Artificial Intelligence Settings"}</span><span className="block mt-1 text-xs text-gray-500 dark:text-[#8eb698]">{locale === "ar" ? "مزود سارة والموديل ومفتاح API وحزمة التكامل" : "Sarah provider, model, API key and integration package"}</span></span>
+                  <span className="text-gray-400 group-hover:text-emerald-600 dark:group-hover:text-[#daf1de]">{isRTL ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</span>
+                </button>
+              )}
               {(hasPermission("orders:renumber-day") || hasPermission("devices:manage") || hasPermission("settings:manage")) && (
                 <button type="button" onClick={() => setActiveSettingsSection("orders")} className="w-full py-4 flex items-center gap-3 text-start transition-colors group">
                   <span className="w-5 h-5 flex items-center justify-center text-emerald-700 dark:text-[#8eb698] shrink-0"><ListOrdered className="w-5 h-5" /></span>
@@ -1181,6 +1190,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onNavigate, onLogout
                 </div>
               </button>
             </div>
+          </section>
+        )}
+
+        {activeSettingsSection === "ai" && hasPermission("ai:manage") && (
+          <section className="pb-6 border-b border-gray-200/80 dark:border-[#123832]">
+            <AISettingsSection locale={locale} />
           </section>
         )}
 
