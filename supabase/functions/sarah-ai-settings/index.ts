@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getAIProviderAdapter } from "../_shared/ai/providerRegistry.ts";
+import type { AIProviderGenerationConfig } from "../_shared/ai/providerTypes.ts";
 
 type Json = Record<string, unknown>;
 type GenerationConfig = {
@@ -184,7 +185,7 @@ Deno.serve(async (request: Request) => {
     const result = await adapter.testConnection({
       providerId: configRow.provider_id,
       modelId: configRow.model_id,
-      generationConfig: (configRow.generation_config || {}) as Record<string, unknown>,
+      generationConfig: (configRow.generation_config || {}) as AIProviderGenerationConfig,
     }, secret);
     return respond(200, {
       ok: true,
