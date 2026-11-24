@@ -197,6 +197,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
     setError("");
     setNotice("");
     try {
+      if (file.size > 256 * 1024) throw new Error("INVALID_INTEGRATION_PACKAGE");
       const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
       if (parsed.format !== SARAH_INTEGRATION_PACKAGE_FORMAT ||
         parsed.schemaVersion !== SARAH_INTEGRATION_PACKAGE_VERSION ||
