@@ -92,7 +92,9 @@ export type Permission =
   | "goals:view"
   | "goals:requests:view"
   | "goals:manage"
-  | "goals:approve";
+  | "goals:approve"
+  | "ai:use"
+  | "ai:manage";
 
 export interface UserSession {
   userId: ID;
