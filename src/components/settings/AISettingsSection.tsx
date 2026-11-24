@@ -35,6 +35,7 @@ const errorMessage = (code: string, locale: "ar" | "en") => {
     PROVIDER_NOT_IMPLEMENTED: ["هذا المزود غير مفعّل في التطبيق حتى الآن.", "This provider adapter is not implemented yet."],
     GEMINI_API_KEY_REJECTED: ["Google رفض مفتاح API. تأكد من المفتاح وصلاحياته.", "Google rejected the API key. Check the key and its access."],
     GEMINI_MODEL_NOT_FOUND: ["الموديل غير موجود أو غير متاح لهذا المفتاح.", "The model was not found or is unavailable to this key."],
+    GEMINI_MODEL_NO_GENERATE_CONTENT: ["الموديل موجود لكنه لا يدعم توليد النصوص المطلوبة لسارة.", "The model exists but does not support the content-generation method Sarah requires."],
     GEMINI_QUOTA_OR_RATE_LIMIT: ["وصلت إلى حد الاستخدام أو معدل الطلبات لدى Gemini.", "Gemini quota or rate limit was reached."],
     GEMINI_CONNECTION_TIMEOUT: ["انتهت مهلة الاتصال بـ Gemini.", "The Gemini connection timed out."],
     GEMINI_PROVIDER_UNAVAILABLE: ["خدمة Gemini غير متاحة حاليًا.", "Gemini is temporarily unavailable."],
