@@ -62,7 +62,7 @@ No business rows or secret values were queried for this audit.
 - `App.tsx` discards stale in-memory identity after a cross-tab account switch and refreshes server permissions when the app returns to the foreground.
 - Server-side canonical command processing has its own permission checks. Client UI visibility is not an authorization boundary.
 
-**Requirement:** Every Sarah request, queued item, tool proposal, and execution must be bound to the authenticated admin identity and device/session context. Re-check permissions at execution time. Never carry queued input across account changes.
+**Requirement:** Every Sarah request, queued item, tool proposal, and execution must be bound to the authenticated admin identity and device/session context. `getAuthorizedAdminContext()` currently reconstructs a client authorization context from the cached `app_auth_session`; Sarah must additionally force-refresh the current server session before executing a tool, then use the canonical Use Case and server-side RPC checks. Re-check permissions at execution time. Never carry queued input across account changes.
 
 ### Operational writes
 
@@ -75,7 +75,7 @@ The reviewed `FinalUseCases` mutation surface includes:
 - Business days: create and close.
 - Goals: proposal, create/update, requests, approval/rejection, evaluation.
 
-The class also receives a `RepositoryContext` with transaction coordination and optional purchase repository access. However, no purchase-book mutation methods appeared in the extracted public method list. Purchases and other non-core modules must be traced to their actual service/use-case boundaries before Sarah receives tools for them.
+The class also receives a `RepositoryContext` with transaction coordination and optional purchase repository access. Purchase Book operations live in a separate `src/services/purchaseBook/purchaseBookService.ts` boundary rather than in `FinalUseCases`: `listPurchaseRows`, `savePurchaseCatalog`, `hidePurchaseCatalog`, `createCurrentPurchaseDay`, `createPurchaseWeek`, `addPurchaseOrder`, and `markPurchaseOrderPaid`. The reviewed service checks the active admin ID, rejects owner mismatches, and writes through the shared transaction/repository path. Sarah must call these existing functions only after mapping their permission and server-side ownership/sync contracts; it must not duplicate purchase logic.
 
 ### Offline and synchronization
 
