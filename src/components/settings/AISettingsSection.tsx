@@ -197,19 +197,23 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
     setError("");
     setNotice("");
     try {
-      const parsed = JSON.parse(await file.text()) as Record<string, any>;
+      const parsed = JSON.parse(await file.text()) as Record<string, unknown>;
       if (parsed.format !== SARAH_INTEGRATION_PACKAGE_FORMAT ||
         parsed.schemaVersion !== SARAH_INTEGRATION_PACKAGE_VERSION ||
-        !parsed.provider || typeof parsed.provider !== "object") {
+        !parsed.provider || typeof parsed.provider !== "object" || Array.isArray(parsed.provider)) {
         throw new Error("INVALID_INTEGRATION_PACKAGE");
       }
-      if (parsed.provider.providerId !== "gemini") {
+      const importedProvider = parsed.provider as Record<string, unknown>;
+      if (importedProvider.providerId !== "gemini") {
         throw new Error("IMPORT_PROVIDER_NOT_IMPLEMENTED");
       }
-      const importedModel = typeof parsed.provider.modelId === "string"
-        ? parsed.provider.modelId.trim()
+      const importedModel = typeof importedProvider.modelId === "string"
+        ? importedProvider.modelId.trim()
         : "";
-      const importedConfig = parsed.provider.generationConfig || {};
+      const rawGenerationConfig = importedProvider.generationConfig;
+      const importedConfig = rawGenerationConfig && typeof rawGenerationConfig === "object" && !Array.isArray(rawGenerationConfig)
+        ? rawGenerationConfig as Record<string, unknown>
+        : {};
       if (!/^[A-Za-z0-9._:-]{1,128}$/.test(importedModel) ||
         typeof importedConfig !== "object" || Array.isArray(importedConfig)) {
         throw new Error("INVALID_INTEGRATION_PACKAGE");
