@@ -174,6 +174,8 @@ jobs:
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/wallet-service/index.ts
       - name: Type-check Sarah AI provider settings Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sarah-ai-settings/index.ts
+      - name: Test provider-neutral Gemini adapter
+        run: deno test --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/_shared/ai/geminiProviderAdapter_test.ts
       - name: Type-check shared business-hours Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/business-hours/index.ts
       - name: Type-check authenticated debt reminder Edge Function
