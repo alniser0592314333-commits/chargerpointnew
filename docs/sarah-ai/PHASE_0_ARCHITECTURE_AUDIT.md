@@ -49,7 +49,7 @@ The repository's GitHub code-search index did not return usable source matches d
 - `public.system_settings`: seven keys, all existing business, QR, or reset settings; RLS enabled; inspected table grants were for `postgres` and `service_role`.
 - `public.permissions` and `public.role_permissions` are not a single simple registry. The role-permission table contains legacy aliases such as `orders:read/write` and `finances:read/write` alongside newer granular keys. `admin_custom_permissions` also contributes per-admin grants/denials.
 - Existing role mappings differ materially: ADMIN/MANAGER role rows contain goal permissions; Super Admin rows contain broad operational permissions. Effective access must be calculated from the actual session and server policy, not inferred from a role label.
-- The Vault extension is installed. The inspected `vault` grants show decrypted-secret reads available to `service_role` and `postgres`, but no direct browser access. Vault is not assumed to be the final provider-key storage design until its write path, grants, lifecycle, and alpha status are reviewed.
+- The Vault extension is installed. `authenticated` and `anon` have no `vault` schema usage; `service_role` does. The inspected `vault.create_secret` and `vault.update_secret` functions are SECURITY DEFINER with an empty search_path and are executable by `service_role`. This gives a plausible server-only write path, but it still needs a dedicated Edge Function security review and lifecycle tests. Vault is documented as public alpha, so its operational suitability must be consciously accepted.
 
 No business rows or secret values were queried for this audit.
 
@@ -148,7 +148,7 @@ It must **not** contain API keys, Supabase keys, JWTs, BIN/PIN, customer records
 
 Do not store provider API keys in `localStorage`, IndexedDB, APK resources, Vite environment variables, or a browser-readable `system_settings` row. The settings UI should submit the key to a server endpoint and receive only masked metadata/status thereafter.
 
-Supabase Vault is present but currently documented as public alpha. Before choosing it, verify a least-privilege server-only write/read/delete path and ensure decrypted views cannot be queried by browser roles. If that cannot be proven, use a separately managed backend secret store rather than weakening database grants.
+Supabase Vault is present but currently documented as public alpha. The live privilege check found no `vault` schema usage for `authenticated` or `anon`, and confirmed that `service_role` can execute the Vault create/update functions. This supports a server-only design: an authenticated Edge Function validates the caller, then a privileged server-side operation writes/reads the provider secret; the browser receives only masked status. Before adopting it, review the Edge Function authorization path, delete/rotation semantics, secret naming, audit events, and decrypted-view access. If those checks fail, use a separately managed backend secret store rather than weakening database grants.
 
 ## 6. Audio and offline constraints
 
