@@ -1262,3 +1262,38 @@ jobs:
           github-token: ${{ github.token }}
       - name: Run isolated local Supabase Auth integration
         run: bash supabase/tests/username_signin_local_integration.sh
+
+  verify-sarah-ai-provider-migration:
+    name: Verify Sarah AI provider migration in isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare isolated Supabase Vault fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_provider_config_fixture.sql
+      - name: Apply Sarah AI provider configuration migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261124130000_sarah_ai_provider_configuration.sql
+      - name: Verify secret storage, rotation, deletion, and grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_provider_config.test.sql
