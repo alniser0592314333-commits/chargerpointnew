@@ -17,7 +17,7 @@ Deno.test("Gemini adapter tests model access with a server-side API key header",
   let receivedHeader = "";
   globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
     receivedHeader = new Headers(init?.headers).get("x-goog-api-key") || "";
-    return new Response(JSON.stringify({ name: "models/gemini-3.8-flash" }), {
+    return new Response(JSON.stringify({ name: "models/gemini-3.8-flash", supportedGenerationMethods: ["generateContent"] }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
