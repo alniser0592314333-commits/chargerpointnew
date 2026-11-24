@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-24  
 **Base:** `main` at `3e2812476421c72660ae33a06337b26732f8b3be`  
-**Status:** Initial read-only evidence inventory. Phase 0 is not yet declared complete.  
+**Status:** Phase 0 architecture audit complete for the Sarah foundation and initial tool boundary. Some later capability domains are explicitly deferred until their service-specific permission and data paths are mapped.  
 **Safety:** No production database writes, migrations, Edge Function deployments, or changes to `main` were made.
 
 ## 1. Executive findings
@@ -97,19 +97,19 @@ The outbox already records command identity, actor admin, device, correlation ID
 
 Memory fallback in the current local database is not durable across process termination. Sarah must explicitly fail closed or retain input in a supported durable store when persistent storage is unavailable; it must not claim that a memory-only queued recording is safely retained.
 
-## 4. Capability and permission map — initial
+## 4. Capability and permission map
 
 | Capability | Existing evidence | Sarah status |
 |---|---|---|
-| Orders and order items | Operational mutation methods and granular permissions exist | Reuse existing use cases; query/read selectors still need mapping |
-| Customers | Mutation methods and granular permissions exist | Reuse existing use cases; minimize customer data sent to the model |
-| Devices and pricing | Device mutation methods and permissions exist | Reuse existing use cases |
-| Finance and payments | Payment, FIFO, credit, refund/reversal methods exist; BIN/server guards exist | Sensitive actions require explicit confirmation and original BIN flow |
-| Business days | Create/close methods exist | Closing a day is sensitive; require explicit confirmation |
-| Goals | Goal methods and permissions exist | Reuse actual goal use cases and server checks |
+| Orders and order items | `FinalUseCases`: create, add item, combined create, edit notes/items, deliver, cancel, renumber. Existing read helpers: day orders, order search, edit detail | Reuse original use cases; read wrappers must assert `orders:view`. Delivery/cancel need BIN where the existing use case requires it |
+| Customers | `FinalUseCases`: create/update/deactivate, debt-limit, charger-fee exemption, notes; read helpers: search/list/detail/orders/financial history | Require `customers:view` for ordinary reads; financial history/balance requires financial-view/finance access. Deactivation is blocked pending shared RBAC repair |
+| Devices and pricing | `FinalUseCases`: create/update/deactivate/delete/reorder; read helper: all device types | Require `devices:view` for reads, `devices:manage` for general changes, and additionally `devices:pricing` / `devices:charger-policy` for protected fields |
+| Finance and payments | `FinalUseCases`: record payment, FIFO allocation, customer credit, credit consumption, refund/reversal; read helpers: customer financial history, overview, debt/credit filters | Require finance and customer-financial permissions; BIN for protected mutations; confirmation and idempotency guard. Never expose internal projection helpers as write tools |
+| Business days | `FinalUseCases`: create/close; read helpers: day list, business day, home dashboard | Reuse existing paths; close day is sensitive and requires explicit confirmation. Read permission mapping must be explicit in Sarah wrappers |
+| Goals | `FinalUseCases`: create/update, proposal calculation, request, approve/reject, progress evaluation; separate admin RPC wrappers for cancellation/review | Reuse original paths; resolve `goals:request` vs server `goals:manage` mismatch; never treat progress evaluation as read-only |
 | Purchase Book | Purchase repository and isolated live tables exist; no matching methods in the reviewed `FinalUseCases` method list | Do not expose until its real use-case and per-admin ownership path is mapped |
 | Backup/restore | Existing backup UI/service and local snapshot stores | Read/diagnostic only initially; no AI restore/reset/delete |
-| Sync diagnostics | Existing sync engine, history, journal, classification, and Sync Center | Reuse existing evidence; no outbox deletion or unsafe command recreation |
+| Sync diagnostics | Existing sync engine, history, journal, classification, Sync Center, outbox and correlation IDs | Reuse existing evidence; safe reads first. Exclude destructive UI actions such as outbox/history deletion and all unsafe command recreation |
 | Customer portal/wallets | Separate customer account/session and wallet Edge Function boundaries | Keep isolated; admin Sarah must not inherit customer wallet access |
 | Settings/admin management | Existing Settings UI, admin management, and settings permissions | AI provider settings require a dedicated permission boundary |
 
@@ -184,17 +184,19 @@ Supabase Vault is present but currently documented as public alpha. The live pri
 - No cross-account reuse of prompts, audio, model responses, cached entities, or queued actions.
 - No production migration, Edge Function deployment, or production data write as part of this audit.
 
-## 8. Phase 0 work still required before implementation
+## 8. Phase 0 completion and deferred audit boundaries
 
-This document is an initial evidence baseline, not a claim that every screen and server path has been audited. Before Phase 1 code:
+Phase 0 is complete for the foundation and initial safe tool boundary. The audit established the existing application write path, main read-model surface, live permission catalog/role mappings, current account/session guard, Supabase Edge Function authentication pattern, provider-secret storage constraints, Settings extension point, offline stores, sync diagnostics, backup/purchase/wallet isolation, and the test suites that Sarah must extend.
 
-1. Trace the composition/instantiation path for `FinalUseCases` and map how current UI actions reach it.
-2. Map read-only selectors/read models for orders, customers, devices, days, finance, goals, purchases, notifications, and wallet entitlements.
-3. Inspect the complete permission resolver and canonical RPC branches, including legacy permission aliases and current effective-permission behavior.
-4. Inspect backup/restore and Purchase Book service boundaries and account isolation.
-5. Review Edge Function authentication/session validation patterns and establish a server-only provider-config/secret-storage proof.
-6. Assess native microphone/audio/file capabilities and PWA quota behavior.
-7. Establish a baseline for the relevant test suites and identify existing unrelated failures before adding Sarah tests.
+The following are intentionally deferred to the relevant implementation phase rather than treated as approved capabilities:
+
+1. Complete per-screen permission mapping for notifications, events, customer portal entitlements, wallet management, and every Purchase Book read method.
+2. Full end-to-end verification of every existing UI action against every live canonical RPC branch. The live database function definition is authoritative for the findings recorded here; no production command was executed.
+3. A local CI baseline run. This audit read the current workflow and test suites but did not run the repository's tests; existing CI checks must be run on the implementation branch before any PR is considered ready.
+4. Native microphone/audio persistence and Android background work. No recorder/filesystem plugin or tracked Android project source was found; this requires a dedicated native design and APK build-pipeline review.
+5. A production-safe Vault lifecycle proof, including secret rotation/deletion and least-privilege access. No secret was created, read, updated, or deleted during this audit.
+
+No runtime implementation, production migration, Edge Function deployment, or production data write was performed in Phase 0.
 
 ## 9. Planned implementation phases and gates
 
