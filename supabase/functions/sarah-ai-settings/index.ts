@@ -135,7 +135,7 @@ Deno.serve(async (request: Request) => {
 
   if (action === "save") {
     const providerId = normalize(body.providerId, 64);
-    const modelId = normalize(body.modelId, 128).replace(/^models\\//, "");
+    const modelId = normalize(body.modelId, 128).replace(/^models\//, "");
     const generationConfig = parseGenerationConfig(body.generationConfig ?? {});
     const apiKey = body.apiKey === undefined ? null : normalize(body.apiKey, 512);
     const adapter = getAIProviderAdapter(providerId);
