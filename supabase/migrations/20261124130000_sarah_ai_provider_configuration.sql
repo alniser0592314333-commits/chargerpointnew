@@ -78,145 +78,38 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Unsupported generation configuration field' USING ERRCODE = '22023';
   END IF;
-  IF p_generation_config ? 'temperature' AND
-     (p_generation_config->>'temperature')::numeric NOT BETWEEN 0 AND 2 THEN
-    RAISE EXCEPTION 'Temperature must be between 0 and 2' USING ERRCODE = '22023';
-  END IF;
-  IF p_generation_config ? 'maxOutputTokens' AND
-     (p_generation_config->>'maxOutputTokens') !~ '^[0-9]{1,5}$' THEN
-    RAISE EXCEPTION 'Invalid maxOutputTokens' USING ERRCODE = '22023';
-  END IF;
-  IF p_generation_config ? 'timeoutMs' AND (
-    (p_generation_config->>'timeoutMs') !~ '^[0-9]{4,6}
 
-  SELECT * INTO v_existing
-  FROM public.sarah_ai_provider_config
-  WHERE id = 'default'
-  FOR UPDATE;
-
-  v_secret_id := v_existing.secret_id;
-  IF v_api_key IS NOT NULL THEN
-    IF pg_catalog.length(v_api_key) < 20 OR pg_catalog.length(v_api_key) > 512 THEN
-      RAISE EXCEPTION 'Invalid provider API key length' USING ERRCODE = '22023';
+  IF p_generation_config ? 'temperature' THEN
+    IF pg_catalog.jsonb_typeof(p_generation_config->'temperature') <> 'number' THEN
+      RAISE EXCEPTION 'Temperature must be numeric' USING ERRCODE = '22023';
     END IF;
-
-    IF v_secret_id IS NULL THEN
-      v_secret_id := vault.create_secret(
-        v_api_key,
-        'sarah-ai-provider-default',
-        'Sarah AI provider API key. Server-side use only.'
-      );
-    ELSE
-      PERFORM vault.update_secret(
-        v_secret_id,
-        v_api_key,
-        'sarah-ai-provider-default',
-        'Sarah AI provider API key. Server-side use only.'
-      );
+    IF (p_generation_config->>'temperature')::numeric NOT BETWEEN 0 AND 2 THEN
+      RAISE EXCEPTION 'Temperature must be between 0 and 2' USING ERRCODE = '22023';
     END IF;
   END IF;
 
-  IF v_secret_id IS NULL THEN
-    RAISE EXCEPTION 'Provider API key is required before enabling Sarah AI' USING ERRCODE = '22023';
+  IF p_generation_config ? 'maxOutputTokens' THEN
+    IF pg_catalog.jsonb_typeof(p_generation_config->'maxOutputTokens') <> 'number' THEN
+      RAISE EXCEPTION 'maxOutputTokens must be numeric' USING ERRCODE = '22023';
+    END IF;
+    IF (p_generation_config->>'maxOutputTokens') !~ '^[0-9]{1,5}$' THEN
+      RAISE EXCEPTION 'maxOutputTokens must be an integer' USING ERRCODE = '22023';
+    END IF;
+    IF (p_generation_config->>'maxOutputTokens')::integer NOT BETWEEN 1 AND 65536 THEN
+      RAISE EXCEPTION 'maxOutputTokens must be between 1 and 65536' USING ERRCODE = '22023';
+    END IF;
   END IF;
 
-  INSERT INTO public.sarah_ai_provider_config (
-    id, provider_id, model_id, endpoint_url, generation_config,
-    secret_id, enabled, updated_by_auth_user_id, created_at, updated_at
-  )
-  VALUES (
-    'default', p_provider_id, p_model_id, NULLIF(pg_catalog.btrim(p_endpoint_url), ''),
-    p_generation_config, v_secret_id, true, p_actor_auth_user_id, now(), now()
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    provider_id = EXCLUDED.provider_id,
-    model_id = EXCLUDED.model_id,
-    endpoint_url = EXCLUDED.endpoint_url,
-    generation_config = EXCLUDED.generation_config,
-    secret_id = EXCLUDED.secret_id,
-    enabled = true,
-    updated_by_auth_user_id = EXCLUDED.updated_by_auth_user_id,
-    updated_at = now();
-
-  RETURN pg_catalog.jsonb_build_object(
-    'configured', true,
-    'providerId', p_provider_id,
-    'modelId', p_model_id,
-    'hasApiKey', true,
-    'updatedAt', now()
-  );
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.sarah_ai_get_provider_secret()
-RETURNS text
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $function$
-DECLARE
-  v_secret_id uuid;
-  v_secret text;
-BEGIN
-  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) <> 'service_role' THEN
-    RAISE EXCEPTION 'Service role required' USING ERRCODE = '42501';
-  END IF;
-
-  SELECT secret_id INTO v_secret_id
-  FROM public.sarah_ai_provider_config
-  WHERE id = 'default' AND enabled IS TRUE;
-
-  IF v_secret_id IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  SELECT decrypted_secret INTO v_secret
-  FROM vault.decrypted_secrets
-  WHERE id = v_secret_id;
-
-  RETURN v_secret;
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.sarah_ai_clear_provider_config()
-RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $function$
-DECLARE
-  v_secret_id uuid;
-BEGIN
-  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) <> 'service_role' THEN
-    RAISE EXCEPTION 'Service role required' USING ERRCODE = '42501';
-  END IF;
-
-  SELECT secret_id INTO v_secret_id
-  FROM public.sarah_ai_provider_config
-  WHERE id = 'default'
-  FOR UPDATE;
-
-  IF v_secret_id IS NOT NULL THEN
-    DELETE FROM vault.secrets WHERE id = v_secret_id;
-  END IF;
-
-  DELETE FROM public.sarah_ai_provider_config WHERE id = 'default';
-  RETURN true;
-END;
-$function$;
-
-REVOKE ALL ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.sarah_ai_get_provider_secret() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.sarah_ai_clear_provider_config() FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text, uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_secret() TO service_role;
-GRANT EXECUTE ON FUNCTION public.sarah_ai_clear_provider_config() TO service_role;
-
-COMMIT;
- OR
-    (p_generation_config->>'timeoutMs')::integer NOT BETWEEN 5000 AND 120000
-  ) THEN
-    RAISE EXCEPTION 'timeoutMs must be between 5000 and 120000' USING ERRCODE = '22023';
+  IF p_generation_config ? 'timeoutMs' THEN
+    IF pg_catalog.jsonb_typeof(p_generation_config->'timeoutMs') <> 'number' THEN
+      RAISE EXCEPTION 'timeoutMs must be numeric' USING ERRCODE = '22023';
+    END IF;
+    IF (p_generation_config->>'timeoutMs') !~ '^[0-9]{4,6}$' THEN
+      RAISE EXCEPTION 'timeoutMs must be an integer' USING ERRCODE = '22023';
+    END IF;
+    IF (p_generation_config->>'timeoutMs')::integer NOT BETWEEN 5000 AND 120000 THEN
+      RAISE EXCEPTION 'timeoutMs must be between 5000 and 120000' USING ERRCODE = '22023';
+    END IF;
   END IF;
 
   SELECT * INTO v_existing
