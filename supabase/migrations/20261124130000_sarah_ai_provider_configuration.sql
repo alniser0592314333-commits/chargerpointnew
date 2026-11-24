@@ -73,8 +73,8 @@ BEGIN
   END IF;
   IF EXISTS (
     SELECT 1
-    FROM pg_catalog.jsonb_object_keys(p_generation_config) AS keys(key)
-    WHERE key NOT IN ('temperature', 'maxOutputTokens', 'timeoutMs')
+    FROM pg_catalog.jsonb_object_keys(p_generation_config) AS setting_fields(field_name)
+    WHERE field_name NOT IN ('temperature', 'maxOutputTokens', 'timeoutMs')
   ) THEN
     RAISE EXCEPTION 'Unsupported generation configuration field' USING ERRCODE = '22023';
   END IF;
