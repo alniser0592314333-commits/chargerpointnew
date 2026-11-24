@@ -52,6 +52,13 @@ export const geminiProviderAdapter: AIProviderAdapter = {
         },
       );
       if (!response.ok) return { connected: false, error: mapGeminiError(response.status) };
+      const metadata = await response.json().catch(() => null) as Record<string, unknown> | null;
+      const methods = Array.isArray(metadata?.supportedGenerationMethods)
+        ? metadata.supportedGenerationMethods
+        : [];
+      if (!methods.includes("generateContent")) {
+        return { connected: false, error: "GEMINI_MODEL_NO_GENERATE_CONTENT" };
+      }
       return { connected: true };
     } catch (error) {
       return {
