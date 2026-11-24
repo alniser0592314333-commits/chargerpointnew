@@ -59,6 +59,6 @@ describe("Sarah AI provider settings security contract", () => {
     expect(integrationPackage).toContain("apiKeyIncluded: false");
     expect(integrationPackage).toContain("toolSchemasIncluded: false");
     expect(integrationPackage).toContain("No model-generated SQL");
-    expect(integrationPackage).toContain("Credentials must be entered again");
+    expect(integrationPackage).toContain("credentials must be entered again");
   });
 });
