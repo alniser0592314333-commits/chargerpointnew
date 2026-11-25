@@ -157,7 +157,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run src/tests/sarah_ai_chat_contract.test.ts
+        run: npx vitest run supabase/tests/sarah_ai_chat_contract.test.ts
 
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
