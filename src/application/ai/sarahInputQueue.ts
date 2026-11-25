@@ -31,6 +31,8 @@ const DB_NAME = "SarahDurableInputQueue";
 const DB_VERSION = 1;
 const STORE = "inputs";
 const META = "meta";
+const MAX_TEXT_CHARS = 20_000;
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const allowed: Record<SarahInputState, SarahInputState[]> = {
   QUEUED_OFFLINE: ["READY_TO_SEND", "NEEDS_ATTENTION"],
   READY_TO_SEND: ["UPLOADING", "QUEUED_OFFLINE", "NEEDS_ATTENTION"],
@@ -55,7 +57,8 @@ const openDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
     }
     if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
   };
-  request.onsuccess = () => resolve(request.result);
+  request.onblocked = () => reject(new Error("DURABLE_STORAGE_UPGRADE_BLOCKED"));
+  request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
   request.onerror = () => reject(request.error || new Error("DURABLE_STORAGE_UNAVAILABLE"));
 });
 
@@ -67,11 +70,15 @@ const requestValue = <T>(req: IDBRequest<T>): Promise<T> => new Promise((resolve
 export const sarahInputQueue = {
   async enqueue(input: Omit<SarahInputRecord, "sequence" | "createdAt" | "attempts">): Promise<SarahInputRecord> {
     if (!input.actorAccountId || !input.deviceId || !input.id || !input.correlationId) throw new Error("INVALID_QUEUE_INPUT");
+    if (input.kind !== "text" && input.kind !== "audio") throw new Error("INVALID_QUEUE_KIND");
     if (input.state !== "QUEUED_OFFLINE" && input.state !== "READY_TO_SEND") throw new Error("INVALID_INITIAL_QUEUE_STATE");
     if (input.kind === "text" && input.audioBlob) throw new Error("TEXT_INPUT_CANNOT_INCLUDE_AUDIO");
     if (input.kind === "audio" && input.text) throw new Error("AUDIO_INPUT_CANNOT_INCLUDE_TEXT");
     if (input.kind === "text" && !input.text?.trim()) throw new Error("EMPTY_TEXT_INPUT");
+    if (input.kind === "text" && (input.text?.length ?? 0) > MAX_TEXT_CHARS) throw new Error("TEXT_INPUT_TOO_LARGE");
     if (input.kind === "audio" && !(input.audioBlob instanceof Blob)) throw new Error("AUDIO_BLOB_REQUIRED");
+    if (input.kind === "audio" && input.audioBlob && input.audioBlob.size > MAX_AUDIO_BYTES) throw new Error("AUDIO_INPUT_TOO_LARGE");
+    if (input.kind === "audio" && !input.audioMimeType) throw new Error("AUDIO_MIME_TYPE_REQUIRED");
     const db = await openDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction([STORE, META], "readwrite");
@@ -79,6 +86,7 @@ export const sarahInputQueue = {
       const key = `sequence:${input.actorAccountId}`;
       const get = meta.get(key);
       let record: SarahInputRecord;
+      get.onerror = () => { tx.abort(); };
       get.onsuccess = () => {
         const sequence = Number(get.result || 0) + 1;
         meta.put(sequence, key);
@@ -109,12 +117,12 @@ export const sarahInputQueue = {
       const get = store.get(id); let updated: SarahInputRecord | undefined;
       get.onsuccess = () => {
         const current = get.result as SarahInputRecord | undefined;
-        if (!current || current.actorAccountId !== accountId) { reject(new Error("QUEUE_ITEM_NOT_FOUND_FOR_ACCOUNT")); tx.abort(); return; }
-        if (!allowed[current.state].includes(next)) { reject(new Error("QUEUE_TRANSITION_NOT_ALLOWED")); tx.abort(); return; }
+        if (!current || current.actorAccountId !== accountId) { tx.abort(); return; }
+        if (!allowed[current.state].includes(next)) { tx.abort(); return; }
         updated = { ...current, ...details, state: next, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
         store.put(updated);
       };
-      tx.oncomplete = () => { db.close(); resolve(updated!); };
+      tx.oncomplete = () => { db.close(); if (updated) resolve(updated); else reject(new Error("QUEUE_TRANSITION_REJECTED")); };
       tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_TRANSITION_FAILED")); };
       tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_TRANSITION_REJECTED")); };
     });
