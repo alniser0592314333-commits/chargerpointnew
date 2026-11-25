@@ -70,7 +70,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (record.state === "NEEDS_ATTENTION") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
       else if (record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
       await sarahInputQueue.transition(session.userId, record.id, "UPLOADING");
-      const retryHistory = messages.slice(-20);\n      // The original queued user message is already in the transcript. Remove its\n      // trailing occurrence before resubmitting the text to avoid duplicating it.\n      if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();\n      const response = await sarahChatService.send(record.text, retryHistory);
+      const retryHistory = messages.slice(-20);
+      // The original queued user message is already in the transcript. Remove its
+      // trailing occurrence before resubmitting the text to avoid duplicating it.
+      if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
+      const response = await sarahChatService.send(record.text, retryHistory);
       await sarahInputQueue.transition(session.userId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
       await sarahInputQueue.transition(session.userId, record.id, "COMPLETED");
       setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
