@@ -3,7 +3,8 @@ import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
 import { sarahChatService } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
-import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";\nimport { sarahConversationStore } from "../../application/ai/sarahConversationStore";
+import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
+import { sarahConversationStore } from "../../application/ai/sarahConversationStore";
 
 type Message = { role: "user" | "assistant"; text: string };
 
