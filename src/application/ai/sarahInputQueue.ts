@@ -120,6 +120,24 @@ export const sarahInputQueue = {
     });
   },
 
+  /**
+   * On restart, an upload may have reached the provider before the app closed.
+   * Without server idempotency, do not auto-resend: surface it for review.
+   */
+  async recoverInterruptedUploads(accountId: string): Promise<number> {
+    if (!accountId) throw new Error("ACCOUNT_REQUIRED");
+    const pending = await this.list(accountId);
+    const interrupted = pending.filter((row) => row.state === "UPLOADING");
+    let recovered = 0;
+    for (const row of interrupted) {
+      await this.transition(accountId, row.id, "NEEDS_ATTENTION", {
+        lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
+      });
+      recovered += 1;
+    }
+    return recovered;
+  },
+
   async remove(accountId: string, id: string): Promise<boolean> {
     if (!accountId) throw new Error("ACCOUNT_REQUIRED");
     const db = await openDb();
