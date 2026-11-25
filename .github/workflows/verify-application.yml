@@ -163,6 +163,8 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Type-check Sarah AI chat gateway Edge Function
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sarah-ai-chat/index.ts
       - name: Type-check public QR payment Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
       - name: Test hard QR payment upload body limit
