@@ -11,7 +11,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");\n  const [pending, setPending] = useState<SarahInputRecord[]>([]);\n\n  const refreshQueue = async () => { if (!session) return; try { await sarahInputQueue.recoverInterruptedUploads(session.userId); setPending(await sarahInputQueue.list(session.userId)); } catch (err) { setError(err instanceof Error ? err.message : "QUEUE_UNAVAILABLE"); } };\n  useEffect(() => { void refreshQueue(); }, [session?.userId]);
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState<SarahInputRecord[]>([]);
+
+  const refreshQueue = async () => { if (!session) return; try { await sarahInputQueue.recoverInterruptedUploads(session.userId); setPending(await sarahInputQueue.list(session.userId)); } catch (err) { setError(err instanceof Error ? err.message : "QUEUE_UNAVAILABLE"); } };
+  useEffect(() => { void refreshQueue(); }, [session?.userId]);
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
 
   const send = async () => {
@@ -28,7 +32,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         id, actorAccountId: session.userId, deviceId: "web-client", kind: "text",
         state: navigator.onLine ? "READY_TO_SEND" : "QUEUED_OFFLINE", text: clean, correlationId,
       });
-      await refreshQueue();\n      if (!navigator.onLine) {
+      await refreshQueue();
+      if (!navigator.onLine) {
         setMessages((prev) => [...prev, { role: "assistant", text: "حفظت رسالتك محليًا في الطابور؛ لم تُرسل بعد لأن الإنترنت غير متصل." }]);
         return;
       }
@@ -37,7 +42,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         const response = await sarahChatService.send(clean, messages);
         await sarahInputQueue.transition(session.userId, id, "SENT_TO_AI", { resultRef: correlationId });
         await sarahInputQueue.transition(session.userId, id, "COMPLETED");
-        setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);\n        await refreshQueue();
+        setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
+        await refreshQueue();
       } catch (err) {
         await sarahInputQueue.transition(session.userId, id, "NEEDS_ATTENTION", {
           lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
@@ -45,7 +51,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         throw err;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");\n      await refreshQueue();
+      setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
+      await refreshQueue();
     } finally {
       setBusy(false);
     }
@@ -91,7 +98,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy} />
         <Button type="submit" disabled={busy || !text.trim()} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
       </form>
-      <button type="button" onClick={() => void refreshQueue()} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>\n      <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
+      <button type="button" onClick={() => void refreshQueue()} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
+      <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
     </section>
   );
 };
