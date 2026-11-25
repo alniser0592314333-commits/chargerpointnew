@@ -13,7 +13,7 @@ Deno.serve(async(req)=>{
  const declared=Number(req.headers.get("content-length")||0);if(declared>MAX_BODY_BYTES)return respond(400,{ok:false,error:"REQUEST_TOO_LARGE"});
  const raw=await req.text();if(new TextEncoder().encode(raw).byteLength>MAX_BODY_BYTES)return respond(400,{ok:false,error:"REQUEST_TOO_LARGE"});
  let body:Record<string,unknown>;try{const parsed=JSON.parse(raw);if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw 0;body=parsed;}catch{return respond(400,{ok:false,error:"INVALID_REQUEST"});}
- const text=safeText(body.text,20000);if(!text)return respond(400,{ok:false,error:"TEXT_REQUIRED"});
+ const text=safeText(body.text,20000);if(!text)return respond(400,{ok:false,error:"TEXT_REQUIRED"});\n const history=Array.isArray(body.history)?body.history.slice(-20):[];const contents=[];for(const item of history){if(!item||typeof item!=="object"||!["user","assistant"].includes(item.role)||typeof item.text!=="string"||item.text.length>20000)return respond(400,{ok:false,error:"INVALID_HISTORY"});contents.push({role:item.role==="assistant"?"model":"user",parts:[{text:item.text}]});}contents.push({role:"user",parts:[{text}]});
  const caller=createClient(url,anonKey,{global:{headers:{Authorization:`Bearer ${bearer}`}},auth:{persistSession:false,autoRefreshToken:false}});
  const {data:userData,error:userError}=await caller.auth.getUser(bearer);if(userError||!userData.user)return respond(401,{ok:false,error:"ADMIN_SESSION_UNAVAILABLE"});
  const {data:profile,error:profileError}=await caller.rpc("get_current_admin_profile");
@@ -28,7 +28,7 @@ Deno.serve(async(req)=>{
  const generation=configRow.generation_config||{},timeout=Math.min(Math.max(Number(generation.timeoutMs||30000),5000),120000);
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
  try{
-  const resp=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(configRow.model_id)}:generateContent`,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},signal:controller.signal,body:JSON.stringify({contents:[{role:"user",parts:[{text}]}],generationConfig:{temperature:generation.temperature??0.2,maxOutputTokens:generation.maxOutputTokens??2048}})});
+  const resp=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(configRow.model_id)}:generateContent`,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},signal:controller.signal,body:JSON.stringify({systemInstruction:{parts:[{text:"You are Sarah, the Arabic-first assistant for ChargerPointNew. Respond helpfully, accurately, and clearly. You cannot access or change app data or execute operations in this version. Do not claim that you performed actions or inspected application records."}]},contents,generationConfig:{temperature:generation.temperature??0.2,maxOutputTokens:generation.maxOutputTokens??2048}})});
   if(!resp.ok){const status=resp.status;return respond(status===429?429:status>=500?503:400,{ok:false,error:status===429?"GEMINI_QUOTA_OR_RATE_LIMIT":status>=500?"GEMINI_PROVIDER_UNAVAILABLE":"GEMINI_REQUEST_REJECTED"});}
   const result=await resp.json(),answer=Array.isArray(result?.candidates?.[0]?.content?.parts)?result.candidates[0].content.parts.map((p:Record<string,unknown>)=>typeof p.text==="string"?p.text:"").join(""):"";
   if(!answer.trim())return respond(502,{ok:false,error:"AI_EMPTY_RESPONSE"});
