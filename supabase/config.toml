@@ -57,3 +57,6 @@ verify_jwt = false
 
 [functions.sarah-ai-settings]
 verify_jwt = false
+
+[functions.sarah-ai-chat]
+verify_jwt = false
