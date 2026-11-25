@@ -34,7 +34,13 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("let record: SarahInputRecord | undefined");
   });
   it("keeps the operational outbox separate and limits metadata fields", () => {
-    expect(source).toContain("pre-execution durable input queue");\n  it("avoids replaying the queued text as duplicate history on retry", () => {\n    const page = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");\n    expect(page).toContain("retryHistory.at(-1)?.text === record.text");\n    expect(page).toContain("retryHistory.pop()");\n  });
+    expect(source).toContain("pre-execution durable input queue");
+  });
+  it("avoids replaying the queued text as duplicate history on retry", () => {
+    const page = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");
+    expect(page).toContain("retryHistory.at(-1)?.text === record.text");
+    expect(page).toContain("retryHistory.pop()");
+  });
     expect(source).toContain("aiRequestId");
     expect(source).toContain("resultRef");
   });
