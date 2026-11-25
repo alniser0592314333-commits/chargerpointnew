@@ -29,7 +29,9 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("MAX_TEXT_CHARS");
     expect(source).toContain("MAX_AUDIO_BYTES");
     expect(source).toContain("TEXT_INPUT_TOO_LARGE");
-    expect(source).toContain("AUDIO_INPUT_TOO_LARGE");\n    expect(source).toContain("QUEUE_WRITE_INCOMPLETE");\n    expect(source).toContain("let record: SarahInputRecord | undefined");
+    expect(source).toContain("AUDIO_INPUT_TOO_LARGE");
+    expect(source).toContain("QUEUE_WRITE_INCOMPLETE");
+    expect(source).toContain("let record: SarahInputRecord | undefined");
   });
   it("keeps the operational outbox separate and limits metadata fields", () => {
     expect(source).toContain("pre-execution durable input queue");
