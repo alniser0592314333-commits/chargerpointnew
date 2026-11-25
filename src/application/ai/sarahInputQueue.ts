@@ -85,7 +85,7 @@ export const sarahInputQueue = {
       const store = tx.objectStore(STORE), meta = tx.objectStore(META);
       const key = `sequence:${input.actorAccountId}`;
       const get = meta.get(key);
-      let record: SarahInputRecord;
+      let record: SarahInputRecord | undefined;
       get.onerror = () => { tx.abort(); };
       get.onsuccess = () => {
         const sequence = Number(get.result || 0) + 1;
@@ -93,7 +93,7 @@ export const sarahInputQueue = {
         record = { ...input, sequence, createdAt: new Date().toISOString(), attempts: 0 };
         store.add(record);
       };
-      tx.oncomplete = () => { db.close(); resolve(record); };
+      tx.oncomplete = () => { db.close(); if (record) resolve(record); else reject(new Error("QUEUE_WRITE_INCOMPLETE")); };
       tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_WRITE_FAILED")); };
       tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_WRITE_ABORTED")); };
     });
