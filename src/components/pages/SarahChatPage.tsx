@@ -13,7 +13,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [pending, setPending] = useState<SarahInputRecord[]>([]);\n  const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);\n\n  useEffect(() => { let active = true; setMessages([]); setHydratedAccount(null); if (!session?.userId) return; void sarahConversationStore.load(session.userId).then((saved) => { if (active) { setMessages(saved); setHydratedAccount(session.userId); } }).catch((err) => { if (active) setError(err instanceof Error ? err.message : "CONVERSATION_LOAD_FAILED"); }); return () => { active = false; }; }, [session?.userId]);\n  useEffect(() => { if (session?.userId && hydratedAccount === session.userId) void sarahConversationStore.save(session.userId, messages).catch((err) => setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED")); }, [messages, session?.userId, hydratedAccount]);
+  const [pending, setPending] = useState<SarahInputRecord[]>([]);
+  const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);
+
+  useEffect(() => { let active = true; setMessages([]); setHydratedAccount(null); if (!session?.userId) return; void sarahConversationStore.load(session.userId).then((saved) => { if (active) { setMessages(saved); setHydratedAccount(session.userId); } }).catch((err) => { if (active) setError(err instanceof Error ? err.message : "CONVERSATION_LOAD_FAILED"); }); return () => { active = false; }; }, [session?.userId]);
+  useEffect(() => { if (session?.userId && hydratedAccount === session.userId) void sarahConversationStore.save(session.userId, messages).catch((err) => setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED")); }, [messages, session?.userId, hydratedAccount]);
 
   const refreshQueue = async () => { if (!session) return; try { await sarahInputQueue.recoverInterruptedUploads(session.userId); setPending(await sarahInputQueue.list(session.userId)); } catch (err) { setError(err instanceof Error ? err.message : "QUEUE_UNAVAILABLE"); } };
   useEffect(() => { void refreshQueue(); }, [session?.userId]);
