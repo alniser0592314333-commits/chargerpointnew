@@ -17,6 +17,11 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("current.actorAccountId !== accountId");
     expect(source).toContain("row?.actorAccountId === accountId");
   });
+  it("does not blindly retry uploads interrupted by app shutdown", () => {
+    expect(source).toContain("recoverInterruptedUploads");
+    expect(source).toContain("UPLOAD_INTERRUPTED_REQUIRES_REVIEW");
+    expect(source).toContain("state === \\\"UPLOADING\\\"");
+  });
   it("keeps the operational outbox separate and limits metadata fields", () => {
     expect(source).toContain("pre-execution durable input queue");
     expect(source).toContain("aiRequestId");
