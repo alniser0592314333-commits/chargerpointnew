@@ -70,7 +70,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (record.state === "NEEDS_ATTENTION") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
       else if (record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
       await sarahInputQueue.transition(session.userId, record.id, "UPLOADING");
-      const response = await sarahChatService.send(record.text, []);
+      const response = await sarahChatService.send(record.text, messages.slice(-20));
       await sarahInputQueue.transition(session.userId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
       await sarahInputQueue.transition(session.userId, record.id, "COMPLETED");
       setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
