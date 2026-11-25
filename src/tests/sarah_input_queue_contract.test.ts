@@ -22,8 +22,8 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("recoverInterruptedUploads");
     expect(source).toContain("UPLOAD_INTERRUPTED_REQUIRES_REVIEW");
     expect(source).toContain("UPLOADING");
-    expect(source).toContain("lastErrorCode: \"UPLOAD_INTERRUPTED_REQUIRES_REVIEW\"");
-    expect(source).toContain("await this.transition(accountId, row.id, \"NEEDS_ATTENTION\"");
+    expect(source).toContain('lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW"');
+    expect(source).toContain('await this.transition(accountId, row.id, "NEEDS_ATTENTION"');
   });
   it("limits stored text and audio payload sizes", () => {
     expect(source).toContain("MAX_TEXT_CHARS");
@@ -35,13 +35,12 @@ describe("Sarah durable input queue architecture contract", () => {
   });
   it("keeps the operational outbox separate and limits metadata fields", () => {
     expect(source).toContain("pre-execution durable input queue");
+    expect(source).toContain("aiRequestId");
+    expect(source).toContain("resultRef");
   });
   it("avoids replaying the queued text as duplicate history on retry", () => {
     const page = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");
     expect(page).toContain("retryHistory.at(-1)?.text === record.text");
     expect(page).toContain("retryHistory.pop()");
-  });
-    expect(source).toContain("aiRequestId");
-    expect(source).toContain("resultRef");
   });
 });
