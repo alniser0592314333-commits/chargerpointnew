@@ -5,7 +5,8 @@ describe("Sarah durable input queue architecture contract", () => {
   const source = readFileSync("src/application/ai/sarahInputQueue.ts", "utf8");
   it("uses an independent IndexedDB store and never memory fallback", () => {
     expect(source).toContain('SarahDurableInputQueue');
-    expect(source).toContain('createObjectStore("inputs"');
+    expect(source).toContain('const STORE = "inputs"');
+    expect(source).toContain('createObjectStore(STORE');
     expect(source).toContain('DURABLE_STORAGE_UNAVAILABLE');
     expect(source).not.toContain("localDb");
   });
