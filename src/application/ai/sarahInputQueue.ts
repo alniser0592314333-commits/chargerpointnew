@@ -59,21 +59,6 @@ const openDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   request.onerror = () => reject(request.error || new Error("DURABLE_STORAGE_UNAVAILABLE"));
 });
 
-const transact = async <T>(stores: string[], mode: IDBTransactionMode, run: (tx: IDBTransaction) => void): Promise<T> =>
-  new Promise<T>(async (resolve, reject) => {
-    let db: IDBDatabase;
-    try { db = await openDb(); } catch (e) { reject(e); return; }
-    try {
-      const tx = db.transaction(stores, mode);
-      let result: T;
-      tx.oncomplete = () => { db.close(); resolve(result); };
-      tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_TRANSACTION_FAILED")); };
-      tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_TRANSACTION_ABORTED")); };
-      // The callback may attach result capture via the transaction's object stores.
-      run(tx);
-    } catch (e) { db.close(); reject(e); }
-  });
-
 const requestValue = <T>(req: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   req.onsuccess = () => resolve(req.result);
   req.onerror = () => reject(req.error);
