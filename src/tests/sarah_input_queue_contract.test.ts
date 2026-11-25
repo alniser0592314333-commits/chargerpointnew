@@ -25,6 +25,12 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("lastErrorCode: \"UPLOAD_INTERRUPTED_REQUIRES_REVIEW\"");
     expect(source).toContain("await this.transition(accountId, row.id, \"NEEDS_ATTENTION\"");
   });
+  it("limits stored text and audio payload sizes", () => {
+    expect(source).toContain("MAX_TEXT_CHARS");
+    expect(source).toContain("MAX_AUDIO_BYTES");
+    expect(source).toContain("TEXT_INPUT_TOO_LARGE");
+    expect(source).toContain("AUDIO_INPUT_TOO_LARGE");
+  });
   it("keeps the operational outbox separate and limits metadata fields", () => {
     expect(source).toContain("pre-execution durable input queue");
     expect(source).toContain("aiRequestId");
