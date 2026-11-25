@@ -3,7 +3,7 @@ import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
 import { sarahChatService } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
-import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
+import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";\nimport { sarahConversationStore } from "../../application/ai/sarahConversationStore";
 
 type Message = { role: "user" | "assistant"; text: string };
 
@@ -12,7 +12,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [pending, setPending] = useState<SarahInputRecord[]>([]);
+  const [pending, setPending] = useState<SarahInputRecord[]>([]);\n  const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);\n\n  useEffect(() => { let active = true; setMessages([]); setHydratedAccount(null); if (!session?.userId) return; void sarahConversationStore.load(session.userId).then((saved) => { if (active) { setMessages(saved); setHydratedAccount(session.userId); } }).catch((err) => { if (active) setError(err instanceof Error ? err.message : "CONVERSATION_LOAD_FAILED"); }); return () => { active = false; }; }, [session?.userId]);\n  useEffect(() => { if (session?.userId && hydratedAccount === session.userId) void sarahConversationStore.save(session.userId, messages).catch((err) => setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED")); }, [messages, session?.userId, hydratedAccount]);
 
   const refreshQueue = async () => { if (!session) return; try { await sarahInputQueue.recoverInterruptedUploads(session.userId); setPending(await sarahInputQueue.list(session.userId)); } catch (err) { setError(err instanceof Error ? err.message : "QUEUE_UNAVAILABLE"); } };
   useEffect(() => { void refreshQueue(); }, [session?.userId]);
