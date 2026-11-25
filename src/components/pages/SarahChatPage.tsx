@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
 import { sarahChatService } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
-import { sarahInputQueue } from "../../application/ai/sarahInputQueue";
+import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
 
 type Message = { role: "user" | "assistant"; text: string };
 
@@ -11,7 +11,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState("");\n  const [pending, setPending] = useState<SarahInputRecord[]>([]);\n\n  const refreshQueue = async () => { if (!session) return; try { await sarahInputQueue.recoverInterruptedUploads(session.userId); setPending(await sarahInputQueue.list(session.userId)); } catch (err) { setError(err instanceof Error ? err.message : "QUEUE_UNAVAILABLE"); } };\n  useEffect(() => { void refreshQueue(); }, [session?.userId]);
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
 
   const send = async () => {
@@ -28,7 +28,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         id, actorAccountId: session.userId, deviceId: "web-client", kind: "text",
         state: navigator.onLine ? "READY_TO_SEND" : "QUEUED_OFFLINE", text: clean, correlationId,
       });
-      if (!navigator.onLine) {
+      await refreshQueue();\n      if (!navigator.onLine) {
         setMessages((prev) => [...prev, { role: "assistant", text: "حفظت رسالتك محليًا في الطابور؛ لم تُرسل بعد لأن الإنترنت غير متصل." }]);
         return;
       }
@@ -37,7 +37,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         const response = await sarahChatService.send(clean, messages);
         await sarahInputQueue.transition(session.userId, id, "SENT_TO_AI", { resultRef: correlationId });
         await sarahInputQueue.transition(session.userId, id, "COMPLETED");
-        setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
+        setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);\n        await refreshQueue();
       } catch (err) {
         await sarahInputQueue.transition(session.userId, id, "NEEDS_ATTENTION", {
           lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
@@ -45,10 +45,27 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         throw err;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
+      setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");\n      await refreshQueue();
     } finally {
       setBusy(false);
     }
+  };
+
+  const retryQueued = async (record: SarahInputRecord) => {
+    if (!session || busy || !navigator.onLine || record.actorAccountId !== session.userId || !record.text) return;
+    setBusy(true); setError("");
+    try {
+      if (record.state === "NEEDS_ATTENTION") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
+      else if (record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
+      await sarahInputQueue.transition(session.userId, record.id, "UPLOADING");
+      const response = await sarahChatService.send(record.text, []);
+      await sarahInputQueue.transition(session.userId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
+      await sarahInputQueue.transition(session.userId, record.id, "COMPLETED");
+      setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
+    } catch (err) {
+      try { await sarahInputQueue.transition(session.userId, record.id, "NEEDS_ATTENTION", { lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED" }); } catch {}
+      setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
+    } finally { setBusy(false); await refreshQueue(); }
   };
 
   if (!canUse) return <div className="p-6 text-center text-sm text-gray-500">لا تملك صلاحية استخدام سارة.</div>;
@@ -69,11 +86,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         {busy && <div className="text-sm text-gray-500 animate-pulse">سارة بتفكر...</div>}
         {error && <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span></div>}
       </div>
+      {pending.filter((item) => item.state !== "COMPLETED").length > 0 && <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20"><div className="mb-2 font-semibold">رسائل محفوظة / تحتاج متابعة</div>{pending.filter((item) => item.state !== "COMPLETED").map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 py-2"><span className="min-w-0 flex-1 truncate">{item.text || "رسالة صوتية محفوظة"} <span className="text-xs text-gray-500">({item.state})</span></span>{(item.state === "QUEUED_OFFLINE" || item.state === "NEEDS_ATTENTION") && <button type="button" disabled={busy || !navigator.onLine} onClick={() => void retryQueued(item)} className="rounded-lg bg-amber-700 px-3 py-1 text-white disabled:opacity-40">إعادة إرسال</button>}</div>)}</div>}
       <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#123832] dark:bg-[#061f1c]">
         <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy} />
         <Button type="submit" disabled={busy || !text.trim()} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
       </form>
-      <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
+      <button type="button" onClick={() => void refreshQueue()} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>\n      <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
     </section>
   );
 };
