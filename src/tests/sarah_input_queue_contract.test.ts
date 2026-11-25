@@ -21,6 +21,8 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("recoverInterruptedUploads");
     expect(source).toContain("UPLOAD_INTERRUPTED_REQUIRES_REVIEW");
     expect(source).toContain("UPLOADING");
+    expect(source).toContain("lastErrorCode: \"UPLOAD_INTERRUPTED_REQUIRES_REVIEW\"");
+    expect(source).toContain("await this.transition(accountId, row.id, \"NEEDS_ATTENTION\"");
   });
   it("keeps the operational outbox separate and limits metadata fields", () => {
     expect(source).toContain("pre-execution durable input queue");
