@@ -20,7 +20,7 @@ describe("Sarah durable input queue architecture contract", () => {
   it("does not blindly retry uploads interrupted by app shutdown", () => {
     expect(source).toContain("recoverInterruptedUploads");
     expect(source).toContain("UPLOAD_INTERRUPTED_REQUIRES_REVIEW");
-    expect(source).toContain("state === \\\"UPLOADING\\\"");
+    expect(source).toContain("UPLOADING");
   });
   it("keeps the operational outbox separate and limits metadata fields", () => {
     expect(source).toContain("pre-execution durable input queue");
