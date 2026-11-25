@@ -67,13 +67,16 @@ const requestValue = <T>(req: IDBRequest<T>): Promise<T> => new Promise((resolve
 export const sarahInputQueue = {
   async enqueue(input: Omit<SarahInputRecord, "sequence" | "createdAt" | "attempts">): Promise<SarahInputRecord> {
     if (!input.actorAccountId || !input.deviceId || !input.id || !input.correlationId) throw new Error("INVALID_QUEUE_INPUT");
+    if (input.state !== "QUEUED_OFFLINE" && input.state !== "READY_TO_SEND") throw new Error("INVALID_INITIAL_QUEUE_STATE");
+    if (input.kind === "text" && input.audioBlob) throw new Error("TEXT_INPUT_CANNOT_INCLUDE_AUDIO");
+    if (input.kind === "audio" && input.text) throw new Error("AUDIO_INPUT_CANNOT_INCLUDE_TEXT");
     if (input.kind === "text" && !input.text?.trim()) throw new Error("EMPTY_TEXT_INPUT");
     if (input.kind === "audio" && !(input.audioBlob instanceof Blob)) throw new Error("AUDIO_BLOB_REQUIRED");
     const db = await openDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction([STORE, META], "readwrite");
       const store = tx.objectStore(STORE), meta = tx.objectStore(META);
-      const key = "sequence";
+      const key = `sequence:${input.actorAccountId}`;
       const get = meta.get(key);
       let record: SarahInputRecord;
       get.onsuccess = () => {
@@ -106,9 +109,9 @@ export const sarahInputQueue = {
       const get = store.get(id); let updated: SarahInputRecord | undefined;
       get.onsuccess = () => {
         const current = get.result as SarahInputRecord | undefined;
-        if (!current || current.actorAccountId !== accountId) { tx.abort(); return; }
-        if (!allowed[current.state].includes(next)) { tx.abort(); return; }
-        updated = { ...current, ...details, state: next, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
+        if (!current || current.actorAccountId !== accountId) { reject(new Error("QUEUE_ITEM_NOT_FOUND_FOR_ACCOUNT")); tx.abort(); return; }
+        if (!allowed[current.state].includes(next)) { reject(new Error("QUEUE_TRANSITION_NOT_ALLOWED")); tx.abort(); return; }
+        updated = { ...current, ...details, state: next, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
         store.put(updated);
       };
       tx.oncomplete = () => { db.close(); resolve(updated!); };
