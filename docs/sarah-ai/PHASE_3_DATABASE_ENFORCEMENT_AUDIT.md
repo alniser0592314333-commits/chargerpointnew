@@ -39,3 +39,20 @@ The Supabase catalog inspection was attempted against project ydhcyamtgioyrxfark
 
 ## No production changes
 This audit note documents a boundary and an incomplete inspection. It makes no claim of verified RLS completeness and does not apply migrations, modify production rows, merge, or deploy.
+
+
+## 2026-11-26 follow-up: catalog and advisory scan
+
+- A read-only catalog query enumerated public/storage tables and policy state. 59 public tables reported RLS enabled without policies; this is not automatically a vulnerability because direct table grants were separately enumerated.
+- The targeted information_schema.table_privileges query showed browser-role table grants only on `app_release_policies` among public tables. Its anon SELECT and authenticated SELECT/INSERT/UPDATE policies are intentional release metadata access, but need separate scope/content review.
+- The catalog query found no public-schema views/materialized views in the enumerated relation set. (The `v_email` name is a table in the catalog, not a view.)
+- Supabase security advisors reported 8 SECURITY DEFINER functions executable by anon, including public bootstrap checks, app identity, landing content, QR resolvers, and QR-payment submission. These are public application endpoints and must be audited individually; their existence is not proof of exploitable exposure. The separate authenticated SECURITY DEFINER advisor findings also require triage before Sarah's tool bridge is enabled.
+- Supabase advisors also reported extensions pgcrypto and pg_net in public schema. Relocation is not included in Sarah work because it could affect existing production RPCs and is not yet dependency-mapped.
+- No data rows were read. These are catalog, grant, policy, and advisor findings only.
+
+## Read-only session-gate regression repair (branch-only)
+
+- The server session-active function previously attempted legacy session registration and activity updates in read-only transactions.
+- The migration was updated so read-only transactions avoid writes: an already registered session is still checked for revocation and expiry; an unregistered session fails closed instead of registering; the read-only path returns before the activity-write throttle.
+- The activity update condition is explicitly guarded by the read-only flag.
+- A source contract was added to require the read-only guard. This has not yet been confirmed by a completed CI run and is not deployed to production.
