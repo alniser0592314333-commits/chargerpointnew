@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -29,8 +30,12 @@ Deno.serve(async (request: Request) => {
   const claims = claimsOf(bearer);
   const sessionId = normalize(claims?.session_id, 64);
   const now = new Date();
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > 16384) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const bodyBytes = await readBoundedRequestBody(request, 16384).catch(() => null);
+  if (bodyBytes === null) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
   let input: Record<string, unknown>;
-  try { input = await request.json(); } catch { return respond(400, { ok: false, error: "INVALID_REQUEST" }); }
+  try { input = JSON.parse(new TextDecoder().decode(bodyBytes)); } catch { return respond(400, { ok: false, error: "INVALID_REQUEST" }); }
   const action = normalize(input.action, 48);
 
   const requireAdmin = async () => {
