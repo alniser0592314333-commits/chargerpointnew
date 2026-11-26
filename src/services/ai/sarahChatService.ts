@@ -5,7 +5,7 @@ export interface SarahChatResponse { answer: string; modelId: string }
 
 const endpoint = () => {
   if (!config.supabaseUrl || !config.supabaseAnonKey) throw new Error("SUPABASE_NOT_CONFIGURED");
-  return `${config.supabaseUrl.replace(/\\/+$/, "")}/functions/v1/sarah-ai-chat`;
+  return `${config.supabaseUrl.replace(/\/+$/, "")}/functions/v1/sarah-ai-chat`;
 };
 
 const tokenSubject = (token: string): string => {
