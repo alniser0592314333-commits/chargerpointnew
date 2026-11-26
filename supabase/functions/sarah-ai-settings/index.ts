@@ -172,11 +172,7 @@ Deno.serve(async (request: Request) => {
     const adapter = getAIProviderAdapter(configRow.provider_id);
     if (!adapter) return respond(400, { ok: false, error: "PROVIDER_NOT_IMPLEMENTED" });
 
-    const { data: quota, error: quotaError } = await admin.rpc("sarah_ai_consume_quota", {
-      p_actor_auth_user_id: authData.user.id,
-      p_max_requests: 20,
-      p_window_seconds: 3600,
-    });
+    const { data: quota, error: quotaError } = await caller.rpc("sarah_ai_consume_my_manage_quota", { p_period: "hour" });
     if (quotaError || !quota || quota.allowed !== true) {
       return respond(quotaError ? 503 : 429, {
         ok: false,
@@ -185,11 +181,7 @@ Deno.serve(async (request: Request) => {
       });
     }
 
-    const { data: dailyQuota, error: dailyQuotaError } = await admin.rpc("sarah_ai_consume_quota", {
-      p_actor_auth_user_id: authData.user.id,
-      p_max_requests: 100,
-      p_window_seconds: 86400,
-    });
+    const { data: dailyQuota, error: dailyQuotaError } = await caller.rpc("sarah_ai_consume_my_manage_quota", { p_period: "day" });
     if (dailyQuotaError || !dailyQuota || dailyQuota.allowed !== true) {
       return respond(dailyQuotaError ? 503 : 429, {
         ok: false,
