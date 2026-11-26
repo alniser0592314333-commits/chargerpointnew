@@ -9,6 +9,8 @@ describe("Sarah account-switch asynchronous isolation", () => {
   it("invalidates asynchronous work when account identity changes", () => {
     expect(page).toContain("SarahAccountOperationScope");
     expect(page).toContain("const accountId = session?.authUserId || null");
+    expect(page).toContain("const activeAccountId = session?.authUserId || null");
+    expect(page).toContain("refreshQueue(activeAccountId, accountScopeRef.current.generation)");
     expect(page).toContain("accountScopeRef.current.switchTo(accountScopeIdentity(session?.userId, session?.authUserId))");
     expect(page).toContain("isCurrent(accountId, operation)");
   });
