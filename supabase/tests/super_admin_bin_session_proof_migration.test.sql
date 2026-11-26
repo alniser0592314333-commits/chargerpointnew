@@ -56,7 +56,7 @@ $missing_proof$;
 RESET ROLE;
 DO $rejected_registration_no_row$
 BEGIN
-  IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='30000000-0000-4000-8000-000000000001') THEN
+  IF public.fixture_account_session_exists('30000000-0000-4000-8000-000000000001') THEN
     RAISE EXCEPTION 'Rejected registration created an account_sessions row';
   END IF;
 END
@@ -72,19 +72,14 @@ BEGIN
   IF v_result->>'success' IS DISTINCT FROM 'false' THEN
     RAISE EXCEPTION 'Incorrect BIN unexpectedly verified';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.admin_bin_session_proofs WHERE auth_session_id='30000000-0000-4000-8000-000000000001') THEN
+  IF public.fixture_bin_proof_state('30000000-0000-4000-8000-000000000001','any') THEN
     RAISE EXCEPTION 'Incorrect BIN attempt issued a session proof';
   END IF;
   v_result := public.verify_admin_bin_with_attempt_tracking('correct');
   IF v_result->>'success' IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'Correct BIN was not accepted';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.admin_bin_session_proofs
-    WHERE auth_session_id='30000000-0000-4000-8000-000000000001'
-      AND auth_user_id='10000000-0000-4000-8000-000000000001'
-      AND consumed_at IS NULL AND expires_at > now()
-  ) THEN
+  IF NOT public.fixture_bin_proof_state('30000000-0000-4000-8000-000000000001','unconsumed') THEN
     RAISE EXCEPTION 'Successful BIN verification did not create a fresh session-bound proof';
   END IF;
 END
@@ -107,11 +102,7 @@ SELECT set_config('request.jwt.claims','{"role":"authenticated","sub":"10000000-
 SELECT public.register_my_account_session_v2('test','native');
 DO $consumed$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM public.admin_bin_session_proofs
-    WHERE auth_session_id='30000000-0000-4000-8000-000000000001'
-      AND consumed_at IS NOT NULL
-  ) THEN
+  IF NOT public.fixture_bin_proof_state('30000000-0000-4000-8000-000000000001','consumed') THEN
     RAISE EXCEPTION 'Successful session registration did not consume its BIN proof';
   END IF;
   IF NOT public.is_my_account_session_active() THEN
@@ -127,10 +118,10 @@ SELECT set_config('request.jwt.claims','{"role":"authenticated","sub":"10000000-
 SELECT public.register_my_account_session_v2('test','browser');
 DO $regular_admin$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='30000000-0000-4000-8000-000000000003') THEN
+  IF NOT public.fixture_account_session_exists('30000000-0000-4000-8000-000000000003') THEN
     RAISE EXCEPTION 'Regular active administrator could not register without Super Admin BIN proof';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.admin_bin_session_proofs WHERE auth_session_id='30000000-0000-4000-8000-000000000003') THEN
+  IF public.fixture_bin_proof_state('30000000-0000-4000-8000-000000000003','any') THEN
     RAISE EXCEPTION 'Regular administrator unexpectedly received a Super Admin BIN proof';
   END IF;
 END
