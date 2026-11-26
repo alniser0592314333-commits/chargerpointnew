@@ -1132,9 +1132,18 @@ class DefaultAuthService implements AuthService {
       // of treating a still-valid Supabase session as logged out.
       if (serverProfile) {
         const supabaseSession = await this.getSupabaseAuthSession();
+        if (
+          !supabaseSession?.user?.id ||
+          supabaseSession.user.id !== activeAuthUserId ||
+          supabaseSession.user.id !== serverProfile.auth_user_id
+        ) {
+          inMemorySession = null;
+          storage.removeItem(SESSION_STORAGE_KEY);
+          return null;
+        }
         const session: UserSession = {
-          userId: serverProfile.admin_id || storedSession?.userId || supabaseSession?.user.id || "",
-          authUserId: supabaseSession?.user.id,
+          userId: serverProfile.admin_id || storedSession?.userId || supabaseSession.user.id,
+          authUserId: supabaseSession.user.id,
           email: serverProfile.email || storedSession?.email || supabaseSession?.user.email || "",
           fullName: serverProfile.full_name || serverProfile.username || storedSession?.fullName || "",
           role: serverProfile.role || storedSession?.role || "OPERATOR",
@@ -1155,9 +1164,17 @@ class DefaultAuthService implements AuthService {
       }
     } else if (serverProfile && this.isSupabaseConfigured()) {
       const supabaseSession = await this.getSupabaseAuthSession();
+      if (
+        !supabaseSession?.user?.id ||
+        supabaseSession.user.id !== activeAuthUserId ||
+        supabaseSession.user.id !== serverProfile.auth_user_id
+      ) {
+        inMemorySession = null;
+        return null;
+      }
       const session: UserSession = {
-        userId: serverProfile.admin_id || supabaseSession?.user.id || "",
-        authUserId: supabaseSession?.user.id,
+        userId: serverProfile.admin_id || supabaseSession.user.id,
+        authUserId: supabaseSession.user.id,
         email: serverProfile.email || supabaseSession?.user.email || "",
         fullName: serverProfile.full_name || serverProfile.username || "",
         role: serverProfile.role || "OPERATOR",
