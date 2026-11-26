@@ -6,6 +6,10 @@
 -- granting unregistered customer/non-admin Auth sessions application access.
 -- The live inventory showed four active administrator Auth sessions missing
 -- registry rows; register them conservatively as browser sessions for seven days.
+-- No browser or service-role client may inspect or mutate the registry table
+-- directly. All access must pass through the caller-scoped RPCs below.
+REVOKE ALL ON TABLE public.account_sessions FROM PUBLIC, anon, authenticated, service_role;
+
 DO $backfill$
 BEGIN
   IF to_regclass('public.admins') IS NOT NULL THEN
