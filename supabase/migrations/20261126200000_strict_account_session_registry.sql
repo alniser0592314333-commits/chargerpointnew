@@ -537,10 +537,18 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.get_my_admin_login_gate() FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.get_my_admin_login_gate() TO authenticated;
-REVOKE ALL ON FUNCTION public.get_current_admin_profile() FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
-REVOKE ALL ON FUNCTION public.current_admin_id() FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.current_admin_id() TO authenticated;
+DO $revoke_user_admin_identity_rpc$
+BEGIN
+  IF to_regprocedure('public.get_current_admin_profile()') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.get_current_admin_profile() FROM PUBLIC, anon, service_role';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated';
+  END IF;
+  IF to_regprocedure('public.current_admin_id()') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.current_admin_id() FROM PUBLIC, anon, service_role';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.current_admin_id() TO authenticated';
+  END IF;
+END;
+$revoke_user_admin_identity_rpc$;
 
 -- Legacy one-argument registration is retained for older clients but delegates
 -- to the same strict, freshness-checked browser registration path. It can never
