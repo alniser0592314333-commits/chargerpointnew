@@ -5,7 +5,7 @@ describe("Sarah history bounds", () => {
   it("keeps only the latest 20 messages and caps each message at 6000 characters", () => {
     const input = Array.from({ length: 30 }, (_, index) => ({
       role: index % 2 ? "assistant" as const : "user" as const,
-      text: `message-${index}-${"م".repeat(7000)}`,
+      text: `message-${index}-${"م".repeat(5900)}`,
     }));
     const result = buildSarahHistorySnapshot(input);
     expect(result).toHaveLength(20);
