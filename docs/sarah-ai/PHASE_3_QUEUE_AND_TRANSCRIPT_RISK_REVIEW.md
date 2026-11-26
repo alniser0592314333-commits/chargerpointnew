@@ -7,7 +7,7 @@ Review only; no production changes.
 ## Verified implementation observations
 - Durable input records are keyed by actorAccountId and sequence, and list/transition/remove methods require an account ID and verify ownership before modifying a record.
 - Text and audio inputs have bounds (20,000 characters and 25 MiB). Audio is persisted as a Blob, though audio capture/transmission is not yet enabled in the page.
-- Interrupted UPLOADING records are changed to NEEDS_ATTENTION rather than blindly replayed, because provider delivery may have occurred before app shutdown.
+- Only UPLOADING records whose five-minute lease has expired (or whose lease is missing/malformed) are changed to NEEDS_ATTENTION rather than blindly replayed, because provider delivery may have occurred before app shutdown.
 - Offline text is stored as QUEUED_OFFLINE and displayed for manual retry. This page does not currently implement automatic reconnect-driven replay.
 - Transcript IndexedDB rows are keyed by accountId and capped at 500 messages per save, but local IndexedDB data is not encrypted by this implementation and no retention policy is enforced.
 - Existing account-switch tests are source-pattern checks, not deferred-promise behavioural simulations. They are useful guardrails but do not prove races cannot occur.
