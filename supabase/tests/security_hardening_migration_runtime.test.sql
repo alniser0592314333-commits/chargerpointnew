@@ -1,6 +1,19 @@
 -- Runtime regression for admin-bound SELECT policies and TRUNCATE revocation.
 \set ON_ERROR_STOP on
 
+DO $admin_identity_rpc_privileges$
+BEGIN
+  IF has_function_privilege('service_role', 'public.get_current_admin_profile()', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.current_admin_id()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Service role can directly invoke caller-scoped admin identity RPCs';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.get_current_admin_profile()', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.current_admin_id()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated admin lost required identity RPC access';
+  END IF;
+END
+$admin_identity_rpc_privileges$;
+
 -- A currently active administrator session missing a registry row is
 -- conservatively backfilled; an unregistered non-admin Auth session is not.
 SET ROLE authenticated;
