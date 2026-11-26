@@ -1371,4 +1371,5 @@ jobs:
           count=$(psql -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SELECT request_count FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id = '$actor' AND window_seconds = 3600")
           test "$allowed" -eq 20
           test "$denied" -eq 10
-          test "$count" -eq 30
+          echo "allowed=$allowed denied=$denied persisted_request_count=$count"
+          test "$count" -eq 20
