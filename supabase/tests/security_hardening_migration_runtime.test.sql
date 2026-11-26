@@ -330,6 +330,79 @@ END
 $bootstrap_owner_created$;
 
 
+-- BIN is the only deliberate pre-session Super Admin RPC. It accepts a
+-- fresh Auth session with no app-session row, but rejects ordinary admins and
+-- any already-registered/revoked app session.
+DO $bin_gate_acl$
+BEGIN
+  IF has_function_privilege('anon','public.verify_admin_bin_with_attempt_tracking(text)','EXECUTE')
+     OR has_function_privilege('service_role','public.verify_admin_bin_with_attempt_tracking(text)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.verify_admin_bin_with_attempt_tracking(text)','EXECUTE')
+     OR has_function_privilege('authenticated','public.assert_my_fresh_super_admin_login_session()','EXECUTE')
+     OR has_function_privilege('authenticated','public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(text)','EXECUTE') THEN
+    RAISE EXCEPTION 'Pre-session BIN gate or private implementation has unsafe execution grants';
+  END IF;
+END
+$bin_gate_acl$;
+
+INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
+VALUES
+  ('11000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000003',now(),now(),NULL,'Fresh Super Admin BIN gate'),
+  ('11000000-0000-0000-0000-000000000007','10000000-0000-0000-0000-000000000004',now(),now(),NULL,'Fresh operator BIN gate'),
+  ('11000000-0000-0000-0000-000000000008','10000000-0000-0000-0000-000000000003',now(),now(),NULL,'Revoked Super Admin BIN gate');
+INSERT INTO public.account_sessions(
+  session_id,user_id,client_type,user_agent,created_at,last_seen_at,session_expires_at,revoked_at
+) VALUES (
+  '11000000-0000-0000-0000-000000000008',
+  '10000000-0000-0000-0000-000000000003',
+  'browser','Revoked Super Admin BIN gate',now(),now(),now()+interval '7 days',now()
+);
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000003',false);
+SELECT set_config('request.jwt.claims','{"role":"authenticated","session_id":"11000000-0000-0000-0000-000000000006"}',false);
+DO $fresh_super_admin_bin_gate$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.verify_admin_bin_with_attempt_tracking('1234');
+  IF v_result->>'success' IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'Fresh Super Admin could not verify BIN before app-session persistence: %',v_result;
+  END IF;
+END
+$fresh_super_admin_bin_gate$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000004',false);
+SELECT set_config('request.jwt.claims','{"role":"authenticated","session_id":"11000000-0000-0000-0000-000000000007"}',false);
+DO $operator_pre_session_bin_denied$
+BEGIN
+  BEGIN
+    PERFORM public.verify_admin_bin_with_attempt_tracking('1234');
+    RAISE EXCEPTION 'Non-Super Admin used the pre-session BIN exception';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+END
+$operator_pre_session_bin_denied$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000003',false);
+SELECT set_config('request.jwt.claims','{"role":"authenticated","session_id":"11000000-0000-0000-0000-000000000008"}',false);
+DO $revoked_pre_session_bin_denied$
+BEGIN
+  BEGIN
+    PERFORM public.verify_admin_bin_with_attempt_tracking('1234');
+    RAISE EXCEPTION 'Revoked app session reused the pre-session BIN exception';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+END
+$revoked_pre_session_bin_denied$;
+RESET ROLE;
+
 -- Anonymous callers may read public logos, but must not upload, overwrite, or delete them.
 DO $storage_policy_shape$
 BEGIN
