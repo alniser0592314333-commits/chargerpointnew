@@ -353,7 +353,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
                 </div>
                 <div>
                   <label className="block text-xs text-gray-600 dark:text-[#8eb698] mb-1">Max Output Tokens</label>
-                  <input type="number" min="1" max="65536" step="1" value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(e.target.value)} dir="ltr" className="w-full rounded-lg border border-gray-200 dark:border-[#17443c] bg-white dark:bg-[#071f1b] px-3 py-2 text-sm text-gray-900 dark:text-[#daf1de]" />
+                  <input type="number" min="1" max="4096" step="1" value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(e.target.value)} dir="ltr" className="w-full rounded-lg border border-gray-200 dark:border-[#17443c] bg-white dark:bg-[#071f1b] px-3 py-2 text-sm text-gray-900 dark:text-[#daf1de]" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-600 dark:text-[#8eb698] mb-1">Timeout (ms)</label>
