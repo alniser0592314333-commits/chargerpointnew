@@ -35,8 +35,9 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("Date.now() + 5 * 60 * 1000");
     expect(source).toContain("uploadLeaseExpired(row)");
     expect(source).toContain("!Number.isFinite(expires) || expires <= Date.now()");
-    expect(source).toContain("Another tab may have completed or changed this record");
-    expect(source).toContain("QUEUE_RECOVERY_RACE_FAILED");
+    expect(source).toContain("current.uploadLeaseUntil !== observed.uploadLeaseUntil");
+    expect(source).toContain("if (outcome === \"recovered\") recovered += 1");
+    expect(source).not.toContain("QUEUE_RECOVERY_RACE_FAILED");
   });
   it("limits stored text and audio payload sizes", () => {
     expect(source).toContain("MAX_TEXT_CHARS");
