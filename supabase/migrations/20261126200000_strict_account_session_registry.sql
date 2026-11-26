@@ -2,6 +2,36 @@
 -- Auth session validity is necessary but not sufficient: every application
 -- request must also have a matching, unrevoked, unexpired account_sessions row.
 -- The guard is read-only and never auto-registers legacy sessions.
+-- Preserve currently active administrator sessions during rollout without
+-- granting unregistered customer/non-admin Auth sessions application access.
+-- The live inventory showed four active administrator Auth sessions missing
+-- registry rows; register them conservatively as browser sessions for seven days.
+DO $backfill$
+BEGIN
+  IF to_regclass('public.admins') IS NOT NULL THEN
+    EXECUTE $sql$
+      INSERT INTO public.account_sessions(
+        session_id, user_id, user_agent, created_at, last_seen_at,
+        client_type, session_expires_at
+      )
+      SELECT s.id, s.user_id, s.user_agent, COALESCE(s.created_at, now()),
+             now(), 'browser', now() + interval '7 days'
+      FROM auth.sessions s
+      JOIN public.admins a
+        ON a.auth_user_id = s.user_id
+       AND a.is_active IS TRUE
+       AND a.disabled_at IS NULL
+      LEFT JOIN public.account_sessions existing
+        ON existing.session_id = s.id
+       AND existing.user_id = s.user_id
+      WHERE (s.not_after IS NULL OR s.not_after > now())
+        AND existing.session_id IS NULL
+      ON CONFLICT (session_id) DO NOTHING
+    $sql$;
+  END IF;
+END;
+$backfill$;
+
 CREATE OR REPLACE FUNCTION public.is_my_account_session_active()
 RETURNS boolean
 LANGUAGE plpgsql
