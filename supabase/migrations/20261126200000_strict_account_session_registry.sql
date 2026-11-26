@@ -357,6 +357,27 @@ END;
 $;
 
 
+-- Internal assertion shared by sensitive RPC wrappers. It is intentionally
+-- not executable directly by browser roles; SECURITY DEFINER entry points call it.
+CREATE OR REPLACE FUNCTION public.assert_my_account_session_active()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+BEGIN
+  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) = 'service_role' THEN
+    RETURN;
+  END IF;
+
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Authentication session is revoked, expired, or unavailable'
+      USING ERRCODE = '28000';
+  END IF;
+END;
+$;
+REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon, authenticated, service_role;
+
 -- Close the legacy business-day restore RPC as an alternate session path.
 -- Keep its canonical implementation private and expose only a guarded wrapper.
 ALTER FUNCTION public.restore_selected_business_days(text, jsonb, date[])
