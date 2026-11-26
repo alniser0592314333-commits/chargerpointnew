@@ -152,7 +152,7 @@ Deno.serve(async (request: Request) => {
       const { data: active, error: activeError } = await supabase.rpc("is_active_admin_session");
       const { data: profile, error: profileError } = await supabase.rpc("get_current_admin_profile");
       const row = Array.isArray(profile) ? profile[0] : profile;
-      if (activeError || active !== true || profileError || !row?.is_admin || !row?.admin_id) {
+      if (activeError || active !== true || profileError || row?.auth_user_id !== user.id || row?.is_admin !== true || row?.is_active !== true || !row?.admin_id) {
         return json(403, { ok: false, error: "ACTIVE_ADMIN_SESSION_REQUIRED" });
       }
       principalId = String(row.admin_id);
