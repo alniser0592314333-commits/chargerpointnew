@@ -1058,8 +1058,8 @@ class DefaultAuthService implements AuthService {
       inMemorySession &&
       activeAuthUserId &&
       ((inMemorySession.authUserId && inMemorySession.authUserId !== activeAuthUserId) ||
-        (!inMemorySession.authUserId && activeAuthEmail &&
-          inMemorySession.email.trim().toLowerCase() !== activeAuthEmail))
+        (!inMemorySession.authUserId && (!activeAuthEmail ||
+          inMemorySession.email.trim().toLowerCase() !== activeAuthEmail)))
     ) {
       // A different Supabase identity is now active (usually from another tab).
       // Discard the previous account's cached role/permissions before returning
@@ -1120,8 +1120,8 @@ class DefaultAuthService implements AuthService {
         storedSession &&
         activeAuthUserId &&
         ((storedSession.authUserId && storedSession.authUserId !== activeAuthUserId) ||
-          (!storedSession.authUserId && activeAuthEmail &&
-            storedSession.email.trim().toLowerCase() !== activeAuthEmail))
+          (!storedSession.authUserId && (!activeAuthEmail ||
+            storedSession.email.trim().toLowerCase() !== activeAuthEmail)))
       ) {
         storedSession = null;
         storage.removeItem(SESSION_STORAGE_KEY);
