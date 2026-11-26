@@ -53,9 +53,9 @@ The first implementation candidate remains a narrowly typed customer lookup, not
 - Add negative tests for actor spoofing, permission revocation, inactive sessions, account switching, ambiguous lookup, injection, excessive input, and no permission before enabling.
 - This is still design only; no bridge function, migration, or capability has been implemented or enabled.
 
-## Gateway rate-limit design (not implemented)
+## Gateway rate-limit implementation status (branch-only, CI pending)
 
-The chat gateway currently has no durable per-actor quota. The follow-up should be an atomic database-backed limiter with:
+The branch now implements a durable atomic hourly per-actor quota. The implementation uses:
 - a server-validated Auth UUID as the key (not model input, client profile, or IP alone);
 - service-role-only RPC access, invoked only after Edge Function `getUser`, active profile/session and `ai:use` checks;
 - no public table grants and RLS enabled;
