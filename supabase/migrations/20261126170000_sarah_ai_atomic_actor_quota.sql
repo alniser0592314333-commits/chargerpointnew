@@ -2,10 +2,11 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.sarah_ai_usage_windows (
   actor_auth_user_id uuid NOT NULL,
+  quota_type text NOT NULL CHECK (quota_type IN ('chat', 'tool', 'manage')),
   window_seconds integer NOT NULL CHECK (window_seconds BETWEEN 60 AND 86400),
   window_started_at timestamptz NOT NULL,
   request_count integer NOT NULL DEFAULT 0 CHECK (request_count >= 0),
-  PRIMARY KEY(actor_auth_user_id, window_seconds, window_started_at)
+  PRIMARY KEY(actor_auth_user_id, quota_type, window_seconds, window_started_at)
 );
 ALTER TABLE public.sarah_ai_usage_windows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sarah_ai_usage_windows FORCE ROW LEVEL SECURITY;
@@ -17,6 +18,7 @@ CREATE INDEX IF NOT EXISTS sarah_ai_usage_windows_started_idx
 -- buckets from colliding when both start at the same UTC boundary.
 CREATE OR REPLACE FUNCTION public.sarah_ai_consume_quota_internal(
   p_actor_auth_user_id uuid,
+  p_quota_type text,
   p_max_requests integer,
   p_window_seconds integer
 )
@@ -30,6 +32,7 @@ DECLARE
   v_count integer;
 BEGIN
   IF p_actor_auth_user_id IS NULL
+     OR p_quota_type NOT IN ('chat', 'tool', 'manage')
      OR p_max_requests NOT BETWEEN 1 AND 100
      OR p_window_seconds NOT BETWEEN 60 AND 86400 THEN
     RAISE EXCEPTION 'Invalid quota parameters' USING ERRCODE = '22023';
@@ -43,10 +46,10 @@ BEGIN
   );
 
   INSERT INTO public.sarah_ai_usage_windows(
-    actor_auth_user_id, window_seconds, window_started_at, request_count
+    actor_auth_user_id, quota_type, window_seconds, window_started_at, request_count
   )
-  VALUES (p_actor_auth_user_id, p_window_seconds, v_window, 1)
-  ON CONFLICT(actor_auth_user_id, window_seconds, window_started_at)
+  VALUES (p_actor_auth_user_id, p_quota_type, p_window_seconds, v_window, 1)
+  ON CONFLICT(actor_auth_user_id, quota_type, window_seconds, window_started_at)
   DO UPDATE SET request_count = public.sarah_ai_usage_windows.request_count + 1
   RETURNING request_count INTO v_count;
 
@@ -61,7 +64,7 @@ BEGIN
   );
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.sarah_ai_consume_quota_internal(uuid, integer, integer)
+REVOKE ALL ON FUNCTION public.sarah_ai_consume_quota_internal(uuid, text, integer, integer)
   FROM PUBLIC, anon, authenticated, service_role;
 
 -- User-facing quota wrappers derive the actor from auth.uid() and enforce the
@@ -131,9 +134,13 @@ DECLARE
 BEGIN
   v_actor := public.sarah_ai_assert_use_permission();
   IF p_period = 'hour' THEN
-    RETURN public.sarah_ai_consume_quota_internal(v_actor, 20, 3600);
+    RETURN public.sarah_ai_consume_quota_internal(v_actor, 'chat', 20, 3600);
   ELSIF p_period = 'day' THEN
-    RETURN public.sarah_ai_consume_quota_internal(v_actor, 100, 86400);
+    RETURN public.sarah_ai_consume_quota_internal(v_actor, 'chat', 100, 86400);
+  ELSIF p_period = 'tool_hour' THEN
+    RETURN public.sarah_ai_consume_quota_internal(v_actor, 'tool', 20, 3600);
+  ELSIF p_period = 'tool_day' THEN
+    RETURN public.sarah_ai_consume_quota_internal(v_actor, 'tool', 100, 86400);
   END IF;
   RAISE EXCEPTION 'Invalid quota period' USING ERRCODE = '22023';
 END;
@@ -153,9 +160,9 @@ DECLARE
 BEGIN
   v_actor := public.sarah_ai_assert_manage_permission();
   IF p_period = 'hour' THEN
-    RETURN public.sarah_ai_consume_quota_internal(v_actor, 20, 3600);
+    RETURN public.sarah_ai_consume_quota_internal(v_actor, 'manage', 20, 3600);
   ELSIF p_period = 'day' THEN
-    RETURN public.sarah_ai_consume_quota_internal(v_actor, 100, 86400);
+    RETURN public.sarah_ai_consume_quota_internal(v_actor, 'manage', 100, 86400);
   END IF;
   RAISE EXCEPTION 'Invalid quota period' USING ERRCODE = '22023';
 END;
