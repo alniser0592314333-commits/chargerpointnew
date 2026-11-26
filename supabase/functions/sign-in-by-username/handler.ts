@@ -91,8 +91,13 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       return respond(400, { session: null, error: "INVALID_REQUEST" });
     }
     if (rawBody === null) return respond(413, { session: null, error: "REQUEST_TOO_LARGE" });
-    const input = JSON.parse(new TextDecoder().decode(rawBody)) as
-      { username?: unknown; password?: unknown } | null;
+    let input: { username?: unknown; password?: unknown } | null;
+    try {
+      input = JSON.parse(new TextDecoder().decode(rawBody)) as
+        { username?: unknown; password?: unknown } | null;
+    } catch {
+      return invalidCredentials();
+    }
     const username = normalizeUsername(input?.username);
     const password = typeof input?.password === "string" ? input.password : "";
     if (!username || !password || password.length > 1024) return invalidCredentials();
