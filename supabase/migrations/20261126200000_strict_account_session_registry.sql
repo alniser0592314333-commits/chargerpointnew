@@ -567,43 +567,32 @@ AS $function$
 DECLARE
   v_user_id uuid := auth.uid();
   v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
-  v_account_session public.account_sessions%ROWTYPE;
 BEGIN
   IF public.is_my_account_session_active() IS NOT TRUE THEN
     RETURN false;
   END IF;
 
-  SELECT * INTO v_account_session
-  FROM public.account_sessions a
-  WHERE a.session_id = v_session_id
-    AND a.user_id = v_user_id
-    AND a.revoked_at IS NULL
-    AND a.session_expires_at > now()
-  FOR UPDATE;
+  -- A conditional UPDATE avoids taking a row lock on every 30-second client
+  -- heartbeat; only one concurrent caller renews the session per five minutes.
+  UPDATE public.account_sessions
+  SET last_seen_at = now(),
+      session_expires_at = now() + CASE
+        WHEN client_type IN ('native', 'installed_pwa') THEN interval '30 days'
+        ELSE interval '7 days'
+      END
+  WHERE session_id = v_session_id
+    AND user_id = v_user_id
+    AND revoked_at IS NULL
+    AND session_expires_at > now()
+    AND (last_seen_at IS NULL OR last_seen_at < now() - interval '5 minutes');
 
-  IF NOT FOUND THEN
-    RETURN false;
+  IF FOUND THEN
+    RETURN true;
   END IF;
 
-  IF v_account_session.last_seen_at IS NULL
-     OR v_account_session.last_seen_at < now() - interval '5 minutes' THEN
-    UPDATE public.account_sessions
-    SET last_seen_at = now(),
-        session_expires_at = now() + CASE
-          WHEN v_account_session.client_type IN ('native', 'installed_pwa') THEN interval '30 days'
-          ELSE interval '7 days'
-        END
-    WHERE session_id = v_session_id
-      AND user_id = v_user_id
-      AND revoked_at IS NULL
-      AND session_expires_at > now();
-
-    IF NOT FOUND THEN
-      RETURN false;
-    END IF;
-  END IF;
-
-  RETURN true;
+  -- If no renewal was needed, recheck in case expiry/revocation raced the
+  -- initial read. This remains read-only and cannot register or revive a row.
+  RETURN public.is_my_account_session_active();
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.touch_my_account_session() FROM PUBLIC, anon, service_role;
