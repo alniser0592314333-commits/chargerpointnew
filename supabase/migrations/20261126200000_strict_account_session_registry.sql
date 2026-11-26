@@ -713,6 +713,17 @@ BEGIN
   RETURN COALESCE(v_result, jsonb_build_object('authenticated', true, 'is_admin', false));
 END;
 $function$;
+-- current_admin_id() is a caller-scoped identity resolver. It must never
+-- be available to service_role, which has no end-user Auth subject.
+DO $restrict_current_admin_id$
+BEGIN
+  IF to_regprocedure('public.current_admin_id()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.current_admin_id() FROM PUBLIC, anon, service_role;
+    GRANT EXECUTE ON FUNCTION public.current_admin_id() TO authenticated;
+  END IF;
+END;
+$restrict_current_admin_id$;
+
 REVOKE ALL ON FUNCTION public.get_my_admin_login_gate() FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.get_my_admin_login_gate() TO authenticated;
 DO $revoke_user_admin_identity_rpc$
