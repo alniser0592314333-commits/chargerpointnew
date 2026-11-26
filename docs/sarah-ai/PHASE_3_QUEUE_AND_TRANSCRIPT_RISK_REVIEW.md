@@ -43,9 +43,9 @@ This review is grounded in source inspection of SarahInputQueue, SarahConversati
 
 ## Stale-save protection after transcript deletion
 
-- The transcript store now uses an IndexedDB metadata tombstone per account when clearing history.
-- Saves read that tombstone inside the same read/write transaction and suppress snapshots older than the clear marker, preventing delayed prior saves from resurrecting deleted transcript content.
-- Contract checks cover the tombstone transaction and timestamp guard; this still needs a browser IndexedDB behavioral race test.
+- The transcript store now uses a per-account monotonic generation marker in IndexedDB metadata. Clearing atomically deletes the transcript and increments the generation; each hydrated page saves only with the generation it loaded, and the store rejects saves whose generation no longer matches.
+- This avoids relying on millisecond timestamp ordering for stale-save protection.
+- Contract checks cover the generation guard; browser IndexedDB behavioural race tests remain outstanding.
 
 
 ## Completed queue retention improvement (branch-only)
