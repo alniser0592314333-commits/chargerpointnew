@@ -549,10 +549,40 @@ BEGIN
     SECURITY DEFINER
     SET search_path = public, pg_temp
     AS $function$
+    DECLARE
+      v_email text;
+      v_email_confirmed_at timestamptz;
+      v_owner_email constant text := 'al.niser.0592314333@gmail.com';
     BEGIN
       IF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
       END IF;
+
+      SELECT u.email, u.email_confirmed_at
+        INTO v_email, v_email_confirmed_at
+      FROM auth.users u
+      WHERE u.id = auth.uid();
+
+      IF v_email IS NULL OR v_email_confirmed_at IS NULL
+         OR lower(btrim(v_email)) <> lower(btrim(v_owner_email)) THEN
+        RAISE EXCEPTION 'This identity is not eligible for first-owner bootstrap'
+          USING ERRCODE = '42501';
+      END IF;
+
+      IF EXISTS (
+        SELECT 1 FROM public.admins a
+        WHERE a.role IN ('SUPER_ADMIN', 'Super Admin')
+      ) THEN
+        RETURN jsonb_build_object('success', false, 'code', 'ALREADY_BOOTSTRAPPED');
+      END IF;
+
+      IF EXISTS (
+        SELECT 1 FROM public.admins a WHERE a.auth_user_id = auth.uid()
+      ) THEN
+        RAISE EXCEPTION 'This authenticated identity is already registered as an admin'
+          USING ERRCODE = '42501';
+      END IF;
+
       PERFORM public.register_my_account_session_v2(NULL, 'browser');
       RETURN public.bootstrap_first_super_admin__session_guarded_impl(
         p_username, p_full_name, p_bin
