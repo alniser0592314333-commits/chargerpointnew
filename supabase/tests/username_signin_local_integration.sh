@@ -23,7 +23,7 @@ cp "$ROOT/supabase/functions/sign-in-by-username/index.ts" "$WORKDIR/supabase/fu
 cp "$ROOT/supabase/functions/sign-in-by-username/handler.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
 cp "$ROOT/supabase/functions/sign-in-by-username/requestValidation.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
 
-cat > "$WORKDIR/supabase/config.toml" <<'TOML'
+cat > "$WORKDIR/supabase/config.toml" <<TOML
 project_id = "chargerpointnew_username_auth_${RUN_SUFFIX}"
 
 [api]
