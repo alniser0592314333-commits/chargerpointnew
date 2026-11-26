@@ -54,3 +54,10 @@ This review is grounded in source inspection of SarahInputQueue, SarahConversati
 - Pruning never deletes queued, uploading, interrupted, or waiting records; it only targets COMPLETED rows belonging to the current account and older than the cutoff.
 - Pruning is best-effort and does not block normal queue refresh/visibility if retention cleanup fails.
 - Added contract assertions. Behavioural IndexedDB testing remains outstanding; CI is the next validation step.
+
+## Cross-tab transcript-clear propagation (branch-only)
+
+- Clear now increments the account's transcript generation and updates the local generation reference immediately after the clear transaction succeeds.
+- The store broadcasts account ID and generation via BroadcastChannel after commit.
+- A hydrated page in another tab reacts only to a matching account notice, re-reads the authoritative transcript snapshot, and accepts only a generation not older than its local marker.
+- Contract tests assert account filtering and generation ordering. This is still not a substitute for browser-level multi-tab IndexedDB race testing.
