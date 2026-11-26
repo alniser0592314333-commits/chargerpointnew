@@ -86,8 +86,8 @@ Deno.serve(async (req: Request) => {
       }
     }
     const { data: adminRow } = await admin.from("admins")
-      .select("id,auth_user_id,email,username,role,is_active").eq("auth_user_id", uid).maybeSingle();
-    if (adminRow?.is_active === true) {
+      .select("id,auth_user_id,email,username,role,is_active,disabled_at").eq("auth_user_id", uid).maybeSingle();
+    if (adminRow?.is_active === true && !adminRow.disabled_at) {
       const { data: userData } = await admin.auth.admin.getUserById(uid);
       const email = userData.user?.email || adminRow.email;
       if (email) return { type: "admin", id: adminRow.id, uid, email, role: adminRow.role, mustChangePassword: false };
@@ -237,8 +237,8 @@ Deno.serve(async (req: Request) => {
         let row: any = null;
         if (identifier) {
           const { data } = identifier.includes("@")
-            ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()
-            : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("username",identifier).maybeSingle();
+            ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active,disabled_at").eq("email",identifier.toLowerCase()).maybeSingle()
+            : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active,disabled_at").eq("username",identifier).maybeSingle();
           row = data;
         } else {
           // Resolve the account from the registered random device key alias.
@@ -248,12 +248,12 @@ Deno.serve(async (req: Request) => {
             .eq("key_alias",requestedCredentialId).is("revoked_at",null).maybeSingle();
           if (deviceCredential) {
             const { data } = await admin.from("admins")
-              .select("id,auth_user_id,email,username,role,is_active")
+              .select("id,auth_user_id,email,username,role,is_active,disabled_at")
               .eq("id",deviceCredential.subject_id).eq("auth_user_id",deviceCredential.auth_user_id).maybeSingle();
             row = data;
           }
         }
-        if (row?.is_active === true) {
+        if (row?.is_active === true && !row.disabled_at) {
           const { data: u } = await admin.auth.admin.getUserById(row.auth_user_id);
           const email = u.user?.email || row.email;
           if (email) identity = {type,id:row.id,uid:row.auth_user_id,email,role:row.role};
@@ -280,9 +280,9 @@ Deno.serve(async (req: Request) => {
       // Re-check administrator activation at proof-consumption time. A credential
       // may have been valid when the challenge was issued but disabled before verify.
       if (cred.account_type === "admin") {
-        const {data: adminRow,error: adminRowError} = await admin.from("admins").select("id,is_active")
+        const {data: adminRow,error: adminRowError} = await admin.from("admins").select("id,is_active,disabled_at")
           .eq("id",cred.subject_id).eq("auth_user_id",cred.auth_user_id).maybeSingle();
-        if (adminRowError || adminRow?.is_active !== true) return reply(403,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
+        if (adminRowError || adminRow?.is_active !== true || adminRow.disabled_at) return reply(403,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
       }
       const {data: identity} = await admin.auth.admin.getUserById(cred.auth_user_id);
       const email = identity.user?.email;
