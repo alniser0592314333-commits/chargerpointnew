@@ -23,6 +23,13 @@ The Supabase catalog inspection was attempted against project ydhcyamtgioyrxfark
 - The grants query output surfaced browser-role table grants for app_release_policies only, but because the tool response was incomplete, this cannot be treated as proof that all tables/grants/policies are secure.
 - SECURITY DEFINER functions exist in public schema, many with fixed search_path; several legacy/internal functions show empty search_path or pg_catalog/public. Each function needs individually reviewed definition, ACL, wrapper/implementation linkage, and callers. Presence alone is not evidence of vulnerability.
 
+## Further verified catalog observations (targeted function-definition queries)
+- `get_effective_permissions(p_admin_id)` is SECURITY DEFINER and callable by authenticated users; it derives the current admin identity via a guarded function and requires `admin:manage` when querying another admin. This is a positive guard pattern, but it still needs negative tests.
+- `read_sync_bootstrap_page(entity,cursor,limit)` is callable by authenticated admins with `sync:manage`; it restricts entity types to a fixed allow-list, caps page size at 500, and scopes purchase-book rows by admin id. Its other allow-listed business collections are broad synchronization projections, not appropriate for Sarah's conversational read bridge.
+- `capture_authoritative_business_snapshot()` wrapper checks the active-account session before its implementation. Other synchronization capture/pull wrappers also include explicit permission/session checks; implementations and actor scopes require further review.
+- Some SECURITY DEFINER functions intentionally have elevated grants for `authenticated`, while wallet snapshot/transaction functions and some internal dispatch functions are service_role-only. This distinction must be preserved; do not treat service-role-only ACLs as browser-callable exposure. Catalog evidence alone cannot confirm downstream caller safety.
+- Targeted reads of definitions and ACLs were performed only; no RPC was executed to read business data and no changes were made.
+
 ## Required audit before activating Sarah data tools
 1. Inventory all business tables, RLS, FORCE RLS, grants, policies, views/materialized views, RPC EXECUTE ACLs, SECURITY DEFINER definitions, and exposed schemas.
 2. Verify each public/browser callable RPC has identity/session guard and fail-closed scope; inspect all service-role pathways and Edge Functions.
