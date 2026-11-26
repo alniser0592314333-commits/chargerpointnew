@@ -46,6 +46,10 @@ describe("Sarah AI provider settings security contract", () => {
     expect(migration).toContain('public.get_current_admin_profile()');
     expect(migration).toContain("AI_MANAGE_PERMISSION_REQUIRED");
     expect(migration).toContain("disabled_at IS NOT NULL");
+    expect(migration).toContain("sarah_ai_get_runtime_config");
+    expect(migration).toContain("REVOKE ALL ON TABLE public.sarah_ai_provider_config FROM PUBLIC, anon, authenticated, service_role");
+    expect(chatFunction).toContain('admin.rpc("sarah_ai_get_runtime_config")');
+    expect(chatFunction).not.toContain('admin.from("sarah_ai_provider_config")');
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) TO authenticated");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_config() TO authenticated");
     expect(migration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) FROM PUBLIC, anon, service_role");
