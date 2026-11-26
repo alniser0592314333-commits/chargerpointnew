@@ -10,7 +10,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.sarah_ai_provider_config (
   id text PRIMARY KEY DEFAULT 'default' CHECK (id = 'default'),
-  provider_id text NOT NULL CHECK (provider_id ~ '^[a-z][a-z0-9_-]{0,63}$'),
+  provider_id text NOT NULL CHECK (provider_id = 'gemini'),
   model_id text NOT NULL CHECK (length(model_id) BETWEEN 1 AND 128),
   endpoint_url text,
   generation_config jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(generation_config) = 'object'),
@@ -130,8 +130,11 @@ BEGIN
   v_actor_auth_user_id := public.sarah_ai_assert_manage_permission();
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('sarah_ai_provider_config_default')::bigint);
 
-  IF p_provider_id IS NULL OR p_provider_id !~ '^[a-z][a-z0-9_-]{0,63}$' THEN
-    RAISE EXCEPTION 'Invalid provider identifier' USING ERRCODE = '22023';
+  IF p_provider_id IS DISTINCT FROM 'gemini' THEN
+    RAISE EXCEPTION 'Only the Gemini provider is enabled' USING ERRCODE = '22023';
+  END IF;
+  IF NULLIF(pg_catalog.btrim(p_endpoint_url), '') IS NOT NULL THEN
+    RAISE EXCEPTION 'Custom provider endpoints are disabled' USING ERRCODE = '22023';
   END IF;
   IF p_model_id IS NULL OR p_model_id !~ '^[A-Za-z0-9._:-]{1,128}$' THEN
     RAISE EXCEPTION 'Invalid model identifier' USING ERRCODE = '22023';
