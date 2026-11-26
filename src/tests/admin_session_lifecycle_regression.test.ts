@@ -233,6 +233,9 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(strictMigration).toContain("RETURN false;");
     expect(strictMigration).toContain("SESSION_IDLE_EXPIRED_REQUIRES_FRESH_AUTH");
     expect(strictMigration).toContain("v_account_session.client_type");
+    expect(strictMigration).toContain("a.disabled_at IS NULL");
+    expect(strictMigration).toContain("bootstrap_first_super_admin__session_guarded_impl");
+    expect(strictMigration).toContain("register_my_account_session_v2(NULL, 'browser')");
     expect(strictMigration).toContain("now() - interval '5 minutes'");
     expect(strictMigration).not.toContain("IF v_read_only THEN RETURN true; END IF;");
   });
