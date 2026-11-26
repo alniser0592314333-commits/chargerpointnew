@@ -64,3 +64,13 @@ Security advisor reported:
 - Performance advisor also reported FK indexes that may be missing and unused-index candidates; no indexes were changed because performance remediation requires workload and migration review.
 
 No production DDL, writes, or setting changes were performed.
+
+## Idle-session reactivation policy finding — needs separate remediation
+
+Read-only inspection of the live function definition and migration shows `reactivate_my_account_session(p_client_type)` derives the idle window from caller-supplied `p_client_type`. It validates the underlying Auth session and rejects revoked sessions, but it does not validate a server-issued biometric proof or require a fresh Auth session for the `native/installed_pwa` 30-day branch. An authenticated caller can directly invoke the RPC and choose that client type. This makes the 7-day browser-vs-30-day native/PWA idle-window distinction client-asserted rather than a trusted boundary.
+
+This is a policy-enforcement weakness, not a demonstrated privilege escalation beyond the authenticated account. The underlying Supabase Auth session and account-session revocation still apply. It nevertheless undermines the intended server-enforced idle policy.
+
+Recommended safe remediation: require evidence of a fresh authentication event before native/PWA reactivation (server-validated Auth session creation age or a narrowly scoped, one-time server proof tied to the biometric/password reauthentication flow); never trust client type alone. Add adversarial RPC tests that attempt expired-browser-session reactivation with a spoofed `native` value and verify denial, while validating legitimate fresh native/PWA reactivation.
+
+No changes were made to the live function. This needs a new migration (not editing the already-applied migration) and a dedicated test/validation cycle.
