@@ -39,9 +39,10 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     if (!accountId) return;
     const operation = operationRef.current;
     let cancelled = false;
-    void sarahConversationStore.load(accountId).then((saved) => {
+    void sarahConversationStore.load(accountId).then((snapshot) => {
       if (!cancelled && isCurrent(accountId, operation)) {
-        setMessages(saved);
+        conversationGenerationRef.current = snapshot.generation;
+        setMessages(snapshot.messages);
         setHydratedAccount(accountId);
       }
     }).catch((err) => {
