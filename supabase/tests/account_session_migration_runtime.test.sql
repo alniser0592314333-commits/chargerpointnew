@@ -327,8 +327,10 @@ BEGIN
     RAISE EXCEPTION 'Session listing unexpectedly auto-registered the current session';
   END IF;
 END $assert$;
-BEGIN;
-SET TRANSACTION READ ONLY;
+-- Commit the writable contract assertions before opening a genuinely read-only
+-- transaction. A nested BEGIN is not a savepoint and would roll back the setup.
+COMMIT;
+BEGIN TRANSACTION READ ONLY;
 SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"ffffffff-ffff-4fff-8fff-ffffffffffff"}',true);
 DO $assert$
@@ -337,7 +339,8 @@ BEGIN
     RAISE EXCEPTION 'Read-only authorization accepted a missing account_sessions row';
   END IF;
 END $assert$;
-ROLLBACK;
+COMMIT;
+BEGIN;
 
 -- Both the current and legacy registration RPCs reject stale unregistered Auth
 -- sessions, preventing an alternate registration path around the strict guard.
