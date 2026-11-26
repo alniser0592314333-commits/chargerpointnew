@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
 import { sarahChatService } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
@@ -15,73 +15,141 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [error, setError] = useState("");
   const [pending, setPending] = useState<SarahInputRecord[]>([]);
   const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);
+  const activeAccountRef = useRef<string | null>(session?.userId ?? null);
+  const operationRef = useRef(0);
 
-  useEffect(() => { let active = true; setMessages([]); setHydratedAccount(null); if (!session?.userId) return; void sarahConversationStore.load(session.userId).then((saved) => { if (active) { setMessages(saved); setHydratedAccount(session.userId); } }).catch((err) => { if (active) setError(err instanceof Error ? err.message : "CONVERSATION_LOAD_FAILED"); }); return () => { active = false; }; }, [session?.userId]);
-  useEffect(() => { if (session?.userId && hydratedAccount === session.userId) void sarahConversationStore.save(session.userId, messages).catch((err) => setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED")); }, [messages, session?.userId, hydratedAccount]);
+  // Immediately invalidate all asynchronous work from a previous account.
+  useEffect(() => {
+    activeAccountRef.current = session?.userId ?? null;
+    operationRef.current += 1;
+    setMessages([]);
+    setText("");
+    setBusy(false);
+    setError("");
+    setPending([]);
+    setHydratedAccount(null);
+  }, [session?.userId]);
 
-  const refreshQueue = async () => { if (!session) return; try { await sarahInputQueue.recoverInterruptedUploads(session.userId); setPending(await sarahInputQueue.list(session.userId)); } catch (err) { setError(err instanceof Error ? err.message : "QUEUE_UNAVAILABLE"); } };
-  useEffect(() => { void refreshQueue(); }, [session?.userId]);
+  const isCurrent = (accountId: string, operation?: number) =>
+    activeAccountRef.current === accountId && (operation === undefined || operationRef.current === operation);
+
+  useEffect(() => {
+    const accountId = session?.userId;
+    if (!accountId) return;
+    const operation = operationRef.current;
+    let cancelled = false;
+    void sarahConversationStore.load(accountId).then((saved) => {
+      if (!cancelled && isCurrent(accountId, operation)) {
+        setMessages(saved);
+        setHydratedAccount(accountId);
+      }
+    }).catch((err) => {
+      if (!cancelled && isCurrent(accountId, operation)) setError(err instanceof Error ? err.message : "CONVERSATION_LOAD_FAILED");
+    });
+    return () => { cancelled = true; };
+  }, [session?.userId]);
+
+  useEffect(() => {
+    const accountId = session?.userId;
+    if (!accountId || hydratedAccount !== accountId || activeAccountRef.current !== accountId) return;
+    // Save only the transcript explicitly hydrated for this identity.
+    void sarahConversationStore.save(accountId, messages).catch((err) => {
+      if (activeAccountRef.current === accountId) setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED");
+    });
+  }, [messages, session?.userId, hydratedAccount]);
+
+  const refreshQueue = async (accountId: string, operation?: number) => {
+    if (!isCurrent(accountId, operation)) return;
+    try {
+      await sarahInputQueue.recoverInterruptedUploads(accountId);
+      const rows = await sarahInputQueue.list(accountId);
+      if (isCurrent(accountId, operation)) setPending(rows);
+    } catch (err) {
+      if (isCurrent(accountId, operation)) setError(err instanceof Error ? err.message : "QUEUE_UNAVAILABLE");
+    }
+  };
+  useEffect(() => {
+    const accountId = session?.userId;
+    if (!accountId) return;
+    const operation = operationRef.current;
+    void refreshQueue(accountId, operation);
+  }, [session?.userId]);
+
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
 
   const send = async () => {
+    const accountId = session?.userId;
     const clean = text.trim();
-    if (!clean || busy || !canUse || !session) return;
+    if (!clean || busy || !canUse || !accountId || activeAccountRef.current !== accountId || hydratedAccount !== accountId) return;
+    const operation = operationRef.current;
+    const historySnapshot = messages.slice(-20);
     setText("");
     setError("");
-    setMessages((prev) => [...prev, { role: "user", text: clean }]);
+    setMessages((prev) => isCurrent(accountId, operation) ? [...prev, { role: "user", text: clean }] : prev);
     setBusy(true);
     const id = crypto.randomUUID();
     const correlationId = crypto.randomUUID();
     try {
       await sarahInputQueue.enqueue({
-        id, actorAccountId: session.userId, deviceId: "web-client", kind: "text",
+        id, actorAccountId: accountId, deviceId: "web-client", kind: "text",
         state: navigator.onLine ? "READY_TO_SEND" : "QUEUED_OFFLINE", text: clean, correlationId,
       });
-      await refreshQueue();
+      await refreshQueue(accountId, operation);
+      if (!isCurrent(accountId, operation)) return;
       if (!navigator.onLine) {
-        setMessages((prev) => [...prev, { role: "assistant", text: "حفظت رسالتك محليًا في الطابور؛ لم تُرسل بعد لأن الإنترنت غير متصل." }]);
+        setMessages((prev) => isCurrent(accountId, operation) ? [...prev, { role: "assistant", text: "حفظت رسالتك محليًا في الطابور؛ لم تُرسل بعد لأن الإنترنت غير متصل." }] : prev);
         return;
       }
-      await sarahInputQueue.transition(session.userId, id, "UPLOADING");
+      await sarahInputQueue.transition(accountId, id, "UPLOADING");
+      if (!isCurrent(accountId, operation)) return;
       try {
-        const response = await sarahChatService.send(clean, messages);
-        await sarahInputQueue.transition(session.userId, id, "SENT_TO_AI", { resultRef: correlationId });
-        await sarahInputQueue.transition(session.userId, id, "COMPLETED");
-        setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
-        await refreshQueue();
+        const response = await sarahChatService.send(clean, historySnapshot);
+        if (!isCurrent(accountId, operation)) return;
+        await sarahInputQueue.transition(accountId, id, "SENT_TO_AI", { resultRef: correlationId });
+        await sarahInputQueue.transition(accountId, id, "COMPLETED");
+        if (isCurrent(accountId, operation)) setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
+        await refreshQueue(accountId, operation);
       } catch (err) {
-        await sarahInputQueue.transition(session.userId, id, "NEEDS_ATTENTION", {
+        if (!isCurrent(accountId, operation)) return;
+        await sarahInputQueue.transition(accountId, id, "NEEDS_ATTENTION", {
           lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
         });
         throw err;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
-      await refreshQueue();
+      if (isCurrent(accountId, operation)) {
+        setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
+        await refreshQueue(accountId, operation);
+      }
     } finally {
-      setBusy(false);
+      if (isCurrent(accountId, operation)) setBusy(false);
     }
   };
 
   const retryQueued = async (record: SarahInputRecord) => {
-    if (!session || busy || !navigator.onLine || record.actorAccountId !== session.userId || !record.text) return;
+    const accountId = session?.userId;
+    if (!accountId || busy || !navigator.onLine || activeAccountRef.current !== accountId || record.actorAccountId !== accountId || !record.text || hydratedAccount !== accountId) return;
+    const operation = operationRef.current;
     setBusy(true); setError("");
     try {
-      if (record.state === "NEEDS_ATTENTION") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
-      else if (record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(session.userId, record.id, "READY_TO_SEND");
-      await sarahInputQueue.transition(session.userId, record.id, "UPLOADING");
+      if (record.state === "NEEDS_ATTENTION" || record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(accountId, record.id, "READY_TO_SEND");
+      await sarahInputQueue.transition(accountId, record.id, "UPLOADING");
+      if (!isCurrent(accountId, operation)) return;
       const retryHistory = messages.slice(-20);
-      // The original queued user message is already in the transcript. Remove its
-      // trailing occurrence before resubmitting the text to avoid duplicating it.
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
       const response = await sarahChatService.send(record.text, retryHistory);
-      await sarahInputQueue.transition(session.userId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
-      await sarahInputQueue.transition(session.userId, record.id, "COMPLETED");
-      setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
+      if (!isCurrent(accountId, operation)) return;
+      await sarahInputQueue.transition(accountId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
+      await sarahInputQueue.transition(accountId, record.id, "COMPLETED");
+      if (isCurrent(accountId, operation)) setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
     } catch (err) {
-      try { await sarahInputQueue.transition(session.userId, record.id, "NEEDS_ATTENTION", { lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED" }); } catch {}
-      setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
-    } finally { setBusy(false); await refreshQueue(); }
+      if (isCurrent(accountId, operation)) {
+        try { await sarahInputQueue.transition(accountId, record.id, "NEEDS_ATTENTION", { lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED" }); } catch {}
+        setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
+      }
+    } finally {
+      if (isCurrent(accountId, operation)) { setBusy(false); await refreshQueue(accountId, operation); }
+    }
   };
 
   if (!canUse) return <div className="p-6 text-center text-sm text-gray-500">لا تملك صلاحية استخدام سارة.</div>;
@@ -104,10 +172,10 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       </div>
       {pending.filter((item) => item.state !== "COMPLETED").length > 0 && <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20"><div className="mb-2 font-semibold">رسائل محفوظة / تحتاج متابعة</div>{pending.filter((item) => item.state !== "COMPLETED").map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 py-2"><span className="min-w-0 flex-1 truncate">{item.text || "رسالة صوتية محفوظة"} <span className="text-xs text-gray-500">({item.state})</span></span>{(item.state === "QUEUED_OFFLINE" || item.state === "NEEDS_ATTENTION") && <button type="button" disabled={busy || !navigator.onLine} onClick={() => void retryQueued(item)} className="rounded-lg bg-amber-700 px-3 py-1 text-white disabled:opacity-40">إعادة إرسال</button>}</div>)}</div>}
       <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#123832] dark:bg-[#061f1c]">
-        <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy} />
-        <Button type="submit" disabled={busy || !text.trim()} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
+        <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy || hydratedAccount !== session?.userId} />
+        <Button type="submit" disabled={busy || !text.trim() || hydratedAccount !== session?.userId} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
       </form>
-      <button type="button" onClick={() => void refreshQueue()} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
+      <button type="button" onClick={() => session?.userId && void refreshQueue(session.userId, operationRef.current)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
       <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
     </section>
   );
