@@ -297,4 +297,63 @@ BEGIN
 END;
 $$;
 
+
+-- Legacy registration endpoint delegates to the same strict policy; it cannot
+-- silently register an old Auth session or bypass the client-type invariant.
+CREATE OR REPLACE FUNCTION public.register_my_account_session(p_user_agent text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+BEGIN
+  RETURN public.register_my_account_session_v2(p_user_agent, 'browser');
+END;
+$;
+
+-- Listing sessions is a read-only operation. It must not create registry rows
+-- for every Auth session or extend the current session's expiry as a side effect.
+CREATE OR REPLACE FUNCTION public.get_my_account_sessions()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_current_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  v_result jsonb;
+BEGIN
+  IF v_user_id IS NULL OR v_current_session_id IS NULL THEN
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
+  END IF;
+
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Authentication session is revoked, expired, or unregistered'
+      USING ERRCODE = '28000';
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'session_id', a.session_id,
+    'user_agent', COALESCE(a.user_agent, s.user_agent),
+    'created_at', a.created_at,
+    'last_seen_at', a.last_seen_at,
+    'client_type', a.client_type,
+    'session_expires_at', a.session_expires_at,
+    'is_expired', a.session_expires_at <= now(),
+    'is_current', a.session_id = v_current_session_id
+  ) ORDER BY (a.session_id = v_current_session_id) DESC, a.last_seen_at DESC), '[]'::jsonb)
+  INTO v_result
+  FROM public.account_sessions a
+  JOIN auth.sessions s
+    ON s.id = a.session_id
+   AND s.user_id = v_user_id
+  WHERE a.user_id = v_user_id
+    AND a.revoked_at IS NULL
+    AND (s.not_after IS NULL OR s.not_after > now());
+
+  RETURN v_result;
+END;
+$;
+
 NOTIFY pgrst, 'reload schema';
