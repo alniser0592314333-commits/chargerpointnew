@@ -8,6 +8,8 @@ import { sarahConversationStore } from "../../application/ai/sarahConversationSt
 import { SarahAccountOperationScope } from "../../application/ai/sarahAccountOperationScope";
 
 type Message = { role: "user" | "assistant"; text: string };
+const accountScopeIdentity = (accountId?: string | null, authUserId?: string) =>
+  accountId ? `${accountId}:${authUserId || "unverified"}` : null;
 
 export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () => void }> = ({ session }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -16,24 +18,26 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [error, setError] = useState("");
   const [pending, setPending] = useState<SarahInputRecord[]>([]);
   const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);
-  const accountScopeRef = useRef(new SarahAccountOperationScope(session?.userId ?? null));
+  const accountScopeRef = useRef(new SarahAccountOperationScope(accountScopeIdentity(session?.userId, session?.authUserId)));
   const conversationGenerationRef = useRef(0);
 
   // Immediately invalidate all asynchronous work from a previous account.
   useLayoutEffect(() => {
-    accountScopeRef.current.switchTo(session?.userId ?? null);
+    accountScopeRef.current.switchTo(accountScopeIdentity(session?.userId, session?.authUserId));
     setMessages([]);
     setText("");
     setBusy(false);
     setError("");
     setPending([]);
     setHydratedAccount(null);
-  }, [session?.userId]);
+  }, [session?.userId, session?.authUserId]);
 
-  const isCurrent = (accountId: string, operation?: number) =>
-    operation === undefined
-      ? accountScopeRef.current.isCurrentAccount(accountId)
-      : accountScopeRef.current.isCurrent({ accountId, generation: operation });
+  const isCurrent = (accountId: string, operation?: number) => {
+    const identity = accountScopeIdentity(accountId, session?.authUserId);
+    return operation === undefined
+      ? accountScopeRef.current.isCurrentAccount(identity)
+      : accountScopeRef.current.isCurrent({ accountId: identity || "", generation: operation });
+  };
 
   useEffect(() => {
     const accountId = session?.userId;
@@ -66,16 +70,16 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         if (isCurrent(accountId)) setError(err instanceof Error ? err.message : "CONVERSATION_SYNC_FAILED");
       });
     });
-  }, [session?.userId, hydratedAccount]);
+  }, [session?.userId, session?.authUserId, hydratedAccount]);
 
   useEffect(() => {
     const accountId = session?.userId;
-    if (!accountId || hydratedAccount !== accountId || !accountScopeRef.current.isCurrentAccount(accountId)) return;
+    if (!accountId || hydratedAccount !== accountId || !isCurrent(accountId)) return;
     // Save only the transcript explicitly hydrated for this identity.
     void sarahConversationStore.save(accountId, messages, conversationGenerationRef.current).catch((err) => {
-      if (accountScopeRef.current.isCurrentAccount(accountId)) setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED");
+      if (isCurrent(accountId)) setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED");
     });
-  }, [messages, session?.userId, hydratedAccount]);
+  }, [messages, session?.userId, session?.authUserId, hydratedAccount]);
 
   const refreshQueue = async (accountId: string, operation?: number) => {
     if (!isCurrent(accountId, operation)) return;
@@ -101,7 +105,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const send = async () => {
     const accountId = session?.userId;
     const clean = text.trim();
-    if (!clean || busy || !canUse || !accountId || !accountScopeRef.current.isCurrentAccount(accountId) || hydratedAccount !== accountId) return;
+    if (!clean || busy || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
     const operation = accountScopeRef.current.generation;
     const historySnapshot = messages.slice(-20);
     setText("");
@@ -149,7 +153,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   const clearTranscript = async () => {
     const accountId = session?.userId;
-    if (!accountId || busy || hydratedAccount !== accountId || !accountScopeRef.current.isCurrentAccount(accountId)) return;
+    if (!accountId || busy || hydratedAccount !== accountId || !isCurrent(accountId)) return;
     if (!window.confirm("مسح سجل المحادثة لهذا الحساب فقط؟")) return;
     const operation = accountScopeRef.current.generation;
     try {
@@ -165,7 +169,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   const retryQueued = async (record: SarahInputRecord) => {
     const accountId = session?.userId;
-    if (!accountId || busy || !navigator.onLine || !accountScopeRef.current.isCurrentAccount(accountId) || record.actorAccountId !== accountId || !record.text || hydratedAccount !== accountId) return;
+    if (!accountId || busy || !navigator.onLine || !isCurrent(accountId) || record.actorAccountId !== accountId || !record.text || hydratedAccount !== accountId) return;
     const operation = accountScopeRef.current.generation;
     setBusy(true); setError("");
     try {
