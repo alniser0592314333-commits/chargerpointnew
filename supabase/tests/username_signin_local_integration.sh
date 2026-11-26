@@ -21,14 +21,23 @@ project_id = "chargerpointnew_username_auth_test"
 
 [api]
 enabled = true
-port = 54321
+port = 56321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 54322
+port = 56322
+shadow_port = 56320
 major_version = 17
+
+[studio]
+enabled = false
+port = 56323
+
+[inbucket]
+enabled = false
+port = 56324
 
 [auth]
 enabled = true
