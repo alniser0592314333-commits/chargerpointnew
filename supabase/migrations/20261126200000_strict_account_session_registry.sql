@@ -430,4 +430,68 @@ BEGIN
 END;
 $function$;
 
+-- The Jawwal Pay recipient is read by both admins and customer accounts.
+-- Require the corresponding server-side session registry; Auth UID alone is
+-- not sufficient to disclose account-facing payment configuration.
+CREATE OR REPLACE FUNCTION public.get_jawwal_pay_recipient()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_phone text;
+  v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  v_allowed boolean := false;
+BEGIN
+  IF auth.uid() IS NULL OR v_session_id IS NULL THEN
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
+  END IF;
+
+  IF to_regprocedure('public.is_active_admin_session()') IS NOT NULL THEN
+    EXECUTE 'SELECT public.is_active_admin_session()' INTO v_allowed;
+  END IF;
+
+  IF NOT v_allowed AND to_regclass('public.customer_account_sessions') IS NOT NULL
+     AND to_regclass('public.customer_account_links') IS NOT NULL
+     AND to_regclass('public.customers') IS NOT NULL THEN
+    EXECUTE $customer_session$
+      SELECT EXISTS (
+        SELECT 1
+        FROM public.customer_account_links l
+        JOIN public.customers c ON c.id = l.customer_id
+        JOIN public.customer_account_sessions s
+          ON s.customer_id = l.customer_id
+         AND s.auth_user_id = l.auth_user_id
+        WHERE l.auth_user_id = $1
+          AND l.account_status = 'ACTIVE'
+          AND c.is_active IS TRUE
+          AND c.deleted_at IS NULL
+          AND c.status <> 'DELETED'
+          AND s.session_id = $2
+          AND s.revoked_at IS NULL
+          AND s.expires_at > now()
+      )
+    $customer_session$
+    INTO v_allowed
+    USING auth.uid(), v_session_id;
+  END IF;
+
+  IF v_allowed IS NOT TRUE THEN
+    RAISE EXCEPTION 'Active admin or customer account session required'
+      USING ERRCODE = '28000';
+  END IF;
+
+  SELECT recipient_phone INTO v_phone
+  FROM public.jawwal_pay_settings
+  WHERE singleton = true;
+
+  IF v_phone IS NULL THEN
+    RAISE EXCEPTION 'Jawwal Pay recipient is not configured' USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN jsonb_build_object('recipient_phone', v_phone);
+END;
+$function$;
+
 NOTIFY pgrst, 'reload schema';
