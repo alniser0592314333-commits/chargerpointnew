@@ -145,23 +145,36 @@ export const sarahInputQueue = {
     const pending = await this.list(accountId);
     const interrupted = pending.filter((row) => row.state === "UPLOADING" && uploadLeaseExpired(row));
     let recovered = 0;
-    for (const row of interrupted) {
+    for (const observed of interrupted) {
+      const db = await openDb();
       try {
-        await this.transition(accountId, row.id, "NEEDS_ATTENTION", {
-          lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
+        const outcome = await new Promise<"recovered" | "changed" | "error">((resolve, reject) => {
+          const tx = db.transaction(STORE, "readwrite");
+          const store = tx.objectStore(STORE);
+          const get = store.get(observed.id);
+          let result: "recovered" | "changed" | "error" = "changed";
+          get.onsuccess = () => {
+            const current = get.result as SarahInputRecord | undefined;
+            // Compare-and-set inside the same transaction: account, state, and
+            // observed lease must still match and be expired before recovery.
+            if (!current || current.actorAccountId !== accountId ||
+                current.state !== "UPLOADING" ||
+                current.uploadLeaseUntil !== observed.uploadLeaseUntil ||
+                !uploadLeaseExpired(current)) return;
+            store.put({ ...current, state: "NEEDS_ATTENTION",
+              lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
+              uploadLeaseUntil: undefined });
+            result = "recovered";
+          };
+          tx.oncomplete = () => resolve(result);
+          tx.onerror = () => reject(tx.error || new Error("QUEUE_RECOVERY_FAILED"));
+          tx.onabort = () => reject(tx.error || new Error("QUEUE_RECOVERY_ABORTED"));
         });
-        recovered += 1;
-      } catch {
-        // Another tab may have completed or changed this record since the listing.
-        // Re-read before treating the race as an actual queue failure.
-        const latest = await this.list(accountId);
-        if (latest.some((item) => item.id === row.id && item.actorAccountId === accountId && item.state === "UPLOADING" && uploadLeaseExpired(item))) {
-          throw new Error("QUEUE_RECOVERY_RACE_FAILED");
-        }
-      }
+        if (outcome === "recovered") recovered += 1;
+      } finally { db.close(); }
     }
     return recovered;
-  },
+  },,
 
   /** Remove only this account's completed records after a conservative retention period. */
   async pruneCompleted(accountId: string, olderThanDays = 30): Promise<number> {
