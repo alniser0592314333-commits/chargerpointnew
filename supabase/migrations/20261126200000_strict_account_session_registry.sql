@@ -305,11 +305,11 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $function$
 BEGIN
   RETURN public.register_my_account_session_v2(p_user_agent, 'browser');
 END;
-$;
+$function$;
 
 -- Listing sessions is a read-only operation. It must not create registry rows
 -- for every Auth session or extend the current session's expiry as a side effect.
@@ -318,7 +318,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $function$
 DECLARE
   v_user_id uuid := auth.uid();
   v_current_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
