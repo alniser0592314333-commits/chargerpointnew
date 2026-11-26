@@ -54,6 +54,36 @@ END
 $customer_jawwal_recipient$;
 RESET ROLE;
 
+-- Active verified sessions slide their idle expiry on the bounded heartbeat.
+UPDATE public.account_sessions
+SET last_seen_at = now() - interval '6 minutes',
+    session_expires_at = now() + interval '1 day'
+WHERE session_id = '11000000-0000-0000-0000-000000000004'
+  AND user_id = '10000000-0000-0000-0000-000000000004';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
+DO $session_heartbeat$
+BEGIN
+  IF public.touch_my_account_session() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Valid active admin session failed its heartbeat';
+  END IF;
+END
+$session_heartbeat$;
+RESET ROLE;
+DO $session_heartbeat_result$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.account_sessions
+    WHERE session_id = '11000000-0000-0000-0000-000000000004'
+      AND last_seen_at > now() - interval '1 minute'
+      AND session_expires_at > now() + interval '6 days'
+  ) THEN
+    RAISE EXCEPTION 'Valid session heartbeat did not slide the seven-day idle expiry';
+  END IF;
+END
+$session_heartbeat_result$;
+
 UPDATE public.admins SET disabled_at = now()
 WHERE auth_user_id = '10000000-0000-0000-0000-000000000004';
 SET ROLE authenticated;
