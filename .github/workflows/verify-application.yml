@@ -341,6 +341,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql
+      - name: Apply strict account-session registry migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261126200000_strict_account_session_registry.sql
       - name: Verify account session isolation and revocation behavior
         env:
           PGPASSWORD: postgres
