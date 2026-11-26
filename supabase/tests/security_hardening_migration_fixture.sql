@@ -29,7 +29,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA storage
 ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA graphql_public
   GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
 
-CREATE TABLE public.admins (
+CREATE TABLE IF NOT EXISTS public.admins (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   auth_user_id uuid UNIQUE NOT NULL,
   username varchar(64) UNIQUE,
@@ -44,6 +44,20 @@ CREATE TABLE public.admins (
   updated_at timestamptz NOT NULL DEFAULT now(),
   version integer NOT NULL DEFAULT 1
 );
+
+-- The account-session runtime fixture may have already created a minimal
+-- admins table in this shared isolated database. Extend it to the production
+-- fixture shape instead of assuming a pristine database.
+ALTER TABLE public.admins
+  ADD COLUMN IF NOT EXISTS permissions text[] NOT NULL DEFAULT '{}'::text[],
+  ADD COLUMN IF NOT EXISTS bin_hash varchar(255),
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+CREATE UNIQUE INDEX IF NOT EXISTS admins_fixture_username_uidx
+  ON public.admins(username) WHERE username IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS admins_fixture_email_uidx
+  ON public.admins(email) WHERE email IS NOT NULL;
 
 -- Minimal production-shaped profile RPC so the migration's session guard can
 -- wrap it in this isolated fixture exactly as it wraps the deployed function.
