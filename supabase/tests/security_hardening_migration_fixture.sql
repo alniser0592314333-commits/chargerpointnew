@@ -45,6 +45,28 @@ CREATE TABLE public.admins (
   version integer NOT NULL DEFAULT 1
 );
 
+-- Minimal production-shaped profile RPC so the migration's session guard can
+-- wrap it in this isolated fixture exactly as it wraps the deployed function.
+CREATE OR REPLACE FUNCTION public.get_current_admin_profile()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT jsonb_build_object(
+    'authenticated', true,
+    'is_admin', true,
+    'is_active', a.is_active AND a.disabled_at IS NULL,
+    'admin_id', a.id,
+    'auth_user_id', a.auth_user_id,
+    'role', a.role
+  )
+  FROM public.admins a
+  WHERE a.auth_user_id = auth.uid()
+  LIMIT 1;
+$function$;
+
 
 -- Minimal Storage fixture reproducing the deployed public-write policy drift.
 CREATE SCHEMA IF NOT EXISTS storage;
