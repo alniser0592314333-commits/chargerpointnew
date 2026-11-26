@@ -108,7 +108,7 @@ describe("Admin session lifecycle root-cause regressions", () => {
       user: { id: "auth-subject-b", email: "same@example.test" },
     };
     supabaseClient.saveStoredSupabaseAuthSession(accountA);
-    vi.spyOn(authService, "getAdminProfile").mockResolvedValueOnce(adminProfile({
+    const profileSpy = vi.spyOn(authService, "getAdminProfile").mockResolvedValueOnce(adminProfile({
       admin_id: "admin-subject-a",
       auth_user_id: "auth-subject-a",
       email: "same@example.test",
@@ -117,7 +117,7 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(first?.authUserId).toBe("auth-subject-a");
 
     storageMap.set("supabase_auth_session", JSON.stringify(accountB));
-    vi.spyOn(authService, "getAdminProfile").mockResolvedValueOnce(null);
+    profileSpy.mockResolvedValueOnce(null);
     const switched = await authService.getCurrentSession();
 
     expect(switched).toBeNull();
