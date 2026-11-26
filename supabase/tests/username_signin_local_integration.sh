@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKDIR="${RUNNER_TEMP:-/tmp}/chargerpointnew-username-signin-integration"
-mkdir -p "$WORKDIR/supabase/migrations" "$WORKDIR/supabase/functions/sign-in-by-username"
+mkdir -p "$WORKDIR/supabase/migrations" "$WORKDIR/supabase/functions/sign-in-by-username" "$WORKDIR/supabase/functions/_shared/http"
 
 cleanup() {
   (cd "$WORKDIR" && supabase stop --no-backup >/dev/null 2>&1) || true
@@ -14,20 +14,29 @@ cp "$ROOT/supabase/migrations/20261017300000_username_signin_rate_limit.sql" "$W
 cp "$ROOT/supabase/functions/sign-in-by-username/index.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
 cp "$ROOT/supabase/functions/sign-in-by-username/handler.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
 cp "$ROOT/supabase/functions/sign-in-by-username/requestValidation.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
+cp "$ROOT/supabase/functions/_shared/http/requestBodyLimit.ts" "$WORKDIR/supabase/functions/_shared/http/"
 
 cat > "$WORKDIR/supabase/config.toml" <<'TOML'
 project_id = "chargerpointnew_username_auth_test"
 
 [api]
 enabled = true
-port = 54321
+port = 56321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 54322
+port = 56322
+shadow_port = 56320
 major_version = 17
+
+[studio]
+enabled = false
+port = 56323
+
+[local_smtp]
+enabled = false
 
 [auth]
 enabled = true
@@ -51,7 +60,8 @@ CREATE TABLE public.admins (
   auth_user_id uuid NOT NULL UNIQUE,
   username text NOT NULL,
   email text NOT NULL,
-  is_active boolean NOT NULL DEFAULT true
+  is_active boolean NOT NULL DEFAULT true,
+  disabled_at timestamptz
 );
 ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
 SQL

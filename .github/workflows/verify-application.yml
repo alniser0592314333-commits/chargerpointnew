@@ -304,6 +304,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql --single-transaction -h localhost -U postgres -d native_push_debt_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261116070000_native_push_debt_reminder_session_bypass.sql
+      - name: Enforce admin session expiry for native push
+        env:
+          PGPASSWORD: postgres
+        run: psql --single-transaction -h localhost -U postgres -d native_push_debt_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261126210000_native_push_admin_session_expiry_gate.sql
       - name: Verify debt reminders bypass only the expired portal session
         env:
           PGPASSWORD: postgres
@@ -341,6 +345,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql
+      - name: Apply strict account-session registry migration in isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261126200000_strict_account_session_registry.sql
       - name: Verify account session isolation and revocation behavior
         env:
           PGPASSWORD: postgres
@@ -405,6 +413,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261017310000_disable_public_username_email_lookup.sql
+      - name: Reapply strict account-session guards after admin bootstrap migrations
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d account_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261126200000_strict_account_session_registry.sql
       - name: Verify admin-bound RLS, anonymous ACL revocation, QR/bootstrap authorization, and logo storage
         env:
           PGPASSWORD: postgres

@@ -57,6 +57,7 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) return response({ error: "SERVER_NOT_CONFIGURED" }, 500);
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -96,6 +97,20 @@ Deno.serve(async (req: Request) => {
 
   const { data: userResult, error: userError } = await adminClient.auth.getUser(match[1]);
   if (userError || !userResult?.user) return response({ error: "ADMIN_AUTH_REQUIRED" }, 401);
+  if (!anonKey) return response({ error: "SERVER_NOT_CONFIGURED" }, 500);
+
+  // Service-role table reads below do not inherit the caller's RLS or app
+  // session. Validate the same bearer through the database's strict session
+  // registry before using elevated credentials for this admin-only mutation.
+  const callerClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${match[1]}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: activeSession, error: activeSessionError } =
+    await callerClient.rpc("is_active_admin_session");
+  if (activeSessionError || activeSession !== true) {
+    return response({ error: "ADMIN_SESSION_REQUIRED" }, 401);
+  }
 
   const { data: admin, error: adminError } = await adminClient
     .from("admins")

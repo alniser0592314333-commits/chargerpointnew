@@ -27,6 +27,7 @@ function setup(options: {
     authHeaders: new Headers(),
     authBody: null as Record<string, unknown> | null,
     lookupPattern: "",
+    disabledFilter: null as string | null,
   };
   const env = { ...validEnv, ...options.env };
   const handler = createUsernameSignInHandler({
@@ -61,10 +62,17 @@ function setup(options: {
                       assertEquals(activeColumn, "is_active");
                       assertEquals(activeValue, true);
                       return {
-                        limit: async (limit: number) => {
-                          assertEquals(limit, 2);
-                          calls.lookup++;
-                          return { data: options.matches ?? [{ email: "private-admin@example.test" }], error: options.lookupError ?? null };
+                        is: (column: string, value: null) => {
+                          assertEquals(column, "disabled_at");
+                          assertEquals(value, null);
+                          calls.disabledFilter = column;
+                          return {
+                            limit: async (limit: number) => {
+                              assertEquals(limit, 2);
+                              calls.lookup++;
+                              return { data: options.matches ?? [{ email: "private-admin@example.test" }], error: options.lookupError ?? null };
+                            },
+                          };
                         },
                       };
                     },
@@ -119,6 +127,17 @@ Deno.test("Supabase client initialization failure returns a controlled unavailab
   assertEquals(calls.auth, 0);
 });
 
+
+Deno.test("oversized username login body is rejected while streaming before quota or Auth", async () => {
+  const { handler, calls, request } = setup();
+  const response = await handler(request({ username: "operator", password: "x".repeat(9000) }));
+  assertEquals(response.status, 413);
+  assertEquals(calls.clientCreated, 0);
+  assertEquals(calls.rateLimit, 0);
+  assertEquals(calls.lookup, 0);
+  assertEquals(calls.auth, 0);
+});
+
 Deno.test("rate-limit backend failure stops before identity lookup or Auth", async () => {
   const { handler, calls, request } = setup({ rateLimitError: new Error("database unavailable") });
   const response = await handler(request());
@@ -165,6 +184,7 @@ Deno.test("successful username sign-in returns the Auth session only after Auth 
   const body = await response.json();
   assertEquals(response.status, 200);
   assertEquals(calls.lookup, 1);
+  assertEquals(calls.disabledFilter, "disabled_at");
   assertEquals(calls.auth, 1);
   assertEquals(calls.authBody?.email, "private-admin@example.test");
   assertEquals(calls.authBody?.password, "correct horse");

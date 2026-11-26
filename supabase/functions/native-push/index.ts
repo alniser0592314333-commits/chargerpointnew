@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.117.2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 
 type Json = Record<string, unknown>;
 type Variant = "admin" | "customer";
@@ -117,9 +118,10 @@ Deno.serve(async (request: Request) => {
   if (!url || !serviceKey || !anonKey) return json(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const declaredLength = Number(request.headers.get("content-length") || 0);
-  if (declaredLength > 8192) return json(413, { ok: false, error: "REQUEST_TOO_LARGE" });
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > 8192) return json(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  if (Number.isFinite(declaredLength) && declaredLength > 8192) return json(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const rawBytes = await readBoundedRequestBody(request, 8192).catch(() => null);
+  if (rawBytes === null) return json(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const raw = new TextDecoder().decode(rawBytes);
   let input: Json;
   try { input = JSON.parse(raw) as Json; } catch { return json(400, { ok: false, error: "INVALID_REQUEST" }); }
   const action = normalize(input.action, 16);
@@ -152,7 +154,7 @@ Deno.serve(async (request: Request) => {
       const { data: active, error: activeError } = await supabase.rpc("is_active_admin_session");
       const { data: profile, error: profileError } = await supabase.rpc("get_current_admin_profile");
       const row = Array.isArray(profile) ? profile[0] : profile;
-      if (activeError || active !== true || profileError || !row?.is_admin || !row?.admin_id) {
+      if (activeError || active !== true || profileError || row?.auth_user_id !== user.id || row?.is_admin !== true || row?.is_active !== true || !row?.admin_id) {
         return json(403, { ok: false, error: "ACTIVE_ADMIN_SESSION_REQUIRED" });
       }
       principalId = String(row.admin_id);

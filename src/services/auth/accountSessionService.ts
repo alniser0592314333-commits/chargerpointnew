@@ -88,7 +88,7 @@ export async function getAccountSessions(): Promise<AccountSession[]> {
 }
 
 export async function isCurrentAccountSessionActive(): Promise<boolean> {
-  const { data, error } = await invokeSupabaseRpc<boolean>("is_my_account_session_active");
+  const { data, error } = await invokeSupabaseRpc<boolean>("touch_my_account_session");
   if (error) throw new Error(error);
   return data === true;
 }

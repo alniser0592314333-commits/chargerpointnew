@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -63,12 +64,13 @@ Deno.serve(async (req: Request) => {
   if (!url || !secret || !anon) return reply(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
   const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
   const auth = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
+  const declaredLength = Number(req.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > 12000) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const rawBytes = await readBoundedRequestBody(req, 12000).catch(() => null);
+  if (rawBytes === null) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
   let input: Record<string, unknown>;
-  try {
-    const raw = await req.text();
-    if (raw.length > 12000) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
-    input = JSON.parse(raw);
-  } catch { return reply(400, { ok: false, error: "INVALID_REQUEST" }); }
+  try { input = JSON.parse(new TextDecoder().decode(rawBytes)); }
+  catch { return reply(400, { ok: false, error: "INVALID_REQUEST" }); }
   const action = normalize(input.action, 40);
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
   const getAuthenticatedIdentity = async () => {
@@ -76,23 +78,48 @@ Deno.serve(async (req: Request) => {
     const { data, error } = await auth.auth.getUser(bearer);
     if (error || !data.user) return null;
     const uid = data.user.id;
-    const { data: customer } = await admin.from("customer_account_links")
-      .select("customer_id,auth_user_id,account_status,login_email,must_change_password").eq("auth_user_id", uid).maybeSingle();
-    if (customer && customer.account_status === "ACTIVE") {
-      const { data: customerRecord } = await admin.from("customers")
-        .select("id,is_active,status,deleted_at").eq("id", customer.customer_id).maybeSingle();
-      if (customerRecord?.is_active === true && !customerRecord.deleted_at && customerRecord.status !== "DELETED") {
-        return { type: "customer", id: customer.customer_id, uid, email: customer.login_email, mustChangePassword: customer.must_change_password === true };
-      }
+    const claims = jwtClaims(bearer);
+    const sessionId = normalize(claims?.session_id, 64);
+    if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return null;
+
+    const { data: customer, error: customerLinkError } = await admin.from("customer_account_links")
+      .select("customer_id,auth_user_id,account_status,login_email,must_change_password")
+      .eq("auth_user_id", uid).maybeSingle();
+    if (customerLinkError) return null;
+    if (customer && customer.auth_user_id === uid && customer.account_status === "ACTIVE") {
+      const [{ data: customerRecord, error: customerError }, { data: customerSession, error: sessionError }] = await Promise.all([
+        admin.from("customers").select("id,is_active,status,deleted_at").eq("id", customer.customer_id).maybeSingle(),
+        admin.from("customer_account_sessions").select("session_id,expires_at,revoked_at")
+          .eq("customer_id", customer.customer_id).eq("auth_user_id", uid).eq("session_id", sessionId).maybeSingle(),
+      ]);
+      if (customerError || sessionError || !customerRecord || customerRecord.is_active !== true ||
+          customerRecord.deleted_at || customerRecord.status === "DELETED" || !customerSession ||
+          customerSession.revoked_at || customerSession.session_id !== sessionId ||
+          new Date(customerSession.expires_at).getTime() <= Date.now()) return null;
+      return {
+        type: "customer", id: customer.customer_id, uid, email: customer.login_email,
+        mustChangePassword: customer.must_change_password === true,
+      };
     }
-    const { data: adminRow } = await admin.from("admins")
-      .select("id,auth_user_id,email,username,role,is_active").eq("auth_user_id", uid).maybeSingle();
-    if (adminRow?.is_active === true) {
-      const { data: userData } = await admin.auth.admin.getUserById(uid);
-      const email = userData.user?.email || adminRow.email;
-      if (email) return { type: "admin", id: adminRow.id, uid, email, role: adminRow.role, mustChangePassword: false };
-    }
-    return null;
+
+    const { data: adminRow, error: adminError } = await admin.from("admins")
+      .select("id,auth_user_id,email,username,role,is_active,disabled_at").eq("auth_user_id", uid).maybeSingle();
+    if (adminError || adminRow?.is_active !== true || adminRow.disabled_at) return null;
+
+    // The service-role client is used only for the directory lookup above.
+    // Validate the current app session through the caller's Auth JWT so a
+    // revoked, expired, or unregistered session cannot enroll/revoke biometrics.
+    const caller = createClient(url, anon, {
+      global: { headers: { Authorization: "Bearer " + bearer } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: activeSession, error: activeSessionError } = await caller.rpc("is_active_admin_session");
+    if (activeSessionError || activeSession !== true) return null;
+
+    const { data: userData, error: userError } = await admin.auth.admin.getUserById(uid);
+    const email = userData.user?.email || adminRow.email;
+    if (userError || !email) return null;
+    return { type: "admin", id: adminRow.id, uid, email, role: adminRow.role, mustChangePassword: false };
   };
   const createChallenge = async (identity: {type:string;id:string;uid:string}, purpose: "enroll"|"login"|"jawwal-payment", credentialId: string | null) => {
     await admin.from("account_biometric_challenges").delete().lt("expires_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
@@ -237,8 +264,8 @@ Deno.serve(async (req: Request) => {
         let row: any = null;
         if (identifier) {
           const { data } = identifier.includes("@")
-            ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("email",identifier.toLowerCase()).maybeSingle()
-            : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active").eq("username",identifier).maybeSingle();
+            ? await admin.from("admins").select("id,auth_user_id,email,username,role,is_active,disabled_at").eq("email",identifier.toLowerCase()).maybeSingle()
+            : await admin.from("admins").select("id,auth_user_id,email,username,role,is_active,disabled_at").eq("username",identifier).maybeSingle();
           row = data;
         } else {
           // Resolve the account from the registered random device key alias.
@@ -248,12 +275,12 @@ Deno.serve(async (req: Request) => {
             .eq("key_alias",requestedCredentialId).is("revoked_at",null).maybeSingle();
           if (deviceCredential) {
             const { data } = await admin.from("admins")
-              .select("id,auth_user_id,email,username,role,is_active")
+              .select("id,auth_user_id,email,username,role,is_active,disabled_at")
               .eq("id",deviceCredential.subject_id).eq("auth_user_id",deviceCredential.auth_user_id).maybeSingle();
             row = data;
           }
         }
-        if (row?.is_active === true) {
+        if (row?.is_active === true && !row.disabled_at) {
           const { data: u } = await admin.auth.admin.getUserById(row.auth_user_id);
           const email = u.user?.email || row.email;
           if (email) identity = {type,id:row.id,uid:row.auth_user_id,email,role:row.role};
@@ -280,9 +307,20 @@ Deno.serve(async (req: Request) => {
       // Re-check administrator activation at proof-consumption time. A credential
       // may have been valid when the challenge was issued but disabled before verify.
       if (cred.account_type === "admin") {
-        const {data: adminRow,error: adminRowError} = await admin.from("admins").select("id,is_active")
+        const {data: adminRow,error: adminRowError} = await admin.from("admins").select("id,is_active,disabled_at")
           .eq("id",cred.subject_id).eq("auth_user_id",cred.auth_user_id).maybeSingle();
-        if (adminRowError || adminRow?.is_active !== true) return reply(403,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
+        if (adminRowError || adminRow?.is_active !== true || adminRow.disabled_at) return reply(403,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
+      } else {
+        const [{data: link,error: linkError},{data: customer,error: customerError}] = await Promise.all([
+          admin.from("customer_account_links").select("customer_id,auth_user_id,account_status,must_change_password")
+            .eq("customer_id",cred.subject_id).eq("auth_user_id",cred.auth_user_id).maybeSingle(),
+          admin.from("customers").select("id,is_active,status,deleted_at").eq("id",cred.subject_id).maybeSingle(),
+        ]);
+        if (linkError || customerError || !link || link.account_status !== "ACTIVE" ||
+            link.must_change_password === true || !customer || customer.is_active !== true ||
+            customer.deleted_at || customer.status === "DELETED") {
+          return reply(403,{ok:false,error:"ACCOUNT_UNAVAILABLE"});
+        }
       }
       const {data: identity} = await admin.auth.admin.getUserById(cred.auth_user_id);
       const email = identity.user?.email;

@@ -37,6 +37,37 @@ BEGIN
   END IF;
   UPDATE auth.sessions SET not_after=NULL WHERE id=v_auth_session;
 
+  -- Admin push delivery must be denied for disabled or idle-expired sessions.
+  INSERT INTO auth.sessions(id,user_id,not_after)
+  VALUES ('40000000-0000-4000-8000-000000000002',
+          '30000000-0000-4000-8000-000000000002',NULL);
+  INSERT INTO public.admins(id,auth_user_id,is_active,disabled_at)
+  VALUES ('50000000-0000-4000-8000-000000000002',
+          '30000000-0000-4000-8000-000000000002',true,NULL);
+  INSERT INTO public.account_sessions(session_id,user_id,revoked_at,session_expires_at)
+  VALUES ('40000000-0000-4000-8000-000000000002',
+          '30000000-0000-4000-8000-000000000002',NULL,now()+interval '7 days');
+  INSERT INTO public.native_push_devices(id,device_id,token,app_variant,principal_id,customer_id,auth_session_id,disabled_at)
+  VALUES ('10000000-0000-4000-8000-000000000002',gen_random_uuid(),repeat('y',40),
+          'admin','50000000-0000-4000-8000-000000000002',NULL,
+          '40000000-0000-4000-8000-000000000002'::text,NULL);
+
+  IF public.native_push_device_is_current('10000000-0000-4000-8000-000000000002',false,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'Valid active admin push device was unexpectedly rejected';
+  END IF;
+  UPDATE public.admins SET disabled_at=now()
+  WHERE id='50000000-0000-4000-8000-000000000002';
+  IF public.native_push_device_is_current('10000000-0000-4000-8000-000000000002',false,false) IS TRUE THEN
+    RAISE EXCEPTION 'Disabled administrator still qualified for native push delivery';
+  END IF;
+  UPDATE public.admins SET disabled_at=NULL
+  WHERE id='50000000-0000-4000-8000-000000000002';
+  UPDATE public.account_sessions SET session_expires_at=now()-interval '1 second'
+  WHERE session_id='40000000-0000-4000-8000-000000000002';
+  IF public.native_push_device_is_current('10000000-0000-4000-8000-000000000002',false,false) IS TRUE THEN
+    RAISE EXCEPTION 'Idle-expired administrator session still qualified for native push delivery';
+  END IF;
+
   IF has_function_privilege('anon','public.native_push_device_is_current(uuid,boolean,boolean)','EXECUTE')
      OR has_function_privilege('authenticated','public.native_push_device_is_current(uuid,boolean,boolean)','EXECUTE')
      OR NOT has_function_privilege('service_role','public.native_push_device_is_current(uuid,boolean,boolean)','EXECUTE') THEN

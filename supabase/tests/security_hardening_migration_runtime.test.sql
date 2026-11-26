@@ -1,6 +1,142 @@
 -- Runtime regression for admin-bound SELECT policies and TRUNCATE revocation.
 \set ON_ERROR_STOP on
 
+DO $admin_identity_rpc_privileges$
+BEGIN
+  IF has_function_privilege('service_role', 'public.get_current_admin_profile()', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.current_admin_id()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Service role can directly invoke caller-scoped admin identity RPCs';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.get_current_admin_profile()', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.current_admin_id()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Authenticated admin lost required identity RPC access';
+  END IF;
+END
+$admin_identity_rpc_privileges$;
+
+-- A currently active administrator session missing a registry row is
+-- conservatively backfilled; an unregistered non-admin Auth session is not.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
+DO $admin_session_backfill$
+DECLARE
+  v_sessions jsonb;
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE
+     OR public.is_active_admin_session() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Active admin session was not safely backfilled';
+  END IF;
+  IF (SELECT count(*) FROM public.customers) <> 1 THEN
+    RAISE EXCEPTION 'Backfilled active admin lost authorized customer read access';
+  END IF;
+  v_sessions := public.get_my_account_sessions();
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.jsonb_array_elements(v_sessions) AS session_item(value)
+    WHERE session_item.value->>'session_id' = '11000000-0000-0000-0000-000000000004'
+      AND session_item.value->>'client_type' = 'browser'
+      AND (session_item.value->>'session_expires_at')::timestamptz > now() + interval '6 days'
+  ) THEN
+    RAISE EXCEPTION 'Active admin backfill did not create a conservative seven-day browser session';
+  END IF;
+END
+$admin_session_backfill$;
+
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000005', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000005"}', false);
+DO $nonadmin_not_backfilled$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Unregistered non-admin Auth session was accepted';
+  END IF;
+  IF (SELECT count(*) FROM public.customers) <> 0 THEN
+    RAISE EXCEPTION 'Unregistered non-admin session read customer data';
+  END IF;
+END
+$nonadmin_not_backfilled$;
+DO $customer_jawwal_recipient$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.get_jawwal_pay_recipient();
+  IF v_result->>'recipient_phone' <> '+970599000001' THEN
+    RAISE EXCEPTION 'Active linked customer without the app session registry lost global Jawwal recipient access';
+  END IF;
+END
+$customer_jawwal_recipient$;
+RESET ROLE;
+
+-- Active verified sessions slide their idle expiry on the bounded heartbeat.
+UPDATE public.account_sessions
+SET last_seen_at = now() - interval '6 minutes',
+    session_expires_at = now() + interval '1 day'
+WHERE session_id = '11000000-0000-0000-0000-000000000004'
+  AND user_id = '10000000-0000-0000-0000-000000000004';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
+DO $session_heartbeat$
+BEGIN
+  IF public.touch_my_account_session() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Valid active admin session failed its heartbeat';
+  END IF;
+END
+$session_heartbeat$;
+RESET ROLE;
+DO $session_heartbeat_result$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.account_sessions
+    WHERE session_id = '11000000-0000-0000-0000-000000000004'
+      AND last_seen_at > now() - interval '1 minute'
+      AND session_expires_at > now() + interval '6 days'
+  ) THEN
+    RAISE EXCEPTION 'Valid session heartbeat did not slide the seven-day idle expiry';
+  END IF;
+END
+$session_heartbeat_result$;
+
+UPDATE public.admins SET disabled_at = now()
+WHERE auth_user_id = '10000000-0000-0000-0000-000000000004';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
+DO $disabled_admin$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Disabled admin must fail the effective application-session authorization gate';
+  END IF;
+  IF public.get_my_admin_login_gate()->>'is_active' <> 'false' THEN
+    RAISE EXCEPTION 'Pre-session login gate incorrectly reports disabled admin as active';
+  END IF;
+  IF public.is_active_admin_session() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Admin with disabled_at timestamp retained active admin authorization';
+  END IF;
+  BEGIN
+    PERFORM public.assert_my_account_session_active();
+    RAISE EXCEPTION 'Private shared authorization guard was directly executable by an authenticated role';
+  EXCEPTION WHEN SQLSTATE '42501' OR SQLSTATE '28000' THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM public.get_current_admin_profile();
+    RAISE EXCEPTION 'Admin profile RPC accepted a disabled admin';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  IF public.current_purchase_admin_id() IS NOT NULL THEN
+    RAISE EXCEPTION 'Disabled admin retained current purchase-admin identity';
+  END IF;
+  IF (SELECT count(*) FROM public.customers) <> 0 THEN
+    RAISE EXCEPTION 'Disabled admin retained protected customer read access';
+  END IF;
+END
+$disabled_admin$;
+RESET ROLE;
+UPDATE public.admins SET disabled_at = NULL
+WHERE auth_user_id = '10000000-0000-0000-0000-000000000004';
+
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', false);
 SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000001"}', false);
@@ -113,6 +249,9 @@ $qr_wrapper_privileges$;
 -- First-owner bootstrap must reject any authenticated identity except the
 -- pre-authorized, email-confirmed owner identity, and must not be callable by anon.
 DO $bootstrap_privileges$
+DECLARE
+  v_wrapper text := pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure);
+  v_impl text := pg_get_functiondef('public.bootstrap_first_super_admin__session_guarded_impl(text,text,text)'::regprocedure);
 BEGIN
   IF has_function_privilege('anon', 'public.bootstrap_first_super_admin(text,text,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Anonymous role must not execute first-owner bootstrap';
@@ -120,17 +259,22 @@ BEGIN
   IF NOT has_function_privilege('authenticated', 'public.bootstrap_first_super_admin(text,text,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Authenticated role lost intended bootstrap RPC access';
   END IF;
-  IF position('v_owner_email' IN pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure)) = 0
-     OR position('pg_advisory_xact_lock' IN pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure)) = 0
-     OR position('email_confirmed_at' IN pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure)) = 0 THEN
-    RAISE EXCEPTION 'First-owner bootstrap is missing owner verification, email confirmation, or concurrency serialization';
+  IF position('register_my_account_session_v2' IN v_wrapper) = 0
+     OR position('v_owner_email' IN v_impl) = 0
+     OR position('pg_advisory_xact_lock' IN v_impl) = 0
+     OR position('email_confirmed_at' IN v_impl) = 0 THEN
+    RAISE EXCEPTION 'First-owner bootstrap lost fresh-session registration, owner verification, email confirmation, or concurrency serialization';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.bootstrap_first_super_admin__session_guarded_impl(text,text,text)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.bootstrap_first_super_admin__session_guarded_impl(text,text,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Private first-owner bootstrap implementation is directly executable by browser roles';
   END IF;
 END
 $bootstrap_privileges$;
 
 SET ROLE authenticated;
-SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', false);
-SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000002"}', false);
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000005', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000005"}', false);
 DO $bootstrap_reject_nonowner$
 DECLARE
   v_rejected boolean := false;
@@ -150,6 +294,9 @@ DO $bootstrap_nonowner_no_side_effect$
 BEGIN
   IF EXISTS (SELECT 1 FROM public.admins WHERE role IN ('SUPER_ADMIN', 'Super Admin')) THEN
     RAISE EXCEPTION 'Rejected bootstrap left a Super Admin row behind';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='11000000-0000-0000-0000-000000000005') THEN
+    RAISE EXCEPTION 'Rejected non-owner bootstrap registered an admin session as a side effect';
   END IF;
 END
 $bootstrap_nonowner_no_side_effect$;
@@ -182,6 +329,79 @@ BEGIN
 END
 $bootstrap_owner_created$;
 
+
+-- BIN is the only deliberate pre-session Super Admin RPC. It accepts a
+-- fresh Auth session with no app-session row, but rejects ordinary admins and
+-- any already-registered/revoked app session.
+DO $bin_gate_acl$
+BEGIN
+  IF has_function_privilege('anon','public.verify_admin_bin_with_attempt_tracking(text)','EXECUTE')
+     OR has_function_privilege('service_role','public.verify_admin_bin_with_attempt_tracking(text)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.verify_admin_bin_with_attempt_tracking(text)','EXECUTE')
+     OR has_function_privilege('authenticated','public.assert_my_fresh_super_admin_login_session()','EXECUTE')
+     OR has_function_privilege('authenticated','public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(text)','EXECUTE') THEN
+    RAISE EXCEPTION 'Pre-session BIN gate or private implementation has unsafe execution grants';
+  END IF;
+END
+$bin_gate_acl$;
+
+INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
+VALUES
+  ('11000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000003',now(),now(),NULL,'Fresh Super Admin BIN gate'),
+  ('11000000-0000-0000-0000-000000000007','10000000-0000-0000-0000-000000000004',now(),now(),NULL,'Fresh operator BIN gate'),
+  ('11000000-0000-0000-0000-000000000008','10000000-0000-0000-0000-000000000003',now(),now(),NULL,'Revoked Super Admin BIN gate');
+INSERT INTO public.account_sessions(
+  session_id,user_id,client_type,user_agent,created_at,last_seen_at,session_expires_at,revoked_at
+) VALUES (
+  '11000000-0000-0000-0000-000000000008',
+  '10000000-0000-0000-0000-000000000003',
+  'browser','Revoked Super Admin BIN gate',now(),now(),now()+interval '7 days',now()
+);
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000003',false);
+SELECT set_config('request.jwt.claims','{"role":"authenticated","session_id":"11000000-0000-0000-0000-000000000006"}',false);
+DO $fresh_super_admin_bin_gate$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.verify_admin_bin_with_attempt_tracking('1234');
+  IF v_result->>'success' IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'Fresh Super Admin could not verify BIN before app-session persistence: %',v_result;
+  END IF;
+END
+$fresh_super_admin_bin_gate$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000004',false);
+SELECT set_config('request.jwt.claims','{"role":"authenticated","session_id":"11000000-0000-0000-0000-000000000007"}',false);
+DO $operator_pre_session_bin_denied$
+BEGIN
+  BEGIN
+    PERFORM public.verify_admin_bin_with_attempt_tracking('1234');
+    RAISE EXCEPTION 'Non-Super Admin used the pre-session BIN exception';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+END
+$operator_pre_session_bin_denied$;
+RESET ROLE;
+
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000003',false);
+SELECT set_config('request.jwt.claims','{"role":"authenticated","session_id":"11000000-0000-0000-0000-000000000008"}',false);
+DO $revoked_pre_session_bin_denied$
+BEGIN
+  BEGIN
+    PERFORM public.verify_admin_bin_with_attempt_tracking('1234');
+    RAISE EXCEPTION 'Revoked app session reused the pre-session BIN exception';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+END
+$revoked_pre_session_bin_denied$;
+RESET ROLE;
 
 -- Anonymous callers may read public logos, but must not upload, overwrite, or delete them.
 DO $storage_policy_shape$

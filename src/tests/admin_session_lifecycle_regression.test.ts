@@ -220,18 +220,24 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(authService.hasPendingSuperAdminContext()).toBe(false);
   });
 
-  it("keeps the server-enforced client-specific idle policy and five-minute activity write throttle", () => {
+  it("keeps idle expiry while enforcing a registered-session-only authorization boundary", () => {
     const migration = readFileSync("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql", "utf8");
+    const strictMigration = readFileSync("supabase/migrations/20261126200000_strict_account_session_registry.sql", "utf8");
     expect(migration).toContain("interval '30 days'");
     expect(migration).toContain("interval '7 days'");
-    expect(migration).toContain("interval '5 minutes'");
-    expect(migration).toContain("v_read_only boolean := current_setting('transaction_read_only', true) = 'on'");
-    expect(migration).toContain("IF NOT v_read_only");
-    expect(migration).toContain("IF v_read_only THEN RETURN true; END IF;");
     expect(migration).toContain("SESSION_IDLE_EXPIRED");
     expect(migration).toContain("reactivate_my_account_session");
     expect(migration).toContain("get_my_admin_login_gate");
     expect(migration).toContain("session_expires_at <= now()");
+    expect(strictMigration).toContain("IF NOT FOUND THEN");
+    expect(strictMigration).toContain("RETURN false;");
+    expect(strictMigration).toContain("SESSION_IDLE_EXPIRED_REQUIRES_FRESH_AUTH");
+    expect(strictMigration).toContain("v_account_session.client_type");
+    expect(strictMigration).toContain("a.disabled_at IS NULL");
+    expect(strictMigration).toContain("bootstrap_first_super_admin__session_guarded_impl");
+    expect(strictMigration).toContain("register_my_account_session_v2(NULL, 'browser')");
+    expect(strictMigration).toContain("now() - interval '5 minutes'");
+    expect(strictMigration).not.toContain("IF v_read_only THEN RETURN true; END IF;");
   });
 
   it("checks the native vault commit result and verifies persisted ciphertext", () => {
@@ -282,10 +288,17 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(app).toContain("saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id)");
   });
 
-  it("rechecks administrator activation at the time a biometric challenge is consumed", () => {
+  it("requires a live app session before biometric management and rechecks account status before issuing a biometric login", () => {
     const edge = readFileSync("supabase/functions/account-biometric/index.ts", "utf8");
+    expect(edge).toContain('caller.rpc("is_active_admin_session")');
+    expect(edge).toContain('admin.from("customer_account_sessions")');
+    expect(edge).toContain("customerSession.revoked_at");
+    expect(edge).toContain("customerSession.session_id !== sessionId");
+    expect(edge).toContain("customerSession.expires_at");
     expect(edge).toContain('if (cred.account_type === "admin")');
     expect(edge).toContain("adminRow?.is_active !== true");
+    expect(edge).toContain("link.must_change_password === true");
+    expect(edge).toContain("customer.status === \"DELETED\"");
   });
 
 });

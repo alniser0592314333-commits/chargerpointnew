@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 import webPushModule from "npm:web-push@3.6.7";
 
 const webPush = (webPushModule as unknown as { default?: typeof webPushModule }).default ?? webPushModule;
@@ -44,8 +45,11 @@ Deno.serve(async (request: Request) => {
   if (authError || !authData.user || !isUuid(sessionId)) return reply(401, { ok: false, error: "AUTH_REQUIRED" });
   const user = authData.user;
 
-  const bodyText = await request.text();
-  if (new TextEncoder().encode(bodyText).byteLength > 96_000) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const declaredLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > 96_000) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const bodyBytes = await readBoundedRequestBody(request, 96_000).catch(() => null);
+  if (bodyBytes === null) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const bodyText = new TextDecoder().decode(bodyBytes);
   let input: (Json & { action?: string }) | null;
   try { input = JSON.parse(bodyText) as (Json & { action?: string }) | null; }
   catch { return reply(400, { ok: false, error: "INVALID_REQUEST" }); }
@@ -76,7 +80,7 @@ Deno.serve(async (request: Request) => {
     if (!response.ok) return null;
     const raw = await response.json().catch(() => null);
     const profile = Array.isArray(raw) ? raw[0] : raw;
-    if (!profile || profile.is_admin !== true || profile.is_active === false) return null;
+    if (!profile || profile.auth_user_id !== user.id || profile.is_admin !== true || profile.is_active !== true) return null;
     const permissions = Array.isArray(profile.permissions) ? profile.permissions : [];
     const role = String(profile.role || "").toUpperCase().replace(/\s+/g, "_");
     if (role !== "SUPER_ADMIN" && !permissions.includes("admin:manage") && !permissions.includes("events:manage")) return null;

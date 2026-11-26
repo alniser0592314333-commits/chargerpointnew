@@ -33,7 +33,7 @@ Deno.serve(async (request: Request) => {
   const profileRaw = await profileResponse.json().catch(() => null);
   const profile = Array.isArray(profileRaw) ? profileRaw[0] : profileRaw;
   const permissions = Array.isArray(profile?.permissions) ? profile.permissions : [];
-  const allowed = profile?.is_admin === true && profile?.is_active !== false &&
+  const allowed = profile?.auth_user_id === authData.user.id && profile?.is_admin === true && profile?.is_active === true &&
     (profile.role === "SUPER_ADMIN" || permissions.some((p: string) =>
       ["customers:edit", "customers:write", "customers:manage", "customer_accounts:manage", "customer_accounts:reset", "admin:manage"].includes(p)));
   if (!allowed) return respond(403, { ok: false, error: "FORBIDDEN" });

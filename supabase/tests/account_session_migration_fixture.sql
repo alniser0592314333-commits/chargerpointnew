@@ -3,7 +3,8 @@ CREATE SCHEMA auth;
 
 CREATE TABLE auth.users (
   id uuid PRIMARY KEY,
-  email text
+  email text,
+  email_confirmed_at timestamptz
 );
 CREATE TABLE auth.sessions (
   id uuid PRIMARY KEY,
@@ -27,9 +28,46 @@ LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
 CREATE FUNCTION auth.jwt() RETURNS jsonb
-LANGUAGE sql STABLE AS $$
+LANGUAGE sql STABLE AS $jwt$
   SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
-$$;
+$jwt$;
+
+-- Existing production admin-session predicate whose ACL is tightened by
+-- the migration. Keep it in the isolated fixture so grant assertions exercise
+-- the same conditional migration path as production.
+CREATE FUNCTION public.is_active_super_admin_session()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $super_admin$
+  SELECT false
+$super_admin$;
+
+-- Existing caller-scoped identity helper; the strict migration must remove
+-- service_role execution while preserving authenticated application access.
+CREATE FUNCTION public.current_admin_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $current_admin$
+  SELECT auth.uid()
+$current_admin$;
+
+-- Existing caller-scoped profile resolver; the strict migration must remove
+-- default/service-role execution before the later fixture replaces its body.
+CREATE FUNCTION public.get_current_admin_profile()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $admin_profile$
+  SELECT jsonb_build_object('authenticated', true, 'is_admin', false)
+$admin_profile$;
 
 
 -- Representative exposed business table and SECURITY DEFINER RPC used to prove
@@ -136,3 +174,18 @@ AS $setof$
 $setof$;
 REVOKE ALL ON FUNCTION public.fixture_sensitive_setof() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.fixture_sensitive_setof() TO authenticated;
+
+-- Stub the destructive day-restore RPC so the session migration test can prove
+-- that its public wrapper rejects stale/unregistered callers before delegation.
+CREATE FUNCTION public.restore_selected_business_days(
+  p_bin text, p_snapshot jsonb, p_business_dates date[]
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT jsonb_build_object('success', true);
+$$;
+REVOKE ALL ON FUNCTION public.restore_selected_business_days(text,jsonb,date[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.restore_selected_business_days(text,jsonb,date[]) TO authenticated, service_role;
