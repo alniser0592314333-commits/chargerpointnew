@@ -335,6 +335,11 @@ BEGIN
 END;
 $cleared$;
 
+-- Add the explicit per-admin grant only after the manager-without-permission
+-- denial assertions have completed.
+INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
+VALUES ('00000000-0000-4000-8000-000000000002','ai:manage',true);
+
 DO $permissions$
 BEGIN
   IF NOT EXISTS (
