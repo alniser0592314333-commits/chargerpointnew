@@ -40,13 +40,81 @@ ALTER TABLE public.sarah_ai_provider_config FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.sarah_ai_provider_config FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.sarah_ai_provider_config TO service_role;
 
+-- Database-enforced AI management authorization. The browser cannot call this
+-- helper directly; each public settings RPC invokes it under SECURITY DEFINER.
+CREATE OR REPLACE FUNCTION public.sarah_ai_assert_manage_permission()
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_profile jsonb;
+  v_role text;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authenticated admin session required' USING ERRCODE = '28000';
+  END IF;
+
+  v_profile := public.get_current_admin_profile();
+  IF COALESCE(v_profile->>'authenticated', 'false') <> 'true'
+     OR COALESCE(v_profile->>'is_admin', 'false') <> 'true'
+     OR COALESCE(v_profile->>'is_active', 'false') <> 'true'
+     OR (v_profile->>'auth_user_id')::uuid IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Active admin session required' USING ERRCODE = '28000';
+  END IF;
+
+  v_role := pg_catalog.upper(pg_catalog.replace(COALESCE(v_profile->>'role', ''), ' ', '_'));
+  IF v_role <> 'SUPER_ADMIN' AND NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.jsonb_array_elements_text(
+      COALESCE(v_profile->'permissions', '[]'::jsonb)
+    ) AS permission_item(permission)
+    WHERE permission_item.permission = 'ai:manage'
+  ) THEN
+    RAISE EXCEPTION 'AI_MANAGE_PERMISSION_REQUIRED' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN auth.uid();
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.sarah_ai_assert_manage_permission() FROM PUBLIC, anon, authenticated, service_role;
+
+-- Safe provider metadata only; never return a Vault secret or secret identifier.
+CREATE OR REPLACE FUNCTION public.sarah_ai_get_provider_config()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_actor_auth_user_id uuid;
+  v_result jsonb;
+BEGIN
+  v_actor_auth_user_id := public.sarah_ai_assert_manage_permission();
+
+  SELECT pg_catalog.jsonb_build_object(
+    'provider_id', c.provider_id,
+    'model_id', c.model_id,
+    'generation_config', c.generation_config,
+    'enabled', c.enabled,
+    'has_api_key', c.secret_id IS NOT NULL,
+    'updated_at', c.updated_at
+  )
+  INTO v_result
+  FROM public.sarah_ai_provider_config c
+  WHERE c.id = 'default';
+
+  RETURN v_result;
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.sarah_ai_save_provider_config(
   p_provider_id text,
   p_model_id text,
   p_endpoint_url text DEFAULT NULL,
   p_generation_config jsonb DEFAULT '{}'::jsonb,
-  p_api_key text DEFAULT NULL,
-  p_actor_auth_user_id uuid DEFAULT NULL
+  p_api_key text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -57,10 +125,9 @@ DECLARE
   v_existing public.sarah_ai_provider_config%ROWTYPE;
   v_secret_id uuid;
   v_api_key text := NULLIF(pg_catalog.btrim(p_api_key), '');
+  v_actor_auth_user_id uuid;
 BEGIN
-  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) <> 'service_role' THEN
-    RAISE EXCEPTION 'Service role required' USING ERRCODE = '42501';
-  END IF;
+  v_actor_auth_user_id := public.sarah_ai_assert_manage_permission();
 
   IF p_provider_id IS NULL OR p_provider_id !~ '^[a-z][a-z0-9_-]{0,63}$' THEN
     RAISE EXCEPTION 'Invalid provider identifier' USING ERRCODE = '22023';
@@ -208,11 +275,10 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 DECLARE
+  v_actor_auth_user_id uuid;
   v_secret_id uuid;
 BEGIN
-  IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) <> 'service_role' THEN
-    RAISE EXCEPTION 'Service role required' USING ERRCODE = '42501';
-  END IF;
+  v_actor_auth_user_id := public.sarah_ai_assert_manage_permission();
 
   SELECT secret_id INTO v_secret_id
   FROM public.sarah_ai_provider_config
@@ -228,11 +294,13 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) FROM PUBLIC, anon, service_role;
+REVOKE ALL ON FUNCTION public.sarah_ai_get_provider_config() FROM PUBLIC, anon, service_role;
 REVOKE ALL ON FUNCTION public.sarah_ai_get_provider_secret() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.sarah_ai_clear_provider_config() FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.sarah_ai_clear_provider_config() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_config() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_secret() TO service_role;
-GRANT EXECUTE ON FUNCTION public.sarah_ai_clear_provider_config() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_clear_provider_config() TO authenticated;
 
 COMMIT;
