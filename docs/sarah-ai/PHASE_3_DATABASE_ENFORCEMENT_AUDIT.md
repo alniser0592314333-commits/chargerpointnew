@@ -64,3 +64,18 @@ This audit note documents a boundary and an incomplete inspection. It makes no c
 - `get_effective_permissions` checks that a non-service caller is the current active admin and requires `admin:manage` when requesting another admin's permission set.
 - The internal effective-permission projection uses custom permission state as an override: if any custom-permission rows exist for an admin, only positive custom grants are returned; otherwise the profile's stored permissions are used. This is important for Sarah's execution-time permission checks and needs negative/override tests, not assumptions that custom grants are additive.
 - The read-sync-bootstrap RPC is deliberately not suitable as Sarah's read tool: its entity allow-list still returns shared business projections for admins who hold `sync:manage`, whereas the conversational tool catalog must be narrower and field-minimized.
+
+## Follow-up: migration ledger reconciliation (2026-11-26)
+
+The repository contained duplicate Supabase migration version prefixes. These were reconciled before adding the Sarah read bridge so a future migration push cannot ambiguously apply two files under one version.
+
+- 00027_reload_postgrest_schema_after_bin_functions.sql -> 20261126223400_reload_postgrest_schema_after_bin_functions.sql
+- 20261021120000_fix_native_push_pg_net_schema_resolution.sql -> 20261126223000_fix_native_push_pg_net_schema_resolution.sql
+- 20261021120000_native_push_event_routing_and_order_lifecycle.sql -> 20261126223100_native_push_event_routing_and_order_lifecycle.sql
+- 20261021140000_native_push_manual_balance_topups.sql -> 20261126223200_native_push_manual_balance_topups.sql
+- 20261021140000_app_release_policies.sql -> 20261126223300_app_release_policies.sql
+- Sarah's scoped customer lookup migration uses unique version 20261126213000.
+
+The corresponding native-push functions/triggers and app-release-policy table/policies were present in the live database during read-only inspection. The re-versioned migrations are idempotent definitions retained for reproducible fresh setup. A CI check now rejects duplicate migration version prefixes.
+
+**Production status:** no migration from this workstream has been applied to the live Supabase project. Production schema changes remain gated on the final merge/deployment decision and post-merge verification.
