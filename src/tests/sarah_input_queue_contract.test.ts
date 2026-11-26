@@ -48,6 +48,15 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(canRecoverObservedUpload(base, { ...base, actorAccountId: "b" }, "a")).toBe(false);
     expect(canRecoverObservedUpload(base, undefined, "a")).toBe(false);
   });
+  it("caps offline pending work and drops source payloads after completion", () => {
+    expect(source).toContain("MAX_PENDING_RECORDS = 25");
+    expect(source).toContain("MAX_PENDING_AUDIO_BYTES = 100 * 1024 * 1024");
+    expect(source).toContain("QUEUE_PENDING_LIMIT_REACHED");
+    expect(source).toContain("QUEUE_AUDIO_BUDGET_EXCEEDED");
+    expect(source).toContain("if (next === \"COMPLETED\")");
+    expect(source).toContain("delete updated.audioBlob");
+    expect(source).toContain("delete updated.text");
+  });
   it("limits stored text and audio payload sizes", () => {
     expect(source).toContain("MAX_TEXT_CHARS");
     expect(source).toContain("MAX_AUDIO_BYTES");
