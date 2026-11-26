@@ -1053,13 +1053,14 @@ class DefaultAuthService implements AuthService {
     }
 
     const activeAuthUserId = activeSupabaseSession?.user?.id || "";
-    const activeAuthEmail = activeSupabaseSession?.user?.email?.trim().toLowerCase() || "";
+    if (this.isSupabaseConfigured() && !activeAuthUserId) {
+      await this.logout();
+      return null;
+    }
     if (
+      this.isSupabaseConfigured() &&
       inMemorySession &&
-      activeAuthUserId &&
-      ((inMemorySession.authUserId && inMemorySession.authUserId !== activeAuthUserId) ||
-        (!inMemorySession.authUserId && (!activeAuthEmail ||
-          inMemorySession.email.trim().toLowerCase() !== activeAuthEmail)))
+      inMemorySession.authUserId !== activeAuthUserId
     ) {
       // A different Supabase identity is now active (usually from another tab).
       // Discard the previous account's cached role/permissions before returning
@@ -1117,11 +1118,9 @@ class DefaultAuthService implements AuthService {
       // selected in this origin. Never fall back to another admin's cached role
       // when the new account's profile request is offline or times out.
       if (
+        this.isSupabaseConfigured() &&
         storedSession &&
-        activeAuthUserId &&
-        ((storedSession.authUserId && storedSession.authUserId !== activeAuthUserId) ||
-          (!storedSession.authUserId && (!activeAuthEmail ||
-            storedSession.email.trim().toLowerCase() !== activeAuthEmail)))
+        storedSession.authUserId !== activeAuthUserId
       ) {
         storedSession = null;
         storage.removeItem(SESSION_STORAGE_KEY);
