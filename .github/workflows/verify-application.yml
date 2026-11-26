@@ -1289,6 +1289,7 @@ jobs:
         with:
           version: latest
           github-token: ${{ github.token }}
+      # The local Auth harness uses per-run project IDs/ports and current local_smtp config.
       - name: Run isolated local Supabase Auth integration
         run: bash supabase/tests/username_signin_local_integration.sh
 
