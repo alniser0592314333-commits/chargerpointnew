@@ -33,7 +33,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   }, [session?.userId, session?.authUserId]);
 
   const isCurrent = (accountId: string, operation?: number) => {
-    const identity = accountScopeIdentity(accountId, session?.authUserId);
+    if (!accountId || accountId !== session?.authUserId) return false;
+    const identity = accountScopeIdentity(session?.userId, session?.authUserId);
     return operation === undefined
       ? accountScopeRef.current.isCurrentAccount(identity)
       : accountScopeRef.current.isCurrent({ accountId: identity || "", generation: operation });
