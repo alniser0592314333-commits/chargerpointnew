@@ -215,6 +215,18 @@ BEGIN
   END;
 END;
 $unregistered_admin$;
+SELECT pg_catalog.set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000006', false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id', '20000000-0000-4000-8000-000000000006', false);
+DO $disabled_admin$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_get_provider_config();
+    RAISE EXCEPTION 'Admin with disabled_at set unexpectedly read provider configuration';
+  EXCEPTION WHEN invalid_authorization_specification THEN
+    NULL;
+  END;
+END;
+$disabled_admin$;
 RESET ROLE;
 
 -- A Super Admin can clear provider configuration; the secret is removed as well.
