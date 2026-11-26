@@ -59,6 +59,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS admins_fixture_username_uidx
 CREATE UNIQUE INDEX IF NOT EXISTS admins_fixture_email_uidx
   ON public.admins(email) WHERE email IS NOT NULL;
 
+-- The preceding account-session fixture seeds a temporary Super Admin for
+-- login-gate assertions. Remove only that known fixture row before testing
+-- first-owner bootstrap against an unbootstrapped installation.
+DELETE FROM public.admins
+WHERE id = '99999999-9999-4999-8999-999999999999';
+
 -- Minimal production-shaped profile RPC so the migration's session guard can
 -- wrap it in this isolated fixture exactly as it wraps the deployed function.
 CREATE OR REPLACE FUNCTION public.get_current_admin_profile()
