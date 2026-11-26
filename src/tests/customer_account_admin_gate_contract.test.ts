@@ -34,6 +34,18 @@ describe("customer edge-function admin identity gates", () => {
     }
   });
 
+  it("binds elevated admin Edge Function actions to the verified subject and active state", () => {
+    const portal = readFileSync("supabase/functions/customer-portal-events/index.ts", "utf8");
+    const reminders = readFileSync("supabase/functions/debt-reminders/index.ts", "utf8");
+    const push = readFileSync("supabase/functions/native-push/index.ts", "utf8");
+    expect(portal).toContain("profile.auth_user_id !== user.id");
+    expect(portal).toContain("profile.is_active !== true");
+    expect(reminders).toContain("profile?.auth_user_id === authData.user.id");
+    expect(reminders).toContain("profile?.is_active === true");
+    expect(push).toContain("row?.auth_user_id !== user.id");
+    expect(push).toContain("row?.is_active !== true");
+  });
+
   it("blocks disabled admins in biometric identity and proof flows", () => {
     const source = readFileSync("supabase/functions/account-biometric/index.ts", "utf8");
     expect(source).toContain("adminRow?.is_active === true && !adminRow.disabled_at");
