@@ -34,6 +34,11 @@ describe("Account session management", () => {
     expect(component).toContain("Confirm sign-out");
   });
 
+  it("uses the strict server heartbeat instead of a read-only identity probe", () => {
+    const service = readFileSync("src/services/auth/accountSessionService.ts", "utf8");
+    expect(service).toContain('invokeSupabaseRpc<boolean>("touch_my_account_session")');
+  });
+
   it("keeps session administration caller-scoped and revokes refresh credentials", () => {
     const sql = readFileSync("supabase/migrations/20261014130000_account_session_management.sql", "utf8");
     expect(sql).toContain("ALTER TABLE public.account_sessions ENABLE ROW LEVEL SECURITY");
