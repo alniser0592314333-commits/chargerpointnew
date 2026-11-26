@@ -353,6 +353,18 @@ export async function supabaseRefreshToken(): Promise<{ session: SupabaseAuthSes
         user: data.user || stored.user,
       };
 
+      // A refresh can finish after another tab/WebView has switched accounts
+      // or rotated the same account's refresh token. Never overwrite that newer
+      // persisted identity with the stale refresh result.
+      const latestStored = getStoredSupabaseAuthSession();
+      if (
+        !latestStored ||
+        latestStored.user?.id !== stored.user?.id ||
+        latestStored.refresh_token !== stored.refresh_token
+      ) {
+        return null;
+      }
+
       setSupabaseAuthToken(newSession.access_token);
       saveStoredSupabaseAuthSession(newSession);
       // A saved native account has a second, device-bound copy of its rotating
