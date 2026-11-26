@@ -69,8 +69,8 @@ BEGIN
   END IF;
 END $assert$;
 
--- Native and installed-PWA sessions receive a longer server-enforced idle window;
--- ordinary browser sessions remain limited to seven days.
+-- A caller cannot upgrade an already registered browser session by
+-- changing the client_type argument to native/PWA.
 SELECT public.register_my_account_session_v2('Android WebView', 'native');
 DO $assert$
 DECLARE v_expiry timestamptz; v_type text;
@@ -78,8 +78,8 @@ BEGIN
   SELECT session_expires_at, client_type INTO v_expiry, v_type
   FROM public.account_sessions
   WHERE session_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-  IF v_type <> 'native' OR v_expiry < now() + interval '29 days' THEN
-    RAISE EXCEPTION 'Native session did not receive the 30-day idle window';
+  IF v_type <> 'browser' OR v_expiry > now() + interval '7 days' THEN
+    RAISE EXCEPTION 'Client-supplied native type upgraded an existing browser session';
   END IF;
 END $assert$;
 
@@ -106,11 +106,36 @@ BEGIN
     RAISE EXCEPTION 'Idle-expired native session remained active';
   END IF;
 END $assert$;
-SELECT public.reactivate_my_account_session('native');
 DO $assert$
 BEGIN
+  BEGIN
+    PERFORM public.reactivate_my_account_session('native');
+    RAISE EXCEPTION 'An expired application session was reactivated by spoofing native client_type';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Expired application session became active after rejected reactivation';
+  END IF;
+END $assert$;
+
+-- A newly issued Auth session can be registered through the explicit
+-- reactivation path after biometric/password authentication.
+INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
+VALUES ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Android native fresh login');
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}',false);
+SELECT public.reactivate_my_account_session('native');
+DO $assert$
+DECLARE v_type text; v_expiry timestamptz;
+BEGIN
   IF public.is_my_account_session_active() IS NOT TRUE THEN
-    RAISE EXCEPTION 'Explicit native saved-login reactivation did not restore the session';
+    RAISE EXCEPTION 'Freshly authenticated native session was not registered';
+  END IF;
+  SELECT client_type, session_expires_at INTO v_type, v_expiry
+  FROM public.account_sessions
+  WHERE session_id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  IF v_type <> 'native' OR v_expiry < now() + interval '29 days' THEN
+    RAISE EXCEPTION 'Fresh native session did not receive its expected idle window';
   END IF;
 END $assert$;
 
@@ -165,25 +190,45 @@ BEGIN
   IF has_function_privilege('anon','public.get_my_account_sessions()','EXECUTE') THEN RAISE EXCEPTION 'Anonymous role can call account session RPC'; END IF;
 END $assert$;
 
--- A still-unregistered session is tolerated during rollout only while its Auth
--- session row exists and is unexpired. A stale JWT must fail this client gate
--- after its underlying Auth session has disappeared.
+-- An Auth session without an account_sessions registry row is never an
+-- active application session, including inside a read-only transaction.
 INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
-VALUES ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Test session');
+VALUES ('ffffffff-ffff-4fff-8fff-ffffffffffff','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Unregistered session');
 SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
-SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}',false);
-DO $assert$
-BEGIN
-  IF public.is_my_account_session_active() IS NOT TRUE THEN
-    RAISE EXCEPTION 'A valid unregistered Auth session should be tolerated during rollout';
-  END IF;
-END $assert$;
-DELETE FROM auth.sessions WHERE id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"ffffffff-ffff-4fff-8fff-ffffffffffff"}',false);
 DO $assert$
 BEGIN
   IF public.is_my_account_session_active() IS NOT FALSE THEN
-    RAISE EXCEPTION 'A missing underlying Auth session must not be reported active';
+    RAISE EXCEPTION 'A valid but unregistered Auth session must fail closed';
   END IF;
+  IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='ffffffff-ffff-4fff-8fff-ffffffffffff') THEN
+    RAISE EXCEPTION 'The read-only session guard unexpectedly auto-registered an account session';
+  END IF;
+END $assert$;
+BEGIN;
+SET TRANSACTION READ ONLY;
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"ffffffff-ffff-4fff-8fff-ffffffffffff"}',true);
+DO $assert$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Read-only authorization accepted a missing account_sessions row';
+  END IF;
+END $assert$;
+ROLLBACK;
+
+-- A stale, unregistered Auth session cannot self-register through the public RPC.
+INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
+VALUES ('abababab-abab-4bab-8bab-abababababab','11111111-1111-4111-8111-111111111111',now()-interval '1 day',now(),NULL,'Old unregistered session');
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"abababab-abab-4bab-8bab-abababababab"}',false);
+DO $assert$
+BEGIN
+  BEGIN
+    PERFORM public.register_my_account_session_v2('Browser', 'native');
+    RAISE EXCEPTION 'A stale unregistered Auth session unexpectedly registered itself';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
 END $assert$;
 
 
@@ -192,6 +237,8 @@ END $assert$;
 -- denied by both the table RLS policy and an exposed SECURITY DEFINER RPC.
 INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
 VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Gate test');
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}',false);
+SELECT public.register_my_account_session_v2('Gate test','browser');
 BEGIN;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
