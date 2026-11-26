@@ -52,3 +52,15 @@ A catalog query enumerated public SECURITY DEFINER routines with argument signat
 ## Gateway operational gap identified
 
 The current `sarah-ai-chat` Edge Function validates user identity, active admin profile and `ai:use`, and restricts request/history sizes. However, the reviewed gateway has no durable server-side per-actor rate/quota limiter before calling Gemini. A dedicated limiter needs an authenticated-actor key, bounded policy, atomic database enforcement, service-role-only internal access, and abuse/denial tests. Do not implement a weak in-memory limiter or reuse customer-login rate limits. This is a follow-up security gate before broader or higher-cost capabilities.
+
+## Supabase advisor snapshot (read-only, 2026-11-26)
+
+Security advisor reported:
+- 59 public tables with RLS enabled but no policies (INFO). Catalog review found browser-role direct table access limited to `app_release_policies`; the no-policy tables are not directly exposed through those table grants in this snapshot. This remains defense-in-depth, not a blanket approval.
+- 8 anonymous-callable SECURITY DEFINER functions (WARN), matching the inspected public bootstrap-status, identity/landing, and QR token/payment endpoints; their public intent and minimization/rate-limit behavior require separate validation.
+- 73 authenticated-callable SECURITY DEFINER routines (WARN). This is a broad RPC API; effective actor/session/permission guards must be reviewed per function, and the warning itself is not proof of vulnerability.
+- `pgcrypto` and `pg_net` in public schema (WARN); relocation requires separate dependency/migration planning.
+- Auth compromised-password protection advisor warning; this is an account-security setting, not Sarah-specific.
+- Performance advisor also reported FK indexes that may be missing and unused-index candidates; no indexes were changed because performance remediation requires workload and migration review.
+
+No production DDL, writes, or setting changes were performed.
