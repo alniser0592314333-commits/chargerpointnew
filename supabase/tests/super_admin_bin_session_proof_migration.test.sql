@@ -40,12 +40,12 @@ $acl$;
 -- can inspect private tables without granting direct access to authenticated.
 CREATE FUNCTION public.fixture_account_session_exists(p_session_id uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path=public,pg_temp AS $
+SET search_path=public,pg_temp AS $fixture$
   SELECT EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id=p_session_id)
-$;
+$fixture$;
 CREATE FUNCTION public.fixture_bin_proof_state(p_session_id uuid,p_state text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path=public,pg_temp AS $
+SET search_path=public,pg_temp AS $fixture$
   SELECT EXISTS (
     SELECT 1 FROM public.admin_bin_session_proofs
     WHERE auth_session_id=p_session_id
@@ -55,7 +55,7 @@ SET search_path=public,pg_temp AS $
         ELSE true
       END
   )
-$;
+$fixture$;
 GRANT EXECUTE ON FUNCTION public.fixture_account_session_exists(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.fixture_bin_proof_state(uuid,text) TO authenticated;
 
