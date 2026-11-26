@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 import { getAIProviderAdapter } from "../_shared/ai/providerRegistry.ts";
 import type { AIProviderGenerationConfig } from "../_shared/ai/providerTypes.ts";
 
@@ -61,11 +62,16 @@ const parseGenerationConfig = (value: unknown): GenerationConfig | null => {
 
 const readRequestBody = async (request: Request): Promise<Json | null> => {
   const declaredLength = Number(request.headers.get("content-length") || 0);
-  if (declaredLength > MAX_BODY_BYTES) return null;
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) return null;
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) return null;
+  let bytes: Uint8Array | null;
   try {
-    const parsed = JSON.parse(body);
+    bytes = await readBoundedRequestBody(request, MAX_BODY_BYTES);
+  } catch {
+    return null;
+  }
+  if (bytes === null) return null;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Json : null;
   } catch {
     return null;
