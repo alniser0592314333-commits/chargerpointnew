@@ -4,4 +4,4 @@ describe("Sarah conversation persistence",()=>{it("uses account keyed durable In
 
 it("clears only the current hydrated account transcript",()=>{expect(page).toContain("sarahConversationStore.clear(accountId)");expect(page).toContain("hydratedAccount !== accountId");expect(page).toContain("isCurrent(accountId, operation)");expect(page).toContain("مسح سجل المحادثة");});
 
-it("persists clear tombstones to prevent stale transcript resurrection",()=>{expect(store).toContain('const META = "meta"');expect(store).toContain("clearedAt");expect(store).toContain("transaction([STORE,META]");expect(store).toContain("clearedAt>=Date.parse(updatedAt)");});});
+it("persists clear tombstones to prevent stale transcript resurrection",()=>{expect(store).toContain('const META = "meta"');expect(store).toContain("clearedAt");expect(store).toContain("transaction([STORE,META]");expect(store).toContain("current!==generation");expect(store).toContain("nextGeneration=current+1");expect(page).toContain("conversationGenerationRef.current = snapshot.generation");});});
