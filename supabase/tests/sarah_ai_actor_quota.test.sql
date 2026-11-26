@@ -142,8 +142,8 @@ BEGIN
     RAISE EXCEPTION 'usage windows exposed to browser or service roles';
   END IF;
   IF has_function_privilege('anon','public.sarah_ai_consume_quota_internal(uuid,text,integer,integer)','EXECUTE')
-     OR has_function_privilege('authenticated','public.sarah_ai_consume_quota_internal(uuid,integer,integer)','EXECUTE')
-     OR has_function_privilege('service_role','public.sarah_ai_consume_quota_internal(uuid,integer,integer)','EXECUTE') THEN
+     OR has_function_privilege('authenticated','public.sarah_ai_consume_quota_internal(uuid,text,integer,integer)','EXECUTE')
+     OR has_function_privilege('service_role','public.sarah_ai_consume_quota_internal(uuid,text,integer,integer)','EXECUTE') THEN
     RAISE EXCEPTION 'private quota counter is directly executable';
   END IF;
   IF has_function_privilege('anon','public.sarah_ai_assert_use_permission()','EXECUTE')
