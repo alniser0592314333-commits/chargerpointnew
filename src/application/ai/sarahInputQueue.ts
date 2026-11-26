@@ -69,6 +69,12 @@ const requestValue = <T>(req: IDBRequest<T>): Promise<T> => new Promise((resolve
   req.onerror = () => reject(req.error);
 });
 
+const uploadLeaseExpired = (row: SarahInputRecord): boolean => {
+  if (!row.uploadLeaseUntil) return true;
+  const expires = Date.parse(row.uploadLeaseUntil);
+  return !Number.isFinite(expires) || expires <= Date.now();
+};
+
 export const sarahInputQueue = {
   async enqueue(input: Omit<SarahInputRecord, "sequence" | "createdAt" | "attempts">): Promise<SarahInputRecord> {
     if (!input.actorAccountId || !input.deviceId || !input.id || !input.correlationId) throw new Error("INVALID_QUEUE_INPUT");
@@ -137,7 +143,7 @@ export const sarahInputQueue = {
   async recoverInterruptedUploads(accountId: string): Promise<number> {
     if (!accountId) throw new Error("ACCOUNT_REQUIRED");
     const pending = await this.list(accountId);
-    const interrupted = pending.filter((row) => row.state === "UPLOADING" && (!row.uploadLeaseUntil || Date.parse(row.uploadLeaseUntil) <= Date.now()));
+    const interrupted = pending.filter((row) => row.state === "UPLOADING" && uploadLeaseExpired(row));
     let recovered = 0;
     for (const row of interrupted) {
       try {
@@ -149,7 +155,7 @@ export const sarahInputQueue = {
         // Another tab may have completed or changed this record since the listing.
         // Re-read before treating the race as an actual queue failure.
         const latest = await this.list(accountId);
-        if (latest.some((item) => item.id === row.id && item.actorAccountId === accountId && item.state === "UPLOADING" && (!item.uploadLeaseUntil || Date.parse(item.uploadLeaseUntil) <= Date.now()))) {
+        if (latest.some((item) => item.id === row.id && item.actorAccountId === accountId && item.state === "UPLOADING" && uploadLeaseExpired(item))) {
           throw new Error("QUEUE_RECOVERY_RACE_FAILED");
         }
       }
