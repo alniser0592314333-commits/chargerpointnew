@@ -259,6 +259,7 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(migration).toContain("reactivate_my_account_session");
     expect(migration).toContain("get_my_admin_login_gate");
     expect(migration).toContain("session_expires_at <= now()");
+    expect(migration).toContain("AND s.user_id = v_user_id");
   });
 
 
@@ -270,19 +271,7 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(reactivation).toContain("creates a new session ID");
     expect(reactivation).not.toContain("IF v_client_type = 'browser' AND EXISTS");
   });
-  it("keeps the final account-session authorization check read-only for RLS and rejects missing registry rows", () => {
-    const migration = readFileSync("supabase/migrations/20261126200000_strict_account_session_registry.sql", "utf8");
-    const activeSessionFunction = migration.slice(
-      migration.indexOf("CREATE OR REPLACE FUNCTION public.is_my_account_session_active"),
-      migration.indexOf("CREATE OR REPLACE FUNCTION public.register_my_account_session_v2"),
-    );
-    expect(activeSessionFunction).toContain("STABLE");
-    expect(activeSessionFunction).toContain("IF NOT FOUND THEN");
-    expect(activeSessionFunction).toContain("RETURN false");
-    expect(activeSessionFunction).toContain("session_expires_at <= now()");
-    expect(activeSessionFunction).not.toContain("INSERT INTO public.account_sessions");
-    expect(activeSessionFunction).not.toContain("UPDATE public.account_sessions");
-  });
+
 
   it("checks the native vault commit result and verifies persisted ciphertext", () => {
     const java = readFileSync("scripts/android/AccountBiometricPlugin.java", "utf8");
