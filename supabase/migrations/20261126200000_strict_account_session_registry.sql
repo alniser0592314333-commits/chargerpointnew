@@ -722,8 +722,8 @@ $function$;
 DO $restrict_current_admin_id$
 BEGIN
   IF to_regprocedure('public.current_admin_id()') IS NOT NULL THEN
-    REVOKE ALL ON FUNCTION public.current_admin_id() FROM PUBLIC, anon, service_role;
-    GRANT EXECUTE ON FUNCTION public.current_admin_id() TO authenticated;
+    EXECUTE 'REVOKE ALL ON FUNCTION public.current_admin_id() FROM PUBLIC, anon, service_role';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.current_admin_id() TO authenticated';
   END IF;
 END;
 $restrict_current_admin_id$;
@@ -733,8 +733,8 @@ $restrict_current_admin_id$;
 DO $restrict_admin_profile_rpc$
 BEGIN
   IF to_regprocedure('public.get_current_admin_profile()') IS NOT NULL THEN
-    REVOKE ALL ON FUNCTION public.get_current_admin_profile() FROM PUBLIC, anon, service_role;
-    GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
+    EXECUTE 'REVOKE ALL ON FUNCTION public.get_current_admin_profile() FROM PUBLIC, anon, service_role';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated';
   END IF;
 END;
 $restrict_admin_profile_rpc$;
