@@ -38,7 +38,7 @@ BEGIN
   WITH candidates AS (
     SELECT
       c.id,
-      pg_catalog.left(pg_catalog.btrim(c.name), 80) AS customer_name,
+      pg_catalog.left(pg_catalog.regexp_replace(pg_catalog.btrim(c.name), '[[:cntrl:]]', ' ', 'g'), 80) AS customer_name,
       pg_catalog.upper(pg_catalog.left(pg_catalog.replace(c.id::text, '-', ''), 4)) AS customer_code
     FROM public.customers c
     WHERE c.is_active IS TRUE
