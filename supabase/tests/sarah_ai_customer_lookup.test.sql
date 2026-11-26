@@ -95,6 +95,7 @@ BEGIN
   END;
 END;
 $manager_denied$;
+RESET ROLE;
 
 -- Permission dimensions are independent: ai:use does not grant customer visibility,
 -- and customer visibility does not grant AI tool use.
