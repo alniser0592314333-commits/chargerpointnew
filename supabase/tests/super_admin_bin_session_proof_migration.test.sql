@@ -36,6 +36,29 @@ BEGIN
 END
 $acl$;
 
+-- Test-only SECURITY DEFINER probes are created after the migration so they
+-- can inspect private tables without granting direct access to authenticated.
+CREATE FUNCTION public.fixture_account_session_exists(p_session_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $
+  SELECT EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id=p_session_id)
+$;
+CREATE FUNCTION public.fixture_bin_proof_state(p_session_id uuid,p_state text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path=public,pg_temp AS $
+  SELECT EXISTS (
+    SELECT 1 FROM public.admin_bin_session_proofs
+    WHERE auth_session_id=p_session_id
+      AND CASE p_state
+        WHEN 'unconsumed' THEN consumed_at IS NULL
+        WHEN 'consumed' THEN consumed_at IS NOT NULL
+        ELSE true
+      END
+  )
+$;
+GRANT EXECUTE ON FUNCTION public.fixture_account_session_exists(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.fixture_bin_proof_state(uuid,text) TO authenticated;
+
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.role','authenticated',true);
 SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',true);
