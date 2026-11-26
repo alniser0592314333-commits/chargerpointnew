@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
     } catch {
       return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
     }
-    const firstCandidate = (firstResult as any)?.candidates?.[0] as Record<string, unknown> | undefined;
+    const firstCandidate = Array.isArray(firstResult.candidates) ? firstResult.candidates[0] as Record<string, unknown> | undefined : undefined;
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
     const firstParts = Array.isArray(firstContent?.parts)
       ? firstContent.parts as Array<Record<string, unknown>>
@@ -298,7 +298,7 @@ Deno.serve(async (req) => {
       } catch {
         return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
       }
-      const secondCandidate = (secondResult as any)?.candidates?.[0] as Record<string, unknown> | undefined;
+      const secondCandidate = Array.isArray(secondResult.candidates) ? secondResult.candidates[0] as Record<string, unknown> | undefined : undefined;
       answer = extractAnswer(secondCandidate || null);
       if (!answer) {
         const secondContent = secondCandidate?.content as Record<string, unknown> | undefined;
