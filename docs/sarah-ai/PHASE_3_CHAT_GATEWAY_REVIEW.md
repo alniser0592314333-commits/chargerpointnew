@@ -52,3 +52,12 @@ Status: static review of PR #326; findings are gates, not verified runtime fixes
 - Android APK build workflow run #914 succeeded on that merge ref. Vercel status for commit `1caae879...` was success. These statuses do not prove the chat gateway was deployed to production.
 - Live guard inspection: `assert_my_account_session_active()` delegates to `is_my_account_session_active()` for browser JWTs and rejects revoked/expired/unavailable sessions. `get_current_admin_profile()` calls the active-session guard. `_cp_assert_active_admin_permission` returns NULL for service_role; hence service-role calls are explicitly not a delegated user authorization context.
 - The authenticated-user RPC bridge remains a gated design. Before enabling a capability, verify JWT forwarding and database identity/session/permission/ownership controls with isolated direct-RPC negative tests. No production write, merge, or deployment occurred.
+
+
+## Follow-up CI confirmation — 26 Nov 2026
+
+- The later Verify Application run #2678 against the PR's current head SHA `9e3c79dcc2a0fcb25eb522740fe5f1cbf5fc093a` completed successfully. All six jobs, including the isolated Sarah provider/quota verification, the username sign-in local integration, the full verification job and migration job, passed.
+- The username-sign-in integration logs show the local Supabase stack was reset, the integration account was inserted, and the script completed its real Auth success, generic credential failure, unknown-user non-disclosure, and rate-limit assertions.
+- Run #2677's HTTP 503 was not reproduced on #2678. No specific causal fix or root cause for the earlier failure has been demonstrated; do not label it resolved by a code change or flaky conclusively.
+- The #2678 Android APK workflow #915 also succeeded; Vercel preview status was successful. These are CI/preview results, not production release or merge evidence.
+- PR #324 and #325 remain open and unmerged. Their latest observed Verify Application and Android builds both passed (runs #2576/#814 for #324 and #2579/#817 for #325). Coordination/merge order is still required before the three branches are integrated.
