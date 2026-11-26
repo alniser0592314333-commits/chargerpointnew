@@ -216,7 +216,7 @@ BEGIN
   )
   VALUES (
     'default', p_provider_id, p_model_id, NULLIF(pg_catalog.btrim(p_endpoint_url), ''),
-    p_generation_config, v_secret_id, true, p_actor_auth_user_id, now(), now()
+    p_generation_config, v_secret_id, true, v_actor_auth_user_id, now(), now()
   )
   ON CONFLICT (id) DO UPDATE SET
     provider_id = EXCLUDED.provider_id,
