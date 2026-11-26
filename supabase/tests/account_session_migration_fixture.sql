@@ -45,6 +45,18 @@ AS $super_admin$
   SELECT false
 $super_admin$;
 
+-- Existing caller-scoped identity helper; the strict migration must remove
+-- service_role execution while preserving authenticated application access.
+CREATE FUNCTION public.current_admin_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $current_admin$
+  SELECT auth.uid()
+$current_admin$;
+
 
 -- Representative exposed business table and SECURITY DEFINER RPC used to prove
 -- that the migration enforces session validity beyond the client UI.
