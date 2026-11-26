@@ -69,7 +69,7 @@ const requestValue = <T>(req: IDBRequest<T>): Promise<T> => new Promise((resolve
   req.onerror = () => reject(req.error);
 });
 
-const uploadLeaseExpired = (row: SarahInputRecord): boolean => {
+export const uploadLeaseExpired = (row: SarahInputRecord): boolean => {
   if (!row.uploadLeaseUntil) return true;
   const expires = Date.parse(row.uploadLeaseUntil);
   return !Number.isFinite(expires) || expires <= Date.now();
