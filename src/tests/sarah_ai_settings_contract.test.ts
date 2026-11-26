@@ -35,16 +35,27 @@ describe("Sarah AI provider settings security contract", () => {
     expect(migration).toContain("DELETE FROM vault.secrets");
     expect(migration.match(/COMMIT;/g) || []).toHaveLength(1);
     expect(migration).toContain("maxOutputTokens must be an integer");
+    expect(migration).toContain("maxOutputTokens must be between 1 and 4096");
+    expect(edgeFunction).toContain("Number(input.maxOutputTokens) > 4096");
     expect(migration).toContain("timeoutMs must be between 5000 and 120000");
   });
 
-  it("validates the active admin session and ai:manage on the server before service-role access", () => {
+  it("enforces ai:manage inside the database and uses caller-scoped settings RPCs", () => {
+    expect(migration).toContain("sarah_ai_assert_manage_permission");
+    expect(migration).toContain('public.get_current_admin_profile()');
+    expect(migration).toContain("AI_MANAGE_PERMISSION_REQUIRED");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) TO authenticated");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_config() TO authenticated");
+    expect(migration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) FROM PUBLIC, anon, service_role");
     expect(edgeFunction).toContain('caller.rpc("get_current_admin_profile")');
     expect(edgeFunction).toContain('permissions.includes("ai:manage")');
     expect(edgeFunction).toContain("profile.auth_user_id !== authData.user.id");
-    expect(edgeFunction).toContain("createClient(url, serviceKey");
-    expect(edgeFunction).toContain("body.apiKey");
+    expect(edgeFunction).toContain("profile.is_active !== true");
+    expect(edgeFunction).toContain('caller.rpc("sarah_ai_get_provider_config")');
+    expect(edgeFunction).toContain('caller.rpc("sarah_ai_save_provider_config"');
+    expect(edgeFunction).toContain('caller.rpc("sarah_ai_clear_provider_config")');
     expect(edgeFunction).toContain('admin.rpc("sarah_ai_get_provider_secret")');
+    expect(edgeFunction).toContain("sarah_ai_consume_quota");
     expect(geminiAdapter).toContain('"x-goog-api-key": apiKey');
     expect(edgeFunction).not.toContain("console.log");
   });
