@@ -49,11 +49,15 @@ CREATE TABLE public.admins (
 -- wrap it in this isolated fixture exactly as it wraps the deployed function.
 CREATE OR REPLACE FUNCTION public.get_current_admin_profile()
 RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
+DECLARE
+  v_profile jsonb;
+BEGIN
+  PERFORM public.assert_my_account_session_active();
   SELECT jsonb_build_object(
     'authenticated', true,
     'is_admin', true,
@@ -62,9 +66,12 @@ AS $function$
     'auth_user_id', a.auth_user_id,
     'role', a.role
   )
+  INTO v_profile
   FROM public.admins a
   WHERE a.auth_user_id = auth.uid()
   LIMIT 1;
+  RETURN v_profile;
+END;
 $function$;
 
 
