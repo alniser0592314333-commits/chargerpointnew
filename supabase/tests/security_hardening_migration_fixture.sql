@@ -39,6 +39,7 @@ CREATE TABLE public.admins (
   permissions text[] NOT NULL DEFAULT '{}'::text[],
   bin_hash varchar(255),
   is_active boolean NOT NULL DEFAULT true,
+  disabled_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   version integer NOT NULL DEFAULT 1
