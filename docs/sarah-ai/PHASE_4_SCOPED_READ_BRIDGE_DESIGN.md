@@ -62,3 +62,18 @@ The quota test SQL and gateway contract test are included in the branch. CI and 
 ## Read-bridge blocker discovered in live catalog review
 
 The existing `_cp_assert_active_admin_permission` deliberately returns NULL for service-role requests, bypassing browser-session and permission resolution. Therefore, calling existing permission-guarded RPCs from the Edge Function using service-role credentials does **not** preserve the originating user's permission boundary. The existing gateway currently verifies the user/session and `ai:use` in its own context, but a delegated read RPC would need a distinct database-level delegated-actor validation mechanism. No read capability should be exposed until that mechanism independently validates actor identity, current registered session, effective permission and operation scope despite service-role invocation. This is a concrete security design blocker, not a prompt/UI issue.
+
+
+## Delegated database authorization: safer candidate to validate next
+
+A promising alternative to passing actor IDs through service-role RPCs is to invoke the narrow capability using the **original validated user's JWT** (the same bearer token validated at the gateway), with a user-scoped Supabase client and no service-role credential for the capability call. This allows Postgres `auth.uid()` and request claims to represent the actual user, so existing active-session and permission guards can evaluate in their native context.
+
+This is only a candidate pending implementation and tests; the quota and secret management can remain service-role-only, isolated from the data-capability client.
+
+Implementation gates:
+1. Build a dedicated user-JWT RPC client that cannot fall back to service-role credentials, and never persist/echo the JWT.
+2. Confirm current registered-session checks match the user/session context carried by the JWT; ensure account switching or revoked sessions are denied.
+3. Add a typed lookup RPC with fixed search behavior, bounded input, fixed minimal output and hard max-five limit; its own DB body calls the existing active-admin and customer-view guard before querying.
+4. Avoid forwarding Gemini-supplied IDs, filters, column names, SQL, permission codes or table names.
+5. Test direct RPC invocation independently from the chat/UI, including denied actor, revoked session, permission revoked, spoofing and malformed input. Also test Edge Function forwarding and prove the tool cannot use service role.
+6. Keep the tool disabled until these tests and CI run. This is not yet implemented.
