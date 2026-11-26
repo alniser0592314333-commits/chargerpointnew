@@ -74,6 +74,16 @@ BEGIN
     RETURN false;
   END IF;
 
+  -- Admin disablement is an authorization revocation, even if the Auth token
+  -- and account_sessions row have not yet expired or been revoked.
+  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.auth_user_id = v_user_id
+      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+  ) THEN
+    RETURN false;
+  END IF;
+
   RETURN true;
 END;
 $$;
@@ -114,6 +124,14 @@ BEGIN
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Current authentication session is no longer active' USING ERRCODE = '28000';
+  END IF;
+
+  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.auth_user_id = v_user_id
+      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+  ) THEN
+    RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
   END IF;
 
   SELECT * INTO v_account_session
@@ -248,6 +266,14 @@ BEGIN
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Underlying Auth session is no longer active' USING ERRCODE = '28000';
+  END IF;
+
+  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.auth_user_id = v_user_id
+      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+  ) THEN
+    RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
   END IF;
 
   SELECT * INTO v_account_session
