@@ -13,7 +13,7 @@ DECLARE
   v_query text;
   v_result jsonb;
 BEGIN
-  PERFORM public._cp_assert_active_admin_permission('ai:use');
+  PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public._cp_assert_active_admin_permission('customers:view');
 
   v_query := pg_catalog.regexp_replace(
