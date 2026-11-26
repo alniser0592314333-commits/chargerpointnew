@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { uploadLeaseExpired, SarahInputRecord } from "../application/ai/sarahInputQueue";
 
 describe("Sarah durable input queue architecture contract", () => {
   const source = readFileSync("src/application/ai/sarahInputQueue.ts", "utf8");
@@ -51,4 +52,6 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(page).toContain("retryHistory.at(-1)?.text === record.text");
     expect(page).toContain("retryHistory.pop()");
   });
+
+it("classifies active, expired, missing, and malformed leases",()=>{const base={id:"q",actorAccountId:"a",deviceId:"d",sequence:1,createdAt:new Date().toISOString(),kind:"text" as const,state:"UPLOADING" as const,text:"x",correlationId:"c",attempts:1};expect(uploadLeaseExpired({...base,uploadLeaseUntil:new Date(Date.now()+60000).toISOString()} as SarahInputRecord)).toBe(false);expect(uploadLeaseExpired({...base,uploadLeaseUntil:new Date(Date.now()-1).toISOString()} as SarahInputRecord)).toBe(true);expect(uploadLeaseExpired({...base,uploadLeaseUntil:"invalid"} as SarahInputRecord)).toBe(true);expect(uploadLeaseExpired(base as SarahInputRecord)).toBe(true);});
 });
