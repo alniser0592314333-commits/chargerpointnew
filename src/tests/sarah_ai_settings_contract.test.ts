@@ -17,8 +17,9 @@ describe("Sarah AI provider settings security contract", () => {
   const integrationPackage = read("src/application/ai/sarahIntegrationPackage.ts");
 
   it("adds dedicated permissions and limits their default grant to Super Admin", () => {
-    expect(migration).toContain("'ai:manage'");
-    expect(migration).toContain("('SUPER_ADMIN', 'ai:manage')");
+    expect(migration).toContain("v_role <> 'SUPER_ADMIN' AND NOT EXISTS");
+    expect(migration).toContain("permission_item.permission = 'ai:manage'");
+    expect(migration).not.toContain("INSERT INTO public.role_permissions");
     expect(quotaMigration).toContain("permission_item.permission = 'ai:use'");
     expect(quotaMigration).toContain("v_role <> 'SUPER_ADMIN'");
     expect(migration).not.toContain("('ADMIN', 'ai:manage')");
