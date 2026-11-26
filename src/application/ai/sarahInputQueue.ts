@@ -163,6 +163,31 @@ export const sarahInputQueue = {
     return recovered;
   },
 
+  /** Remove only this account's completed records after a conservative retention period. */
+  async pruneCompleted(accountId: string, olderThanDays = 30): Promise<number> {
+    if (!accountId) throw new Error("ACCOUNT_REQUIRED");
+    if (!Number.isFinite(olderThanDays) || olderThanDays < 1 || olderThanDays > 365) throw new Error("INVALID_RETENTION_PERIOD");
+    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    const rows = await this.list(accountId);
+    const eligible = rows.filter((row) => row.actorAccountId === accountId && row.state === "COMPLETED" && Number.isFinite(Date.parse(row.createdAt)) && Date.parse(row.createdAt) < cutoff);
+    if (!eligible.length) return 0;
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite"), store = tx.objectStore(STORE);
+      let removed = 0;
+      for (const row of eligible) {
+        const get = store.get(row.id);
+        get.onsuccess = () => {
+          const latest = get.result as SarahInputRecord | undefined;
+          if (latest?.actorAccountId === accountId && latest.state === "COMPLETED" && Date.parse(latest.createdAt) < cutoff) { store.delete(row.id); removed += 1; }
+        };
+      }
+      tx.oncomplete = () => { db.close(); resolve(removed); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_PRUNE_FAILED")); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_PRUNE_ABORTED")); };
+    });
+  },
+
   async remove(accountId: string, id: string): Promise<boolean> {
     if (!accountId) throw new Error("ACCOUNT_REQUIRED");
     const db = await openDb();
