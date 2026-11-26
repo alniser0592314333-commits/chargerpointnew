@@ -609,6 +609,30 @@ $function$;
 REVOKE ALL ON FUNCTION public.get_my_account_sessions() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_my_account_sessions() TO authenticated;
 
+-- User-scoped session RPCs must never be callable with the elevated
+-- service_role credential. Their authority comes only from the caller's own
+-- verified Auth subject and session claims.
+REVOKE ALL ON FUNCTION public.get_my_admin_login_gate() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.get_my_admin_login_gate() TO authenticated;
+REVOKE ALL ON FUNCTION public.is_my_account_session_active() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.is_my_account_session_active() TO authenticated;
+REVOKE ALL ON FUNCTION public.is_active_admin_session() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.is_active_admin_session() TO authenticated;
+REVOKE ALL ON FUNCTION public.register_my_account_session(text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.register_my_account_session(text) TO authenticated;
+REVOKE ALL ON FUNCTION public.register_my_account_session_v2(text, text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.register_my_account_session_v2(text, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.reactivate_my_account_session(text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.reactivate_my_account_session(text) TO authenticated;
+REVOKE ALL ON FUNCTION public.get_my_account_sessions() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.get_my_account_sessions() TO authenticated;
+REVOKE ALL ON FUNCTION public.revoke_my_account_session(uuid) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.revoke_my_account_session(uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.revoke_other_account_sessions() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.revoke_other_account_sessions() TO authenticated;
+REVOKE ALL ON FUNCTION public.revoke_all_account_sessions() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.revoke_all_account_sessions() TO authenticated;
+
 -- Close the legacy business-day restore RPC as an alternate session path.
 -- Keep its canonical implementation private and expose only a guarded wrapper.
 DO $clone_restore$
