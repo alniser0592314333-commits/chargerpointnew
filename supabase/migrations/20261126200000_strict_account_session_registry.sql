@@ -551,6 +551,10 @@ BEGIN
     EXECUTE 'REVOKE ALL ON FUNCTION public.current_admin_id() FROM PUBLIC, anon, service_role';
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.current_admin_id() TO authenticated';
   END IF;
+  IF to_regprocedure('public.is_active_super_admin_session()') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.is_active_super_admin_session() FROM PUBLIC, anon, service_role';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.is_active_super_admin_session() TO authenticated';
+  END IF;
 END;
 $revoke_user_admin_identity_rpc$;
 
