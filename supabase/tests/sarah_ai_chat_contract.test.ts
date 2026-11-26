@@ -23,12 +23,14 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("AI_RATE_LIMITED");
     expect(source).toContain("AI_DAILY_LIMIT_REACHED");
     expect(source.indexOf("sarah_ai_consume_my_quota")).toBeLessThan(source.indexOf('admin.rpc("sarah_ai_get_provider_secret")'));
-    expect(quotaMigration).toContain("ON CONFLICT(actor_auth_user_id, window_seconds, window_started_at)");
+    expect(quotaMigration).toContain("ON CONFLICT(actor_auth_user_id, quota_type, window_seconds, window_started_at)");
     expect(quotaMigration).toContain("DO UPDATE SET request_count = public.sarah_ai_usage_windows.request_count + 1");
     expect(quotaMigration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_consume_my_quota(text) TO authenticated");
     expect(quotaMigration).toContain("REVOKE ALL ON TABLE public.sarah_ai_usage_windows FROM PUBLIC, anon, authenticated, service_role");
     expect(quotaMigration).toContain("FORCE ROW LEVEL SECURITY");
     expect(quotaMigration).toContain("20, 3600");
+    expect(quotaMigration).toContain("v_actor, 'tool', 20, 3600");
+    expect(quotaMigration).toContain("v_actor, 'tool', 100, 86400");
     expect(quotaMigration).toContain("100, 86400");
   });
 
@@ -67,6 +69,10 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
     expect(lookupMigration).toContain("public.sarah_ai_assert_use_permission()");
+    expect(lookupMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
+    expect(lookupMigration).toContain("sarah_ai_consume_my_quota('tool_day')");
+    expect(lookupMigration).toContain("AI_TOOL_QUOTA_EXCEEDED");
+    expect(lookupMigration).toContain("AI_TOOL_DAILY_LIMIT_REACHED");
     expect(lookupMigration).toContain("public._cp_assert_active_admin_permission('customers:view')");
     expect(lookupMigration).toContain("LIMIT 6");
     expect(lookupMigration).toContain("match_number <= 5");
