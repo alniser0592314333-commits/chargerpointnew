@@ -34,3 +34,12 @@ Status: static review of PR #326; findings are gates, not verified runtime fixes
 - Add database-enforced typed read function(s) only after their security contract and negative tests are reviewed.
 - Keep all operational read/write tool catalogs disabled until bypass tests prove database enforcement.
 - No merge, production migration, production RPC execution, or deployment is performed by this review.
+
+
+## Follow-up verification — 26 Nov 2026
+
+- The branch now contains an atomic quota implementation: 20 requests per validated Supabase Auth UUID per hourly bucket; service-role-only RPC; RLS forced; direct browser grants revoked; gateway fails closed if quota infrastructure fails. The isolated SQL regression has been strengthened to verify exact remaining counts, actor separation, limit/window bounds and grants. This latest test commit has not yet produced a GitHub Actions run, so it is pending CI evidence.
+- Live catalog inspection confirms the current active-session guard calls `assert_my_account_session_active()` and resolves the admin by `auth.uid()`; `_cp_assert_active_admin_permission` deliberately returns NULL for service-role requests. This means the service-role path cannot be reused as a delegated user tool boundary even when the gateway independently validates a caller.
+- The chat gateway currently has no operational capability calls: the service-role client is used for quota and provider configuration/secret retrieval only. Therefore, no ChargerPointNew customer/order/finance data is available to Sarah in this phase.
+- The branch's read-bridge proposal must use a separately constructed authenticated-user RPC client forwarding the validated bearer token, not service-role calls. The database capability itself must validate active registered session, current actor and permission, with direct negative tests before any enablement.
+- Remaining CI status: GitHub Actions has not returned a PR run for the latest quota-test commit at this observation; Vercel preview was building at the time of inspection. Neither is a pass. No production writes, migrations, merge or deployment were performed.
