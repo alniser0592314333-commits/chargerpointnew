@@ -43,6 +43,10 @@ BEGIN
   IF has_function_privilege('service_role', 'public.sarah_ai_clear_provider_config()', 'EXECUTE') THEN
     RAISE EXCEPTION 'service_role must not bypass actor authorization for provider clear';
   END IF;
+  IF has_function_privilege('authenticated', 'public.sarah_ai_assert_manage_permission()', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.sarah_ai_assert_manage_permission()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'private ai:manage assertion must not be directly executable';
+  END IF;
 END;
 $privileges$;
 
