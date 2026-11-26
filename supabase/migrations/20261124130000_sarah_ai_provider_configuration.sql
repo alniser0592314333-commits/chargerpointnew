@@ -5,22 +5,8 @@
 
 BEGIN;
 
-INSERT INTO public.permissions (code, description)
-VALUES
-  ('ai:use', 'Use the Sarah AI assistant'),
-  ('ai:manage', 'Configure Sarah AI providers, models, and integration settings')
-ON CONFLICT (code) DO UPDATE
-SET description = EXCLUDED.description;
-
--- Initially enable Sarah only for Super Admin. Other roles receive access only
--- through an explicit, audited custom permission grant in a later admin flow.
-INSERT INTO public.role_permissions (role, permission)
-VALUES
-  ('SUPER_ADMIN', 'ai:use'),
-  ('SUPER_ADMIN', 'ai:manage'),
-  ('Super Admin', 'ai:use'),
-  ('Super Admin', 'ai:manage')
-ON CONFLICT (role, permission) DO NOTHING;
+-- AI permissions are managed through the authoritative admin_custom_permissions
+-- projection and the Admin Management UI, not the legacy role_permissions tables.
 
 CREATE TABLE IF NOT EXISTS public.sarah_ai_provider_config (
   id text PRIMARY KEY DEFAULT 'default' CHECK (id = 'default'),
