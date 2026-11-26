@@ -436,6 +436,19 @@ BEGIN
     RAISE EXCEPTION 'Authentication session is revoked, expired, or unavailable'
       USING ERRCODE = '28000';
   END IF;
+
+  -- This guard is shared by legacy SECURITY DEFINER business RPCs. A valid
+  -- Auth/session registry row must not keep a disabled admin authorized merely
+  -- because an older RPC checks only admins.is_active.
+  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.admins a
+    WHERE a.auth_user_id = auth.uid()
+      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+  ) THEN
+    RAISE EXCEPTION 'Administrator account is disabled'
+      USING ERRCODE = '28000';
+  END IF;
 END;
 $function$;
 REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon, authenticated, service_role;
