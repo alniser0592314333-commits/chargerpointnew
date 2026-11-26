@@ -304,7 +304,7 @@ INSERT INTO public.customers(id,name,phone,balance,is_active,deleted_at,status) 
  ('bbbb0000-0000-4000-8000-000000000001','محمود سمير','0599000007',10,true,NULL,'ACTIVE'),
  ('cccc0000-0000-4000-8000-000000000001','أحمد غير نشط','0599000008',5,false,NULL,'ACTIVE'),
  ('dddd0000-0000-4000-8000-000000000001','أحمد محذوف','0599000009',5,true,now(),'DELETED'),
- ('eeee0000-0000-4000-8000-000000000001',E'اسم\\nاختبار','0599000010',5,true,NULL,'ACTIVE');
+ ('eeee0000-0000-4000-8000-000000000001',E'اسم\nاختبار','0599000010',5,true,NULL,'ACTIVE');
 
 INSERT INTO auth.users(id) VALUES
  ('10000000-0000-4000-8000-000000000001'),
