@@ -174,7 +174,7 @@ export const sarahInputQueue = {
       } finally { db.close(); }
     }
     return recovered;
-  },,
+  },
 
   /** Remove only this account's completed records after a conservative retention period. */
   async pruneCompleted(accountId: string, olderThanDays = 30): Promise<number> {
