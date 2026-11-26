@@ -1,0 +1,48 @@
+name: Verify Super Admin BIN session proof
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20261126220000_super_admin_bin_session_proof.sql"
+      - "supabase/tests/super_admin_bin_session_proof_fixture.sql"
+      - "supabase/tests/super_admin_bin_session_proof_migration.test.sql"
+      - ".github/workflows/verify-super-admin-bin-session-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare isolated fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/super_admin_bin_session_proof_fixture.sql
+      - name: Apply Super Admin BIN session proof migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261126220000_super_admin_bin_session_proof.sql
+      - name: Verify proof issuance, exact-session binding, consumption and ACLs
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/super_admin_bin_session_proof_migration.test.sql
