@@ -127,15 +127,18 @@ ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
 INSERT INTO auth.users(id, email, email_confirmed_at) VALUES
   ('10000000-0000-0000-0000-000000000001', 'admin-fixture@example.invalid', now()),
   ('10000000-0000-0000-0000-000000000002', 'nonadmin-fixture@example.invalid', now()),
-  ('10000000-0000-0000-0000-000000000003', 'al.niser.0592314333@gmail.com', now());
+  ('10000000-0000-0000-0000-000000000003', 'al.niser.0592314333@gmail.com', now()),
+  ('10000000-0000-0000-0000-000000000004', 'backfill-admin@example.invalid', now());
 INSERT INTO auth.sessions(id, user_id, not_after) VALUES
   ('11000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', now() + interval '1 hour'),
-  ('11000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', now() + interval '1 hour');
+  ('11000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', now() + interval '1 hour'),
+  ('11000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000004', now() + interval '1 hour');
 INSERT INTO public.account_sessions(session_id, user_id) VALUES
   ('11000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001'),
   ('11000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002');
 INSERT INTO public.admins(id, auth_user_id, username, email, role, is_active) VALUES
-  ('12000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'fixture_admin', 'admin-fixture@example.invalid', 'OPERATOR', true);
+  ('12000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'fixture_admin', 'admin-fixture@example.invalid', 'OPERATOR', true),
+  ('12000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000004', 'backfill_admin', 'backfill-admin@example.invalid', 'OPERATOR', true);
 
 INSERT INTO auth.sessions(id, user_id, not_after) VALUES
   ('11000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', now() + interval '1 hour');
