@@ -52,3 +52,14 @@ The first implementation candidate remains a narrowly typed customer lookup, not
 - Query and result byte/row caps must be enforced by the database function, not only by the model tool wrapper.
 - Add negative tests for actor spoofing, permission revocation, inactive sessions, account switching, ambiguous lookup, injection, excessive input, and no permission before enabling.
 - This is still design only; no bridge function, migration, or capability has been implemented or enabled.
+
+## Gateway rate-limit design (not implemented)
+
+The chat gateway currently has no durable per-actor quota. The follow-up should be an atomic database-backed limiter with:
+- a server-validated Auth UUID as the key (not model input, client profile, or IP alone);
+- service-role-only RPC access, invoked only after Edge Function `getUser`, active profile/session and `ai:use` checks;
+- no public table grants and RLS enabled;
+- atomic fixed/sliding window enforcement for both short burst and daily quota (suggested initial policy: 10 calls per 15 minutes and 100 per day, subject to owner approval);
+- a safe return value indicating allow/deny and retry time, with no secret/user data in logs;
+- expiration/cleanup of old rate buckets and tests for concurrent requests, account spoofing, revoked session, denied permissions, reset-window behavior and abuse.
+Do not use Edge-instance memory as the security control; instance-local state is not durable or consistent.
