@@ -219,7 +219,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       </form>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button type="button" disabled={busy || hydratedAccount !== session?.userId} onClick={() => void clearTranscript()} className="text-xs text-red-600 underline disabled:opacity-40">مسح سجل المحادثة</button>
-        <button type="button" onClick={() => session?.userId && void refreshQueue(session.userId, accountScopeRef.current.generation)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
+        <button type="button" onClick={() => accountId && void refreshQueue(accountId, accountScopeRef.current.generation)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
       </div>
       <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
     </section>
