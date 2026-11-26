@@ -1335,7 +1335,7 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id = '$actor' AND window_seconds = 3600"
           for i in $(seq 1 30); do
             (
-              result=$(psql -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT set_config('request.jwt.claim.role','authenticated',false); SELECT set_config('request.jwt.claim.sub','$actor',false); SELECT set_config('request.jwt.claim.session_id','$session_id',false); SELECT public.sarah_ai_consume_my_quota('hour');")
+              result=$(psql -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT set_config('request.jwt.claim.role','authenticated',false); SELECT set_config('request.jwt.claim.sub','$actor',false); SELECT set_config('request.jwt.claims',json_build_object('role','authenticated','sub','$actor','session_id','$session_id')::text,false); SELECT public.sarah_ai_consume_my_quota('hour');")
               if echo "$result" | grep -Fq '"allowed": true'; then
                 echo allowed > "/tmp/sarah-quota-concurrent-$i"
               else
