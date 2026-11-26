@@ -19,3 +19,7 @@ Tests must simulate switching accounts while load/send/retry/queue-refresh promi
 - Root cause: the contract test asserted the earlier direct `session.userId` call pattern. The current page resolves an explicit `accountId`, and guards asynchronous work with the account/operation epoch. The assertion was stale; the implementation was not failing that test behavior.
 - The contract was updated to assert the account-bound load/save pattern and current-operation guard. This update is on the PR branch and is pending a fresh CI run.
 - This is still a source-contract test; it does not constitute behavioural simulation of account switching under unresolved promises.
+
+## Current status correction (2026-11-26)
+
+The initial observations above describe the earlier page implementation and are not the current code state. Current SarahChatPage uses an active-account ref and operation epoch, clears state on account switch, guards send/retry/queue refresh completions, and hydrates/saves the account-bound transcript. Cross-tab transcript clear propagation is now implemented via generation notice and re-read. Source-pattern regressions have passed in the CI run observed for the current code; unresolved-promise behavioral simulations are still outstanding.
