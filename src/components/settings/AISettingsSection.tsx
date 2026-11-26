@@ -224,7 +224,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
       const nextTokens = Number(importedConfig.maxOutputTokens ?? 2048);
       const nextTimeout = Number(importedConfig.timeoutMs ?? 30000);
       if (!Number.isFinite(nextTemperature) || nextTemperature < 0 || nextTemperature > 2 ||
-        !Number.isInteger(nextTokens) || nextTokens < 1 || nextTokens > 65536 ||
+        !Number.isInteger(nextTokens) || nextTokens < 1 || nextTokens > 4096 ||
         !Number.isInteger(nextTimeout) || nextTimeout < 5000 || nextTimeout > 120000) {
         throw new Error("INVALID_INTEGRATION_PACKAGE");
       }
