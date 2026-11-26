@@ -26,7 +26,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
   });
   it("does not retry another account's queued record", () => {
     expect(page).toContain("record.actorAccountId !== accountId");
-    expect(page).toContain("!accountScopeRef.current.isCurrentAccount(accountId)");
+    expect(page).toContain("accountScopeIdentity(accountId, session?.authUserId)");
     expect(page).toContain("hydratedAccount !== accountId");
   });
   it("binds every Sarah request to the verified Auth subject, not the admin row ID", () => {
