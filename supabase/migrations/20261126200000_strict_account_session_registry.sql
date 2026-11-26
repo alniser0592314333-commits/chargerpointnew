@@ -979,6 +979,23 @@ BEGIN
     IF v_definition NOT LIKE '%bootstrap_first_super_admin__session_guarded_impl%' THEN
       RAISE EXCEPTION 'Could not preserve first-owner bootstrap implementation';
     END IF;
+
+    -- The private implementation is reachable only through the wrapper below,
+    -- which verifies the confirmed owner identity and registers a fresh Auth
+    -- session before delegation. Replace the old active-admin guard here:
+    -- the first owner cannot satisfy it until this very function creates the
+    -- initial SUPER_ADMIN row.
+    v_definition := replace(
+      v_definition,
+      $legacy_guard$IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Authentication session is revoked, expired, or unavailable'
+      USING ERRCODE = '28000';
+  END IF;$legacy_guard$,
+      'PERFORM public.assert_my_admin_session_actor(true);'
+    );
+    IF pg_catalog.strpos(v_definition, 'PERFORM public.assert_my_admin_session_actor(true);') = 0 THEN
+      RAISE EXCEPTION 'Could not replace the first-owner pre-admin session guard';
+    END IF;
     EXECUTE v_definition;
   END IF;
 
