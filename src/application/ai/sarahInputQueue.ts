@@ -35,6 +35,8 @@ const STORE = "inputs";
 const META = "meta";
 const MAX_TEXT_CHARS = 20_000;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const MAX_PENDING_RECORDS = 25;
+const MAX_PENDING_AUDIO_BYTES = 100 * 1024 * 1024;
 const allowed: Record<SarahInputState, SarahInputState[]> = {
   QUEUED_OFFLINE: ["READY_TO_SEND", "NEEDS_ATTENTION"],
   READY_TO_SEND: ["UPLOADING", "QUEUED_OFFLINE", "NEEDS_ATTENTION"],
@@ -104,18 +106,47 @@ export const sarahInputQueue = {
       const tx = db.transaction([STORE, META], "readwrite");
       const store = tx.objectStore(STORE), meta = tx.objectStore(META);
       const key = `sequence:${input.actorAccountId}`;
-      const get = meta.get(key);
+      const accountRange = IDBKeyRange.bound([input.actorAccountId, 0], [input.actorAccountId, Number.MAX_SAFE_INTEGER]);
+      const cursorRequest = store.index("account_sequence").openCursor(accountRange);
       let record: SarahInputRecord | undefined;
-      get.onerror = () => { tx.abort(); };
-      get.onsuccess = () => {
-        const sequence = Number(get.result || 0) + 1;
-        meta.put(sequence, key);
-        record = { ...input, sequence, createdAt: new Date().toISOString(), attempts: 0 };
-        store.add(record);
+      let pendingCount = 0;
+      let pendingAudioBytes = 0;
+      let abortReason: Error | null = null;
+      cursorRequest.onerror = () => { abortReason = new Error("QUEUE_CAPACITY_CHECK_FAILED"); tx.abort(); };
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (cursor) {
+          const existing = cursor.value as SarahInputRecord;
+          if (existing.state !== "COMPLETED") {
+            pendingCount += 1;
+            pendingAudioBytes += existing.audioBlob instanceof Blob ? existing.audioBlob.size : 0;
+          }
+          cursor.continue();
+          return;
+        }
+        if (pendingCount >= MAX_PENDING_RECORDS) {
+          abortReason = new Error("QUEUE_PENDING_LIMIT_REACHED");
+          tx.abort();
+          return;
+        }
+        const newAudioBytes = input.audioBlob instanceof Blob ? input.audioBlob.size : 0;
+        if (pendingAudioBytes + newAudioBytes > MAX_PENDING_AUDIO_BYTES) {
+          abortReason = new Error("QUEUE_AUDIO_BUDGET_EXCEEDED");
+          tx.abort();
+          return;
+        }
+        const get = meta.get(key);
+        get.onerror = () => { abortReason = new Error("QUEUE_SEQUENCE_READ_FAILED"); tx.abort(); };
+        get.onsuccess = () => {
+          const sequence = Number(get.result || 0) + 1;
+          meta.put(sequence, key);
+          record = { ...input, sequence, createdAt: new Date().toISOString(), attempts: 0 };
+          store.add(record);
+        };
       };
       tx.oncomplete = () => { db.close(); if (record) resolve(record); else reject(new Error("QUEUE_WRITE_INCOMPLETE")); };
-      tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_WRITE_FAILED")); };
-      tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_WRITE_ABORTED")); };
+      tx.onerror = () => { db.close(); reject(abortReason || tx.error || new Error("QUEUE_WRITE_FAILED")); };
+      tx.onabort = () => { db.close(); reject(abortReason || tx.error || new Error("QUEUE_WRITE_ABORTED")); };
     });
   },
 
@@ -140,6 +171,11 @@ export const sarahInputQueue = {
         if (!current || current.actorAccountId !== accountId) { tx.abort(); return; }
         if (!allowed[current.state].includes(next)) { tx.abort(); return; }
         updated = { ...current, ...details, state: next, uploadLeaseUntil: next === "UPLOADING" ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : undefined, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
+        if (next === "COMPLETED") {
+          delete updated.text;
+          delete updated.audioBlob;
+          delete updated.audioMimeType;
+        }
         store.put(updated);
       };
       tx.oncomplete = () => { db.close(); if (updated) resolve(updated); else reject(new Error("QUEUE_TRANSITION_REJECTED")); };
