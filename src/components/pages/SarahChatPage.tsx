@@ -53,6 +53,22 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   useEffect(() => {
     const accountId = session?.userId;
+    if (!accountId || hydratedAccount !== accountId) return;
+    return sarahConversationStore.subscribeToClear((notice) => {
+      if (notice.accountId !== accountId || !isCurrent(accountId)) return;
+      void sarahConversationStore.load(accountId).then((snapshot) => {
+        if (isCurrent(accountId) && snapshot.generation >= conversationGenerationRef.current) {
+          conversationGenerationRef.current = snapshot.generation;
+          setMessages(snapshot.messages);
+        }
+      }).catch((err) => {
+        if (isCurrent(accountId)) setError(err instanceof Error ? err.message : "CONVERSATION_SYNC_FAILED");
+      });
+    });
+  }, [session?.userId, hydratedAccount]);
+
+  useEffect(() => {
+    const accountId = session?.userId;
     if (!accountId || hydratedAccount !== accountId || activeAccountRef.current !== accountId) return;
     // Save only the transcript explicitly hydrated for this identity.
     void sarahConversationStore.save(accountId, messages, conversationGenerationRef.current).catch((err) => {
@@ -136,8 +152,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     if (!window.confirm("مسح سجل المحادثة لهذا الحساب فقط؟")) return;
     const operation = operationRef.current;
     try {
-      await sarahConversationStore.clear(accountId);
+      const nextGeneration = await sarahConversationStore.clear(accountId);
       if (!isCurrent(accountId, operation)) return;
+      conversationGenerationRef.current = nextGeneration;
       setMessages([]);
       setError("");
     } catch (err) {
