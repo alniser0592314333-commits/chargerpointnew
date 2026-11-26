@@ -29,8 +29,8 @@ describe("Sarah AI provider settings security contract", () => {
     expect(tableDefinition).toContain("secret_id uuid");
     expect(tableDefinition).not.toMatch(/api[_A-Za-z]*key\s+text/i);
     expect(migration).toContain("ALTER TABLE public.sarah_ai_provider_config ENABLE ROW LEVEL SECURITY");
-    expect(migration).toContain("REVOKE ALL ON TABLE public.sarah_ai_provider_config FROM PUBLIC, anon, authenticated");
-    expect(migration).toContain("GRANT ALL ON TABLE public.sarah_ai_provider_config TO service_role");
+    expect(migration).toContain("REVOKE ALL ON TABLE public.sarah_ai_provider_config FROM PUBLIC, anon, authenticated, service_role");
+    expect(migration).not.toContain("GRANT ALL ON TABLE public.sarah_ai_provider_config TO service_role");
     expect(migration).toContain("vault.create_secret");
     expect(migration).toContain("vault.update_secret");
     expect(migration).toContain("DELETE FROM vault.secrets");
@@ -67,7 +67,7 @@ describe("Sarah AI provider settings security contract", () => {
     expect(chatFunction).toContain('p_period:"hour"');
     expect(chatFunction).toContain('p_period:"day"');
     expect(chatFunction).toContain("AI_DAILY_LIMIT_REACHED");
-    expect(chatFunction).toContain("Math.min(Math.max(configuredOutputTokens,1),4096)");
+    expect(chatFunction).toContain("Math.min(Math.max(configuredOutputTokens, 1), 4096)");
     expect(geminiAdapter).toContain('"x-goog-api-key": apiKey');
     expect(edgeFunction).not.toContain("console.log");
   });
