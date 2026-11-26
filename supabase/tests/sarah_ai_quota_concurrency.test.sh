@@ -12,7 +12,7 @@ run_bucket() {
   local -a pids=()
   tmp="$(mktemp -d)"
 
-  psql "${DB_ARGS[@]}" -c "DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='${ACTOR}' AND quota_type='${quota_type}' AND window_seconds=3600;" >/dev/null
+  psql "${DB_ARGS[@]}" -c "DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='${ACTOR}' AND quota_type='${quota_type}';" >/dev/null
 
   for i in $(seq 1 40); do
     psql "${DB_ARGS[@]}" -c "SET ROLE authenticated; SET request.jwt.claim.role='authenticated'; SET request.jwt.claim.sub='${ACTOR}'; SET request.jwt.claim.session_id='${SESSION}'; SELECT (public.sarah_ai_consume_my_quota('${period}')->>'allowed');" > "${tmp}/${i}.out" &
@@ -41,3 +41,4 @@ run_bucket() {
 
 run_bucket "hour" "chat"
 run_bucket "tool_hour" "tool"
+psql "${DB_ARGS[@]}" -c "DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='${ACTOR}' AND quota_type IN ('chat','tool');" >/dev/null
