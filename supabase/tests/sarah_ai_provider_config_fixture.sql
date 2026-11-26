@@ -164,6 +164,7 @@ AS $function$
     AND a.is_active IS TRUE
     AND NOT (SELECT has_custom_state FROM custom_state);
 $function$;
+REVOKE ALL ON FUNCTION public.get_effective_permissions(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE TABLE public.account_sessions (
   session_id uuid PRIMARY KEY,
