@@ -16,7 +16,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [pending, setPending] = useState<SarahInputRecord[]>([]);
   const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);
   const activeAccountRef = useRef<string | null>(session?.userId ?? null);
-  const operationRef = useRef(0);\n  const conversationGenerationRef = useRef(0);
+  const operationRef = useRef(0);
+  const conversationGenerationRef = useRef(0);
 
   // Immediately invalidate all asynchronous work from a previous account.
   useLayoutEffect(() => {
