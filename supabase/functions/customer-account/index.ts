@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 import { CUSTOMER_ACCOUNT_TERMS_VERSION } from "../_shared/customerAccountTerms.ts";
 import { canRegisterCustomerSession } from "../_shared/customerSessionPolicy.ts";
 
@@ -57,9 +58,10 @@ Deno.serve(async (request: Request) => {
   const admin = createClient(serviceUrl, serviceSecret, { auth: { persistSession: false, autoRefreshToken: false } });
   const authClient = createClient(serviceUrl, publicApiKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
   const declaredLength = Number(request.headers.get("content-length") || 0);
-  if (declaredLength > 16384) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
-  const bodyText = await request.text();
-  if (new TextEncoder().encode(bodyText).byteLength > 16384) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  if (Number.isFinite(declaredLength) && declaredLength > 16384) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const bodyBytes = await readBoundedRequestBody(request, 16384).catch(() => null);
+  if (bodyBytes === null) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const bodyText = new TextDecoder().decode(bodyBytes);
   let input: (Json & { action?: string }) | null;
   try { input = JSON.parse(bodyText) as (Json & { action?: string }) | null; }
   catch { return respond(400, { ok: false, error: "INVALID_REQUEST" }); }
