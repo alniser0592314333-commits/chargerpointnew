@@ -33,6 +33,30 @@ BEGIN
     RAISE EXCEPTION 'daily quota did not reject request 101';
   END IF;
 
+  -- Direct lookup RPC calls consume independent tool buckets rather than
+  -- sharing the chat quota or relying on the Edge Function to charge them.
+  FOR i IN 1..20 LOOP
+    v_result := public.sarah_ai_consume_my_quota('tool_hour');
+    IF v_result->>'allowed' <> 'true' THEN
+      RAISE EXCEPTION 'tool hourly quota rejected a request before the 20 request cap';
+    END IF;
+  END LOOP;
+  v_result := public.sarah_ai_consume_my_quota('tool_hour');
+  IF v_result->>'allowed' <> 'false' THEN
+    RAISE EXCEPTION 'tool hourly quota did not reject request 21';
+  END IF;
+
+  FOR i IN 1..100 LOOP
+    v_result := public.sarah_ai_consume_my_quota('tool_day');
+    IF v_result->>'allowed' <> 'true' THEN
+      RAISE EXCEPTION 'tool daily quota rejected a request before the 100 request cap';
+    END IF;
+  END LOOP;
+  v_result := public.sarah_ai_consume_my_quota('tool_day');
+  IF v_result->>'allowed' <> 'false' THEN
+    RAISE EXCEPTION 'tool daily quota did not reject request 101';
+  END IF;
+
   BEGIN
     PERFORM public.sarah_ai_consume_my_quota('week');
     RAISE EXCEPTION 'unsupported quota period was accepted';
@@ -49,9 +73,15 @@ BEGIN
   IF (
     SELECT count(*) FROM public.sarah_ai_usage_windows
     WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001'
+      AND quota_type='chat'
+      AND window_seconds IN (3600,86400)
+  ) <> 2 OR (
+    SELECT count(*) FROM public.sarah_ai_usage_windows
+    WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001'
+      AND quota_type='tool'
       AND window_seconds IN (3600,86400)
   ) <> 2 THEN
-    RAISE EXCEPTION 'Hourly and daily quota windows collided';
+    RAISE EXCEPTION 'Chat, tool, hourly and daily quota windows collided';
   END IF;
 END;
 $window_separation$;
@@ -111,7 +141,7 @@ BEGIN
      OR has_table_privilege('service_role','public.sarah_ai_usage_windows','SELECT') THEN
     RAISE EXCEPTION 'usage windows exposed to browser or service roles';
   END IF;
-  IF has_function_privilege('anon','public.sarah_ai_consume_quota_internal(uuid,integer,integer)','EXECUTE')
+  IF has_function_privilege('anon','public.sarah_ai_consume_quota_internal(uuid,text,integer,integer)','EXECUTE')
      OR has_function_privilege('authenticated','public.sarah_ai_consume_quota_internal(uuid,integer,integer)','EXECUTE')
      OR has_function_privilege('service_role','public.sarah_ai_consume_quota_internal(uuid,integer,integer)','EXECUTE') THEN
     RAISE EXCEPTION 'private quota counter is directly executable';
