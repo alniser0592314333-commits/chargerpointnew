@@ -61,3 +61,11 @@ Status: static review of PR #326; findings are gates, not verified runtime fixes
 - Run #2677's HTTP 503 was not reproduced on #2678. No specific causal fix or root cause for the earlier failure has been demonstrated; do not label it resolved by a code change or flaky conclusively.
 - The #2678 Android APK workflow #915 also succeeded; Vercel preview status was successful. These are CI/preview results, not production release or merge evidence.
 - PR #324 and #325 remain open and unmerged. Their latest observed Verify Application and Android builds both passed (runs #2576/#814 for #324 and #2579/#817 for #325). Coordination/merge order is still required before the three branches are integrated.
+
+
+## Latest verification — 26 Nov 2026
+
+- Verify Application run #2680 on the current PR merge ref completed successfully. The existing full application regression suite and the notification integration job both passed; the latter included Sarah gateway contract tests and Edge Function type-checking.
+- Android workflow #917 initially encountered Maven Central HTTP 429 while resolving Android dependencies in the customer APK job. A targeted rerun of that failed job completed successfully. The final run #917 jobs now report customer APK, admin APK, notification integration, and regression suite all successful.
+- Vercel preview status for head `b95972664d7e76e491b5b199903841fb9d074417` is successful.
+- This validates the branch build and isolated tests only. No operational read bridge has been implemented; unresolved IndexedDB behavioural race testing and database-level delegated authorization remain gates. PR #326 and dependencies #324/#325 remain draft/open; no merge, production migration, or deployment has occurred.
