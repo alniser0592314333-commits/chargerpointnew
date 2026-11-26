@@ -3,7 +3,8 @@ CREATE SCHEMA auth;
 
 CREATE TABLE auth.users (
   id uuid PRIMARY KEY,
-  email text
+  email text,
+  email_confirmed_at timestamptz
 );
 CREATE TABLE auth.sessions (
   id uuid PRIMARY KEY,
