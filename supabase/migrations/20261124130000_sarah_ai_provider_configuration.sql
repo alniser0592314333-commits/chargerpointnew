@@ -162,7 +162,7 @@ BEGIN
     IF (p_generation_config->>'maxOutputTokens') !~ '^[0-9]{1,5}$' THEN
       RAISE EXCEPTION 'maxOutputTokens must be an integer' USING ERRCODE = '22023';
     END IF;
-    IF (p_generation_config->>'maxOutputTokens')::integer NOT BETWEEN 1 AND 65536 THEN
+    IF (p_generation_config->>'maxOutputTokens')::integer NOT BETWEEN 1 AND 4096 THEN
       RAISE EXCEPTION 'maxOutputTokens must be between 1 and 65536' USING ERRCODE = '22023';
     END IF;
   END IF;
