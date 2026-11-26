@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 const source = read("supabase/functions/sarah-ai-chat/index.ts");
 const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
-const lookupMigration = read("supabase/migrations/20261126210000_sarah_ai_scoped_customer_lookup.sql");
+const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
