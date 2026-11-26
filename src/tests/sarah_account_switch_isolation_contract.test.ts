@@ -8,7 +8,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
   const supabaseClient = readFileSync("src/services/supabase/client.ts", "utf8");
   it("invalidates asynchronous work when account identity changes", () => {
     expect(page).toContain("SarahAccountOperationScope");
-    expect(page).toContain("accountScopeRef.current.switchTo(session?.userId ?? null)");
+    expect(page).toContain("accountScopeRef.current.switchTo(accountScopeIdentity(session?.userId, session?.authUserId))");
     expect(page).toContain("isCurrent(accountId, operation)");
   });
   it("clears cross-account UI state on identity change", () => {
@@ -16,7 +16,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
   });
   it("binds transcript hydration and persistence to the hydrated account", () => {
     expect(page).toContain("if (!accountId || hydratedAccount !== accountId");
-    expect(page).toContain("!accountScopeRef.current.isCurrentAccount(accountId)");
+    expect(page).toContain("accountScopeIdentity(accountId, session?.authUserId)");
   });
   it("guards post-await queue and chat state updates", () => {
     expect(page).toContain("refreshQueue(accountId, operation)");
