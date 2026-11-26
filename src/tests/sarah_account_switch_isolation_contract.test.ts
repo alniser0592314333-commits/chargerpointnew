@@ -45,6 +45,9 @@ describe("Sarah account-switch asynchronous isolation", () => {
     expect(supabaseClient).toContain("const latestStored = getStoredSupabaseAuthSession()");
     expect(supabaseClient).toContain("latestStored.user?.id !== stored.user?.id");
     expect(supabaseClient).toContain("latestStored.refresh_token !== stored.refresh_token");
+    expect(supabaseClient).toContain("refreshPromise.userId !== stored.user.id");
+    expect(supabaseClient).toContain("refreshPromise.refreshToken !== stored.refresh_token");
+    expect(supabaseClient).toContain("ACCOUNT_CHANGED_DURING_REFRESH");
   });
 
 });
