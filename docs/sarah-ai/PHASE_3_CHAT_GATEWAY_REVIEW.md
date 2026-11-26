@@ -69,3 +69,16 @@ Status: static review of PR #326; findings are gates, not verified runtime fixes
 - Android workflow #917 initially encountered Maven Central HTTP 429 while resolving Android dependencies in the customer APK job. A targeted rerun of that failed job completed successfully. The final run #917 jobs now report customer APK, admin APK, notification integration, and regression suite all successful.
 - Vercel preview status for head `b95972664d7e76e491b5b199903841fb9d074417` is successful.
 - This validates the branch build and isolated tests only. No operational read bridge has been implemented; unresolved IndexedDB behavioural race testing and database-level delegated authorization remain gates. PR #326 and dependencies #324/#325 remain draft/open; no merge, production migration, or deployment has occurred.
+
+
+## Queue lease race review — 26 Nov 2026
+
+Static review of `src/application/ai/sarahInputQueue.ts` identified a race requiring a targeted behavioural test and correction before recovery is relied upon:
+
+- `recoverInterruptedUploads(accountId)` lists account rows, evaluates lease expiry outside a transaction, then calls `transition(..., "NEEDS_ATTENTION")`.
+- `transition` atomically checks the row's account and allowed state, but it does not compare an expected prior state/version, nor validate the lease timestamp inside the write transaction. It also accepts the caller's requested next state without an expected-state token.
+- Consequently the earlier expiry observation is not transactionally coupled to the recovery write. A competing tab can renew/alter a lease or state after the listing. The transition may then mark a changed UPLOADING row as needing attention based on stale observation (or race handling may be unable to distinguish the outcome).
+
+**Suggested correction gate (not yet implemented):** introduce an atomic recovery operation that re-reads the row in the same read-write transaction, verifies actor/account ownership, current state is UPLOADING, and lease is still expired, and only then transitions it. Use a compare-and-set guard (expected state + lease value/version) to avoid overwriting concurrent updates; return a benign race outcome if the row changed. Add behavioural tests with competing transactions/tabs for lease renewal, state change, and account-switch isolation. Do not treat static source contracts as proof of race-free behaviour.
+
+This finding is based on static code inspection only; no race has been reproduced and no runtime fix is claimed. No production writes, merge, or deployment were performed.
