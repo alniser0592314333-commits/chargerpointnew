@@ -126,6 +126,21 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     }
   };
 
+  const clearTranscript = async () => {
+    const accountId = session?.userId;
+    if (!accountId || busy || hydratedAccount !== accountId || activeAccountRef.current !== accountId) return;
+    if (!window.confirm("مسح سجل المحادثة لهذا الحساب فقط؟")) return;
+    const operation = operationRef.current;
+    try {
+      await sarahConversationStore.clear(accountId);
+      if (!isCurrent(accountId, operation)) return;
+      setMessages([]);
+      setError("");
+    } catch (err) {
+      if (isCurrent(accountId, operation)) setError(err instanceof Error ? err.message : "CONVERSATION_CLEAR_FAILED");
+    }
+  };
+
   const retryQueued = async (record: SarahInputRecord) => {
     const accountId = session?.userId;
     if (!accountId || busy || !navigator.onLine || activeAccountRef.current !== accountId || record.actorAccountId !== accountId || !record.text || hydratedAccount !== accountId) return;
@@ -175,7 +190,10 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy || hydratedAccount !== session?.userId} />
         <Button type="submit" disabled={busy || !text.trim() || hydratedAccount !== session?.userId} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
       </form>
-      <button type="button" onClick={() => session?.userId && void refreshQueue(session.userId, operationRef.current)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <button type="button" disabled={busy || hydratedAccount !== session?.userId} onClick={() => void clearTranscript()} className="text-xs text-red-600 underline disabled:opacity-40">مسح سجل المحادثة</button>
+        <button type="button" onClick={() => session?.userId && void refreshQueue(session.userId, operationRef.current)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
+      </div>
       <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
     </section>
   );
