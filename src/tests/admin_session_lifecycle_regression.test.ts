@@ -288,10 +288,17 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(app).toContain("saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id)");
   });
 
-  it("rechecks administrator activation at the time a biometric challenge is consumed", () => {
+  it("requires a live app session before biometric management and rechecks account status before issuing a biometric login", () => {
     const edge = readFileSync("supabase/functions/account-biometric/index.ts", "utf8");
+    expect(edge).toContain('caller.rpc("is_active_admin_session")');
+    expect(edge).toContain('admin.from("customer_account_sessions")');
+    expect(edge).toContain("customerSession.revoked_at");
+    expect(edge).toContain("customerSession.session_id !== sessionId");
+    expect(edge).toContain("customerSession.expires_at");
     expect(edge).toContain('if (cred.account_type === "admin")');
     expect(edge).toContain("adminRow?.is_active !== true");
+    expect(edge).toContain("link.must_change_password === true");
+    expect(edge).toContain("customer.status === \"DELETED\"");
   });
 
 });
