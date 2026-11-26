@@ -618,25 +618,26 @@ BEGIN
     EXECUTE 'SELECT public.is_active_admin_session()' INTO v_allowed;
   END IF;
 
-  IF NOT v_allowed AND to_regclass('public.customer_account_sessions') IS NOT NULL
-     AND to_regclass('public.customer_account_links') IS NOT NULL
-     AND to_regclass('public.customers') IS NOT NULL THEN
+  IF NOT v_allowed AND to_regclass('public.customer_account_links') IS NOT NULL
+     AND to_regclass('public.customers') IS NOT NULL
+     AND to_regclass('auth.sessions') IS NOT NULL THEN
+    -- This RPC returns only the global recipient number, not customer data.
+    -- Require a live Supabase Auth session and an active customer link, but do
+    -- not make older customers depend on the newer app-level session registry.
     EXECUTE $customer_session$
       SELECT EXISTS (
         SELECT 1
         FROM public.customer_account_links l
         JOIN public.customers c ON c.id = l.customer_id
-        JOIN public.customer_account_sessions s
-          ON s.customer_id = l.customer_id
-         AND s.auth_user_id = l.auth_user_id
+        JOIN auth.sessions s
+          ON s.id = $2
+         AND s.user_id = $1
         WHERE l.auth_user_id = $1
           AND l.account_status = 'ACTIVE'
           AND c.is_active IS TRUE
           AND c.deleted_at IS NULL
           AND c.status <> 'DELETED'
-          AND s.session_id = $2
-          AND s.revoked_at IS NULL
-          AND s.expires_at > now()
+          AND (s.not_after IS NULL OR s.not_after > now())
       )
     $customer_session$
     INTO v_allowed
