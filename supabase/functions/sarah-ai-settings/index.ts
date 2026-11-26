@@ -185,6 +185,19 @@ Deno.serve(async (request: Request) => {
       });
     }
 
+    const { data: dailyQuota, error: dailyQuotaError } = await admin.rpc("sarah_ai_consume_quota", {
+      p_actor_auth_user_id: authData.user.id,
+      p_max_requests: 100,
+      p_window_seconds: 86400,
+    });
+    if (dailyQuotaError || !dailyQuota || dailyQuota.allowed !== true) {
+      return respond(dailyQuotaError ? 503 : 429, {
+        ok: false,
+        error: dailyQuotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_DAILY_LIMIT_REACHED",
+        retryAfterSeconds: 86400,
+      });
+    }
+
     const { data: secret, error: secretError } = await admin.rpc("sarah_ai_get_provider_secret");
     if (secretError || typeof secret !== "string" || !secret) {
       return respond(503, { ok: false, error: "PROVIDER_CREDENTIAL_UNAVAILABLE" });
