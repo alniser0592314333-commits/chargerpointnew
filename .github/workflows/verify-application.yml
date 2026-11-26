@@ -1312,3 +1312,28 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_actor_quota.test.sql
+      - name: Verify atomic quota enforcement under concurrent requests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          actor="00000000-0000-4000-8000-000000000099"
+          rm -f /tmp/sarah-quota-concurrent-*
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id = '$actor'"
+          for i in $(seq 1 30); do
+            (
+              result=$(psql -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SET ROLE service_role; SELECT set_config('request.jwt.claim.role','service_role',false); SELECT public.sarah_ai_consume_quota('$actor',10,3600);")
+              if echo "$result" | grep -q '"allowed": true'; then
+                echo allowed > "/tmp/sarah-quota-concurrent-$i"
+              else
+                echo denied > "/tmp/sarah-quota-concurrent-$i"
+              fi
+            ) &
+          done
+          wait
+          allowed=$(grep -l '^allowed /tmp/sarah-quota-concurrent-* | wc -l | tr -d ' ')
+          denied=$(grep -l '^denied /tmp/sarah-quota-concurrent-* | wc -l | tr -d ' ')
+          count=$(psql -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SELECT request_count FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id = '$actor' AND window_seconds = 3600")
+          test "$allowed" -eq 10
+          test "$denied" -eq 20
+          test "$count" -eq 30
