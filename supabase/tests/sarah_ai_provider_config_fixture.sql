@@ -156,7 +156,7 @@ AS $function$
   SELECT pg_catalog.jsonb_build_object(
     'authenticated', true,
     'is_admin', true,
-    'is_active', a.is_active AND a.disabled_at IS NULL,
+    'is_active', a.is_active,
     'admin_id', a.id,
     'auth_user_id', a.auth_user_id,
     'role', a.role,
@@ -178,7 +178,6 @@ AS $function$
    AND (auth_session.not_after IS NULL OR auth_session.not_after > now())
   WHERE a.auth_user_id = auth.uid()
     AND a.is_active IS TRUE
-    AND a.disabled_at IS NULL
   LIMIT 1;
 $function$;
 GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
@@ -193,15 +192,18 @@ INSERT INTO public.admins(id,auth_user_id,role,is_active,disabled_at) VALUES
  ('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','SUPER_ADMIN',true,NULL),
  ('00000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','MANAGER',true,NULL),
  ('00000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003','SUPER_ADMIN',false,NULL),
- ('00000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000004','SUPER_ADMIN',true,NULL);
+ ('00000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000004','SUPER_ADMIN',true,NULL),
+ ('00000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000006','SUPER_ADMIN',true,now());
 
 INSERT INTO auth.sessions(id,user_id,created_at,not_after,user_agent) VALUES
  ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',now(),NULL,'super admin'),
  ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002',now(),NULL,'manager'),
  ('20000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003',now(),NULL,'inactive admin'),
- ('20000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000004',now(),NULL,'unregistered admin');
+ ('20000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000004',now(),NULL,'unregistered admin'),
+ ('20000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000006',now(),NULL,'disabled admin');
 
 INSERT INTO public.account_sessions(session_id,user_id,revoked_at,session_expires_at) VALUES
  ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',NULL,now()+interval '7 days'),
  ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002',NULL,now()+interval '7 days'),
- ('20000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003',NULL,now()+interval '7 days');
+ ('20000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003',NULL,now()+interval '7 days'),
+ ('20000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000006',NULL,now()+interval '7 days');
