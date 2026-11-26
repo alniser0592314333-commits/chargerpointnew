@@ -304,7 +304,12 @@ const PUBLIC_RPCS = new Set([
   'get_global_app_identity',
 ]);
 
-let refreshPromise: Promise<SupabaseAuthSession | null> | null = null;
+type RefreshAttempt = {
+  userId: string;
+  refreshToken: string;
+  promise: Promise<SupabaseAuthSession | null>;
+};
+let refreshPromise: RefreshAttempt | null = null;
 
 /**
  * Attempts to refresh the Supabase Auth session using stored refresh token.
@@ -318,13 +323,30 @@ export async function supabaseRefreshToken(): Promise<{ session: SupabaseAuthSes
   if (!stored?.refresh_token) {
     return { session: null, error: 'NO_REFRESH_TOKEN' };
   }
-
-  if (refreshPromise) {
-    const s = await refreshPromise;
-    return { session: s, error: s ? null : 'REFRESH_FAILED' };
+  if (!stored.user?.id) {
+    return { session: null, error: 'AUTH_IDENTITY_UNAVAILABLE' };
   }
 
-  refreshPromise = (async () => {
+  if (refreshPromise) {
+    // Never hand one account's in-flight refresh result to another account.
+    if (
+      refreshPromise.userId !== stored.user.id ||
+      refreshPromise.refreshToken !== stored.refresh_token
+    ) {
+      return { session: null, error: 'ACCOUNT_CHANGED_DURING_REFRESH' };
+    }
+    const s = await refreshPromise.promise;
+    const latest = getStoredSupabaseAuthSession();
+    if (!s || s.user?.id !== stored.user.id || latest?.user?.id !== stored.user.id) {
+      return { session: null, error: 'ACCOUNT_CHANGED_DURING_REFRESH' };
+    }
+    return { session: s, error: null };
+  }
+
+  const attempt: RefreshAttempt = {
+    userId: stored.user.id,
+    refreshToken: stored.refresh_token,
+    promise: (async () => {
     try {
       const cleanUrl = config.supabaseUrl.replace(/\/+$/, '');
       const endpoint = `${cleanUrl}/auth/v1/token?grant_type=refresh_token`;
@@ -384,13 +406,23 @@ export async function supabaseRefreshToken(): Promise<{ session: SupabaseAuthSes
       return newSession;
     } catch (err) {
       return null;
-    } finally {
-      refreshPromise = null;
     }
-  })();
+    })(),
+  };
+  refreshPromise = attempt;
 
-  const newSession = await refreshPromise;
-  return { session: newSession, error: newSession ? null : 'REFRESH_FAILED' };
+  const newSession = await attempt.promise;
+  if (refreshPromise === attempt) refreshPromise = null;
+
+  const latest = getStoredSupabaseAuthSession();
+  if (
+    !newSession ||
+    newSession.user?.id !== stored.user.id ||
+    latest?.user?.id !== stored.user.id
+  ) {
+    return { session: null, error: 'ACCOUNT_CHANGED_DURING_REFRESH' };
+  }
+  return { session: newSession, error: null };
 }
 
 let suspensionHandler: (() => void) | null = null;
