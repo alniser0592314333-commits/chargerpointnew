@@ -94,6 +94,9 @@ BEGIN
   IF public.is_my_account_session_active() IS NOT FALSE THEN
     RAISE EXCEPTION 'Disabled admin must fail the effective application-session authorization gate';
   END IF;
+  IF public.get_my_admin_login_gate()->>'is_active' <> 'false' THEN
+    RAISE EXCEPTION 'Pre-session login gate incorrectly reports disabled admin as active';
+  END IF;
   IF public.is_active_admin_session() IS NOT FALSE THEN
     RAISE EXCEPTION 'Admin with disabled_at timestamp retained active admin authorization';
   END IF;
