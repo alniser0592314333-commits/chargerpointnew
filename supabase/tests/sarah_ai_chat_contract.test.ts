@@ -32,6 +32,13 @@ describe("Sarah chat gateway security contract", () => {
     expect(quotaMigration).toContain("100, 86400");
   });
 
+  it("enforces the request byte cap while streaming, before buffering the body", () => {
+    expect(source).toContain('readBoundedRequestBody(req, MAX_BODY_BYTES)');
+    expect(source).toContain("rawBytes === null");
+    expect(source).not.toContain("req.text()");
+    expect(source).not.toContain("req.json()");
+  });
+
   it("keeps provider secrets server-side and bounds all model inputs and outputs", () => {
     expect(source).toContain('admin.rpc("sarah_ai_get_runtime_config")');
     expect(source).toContain('admin.rpc("sarah_ai_get_provider_secret")');
