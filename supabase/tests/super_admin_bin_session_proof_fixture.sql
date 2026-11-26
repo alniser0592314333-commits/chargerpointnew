@@ -184,25 +184,3 @@ RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path=public,pg_temp AS 
 $$;
 GRANT EXECUTE ON FUNCTION public.verify_admin_bin(text) TO authenticated,service_role;
 
--- Test-only SECURITY DEFINER probes let authenticated test calls verify that
--- private tables remain unreadable without weakening the production ACLs.
-CREATE FUNCTION public.fixture_account_session_exists(p_session_id uuid)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path=public,pg_temp AS $$
-  SELECT EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id=p_session_id)
-$$;
-CREATE FUNCTION public.fixture_bin_proof_state(p_session_id uuid,p_state text)
-RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
-SET search_path=public,pg_temp AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.admin_bin_session_proofs
-    WHERE auth_session_id=p_session_id
-      AND CASE p_state
-        WHEN 'unconsumed' THEN consumed_at IS NULL
-        WHEN 'consumed' THEN consumed_at IS NOT NULL
-        ELSE true
-      END
-  )
-$$;
-GRANT EXECUTE ON FUNCTION public.fixture_account_session_exists(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.fixture_bin_proof_state(uuid,text) TO authenticated;
