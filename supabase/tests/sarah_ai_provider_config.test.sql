@@ -117,6 +117,32 @@ BEGIN
 END;
 $behavior$;
 
+-- Explicit ai:manage grant permits provider settings without granting ai:use.
+RESET ROLE;
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id', '20000000-0000-4000-8000-000000000002', false);
+DO $manager_manage_only$
+DECLARE v_result jsonb;
+BEGIN
+  v_result := public.sarah_ai_get_provider_config();
+  IF v_result->>'has_api_key' <> 'true' THEN
+    RAISE EXCEPTION 'Explicit ai:manage grant could not read safe provider metadata';
+  END IF;
+  v_result := public.sarah_ai_save_provider_config(
+    'gemini',
+    'gemini-3.8-flash',
+    NULL,
+    '{"temperature":0.3,"maxOutputTokens":1024,"timeoutMs":15000}'::jsonb,
+    NULL
+  );
+  IF v_result->>'configured' <> 'true' THEN
+    RAISE EXCEPTION 'Explicit ai:manage grant could not update provider settings';
+  END IF;
+END;
+$manager_manage_only$;
+
 -- The secret can be read only by a service-role server process, never the user JWT.
 RESET ROLE;
 SET ROLE service_role;
@@ -329,3 +355,29 @@ BEGIN
   END IF;
 END;
 $permissions$;
+
+-- A live Auth session is not enough when the administrator is disabled.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000006', false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id', '20000000-0000-4000-8000-000000000006', false);
+DO $disabled_admin$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_get_provider_config();
+    RAISE EXCEPTION 'Disabled administrator read provider config';
+  EXCEPTION WHEN invalid_authorization_specification THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.sarah_ai_save_provider_config(
+      'gemini',
+      'gemini-3.8-flash',
+      NULL,
+      '{}'::jsonb,
+      NULL
+    );
+    RAISE EXCEPTION 'Disabled administrator modified provider config';
+  EXCEPTION WHEN invalid_authorization_specification THEN NULL;
+  END;
+END;
+$disabled_admin$;
