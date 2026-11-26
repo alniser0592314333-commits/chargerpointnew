@@ -45,6 +45,16 @@ BEGIN
   END IF;
 END
 $nonadmin_not_backfilled$;
+DO $customer_jawwal_recipient$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.get_jawwal_pay_recipient();
+  IF v_result->>'recipient_phone' <> '+970599000001' THEN
+    RAISE EXCEPTION 'Active linked customer without the app session registry lost global Jawwal recipient access';
+  END IF;
+END
+$customer_jawwal_recipient$;
 RESET ROLE;
 
 UPDATE public.admins SET disabled_at = now()
