@@ -83,6 +83,19 @@ BEGIN
   END IF;
 END $assert$;
 
+-- The explicit reactivation RPC must also preserve the stored browser class.
+SELECT public.reactivate_my_account_session('native');
+DO $assert$
+DECLARE v_expiry timestamptz; v_type text;
+BEGIN
+  SELECT session_expires_at, client_type INTO v_expiry, v_type
+  FROM public.account_sessions
+  WHERE session_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  IF v_type <> 'browser' OR v_expiry > now() + interval '7 days' THEN
+    RAISE EXCEPTION 'Reactivation RPC upgraded an existing browser session';
+  END IF;
+END $assert$;
+
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}',false);
 SELECT public.register_my_account_session_v2('Windows Chrome', 'browser');
 DO $assert$
