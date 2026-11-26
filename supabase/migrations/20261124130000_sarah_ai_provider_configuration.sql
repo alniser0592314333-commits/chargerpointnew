@@ -42,6 +42,11 @@ BEGIN
     RAISE EXCEPTION 'Authenticated admin session required' USING ERRCODE = '28000';
   END IF;
 
+  PERFORM public.assert_my_account_session_active();
+  IF public.is_active_admin_session() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Active admin session required' USING ERRCODE = '28000';
+  END IF;
+
   v_profile := public.get_current_admin_profile();
   IF pg_catalog.to_regclass('public.admins') IS NOT NULL THEN
     EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.admins WHERE auth_user_id = $1 AND disabled_at IS NOT NULL)'
