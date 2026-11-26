@@ -45,6 +45,11 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain('admin.from("sarah_ai_provider_config")');
     expect(source).toContain("MAX_BODY_BYTES");
     expect(source).toContain("MAX_BODY_BYTES = 160 * 1024");
+    expect(source).toContain("MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024");
+    expect(source).toContain("readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES)");
+    expect(source).toContain("readBoundedResponseBody(secondResponse, MAX_PROVIDER_RESPONSE_BYTES)");
+    expect(source).not.toContain("firstResponse.json()");
+    expect(source).not.toContain("secondResponse.json()");
     expect(source).toContain("safeText(body.text, 20000)");
     expect(source).toContain("historyChars > 12000");
     expect(source).toContain(".text as string).length > 6000");
