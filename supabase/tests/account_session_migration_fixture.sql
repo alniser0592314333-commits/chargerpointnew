@@ -57,6 +57,18 @@ AS $current_admin$
   SELECT auth.uid()
 $current_admin$;
 
+-- Existing caller-scoped profile resolver; the strict migration must remove
+-- default/service-role execution before the later fixture replaces its body.
+CREATE FUNCTION public.get_current_admin_profile()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $admin_profile$
+  SELECT jsonb_build_object('authenticated', true, 'is_admin', false)
+$admin_profile$;
+
 
 -- Representative exposed business table and SECURITY DEFINER RPC used to prove
 -- that the migration enforces session validity beyond the client UI.
