@@ -272,8 +272,8 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(reactivation).toContain("SESSION_IDLE_EXPIRED_REQUIRES_FRESH_AUTH");
     expect(reactivation).toContain("v_account_session.client_type IN ('native', 'installed_pwa')");
     expect(reactivation).toContain("v_auth_session.created_at < now() - interval '5 minutes'");
-    expect(reactivation).toContain("client_type = EXCLUDED.client_type");
-    expect(reactivation).not.toContain("SET last_seen_at = now(),\n      client_type = EXCLUDED.client_type");
+    expect(reactivation).toContain("'client_type', v_account_session.client_type");
+    expect(reactivation).not.toContain("client_type = EXCLUDED.client_type");
   });
 
 
