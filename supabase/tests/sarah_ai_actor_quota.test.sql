@@ -106,6 +106,7 @@ BEGIN
   END;
 END;
 $permission_boundary$;
+RESET ROLE;
 
 -- ai:use without ai:manage permits chat quota use, but not provider management.
 SET ROLE authenticated;
