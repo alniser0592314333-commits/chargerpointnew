@@ -231,6 +231,17 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(migration).toContain("session_expires_at <= now()");
   });
 
+  it("validates session identity in read-only transactions without attempting session writes", () => {
+    const migration = readFileSync("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql", "utf8");
+    const activeSessionFunction = migration.slice(
+      migration.indexOf("CREATE OR REPLACE FUNCTION public.is_my_account_session_active"),
+      migration.indexOf("CREATE OR REPLACE FUNCTION public.get_my_account_sessions"),
+    );
+    expect(activeSessionFunction).toContain("v_read_only boolean := current_setting('transaction_read_only', true) = 'on'");
+    expect(activeSessionFunction).toContain("IF v_read_only THEN");
+    expect(activeSessionFunction).toContain("IF NOT v_read_only AND");
+  });
+
   it("checks the native vault commit result and verifies persisted ciphertext", () => {
     const java = readFileSync("scripts/android/AccountBiometricPlugin.java", "utf8");
     expect(java).toContain("boolean committed = preferences.edit()");
