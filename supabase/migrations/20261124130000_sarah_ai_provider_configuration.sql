@@ -51,12 +51,22 @@ AS $function$
 DECLARE
   v_profile jsonb;
   v_role text;
+  v_disabled boolean := false;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Authenticated admin session required' USING ERRCODE = '28000';
   END IF;
 
   v_profile := public.get_current_admin_profile();
+  IF pg_catalog.to_regclass('public.admins') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.admins WHERE auth_user_id = $1 AND disabled_at IS NOT NULL)'
+      INTO v_disabled
+      USING auth.uid();
+  END IF;
+  IF v_disabled IS TRUE THEN
+    RAISE EXCEPTION 'Admin account is disabled' USING ERRCODE = '28000';
+  END IF;
+
   IF COALESCE(v_profile->>'authenticated', 'false') <> 'true'
      OR COALESCE(v_profile->>'is_admin', 'false') <> 'true'
      OR COALESCE(v_profile->>'is_active', 'false') <> 'true'
