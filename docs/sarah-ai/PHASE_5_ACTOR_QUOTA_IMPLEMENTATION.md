@@ -7,8 +7,8 @@ Implemented in the Sarah gateway branch; CI execution is pending for the latest 
 ## Enforcement model
 
 - The quota actor is derived inside PostgreSQL from `auth.uid()`; no caller-supplied actor ID is accepted by the user-facing RPCs.
-- `sarah_ai_consume_my_quota(period)` requires an active registered admin session and `ai:use`.
-- `sarah_ai_consume_my_manage_quota(period)` requires an active registered admin session and `ai:manage`; this is used only for provider connection tests.
+- `sarah_ai_consume_my_quota(period)` requires an active registered admin session and `ai:use` from the authoritative `admin_custom_permissions` / `admins.permissions` projection.
+- `sarah_ai_consume_my_manage_quota(period)` requires an active registered admin session and `ai:manage` from the same authoritative projection; this is used only for provider connection tests. Both permissions are independently assignable by the Super Admin in Admin Management; `ai:manage` does not imply `ai:use`.
 - The only accepted periods are `hour` and `day`. Limits are fixed in the database at 20/hour and 100/day; the client cannot raise the cap or shorten the window.
 - Disabled administrators are rejected using `admins.disabled_at`, even if the older profile projection still reports `is_active=true`.
 - The counter implementation is a private `SECURITY DEFINER` function with no execute grants to browser or service roles.
