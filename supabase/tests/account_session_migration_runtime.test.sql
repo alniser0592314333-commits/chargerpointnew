@@ -53,6 +53,53 @@ BEGIN
 END $assert$;
 ROLLBACK;
 
+-- The app-level account_sessions registry is administrator-only. Customer
+-- identities use customer_account_sessions and must not self-register here.
+CREATE TABLE public.admins (
+  id uuid PRIMARY KEY,
+  auth_user_id uuid NOT NULL UNIQUE,
+  is_active boolean NOT NULL DEFAULT true,
+  disabled_at timestamptz,
+  role text NOT NULL,
+  email text,
+  username text,
+  full_name text
+);
+INSERT INTO public.admins(id,auth_user_id,is_active,role,email,username,full_name)
+VALUES ('99999999-9999-4999-8999-999999999999',
+        '11111111-1111-4111-8111-111111111111',true,'SUPER_ADMIN',
+        'one@example.test','owner','Owner');
+
+INSERT INTO auth.sessions(id,user_id,created_at,updated_at,user_agent)
+VALUES ('88888888-8888-4888-8888-888888888888',
+        '22222222-2222-4222-8222-222222222222',now(),now(),'Fresh non-admin Auth session');
+SELECT set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',false);
+SELECT set_config('request.jwt.claims','{"sub":"22222222-2222-4222-8222-222222222222","session_id":"88888888-8888-4888-8888-888888888888"}',false);
+DO $assert_non_admin_registry$
+BEGIN
+  BEGIN
+    PERFORM public.register_my_account_session_v2('Customer WebView','native');
+    RAISE EXCEPTION 'Non-admin Auth user registered an administrator session';
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM public.reactivate_my_account_session('native');
+    RAISE EXCEPTION 'Non-admin Auth user reactivated an administrator session';
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    NULL;
+  END;
+  IF EXISTS (
+    SELECT 1 FROM public.account_sessions
+    WHERE session_id='88888888-8888-4888-8888-888888888888'
+  ) THEN
+    RAISE EXCEPTION 'Rejected non-admin registration left an administrator session row';
+  END IF;
+END;
+$assert_non_admin_registry$;
+SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}',false);
+
 -- Seed the two already-registered sessions. Listing sessions must not create
 -- registry rows as a side effect.
 INSERT INTO public.account_sessions(
@@ -419,3 +466,6 @@ BEGIN
     RAISE EXCEPTION 'Trusted service-role dispatcher access was not preserved';
   END IF;
 END $assert$;
+
+-- Leave the shared account_session fixture clean for the following security suite.
+DROP TABLE public.admins;
