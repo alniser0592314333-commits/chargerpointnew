@@ -46,4 +46,12 @@ describe("Sarah account operation scope", () => {
     expect(scope.isCurrent(operation)).toBe(false);
     expect(scope.isCurrentAccount("fahd")).toBe(false);
   });
+
+  it("invalidates pending work when the Auth subject changes under the same admin row", () => {
+    const scope = new SarahAccountOperationScope("admin-row-1:auth-user-a");
+    const operation = scope.begin("admin-row-1:auth-user-a");
+    scope.switchTo("admin-row-1:auth-user-b");
+    expect(scope.isCurrent(operation)).toBe(false);
+    expect(scope.isCurrentAccount("admin-row-1:auth-user-b")).toBe(true);
+  });
 });
