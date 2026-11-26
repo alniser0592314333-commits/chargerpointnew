@@ -102,8 +102,8 @@ BEGIN
   END IF;
   BEGIN
     PERFORM public.assert_my_account_session_active();
-    RAISE EXCEPTION 'Shared authorization guard accepted a disabled admin';
-  EXCEPTION WHEN SQLSTATE '28000' THEN
+    RAISE EXCEPTION 'Private shared authorization guard was directly executable by an authenticated role';
+  EXCEPTION WHEN SQLSTATE '42501' OR SQLSTATE '28000' THEN
     NULL;
   END;
   BEGIN
