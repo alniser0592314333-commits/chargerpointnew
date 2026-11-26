@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 
 describe("Sarah account-switch asynchronous isolation", () => {
   const page = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");
+  const chatService = readFileSync("src/services/ai/sarahChatService.ts", "utf8");
+  const authService = readFileSync("src/services/auth/authService.ts", "utf8");
+  const supabaseClient = readFileSync("src/services/supabase/client.ts", "utf8");
   it("invalidates asynchronous work when account identity changes", () => {
     expect(page).toContain("SarahAccountOperationScope");
     expect(page).toContain("accountScopeRef.current.switchTo(session?.userId ?? null)");
@@ -26,4 +29,21 @@ describe("Sarah account-switch asynchronous isolation", () => {
     expect(page).toContain("!accountScopeRef.current.isCurrentAccount(accountId)");
     expect(page).toContain("hydratedAccount !== accountId");
   });
+  it("binds every Sarah request to the verified Auth subject, not the admin row ID", () => {
+    expect(authService).toContain("authUserId?: ID");
+    expect(authService).toContain("authUserId: signInRes.session.user.id");
+    expect(authService).toContain("authUserId: refreshed.user.id");
+    expect(page).toContain("sarahChatService.send(clean, session?.authUserId || '', historySnapshot)");
+    expect(page).toContain("sarahChatService.send(record.text, session?.authUserId || '', retryHistory)");
+    expect(chatService).toContain("tokenSubject(session.token) !== expectedAuthUserId");
+    expect(chatService).toContain("before?.user?.id !== expectedAuthUserId");
+    expect(chatService).toContain("after?.user?.id !== expectedAuthUserId");
+  });
+
+  it("prevents a stale token refresh from replacing a newer account selection", () => {
+    expect(supabaseClient).toContain("const latestStored = getStoredSupabaseAuthSession()");
+    expect(supabaseClient).toContain("latestStored.user?.id !== stored.user?.id");
+    expect(supabaseClient).toContain("latestStored.refresh_token !== stored.refresh_token");
+  });
+
 });
