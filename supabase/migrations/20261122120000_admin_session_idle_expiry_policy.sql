@@ -278,7 +278,7 @@ BEGIN
        OR v_account_session.session_expires_at <= now() THEN
       RETURN false;
     END IF;
-    RETURN true;
+    IF v_read_only THEN RETURN true; END IF;
   END IF;
 
   -- Register a valid legacy session once with the conservative browser policy.
