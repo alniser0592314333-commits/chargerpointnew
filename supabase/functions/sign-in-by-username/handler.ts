@@ -1,3 +1,4 @@
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 import {
   escapeLikeLiteral,
   hashRateLimitKey,
@@ -79,7 +80,18 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       return unavailable("trusted-client-ip");
     }
 
-    const input = await request.json().catch(() => null) as
+    const declaredLength = Number(request.headers.get("content-length") || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 8192) {
+      return respond(413, { session: null, error: "REQUEST_TOO_LARGE" });
+    }
+    let rawBody: Uint8Array | null;
+    try {
+      rawBody = await readBoundedRequestBody(request, 8192);
+    } catch {
+      return respond(400, { session: null, error: "INVALID_REQUEST" });
+    }
+    if (rawBody === null) return respond(413, { session: null, error: "REQUEST_TOO_LARGE" });
+    const input = JSON.parse(new TextDecoder().decode(rawBody)) as
       { username?: unknown; password?: unknown } | null;
     const username = normalizeUsername(input?.username);
     const password = typeof input?.password === "string" ? input.password : "";
@@ -117,6 +129,7 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         .select("email")
         .ilike("username", escapedUsername)
         .eq("is_active", true)
+        .is("disabled_at", null)
         .limit(2);
 
       if (lookupError) {
