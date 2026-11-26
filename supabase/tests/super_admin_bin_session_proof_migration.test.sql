@@ -50,11 +50,18 @@ BEGIN
     RAISE EXCEPTION 'Super Admin registered a new app session without BIN proof';
   EXCEPTION WHEN SQLSTATE '28000' THEN NULL;
   END;
+END
+$missing_proof$;
+
+RESET ROLE;
+DO $rejected_registration_no_row$
+BEGIN
   IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='30000000-0000-4000-8000-000000000001') THEN
     RAISE EXCEPTION 'Rejected registration created an account_sessions row';
   END IF;
 END
-$missing_proof$;
+$rejected_registration_no_row$;
+SET LOCAL ROLE authenticated;
 
 -- The attempt-tracked verifier creates a proof only after a successful BIN
 -- result, and the proof is tied to the current Auth session.
