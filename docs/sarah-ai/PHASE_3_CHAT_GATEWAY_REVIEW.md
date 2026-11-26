@@ -82,3 +82,12 @@ Static review of `src/application/ai/sarahInputQueue.ts` identified a race requi
 **Suggested correction gate (not yet implemented):** introduce an atomic recovery operation that re-reads the row in the same read-write transaction, verifies actor/account ownership, current state is UPLOADING, and lease is still expired, and only then transitions it. Use a compare-and-set guard (expected state + lease value/version) to avoid overwriting concurrent updates; return a benign race outcome if the row changed. Add behavioural tests with competing transactions/tabs for lease renewal, state change, and account-switch isolation. Do not treat static source contracts as proof of race-free behaviour.
 
 This finding is based on static code inspection only; no race has been reproduced and no runtime fix is claimed. No production writes, merge, or deployment were performed.
+
+
+## Live database session-guard discrepancy — 26 Nov 2026
+
+A read-only inspection of the live project function definition (no writes) confirms that the deployed `public.is_my_account_session_active()` has a read-only transaction branch that returns `true` when no matching `public.account_sessions` row is found, provided the Auth session lookup passed. The same function's non-read-only path attempts to register an absent session row. This differs from the stricter proposed branch-version reviewed earlier, which rejects missing rows in read-only mode.
+
+**Capability gate:** a delegated Read Bridge must not rely on this deployed guard alone for proof of registered application-session state in read-only transactions. It must independently require the matching `account_sessions` row (actor UUID + Auth session UUID), non-revoked state, and non-expired window, alongside fresh permission and ownership checks. A future correction to the live guard itself requires isolated migration tests, explicit approval and production migration authorization; no such migration was executed here.
+
+This is a verified code-definition discrepancy from live read-only catalog inspection, not a test of exploitability or proof that any user accessed unauthorized data. No production changes were made.
