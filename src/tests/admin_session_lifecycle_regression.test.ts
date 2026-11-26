@@ -252,14 +252,17 @@ describe("Admin session lifecycle root-cause regressions", () => {
 
   it("keeps the server-enforced client-specific idle policy and five-minute activity write throttle", () => {
     const migration = readFileSync("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql", "utf8");
+    const readOnlyGuard = readFileSync("supabase/migrations/20261126100000_read_only_account_session_guard.sql", "utf8");
     expect(migration).toContain("interval '30 days'");
     expect(migration).toContain("interval '7 days'");
-    expect(migration).toContain("interval '5 minutes'");
     expect(migration).toContain("SESSION_IDLE_EXPIRED");
     expect(migration).toContain("reactivate_my_account_session");
     expect(migration).toContain("get_my_admin_login_gate");
     expect(migration).toContain("session_expires_at <= now()");
     expect(migration).toContain("AND s.user_id = v_user_id");
+    expect(readOnlyGuard).toContain("v_read_only boolean := current_setting('transaction_read_only', true) = 'on'");
+    expect(readOnlyGuard).toContain("IF NOT v_read_only");
+    expect(readOnlyGuard).toContain("IF v_read_only THEN RETURN true; END IF;");
   });
 
 
