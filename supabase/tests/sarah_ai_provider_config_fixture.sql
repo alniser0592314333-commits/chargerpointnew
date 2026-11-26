@@ -182,6 +182,68 @@ AS $function$
 $function$;
 GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
 
+CREATE OR REPLACE FUNCTION public._cp_assert_active_admin_permission(p_required_permission text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_profile jsonb;
+  v_role text;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authenticated admin session required' USING ERRCODE = '28000';
+  END IF;
+  v_profile := public.get_current_admin_profile();
+  IF COALESCE(v_profile->>'authenticated','false') <> 'true'
+     OR COALESCE(v_profile->>'is_admin','false') <> 'true'
+     OR COALESCE(v_profile->>'is_active','false') <> 'true'
+     OR (v_profile->>'auth_user_id')::uuid IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Active admin session required' USING ERRCODE = '28000';
+  END IF;
+  v_role := pg_catalog.upper(pg_catalog.replace(COALESCE(v_profile->>'role',''),' ','_'));
+  IF v_role <> 'SUPER_ADMIN' AND NOT EXISTS (
+    SELECT 1 FROM pg_catalog.jsonb_array_elements_text(
+      COALESCE(v_profile->'permissions','[]'::jsonb)
+    ) AS permission_item(permission)
+    WHERE permission_item.permission = p_required_permission
+  ) THEN
+    RAISE EXCEPTION 'Required business permission missing' USING ERRCODE = '42501';
+  END IF;
+  RETURN auth.uid();
+END;
+$function$;
+REVOKE ALL ON FUNCTION public._cp_assert_active_admin_permission(text)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE TABLE public.customers (
+  id uuid PRIMARY KEY,
+  name text NOT NULL,
+  phone text,
+  balance numeric,
+  is_active boolean NOT NULL DEFAULT true,
+  deleted_at timestamptz,
+  status text NOT NULL DEFAULT 'ACTIVE'
+);
+INSERT INTO public.customers(id,name,phone,balance,is_active,deleted_at,status) VALUES
+ ('aaaa0000-0000-4000-8000-000000000001','أحمد علي','0599000001',125,true,NULL,'ACTIVE'),
+ ('aaaa0000-0000-4000-8000-000000000002','أحمد محمود','0599000002',240,true,NULL,'ACTIVE'),
+ ('aaaa0000-0000-4000-8000-000000000003','أحمد سمير','0599000003',50,true,NULL,'ACTIVE'),
+ ('aaaa0000-0000-4000-8000-000000000004','أحمد خالد','0599000004',0,true,NULL,'ACTIVE'),
+ ('aaaa0000-0000-4000-8000-000000000005','أحمد حسن','0599000005',99,true,NULL,'ACTIVE'),
+ ('aaaa0000-0000-4000-8000-000000000006','أحمد يوسف','0599000006',77,true,NULL,'ACTIVE'),
+ ('bbbb0000-0000-4000-8000-000000000001','محمود سمير','0599000007',10,true,NULL,'ACTIVE'),
+ ('cccc0000-0000-4000-8000-000000000001','أحمد غير نشط','0599000008',5,false,NULL,'ACTIVE'),
+ ('dddd0000-0000-4000-8000-000000000001','أحمد محذوف','0599000009',5,true,now(),'DELETED');
+
+INSERT INTO public.permissions(code,description)
+VALUES ('customers:view','View active customer names and codes')
+ON CONFLICT(code) DO NOTHING;
+INSERT INTO public.role_permissions(role,permission)
+VALUES ('SUPER_ADMIN','customers:view')
+ON CONFLICT(role,permission) DO NOTHING;
+
 INSERT INTO auth.users(id) VALUES
  ('10000000-0000-4000-8000-000000000001'),
  ('10000000-0000-4000-8000-000000000002'),
