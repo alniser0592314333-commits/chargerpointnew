@@ -39,3 +39,10 @@ This review is grounded in source inspection of SarahInputQueue, SarahConversati
 - It deletes only the current account's transcript and checks the account/operation epoch after the asynchronous deletion before clearing UI state.
 - This is manual deletion, not a retention-expiry policy. Queue records remain separate and are not deleted by this action.
 - Contract test added; pending CI validation.
+
+
+## Stale-save protection after transcript deletion
+
+- The transcript store now uses an IndexedDB metadata tombstone per account when clearing history.
+- Saves read that tombstone inside the same read/write transaction and suppress snapshots older than the clear marker, preventing delayed prior saves from resurrecting deleted transcript content.
+- Contract checks cover the tombstone transaction and timestamp guard; this still needs a browser IndexedDB behavioral race test.
