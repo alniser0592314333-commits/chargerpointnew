@@ -60,6 +60,42 @@ DO $behavior$
 DECLARE
   v_result jsonb;
 BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_save_provider_config(
+      'openai',
+      'gpt-test',
+      NULL,
+      '{}'::jsonb,
+      NULL
+    );
+    RAISE EXCEPTION 'Non-Gemini provider was accepted';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+
+  BEGIN
+    PERFORM public.sarah_ai_save_provider_config(
+      'gemini',
+      'gemini-3.8-flash',
+      'https://untrusted.example',
+      '{}'::jsonb,
+      NULL
+    );
+    RAISE EXCEPTION 'Custom provider endpoint was accepted';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+
+  BEGIN
+    PERFORM public.sarah_ai_save_provider_config(
+      'gemini',
+      '../unexpected/path',
+      NULL,
+      '{}'::jsonb,
+      NULL
+    );
+    RAISE EXCEPTION 'Unsafe model identifier was accepted';
+  EXCEPTION WHEN invalid_parameter_value THEN NULL;
+  END;
+
   v_result := public.sarah_ai_save_provider_config(
     'gemini',
     'gemini-3.8-flash',
