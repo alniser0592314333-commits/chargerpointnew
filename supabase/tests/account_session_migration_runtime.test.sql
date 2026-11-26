@@ -216,8 +216,11 @@ END $assert$;
 -- active application session, including inside a read-only transaction. The
 -- session-list RPC must also be read-only and must not auto-register other rows.
 INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
-VALUES ('ffffffff-ffff-4fff-8fff-ffffffffffff','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Unregistered session');
-SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}',false);
+VALUES
+ ('ffffffff-ffff-4fff-8fff-ffffffffffff','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Unregistered session'),
+ ('12121212-1212-4121-8121-121212121212','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Fresh active session');
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"12121212-1212-4121-8121-121212121212"}',false);
+SELECT public.reactivate_my_account_session('browser');
 SELECT public.get_my_account_sessions();
 DO $assert$
 BEGIN
