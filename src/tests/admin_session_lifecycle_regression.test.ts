@@ -225,6 +225,9 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(migration).toContain("interval '30 days'");
     expect(migration).toContain("interval '7 days'");
     expect(migration).toContain("interval '5 minutes'");
+    expect(migration).toContain("v_read_only boolean := current_setting('transaction_read_only', true) = 'on'");
+    expect(migration).toContain("IF NOT v_read_only");
+    expect(migration).toContain("IF v_read_only THEN RETURN true; END IF;");
     expect(migration).toContain("SESSION_IDLE_EXPIRED");
     expect(migration).toContain("reactivate_my_account_session");
     expect(migration).toContain("get_my_admin_login_gate");
