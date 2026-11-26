@@ -356,4 +356,51 @@ BEGIN
 END;
 $;
 
+
+-- Close the legacy business-day restore RPC as an alternate session path.
+-- Keep its canonical implementation private and expose only a guarded wrapper.
+ALTER FUNCTION public.restore_selected_business_days(text, jsonb, date[])
+  RENAME TO restore_selected_business_days__session_guarded_impl;
+REVOKE ALL ON FUNCTION public.restore_selected_business_days__session_guarded_impl(text, jsonb, date[])
+  FROM PUBLIC, anon, authenticated;
+
+CREATE FUNCTION public.restore_selected_business_days(
+  p_bin text,
+  p_snapshot jsonb,
+  p_business_dates date[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+BEGIN
+  PERFORM public.assert_my_account_session_active();
+  RETURN public.restore_selected_business_days__session_guarded_impl(
+    p_bin, p_snapshot, p_business_dates
+  );
+END;
+$;
+REVOKE ALL ON FUNCTION public.restore_selected_business_days(text, jsonb, date[])
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.restore_selected_business_days(text, jsonb, date[])
+  TO authenticated, service_role;
+
+-- Purchase-book identity resolution must not return an admin identity for a
+-- stale or unregistered application session.
+CREATE OR REPLACE FUNCTION public.current_purchase_admin_id()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $
+  SELECT a.id
+  FROM public.admins a
+  WHERE a.auth_user_id = auth.uid()
+    AND a.is_active IS TRUE
+    AND public.is_my_account_session_active() IS TRUE
+  LIMIT 1;
+$;
+
 NOTIFY pgrst, 'reload schema';
