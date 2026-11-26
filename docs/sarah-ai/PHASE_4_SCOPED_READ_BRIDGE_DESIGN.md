@@ -2,7 +2,7 @@
 
 Date: 2026-11-26
 
-<badge>Branch implementation — CI and merge evidence pending</badge>
+**Status:** Branch implementation — CI and merge evidence pending
 
 ## Implemented capability
 
