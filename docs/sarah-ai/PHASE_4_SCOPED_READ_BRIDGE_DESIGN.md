@@ -9,7 +9,7 @@ Date: 2026-11-26
 The first and only operational data tool is **customer name/code lookup**:
 
 - Database RPC: `public.sarah_ai_lookup_customers(text)`
-- Migration: `20261126210000_sarah_ai_scoped_customer_lookup.sql`
+- Migration: `20261126213000_sarah_ai_scoped_customer_lookup.sql`
 - Gemini tool name: `lookup_customers`
 - Invocation: `sarah-ai-chat` forwards the original authenticated user's JWT through a user-scoped Supabase client. The tool never uses the service-role client.
 - Required database permissions: `ai:use` and `customers:view`, checked independently inside PostgreSQL and resolved through the authoritative `admin_custom_permissions` / `admins.permissions` projection. The Admin Management UI exposes `ai:use` and `ai:manage` as separately assignable permissions; the legacy `permissions` / `role_permissions` catalog is not used for Sarah authorization.
