@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 describe("Sarah AI provider settings security contract", () => {
   const migration = read("supabase/migrations/20261124130000_sarah_ai_provider_configuration.sql");
   const edgeFunction = read("supabase/functions/sarah-ai-settings/index.ts");
+  const chatFunction = read("supabase/functions/sarah-ai-chat/index.ts");
   const geminiAdapter = read("supabase/functions/_shared/ai/geminiProviderAdapter.ts");
   const clientService = read("src/services/ai/aiSettingsService.ts");
   const settingsPage = read("src/components/pages/SettingsPage.tsx");
@@ -55,7 +56,12 @@ describe("Sarah AI provider settings security contract", () => {
     expect(edgeFunction).toContain('caller.rpc("sarah_ai_save_provider_config"');
     expect(edgeFunction).toContain('caller.rpc("sarah_ai_clear_provider_config")');
     expect(edgeFunction).toContain('admin.rpc("sarah_ai_get_provider_secret")');
-    expect(edgeFunction).toContain("sarah_ai_consume_quota");
+    expect(edgeFunction).toContain("sarah_ai_consume_my_manage_quota");
+    expect(chatFunction).toContain('caller.rpc("sarah_ai_consume_my_quota"');
+    expect(chatFunction).toContain('p_period:"hour"');
+    expect(chatFunction).toContain('p_period:"day"');
+    expect(chatFunction).toContain("AI_DAILY_LIMIT_REACHED");
+    expect(chatFunction).toContain("Math.min(Math.max(configuredOutputTokens,1),4096)");
     expect(geminiAdapter).toContain('"x-goog-api-key": apiKey');
     expect(edgeFunction).not.toContain("console.log");
   });
