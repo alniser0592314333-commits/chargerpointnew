@@ -494,6 +494,50 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon, authenticated, service_role;
 
+-- The pre-session login gate remains minimal, but it must report a disabled
+-- administrator as inactive before the client reaches BIN/session reactivation.
+CREATE OR REPLACE FUNCTION public.get_my_admin_login_gate()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_result jsonb;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN jsonb_build_object('authenticated', false, 'is_admin', false);
+  END IF;
+
+  IF to_regclass('public.admins') IS NULL THEN
+    RETURN jsonb_build_object('authenticated', true, 'is_admin', false);
+  END IF;
+
+  EXECUTE $admin_gate$
+    SELECT jsonb_build_object(
+      'authenticated', true,
+      'is_admin', true,
+      'is_active', COALESCE(a.is_active, false) AND a.disabled_at IS NULL,
+      'admin_id', a.id,
+      'auth_user_id', a.auth_user_id,
+      'role', a.role,
+      'email', a.email,
+      'username', a.username,
+      'full_name', a.full_name
+    )
+    FROM public.admins a
+    WHERE a.auth_user_id = $1
+    LIMIT 1
+  $admin_gate$
+  INTO v_result
+  USING auth.uid();
+
+  RETURN COALESCE(v_result, jsonb_build_object('authenticated', true, 'is_admin', false));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.get_my_admin_login_gate() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.get_my_admin_login_gate() TO authenticated;
+
 -- Legacy one-argument registration is retained for older clients but delegates
 -- to the same strict, freshness-checked browser registration path. It can never
 -- create a registry row for an old Auth session or upgrade the client class.
