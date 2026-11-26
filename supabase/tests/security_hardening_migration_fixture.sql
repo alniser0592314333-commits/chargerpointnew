@@ -54,6 +54,8 @@ ALTER TABLE public.admins
   ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+ALTER TABLE public.admins
+  ALTER COLUMN id SET DEFAULT gen_random_uuid();
 CREATE UNIQUE INDEX IF NOT EXISTS admins_fixture_username_uidx
   ON public.admins(username) WHERE username IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS admins_fixture_email_uidx
