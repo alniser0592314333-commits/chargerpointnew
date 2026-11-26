@@ -275,21 +275,21 @@ $cleared$;
 
 DO $permissions$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.permissions WHERE code = 'ai:use')
-     OR NOT EXISTS (SELECT 1 FROM public.permissions WHERE code = 'ai:manage') THEN
-    RAISE EXCEPTION 'AI permission catalog entries are missing';
-  END IF;
   IF NOT EXISTS (
-    SELECT 1 FROM public.role_permissions
-    WHERE role = 'SUPER_ADMIN' AND permission = 'ai:manage'
+    SELECT 1 FROM public.admin_custom_permissions
+    WHERE admin_id = '00000000-0000-4000-8000-000000000002'
+      AND permission = 'ai:manage'
+      AND is_grant IS TRUE
   ) THEN
-    RAISE EXCEPTION 'Super Admin default AI management permission is missing';
+    RAISE EXCEPTION 'Manager fixture must carry an explicit ai:manage custom grant';
   END IF;
   IF EXISTS (
-    SELECT 1 FROM public.role_permissions
-    WHERE role = 'ADMIN' AND permission = 'ai:manage'
+    SELECT 1 FROM public.admin_custom_permissions
+    WHERE admin_id = '00000000-0000-4000-8000-000000000002'
+      AND permission = 'ai:use'
+      AND is_grant IS TRUE
   ) THEN
-    RAISE EXCEPTION 'AI management must not be granted to regular roles by default';
+    RAISE EXCEPTION 'ai:manage must not imply ai:use';
   END IF;
 END;
 $permissions$;
