@@ -44,6 +44,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('admin.rpc("sarah_ai_get_provider_secret")');
     expect(source).not.toContain('admin.from("sarah_ai_provider_config")');
     expect(source).toContain("MAX_BODY_BYTES");
+    expect(source).toContain("MAX_BODY_BYTES = 160 * 1024");
     expect(source).toContain("safeText(body.text, 20000)");
     expect(source).toContain("historyChars > 12000");
     expect(source).toContain(".text as string).length > 6000");
