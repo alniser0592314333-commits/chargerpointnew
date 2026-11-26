@@ -94,7 +94,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
     const tokens = Number(maxOutputTokens);
     const timeout = Number(timeoutMs);
     if (!Number.isFinite(t) || t < 0 || t > 2 ||
-      !Number.isInteger(tokens) || tokens < 1 || tokens > 65536 ||
+      !Number.isInteger(tokens) || tokens < 1 || tokens > 4096 ||
       !Number.isInteger(timeout) || timeout < 5000 || timeout > 120000) return null;
     return { temperature: t, maxOutputTokens: tokens, timeoutMs: timeout };
   };
