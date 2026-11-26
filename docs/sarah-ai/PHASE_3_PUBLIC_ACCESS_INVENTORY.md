@@ -15,7 +15,7 @@ Wallet ledger/account tables also showed FORCE RLS enabled in the inventory.
 - `get_global_app_identity`: returns branding/app identity fields (app name and logo URLs, version, timestamps, updated-by).
 - `public_landing_content`: returns public hours, active device types/prices, brand assets, and charger fee setting.
 - `public_resolve_customer_qr`: resolves an active customer QR token to customer name and derived code.
-- `public_resolve_order_qr`: public order token resolver; returns order and item/payment projection, including customer identity and positive-credit flag. Higher privacy-impact and excluded from Sarah.
+- `public_resolve_order_qr`: public order token resolver; returns order and item/payment projection, including customer identity and order/payment amounts, and only a boolean indicating positive customer credit (not the full balance). Higher privacy-impact and excluded from Sarah.
 - `public_resolve_qr_payment_submission`: public order-token submission status projection; customer-token branch requires authenticated customer session validation.
 - `submit_qr_payment`: public token-bound payment submission workflow, validates payment method, token, receipt storage path and ownership, and limits pending/repeated submissions.
 
