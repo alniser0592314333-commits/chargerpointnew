@@ -6,6 +6,7 @@ import { Button } from "../ui/Button";
 import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
 import { sarahConversationStore } from "../../application/ai/sarahConversationStore";
 import { SarahAccountOperationScope } from "../../application/ai/sarahAccountOperationScope";
+import { buildSarahHistorySnapshot } from "../../application/ai/sarahHistory";
 
 type Message = { role: "user" | "assistant"; text: string };
 const accountScopeIdentity = (accountId?: string | null, authUserId?: string) =>
@@ -110,7 +111,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     if (!clean || busy || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
     const operation = accountScopeRef.current.generation;
     const baseMessages = messages;
-    const historySnapshot = baseMessages.slice(-20);
+    const historySnapshot = buildSarahHistorySnapshot(baseMessages);
     setError("");
     setBusy(true);
     const id = crypto.randomUUID();
@@ -184,7 +185,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       await sarahInputQueue.transition(accountId, record.id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
       const baseMessages = messages;
-      const retryHistory = baseMessages.slice(-20);
+      const retryHistory = buildSarahHistorySnapshot(baseMessages);
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
       const response = await sarahChatService.send(record.text, session?.authUserId || '', retryHistory);
       if (!isCurrent(accountId, operation)) return;
