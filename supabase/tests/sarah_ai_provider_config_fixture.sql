@@ -208,6 +208,48 @@ AS $function$
 $function$;
 GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
 
+CREATE OR REPLACE FUNCTION public.is_active_admin_session()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.admins a
+    JOIN public.account_sessions app_session
+      ON app_session.user_id = a.auth_user_id
+     AND app_session.session_id = NULLIF(auth.jwt()->>'session_id','')::uuid
+     AND app_session.revoked_at IS NULL
+     AND app_session.session_expires_at > now()
+    JOIN auth.sessions auth_session
+      ON auth_session.id = app_session.session_id
+     AND auth_session.user_id = a.auth_user_id
+     AND (auth_session.not_after IS NULL OR auth_session.not_after > now())
+    WHERE a.auth_user_id = auth.uid()
+      AND a.is_active IS TRUE
+      AND a.disabled_at IS NULL
+  );
+$function$;
+REVOKE ALL ON FUNCTION public.is_active_admin_session() FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.assert_my_account_session_active()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF public.is_active_admin_session() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Authentication session is revoked, expired, or unavailable'
+      USING ERRCODE = '28000';
+  END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon, authenticated, service_role;
+
+
 CREATE OR REPLACE FUNCTION public._cp_assert_active_admin_permission(p_required_permission text)
 RETURNS uuid
 LANGUAGE plpgsql
