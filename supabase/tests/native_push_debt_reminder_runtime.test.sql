@@ -49,8 +49,8 @@ BEGIN
           '30000000-0000-4000-8000-000000000002',NULL,now()+interval '7 days');
   INSERT INTO public.native_push_devices(id,device_id,token,app_variant,principal_id,customer_id,auth_session_id,disabled_at)
   VALUES ('10000000-0000-4000-8000-000000000002',gen_random_uuid(),repeat('y',40),
-          'admin','30000000-0000-4000-8000-000000000002',NULL,
-          '40000000-0000-4000-8000-000000000002',NULL);
+          'admin','50000000-0000-4000-8000-000000000002',NULL,
+          '40000000-0000-4000-8000-000000000002'::text,NULL);
 
   IF public.native_push_device_is_current('10000000-0000-4000-8000-000000000002',false,false) IS NOT TRUE THEN
     RAISE EXCEPTION 'Valid active admin push device was unexpectedly rejected';
