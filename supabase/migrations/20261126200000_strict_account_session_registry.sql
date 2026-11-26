@@ -364,7 +364,7 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $function$
 BEGIN
   IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) = 'service_role' THEN
     RETURN;
@@ -375,7 +375,7 @@ BEGIN
       USING ERRCODE = '28000';
   END IF;
 END;
-$;
+$function$;
 REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon, authenticated, service_role;
 
 -- Close the legacy business-day restore RPC as an alternate session path.
@@ -394,14 +394,14 @@ RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $function$
 BEGIN
   PERFORM public.assert_my_account_session_active();
   RETURN public.restore_selected_business_days__session_guarded_impl(
     p_bin, p_snapshot, p_business_dates
   );
 END;
-$;
+$function$;
 REVOKE ALL ON FUNCTION public.restore_selected_business_days(text, jsonb, date[])
   FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.restore_selected_business_days(text, jsonb, date[])
@@ -411,17 +411,23 @@ GRANT EXECUTE ON FUNCTION public.restore_selected_business_days(text, jsonb, dat
 -- stale or unregistered application session.
 CREATE OR REPLACE FUNCTION public.current_purchase_admin_id()
 RETURNS uuid
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
-  SELECT a.id
-  FROM public.admins a
-  WHERE a.auth_user_id = auth.uid()
-    AND a.is_active IS TRUE
-    AND public.is_my_account_session_active() IS TRUE
-  LIMIT 1;
-$;
+AS $function$
+DECLARE
+  v_admin_id uuid;
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE
+     OR to_regclass('public.admins') IS NULL THEN
+    RETURN NULL;
+  END IF;
+  EXECUTE 'SELECT a.id FROM public.admins a WHERE a.auth_user_id = $1 AND a.is_active IS TRUE LIMIT 1'
+    INTO v_admin_id
+    USING auth.uid();
+  RETURN v_admin_id;
+END;
+$function$;
 
 NOTIFY pgrst, 'reload schema';
