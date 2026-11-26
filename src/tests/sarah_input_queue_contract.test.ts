@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { uploadLeaseExpired, SarahInputRecord } from "../application/ai/sarahInputQueue";
+import { uploadLeaseExpired, canRecoverObservedUpload, SarahInputRecord } from "../application/ai/sarahInputQueue";
 
 describe("Sarah durable input queue architecture contract", () => {
   const source = readFileSync("src/application/ai/sarahInputQueue.ts", "utf8");
@@ -24,8 +24,7 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("UPLOAD_INTERRUPTED_REQUIRES_REVIEW");
     expect(source).toContain("UPLOADING");
     expect(source).toContain('lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW"');
-    expect(source).toContain('current.state !== "UPLOADING"');
-    expect(source).toContain("current.uploadLeaseUntil !== observed.uploadLeaseUntil");
+    expect(source).toContain("canRecoverObservedUpload(observed, current, accountId)");
     expect(source).toContain('store.put({ ...current, state: "NEEDS_ATTENTION"');
     expect(source).toContain("Compare-and-set inside the same transaction");
     expect(source).not.toContain('await this.transition(accountId, row.id, "NEEDS_ATTENTION"');
@@ -38,6 +37,16 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("current.uploadLeaseUntil !== observed.uploadLeaseUntil");
     expect(source).toContain("if (outcome === \"recovered\") recovered += 1");
     expect(source).not.toContain("QUEUE_RECOVERY_RACE_FAILED");
+  });
+
+  it("rejects stale lease observations and cross-account/state changes", () => {
+    const expired = new Date(Date.now() - 1000).toISOString();
+    const base = { id: "q", actorAccountId: "a", deviceId: "d", sequence: 1, createdAt: new Date().toISOString(), kind: "text" as const, state: "UPLOADING" as const, text: "x", correlationId: "c", attempts: 1, uploadLeaseUntil: expired };
+    expect(canRecoverObservedUpload(base, base, "a")).toBe(true);
+    expect(canRecoverObservedUpload(base, { ...base, uploadLeaseUntil: new Date(Date.now()+60000).toISOString() }, "a")).toBe(false);
+    expect(canRecoverObservedUpload(base, { ...base, state: "COMPLETED" }, "a")).toBe(false);
+    expect(canRecoverObservedUpload(base, { ...base, actorAccountId: "b" }, "a")).toBe(false);
+    expect(canRecoverObservedUpload(base, undefined, "a")).toBe(false);
   });
   it("limits stored text and audio payload sizes", () => {
     expect(source).toContain("MAX_TEXT_CHARS");
