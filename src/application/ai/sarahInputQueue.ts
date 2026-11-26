@@ -25,6 +25,8 @@ export interface SarahInputRecord {
   resultRef?: string;
   lastErrorCode?: string;
   attempts: number;
+  /** Lease expiry prevents other tabs from treating an active provider call as interrupted. */
+  uploadLeaseUntil?: string;
 }
 
 const DB_NAME = "SarahDurableInputQueue";
@@ -119,7 +121,7 @@ export const sarahInputQueue = {
         const current = get.result as SarahInputRecord | undefined;
         if (!current || current.actorAccountId !== accountId) { tx.abort(); return; }
         if (!allowed[current.state].includes(next)) { tx.abort(); return; }
-        updated = { ...current, ...details, state: next, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
+        updated = { ...current, ...details, state: next, uploadLeaseUntil: next === "UPLOADING" ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : undefined, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
         store.put(updated);
       };
       tx.oncomplete = () => { db.close(); if (updated) resolve(updated); else reject(new Error("QUEUE_TRANSITION_REJECTED")); };
@@ -135,13 +137,22 @@ export const sarahInputQueue = {
   async recoverInterruptedUploads(accountId: string): Promise<number> {
     if (!accountId) throw new Error("ACCOUNT_REQUIRED");
     const pending = await this.list(accountId);
-    const interrupted = pending.filter((row) => row.state === "UPLOADING");
+    const interrupted = pending.filter((row) => row.state === "UPLOADING" && (!row.uploadLeaseUntil || Date.parse(row.uploadLeaseUntil) <= Date.now()));
     let recovered = 0;
     for (const row of interrupted) {
-      await this.transition(accountId, row.id, "NEEDS_ATTENTION", {
-        lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
-      });
-      recovered += 1;
+      try {
+        await this.transition(accountId, row.id, "NEEDS_ATTENTION", {
+          lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
+        });
+        recovered += 1;
+      } catch {
+        // Another tab may have completed or changed this record since the listing.
+        // Re-read before treating the race as an actual queue failure.
+        const latest = await this.list(accountId);
+        if (latest.some((item) => item.id === row.id && item.actorAccountId === accountId && item.state === "UPLOADING" && (!item.uploadLeaseUntil || Date.parse(item.uploadLeaseUntil) <= Date.now()))) {
+          throw new Error("QUEUE_RECOVERY_RACE_FAILED");
+        }
+      }
     }
     return recovered;
   },
