@@ -49,7 +49,8 @@ describe("Sarah durable input queue architecture contract", () => {
   });
 
   it("prunes only account-owned completed records after the retention cutoff", () => {
-    expect(source).toContain("pruneCompleted(accountId, 30)");
+    const page = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");
+    expect(page).toContain("pruneCompleted(accountId, 30)");
     expect(source).toContain('row.state === "COMPLETED"');
     expect(source).toContain("row.actorAccountId === accountId");
     expect(source).toContain("olderThanDays > 365");
