@@ -121,8 +121,8 @@ $behavior$;
 RESET ROLE;
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', false);
-SELECT pg_catalog.set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', false);
-SELECT pg_catalog.set_config('request.jwt.claim.session_id', '20000000-0000-4000-8000-000000000002', false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000007', false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id', '20000000-0000-4000-8000-000000000007', false);
 DO $manager_manage_only$
 DECLARE v_result jsonb;
 BEGIN
@@ -335,16 +335,11 @@ BEGIN
 END;
 $cleared$;
 
--- Add the explicit per-admin grant only after the manager-without-permission
--- denial assertions have completed.
-INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
-VALUES ('00000000-0000-4000-8000-000000000002','ai:manage',true);
-
 DO $permissions$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.admin_custom_permissions
-    WHERE admin_id = '00000000-0000-4000-8000-000000000002'
+    WHERE admin_id = '00000000-0000-4000-8000-000000000007'
       AND permission = 'ai:manage'
       AND is_grant IS TRUE
   ) THEN
@@ -352,7 +347,7 @@ BEGIN
   END IF;
   IF EXISTS (
     SELECT 1 FROM public.admin_custom_permissions
-    WHERE admin_id = '00000000-0000-4000-8000-000000000002'
+    WHERE admin_id = '00000000-0000-4000-8000-000000000007'
       AND permission = 'ai:use'
       AND is_grant IS TRUE
   ) THEN
