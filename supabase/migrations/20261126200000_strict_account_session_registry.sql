@@ -494,6 +494,121 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon, authenticated, service_role;
 
+-- Legacy one-argument registration is retained for older clients but delegates
+-- to the same strict, freshness-checked browser registration path. It can never
+-- create a registry row for an old Auth session or upgrade the client class.
+CREATE OR REPLACE FUNCTION public.register_my_account_session(p_user_agent text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  RETURN public.register_my_account_session_v2(p_user_agent, 'browser');
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.register_my_account_session(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.register_my_account_session(text) TO authenticated;
+
+-- Active-session checks stay STABLE and read-only for RLS. The app's bounded
+-- heartbeat uses this separate VOLATILE RPC to slide idle expiry without
+-- granting a way to create or revive a missing/expired/revoked session.
+CREATE OR REPLACE FUNCTION public.touch_my_account_session()
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  v_account_session public.account_sessions%ROWTYPE;
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RETURN false;
+  END IF;
+
+  SELECT * INTO v_account_session
+  FROM public.account_sessions a
+  WHERE a.session_id = v_session_id
+    AND a.user_id = v_user_id
+    AND a.revoked_at IS NULL
+    AND a.session_expires_at > now()
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  IF v_account_session.last_seen_at IS NULL
+     OR v_account_session.last_seen_at < now() - interval '5 minutes' THEN
+    UPDATE public.account_sessions
+    SET last_seen_at = now(),
+        session_expires_at = now() + CASE
+          WHEN v_account_session.client_type IN ('native', 'installed_pwa') THEN interval '30 days'
+          ELSE interval '7 days'
+        END
+    WHERE session_id = v_session_id
+      AND user_id = v_user_id
+      AND revoked_at IS NULL
+      AND session_expires_at > now();
+
+    IF NOT FOUND THEN
+      RETURN false;
+    END IF;
+  END IF;
+
+  RETURN true;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.touch_my_account_session() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.touch_my_account_session() TO authenticated;
+
+-- Session listing is strictly caller-scoped and read-only with respect to
+-- registry membership. It must never auto-register every Auth session.
+CREATE OR REPLACE FUNCTION public.get_my_account_sessions()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_current_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
+  v_result jsonb;
+BEGIN
+  IF v_user_id IS NULL OR v_current_session_id IS NULL THEN
+    RAISE EXCEPTION 'Authenticated current session required' USING ERRCODE = '28000';
+  END IF;
+
+  IF public.touch_my_account_session() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Current application session is not active' USING ERRCODE = '28000';
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'session_id', a.session_id,
+    'user_agent', COALESCE(a.user_agent, s.user_agent),
+    'created_at', a.created_at,
+    'last_seen_at', GREATEST(a.last_seen_at, COALESCE(s.updated_at, a.last_seen_at)),
+    'client_type', a.client_type,
+    'session_expires_at', a.session_expires_at,
+    'is_expired', a.session_expires_at <= now(),
+    'is_current', a.session_id = v_current_session_id
+  ) ORDER BY (a.session_id = v_current_session_id) DESC, a.last_seen_at DESC), '[]'::jsonb)
+  INTO v_result
+  FROM public.account_sessions a
+  JOIN auth.sessions s ON s.id = a.session_id AND s.user_id = v_user_id
+  WHERE a.user_id = v_user_id
+    AND a.revoked_at IS NULL
+    AND (s.not_after IS NULL OR s.not_after > now());
+
+  RETURN v_result;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.get_my_account_sessions() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_account_sessions() TO authenticated;
+
 -- Close the legacy business-day restore RPC as an alternate session path.
 -- Keep its canonical implementation private and expose only a guarded wrapper.
 DO $clone_restore$
