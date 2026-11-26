@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -63,12 +64,13 @@ Deno.serve(async (req: Request) => {
   if (!url || !secret || !anon) return reply(503, { ok: false, error: "SERVICE_UNAVAILABLE" });
   const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
   const auth = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
+  const declaredLength = Number(req.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > 12000) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const rawBytes = await readBoundedRequestBody(req, 12000).catch(() => null);
+  if (rawBytes === null) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
   let input: Record<string, unknown>;
-  try {
-    const raw = await req.text();
-    if (raw.length > 12000) return reply(413, { ok: false, error: "REQUEST_TOO_LARGE" });
-    input = JSON.parse(raw);
-  } catch { return reply(400, { ok: false, error: "INVALID_REQUEST" }); }
+  try { input = JSON.parse(new TextDecoder().decode(rawBytes)); }
+  catch { return reply(400, { ok: false, error: "INVALID_REQUEST" }); }
   const action = normalize(input.action, 40);
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
   const getAuthenticatedIdentity = async () => {
