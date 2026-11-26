@@ -47,6 +47,14 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("aiRequestId");
     expect(source).toContain("resultRef");
   });
+
+  it("prunes only account-owned completed records after the retention cutoff", () => {
+    expect(source).toContain("pruneCompleted(accountId, 30)");
+    expect(source).toContain('row.state === "COMPLETED"');
+    expect(source).toContain("row.actorAccountId === accountId");
+    expect(source).toContain("olderThanDays > 365");
+    expect(source).toContain("latest.state === \"COMPLETED\"");
+  });
   it("avoids replaying the queued text as duplicate history on retry", () => {
     const page = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");
     expect(page).toContain("retryHistory.at(-1)?.text === record.text");
