@@ -572,6 +572,106 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, anon, authenticated, service_role;
 
+-- A Super Admin must verify BIN before the client persists a new app session.
+-- Permit only this one pre-session RPC for a fresh Auth session; all other
+-- administrator RPCs remain blocked until account_sessions is registered.
+CREATE OR REPLACE FUNCTION public.assert_my_fresh_super_admin_login_session()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_session_id uuid;
+  v_auth_role text;
+  v_created_at timestamptz;
+  v_not_after timestamptz;
+  v_has_registry_row boolean := false;
+  v_is_active_super_admin boolean := false;
+BEGIN
+  v_auth_role := COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true));
+  IF v_user_id IS NULL OR v_auth_role <> 'authenticated' THEN
+    RAISE EXCEPTION 'Fresh authenticated Super Admin session required' USING ERRCODE = '28000';
+  END IF;
+
+  BEGIN
+    v_session_id := NULLIF(auth.jwt() ->> 'session_id', '')::uuid;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'Fresh authenticated Super Admin session required' USING ERRCODE = '28000';
+  END;
+  IF v_session_id IS NULL THEN
+    RAISE EXCEPTION 'Fresh authenticated Super Admin session required' USING ERRCODE = '28000';
+  END IF;
+
+  SELECT s.created_at, s.not_after
+    INTO v_created_at, v_not_after
+  FROM auth.sessions s
+  WHERE s.id = v_session_id AND s.user_id = v_user_id;
+  IF NOT FOUND OR v_created_at < now() - interval '5 minutes'
+     OR (v_not_after IS NOT NULL AND v_not_after <= now()) THEN
+    RAISE EXCEPTION 'Fresh authenticated Super Admin session required' USING ERRCODE = '28000';
+  END IF;
+
+  IF to_regclass('public.account_sessions') IS NULL OR to_regclass('public.admins') IS NULL THEN
+    RAISE EXCEPTION 'Administrator session registry is unavailable' USING ERRCODE = '28000';
+  END IF;
+
+  EXECUTE 'SELECT EXISTS (
+    SELECT 1 FROM public.account_sessions s
+    WHERE s.session_id = $1 AND s.user_id = $2
+  )' INTO v_has_registry_row USING v_session_id, v_user_id;
+  IF v_has_registry_row THEN
+    RAISE EXCEPTION 'Registered or revoked app sessions cannot use the pre-session BIN gate'
+      USING ERRCODE = '28000';
+  END IF;
+
+  EXECUTE 'SELECT EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.auth_user_id = $1
+      AND a.is_active IS TRUE
+      AND a.disabled_at IS NULL
+      AND a.role IN (''SUPER_ADMIN'', ''Super Admin'')
+  )' INTO v_is_active_super_admin USING v_user_id;
+  IF NOT v_is_active_super_admin THEN
+    RAISE EXCEPTION 'Active Super Admin account required' USING ERRCODE = '28000';
+  END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.assert_my_fresh_super_admin_login_session()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+DO $guard_pre_session_bin_verification$
+BEGIN
+  IF to_regprocedure('public.verify_admin_bin_with_attempt_tracking(text)') IS NULL
+     OR to_regprocedure('public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(text)') IS NULL THEN
+    RETURN;
+  END IF;
+
+  EXECUTE $wrapper$
+    CREATE OR REPLACE FUNCTION public.verify_admin_bin_with_attempt_tracking(p_bin text)
+    RETURNS jsonb
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public, pg_temp
+    AS $function$
+    BEGIN
+      IF public.is_my_account_session_active() IS TRUE THEN
+        PERFORM public.assert_my_account_session_active();
+      ELSE
+        PERFORM public.assert_my_fresh_super_admin_login_session();
+      END IF;
+      RETURN public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(p_bin);
+    END;
+    $function$
+  $wrapper$;
+
+  EXECUTE 'REVOKE ALL ON FUNCTION public.verify_admin_bin_with_attempt_tracking(text) FROM PUBLIC, anon, service_role';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.verify_admin_bin_with_attempt_tracking(text) TO authenticated';
+  EXECUTE 'REVOKE ALL ON FUNCTION public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(text) FROM PUBLIC, anon, authenticated, service_role';
+END;
+$guard_pre_session_bin_verification$;
+
 -- The pre-session login gate remains minimal, but it must report a disabled
 -- administrator as inactive before the client reaches BIN/session reactivation.
 CREATE OR REPLACE FUNCTION public.get_my_admin_login_gate()
