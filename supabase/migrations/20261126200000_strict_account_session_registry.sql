@@ -384,7 +384,7 @@ BEGIN
 
   RETURN v_result;
 END;
-$;
+$function$;
 
 
 -- Internal assertion shared by sensitive RPC wrappers. It is intentionally
