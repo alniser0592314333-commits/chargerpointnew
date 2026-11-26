@@ -410,10 +410,26 @@ REVOKE ALL ON FUNCTION public.assert_my_account_session_active() FROM PUBLIC, an
 
 -- Close the legacy business-day restore RPC as an alternate session path.
 -- Keep its canonical implementation private and expose only a guarded wrapper.
-ALTER FUNCTION public.restore_selected_business_days(text, jsonb, date[])
-  RENAME TO restore_selected_business_days__session_guarded_impl;
+DO $clone_restore$
+DECLARE
+  v_definition text;
+BEGIN
+  v_definition := pg_get_functiondef(
+    'public.restore_selected_business_days(text,jsonb,date[])'::regprocedure
+  );
+  v_definition := replace(
+    v_definition,
+    'FUNCTION public.restore_selected_business_days(',
+    'FUNCTION public.restore_selected_business_days__session_guarded_impl('
+  );
+  IF v_definition = '' OR v_definition NOT LIKE '%restore_selected_business_days__session_guarded_impl%' THEN
+    RAISE EXCEPTION 'Could not create private day-restore implementation';
+  END IF;
+  EXECUTE v_definition;
+END;
+$clone_restore$;
 REVOKE ALL ON FUNCTION public.restore_selected_business_days__session_guarded_impl(text, jsonb, date[])
-  FROM PUBLIC, anon, authenticated;
+  FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE FUNCTION public.restore_selected_business_days(
   p_bin text,
