@@ -56,3 +56,11 @@ This audit note documents a boundary and an incomplete inspection. It makes no c
 - The migration was updated so read-only transactions avoid writes: an already registered session is still checked for revocation and expiry; an unregistered session fails closed instead of registering; the read-only path returns before the activity-write throttle.
 - The activity update condition is explicitly guarded by the read-only flag.
 - A source contract was added to require the read-only guard. This has not yet been confirmed by a completed CI run and is not deployed to production.
+
+
+## Effective-permission resolution findings
+
+- The server-side `_cp_assert_active_admin_permission` helper derives the actor from `auth.uid()`, requires an active registered session, resolves the linked active admin record, and grants the Super Admin role shortcut only after that identity resolution.
+- `get_effective_permissions` checks that a non-service caller is the current active admin and requires `admin:manage` when requesting another admin's permission set.
+- The internal effective-permission projection uses custom permission state as an override: if any custom-permission rows exist for an admin, only positive custom grants are returned; otherwise the profile's stored permissions are used. This is important for Sarah's execution-time permission checks and needs negative/override tests, not assumptions that custom grants are additive.
+- The read-sync-bootstrap RPC is deliberately not suitable as Sarah's read tool: its entity allow-list still returns shared business projections for admins who hold `sync:manage`, whereas the conversational tool catalog must be narrower and field-minimized.
