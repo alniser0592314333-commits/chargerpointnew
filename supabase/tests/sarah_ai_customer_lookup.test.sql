@@ -96,6 +96,35 @@ BEGIN
 END;
 $manager_denied$;
 
+-- Permission dimensions are independent: ai:use does not grant customer visibility,
+-- and customer visibility does not grant AI tool use.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000008',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000008',false);
+DO $ai_use_without_customer_view$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_lookup_customers('أحمد');
+    RAISE EXCEPTION 'ai:use without customers:view unexpectedly read customers';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$ai_use_without_customer_view$;
+
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000009',false);
+DO $customer_view_without_ai_use$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_lookup_customers('أحمد');
+    RAISE EXCEPTION 'customers:view without ai:use unexpectedly used Sarah lookup';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$customer_view_without_ai_use$;
+RESET ROLE;
+
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000004',false);
 SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000004',false);
 DO $unregistered_denied$
