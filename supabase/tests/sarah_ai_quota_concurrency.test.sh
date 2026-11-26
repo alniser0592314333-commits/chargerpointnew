@@ -5,6 +5,16 @@ DB_ARGS=(-h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -Atq)
 ACTOR="10000000-0000-4000-8000-000000000001"
 SESSION="20000000-0000-4000-8000-000000000001"
 
+# Avoid running across a UTC hourly boundary, which would legitimately split
+# concurrent requests between two independent windows.
+while true; do
+  minute="$(psql "${DB_ARGS[@]}" -c "SELECT extract(minute FROM clock_timestamp())::integer;")"
+  if [[ "${minute}" -ge 2 && "${minute}" -le 57 ]]; then
+    break
+  fi
+  sleep 2
+done
+
 run_bucket() {
   local period="$1"
   local quota_type="$2"
