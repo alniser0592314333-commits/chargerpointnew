@@ -183,11 +183,12 @@ Deno.serve(async (req) => {
   };
 
   const extractAnswer = (candidate: Record<string, unknown> | null) => {
-    const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
-    if (parts.some((part: Record<string, unknown>) => Boolean(part.functionCall))) return "";
-    return parts.map((part: Record<string, unknown>) =>
-      typeof part.text === "string" ? part.text : ""
-    ).join("").trim();
+    const candidateContent = candidate?.content as Record<string, unknown> | undefined;
+    const parts = Array.isArray(candidateContent?.parts)
+      ? candidateContent.parts as Array<Record<string, unknown>>
+      : [];
+    if (parts.some((part) => Boolean(part.functionCall))) return "";
+    return parts.map((part) => typeof part.text === "string" ? part.text : "").join("").trim();
   };
 
   try {
@@ -207,8 +208,9 @@ Deno.serve(async (req) => {
 
     const firstResult = await firstResponse.json();
     const firstCandidate = firstResult?.candidates?.[0] as Record<string, unknown> | undefined;
-    const firstParts = Array.isArray(firstCandidate?.content?.parts)
-      ? firstCandidate.content.parts as Array<Record<string, unknown>>
+    const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
+    const firstParts = Array.isArray(firstContent?.parts)
+      ? firstContent.parts as Array<Record<string, unknown>>
       : [];
     const functionCalls = firstParts.filter((part) => Boolean(part.functionCall));
 
@@ -277,8 +279,9 @@ Deno.serve(async (req) => {
       const secondCandidate = secondResult?.candidates?.[0] as Record<string, unknown> | undefined;
       answer = extractAnswer(secondCandidate || null);
       if (!answer) {
-        const secondParts = Array.isArray(secondCandidate?.content?.parts)
-          ? secondCandidate.content.parts as Array<Record<string, unknown>>
+        const secondContent = secondCandidate?.content as Record<string, unknown> | undefined;
+        const secondParts = Array.isArray(secondContent?.parts)
+          ? secondContent.parts as Array<Record<string, unknown>>
           : [];
         if (secondParts.some((part) => Boolean(part.functionCall))) {
           return respond(502, { ok: false, error: "AI_TOOL_CALL_LIMIT_REACHED" });
