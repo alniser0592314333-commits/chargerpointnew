@@ -1,6 +1,52 @@
 -- Runtime regression for admin-bound SELECT policies and TRUNCATE revocation.
 \set ON_ERROR_STOP on
 
+-- A currently active administrator session missing a registry row is
+-- conservatively backfilled; an unregistered non-admin Auth session is not.
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
+DO $admin_session_backfill$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE
+     OR public.is_active_admin_session() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Active admin session was not safely backfilled';
+  END IF;
+  IF (SELECT count(*) FROM public.customers) <> 1 THEN
+    RAISE EXCEPTION 'Backfilled active admin lost authorized customer read access';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.account_sessions
+    WHERE session_id='11000000-0000-0000-0000-000000000004'
+      AND client_type='browser'
+      AND session_expires_at > now() + interval '6 days'
+      AND revoked_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Active admin backfill did not create a conservative seven-day browser session';
+  END IF;
+END
+$admin_session_backfill$;
+
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000005', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000005"}', false);
+DO $nonadmin_not_backfilled$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Unregistered non-admin Auth session was accepted';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.account_sessions
+    WHERE session_id='11000000-0000-0000-0000-000000000005'
+  ) THEN
+    RAISE EXCEPTION 'Non-admin Auth session was incorrectly backfilled into the admin registry';
+  END IF;
+  IF (SELECT count(*) FROM public.customers) <> 0 THEN
+    RAISE EXCEPTION 'Unregistered non-admin session read customer data';
+  END IF;
+END
+$nonadmin_not_backfilled$;
+RESET ROLE;
+
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', false);
 SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000001"}', false);
