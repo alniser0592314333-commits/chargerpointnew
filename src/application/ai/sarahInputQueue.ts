@@ -171,6 +171,11 @@ export const sarahInputQueue = {
         if (!current || current.actorAccountId !== accountId) { tx.abort(); return; }
         if (!allowed[current.state].includes(next)) { tx.abort(); return; }
         updated = { ...current, ...details, state: next, uploadLeaseUntil: next === "UPLOADING" ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : undefined, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
+        if (next === "COMPLETED") {
+          delete updated.text;
+          delete updated.audioBlob;
+          delete updated.audioMimeType;
+        }
         store.put(updated);
       };
       tx.oncomplete = () => { db.close(); if (updated) resolve(updated); else reject(new Error("QUEUE_TRANSITION_REJECTED")); };
