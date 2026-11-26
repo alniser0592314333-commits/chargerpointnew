@@ -25,6 +25,13 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain('lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW"');
     expect(source).toContain('await this.transition(accountId, row.id, "NEEDS_ATTENTION"');
   });
+  it("uses a bounded upload lease so other tabs only recover expired uploads", () => {
+    expect(source).toContain("uploadLeaseUntil");
+    expect(source).toContain("Date.now() + 5 * 60 * 1000");
+    expect(source).toContain("Date.parse(row.uploadLeaseUntil) <= Date.now()");
+    expect(source).toContain("Another tab may have completed or changed this record");
+    expect(source).toContain("QUEUE_RECOVERY_RACE_FAILED");
+  });
   it("limits stored text and audio payload sizes", () => {
     expect(source).toContain("MAX_TEXT_CHARS");
     expect(source).toContain("MAX_AUDIO_BYTES");
