@@ -107,6 +107,40 @@ BEGIN
 END;
 $permission_boundary$;
 
+-- ai:use without ai:manage permits chat quota use, but not provider management.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000008',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000008',false);
+DO $ai_use_only$
+DECLARE v_result jsonb;
+BEGIN
+  v_result := public.sarah_ai_consume_my_quota('hour');
+  IF v_result->>'allowed' <> 'true' THEN
+    RAISE EXCEPTION 'ai:use-only user should be allowed to consume chat quota';
+  END IF;
+  BEGIN
+    PERFORM public.sarah_ai_consume_my_manage_quota('hour');
+    RAISE EXCEPTION 'ai:use-only user unexpectedly consumed provider-management quota';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$ai_use_only$;
+
+-- customers:view without ai:use does not authorize even a direct quota RPC.
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000009',false);
+DO $customer_view_only$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_consume_my_quota('hour');
+    RAISE EXCEPTION 'customers:view-only user unexpectedly consumed AI quota';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$customer_view_only$;
+RESET ROLE;
+
 -- An unregistered session and an admin with disabled_at set are denied even
 -- when the underlying Supabase Auth session is still live.
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000004',false);
