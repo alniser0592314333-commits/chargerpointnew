@@ -94,6 +94,36 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(JSON.parse(storageMap.get("app_auth_session")!).email).toBe("account-b@example.test");
   });
 
+  it("rejects a cached admin session when the Auth subject changes even if the email matches", async () => {
+    const accountA: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-auth-a",
+      refresh_token: "refresh-token-auth-a",
+      user: { id: "auth-subject-a", email: "same@example.test" },
+    };
+    const accountB: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-auth-b",
+      refresh_token: "refresh-token-auth-b",
+      user: { id: "auth-subject-b", email: "same@example.test" },
+    };
+    supabaseClient.saveStoredSupabaseAuthSession(accountA);
+    vi.spyOn(authService, "getAdminProfile").mockResolvedValueOnce(adminProfile({
+      admin_id: "admin-subject-a",
+      auth_user_id: "auth-subject-a",
+      email: "same@example.test",
+    }) as any);
+    const first = await authService.getCurrentSession(true);
+    expect(first?.authUserId).toBe("auth-subject-a");
+
+    storageMap.set("supabase_auth_session", JSON.stringify(accountB));
+    vi.spyOn(authService, "getAdminProfile").mockResolvedValueOnce(null);
+    const switched = await authService.getCurrentSession();
+
+    expect(switched).toBeNull();
+    expect(storageMap.has("app_auth_session")).toBe(false);
+  });
+
   it("never falls back to the previous account's cached role when the newly selected account profile is unavailable", async () => {
     const accountA: supabaseClient.SupabaseAuthSession = {
       ...authSession,
