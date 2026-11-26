@@ -100,6 +100,76 @@ $$;
 -- A client cannot upgrade a browser session to native/PWA by changing an RPC
 -- argument. Missing registry rows can only be created for a recently issued
 -- Auth session; stale unregistered sessions must authenticate again.
+-- The account_sessions registry is for administrator sessions, not the
+-- separate customer portal session system. Only an active admin may register
+-- or reactivate a normal app session. The sole pre-admin exception is the
+-- verified first owner during the one-time bootstrap flow.
+CREATE OR REPLACE FUNCTION public.assert_my_admin_session_actor(
+  p_allow_first_owner_bootstrap boolean DEFAULT false
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_is_active_admin boolean := false;
+  v_has_admin_record boolean := false;
+  v_email text;
+  v_email_confirmed_at timestamptz;
+  v_has_super_admin boolean := false;
+BEGIN
+  IF v_user_id IS NULL OR to_regclass('public.admins') IS NULL THEN
+    RAISE EXCEPTION 'Active administrator account required' USING ERRCODE = '42501';
+  END IF;
+
+  EXECUTE 'SELECT EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.auth_user_id = $1
+      AND a.is_active IS TRUE
+      AND a.disabled_at IS NULL
+  )' INTO v_is_active_admin USING v_user_id;
+
+  IF v_is_active_admin THEN
+    RETURN;
+  END IF;
+
+  IF p_allow_first_owner_bootstrap IS NOT TRUE THEN
+    RAISE EXCEPTION 'Active administrator account required' USING ERRCODE = '42501';
+  END IF;
+
+  EXECUTE 'SELECT EXISTS (
+    SELECT 1 FROM public.admins a WHERE a.auth_user_id = $1
+  )' INTO v_has_admin_record USING v_user_id;
+  IF v_has_admin_record THEN
+    RAISE EXCEPTION 'Disabled or inactive administrator cannot register a session'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT u.email, u.email_confirmed_at
+    INTO v_email, v_email_confirmed_at
+  FROM auth.users u
+  WHERE u.id = v_user_id;
+
+  IF v_email_confirmed_at IS NULL
+     OR lower(btrim(COALESCE(v_email, ''))) <> 'al.niser.0592314333@gmail.com' THEN
+    RAISE EXCEPTION 'Only the verified first owner may register before bootstrap'
+      USING ERRCODE = '42501';
+  END IF;
+
+  EXECUTE 'SELECT EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.role IN (''SUPER_ADMIN'', ''Super Admin'')
+  )' INTO v_has_super_admin;
+  IF v_has_super_admin THEN
+    RAISE EXCEPTION 'First-owner bootstrap is already closed' USING ERRCODE = '42501';
+  END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.assert_my_admin_session_actor(boolean)
+  FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.register_my_account_session_v2(
   p_user_agent text DEFAULT NULL,
   p_client_type text DEFAULT 'browser'
@@ -145,6 +215,8 @@ BEGIN
       RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
     END IF;
   END IF;
+
+  PERFORM public.assert_my_admin_session_actor(true);
 
   SELECT * INTO v_account_session
   FROM public.account_sessions a
@@ -291,6 +363,8 @@ BEGIN
       RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
     END IF;
   END IF;
+
+  PERFORM public.assert_my_admin_session_actor(false);
 
   SELECT * INTO v_account_session
   FROM public.account_sessions a
