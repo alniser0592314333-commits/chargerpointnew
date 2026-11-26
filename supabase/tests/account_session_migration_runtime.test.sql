@@ -77,6 +77,11 @@ VALUES ('88888888-8888-4888-8888-888888888888',
         '22222222-2222-4222-8222-222222222222',now(),now(),'Fresh non-admin Auth session');
 SELECT set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',false);
 SELECT set_config('request.jwt.claims','{"sub":"22222222-2222-4222-8222-222222222222","session_id":"88888888-8888-4888-8888-888888888888"}',false);
+-- Even a manually pre-existing, unexpired registry row must not authorize a
+-- non-admin Auth identity to use the administrator application session guard.
+INSERT INTO public.account_sessions(session_id,user_id,client_type,session_expires_at)
+VALUES ('88888888-8888-4888-8888-888888888888',
+        '22222222-2222-4222-8222-222222222222','browser',now()+interval '7 days');
 DO $assert_non_admin_registry$
 BEGIN
   BEGIN
@@ -91,14 +96,13 @@ BEGIN
   EXCEPTION WHEN SQLSTATE '42501' THEN
     NULL;
   END;
-  IF EXISTS (
-    SELECT 1 FROM public.account_sessions
-    WHERE session_id='88888888-8888-4888-8888-888888888888'
-  ) THEN
-    RAISE EXCEPTION 'Rejected non-admin registration left an administrator session row';
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'A non-admin identity with a registry row passed the administrator session guard';
   END IF;
 END;
 $assert_non_admin_registry$;
+DELETE FROM public.account_sessions
+WHERE session_id='88888888-8888-4888-8888-888888888888';
 SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}',false);
 
@@ -376,9 +380,9 @@ BEGIN
 END $assert$;
 
 
--- Server-side enforcement regression: a valid unregistered Auth session may
--- read business data during rollout; after expiry the same stale JWT must be
--- denied by both the table RLS policy and an exposed SECURITY DEFINER RPC.
+-- Server-side enforcement regression: a recently issued Auth session must first
+-- be registered to an active admin. Once expired, its stale JWT is rejected by
+-- both the table RLS policy and an exposed SECURITY DEFINER RPC.
 INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
 VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Gate test');
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"}',false);
