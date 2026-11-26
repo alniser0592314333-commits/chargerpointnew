@@ -208,13 +208,14 @@ Deno.serve(async (req) => {
 
     const firstResponse = await callGemini(firstPayload);
     if (!firstResponse.ok) {
+      await firstResponse.body?.cancel().catch(() => undefined);
       return respond(firstResponse.status === 429 ? 429 : firstResponse.status >= 500 ? 503 : 400, {
         ok: false,
         error: mapGeminiError(firstResponse.status),
       });
     }
 
-    const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES).catch(() => null);
+    const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES);
     if (firstBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
     let firstResult: Record<string, unknown>;
     try {
@@ -284,13 +285,14 @@ Deno.serve(async (req) => {
         contents: followUpContents,
       });
       if (!secondResponse.ok) {
+        await secondResponse.body?.cancel().catch(() => undefined);
         return respond(secondResponse.status === 429 ? 429 : secondResponse.status >= 500 ? 503 : 400, {
           ok: false,
           error: mapGeminiError(secondResponse.status),
         });
       }
 
-      const secondBytes = await readBoundedResponseBody(secondResponse, MAX_PROVIDER_RESPONSE_BYTES).catch(() => null);
+      const secondBytes = await readBoundedResponseBody(secondResponse, MAX_PROVIDER_RESPONSE_BYTES);
       if (secondBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
       let secondResult: Record<string, unknown>;
       try {
