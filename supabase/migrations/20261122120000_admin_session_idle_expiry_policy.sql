@@ -252,6 +252,7 @@ DECLARE
   v_user_id uuid := auth.uid();
   v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
   v_account_session public.account_sessions%ROWTYPE;
+  v_read_only boolean := current_setting('transaction_read_only', true) = 'on';
 BEGIN
   IF v_user_id IS NULL OR v_session_id IS NULL THEN
     RETURN false;
@@ -269,6 +270,16 @@ BEGIN
   SELECT * INTO v_account_session
   FROM public.account_sessions a
   WHERE a.session_id = v_session_id AND a.user_id = v_user_id;
+
+  -- Read-only transactions cannot register or renew session rows. For an already
+  -- registered session, still enforce revocation and expiry without attempting writes.
+  IF v_read_only THEN
+    IF NOT FOUND OR v_account_session.revoked_at IS NOT NULL
+       OR v_account_session.session_expires_at <= now() THEN
+      RETURN false;
+    END IF;
+    RETURN true;
+  END IF;
 
   -- Register a valid legacy session once with the conservative browser policy.
   -- This prevents unregistered sessions from bypassing the idle-expiry guard forever.
@@ -298,7 +309,7 @@ BEGIN
 
   -- Throttle activity writes to one update per five minutes per active session.
   -- This keeps the expiry sliding without writing on every protected RPC.
-  IF v_account_session.last_seen_at IS NULL OR v_account_session.last_seen_at < now() - interval '5 minutes' THEN
+  IF NOT v_read_only AND (v_account_session.last_seen_at IS NULL OR v_account_session.last_seen_at < now() - interval '5 minutes') THEN
     UPDATE public.account_sessions
     SET last_seen_at = now(),
         session_expires_at = now() + CASE
