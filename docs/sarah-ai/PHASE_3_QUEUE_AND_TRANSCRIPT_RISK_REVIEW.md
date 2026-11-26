@@ -22,3 +22,12 @@ Review only; no production changes.
 
 ## Scope
 This review is grounded in source inspection of SarahInputQueue, SarahConversationStore, and SarahChatPage. It does not claim a complete threat-model review or production validation.
+
+
+## Cross-tab upload lease remediation (branch-only)
+
+- Queue records now carry a five-minute `uploadLeaseUntil` timestamp whenever a transition enters `UPLOADING`.
+- Recovery scans only interrupted uploads with expired/missing/malformed leases; active uploads in another tab are not immediately marked for manual review.
+- Recovery races re-read the record and tolerate a concurrent state change rather than surfacing it as an unconditional queue failure.
+- Contract tests assert lease bounds and expired-lease recovery. These are source-pattern tests; multi-tab IndexedDB behavioural tests are still outstanding.
+- This code remains unmerged and has not been deployed.
