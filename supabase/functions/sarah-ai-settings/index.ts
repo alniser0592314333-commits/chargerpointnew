@@ -44,7 +44,7 @@ const parseGenerationConfig = (value: unknown): GenerationConfig | null => {
   }
   if (input.maxOutputTokens !== undefined) {
     if (!Number.isInteger(input.maxOutputTokens) ||
-      Number(input.maxOutputTokens) < 1 || Number(input.maxOutputTokens) > 65536) return null;
+      Number(input.maxOutputTokens) < 1 || Number(input.maxOutputTokens) > 4096) return null;
     result.maxOutputTokens = Number(input.maxOutputTokens);
   }
   if (input.timeoutMs !== undefined) {
