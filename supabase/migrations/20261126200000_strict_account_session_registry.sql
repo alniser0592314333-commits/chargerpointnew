@@ -431,7 +431,7 @@ $clone_restore$;
 REVOKE ALL ON FUNCTION public.restore_selected_business_days__session_guarded_impl(text, jsonb, date[])
   FROM PUBLIC, anon, authenticated, service_role;
 
-CREATE FUNCTION public.restore_selected_business_days(
+CREATE OR REPLACE FUNCTION public.restore_selected_business_days(
   p_bin text,
   p_snapshot jsonb,
   p_business_dates date[]
