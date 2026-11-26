@@ -212,6 +212,8 @@ BEGIN
   IF has_table_privilege('authenticated','public.account_sessions','SELECT') THEN RAISE EXCEPTION 'Authenticated role can read the private session table directly'; END IF;
   IF has_function_privilege('anon','public.get_my_account_sessions()','EXECUTE') THEN RAISE EXCEPTION 'Anonymous role can call account session RPC'; END IF;
   IF has_function_privilege('service_role','public.get_my_admin_login_gate()','EXECUTE')
+     OR has_function_privilege('service_role','public.get_current_admin_profile()','EXECUTE')
+     OR has_function_privilege('service_role','public.current_admin_id()','EXECUTE')
      OR has_function_privilege('service_role','public.is_my_account_session_active()','EXECUTE')
      OR has_function_privilege('service_role','public.is_active_admin_session()','EXECUTE')
      OR has_function_privilege('service_role','public.register_my_account_session(text)','EXECUTE')
