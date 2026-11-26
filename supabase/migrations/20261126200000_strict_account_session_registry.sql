@@ -728,6 +728,17 @@ BEGIN
 END;
 $restrict_current_admin_id$;
 
+-- The admin profile RPC is caller-scoped as well; only an authenticated
+-- application session may resolve its own administrator profile.
+DO $restrict_admin_profile_rpc$
+BEGIN
+  IF to_regprocedure('public.get_current_admin_profile()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.get_current_admin_profile() FROM PUBLIC, anon, service_role;
+    GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
+  END IF;
+END;
+$restrict_admin_profile_rpc$;
+
 REVOKE ALL ON FUNCTION public.get_my_admin_login_gate() FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.get_my_admin_login_gate() TO authenticated;
 DO $revoke_user_admin_identity_rpc$
