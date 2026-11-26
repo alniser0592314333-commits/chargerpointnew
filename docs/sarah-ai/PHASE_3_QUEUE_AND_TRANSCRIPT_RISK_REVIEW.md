@@ -31,3 +31,11 @@ This review is grounded in source inspection of SarahInputQueue, SarahConversati
 - Recovery races re-read the record and tolerate a concurrent state change rather than surfacing it as an unconditional queue failure.
 - Contract tests assert lease bounds and expired-lease recovery. These are source-pattern tests; multi-tab IndexedDB behavioural tests are still outstanding.
 - This code remains unmerged and has not been deployed.
+
+
+## Transcript deletion affordance (branch-only)
+
+- The chat page now includes an account-bound transcript clear action with a user confirmation.
+- It deletes only the current account's transcript and checks the account/operation epoch after the asynchronous deletion before clearing UI state.
+- This is manual deletion, not a retention-expiry policy. Queue records remain separate and are not deleted by this action.
+- Contract test added; pending CI validation.
