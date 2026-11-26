@@ -102,7 +102,7 @@ Deno.serve(async (request: Request) => {
   // registered account session. Never trust an admin ID supplied in the body.
   const { data: profile, error: profileError } = await caller.rpc("get_current_admin_profile");
   if (profileError || !profile || profile.authenticated !== true ||
-    profile.is_admin !== true || profile.is_active === false ||
+    profile.is_admin !== true || profile.is_active !== true ||
     profile.auth_user_id !== authData.user.id) {
     return genericAuthFailure();
   }
@@ -117,9 +117,7 @@ Deno.serve(async (request: Request) => {
 
   const action = normalize(body.action, 32);
   if (action === "read") {
-    const { data, error } = await admin.from("sarah_ai_provider_config")
-      .select("provider_id,model_id,endpoint_url,generation_config,enabled,secret_id,updated_at")
-      .eq("id", "default").maybeSingle();
+    const { data, error } = await caller.rpc("sarah_ai_get_provider_config");
     if (error) return respond(503, { ok: false, error: "CONFIGURATION_UNAVAILABLE" });
     return respond(200, {
       ok: true,
@@ -128,7 +126,7 @@ Deno.serve(async (request: Request) => {
         modelId: data.model_id,
         generationConfig: data.generation_config || {},
         enabled: data.enabled === true,
-        hasApiKey: Boolean(data.secret_id),
+        hasApiKey: data.has_api_key === true,
         updatedAt: data.updated_at,
       } : null,
     });
@@ -149,13 +147,12 @@ Deno.serve(async (request: Request) => {
       return respond(400, { ok: false, error: "INVALID_API_KEY_FORMAT" });
     }
 
-    const { data, error } = await admin.rpc("sarah_ai_save_provider_config", {
+    const { data, error } = await caller.rpc("sarah_ai_save_provider_config", {
       p_provider_id: providerId,
       p_model_id: modelId,
       p_endpoint_url: null,
       p_generation_config: generationConfig,
       p_api_key: apiKey,
-      p_actor_auth_user_id: authData.user.id,
     });
     if (error) {
       const message = String(error.message || "");
@@ -168,14 +165,25 @@ Deno.serve(async (request: Request) => {
   }
 
   if (action === "test") {
-    const { data: configRow, error: configError } = await admin.from("sarah_ai_provider_config")
-      .select("provider_id,model_id,generation_config,enabled")
-      .eq("id", "default").maybeSingle();
+    const { data: configRow, error: configError } = await caller.rpc("sarah_ai_get_provider_config");
     if (configError || !configRow || configRow.enabled !== true) {
       return respond(400, { ok: false, error: "PROVIDER_NOT_CONFIGURED" });
     }
     const adapter = getAIProviderAdapter(configRow.provider_id);
     if (!adapter) return respond(400, { ok: false, error: "PROVIDER_NOT_IMPLEMENTED" });
+
+    const { data: quota, error: quotaError } = await admin.rpc("sarah_ai_consume_quota", {
+      p_actor_auth_user_id: authData.user.id,
+      p_max_requests: 20,
+      p_window_seconds: 3600,
+    });
+    if (quotaError || !quota || quota.allowed !== true) {
+      return respond(quotaError ? 503 : 429, {
+        ok: false,
+        error: quotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_RATE_LIMITED",
+        retryAfterSeconds: 3600,
+      });
+    }
 
     const { data: secret, error: secretError } = await admin.rpc("sarah_ai_get_provider_secret");
     if (secretError || typeof secret !== "string" || !secret) {
@@ -197,7 +205,7 @@ Deno.serve(async (request: Request) => {
   }
 
   if (action === "clear") {
-    const { data, error } = await admin.rpc("sarah_ai_clear_provider_config");
+    const { data, error } = await caller.rpc("sarah_ai_clear_provider_config");
     if (error || data !== true) return respond(503, { ok: false, error: "PROVIDER_CONFIGURATION_CLEAR_FAILED" });
     return respond(200, { ok: true, cleared: true });
   }
