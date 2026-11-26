@@ -2150,12 +2150,13 @@ export const hydrateFromRemoteTables = async (): Promise<boolean> => {
     return updatedAny;
   } catch (err) {
     console.warn('Remote table hydration failed:', err);
+    const failureDetail = err instanceof Error ? err.message : String(err ?? 'Unknown bootstrap error');
     publishStoreBootstrapProgress({
       phase: 'FAILED',
       percent: currentStoreBootstrapProgress.percent,
       completedRows: currentStoreBootstrapProgress.completedRows,
       totalRows: currentStoreBootstrapProgress.totalRows,
-      message: 'فشل تثبيت البيانات. أعد المحاولة؛ لم تُعلَن التهيئة مكتملة.',
+      message: `فشل تثبيت البيانات. لم تُعلَن التهيئة مكتملة. السبب: ${failureDetail.slice(0, 240)}`,
     });
     // A failure before replacement begins is safe for an existing offline cache.
     // After replacement starts, fail closed: callers must not expose partial data.
