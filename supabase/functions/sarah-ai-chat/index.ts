@@ -3,6 +3,7 @@ import { readBoundedRequestBody, readBoundedResponseBody } from "../_shared/http
 
 const MAX_BODY_BYTES = 160 * 1024;
 const MAX_PROVIDER_RESPONSE_BYTES = 128 * 1024;
+const MAX_ASSISTANT_OUTPUT_CHARS = 12_000;
 const headers = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -196,7 +197,8 @@ Deno.serve(async (req) => {
       ? candidateContent.parts as Array<Record<string, unknown>>
       : [];
     if (parts.some((part) => Boolean(part.functionCall))) return "";
-    return parts.map((part) => typeof part.text === "string" ? part.text : "").join("").trim();
+    return parts.map((part) => typeof part.text === "string" ? part.text : "")
+      .join("").trim().slice(0, MAX_ASSISTANT_OUTPUT_CHARS);
   };
 
   try {
