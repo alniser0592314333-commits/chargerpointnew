@@ -16,16 +16,21 @@ BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public._cp_assert_active_admin_permission('customers:view');
 
+  IF p_query IS NULL
+     OR pg_catalog.char_length(p_query) > 64
+     OR p_query ~ '[[:cntrl:]]' THEN
+    RAISE EXCEPTION 'Customer lookup query must be 2 to 64 printable characters'
+      USING ERRCODE = '22023';
+  END IF;
+
   v_query := pg_catalog.regexp_replace(
-    pg_catalog.btrim(COALESCE(p_query, '')),
+    pg_catalog.btrim(p_query),
     '\s+',
     ' ',
     'g'
   );
 
-  IF pg_catalog.char_length(v_query) < 2
-     OR pg_catalog.char_length(v_query) > 64
-     OR v_query ~ '[[:cntrl:]]' THEN
+  IF pg_catalog.char_length(v_query) < 2 THEN
     RAISE EXCEPTION 'Customer lookup query must be 2 to 64 printable characters'
       USING ERRCODE = '22023';
   END IF;
