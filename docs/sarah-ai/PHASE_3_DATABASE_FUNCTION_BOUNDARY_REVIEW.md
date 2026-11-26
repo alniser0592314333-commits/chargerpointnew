@@ -21,3 +21,12 @@ Status: read-only production catalog/body inspection; no data rows queried, no c
 - Service-role execution must never be treated as the conversational actor. The tool bridge needs actor-bound validation and exact permission checks.
 - This is a focused sample, not a full SECURITY DEFINER, grants, view, trigger, schema, or RLS audit. Additional public functions and anonymous QR/customer endpoints remain to be inspected.
 - Production remains unchanged; this document is audit-only.
+
+
+## Anonymous/public endpoint spot-check
+
+- `public_resolve_customer_qr` resolves an active, unexpired bearer QR token and returns only customer name and derived customer code.
+- `public_resolve_order_qr` resolves an active order bearer token and returns a broad order/payment projection, including customer name, item details, paid/due amounts, and the customer's financial balance. This is intended for the public order-QR experience, but represents a higher privacy-impact surface than the customer QR resolver. Keep this endpoint out of Sarah's catalog; review the public QR privacy model, token lifecycle, rate limiting, and whether balance fields are necessary in a separate application security audit.
+- `public_landing_content` returns configured opening hours, active device types/prices, brand assets and charger fee settings for public landing use.
+- `is_system_bootstrapped`/ `check_system_bootstrapped` return a boolean about whether an active Super Admin exists; no account data is exposed by the inspected definitions.
+- This is a definition spot-check; token entropy, rate limiting, storage, expiry policy, and full response handling were not tested end-to-end. No changes were made to these production functions.
