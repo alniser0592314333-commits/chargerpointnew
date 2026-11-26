@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
 import { sarahChatService } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
@@ -19,7 +19,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const operationRef = useRef(0);
 
   // Immediately invalidate all asynchronous work from a previous account.
-  useEffect(() => {
+  useLayoutEffect(() => {
     activeAccountRef.current = session?.userId ?? null;
     operationRef.current += 1;
     setMessages([]);
