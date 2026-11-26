@@ -281,7 +281,7 @@ export const countBootstrapStagedCollection = async (
   return new Promise((resolve, reject) => {
     try {
       const tx = db.transaction('rows', 'readonly');
-      const range = IDBKeyRange.bound(prefix, prefix + '\\uffff');
+      const range = IDBKeyRange.bound(prefix, prefix + '\uffff');
       const request = tx.objectStore('rows').count(range);
       request.onsuccess = () => resolve(Number(request.result || 0));
       request.onerror = () => reject(request.error || new Error('BOOTSTRAP_STAGED_COUNT_FAILED'));
