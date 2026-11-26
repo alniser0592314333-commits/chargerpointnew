@@ -8,8 +8,8 @@ BEGIN
   IF has_table_privilege('authenticated', 'public.sarah_ai_provider_config', 'SELECT') THEN
     RAISE EXCEPTION 'authenticated must not read provider configuration directly';
   END IF;
-  IF NOT has_table_privilege('service_role', 'public.sarah_ai_provider_config', 'SELECT') THEN
-    RAISE EXCEPTION 'service_role must read provider configuration';
+  IF has_table_privilege('service_role', 'public.sarah_ai_provider_config', 'SELECT') THEN
+    RAISE EXCEPTION 'service_role must use the narrow runtime config RPC, not direct table access';
   END IF;
   IF has_function_privilege('anon', 'public.sarah_ai_save_provider_config(text,text,text,jsonb,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'anon must not execute provider save';
@@ -31,6 +31,11 @@ BEGIN
   END IF;
   IF NOT has_function_privilege('service_role', 'public.sarah_ai_get_provider_secret()', 'EXECUTE') THEN
     RAISE EXCEPTION 'service_role must read provider secrets';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.sarah_ai_get_runtime_config()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.sarah_ai_get_runtime_config()', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.sarah_ai_get_runtime_config()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'runtime provider projection grants are incorrect';
   END IF;
   IF NOT has_function_privilege('authenticated', 'public.sarah_ai_clear_provider_config()', 'EXECUTE') THEN
     RAISE EXCEPTION 'authenticated must call the DB-authorized provider clear RPC';
@@ -77,11 +82,21 @@ RESET ROLE;
 SET ROLE service_role;
 SELECT pg_catalog.set_config('request.jwt.claim.role', 'service_role', false);
 DO $secret_read$
-DECLARE v_secret text;
+DECLARE
+  v_secret text;
+  v_config jsonb;
 BEGIN
   v_secret := public.sarah_ai_get_provider_secret();
   IF v_secret <> 'first-test-api-key-01234567890123456789' THEN
     RAISE EXCEPTION 'Vault secret was not stored or retrieved correctly';
+  END IF;
+
+  v_config := public.sarah_ai_get_runtime_config();
+  IF v_config->>'provider_id' <> 'gemini'
+     OR v_config->>'model_id' <> 'gemini-3.8-flash'
+     OR v_config ? 'secret_id'
+     OR v_config ? 'api_key' THEN
+    RAISE EXCEPTION 'Runtime config projection returned an invalid or sensitive field';
   END IF;
 END;
 $secret_read$;
