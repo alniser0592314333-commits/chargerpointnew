@@ -328,6 +328,38 @@ END;
 $$;
 
 
+-- Every admin permission/RLS gate also honors the explicit disabled_at
+-- timestamp, not just the legacy is_active boolean.
+CREATE OR REPLACE FUNCTION public.is_active_admin_session()
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_is_active boolean := false;
+BEGIN
+  IF auth.uid() IS NULL OR public.is_my_account_session_active() IS NOT TRUE
+     OR to_regclass('public.admins') IS NULL THEN
+    RETURN false;
+  END IF;
+
+  EXECUTE 'SELECT EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.auth_user_id = $1
+      AND a.is_active IS TRUE
+      AND a.disabled_at IS NULL
+  )'
+  INTO v_is_active
+  USING auth.uid();
+
+  RETURN COALESCE(v_is_active, false);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.is_active_admin_session() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_active_admin_session() TO authenticated, service_role;
+
 -- Legacy registration endpoint delegates to the same strict policy; it cannot
 -- silently register an old Auth session or bypass the client-type invariant.
 CREATE OR REPLACE FUNCTION public.register_my_account_session(p_user_agent text DEFAULT NULL)
@@ -471,7 +503,7 @@ BEGIN
      OR to_regclass('public.admins') IS NULL THEN
     RETURN NULL;
   END IF;
-  EXECUTE 'SELECT a.id FROM public.admins a WHERE a.auth_user_id = $1 AND a.is_active IS TRUE LIMIT 1'
+  EXECUTE 'SELECT a.id FROM public.admins a WHERE a.auth_user_id = $1 AND a.is_active IS TRUE AND a.disabled_at IS NULL LIMIT 1'
     INTO v_admin_id
     USING auth.uid();
   RETURN v_admin_id;
