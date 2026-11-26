@@ -205,8 +205,8 @@ END
 $bootstrap_privileges$;
 
 SET ROLE authenticated;
-SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000002', false);
-SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000002"}', false);
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000005', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000005"}', false);
 DO $bootstrap_reject_nonowner$
 DECLARE
   v_rejected boolean := false;
@@ -226,6 +226,9 @@ DO $bootstrap_nonowner_no_side_effect$
 BEGIN
   IF EXISTS (SELECT 1 FROM public.admins WHERE role IN ('SUPER_ADMIN', 'Super Admin')) THEN
     RAISE EXCEPTION 'Rejected bootstrap left a Super Admin row behind';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='11000000-0000-0000-0000-000000000005') THEN
+    RAISE EXCEPTION 'Rejected non-owner bootstrap registered an admin session as a side effect';
   END IF;
 END
 $bootstrap_nonowner_no_side_effect$;
