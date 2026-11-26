@@ -91,3 +91,8 @@ A read-only inspection of the live project function definition (no writes) confi
 **Capability gate:** a delegated Read Bridge must not rely on this deployed guard alone for proof of registered application-session state in read-only transactions. It must independently require the matching `account_sessions` row (actor UUID + Auth session UUID), non-revoked state, and non-expired window, alongside fresh permission and ownership checks. A future correction to the live guard itself requires isolated migration tests, explicit approval and production migration authorization; no such migration was executed here.
 
 This is a verified code-definition discrepancy from live read-only catalog inspection, not a test of exploitability or proof that any user accessed unauthorized data. No production changes were made.
+
+
+## Queue recovery compare-and-set remediation — 26 Nov 2026
+
+Branch-only follow-up now changes interrupted-upload recovery to re-read the queue record inside a read-write IndexedDB transaction and recover it only when account ownership, `UPLOADING` state, the previously observed lease timestamp, and lease expiry still match. Concurrent lease renewal or state change becomes a benign no-op instead of a stale transition. A source-contract test asserts this transactional comparison. This code is on PR #326 branch only; CI is queued and behavioral multi-tab tests remain outstanding. No production or operational database changes were performed.
