@@ -121,6 +121,8 @@ AS $function$
   SELECT NULLIF(pg_catalog.current_setting('request.jwt.claim.sub', true), '')::uuid;
 $function$;
 
+CREATE TABLE auth.users (id uuid PRIMARY KEY);
+
 CREATE TABLE auth.sessions (
   id uuid PRIMARY KEY,
   user_id uuid NOT NULL,
@@ -180,6 +182,12 @@ AS $function$
   LIMIT 1;
 $function$;
 GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
+
+INSERT INTO auth.users(id) VALUES
+ ('10000000-0000-4000-8000-000000000001'),
+ ('10000000-0000-4000-8000-000000000002'),
+ ('10000000-0000-4000-8000-000000000003'),
+ ('10000000-0000-4000-8000-000000000004');
 
 INSERT INTO public.admins(id,auth_user_id,role,is_active,disabled_at) VALUES
  ('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','SUPER_ADMIN',true,NULL),
