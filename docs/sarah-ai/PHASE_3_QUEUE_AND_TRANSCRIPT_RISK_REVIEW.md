@@ -46,3 +46,11 @@ This review is grounded in source inspection of SarahInputQueue, SarahConversati
 - The transcript store now uses an IndexedDB metadata tombstone per account when clearing history.
 - Saves read that tombstone inside the same read/write transaction and suppress snapshots older than the clear marker, preventing delayed prior saves from resurrecting deleted transcript content.
 - Contract checks cover the tombstone transaction and timestamp guard; this still needs a browser IndexedDB behavioral race test.
+
+
+## Completed queue retention improvement (branch-only)
+
+- Added account-scoped pruning of completed queue records older than 30 days, with a bounded retention setting and a second per-record check inside the write transaction.
+- Pruning never deletes queued, uploading, interrupted, or waiting records; it only targets COMPLETED rows belonging to the current account and older than the cutoff.
+- Pruning is best-effort and does not block normal queue refresh/visibility if retention cleanup fails.
+- Added contract assertions. Behavioural IndexedDB testing remains outstanding; CI is the next validation step.
