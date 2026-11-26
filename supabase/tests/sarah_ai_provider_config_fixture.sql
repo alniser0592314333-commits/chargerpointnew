@@ -306,9 +306,6 @@ INSERT INTO public.customers(id,name,phone,balance,is_active,deleted_at,status) 
  ('dddd0000-0000-4000-8000-000000000001','أحمد محذوف','0599000009',5,true,now(),'DELETED'),
  ('eeee0000-0000-4000-8000-000000000001',E'اسم\\nاختبار','0599000010',5,true,NULL,'ACTIVE');
 
-INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
-VALUES ('00000000-0000-4000-8000-000000000002','ai:manage',true);
-
 INSERT INTO auth.users(id) VALUES
  ('10000000-0000-4000-8000-000000000001'),
  ('10000000-0000-4000-8000-000000000002'),
@@ -322,6 +319,9 @@ INSERT INTO public.admins(id,auth_user_id,role,is_active,disabled_at) VALUES
  ('00000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003','SUPER_ADMIN',false,NULL),
  ('00000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000004','SUPER_ADMIN',true,NULL),
  ('00000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000006','SUPER_ADMIN',true,now());
+
+INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
+VALUES ('00000000-0000-4000-8000-000000000002','ai:manage',true);
 
 INSERT INTO auth.sessions(id,user_id,created_at,not_after,user_agent) VALUES
  ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',now(),NULL,'super admin'),
