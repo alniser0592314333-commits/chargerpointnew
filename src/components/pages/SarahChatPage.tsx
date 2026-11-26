@@ -5,6 +5,7 @@ import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
 import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
 import { sarahConversationStore } from "../../application/ai/sarahConversationStore";
+import { SarahAccountOperationScope } from "../../application/ai/sarahAccountOperationScope";
 
 type Message = { role: "user" | "assistant"; text: string };
 
@@ -15,14 +16,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [error, setError] = useState("");
   const [pending, setPending] = useState<SarahInputRecord[]>([]);
   const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);
-  const activeAccountRef = useRef<string | null>(session?.userId ?? null);
-  const operationRef = useRef(0);
+  const accountScopeRef = useRef(new SarahAccountOperationScope(session?.userId ?? null));
   const conversationGenerationRef = useRef(0);
 
   // Immediately invalidate all asynchronous work from a previous account.
   useLayoutEffect(() => {
-    activeAccountRef.current = session?.userId ?? null;
-    operationRef.current += 1;
+    accountScopeRef.current.switchTo(session?.userId ?? null);
     setMessages([]);
     setText("");
     setBusy(false);
@@ -32,12 +31,14 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   }, [session?.userId]);
 
   const isCurrent = (accountId: string, operation?: number) =>
-    activeAccountRef.current === accountId && (operation === undefined || operationRef.current === operation);
+    operation === undefined
+      ? accountScopeRef.current.isCurrentAccount(accountId)
+      : accountScopeRef.current.isCurrent({ accountId, generation: operation });
 
   useEffect(() => {
     const accountId = session?.userId;
     if (!accountId) return;
-    const operation = operationRef.current;
+    const operation = accountScopeRef.current.generation;
     let cancelled = false;
     void sarahConversationStore.load(accountId).then((snapshot) => {
       if (!cancelled && isCurrent(accountId, operation)) {
@@ -69,10 +70,10 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   useEffect(() => {
     const accountId = session?.userId;
-    if (!accountId || hydratedAccount !== accountId || activeAccountRef.current !== accountId) return;
+    if (!accountId || hydratedAccount !== accountId || !accountScopeRef.current.isCurrentAccount(accountId)) return;
     // Save only the transcript explicitly hydrated for this identity.
     void sarahConversationStore.save(accountId, messages, conversationGenerationRef.current).catch((err) => {
-      if (activeAccountRef.current === accountId) setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED");
+      if (accountScopeRef.current.isCurrentAccount(accountId)) setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED");
     });
   }, [messages, session?.userId, hydratedAccount]);
 
@@ -91,7 +92,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   useEffect(() => {
     const accountId = session?.userId;
     if (!accountId) return;
-    const operation = operationRef.current;
+    const operation = accountScopeRef.current.generation;
     void refreshQueue(accountId, operation);
   }, [session?.userId]);
 
@@ -100,8 +101,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const send = async () => {
     const accountId = session?.userId;
     const clean = text.trim();
-    if (!clean || busy || !canUse || !accountId || activeAccountRef.current !== accountId || hydratedAccount !== accountId) return;
-    const operation = operationRef.current;
+    if (!clean || busy || !canUse || !accountId || !accountScopeRef.current.isCurrentAccount(accountId) || hydratedAccount !== accountId) return;
+    const operation = accountScopeRef.current.generation;
     const historySnapshot = messages.slice(-20);
     setText("");
     setError("");
@@ -148,9 +149,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   const clearTranscript = async () => {
     const accountId = session?.userId;
-    if (!accountId || busy || hydratedAccount !== accountId || activeAccountRef.current !== accountId) return;
+    if (!accountId || busy || hydratedAccount !== accountId || !accountScopeRef.current.isCurrentAccount(accountId)) return;
     if (!window.confirm("مسح سجل المحادثة لهذا الحساب فقط؟")) return;
-    const operation = operationRef.current;
+    const operation = accountScopeRef.current.generation;
     try {
       const nextGeneration = await sarahConversationStore.clear(accountId);
       if (!isCurrent(accountId, operation)) return;
@@ -164,8 +165,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   const retryQueued = async (record: SarahInputRecord) => {
     const accountId = session?.userId;
-    if (!accountId || busy || !navigator.onLine || activeAccountRef.current !== accountId || record.actorAccountId !== accountId || !record.text || hydratedAccount !== accountId) return;
-    const operation = operationRef.current;
+    if (!accountId || busy || !navigator.onLine || !accountScopeRef.current.isCurrentAccount(accountId) || record.actorAccountId !== accountId || !record.text || hydratedAccount !== accountId) return;
+    const operation = accountScopeRef.current.generation;
     setBusy(true); setError("");
     try {
       if (record.state === "NEEDS_ATTENTION" || record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(accountId, record.id, "READY_TO_SEND");
@@ -213,7 +214,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       </form>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button type="button" disabled={busy || hydratedAccount !== session?.userId} onClick={() => void clearTranscript()} className="text-xs text-red-600 underline disabled:opacity-40">مسح سجل المحادثة</button>
-        <button type="button" onClick={() => session?.userId && void refreshQueue(session.userId, operationRef.current)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
+        <button type="button" onClick={() => session?.userId && void refreshQueue(session.userId, accountScopeRef.current.generation)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
       </div>
       <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
     </section>
