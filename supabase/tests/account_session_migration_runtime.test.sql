@@ -52,6 +52,15 @@ BEGIN
 END $assert$;
 ROLLBACK;
 
+-- Seed the two already-registered sessions. Listing sessions must not create
+-- registry rows as a side effect.
+INSERT INTO public.account_sessions(
+  session_id,user_id,user_agent,created_at,last_seen_at,client_type,session_expires_at
+)
+SELECT id,user_id,user_agent,created_at,updated_at,'browser',now()+interval '7 days'
+FROM auth.sessions
+WHERE user_id='11111111-1111-4111-8111-111111111111';
+
 -- User one sees only own sessions, and the current one is marked correctly.
 SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}',false);
@@ -204,18 +213,33 @@ BEGIN
 END $assert$;
 
 -- An Auth session without an account_sessions registry row is never an
--- active application session, including inside a read-only transaction.
+-- active application session, including inside a read-only transaction. The
+-- session-list RPC must also be read-only and must not auto-register other rows.
 INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
 VALUES ('ffffffff-ffff-4fff-8fff-ffffffffffff','11111111-1111-4111-8111-111111111111',now(),now(),NULL,'Unregistered session');
-SELECT set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd"}',false);
+SELECT public.get_my_account_sessions();
+DO $assert$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='ffffffff-ffff-4fff-8fff-ffffffffffff') THEN
+    RAISE EXCEPTION 'Session listing auto-registered another Auth session';
+  END IF;
+END $assert$;
+
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"ffffffff-ffff-4fff-8fff-ffffffffffff"}',false);
 DO $assert$
 BEGIN
   IF public.is_my_account_session_active() IS NOT FALSE THEN
     RAISE EXCEPTION 'A valid but unregistered Auth session must fail closed';
   END IF;
+  BEGIN
+    PERFORM public.get_my_account_sessions();
+    RAISE EXCEPTION 'An unregistered session unexpectedly listed account sessions';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
   IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='ffffffff-ffff-4fff-8fff-ffffffffffff') THEN
-    RAISE EXCEPTION 'The read-only session guard unexpectedly auto-registered an account session';
+    RAISE EXCEPTION 'Session listing unexpectedly auto-registered the current session';
   END IF;
 END $assert$;
 BEGIN;
@@ -230,7 +254,8 @@ BEGIN
 END $assert$;
 ROLLBACK;
 
--- A stale, unregistered Auth session cannot self-register through the public RPC.
+-- Both the current and legacy registration RPCs reject stale unregistered Auth
+-- sessions, preventing an alternate registration path around the strict guard.
 INSERT INTO auth.sessions(id,user_id,created_at,updated_at,not_after,user_agent)
 VALUES ('abababab-abab-4bab-8bab-abababababab','11111111-1111-4111-8111-111111111111',now()-interval '1 day',now(),NULL,'Old unregistered session');
 SELECT set_config('request.jwt.claims','{"sub":"11111111-1111-4111-8111-111111111111","session_id":"abababab-abab-4bab-8bab-abababababab"}',false);
@@ -238,7 +263,13 @@ DO $assert$
 BEGIN
   BEGIN
     PERFORM public.register_my_account_session_v2('Browser', 'native');
-    RAISE EXCEPTION 'A stale unregistered Auth session unexpectedly registered itself';
+    RAISE EXCEPTION 'A stale unregistered Auth session unexpectedly registered itself through v2';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM public.register_my_account_session('Browser');
+    RAISE EXCEPTION 'A stale unregistered Auth session unexpectedly registered itself through the legacy RPC';
   EXCEPTION WHEN SQLSTATE '28000' THEN
     NULL;
   END;
