@@ -46,7 +46,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("MAX_BODY_BYTES");
     expect(source).toContain("safeText(body.text, 20000)");
     expect(source).toContain("historyChars > 12000");
-    expect(source).toContain("item.text.length > 6000");
+    expect(source).toContain(").text as string).length > 6000");
     expect(source).toContain("AbortController");
     expect(source).toContain("maxOutputTokens");
     expect(source).toContain("x-goog-api-key");
