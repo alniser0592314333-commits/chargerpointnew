@@ -45,8 +45,9 @@ STABLE
 SET search_path = ''
 AS $function$
   SELECT pg_catalog.jsonb_build_object(
-    'role',
-    pg_catalog.current_setting('request.jwt.claim.role', true)
+    'role', pg_catalog.current_setting('request.jwt.claim.role', true),
+    'sub', pg_catalog.current_setting('request.jwt.claim.sub', true),
+    'session_id', pg_catalog.current_setting('request.jwt.claim.session_id', true)
   );
 $function$;
 
@@ -110,3 +111,89 @@ GRANT EXECUTE ON FUNCTION vault.create_secret(text, text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION vault.update_secret(uuid, text, text, text) TO service_role;
 GRANT SELECT ON vault.decrypted_secrets TO service_role;
 GRANT DELETE ON vault.secrets TO service_role;
+
+CREATE OR REPLACE FUNCTION auth.uid()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $function$
+  SELECT NULLIF(pg_catalog.current_setting('request.jwt.claim.sub', true), '')::uuid;
+$function$;
+
+CREATE TABLE auth.sessions (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  not_after timestamptz,
+  user_agent text
+);
+
+CREATE TABLE public.admins (
+  id uuid PRIMARY KEY,
+  auth_user_id uuid UNIQUE NOT NULL,
+  role text NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  disabled_at timestamptz
+);
+
+CREATE TABLE public.account_sessions (
+  session_id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,
+  revoked_at timestamptz,
+  session_expires_at timestamptz NOT NULL
+);
+
+CREATE OR REPLACE FUNCTION public.get_current_admin_profile()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT pg_catalog.jsonb_build_object(
+    'authenticated', true,
+    'is_admin', true,
+    'is_active', a.is_active AND a.disabled_at IS NULL,
+    'admin_id', a.id,
+    'auth_user_id', a.auth_user_id,
+    'role', a.role,
+    'permissions', COALESCE((
+      SELECT pg_catalog.jsonb_agg(rp.permission)
+      FROM public.role_permissions rp
+      WHERE rp.role = a.role
+    ), '[]'::jsonb)
+  )
+  FROM public.admins a
+  JOIN public.account_sessions app_session
+    ON app_session.user_id = a.auth_user_id
+   AND app_session.session_id = NULLIF(auth.jwt()->>'session_id','')::uuid
+   AND app_session.revoked_at IS NULL
+   AND app_session.session_expires_at > now()
+  JOIN auth.sessions auth_session
+    ON auth_session.id = app_session.session_id
+   AND auth_session.user_id = a.auth_user_id
+   AND (auth_session.not_after IS NULL OR auth_session.not_after > now())
+  WHERE a.auth_user_id = auth.uid()
+    AND a.is_active IS TRUE
+    AND a.disabled_at IS NULL
+  LIMIT 1;
+$function$;
+GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
+
+INSERT INTO public.admins(id,auth_user_id,role,is_active,disabled_at) VALUES
+ ('00000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','SUPER_ADMIN',true,NULL),
+ ('00000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002','MANAGER',true,NULL),
+ ('00000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003','SUPER_ADMIN',false,NULL),
+ ('00000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000004','SUPER_ADMIN',true,NULL);
+
+INSERT INTO auth.sessions(id,user_id,created_at,not_after,user_agent) VALUES
+ ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',now(),NULL,'super admin'),
+ ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002',now(),NULL,'manager'),
+ ('20000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003',now(),NULL,'inactive admin'),
+ ('20000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000004',now(),NULL,'unregistered admin');
+
+INSERT INTO public.account_sessions(session_id,user_id,revoked_at,session_expires_at) VALUES
+ ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',NULL,now()+interval '7 days'),
+ ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002',NULL,now()+interval '7 days'),
+ ('20000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000003',NULL,now()+interval '7 days');
