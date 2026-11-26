@@ -77,3 +77,8 @@ Implementation gates:
 4. Avoid forwarding Gemini-supplied IDs, filters, column names, SQL, permission codes or table names.
 5. Test direct RPC invocation independently from the chat/UI, including denied actor, revoked session, permission revoked, spoofing and malformed input. Also test Edge Function forwarding and prove the tool cannot use service role.
 6. Keep the tool disabled until these tests and CI run. This is not yet implemented.
+
+
+## Additional read-only session-guard edge case — 26 Nov 2026
+
+Live definition review of `public.is_my_account_session_active()` identified a read-only transaction branch: when the JWT has an Auth session but no corresponding `account_sessions` row, the function returns `true` if `transaction_read_only = 'on'` instead of creating the application-session row. This appears intended to accommodate read-only contexts, but it means this helper alone is not sufficient proof of registered application-session state for a Sarah read-capability boundary. The proposed bridge must explicitly test and resolve this behavior (including the exact transaction mode used by the RPC) and independently verify the matching account_sessions row, user/session IDs, expiry and revocation, without weakening existing global session logic or changing production. Direct adversarial behavioral tests are required before capability enablement. This is a catalog/body observation, not proof of a live exploitable path through Sarah, which currently has no operational read tools.
