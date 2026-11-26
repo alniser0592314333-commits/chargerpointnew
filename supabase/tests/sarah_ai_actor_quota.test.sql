@@ -138,6 +138,17 @@ BEGIN
   END;
 END;
 $unregistered$;
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000006',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000006',false);
+DO $disabled_admin$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_consume_my_quota('hour');
+    RAISE EXCEPTION 'Disabled admin unexpectedly consumed chat quota';
+  EXCEPTION WHEN invalid_authorization_specification THEN NULL;
+  END;
+END;
+$disabled_admin$;
 RESET ROLE;
 
 DO $priv$
