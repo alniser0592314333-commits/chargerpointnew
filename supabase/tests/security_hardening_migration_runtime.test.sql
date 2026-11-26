@@ -67,6 +67,21 @@ BEGIN
   IF public.is_active_admin_session() IS NOT FALSE THEN
     RAISE EXCEPTION 'Admin with disabled_at timestamp retained active admin authorization';
   END IF;
+  BEGIN
+    PERFORM public.assert_my_account_session_active();
+    RAISE EXCEPTION 'Shared authorization guard accepted a disabled admin';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM public.get_current_admin_profile();
+    RAISE EXCEPTION 'Admin profile RPC accepted a disabled admin';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  IF public.current_purchase_admin_id() IS NOT NULL THEN
+    RAISE EXCEPTION 'Disabled admin retained current purchase-admin identity';
+  END IF;
   IF (SELECT count(*) FROM public.customers) <> 0 THEN
     RAISE EXCEPTION 'Disabled admin retained protected customer read access';
   END IF;
