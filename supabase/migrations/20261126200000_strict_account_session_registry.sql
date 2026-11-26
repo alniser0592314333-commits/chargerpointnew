@@ -47,7 +47,7 @@ DECLARE
   v_user_id uuid := auth.uid();
   v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
   v_account_session public.account_sessions%ROWTYPE;
-  v_admin_disabled boolean := false;
+  v_is_active_admin boolean := false;
 BEGIN
   IF v_user_id IS NULL OR v_session_id IS NULL THEN
     RETURN false;
@@ -79,17 +79,21 @@ BEGIN
     RETURN false;
   END IF;
 
-  -- Admin disablement is an authorization revocation, even if the Auth token
-  -- and account_sessions row have not yet expired or been revoked.
-  IF to_regclass('public.admins') IS NOT NULL THEN
-    EXECUTE 'SELECT EXISTS (
-      SELECT 1 FROM public.admins a
-      WHERE a.auth_user_id = $1
-        AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
-    )' INTO v_admin_disabled USING v_user_id;
-    IF v_admin_disabled THEN
-      RETURN false;
-    END IF;
+  -- The account_sessions registry is administrator-only. Require a
+  -- currently active admin record, not merely the absence of a disabled row.
+  -- This also fails closed if the admin relation is missing or the Auth user
+  -- has no matching admin identity.
+  IF to_regclass('public.admins') IS NULL THEN
+    RETURN false;
+  END IF;
+  EXECUTE 'SELECT EXISTS (
+    SELECT 1 FROM public.admins a
+    WHERE a.auth_user_id = $1
+      AND a.is_active IS TRUE
+      AND a.disabled_at IS NULL
+  )' INTO v_is_active_admin USING v_user_id;
+  IF NOT v_is_active_admin THEN
+    RETURN false;
   END IF;
 
   RETURN true;
