@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 
 const MAX_BODY_BYTES = 24 * 1024;
 const headers = {
@@ -36,11 +37,17 @@ Deno.serve(async (req) => {
   }
 
   const declared = Number(req.headers.get("content-length") || 0);
-  if (declared > MAX_BODY_BYTES) return respond(400, { ok: false, error: "REQUEST_TOO_LARGE" });
-  const raw = await req.text();
-  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
-    return respond(400, { ok: false, error: "REQUEST_TOO_LARGE" });
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
   }
+  let rawBytes: Uint8Array | null;
+  try {
+    rawBytes = await readBoundedRequestBody(req, MAX_BODY_BYTES);
+  } catch {
+    return respond(400, { ok: false, error: "INVALID_REQUEST_BODY" });
+  }
+  if (rawBytes === null) return respond(413, { ok: false, error: "REQUEST_TOO_LARGE" });
+  const raw = new TextDecoder().decode(rawBytes);
 
   let body: Record<string, unknown>;
   try {
