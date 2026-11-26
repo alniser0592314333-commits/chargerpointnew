@@ -39,6 +39,8 @@ describe("Sarah AI provider settings security contract", () => {
     expect(migration).toContain("maxOutputTokens must be an integer");
     expect(migration).toContain("maxOutputTokens must be between 1 and 4096");
     expect(edgeFunction).toContain("Number(input.maxOutputTokens) > 4096");
+    expect(edgeFunction).toContain("readBoundedRequestBody(request, MAX_BODY_BYTES)");
+    expect(edgeFunction).not.toContain("request.text()");
     expect(migration).toContain("timeoutMs must be between 5000 and 120000");
   });
 
