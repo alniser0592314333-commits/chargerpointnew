@@ -6,12 +6,9 @@ RUN_ID_NUM="${GITHUB_RUN_ID:-${RANDOM}}"
 RUN_ATTEMPT_NUM="${GITHUB_RUN_ATTEMPT:-1}"
 RUN_SUFFIX="${RUN_ID_NUM}_${RUN_ATTEMPT_NUM}"
 PORT_OFFSET=$(( (RUN_ID_NUM + RUN_ATTEMPT_NUM) % 900 ))
-BASE_PORT=$((54000 + PORT_OFFSET * 6))
+BASE_PORT=$((54000 + PORT_OFFSET * 2))
 API_PORT=$BASE_PORT
 DB_PORT=$((BASE_PORT + 1))
-STUDIO_PORT=$((BASE_PORT + 2))
-INBUCKET_PORT=$((BASE_PORT + 3))
-ANALYTICS_PORT=$((BASE_PORT + 4))
 WORKDIR="${RUNNER_TEMP:-/tmp}/chargerpointnew-username-signin-integration-${RUN_SUFFIX}"
 mkdir -p "$WORKDIR/supabase/migrations" "$WORKDIR/supabase/functions/sign-in-by-username"
 
@@ -40,13 +37,13 @@ port = ${DB_PORT}
 major_version = 17
 
 [studio]
-port = ${STUDIO_PORT}
+enabled = false
 
 [inbucket]
-port = ${INBUCKET_PORT}
+enabled = false
 
 [analytics]
-port = ${ANALYTICS_PORT}
+enabled = false
 
 [auth]
 enabled = true
