@@ -39,3 +39,16 @@ A catalog query enumerated public SECURITY DEFINER routines with argument signat
 - Several sync/bootstrap/snapshot routines are broad-data projections; they are excluded from Sarah's conversational capabilities pending exact field scope and actor checks.
 - The query is a metadata inventory only. It did not read business data or modify catalog state.
 - Further full-body/ACL testing is still required before any scoped data tool is approved for Sarah.
+
+## Expanded grant and routine review (read-only)
+
+- Enumerated public SECURITY DEFINER functions and effective EXECUTE for `anon` and `authenticated`. The direct anonymous execute surface is limited to intended public bootstrap-status, app-identity/landing, QR/payment token endpoints in this catalog result; no other anonymous SECURITY DEFINER routine surfaced in the enumerated list.
+- Public direct table privileges for `anon` or `authenticated` are limited to `app_release_policies` in the table catalog query. Its public read policy and Super Admin insert/update policies were reviewed.
+- Public schema views/materialized views catalog query returned no entries.
+- Purchase Book tables' policies enforce `admin_id = current_purchase_admin_id()`, which is an owner-bound scope; the current purchase identity function's body/grant should still be included in a dedicated behavioral adversarial test.
+- The sync entrypoints `begin_sync_bootstrap` and `read_sync_bootstrap_page` require active admin session and `sync:manage`; their dynamic table allow-list and paging are synchronization-only, not Sarah capabilities. They return potentially broad records and should not be repurposed.
+- `get_effective_permissions(p_admin_id)` checks the caller's current admin permission and requires admin:manage for another admin's permissions; its internal implementation is not directly executable by browser roles.
+
+## Gateway operational gap identified
+
+The current `sarah-ai-chat` Edge Function validates user identity, active admin profile and `ai:use`, and restricts request/history sizes. However, the reviewed gateway has no durable server-side per-actor rate/quota limiter before calling Gemini. A dedicated limiter needs an authenticated-actor key, bounded policy, atomic database enforcement, service-role-only internal access, and abuse/denial tests. Do not implement a weak in-memory limiter or reuse customer-login rate limits. This is a follow-up security gate before broader or higher-cost capabilities.
