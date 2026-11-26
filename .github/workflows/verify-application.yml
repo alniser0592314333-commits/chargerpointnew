@@ -148,6 +148,11 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/wallet_management_security_contract.test.ts src/tests/wallet_activation_flow_contract.test.ts
+      - name: Run Sarah AI provider settings security contracts
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/sarah_ai_settings_contract.test.ts
 
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
@@ -167,6 +172,10 @@ jobs:
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/customer-account/index.ts
       - name: Type-check isolated wallet management Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/wallet-service/index.ts
+      - name: Type-check Sarah AI provider settings Edge Function
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sarah-ai-settings/index.ts
+      - name: Test provider-neutral Gemini adapter
+        run: deno test --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/_shared/ai/geminiProviderAdapter_test.ts
       - name: Type-check shared business-hours Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/business-hours/index.ts
       - name: Type-check authenticated debt reminder Edge Function
@@ -1265,3 +1274,38 @@ jobs:
           github-token: ${{ github.token }}
       - name: Run isolated local Supabase Auth integration
         run: bash supabase/tests/username_signin_local_integration.sh
+
+  verify-sarah-ai-provider-migration:
+    name: Verify Sarah AI provider migration in isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare isolated Supabase Vault fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_provider_config_fixture.sql
+      - name: Apply Sarah AI provider configuration migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261124130000_sarah_ai_provider_configuration.sql
+      - name: Verify secret storage, rotation, deletion, and grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_provider_config.test.sql

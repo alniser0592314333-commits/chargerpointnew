@@ -54,3 +54,6 @@ verify_jwt = false
 
 [functions.customer-portal-events]
 verify_jwt = false
+
+[functions.sarah-ai-settings]
+verify_jwt = false

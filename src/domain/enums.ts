@@ -41,4 +41,6 @@ export type Permission =
   | 'goals:view'
   | 'goals:manage'
   | 'goals:request'
-  | 'goals:approve';
+  | 'goals:approve'
+  | 'ai:use'
+  | 'ai:manage';
