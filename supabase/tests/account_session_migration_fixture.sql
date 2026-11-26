@@ -136,3 +136,18 @@ AS $setof$
 $setof$;
 REVOKE ALL ON FUNCTION public.fixture_sensitive_setof() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.fixture_sensitive_setof() TO authenticated;
+
+-- Stub the destructive day-restore RPC so the session migration test can prove
+-- that its public wrapper rejects stale/unregistered callers before delegation.
+CREATE FUNCTION public.restore_selected_business_days(
+  p_bin text, p_snapshot jsonb, p_business_dates date[]
+)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT jsonb_build_object('success', true);
+$$;
+REVOKE ALL ON FUNCTION public.restore_selected_business_days(text,jsonb,date[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.restore_selected_business_days(text,jsonb,date[]) TO authenticated, service_role;
