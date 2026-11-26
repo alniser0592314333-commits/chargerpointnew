@@ -45,6 +45,8 @@ describe("Sarah AI provider settings security contract", () => {
     expect(migration).toContain("sarah_ai_assert_manage_permission");
     expect(migration).toContain('public.get_current_admin_profile()');
     expect(migration).toContain("AI_MANAGE_PERMISSION_REQUIRED");
+    expect(adminManagementPage).toContain('key: "ai:use"');
+    expect(adminManagementPage).toContain('key: "ai:manage"');
     expect(migration).toContain("disabled_at IS NOT NULL");
     expect(migration).toContain("sarah_ai_get_runtime_config");
     expect(migration).toContain("pg_advisory_xact_lock");
