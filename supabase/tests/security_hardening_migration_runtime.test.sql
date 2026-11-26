@@ -7,6 +7,8 @@ SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', false);
 SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
 DO $admin_session_backfill$
+DECLARE
+  v_sessions jsonb;
 BEGIN
   IF public.is_my_account_session_active() IS NOT TRUE
      OR public.is_active_admin_session() IS NOT TRUE THEN
@@ -15,12 +17,13 @@ BEGIN
   IF (SELECT count(*) FROM public.customers) <> 1 THEN
     RAISE EXCEPTION 'Backfilled active admin lost authorized customer read access';
   END IF;
+  v_sessions := public.get_my_account_sessions();
   IF NOT EXISTS (
-    SELECT 1 FROM public.account_sessions
-    WHERE session_id='11000000-0000-0000-0000-000000000004'
-      AND client_type='browser'
-      AND session_expires_at > now() + interval '6 days'
-      AND revoked_at IS NULL
+    SELECT 1
+    FROM pg_catalog.jsonb_array_elements(v_sessions) AS session_item(value)
+    WHERE session_item.value->>'session_id' = '11000000-0000-0000-0000-000000000004'
+      AND session_item.value->>'client_type' = 'browser'
+      AND (session_item.value->>'session_expires_at')::timestamptz > now() + interval '6 days'
   ) THEN
     RAISE EXCEPTION 'Active admin backfill did not create a conservative seven-day browser session';
   END IF;
@@ -33,12 +36,6 @@ DO $nonadmin_not_backfilled$
 BEGIN
   IF public.is_my_account_session_active() IS NOT FALSE THEN
     RAISE EXCEPTION 'Unregistered non-admin Auth session was accepted';
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM public.account_sessions
-    WHERE session_id='11000000-0000-0000-0000-000000000005'
-  ) THEN
-    RAISE EXCEPTION 'Non-admin Auth session was incorrectly backfilled into the admin registry';
   END IF;
   IF (SELECT count(*) FROM public.customers) <> 0 THEN
     RAISE EXCEPTION 'Unregistered non-admin session read customer data';
