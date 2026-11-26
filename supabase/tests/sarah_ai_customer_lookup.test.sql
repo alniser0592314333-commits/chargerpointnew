@@ -56,6 +56,12 @@ BEGIN
     RAISE EXCEPTION 'No-match customer lookup returned data';
   END IF;
 
+  v_result := public.sarah_ai_lookup_customers('اسم');
+  IF v_result->'matches'->0->>'customer_name' <> 'اسم اختبار'
+     OR (v_result->'matches'->0->>'customer_name') ~ '[[:cntrl:]]' THEN
+    RAISE EXCEPTION 'Customer name control characters were not sanitized';
+  END IF;
+
   BEGIN
     PERFORM public.sarah_ai_lookup_customers('A');
     RAISE EXCEPTION 'One-character query was accepted';
