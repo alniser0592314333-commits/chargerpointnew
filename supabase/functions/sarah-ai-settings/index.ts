@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 import { getAIProviderAdapter } from "../_shared/ai/providerRegistry.ts";
 import type { AIProviderGenerationConfig } from "../_shared/ai/providerTypes.ts";
 
@@ -44,7 +45,7 @@ const parseGenerationConfig = (value: unknown): GenerationConfig | null => {
   }
   if (input.maxOutputTokens !== undefined) {
     if (!Number.isInteger(input.maxOutputTokens) ||
-      Number(input.maxOutputTokens) < 1 || Number(input.maxOutputTokens) > 65536) return null;
+      Number(input.maxOutputTokens) < 1 || Number(input.maxOutputTokens) > 4096) return null;
     result.maxOutputTokens = Number(input.maxOutputTokens);
   }
   if (input.timeoutMs !== undefined) {
@@ -61,11 +62,16 @@ const parseGenerationConfig = (value: unknown): GenerationConfig | null => {
 
 const readRequestBody = async (request: Request): Promise<Json | null> => {
   const declaredLength = Number(request.headers.get("content-length") || 0);
-  if (declaredLength > MAX_BODY_BYTES) return null;
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) return null;
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) return null;
+  let bytes: Uint8Array | null;
   try {
-    const parsed = JSON.parse(body);
+    bytes = await readBoundedRequestBody(request, MAX_BODY_BYTES);
+  } catch {
+    return null;
+  }
+  if (bytes === null) return null;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Json : null;
   } catch {
     return null;
@@ -102,7 +108,7 @@ Deno.serve(async (request: Request) => {
   // registered account session. Never trust an admin ID supplied in the body.
   const { data: profile, error: profileError } = await caller.rpc("get_current_admin_profile");
   if (profileError || !profile || profile.authenticated !== true ||
-    profile.is_admin !== true || profile.is_active === false ||
+    profile.is_admin !== true || profile.is_active !== true ||
     profile.auth_user_id !== authData.user.id) {
     return genericAuthFailure();
   }
@@ -117,9 +123,7 @@ Deno.serve(async (request: Request) => {
 
   const action = normalize(body.action, 32);
   if (action === "read") {
-    const { data, error } = await admin.from("sarah_ai_provider_config")
-      .select("provider_id,model_id,endpoint_url,generation_config,enabled,secret_id,updated_at")
-      .eq("id", "default").maybeSingle();
+    const { data, error } = await caller.rpc("sarah_ai_get_provider_config");
     if (error) return respond(503, { ok: false, error: "CONFIGURATION_UNAVAILABLE" });
     return respond(200, {
       ok: true,
@@ -128,7 +132,7 @@ Deno.serve(async (request: Request) => {
         modelId: data.model_id,
         generationConfig: data.generation_config || {},
         enabled: data.enabled === true,
-        hasApiKey: Boolean(data.secret_id),
+        hasApiKey: data.has_api_key === true,
         updatedAt: data.updated_at,
       } : null,
     });
@@ -149,13 +153,12 @@ Deno.serve(async (request: Request) => {
       return respond(400, { ok: false, error: "INVALID_API_KEY_FORMAT" });
     }
 
-    const { data, error } = await admin.rpc("sarah_ai_save_provider_config", {
+    const { data, error } = await caller.rpc("sarah_ai_save_provider_config", {
       p_provider_id: providerId,
       p_model_id: modelId,
       p_endpoint_url: null,
       p_generation_config: generationConfig,
       p_api_key: apiKey,
-      p_actor_auth_user_id: authData.user.id,
     });
     if (error) {
       const message = String(error.message || "");
@@ -168,14 +171,30 @@ Deno.serve(async (request: Request) => {
   }
 
   if (action === "test") {
-    const { data: configRow, error: configError } = await admin.from("sarah_ai_provider_config")
-      .select("provider_id,model_id,generation_config,enabled")
-      .eq("id", "default").maybeSingle();
+    const { data: configRow, error: configError } = await caller.rpc("sarah_ai_get_provider_config");
     if (configError || !configRow || configRow.enabled !== true) {
       return respond(400, { ok: false, error: "PROVIDER_NOT_CONFIGURED" });
     }
     const adapter = getAIProviderAdapter(configRow.provider_id);
     if (!adapter) return respond(400, { ok: false, error: "PROVIDER_NOT_IMPLEMENTED" });
+
+    const { data: quota, error: quotaError } = await caller.rpc("sarah_ai_consume_my_manage_quota", { p_period: "hour" });
+    if (quotaError || !quota || quota.allowed !== true) {
+      return respond(quotaError ? 503 : 429, {
+        ok: false,
+        error: quotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_RATE_LIMITED",
+        retryAfterSeconds: 3600,
+      });
+    }
+
+    const { data: dailyQuota, error: dailyQuotaError } = await caller.rpc("sarah_ai_consume_my_manage_quota", { p_period: "day" });
+    if (dailyQuotaError || !dailyQuota || dailyQuota.allowed !== true) {
+      return respond(dailyQuotaError ? 503 : 429, {
+        ok: false,
+        error: dailyQuotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_DAILY_LIMIT_REACHED",
+        retryAfterSeconds: 86400,
+      });
+    }
 
     const { data: secret, error: secretError } = await admin.rpc("sarah_ai_get_provider_secret");
     if (secretError || typeof secret !== "string" || !secret) {
@@ -197,7 +216,7 @@ Deno.serve(async (request: Request) => {
   }
 
   if (action === "clear") {
-    const { data, error } = await admin.rpc("sarah_ai_clear_provider_config");
+    const { data, error } = await caller.rpc("sarah_ai_clear_provider_config");
     if (error || data !== true) return respond(503, { ok: false, error: "PROVIDER_CONFIGURATION_CLEAR_FAILED" });
     return respond(200, { ok: true, cleared: true });
   }

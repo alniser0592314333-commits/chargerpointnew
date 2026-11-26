@@ -153,11 +153,18 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/sarah_ai_settings_contract.test.ts
+      - name: Run Sarah AI chat gateway security contracts
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run supabase/tests/sarah_ai_chat_contract.test.ts src/tests/sarah_conversation_persistence_contract.test.ts
 
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Type-check Sarah AI chat gateway Edge Function
+        run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/sarah-ai-chat/index.ts
       - name: Type-check public QR payment Edge Function
         run: deno check --no-lock --minimum-dependency-age 60 --node-modules-dir=none supabase/functions/submit-qr-payment/index.ts
       - name: Test hard QR payment upload body limit
@@ -1309,3 +1316,49 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_provider_config.test.sql
+      - name: Apply Sarah AI actor quota migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql
+      - name: Verify actor quota behavior and access grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_actor_quota.test.sql
+      - name: Stress concurrent chat and direct-tool quota boundaries
+        env:
+          PGPASSWORD: postgres
+        run: bash supabase/tests/sarah_ai_quota_concurrency.test.sh
+      - name: Apply Sarah scoped customer lookup migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261126210000_sarah_ai_scoped_customer_lookup.sql
+      - name: Verify Sarah scoped customer lookup behavior and grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_customer_lookup.test.sql
+      - name: Verify atomic quota enforcement under concurrent requests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          actor="10000000-0000-4000-8000-000000000001"
+          session_id="20000000-0000-4000-8000-000000000001"
+          rm -f /tmp/sarah-quota-concurrent-*
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id = '$actor' AND window_seconds = 3600"
+          for i in $(seq 1 30); do
+            (
+              result=$(psql -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SET ROLE authenticated; SELECT set_config('request.jwt.claim.role','authenticated',false); SELECT set_config('request.jwt.claim.sub','$actor',false); SELECT set_config('request.jwt.claims',json_build_object('role','authenticated','sub','$actor','session_id','$session_id')::text,false); SELECT public.sarah_ai_consume_my_quota('hour');")
+              if echo "$result" | grep -Fq '"allowed": true'; then
+                echo allowed > "/tmp/sarah-quota-concurrent-$i"
+              else
+                echo denied > "/tmp/sarah-quota-concurrent-$i"
+              fi
+            ) &
+          done
+          wait
+          allowed=$(grep -l -F '"allowed": true' /tmp/sarah-quota-concurrent-* | wc -l | tr -d ' ')
+          denied=$(grep -l -F '"allowed": false' /tmp/sarah-quota-concurrent-* | wc -l | tr -d ' ')
+          count=$(psql -qAt -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "SELECT request_count FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id = '$actor' AND window_seconds = 3600")
+          test "$allowed" -eq 20
+          test "$denied" -eq 10
+          test "$count" -eq 30

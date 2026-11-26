@@ -66,10 +66,10 @@ export const createSarahIntegrationPackage = (
   applicationContract: {
     application: "ChargerPointNew",
     executionBoundary: "All business mutations must call the existing application Use Cases and their repository transaction/outbox path. No model-generated SQL or direct business-table writes.",
-    readBoundary: "Read tools must wrap existing read models and apply explicit permission checks before exposing any result to the model.",
+    readBoundary: "Read tools must use typed database RPCs under the original user JWT, independently enforce the active session and business permission, and return bounded minimal fields. Service-role data reads are not permitted.",
     authorizationBoundary: "The authenticated admin identity, active account session, and effective server permissions are authoritative. Model output never grants access.",
     synchronizationBoundary: "The Sarah input queue ends when a validated tool enters the application. The existing Outbox and Sync Engine remain the only business-command synchronization path.",
-    toolCatalogVersion: "0.1.0-foundation",
+    toolCatalogVersion: "0.2.0-customer-lookup",
     toolSchemasIncluded: false,
   },
   behaviorRules: [
@@ -97,8 +97,8 @@ export const createSarahIntegrationPackage = (
     apkBackgroundExecution: "native-worker-required",
   },
   capabilityRoadmap: [
-    "Orders and order items",
-    "Customers and customer history",
+    "Customer name/code lookup (implemented: active customers only, maximum five names and four-character codes; no IDs or sensitive fields)",
+    "Customer history and order items (not implemented)",
     "Devices and pricing",
     "Business days",
     "Finance and payments",
@@ -113,6 +113,6 @@ export const createSarahIntegrationPackage = (
     "This package contains the integration contract and non-secret provider profile, not executable access to the application.",
     "The receiving system needs a compatible provider adapter and a secure authenticated tool-execution bridge.",
     "Provider API credentials must be entered again in the receiving system; they are intentionally excluded.",
-    "Tool JSON Schemas will be included as each capability is implemented and verified. This foundation package does not claim that the future tool catalog is complete.",
+    "Only the verified customer name/code lookup is active in the current server tool catalog. Its schema remains server-owned and is not exported in this portable package; no other data tools or write tools are enabled.",
   ],
 });

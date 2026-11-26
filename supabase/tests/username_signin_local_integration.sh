@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKDIR="${RUNNER_TEMP:-/tmp}/chargerpointnew-username-signin-integration"
-mkdir -p "$WORKDIR/supabase/migrations" "$WORKDIR/supabase/functions/sign-in-by-username" "$WORKDIR/supabase/functions/_shared/http"
+mkdir -p "$WORKDIR/supabase/migrations" "$WORKDIR/supabase/functions/sign-in-by-username"
 
 cleanup() {
   (cd "$WORKDIR" && supabase stop --no-backup >/dev/null 2>&1) || true
@@ -14,29 +14,20 @@ cp "$ROOT/supabase/migrations/20261017300000_username_signin_rate_limit.sql" "$W
 cp "$ROOT/supabase/functions/sign-in-by-username/index.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
 cp "$ROOT/supabase/functions/sign-in-by-username/handler.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
 cp "$ROOT/supabase/functions/sign-in-by-username/requestValidation.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
-cp "$ROOT/supabase/functions/_shared/http/requestBodyLimit.ts" "$WORKDIR/supabase/functions/_shared/http/"
 
 cat > "$WORKDIR/supabase/config.toml" <<'TOML'
 project_id = "chargerpointnew_username_auth_test"
 
 [api]
 enabled = true
-port = 56321
+port = 54321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 56322
-shadow_port = 56320
+port = 54322
 major_version = 17
-
-[studio]
-enabled = false
-port = 56323
-
-[local_smtp]
-enabled = false
 
 [auth]
 enabled = true
@@ -60,8 +51,7 @@ CREATE TABLE public.admins (
   auth_user_id uuid NOT NULL UNIQUE,
   username text NOT NULL,
   email text NOT NULL,
-  is_active boolean NOT NULL DEFAULT true,
-  disabled_at timestamptz
+  is_active boolean NOT NULL DEFAULT true
 );
 ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
 SQL
@@ -91,9 +81,9 @@ fi
 cat > "$WORKDIR/supabase/functions/.env" <<ENV
 SUPABASE_URL=http://kong:8000
 SUPABASE_ANON_KEY=$ANON_KEY
-auth_supabase_secret_key=$SECRET_KEY
-username_signin_rate_limit_secret=$(openssl rand -hex 32)
-username_signin_diagnostics=true
+AUTH_SUPABASE_SECRET_KEY=$SECRET_KEY
+USERNAME_SIGNIN_RATE_LIMIT_SECRET=$(openssl rand -hex 32)
+USERNAME_SIGNIN_DIAGNOSTICS=true
 ENV
 
 curl --connect-timeout 3 --max-time 15 -fsS -X POST "$API_URL/auth/v1/signup" \

@@ -1,4 +1,3 @@
-import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 import {
   escapeLikeLiteral,
   hashRateLimitKey,
@@ -45,17 +44,20 @@ const invalidCredentials = () => {
  */
 export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
   return async (request: Request): Promise<Response> => {
+    const diagnosticsEnabled =
+      deps.getEnv("USERNAME_SIGNIN_DIAGNOSTICS") === "true"
+      || deps.getEnv("username_signin_diagnostics") === "true";
     const unavailable = (stage: string) => respond(503, {
       error: "Username sign-in is temporarily unavailable",
-      ...(deps.getEnv("username_signin_diagnostics") === "true" ? { diagnostic: stage } : {}),
+      ...(diagnosticsEnabled ? { diagnostic: stage } : {}),
     });
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (request.method !== "POST") return respond(405, { error: "Method not allowed" });
 
     const url = deps.getEnv("SUPABASE_URL");
-    const secretKey = deps.getEnv("auth_supabase_secret_key");
+    const secretKey = deps.getEnv("AUTH_SUPABASE_SECRET_KEY") || deps.getEnv("auth_supabase_secret_key");
     const publicKey = deps.getEnv("SUPABASE_ANON_KEY") || deps.getEnv("SUPABASE_PUBLISHABLE_KEY");
-    const rateLimitSecret = deps.getEnv("username_signin_rate_limit_secret");
+    const rateLimitSecret = deps.getEnv("USERNAME_SIGNIN_RATE_LIMIT_SECRET") || deps.getEnv("username_signin_rate_limit_secret");
     if (!url || !secretKey || !secretKey.startsWith("sb_secret_")
       || !publicKey || !rateLimitSecret || rateLimitSecret.length < 32) {
       // Fail closed unless modern server-only API credentials and a strong rate-limit
@@ -80,24 +82,8 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       return unavailable("trusted-client-ip");
     }
 
-    const declaredLength = Number(request.headers.get("content-length") || 0);
-    if (Number.isFinite(declaredLength) && declaredLength > 8192) {
-      return respond(413, { session: null, error: "REQUEST_TOO_LARGE" });
-    }
-    let rawBody: Uint8Array | null;
-    try {
-      rawBody = await readBoundedRequestBody(request, 8192);
-    } catch {
-      return respond(400, { session: null, error: "INVALID_REQUEST" });
-    }
-    if (rawBody === null) return respond(413, { session: null, error: "REQUEST_TOO_LARGE" });
-    let input: { username?: unknown; password?: unknown } | null;
-    try {
-      input = JSON.parse(new TextDecoder().decode(rawBody)) as
-        { username?: unknown; password?: unknown } | null;
-    } catch {
-      return invalidCredentials();
-    }
+    const input = await request.json().catch(() => null) as
+      { username?: unknown; password?: unknown } | null;
     const username = normalizeUsername(input?.username);
     const password = typeof input?.password === "string" ? input.password : "";
     if (!username || !password || password.length > 1024) return invalidCredentials();
@@ -134,7 +120,6 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
         .select("email")
         .ilike("username", escapedUsername)
         .eq("is_active", true)
-        .is("disabled_at", null)
         .limit(2);
 
       if (lookupError) {

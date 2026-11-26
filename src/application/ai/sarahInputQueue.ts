@@ -25,14 +25,18 @@ export interface SarahInputRecord {
   resultRef?: string;
   lastErrorCode?: string;
   attempts: number;
+  /** Lease expiry prevents other tabs from treating an active provider call as interrupted. */
+  uploadLeaseUntil?: string;
 }
 
 const DB_NAME = "SarahDurableInputQueue";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = "inputs";
 const META = "meta";
 const MAX_TEXT_CHARS = 20_000;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const MAX_PENDING_RECORDS = 25;
+const MAX_PENDING_AUDIO_BYTES = 100 * 1024 * 1024;
 const allowed: Record<SarahInputState, SarahInputState[]> = {
   QUEUED_OFFLINE: ["READY_TO_SEND", "NEEDS_ATTENTION"],
   READY_TO_SEND: ["UPLOADING", "QUEUED_OFFLINE", "NEEDS_ATTENTION"],
@@ -50,9 +54,15 @@ const openDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open(DB_NAME, DB_VERSION);
   request.onupgradeneeded = () => {
     const db = request.result;
-    if (!db.objectStoreNames.contains(STORE)) {
-      const store = db.createObjectStore(STORE, { keyPath: "id" });
+    const tx = request.transaction;
+    if (!tx) return;
+    const store = db.objectStoreNames.contains(STORE)
+      ? tx.objectStore(STORE)
+      : db.createObjectStore(STORE, { keyPath: "id" });
+    if (!store.indexNames.contains("account_sequence")) {
       store.createIndex("account_sequence", ["actorAccountId", "sequence"], { unique: true });
+    }
+    if (!store.indexNames.contains("account_state")) {
       store.createIndex("account_state", ["actorAccountId", "state"]);
     }
     if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
@@ -66,6 +76,24 @@ const requestValue = <T>(req: IDBRequest<T>): Promise<T> => new Promise((resolve
   req.onsuccess = () => resolve(req.result);
   req.onerror = () => reject(req.error);
 });
+
+export const canRecoverObservedUpload = (
+  observed: SarahInputRecord,
+  current: SarahInputRecord | undefined,
+  accountId: string,
+): boolean => Boolean(
+  current &&
+  current.actorAccountId === accountId &&
+  current.state === "UPLOADING" &&
+  current.uploadLeaseUntil === observed.uploadLeaseUntil &&
+  uploadLeaseExpired(current)
+);
+
+export const uploadLeaseExpired = (row: SarahInputRecord): boolean => {
+  if (!row.uploadLeaseUntil) return true;
+  const expires = Date.parse(row.uploadLeaseUntil);
+  return !Number.isFinite(expires) || expires <= Date.now();
+};
 
 export const sarahInputQueue = {
   async enqueue(input: Omit<SarahInputRecord, "sequence" | "createdAt" | "attempts">): Promise<SarahInputRecord> {
@@ -84,18 +112,47 @@ export const sarahInputQueue = {
       const tx = db.transaction([STORE, META], "readwrite");
       const store = tx.objectStore(STORE), meta = tx.objectStore(META);
       const key = `sequence:${input.actorAccountId}`;
-      const get = meta.get(key);
+      const accountRange = IDBKeyRange.bound([input.actorAccountId, 0], [input.actorAccountId, Number.MAX_SAFE_INTEGER]);
+      const cursorRequest = store.index("account_sequence").openCursor(accountRange);
       let record: SarahInputRecord | undefined;
-      get.onerror = () => { tx.abort(); };
-      get.onsuccess = () => {
-        const sequence = Number(get.result || 0) + 1;
-        meta.put(sequence, key);
-        record = { ...input, sequence, createdAt: new Date().toISOString(), attempts: 0 };
-        store.add(record);
+      let pendingCount = 0;
+      let pendingAudioBytes = 0;
+      let abortReason: Error | null = null;
+      cursorRequest.onerror = () => { abortReason = new Error("QUEUE_CAPACITY_CHECK_FAILED"); tx.abort(); };
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (cursor) {
+          const existing = cursor.value as SarahInputRecord;
+          if (existing.state !== "COMPLETED") {
+            pendingCount += 1;
+            pendingAudioBytes += existing.audioBlob instanceof Blob ? existing.audioBlob.size : 0;
+          }
+          cursor.continue();
+          return;
+        }
+        if (pendingCount >= MAX_PENDING_RECORDS) {
+          abortReason = new Error("QUEUE_PENDING_LIMIT_REACHED");
+          tx.abort();
+          return;
+        }
+        const newAudioBytes = input.audioBlob instanceof Blob ? input.audioBlob.size : 0;
+        if (pendingAudioBytes + newAudioBytes > MAX_PENDING_AUDIO_BYTES) {
+          abortReason = new Error("QUEUE_AUDIO_BUDGET_EXCEEDED");
+          tx.abort();
+          return;
+        }
+        const get = meta.get(key);
+        get.onerror = () => { abortReason = new Error("QUEUE_SEQUENCE_READ_FAILED"); tx.abort(); };
+        get.onsuccess = () => {
+          const sequence = Number(get.result || 0) + 1;
+          meta.put(sequence, key);
+          record = { ...input, sequence, createdAt: new Date().toISOString(), attempts: 0 };
+          store.add(record);
+        };
       };
       tx.oncomplete = () => { db.close(); if (record) resolve(record); else reject(new Error("QUEUE_WRITE_INCOMPLETE")); };
-      tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_WRITE_FAILED")); };
-      tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_WRITE_ABORTED")); };
+      tx.onerror = () => { db.close(); reject(abortReason || tx.error || new Error("QUEUE_WRITE_FAILED")); };
+      tx.onabort = () => { db.close(); reject(abortReason || tx.error || new Error("QUEUE_WRITE_ABORTED")); };
     });
   },
 
@@ -119,7 +176,12 @@ export const sarahInputQueue = {
         const current = get.result as SarahInputRecord | undefined;
         if (!current || current.actorAccountId !== accountId) { tx.abort(); return; }
         if (!allowed[current.state].includes(next)) { tx.abort(); return; }
-        updated = { ...current, ...details, state: next, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
+        updated = { ...current, ...details, state: next, uploadLeaseUntil: next === "UPLOADING" ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : undefined, lastErrorCode: next === "READY_TO_SEND" || next === "COMPLETED" ? undefined : details.lastErrorCode ?? current.lastErrorCode, attempts: current.attempts + (next === "UPLOADING" ? 1 : 0) };
+        if (next === "COMPLETED") {
+          delete updated.text;
+          delete updated.audioBlob;
+          delete updated.audioMimeType;
+        }
         store.put(updated);
       };
       tx.oncomplete = () => { db.close(); if (updated) resolve(updated); else reject(new Error("QUEUE_TRANSITION_REJECTED")); };
@@ -135,15 +197,59 @@ export const sarahInputQueue = {
   async recoverInterruptedUploads(accountId: string): Promise<number> {
     if (!accountId) throw new Error("ACCOUNT_REQUIRED");
     const pending = await this.list(accountId);
-    const interrupted = pending.filter((row) => row.state === "UPLOADING");
+    const interrupted = pending.filter((row) => row.state === "UPLOADING" && uploadLeaseExpired(row));
     let recovered = 0;
-    for (const row of interrupted) {
-      await this.transition(accountId, row.id, "NEEDS_ATTENTION", {
-        lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
-      });
-      recovered += 1;
+    for (const observed of interrupted) {
+      const db = await openDb();
+      try {
+        const outcome = await new Promise<"recovered" | "changed" | "error">((resolve, reject) => {
+          const tx = db.transaction(STORE, "readwrite");
+          const store = tx.objectStore(STORE);
+          const get = store.get(observed.id);
+          let result: "recovered" | "changed" | "error" = "changed";
+          get.onsuccess = () => {
+            const current = get.result as SarahInputRecord | undefined;
+            // Compare-and-set inside the same transaction: account, state, and
+            // observed lease must still match and be expired before recovery.
+            if (!canRecoverObservedUpload(observed, current, accountId)) return;
+            store.put({ ...current, state: "NEEDS_ATTENTION",
+              lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
+              uploadLeaseUntil: undefined });
+            result = "recovered";
+          };
+          tx.oncomplete = () => resolve(result);
+          tx.onerror = () => reject(tx.error || new Error("QUEUE_RECOVERY_FAILED"));
+          tx.onabort = () => reject(tx.error || new Error("QUEUE_RECOVERY_ABORTED"));
+        });
+        if (outcome === "recovered") recovered += 1;
+      } finally { db.close(); }
     }
     return recovered;
+  },
+
+  /** Remove only this account's completed records after a conservative retention period. */
+  async pruneCompleted(accountId: string, olderThanDays = 30): Promise<number> {
+    if (!accountId) throw new Error("ACCOUNT_REQUIRED");
+    if (!Number.isFinite(olderThanDays) || olderThanDays < 1 || olderThanDays > 365) throw new Error("INVALID_RETENTION_PERIOD");
+    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    const rows = await this.list(accountId);
+    const eligible = rows.filter((row) => row.actorAccountId === accountId && row.state === "COMPLETED" && Number.isFinite(Date.parse(row.createdAt)) && Date.parse(row.createdAt) < cutoff);
+    if (!eligible.length) return 0;
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite"), store = tx.objectStore(STORE);
+      let removed = 0;
+      for (const row of eligible) {
+        const get = store.get(row.id);
+        get.onsuccess = () => {
+          const latest = get.result as SarahInputRecord | undefined;
+          if (latest?.actorAccountId === accountId && latest.state === "COMPLETED" && Date.parse(latest.createdAt) < cutoff) { store.delete(row.id); removed += 1; }
+        };
+      }
+      tx.oncomplete = () => { db.close(); resolve(removed); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_PRUNE_FAILED")); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_PRUNE_ABORTED")); };
+    });
   },
 
   async remove(accountId: string, id: string): Promise<boolean> {

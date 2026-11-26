@@ -4,8 +4,8 @@ import { createUsernameSignInHandler } from "./handler.ts";
 const validEnv: Record<string, string> = {
   SUPABASE_URL: "https://project.example",
   SUPABASE_ANON_KEY: "sb_publishable_test_only",
-  auth_supabase_secret_key: "sb_secret_test_only",
-  username_signin_rate_limit_secret: "x".repeat(40),
+  AUTH_SUPABASE_SECRET_KEY: "sb_secret_test_only",
+  USERNAME_SIGNIN_RATE_LIMIT_SECRET: "x".repeat(40),
 };
 
 function setup(options: {
@@ -27,7 +27,6 @@ function setup(options: {
     authHeaders: new Headers(),
     authBody: null as Record<string, unknown> | null,
     lookupPattern: "",
-    disabledFilter: null as string | null,
   };
   const env = { ...validEnv, ...options.env };
   const handler = createUsernameSignInHandler({
@@ -62,17 +61,10 @@ function setup(options: {
                       assertEquals(activeColumn, "is_active");
                       assertEquals(activeValue, true);
                       return {
-                        is: (column: string, value: null) => {
-                          assertEquals(column, "disabled_at");
-                          assertEquals(value, null);
-                          calls.disabledFilter = column;
-                          return {
-                            limit: async (limit: number) => {
-                              assertEquals(limit, 2);
-                              calls.lookup++;
-                              return { data: options.matches ?? [{ email: "private-admin@example.test" }], error: options.lookupError ?? null };
-                            },
-                          };
+                        limit: async (limit: number) => {
+                          assertEquals(limit, 2);
+                          calls.lookup++;
+                          return { data: options.matches ?? [{ email: "private-admin@example.test" }], error: options.lookupError ?? null };
                         },
                       };
                     },
@@ -110,7 +102,7 @@ function setup(options: {
 }
 
 Deno.test("username sign-in fails closed when required server configuration is missing", async () => {
-  const { handler, calls, request } = setup({ env: { auth_supabase_secret_key: "legacy-service-role-key" } });
+  const { handler, calls, request } = setup({ env: { AUTH_SUPABASE_SECRET_KEY: "legacy-service-role-key" } });
   const response = await handler(request());
   assertEquals(response.status, 503);
   assertEquals(calls.clientCreated, 0);
@@ -124,17 +116,6 @@ Deno.test("Supabase client initialization failure returns a controlled unavailab
   assertEquals(response.status, 503);
   assertStringIncludes(body, "temporarily unavailable");
   assertEquals(body.includes("invalid client configuration"), false);
-  assertEquals(calls.auth, 0);
-});
-
-
-Deno.test("oversized username login body is rejected while streaming before quota or Auth", async () => {
-  const { handler, calls, request } = setup();
-  const response = await handler(request({ username: "operator", password: "x".repeat(9000) }));
-  assertEquals(response.status, 413);
-  assertEquals(calls.clientCreated, 0);
-  assertEquals(calls.rateLimit, 0);
-  assertEquals(calls.lookup, 0);
   assertEquals(calls.auth, 0);
 });
 
@@ -184,7 +165,6 @@ Deno.test("successful username sign-in returns the Auth session only after Auth 
   const body = await response.json();
   assertEquals(response.status, 200);
   assertEquals(calls.lookup, 1);
-  assertEquals(calls.disabledFilter, "disabled_at");
   assertEquals(calls.auth, 1);
   assertEquals(calls.authBody?.email, "private-admin@example.test");
   assertEquals(calls.authBody?.password, "correct horse");

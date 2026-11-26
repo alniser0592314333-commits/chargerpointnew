@@ -98,6 +98,8 @@ export type Permission =
 
 export interface UserSession {
   userId: ID;
+  /** Verified Supabase Auth subject; distinct from the application admin row ID. */
+  authUserId?: ID;
   email: string;
   fullName: string;
   role: UserRole;
@@ -427,6 +429,7 @@ class DefaultAuthService implements AuthService {
     // 4. Establish authoritative session
     const session: UserSession = {
       userId: profileRes.admin_id || bootstrapRes.data?.admin_id || authSession.user.id,
+      authUserId: authSession.user.id,
       email: cleanEmail,
       fullName: profileRes.full_name || cleanFullName,
       role: "SUPER_ADMIN",
@@ -711,6 +714,7 @@ class DefaultAuthService implements AuthService {
 
       const session: UserSession = {
         userId: profile.admin_id || signInRes.session.user.id,
+        authUserId: signInRes.session.user.id,
         email: profile.email || signInRes.session.user.email || resolvedEmail,
         fullName: profile.full_name || profile.username || resolvedEmail.split("@")[0],
         role: (profile.role || userRole) as UserRole,
@@ -845,6 +849,7 @@ class DefaultAuthService implements AuthService {
     setSupabaseAuthToken(refreshed.access_token);
     const session: UserSession = {
       userId: profile.admin_id || refreshed.user.id,
+      authUserId: refreshed.user.id,
       email: profile.email || refreshed.user.email || cleanIdentifier,
       fullName: profile.full_name || profile.username || cleanIdentifier,
       role: (profile.role || role) as UserRole,
@@ -901,6 +906,7 @@ class DefaultAuthService implements AuthService {
     setSupabaseAuthToken(authSession.access_token);
     const session: UserSession = {
       userId: profile.admin_id || authSession.user.id,
+      authUserId: authSession.user.id,
       email: profile.email || authSession.user.email || "",
       fullName: profile.full_name || profile.username || authSession.user.email || "",
       role: (profile.role || role) as UserRole,
@@ -984,6 +990,7 @@ class DefaultAuthService implements AuthService {
 
     const session: UserSession = {
       userId: finalProfile.admin_id || tempSession.user.id,
+      authUserId: tempSession.user.id,
       email: finalProfile.email || tempSession.user.email || resolvedEmail,
       fullName: finalProfile.full_name || finalProfile.username || resolvedEmail.split("@")[0],
       role: (finalProfile.role || userRole) as UserRole,
@@ -1045,11 +1052,15 @@ class DefaultAuthService implements AuthService {
       }
     }
 
-    const activeAuthEmail = activeSupabaseSession?.user?.email?.trim().toLowerCase() || "";
+    const activeAuthUserId = activeSupabaseSession?.user?.id || "";
+    if (this.isSupabaseConfigured() && !activeAuthUserId) {
+      await this.logout();
+      return null;
+    }
     if (
+      this.isSupabaseConfigured() &&
       inMemorySession &&
-      activeAuthEmail &&
-      inMemorySession.email.trim().toLowerCase() !== activeAuthEmail
+      inMemorySession.authUserId !== activeAuthUserId
     ) {
       // A different Supabase identity is now active (usually from another tab).
       // Discard the previous account's cached role/permissions before returning
@@ -1079,7 +1090,12 @@ class DefaultAuthService implements AuthService {
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
         ]);
         serverProfile = profileResult as AdminProfileResult | null;
-        if (serverProfile && (!serverProfile.authenticated || !serverProfile.is_admin || serverProfile.is_active === false)) {
+        if (serverProfile && (
+          !serverProfile.authenticated ||
+          !serverProfile.is_admin ||
+          serverProfile.is_active === false ||
+          serverProfile.auth_user_id !== supabaseSession.user.id
+        )) {
           await this.logout();
           return null;
         }
@@ -1102,9 +1118,9 @@ class DefaultAuthService implements AuthService {
       // selected in this origin. Never fall back to another admin's cached role
       // when the new account's profile request is offline or times out.
       if (
+        this.isSupabaseConfigured() &&
         storedSession &&
-        activeAuthEmail &&
-        storedSession.email.trim().toLowerCase() !== activeAuthEmail
+        storedSession.authUserId !== activeAuthUserId
       ) {
         storedSession = null;
         storage.removeItem(SESSION_STORAGE_KEY);
@@ -1115,8 +1131,18 @@ class DefaultAuthService implements AuthService {
       // of treating a still-valid Supabase session as logged out.
       if (serverProfile) {
         const supabaseSession = await this.getSupabaseAuthSession();
+        if (
+          !supabaseSession?.user?.id ||
+          supabaseSession.user.id !== activeAuthUserId ||
+          supabaseSession.user.id !== serverProfile.auth_user_id
+        ) {
+          inMemorySession = null;
+          storage.removeItem(SESSION_STORAGE_KEY);
+          return null;
+        }
         const session: UserSession = {
-          userId: serverProfile.admin_id || storedSession?.userId || supabaseSession?.user.id || "",
+          userId: serverProfile.admin_id || storedSession?.userId || supabaseSession.user.id,
+          authUserId: supabaseSession.user.id,
           email: serverProfile.email || storedSession?.email || supabaseSession?.user.email || "",
           fullName: serverProfile.full_name || serverProfile.username || storedSession?.fullName || "",
           role: serverProfile.role || storedSession?.role || "OPERATOR",
@@ -1137,8 +1163,17 @@ class DefaultAuthService implements AuthService {
       }
     } else if (serverProfile && this.isSupabaseConfigured()) {
       const supabaseSession = await this.getSupabaseAuthSession();
+      if (
+        !supabaseSession?.user?.id ||
+        supabaseSession.user.id !== activeAuthUserId ||
+        supabaseSession.user.id !== serverProfile.auth_user_id
+      ) {
+        inMemorySession = null;
+        return null;
+      }
       const session: UserSession = {
-        userId: serverProfile.admin_id || supabaseSession?.user.id || "",
+        userId: serverProfile.admin_id || supabaseSession.user.id,
+        authUserId: supabaseSession.user.id,
         email: serverProfile.email || supabaseSession?.user.email || "",
         fullName: serverProfile.full_name || serverProfile.username || "",
         role: serverProfile.role || "OPERATOR",
