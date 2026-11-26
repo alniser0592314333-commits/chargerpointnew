@@ -9,8 +9,7 @@ CREATE TABLE IF NOT EXISTS public.sarah_ai_usage_windows (
 );
 ALTER TABLE public.sarah_ai_usage_windows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sarah_ai_usage_windows FORCE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.sarah_ai_usage_windows FROM PUBLIC, anon, authenticated;
-GRANT ALL ON TABLE public.sarah_ai_usage_windows TO service_role;
+REVOKE ALL ON TABLE public.sarah_ai_usage_windows FROM PUBLIC, anon, authenticated, service_role;
 CREATE INDEX IF NOT EXISTS sarah_ai_usage_windows_started_idx
   ON public.sarah_ai_usage_windows(window_started_at);
 
@@ -64,30 +63,6 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.sarah_ai_consume_quota_internal(uuid, integer, integer)
   FROM PUBLIC, anon, authenticated, service_role;
-
--- Trusted server-only entry point for backend maintenance/integration tests.
-CREATE OR REPLACE FUNCTION public.sarah_ai_consume_quota(
-  p_actor_auth_user_id uuid,
-  p_max_requests integer DEFAULT 20,
-  p_window_seconds integer DEFAULT 3600
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $function$
-BEGIN
-  IF COALESCE(auth.jwt()->>'role', current_setting('request.jwt.claim.role', true)) <> 'service_role' THEN
-    RAISE EXCEPTION 'Service role required' USING ERRCODE = '42501';
-  END IF;
-  RETURN public.sarah_ai_consume_quota_internal(
-    p_actor_auth_user_id, p_max_requests, p_window_seconds
-  );
-END;
-$function$;
-REVOKE ALL ON FUNCTION public.sarah_ai_consume_quota(uuid, integer, integer)
-  FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.sarah_ai_consume_quota(uuid, integer, integer) TO service_role;
 
 -- User-facing quota wrappers derive the actor from auth.uid() and enforce the
 -- appropriate permission in the database; the client cannot choose its own cap.
