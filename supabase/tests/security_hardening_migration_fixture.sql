@@ -228,3 +228,37 @@ REVOKE ALL ON FUNCTION public.calculate_customer_authoritative_balance__session_
 -- API execution while leaving no browser-side dependency on it.
 CREATE FUNCTION public.get_email_by_username(p_username text)
 RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 'SELECT NULL::text';
+
+
+-- Minimal pre-session BIN implementation used to verify that the strict
+-- session migration preserves the one intentional Super Admin login gate.
+CREATE OR REPLACE FUNCTION public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(p_bin text)
+RETURNS jsonb
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT jsonb_build_object(
+    'success', p_bin = '1234',
+    'status', 'ACTIVE',
+    'is_locked', false,
+    'remaining_attempts', CASE WHEN p_bin = '1234' THEN 3 ELSE 2 END,
+    'failed_attempts', CASE WHEN p_bin = '1234' THEN 0 ELSE 1 END
+  );
+$function$;
+
+CREATE OR REPLACE FUNCTION public.verify_admin_bin_with_attempt_tracking(p_bin text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public.assert_my_account_session_active();
+  RETURN public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(p_bin);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.verify_admin_bin_with_attempt_tracking(text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.verify_admin_bin_with_attempt_tracking(text) TO authenticated;
+REVOKE ALL ON FUNCTION public.verify_admin_bin_with_attempt_tracking__session_guarded_impl(text)
+  FROM PUBLIC, anon, authenticated, service_role;
