@@ -69,6 +69,18 @@ const requestValue = <T>(req: IDBRequest<T>): Promise<T> => new Promise((resolve
   req.onerror = () => reject(req.error);
 });
 
+export const canRecoverObservedUpload = (
+  observed: SarahInputRecord,
+  current: SarahInputRecord | undefined,
+  accountId: string,
+): boolean => Boolean(
+  current &&
+  current.actorAccountId === accountId &&
+  current.state === "UPLOADING" &&
+  current.uploadLeaseUntil === observed.uploadLeaseUntil &&
+  uploadLeaseExpired(current)
+);
+
 export const uploadLeaseExpired = (row: SarahInputRecord): boolean => {
   if (!row.uploadLeaseUntil) return true;
   const expires = Date.parse(row.uploadLeaseUntil);
@@ -157,10 +169,7 @@ export const sarahInputQueue = {
             const current = get.result as SarahInputRecord | undefined;
             // Compare-and-set inside the same transaction: account, state, and
             // observed lease must still match and be expired before recovery.
-            if (!current || current.actorAccountId !== accountId ||
-                current.state !== "UPLOADING" ||
-                current.uploadLeaseUntil !== observed.uploadLeaseUntil ||
-                !uploadLeaseExpired(current)) return;
+            if (!canRecoverObservedUpload(observed, current, accountId)) return;
             store.put({ ...current, state: "NEEDS_ATTENTION",
               lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW",
               uploadLeaseUntil: undefined });
