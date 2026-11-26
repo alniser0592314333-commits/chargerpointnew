@@ -186,7 +186,7 @@ END $assert$;
 SELECT public.revoke_other_account_sessions();
 DO $assert$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM auth.sessions WHERE id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' AND (not_after IS NULL OR not_after > now())) THEN RAISE EXCEPTION 'Current session was not preserved'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM auth.sessions WHERE id='dddddddd-dddd-4ddd-8ddd-dddddddddddd' AND (not_after IS NULL OR not_after > now())) THEN RAISE EXCEPTION 'Current session was not preserved'; END IF;
   IF public.is_my_account_session_active() IS NOT TRUE THEN RAISE EXCEPTION 'Current session should remain active'; END IF;
 END $assert$;
 SELECT public.revoke_all_account_sessions();
