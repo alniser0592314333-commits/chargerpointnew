@@ -113,6 +113,9 @@ $qr_wrapper_privileges$;
 -- First-owner bootstrap must reject any authenticated identity except the
 -- pre-authorized, email-confirmed owner identity, and must not be callable by anon.
 DO $bootstrap_privileges$
+DECLARE
+  v_wrapper text := pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure);
+  v_impl text := pg_get_functiondef('public.bootstrap_first_super_admin__session_guarded_impl(text,text,text)'::regprocedure);
 BEGIN
   IF has_function_privilege('anon', 'public.bootstrap_first_super_admin(text,text,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Anonymous role must not execute first-owner bootstrap';
@@ -120,10 +123,15 @@ BEGIN
   IF NOT has_function_privilege('authenticated', 'public.bootstrap_first_super_admin(text,text,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'Authenticated role lost intended bootstrap RPC access';
   END IF;
-  IF position('v_owner_email' IN pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure)) = 0
-     OR position('pg_advisory_xact_lock' IN pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure)) = 0
-     OR position('email_confirmed_at' IN pg_get_functiondef('public.bootstrap_first_super_admin(text,text,text)'::regprocedure)) = 0 THEN
-    RAISE EXCEPTION 'First-owner bootstrap is missing owner verification, email confirmation, or concurrency serialization';
+  IF position('register_my_account_session_v2' IN v_wrapper) = 0
+     OR position('v_owner_email' IN v_impl) = 0
+     OR position('pg_advisory_xact_lock' IN v_impl) = 0
+     OR position('email_confirmed_at' IN v_impl) = 0 THEN
+    RAISE EXCEPTION 'First-owner bootstrap lost fresh-session registration, owner verification, email confirmation, or concurrency serialization';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.bootstrap_first_super_admin__session_guarded_impl(text,text,text)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.bootstrap_first_super_admin__session_guarded_impl(text,text,text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Private first-owner bootstrap implementation is directly executable by browser roles';
   END IF;
 END
 $bootstrap_privileges$;
