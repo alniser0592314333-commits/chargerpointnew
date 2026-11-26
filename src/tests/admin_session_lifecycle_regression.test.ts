@@ -266,13 +266,14 @@ describe("Admin session lifecycle root-cause regressions", () => {
   });
 
 
-  it("blocks caller-selected native reactivation of an idle-expired existing session", () => {
-    const migration = readFileSync("supabase/migrations/20261126193000_secure_idle_session_reactivation.sql", "utf8");
+  it("keeps session reactivation bound to the registered server-side client type and fresh Auth sessions", () => {
+    const migration = readFileSync("supabase/migrations/20261126200000_strict_account_session_registry.sql", "utf8");
     const reactivation = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION public.reactivate_my_account_session"));
-    expect(reactivation).toContain("a.session_expires_at <= now()");
     expect(reactivation).toContain("SESSION_IDLE_EXPIRED_REQUIRES_FRESH_AUTH");
-    expect(reactivation).toContain("creates a new session ID");
-    expect(reactivation).not.toContain("IF v_client_type = 'browser' AND EXISTS");
+    expect(reactivation).toContain("v_account_session.client_type IN ('native', 'installed_pwa')");
+    expect(reactivation).toContain("v_auth_session.created_at < now() - interval '5 minutes'");
+    expect(reactivation).toContain("client_type = EXCLUDED.client_type");
+    expect(reactivation).not.toContain("SET last_seen_at = now(),\n      client_type = EXCLUDED.client_type");
   });
 
 
