@@ -16,7 +16,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [pending, setPending] = useState<SarahInputRecord[]>([]);
   const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);
   const activeAccountRef = useRef<string | null>(session?.userId ?? null);
-  const operationRef = useRef(0);
+  const operationRef = useRef(0);\n  const conversationGenerationRef = useRef(0);
 
   // Immediately invalidate all asynchronous work from a previous account.
   useLayoutEffect(() => {
@@ -53,7 +53,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     const accountId = session?.userId;
     if (!accountId || hydratedAccount !== accountId || activeAccountRef.current !== accountId) return;
     // Save only the transcript explicitly hydrated for this identity.
-    void sarahConversationStore.save(accountId, messages).catch((err) => {
+    void sarahConversationStore.save(accountId, messages, conversationGenerationRef.current).catch((err) => {
       if (activeAccountRef.current === accountId) setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED");
     });
   }, [messages, session?.userId, hydratedAccount]);
