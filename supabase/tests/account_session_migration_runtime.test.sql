@@ -233,6 +233,12 @@ BEGIN
     RAISE EXCEPTION 'A valid but unregistered Auth session must fail closed';
   END IF;
   BEGIN
+    PERFORM public.restore_selected_business_days('0000', '{}'::jsonb, ARRAY[CURRENT_DATE]);
+    RAISE EXCEPTION 'Sensitive day restore unexpectedly bypassed the registered-session guard';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  BEGIN
     PERFORM public.get_my_account_sessions();
     RAISE EXCEPTION 'An unregistered session unexpectedly listed account sessions';
   EXCEPTION WHEN SQLSTATE '28000' THEN
