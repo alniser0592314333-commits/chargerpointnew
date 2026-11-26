@@ -417,15 +417,17 @@ BEGIN
   v_definition := pg_get_functiondef(
     'public.restore_selected_business_days(text,jsonb,date[])'::regprocedure
   );
-  v_definition := replace(
-    v_definition,
-    'FUNCTION public.restore_selected_business_days(',
-    'FUNCTION public.restore_selected_business_days__session_guarded_impl('
-  );
-  IF v_definition = '' OR v_definition NOT LIKE '%restore_selected_business_days__session_guarded_impl%' THEN
-    RAISE EXCEPTION 'Could not create private day-restore implementation';
+  IF pg_catalog.position('restore_selected_business_days__session_guarded_impl' IN v_definition) = 0 THEN
+    v_definition := replace(
+      v_definition,
+      'FUNCTION public.restore_selected_business_days(',
+      'FUNCTION public.restore_selected_business_days__session_guarded_impl('
+    );
+    IF v_definition = '' OR v_definition NOT LIKE '%restore_selected_business_days__session_guarded_impl%' THEN
+      RAISE EXCEPTION 'Could not create private day-restore implementation';
+    END IF;
+    EXECUTE v_definition;
   END IF;
-  EXECUTE v_definition;
 END;
 $clone_restore$;
 REVOKE ALL ON FUNCTION public.restore_selected_business_days__session_guarded_impl(text, jsonb, date[])
@@ -475,6 +477,62 @@ BEGIN
   RETURN v_admin_id;
 END;
 $function$;
+
+-- First-owner bootstrap is the one intentional pre-admin path. It still
+-- requires a freshly authenticated Supabase session, but registers that new
+-- session before the legacy bootstrap implementation checks the strict guard.
+DO $guard_first_owner_bootstrap$
+DECLARE
+  v_definition text;
+BEGIN
+  IF to_regprocedure('public.bootstrap_first_super_admin(text,text,text)') IS NULL THEN
+    RETURN;
+  END IF;
+
+  v_definition := pg_get_functiondef(
+    'public.bootstrap_first_super_admin(text,text,text)'::regprocedure
+  );
+  IF pg_catalog.position('bootstrap_first_super_admin__session_guarded_impl' IN v_definition) = 0 THEN
+    v_definition := replace(
+      v_definition,
+      'FUNCTION public.bootstrap_first_super_admin(',
+      'FUNCTION public.bootstrap_first_super_admin__session_guarded_impl('
+    );
+    IF v_definition NOT LIKE '%bootstrap_first_super_admin__session_guarded_impl%' THEN
+      RAISE EXCEPTION 'Could not preserve first-owner bootstrap implementation';
+    END IF;
+    EXECUTE v_definition;
+  END IF;
+
+  EXECUTE 'REVOKE ALL ON FUNCTION public.bootstrap_first_super_admin__session_guarded_impl(text,text,text) FROM PUBLIC, anon, authenticated, service_role';
+
+  EXECUTE $wrapper$
+    CREATE OR REPLACE FUNCTION public.bootstrap_first_super_admin(
+      p_username text,
+      p_full_name text DEFAULT NULL,
+      p_bin text DEFAULT NULL
+    )
+    RETURNS jsonb
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public, pg_temp
+    AS $function$
+    BEGIN
+      IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
+      END IF;
+      PERFORM public.register_my_account_session_v2(NULL, 'browser');
+      RETURN public.bootstrap_first_super_admin__session_guarded_impl(
+        p_username, p_full_name, p_bin
+      );
+    END;
+    $function$;
+  $wrapper$;
+
+  EXECUTE 'REVOKE ALL ON FUNCTION public.bootstrap_first_super_admin(text,text,text) FROM PUBLIC, anon';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.bootstrap_first_super_admin(text,text,text) TO authenticated';
+END;
+$guard_first_owner_bootstrap$;
 
 -- The Jawwal Pay recipient is read by both admins and customer accounts.
 -- Require the corresponding server-side session registry; Auth UID alone is
