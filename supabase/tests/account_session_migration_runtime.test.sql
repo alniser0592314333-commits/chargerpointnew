@@ -303,6 +303,18 @@ BEGIN
   EXCEPTION WHEN SQLSTATE '28000' THEN
     NULL;
   END;
+  BEGIN
+    PERFORM public.reactivate_my_account_session('native');
+    RAISE EXCEPTION 'A stale unregistered Auth session unexpectedly reactivated through the legacy session RPC';
+  EXCEPTION WHEN SQLSTATE '28000' THEN
+    NULL;
+  END;
+  IF EXISTS (
+    SELECT 1 FROM public.account_sessions
+    WHERE session_id='abababab-abab-4bab-8bab-abababababab'
+  ) THEN
+    RAISE EXCEPTION 'Rejected stale registration or reactivation created an account session row';
+  END IF;
 END $assert$;
 
 
