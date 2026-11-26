@@ -61,7 +61,7 @@ Security advisor reported:
 - 73 authenticated-callable SECURITY DEFINER routines (WARN). This is a broad RPC API; effective actor/session/permission guards must be reviewed per function, and the warning itself is not proof of vulnerability.
 - `pgcrypto` and `pg_net` in public schema (WARN); relocation requires separate dependency/migration planning.
 - Auth compromised-password protection advisor warning; this is an account-security setting, not Sarah-specific.
-- Performance advisor also reported FK indexes that may be missing and unused-index candidates; no indexes were changed because performance remediation requires workload and migration review.
+- Performance advisor reported 57 unindexed foreign keys (INFO), 20 unused-index candidates (INFO), and 2 tables without primary keys (INFO). No indexes or keys were changed because remediation requires workload, migration, and data-integrity review.
 
 No production DDL, writes, or setting changes were performed.
 
