@@ -9,7 +9,7 @@ describe("Sarah history bounds", () => {
     }));
     const result = buildSarahHistorySnapshot(input);
     expect(result).toHaveLength(20);
-    expect(result[0].text).toContain("message-10-");
+    expect(result[0]?.text).toContain("message-10-");
     expect(result.at(-1)?.text).toContain("message-29-");
     expect(result.every((message) => message.text.length <= 6000)).toBe(true);
   });
