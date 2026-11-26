@@ -15,4 +15,31 @@ describe("customer edge-function admin identity gates", () => {
     expect(source).toContain("p?.is_admin === true");
     expect(source).toContain("p?.is_active === true");
   });
+  it("bounds privileged edge request bodies while streaming instead of buffering untrusted input", () => {
+    const paths = [
+      "supabase/functions/account-biometric/index.ts",
+      "supabase/functions/customer-account/index.ts",
+      "supabase/functions/customer-history/index.ts",
+      "supabase/functions/customer-portal-events/index.ts",
+      "supabase/functions/native-push/index.ts",
+      "supabase/functions/wallet-service/index.ts",
+      "supabase/functions/sign-in-by-username/handler.ts",
+    ];
+    for (const path of paths) {
+      const source = readFileSync(path, "utf8");
+      expect(source).toContain("readBoundedRequestBody");
+      expect(source).not.toContain("request.json()");
+      expect(source).not.toContain("request.text()");
+      expect(source).not.toContain("req.text()");
+    }
+  });
+
+  it("blocks disabled admins in biometric identity and proof flows", () => {
+    const source = readFileSync("supabase/functions/account-biometric/index.ts", "utf8");
+    expect(source).toContain("adminRow?.is_active === true && !adminRow.disabled_at");
+    expect(source).toContain("row?.is_active === true && !row.disabled_at");
+    expect(source).toContain("adminRow.disabled_at");
+  });
+
+
 });
