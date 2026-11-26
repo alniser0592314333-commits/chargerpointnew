@@ -23,6 +23,8 @@ Deno.serve(async(req)=>{
  const role=String(profile.role||"").toUpperCase().replace(/\s+/g,"_");
  if(role!=="SUPER_ADMIN"&&!perms.includes("ai:use"))return respond(403,{ok:false,error:"AI_USE_PERMISSION_REQUIRED"});
  const admin=createClient(url,serviceKey,{auth:{persistSession:false,autoRefreshToken:false}});
+ const {data:quota,error:quotaErr}=await admin.rpc("sarah_ai_consume_quota",{p_actor_auth_user_id:userData.user.id,p_max_requests:20,p_window_seconds:3600});
+ if(quotaErr||!quota||quota.allowed!==true)return respond(quotaErr?503:429,{ok:false,error:quotaErr?"AI_QUOTA_SERVICE_UNAVAILABLE":"AI_RATE_LIMITED",retryAfterSeconds:3600});
  const {data:configRow,error:cfgErr}=await admin.from("sarah_ai_provider_config").select("provider_id,model_id,generation_config,enabled").eq("id","default").maybeSingle();
  if(cfgErr||!configRow||configRow.enabled!==true||configRow.provider_id!=="gemini")return respond(503,{ok:false,error:"AI_PROVIDER_NOT_CONFIGURED"});
  const {data:key,error:keyErr}=await admin.rpc("sarah_ai_get_provider_secret");if(keyErr||typeof key!=="string"||!key)return respond(503,{ok:false,error:"PROVIDER_CREDENTIAL_UNAVAILABLE"});
