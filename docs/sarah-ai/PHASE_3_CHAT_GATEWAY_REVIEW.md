@@ -96,3 +96,8 @@ This is a verified code-definition discrepancy from live read-only catalog inspe
 ## Queue recovery compare-and-set remediation — 26 Nov 2026
 
 Branch-only follow-up now changes interrupted-upload recovery to re-read the queue record inside a read-write IndexedDB transaction and recover it only when account ownership, `UPLOADING` state, the previously observed lease timestamp, and lease expiry still match. Concurrent lease renewal or state change becomes a benign no-op instead of a stale transition. A source-contract test asserts this transactional comparison. This code is on PR #326 branch only; CI is queued and behavioral multi-tab tests remain outstanding. No production or operational database changes were performed.
+
+
+## Lease recovery predicate coverage
+
+The compare-and-set eligibility predicate is now isolated as a pure helper and exercised for a matching expired record, lease renewal, state change, cross-account record, and missing record. The recovery transaction calls this predicate after its in-transaction reread. These tests validate predicate cases; they do not replace multi-tab IndexedDB behavioral testing.
