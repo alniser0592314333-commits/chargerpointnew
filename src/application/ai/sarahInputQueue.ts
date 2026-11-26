@@ -30,7 +30,7 @@ export interface SarahInputRecord {
 }
 
 const DB_NAME = "SarahDurableInputQueue";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = "inputs";
 const META = "meta";
 const MAX_TEXT_CHARS = 20_000;
@@ -54,9 +54,15 @@ const openDb = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open(DB_NAME, DB_VERSION);
   request.onupgradeneeded = () => {
     const db = request.result;
-    if (!db.objectStoreNames.contains(STORE)) {
-      const store = db.createObjectStore(STORE, { keyPath: "id" });
+    const tx = request.transaction;
+    if (!tx) return;
+    const store = db.objectStoreNames.contains(STORE)
+      ? tx.objectStore(STORE)
+      : db.createObjectStore(STORE, { keyPath: "id" });
+    if (!store.indexNames.contains("account_sequence")) {
       store.createIndex("account_sequence", ["actorAccountId", "sequence"], { unique: true });
+    }
+    if (!store.indexNames.contains("account_state")) {
       store.createIndex("account_state", ["actorAccountId", "state"]);
     }
     if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
