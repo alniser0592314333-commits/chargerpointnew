@@ -76,12 +76,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   useEffect(() => {
     const accountId = session?.authUserId || null;
-    if (!accountId || hydratedAccount !== accountId || !isCurrent(accountId)) return;
+    if (!accountId || hydratedAccount !== accountId || !isCurrent(accountId) || busy) return;
     // Save only the transcript explicitly hydrated for this identity.
     void sarahConversationStore.save(accountId, messages, conversationGenerationRef.current).catch((err) => {
       if (isCurrent(accountId)) setError(err instanceof Error ? err.message : "CONVERSATION_SAVE_FAILED");
     });
-  }, [messages, session?.userId, session?.authUserId, hydratedAccount]);
+  }, [messages, session?.userId, session?.authUserId, hydratedAccount, busy]);
 
   const refreshQueue = async (accountId: string, operation?: number) => {
     if (!isCurrent(accountId, operation)) return;
@@ -109,10 +109,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     const clean = text.trim();
     if (!clean || busy || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
     const operation = accountScopeRef.current.generation;
-    const historySnapshot = messages.slice(-20);
-    setText("");
+    const baseMessages = messages;
+    const historySnapshot = baseMessages.slice(-20);
     setError("");
-    setMessages((prev) => isCurrent(accountId, operation) ? [...prev, { role: "user", text: clean }] : prev);
     setBusy(true);
     const id = crypto.randomUUID();
     const correlationId = crypto.randomUUID();
@@ -121,6 +120,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         id, actorAccountId: accountId, deviceId: "web-client", kind: "text",
         state: navigator.onLine ? "READY_TO_SEND" : "QUEUED_OFFLINE", text: clean, correlationId,
       });
+      if (!isCurrent(accountId, operation)) return;
+      setText("");
+      setMessages([...baseMessages, { role: "user", text: clean }]);
       await refreshQueue(accountId, operation);
       if (!isCurrent(accountId, operation)) return;
       if (!navigator.onLine) {
@@ -133,8 +135,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         const response = await sarahChatService.send(clean, session?.authUserId || '', historySnapshot);
         if (!isCurrent(accountId, operation)) return;
         await sarahInputQueue.transition(accountId, id, "SENT_TO_AI", { resultRef: correlationId });
+        const completedMessages = [...baseMessages, { role: "user" as const, text: clean }, { role: "assistant" as const, text: response.answer }];
+        await sarahConversationStore.save(accountId, completedMessages, conversationGenerationRef.current);
+        if (!isCurrent(accountId, operation)) return;
+        setMessages(completedMessages);
         await sarahInputQueue.transition(accountId, id, "COMPLETED");
-        if (isCurrent(accountId, operation)) setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
         await refreshQueue(accountId, operation);
       } catch (err) {
         if (!isCurrent(accountId, operation)) return;
@@ -178,13 +183,19 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (record.state === "NEEDS_ATTENTION" || record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(accountId, record.id, "READY_TO_SEND");
       await sarahInputQueue.transition(accountId, record.id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
-      const retryHistory = messages.slice(-20);
+      const baseMessages = messages;
+      const retryHistory = baseMessages.slice(-20);
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
       const response = await sarahChatService.send(record.text, session?.authUserId || '', retryHistory);
       if (!isCurrent(accountId, operation)) return;
       await sarahInputQueue.transition(accountId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
+      const hasUserMessage = baseMessages.some((message) => message.role === "user" && message.text === record.text);
+      const retryMessages = hasUserMessage ? baseMessages : [...baseMessages, { role: "user" as const, text: record.text }];
+      const completedMessages = [...retryMessages, { role: "assistant" as const, text: response.answer }];
+      await sarahConversationStore.save(accountId, completedMessages, conversationGenerationRef.current);
+      if (!isCurrent(accountId, operation)) return;
+      setMessages(completedMessages);
       await sarahInputQueue.transition(accountId, record.id, "COMPLETED");
-      if (isCurrent(accountId, operation)) setMessages((prev) => [...prev, { role: "assistant", text: response.answer }]);
     } catch (err) {
       if (isCurrent(accountId, operation)) {
         try { await sarahInputQueue.transition(accountId, record.id, "NEEDS_ATTENTION", { lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED" }); } catch {}
