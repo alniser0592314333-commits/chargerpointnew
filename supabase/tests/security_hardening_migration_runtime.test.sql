@@ -61,8 +61,8 @@ SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004
 SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
 DO $disabled_admin$
 BEGIN
-  IF public.is_my_account_session_active() IS NOT TRUE THEN
-    RAISE EXCEPTION 'Disabled timestamp should not invalidate the underlying Auth session registry';
+  IF public.is_my_account_session_active() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Disabled admin must fail the effective application-session authorization gate';
   END IF;
   IF public.is_active_admin_session() IS NOT FALSE THEN
     RAISE EXCEPTION 'Admin with disabled_at timestamp retained active admin authorization';
