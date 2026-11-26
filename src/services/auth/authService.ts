@@ -1052,11 +1052,14 @@ class DefaultAuthService implements AuthService {
       }
     }
 
+    const activeAuthUserId = activeSupabaseSession?.user?.id || "";
     const activeAuthEmail = activeSupabaseSession?.user?.email?.trim().toLowerCase() || "";
     if (
       inMemorySession &&
-      activeAuthEmail &&
-      inMemorySession.email.trim().toLowerCase() !== activeAuthEmail
+      activeAuthUserId &&
+      ((inMemorySession.authUserId && inMemorySession.authUserId !== activeAuthUserId) ||
+        (!inMemorySession.authUserId && activeAuthEmail &&
+          inMemorySession.email.trim().toLowerCase() !== activeAuthEmail))
     ) {
       // A different Supabase identity is now active (usually from another tab).
       // Discard the previous account's cached role/permissions before returning
@@ -1086,7 +1089,12 @@ class DefaultAuthService implements AuthService {
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
         ]);
         serverProfile = profileResult as AdminProfileResult | null;
-        if (serverProfile && (!serverProfile.authenticated || !serverProfile.is_admin || serverProfile.is_active === false)) {
+        if (serverProfile && (
+          !serverProfile.authenticated ||
+          !serverProfile.is_admin ||
+          serverProfile.is_active === false ||
+          serverProfile.auth_user_id !== supabaseSession.user.id
+        )) {
           await this.logout();
           return null;
         }
@@ -1110,8 +1118,10 @@ class DefaultAuthService implements AuthService {
       // when the new account's profile request is offline or times out.
       if (
         storedSession &&
-        activeAuthEmail &&
-        storedSession.email.trim().toLowerCase() !== activeAuthEmail
+        activeAuthUserId &&
+        ((storedSession.authUserId && storedSession.authUserId !== activeAuthUserId) ||
+          (!storedSession.authUserId && activeAuthEmail &&
+            storedSession.email.trim().toLowerCase() !== activeAuthEmail))
       ) {
         storedSession = null;
         storage.removeItem(SESSION_STORAGE_KEY);
