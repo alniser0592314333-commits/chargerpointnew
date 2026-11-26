@@ -1312,6 +1312,14 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_actor_quota.test.sql
+      - name: Apply Sarah scoped customer lookup migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261126210000_sarah_ai_scoped_customer_lookup.sql
+      - name: Verify Sarah scoped customer lookup behavior and grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_customer_lookup.test.sql
       - name: Verify atomic quota enforcement under concurrent requests
         env:
           PGPASSWORD: postgres
