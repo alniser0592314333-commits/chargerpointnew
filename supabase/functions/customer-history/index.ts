@@ -41,7 +41,7 @@ Deno.serve(async (request: Request) => {
     const raw = await res.json().catch(() => null);
     const p = Array.isArray(raw) ? raw[0] : raw;
     const permissions = Array.isArray(p?.permissions) ? p.permissions : [];
-    const allowed = p?.is_admin === true && p?.is_active !== false &&
+    const allowed = p?.auth_user_id === auth.user.id && p?.is_admin === true && p?.is_active === true &&
       (p.role === "SUPER_ADMIN" || permissions.some((v: string) =>
         ["customers:edit","customers:write","customers:manage","customer_accounts:manage","customer_accounts:reset","admin:manage"].includes(v)));
     return allowed && typeof p.admin_id === "string" ? p.admin_id : null;
