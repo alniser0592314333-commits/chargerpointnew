@@ -61,6 +61,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const refreshQueue = async (accountId: string, operation?: number) => {
     if (!isCurrent(accountId, operation)) return;
     try {
+      await sarahInputQueue.pruneCompleted(accountId, 30);
+      if (!isCurrent(accountId, operation)) return;
       await sarahInputQueue.recoverInterruptedUploads(accountId);
       const rows = await sarahInputQueue.list(accountId);
       if (isCurrent(accountId, operation)) setPending(rows);
