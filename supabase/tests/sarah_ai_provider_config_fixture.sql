@@ -25,19 +25,6 @@ $roles$;
 CREATE SCHEMA auth;
 CREATE SCHEMA vault;
 
-CREATE TABLE public.permissions (
-  id uuid PRIMARY KEY DEFAULT pg_catalog.gen_random_uuid(),
-  code varchar UNIQUE NOT NULL,
-  description text,
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE public.role_permissions (
-  role varchar NOT NULL,
-  permission varchar NOT NULL,
-  PRIMARY KEY (role, permission)
-);
-
 CREATE OR REPLACE FUNCTION auth.jwt()
 RETURNS jsonb
 LANGUAGE sql
@@ -136,8 +123,47 @@ CREATE TABLE public.admins (
   auth_user_id uuid UNIQUE NOT NULL,
   role text NOT NULL,
   is_active boolean NOT NULL DEFAULT true,
-  disabled_at timestamptz
+  disabled_at timestamptz,
+  permissions text[] NOT NULL DEFAULT '{}'::text[]
 );
+
+CREATE TABLE public.admin_custom_permissions (
+  admin_id uuid NOT NULL REFERENCES public.admins(id) ON DELETE CASCADE,
+  permission text NOT NULL,
+  is_grant boolean NOT NULL,
+  PRIMARY KEY (admin_id, permission)
+);
+
+CREATE OR REPLACE FUNCTION public.get_effective_permissions(p_admin_id uuid)
+RETURNS TABLE(permission text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  WITH custom AS (
+    SELECT DISTINCT pg_catalog.btrim(p.permission) AS permission
+    FROM public.admin_custom_permissions p
+    JOIN public.admins a ON a.id = p.admin_id
+    WHERE p.admin_id = p_admin_id
+      AND a.is_active IS TRUE
+      AND p.is_grant IS TRUE
+      AND pg_catalog.btrim(p.permission) <> ''
+  ),
+  custom_state AS (
+    SELECT EXISTS (
+      SELECT 1 FROM public.admin_custom_permissions p WHERE p.admin_id = p_admin_id
+    ) AS has_custom_state
+  )
+  SELECT c.permission FROM custom c
+  WHERE (SELECT has_custom_state FROM custom_state)
+  UNION
+  SELECT DISTINCT pg_catalog.unnest(COALESCE(a.permissions, '{}'::text[]))
+  FROM public.admins a
+  WHERE a.id = p_admin_id
+    AND a.is_active IS TRUE
+    AND NOT (SELECT has_custom_state FROM custom_state);
+$function$;
 
 CREATE TABLE public.account_sessions (
   session_id uuid PRIMARY KEY,
@@ -161,9 +187,8 @@ AS $function$
     'auth_user_id', a.auth_user_id,
     'role', a.role,
     'permissions', COALESCE((
-      SELECT pg_catalog.jsonb_agg(rp.permission)
-      FROM public.role_permissions rp
-      WHERE rp.role = a.role
+      SELECT pg_catalog.jsonb_agg(ep.permission ORDER BY ep.permission)
+      FROM public.get_effective_permissions(a.id) ep
     ), '[]'::jsonb)
   )
   FROM public.admins a
@@ -238,12 +263,8 @@ INSERT INTO public.customers(id,name,phone,balance,is_active,deleted_at,status) 
  ('dddd0000-0000-4000-8000-000000000001','أحمد محذوف','0599000009',5,true,now(),'DELETED'),
  ('eeee0000-0000-4000-8000-000000000001',E'اسم\\nاختبار','0599000010',5,true,NULL,'ACTIVE');
 
-INSERT INTO public.permissions(code,description)
-VALUES ('customers:view','View active customer names and codes')
-ON CONFLICT(code) DO NOTHING;
-INSERT INTO public.role_permissions(role,permission)
-VALUES ('SUPER_ADMIN','customers:view')
-ON CONFLICT(role,permission) DO NOTHING;
+INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
+VALUES ('00000000-0000-4000-8000-000000000002','ai:manage',true);
 
 INSERT INTO auth.users(id) VALUES
  ('10000000-0000-4000-8000-000000000001'),
