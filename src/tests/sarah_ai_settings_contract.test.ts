@@ -11,6 +11,7 @@ describe("Sarah AI provider settings security contract", () => {
   const geminiAdapter = read("supabase/functions/_shared/ai/geminiProviderAdapter.ts");
   const clientService = read("src/services/ai/aiSettingsService.ts");
   const settingsPage = read("src/components/pages/SettingsPage.tsx");
+  const adminManagementPage = read("src/components/pages/AdminManagementPage.tsx");
   const settingsSection = read("src/components/settings/AISettingsSection.tsx");
   const integrationPackage = read("src/application/ai/sarahIntegrationPackage.ts");
 
