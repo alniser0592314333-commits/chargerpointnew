@@ -12,7 +12,7 @@ The first and only operational data tool is **customer name/code lookup**:
 - Migration: `20261126210000_sarah_ai_scoped_customer_lookup.sql`
 - Gemini tool name: `lookup_customers`
 - Invocation: `sarah-ai-chat` forwards the original authenticated user's JWT through a user-scoped Supabase client. The tool never uses the service-role client.
-- Required database permissions: `ai:use` and `customers:view`, checked independently inside PostgreSQL.
+- Required database permissions: `ai:use` and `customers:view`, checked independently inside PostgreSQL and resolved through the authoritative `admin_custom_permissions` / `admins.permissions` projection. The Admin Management UI exposes `ai:use` and `ai:manage` as separately assignable permissions; the legacy `permissions` / `role_permissions` catalog is not used for Sarah authorization.
 - Session and actor: derived from `auth.uid()`, current registered admin session, and current effective permissions; no client-supplied admin/customer ID is accepted.
 - Input: one normalized search string, 2–64 printable characters. The database uses fixed name-substring or exact four-character customer-code matching.
 - Output: at most five active customer names and four-character display codes, plus `match_count` and `has_more`.
@@ -45,7 +45,7 @@ No customer detail, order, finance, payment, day, device, notification, or write
 
 - `sarah_ai_consume_my_quota(period)`: fixed 20/hour and 100/day; requires `ai:use`.
 - `sarah_ai_consume_my_manage_quota(period)`: same fixed caps for provider connection tests; requires `ai:manage`.
-- Both derive the actor from `auth.uid()`. No arbitrary-actor service-role quota RPC exists.
+- Both derive the actor from `auth.uid()`. `ai:use` and `ai:manage` are granted only through explicit Super Admin-controlled custom permissions (Super Admin retains its existing bypass). No arbitrary-actor service-role quota RPC exists.
 - The private counter uses an atomic upsert and a primary key containing actor, window duration, and window start, so hourly and daily windows cannot collide.
 - The provider config table has no direct privileges for anon, authenticated, or service_role. The gateway calls a narrow service-only runtime projection and a separate service-only Vault secret RPC.
 - Provider save/clear operations are serialized with a transaction-scoped advisory lock.
