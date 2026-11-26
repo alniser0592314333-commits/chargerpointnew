@@ -30,3 +30,12 @@ Status: read-only production catalog/body inspection; no data rows queried, no c
 - `public_landing_content` returns configured opening hours, active device types/prices, brand assets and charger fee settings for public landing use.
 - `is_system_bootstrapped`/ `check_system_bootstrapped` return a boolean about whether an active Super Admin exists; no account data is exposed by the inspected definitions.
 - This is a definition spot-check; token entropy, rate limiting, storage, expiry policy, and full response handling were not tested end-to-end. No changes were made to these production functions.
+
+## Expanded catalog inventory (read-only, 2026-11-26)
+
+A catalog query enumerated public SECURITY DEFINER routines with argument signatures, search_path settings, and ACLs. This is an inventory snapshot, not a full source audit.
+
+- The inventory includes many authenticated EXECUTE entrypoints and corresponding guarded implementation/internal variants. These must be evaluated as actor/session/permission gates and not merely based on the presence of SECURITY DEFINER.
+- Several sync/bootstrap/snapshot routines are broad-data projections; they are excluded from Sarah's conversational capabilities pending exact field scope and actor checks.
+- The query is a metadata inventory only. It did not read business data or modify catalog state.
+- Further full-body/ACL testing is still required before any scoped data tool is approved for Sarah.
