@@ -124,7 +124,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       await sarahInputQueue.transition(accountId, id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
       try {
-        const response = await sarahChatService.send(clean, historySnapshot);
+        const response = await sarahChatService.send(clean, session?.authUserId || '', historySnapshot);
         if (!isCurrent(accountId, operation)) return;
         await sarahInputQueue.transition(accountId, id, "SENT_TO_AI", { resultRef: correlationId });
         await sarahInputQueue.transition(accountId, id, "COMPLETED");
@@ -174,7 +174,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (!isCurrent(accountId, operation)) return;
       const retryHistory = messages.slice(-20);
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
-      const response = await sarahChatService.send(record.text, retryHistory);
+      const response = await sarahChatService.send(record.text, session?.authUserId || '', retryHistory);
       if (!isCurrent(accountId, operation)) return;
       await sarahInputQueue.transition(accountId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
       await sarahInputQueue.transition(accountId, record.id, "COMPLETED");
