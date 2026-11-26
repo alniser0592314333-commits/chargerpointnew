@@ -33,3 +33,22 @@ Status: design gate, not implemented or enabled.
 
 ## Current decision
 Do not implement/enable operational reads until the public function catalog, grant matrix, and relevant SECURITY DEFINER bodies have been reviewed sufficiently to map existing canonical data paths and choose the smallest safe database capability.
+## Database catalog results added to the implementation gate
+
+Read-only production catalog review found:
+- No public views/materialized views were cataloged.
+- Public direct table SELECT/INSERT grants to browser roles are limited to `app_release_policies`; its policies were reviewed.
+- Public EXECUTE on SECURITY DEFINER functions for browser roles was cataloged. Anonymous callable routines include the intentionally public app-identity/landing and QR/payment-token surfaces; these are not Sarah capabilities.
+- Sync/bootstrap functions enforce an active admin and `sync:manage`, but their broad projections and paging allow-listed collection access are not a safe conversational interface.
+- Purchase Book RLS is owner-scoped via `current_purchase_admin_id()`; any conversational tool would need to preserve that owner scope and not cross it.
+
+## Initial typed capability contract (design only)
+
+The first implementation candidate remains a narrowly typed customer lookup, not a direct table query:
+- Input: normalized search string only (bounded length); no caller-supplied admin identity, permission, table, field, or SQL.
+- Actor: derive auth user/session and active admin ID in the database boundary; require customer-view permission.
+- Scope: active customer records only; exclude deleted/archived entries according to canonical application rules.
+- Output: maximum 5 minimal matches with stable display code and name, plus an ambiguity indicator; no phone, financial balance, notes, ledger rows, order history, bulk enumeration, or arbitrary identifiers unless a later separately gated capability explicitly needs them.
+- Query and result byte/row caps must be enforced by the database function, not only by the model tool wrapper.
+- Add negative tests for actor spoofing, permission revocation, inactive sessions, account switching, ambiguous lookup, injection, excessive input, and no permission before enabling.
+- This is still design only; no bridge function, migration, or capability has been implemented or enabled.
