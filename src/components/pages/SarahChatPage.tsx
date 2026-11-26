@@ -54,7 +54,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (!cancelled && isCurrent(accountId, operation)) setError(err instanceof Error ? err.message : "CONVERSATION_LOAD_FAILED");
     });
     return () => { cancelled = true; };
-  }, [session?.userId]);
+  }, [session?.userId, session?.authUserId]);
 
   useEffect(() => {
     const accountId = session?.userId;
@@ -98,7 +98,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     if (!accountId) return;
     const operation = accountScopeRef.current.generation;
     void refreshQueue(accountId, operation);
-  }, [session?.userId]);
+  }, [session?.userId, session?.authUserId]);
 
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
 
