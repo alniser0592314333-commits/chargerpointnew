@@ -37,8 +37,7 @@ CREATE TABLE IF NOT EXISTS public.sarah_ai_provider_config (
 
 ALTER TABLE public.sarah_ai_provider_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sarah_ai_provider_config FORCE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public.sarah_ai_provider_config FROM PUBLIC, anon, authenticated;
-GRANT ALL ON TABLE public.sarah_ai_provider_config TO service_role;
+REVOKE ALL ON TABLE public.sarah_ai_provider_config FROM PUBLIC, anon, authenticated, service_role;
 
 -- Database-enforced AI management authorization. The browser cannot call this
 -- helper directly; each public settings RPC invokes it under SECURITY DEFINER.
@@ -248,6 +247,35 @@ BEGIN
 END;
 $function$;
 
+-- Runtime config is a narrow server-only projection. The Edge Function
+-- cannot select or mutate the configuration table directly with service_role.
+CREATE OR REPLACE FUNCTION public.sarah_ai_get_runtime_config()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_result jsonb;
+BEGIN
+  IF COALESCE(auth.jwt()->>'role', current_setting('request.jwt.claim.role', true)) <> 'service_role' THEN
+    RAISE EXCEPTION 'Service role required' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT pg_catalog.jsonb_build_object(
+    'provider_id', c.provider_id,
+    'model_id', c.model_id,
+    'generation_config', c.generation_config,
+    'enabled', c.enabled
+  )
+  INTO v_result
+  FROM public.sarah_ai_provider_config c
+  WHERE c.id = 'default';
+
+  RETURN v_result;
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.sarah_ai_get_provider_secret()
 RETURNS text
 LANGUAGE plpgsql
@@ -307,10 +335,12 @@ $function$;
 REVOKE ALL ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) FROM PUBLIC, anon, service_role;
 REVOKE ALL ON FUNCTION public.sarah_ai_get_provider_config() FROM PUBLIC, anon, service_role;
 REVOKE ALL ON FUNCTION public.sarah_ai_get_provider_secret() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.sarah_ai_get_runtime_config() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.sarah_ai_clear_provider_config() FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_config() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_secret() TO service_role;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_get_runtime_config() TO service_role;
 GRANT EXECUTE ON FUNCTION public.sarah_ai_clear_provider_config() TO authenticated;
 
 COMMIT;
