@@ -240,6 +240,7 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
         is_admin: true,
         is_active: true,
         admin_id: "admin_01",
+        auth_user_id: "user_owner_01",
         role: "SUPER_ADMIN",
         permissions: ["orders:view", "finance:view"],
       });
