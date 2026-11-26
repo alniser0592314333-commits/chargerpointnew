@@ -28,7 +28,8 @@ describe("Sarah durable input queue architecture contract", () => {
   it("uses a bounded upload lease so other tabs only recover expired uploads", () => {
     expect(source).toContain("uploadLeaseUntil");
     expect(source).toContain("Date.now() + 5 * 60 * 1000");
-    expect(source).toContain("Date.parse(row.uploadLeaseUntil) <= Date.now()");
+    expect(source).toContain("uploadLeaseExpired(row)");
+    expect(source).toContain("!Number.isFinite(expires) || expires <= Date.now()");
     expect(source).toContain("Another tab may have completed or changed this record");
     expect(source).toContain("QUEUE_RECOVERY_RACE_FAILED");
   });
