@@ -43,3 +43,12 @@ Status: static review of PR #326; findings are gates, not verified runtime fixes
 - The chat gateway currently has no operational capability calls: the service-role client is used for quota and provider configuration/secret retrieval only. Therefore, no ChargerPointNew customer/order/finance data is available to Sarah in this phase.
 - The branch's read-bridge proposal must use a separately constructed authenticated-user RPC client forwarding the validated bearer token, not service-role calls. The database capability itself must validate active registered session, current actor and permission, with direct negative tests before any enablement.
 - Remaining CI status: GitHub Actions has not returned a PR run for the latest quota-test commit at this observation; Vercel preview was building at the time of inspection. Neither is a pass. No production writes, migrations, merge or deployment were performed.
+
+
+## CI evidence update — 26 Nov 2026
+
+- GitHub Actions run #2677 for the PR merge ref completed. The isolated Sarah AI provider/quota migration job **passed**, including applying the quota migration and running the quota/grant regression script. This is evidence for the isolated fixture only, not production deployment.
+- Overall Verify Application run #2677 failed in a separate job: `Verify username sign-in against local Supabase Auth`. The script reported HTTP 503 and `Username sign-in is temporarily unavailable`. This failure does not originate from the Sarah quota migration job. Its root cause is not yet determined; it must not be dismissed as flaky without investigation.
+- Android APK build workflow run #914 succeeded on that merge ref. Vercel status for commit `1caae879...` was success. These statuses do not prove the chat gateway was deployed to production.
+- Live guard inspection: `assert_my_account_session_active()` delegates to `is_my_account_session_active()` for browser JWTs and rejects revoked/expired/unavailable sessions. `get_current_admin_profile()` calls the active-session guard. `_cp_assert_active_admin_permission` returns NULL for service_role; hence service-role calls are explicitly not a delegated user authorization context.
+- The authenticated-user RPC bridge remains a gated design. Before enabling a capability, verify JWT forwarding and database identity/session/permission/ownership controls with isolated direct-RPC negative tests. No production write, merge, or deployment occurred.
