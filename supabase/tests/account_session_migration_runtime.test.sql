@@ -211,6 +211,11 @@ DO $assert$
 BEGIN
   IF has_table_privilege('authenticated','public.account_sessions','SELECT') THEN RAISE EXCEPTION 'Authenticated role can read the private session table directly'; END IF;
   IF has_function_privilege('anon','public.get_my_account_sessions()','EXECUTE') THEN RAISE EXCEPTION 'Anonymous role can call account session RPC'; END IF;
+  IF has_function_privilege('anon','public.touch_my_account_session()','EXECUTE')
+     OR has_function_privilege('service_role','public.touch_my_account_session()','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.touch_my_account_session()','EXECUTE') THEN
+    RAISE EXCEPTION 'Session heartbeat RPC grants are incorrect';
+  END IF;
 END $assert$;
 
 -- An Auth session without an account_sessions registry row is never an
