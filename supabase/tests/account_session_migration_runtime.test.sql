@@ -1,4 +1,5 @@
 \set ON_ERROR_STOP on
+BEGIN;
 
 -- Guard wrappers must preserve the volatility contract of their original RPC.
 DO $assert$
@@ -24,7 +25,7 @@ INSERT INTO auth.refresh_tokens(user_id,session_id,revoked) VALUES
 -- The minimal login gate resolves role/active status without exposing permissions.
 -- Create the admins relation transactionally so the migration fixture remains
 -- compatible with the later, richer security-hardening fixture.
-BEGIN;
+SAVEPOINT login_gate_fixture;
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY,
   auth_user_id uuid NOT NULL,
@@ -51,7 +52,8 @@ BEGIN
     RAISE EXCEPTION 'Minimal login gate returned an invalid or over-broad payload: %', v_gate;
   END IF;
 END $assert$;
-ROLLBACK;
+ROLLBACK TO SAVEPOINT login_gate_fixture;
+RELEASE SAVEPOINT login_gate_fixture;
 
 -- The app-level account_sessions registry is administrator-only. Customer
 -- identities use customer_account_sessions and must not self-register here.
@@ -470,5 +472,4 @@ BEGIN
   END IF;
 END $assert$;
 
--- Leave the shared account_session fixture clean for the following security suite.
-DROP TABLE public.admins;
+ROLLBACK;
