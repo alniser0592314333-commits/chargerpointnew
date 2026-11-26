@@ -47,6 +47,28 @@ END
 $nonadmin_not_backfilled$;
 RESET ROLE;
 
+UPDATE public.admins SET disabled_at = now()
+WHERE auth_user_id = '10000000-0000-0000-0000-000000000004';
+SET ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000004', false);
+SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000004"}', false);
+DO $disabled_admin$
+BEGIN
+  IF public.is_my_account_session_active() IS NOT TRUE THEN
+    RAISE EXCEPTION 'Disabled timestamp should not invalidate the underlying Auth session registry';
+  END IF;
+  IF public.is_active_admin_session() IS NOT FALSE THEN
+    RAISE EXCEPTION 'Admin with disabled_at timestamp retained active admin authorization';
+  END IF;
+  IF (SELECT count(*) FROM public.customers) <> 0 THEN
+    RAISE EXCEPTION 'Disabled admin retained protected customer read access';
+  END IF;
+END
+$disabled_admin$;
+RESET ROLE;
+UPDATE public.admins SET disabled_at = NULL
+WHERE auth_user_id = '10000000-0000-0000-0000-000000000004';
+
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', false);
 SELECT set_config('request.jwt.claims', '{"session_id":"11000000-0000-0000-0000-000000000001"}', false);
