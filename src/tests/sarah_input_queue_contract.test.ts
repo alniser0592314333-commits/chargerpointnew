@@ -24,7 +24,7 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("UPLOAD_INTERRUPTED_REQUIRES_REVIEW");
     expect(source).toContain("UPLOADING");
     expect(source).toContain('lastErrorCode: "UPLOAD_INTERRUPTED_REQUIRES_REVIEW"');
-    expect(source).toContain('await this.transition(accountId, row.id, "NEEDS_ATTENTION"');
+    expect(source).toContain('current.state !== "UPLOADING"');\n    expect(source).toContain("current.uploadLeaseUntil !== observed.uploadLeaseUntil");\n    expect(source).toContain("store.put({ ...current, state: \\"NEEDS_ATTENTION\\"");\n    expect(source).toContain("compare-and-set inside the same transaction");\n    expect(source).not.toContain('await this.transition(accountId, row.id, "NEEDS_ATTENTION"');
   });
   it("uses a bounded upload lease so other tabs only recover expired uploads", () => {
     expect(source).toContain("uploadLeaseUntil");
