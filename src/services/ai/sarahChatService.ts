@@ -23,8 +23,8 @@ const tokenSubject = (token: string): string => {
 export const sarahChatService = {
   async send(
     text: string,
-    history: { role: "user" | "assistant"; text: string }[] = [],
     expectedAuthUserId: string,
+    history: { role: "user" | "assistant"; text: string }[] = [],
   ): Promise<SarahChatResponse> {
     const clean = text.trim();
     if (!clean) throw new Error("TEXT_REQUIRED");
