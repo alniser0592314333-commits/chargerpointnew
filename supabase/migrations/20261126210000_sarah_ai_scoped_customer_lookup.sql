@@ -12,6 +12,7 @@ AS $function$
 DECLARE
   v_query text;
   v_result jsonb;
+  v_quota jsonb;
 BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public._cp_assert_active_admin_permission('customers:view');
@@ -33,6 +34,17 @@ BEGIN
   IF pg_catalog.char_length(v_query) < 2 THEN
     RAISE EXCEPTION 'Customer lookup query must be 2 to 64 printable characters'
       USING ERRCODE = '22023';
+  END IF;
+
+  -- The RPC is independently callable, so it consumes its own tool quota
+  -- instead of trusting the chat gateway to have charged a request first.
+  v_quota := public.sarah_ai_consume_my_quota('tool_hour');
+  IF COALESCE((v_quota->>'allowed')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE = 'P0001';
+  END IF;
+  v_quota := public.sarah_ai_consume_my_quota('tool_day');
+  IF COALESCE((v_quota->>'allowed')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE = 'P0001';
   END IF;
 
   WITH candidates AS (
