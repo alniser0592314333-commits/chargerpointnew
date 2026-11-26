@@ -28,9 +28,9 @@ LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
 CREATE FUNCTION auth.jwt() RETURNS jsonb
-LANGUAGE sql STABLE AS $
+LANGUAGE sql STABLE AS $jwt$
   SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
-$;
+$jwt$;
 
 -- Existing production admin-session predicate whose ACL is tightened by
 -- the migration. Keep it in the isolated fixture so grant assertions exercise
@@ -41,9 +41,9 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $
+AS $super_admin$
   SELECT false
-$;
+$super_admin$;
 
 
 -- Representative exposed business table and SECURITY DEFINER RPC used to prove
