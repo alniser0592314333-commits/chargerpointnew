@@ -417,7 +417,7 @@ BEGIN
   v_definition := pg_get_functiondef(
     'public.restore_selected_business_days(text,jsonb,date[])'::regprocedure
   );
-  IF pg_catalog.position('restore_selected_business_days__session_guarded_impl' IN v_definition) = 0 THEN
+  IF pg_catalog.strpos(v_definition, 'restore_selected_business_days__session_guarded_impl') = 0 THEN
     v_definition := replace(
       v_definition,
       'FUNCTION public.restore_selected_business_days(',
@@ -492,7 +492,7 @@ BEGIN
   v_definition := pg_get_functiondef(
     'public.bootstrap_first_super_admin(text,text,text)'::regprocedure
   );
-  IF pg_catalog.position('bootstrap_first_super_admin__session_guarded_impl' IN v_definition) = 0 THEN
+  IF pg_catalog.strpos(v_definition, 'bootstrap_first_super_admin__session_guarded_impl') = 0 THEN
     v_definition := replace(
       v_definition,
       'FUNCTION public.bootstrap_first_super_admin(',
