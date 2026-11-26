@@ -252,7 +252,8 @@ RESET ROLE;
 
 -- An explicit permission grant enables the manager; the DB resolves it from the
 -- authenticated admin profile, not a caller-supplied actor ID.
-INSERT INTO public.role_permissions(role, permission) VALUES ('MANAGER','ai:manage');
+INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
+VALUES ('00000000-0000-4000-8000-000000000002','ai:manage',true);
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role', 'authenticated', false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', false);
