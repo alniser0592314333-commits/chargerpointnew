@@ -27,7 +27,7 @@ Deno.serve(async(req)=>{
  if(quotaErr||!quota||quota.allowed!==true)return respond(quotaErr?503:429,{ok:false,error:quotaErr?"AI_QUOTA_SERVICE_UNAVAILABLE":"AI_RATE_LIMITED",retryAfterSeconds:3600});
  const {data:dailyQuota,error:dailyQuotaErr}=await caller.rpc("sarah_ai_consume_my_quota",{p_period:"day"});
  if(dailyQuotaErr||!dailyQuota||dailyQuota.allowed!==true)return respond(dailyQuotaErr?503:429,{ok:false,error:dailyQuotaErr?"AI_QUOTA_SERVICE_UNAVAILABLE":"AI_DAILY_LIMIT_REACHED",retryAfterSeconds:86400});
- const {data:configRow,error:cfgErr}=await admin.from("sarah_ai_provider_config").select("provider_id,model_id,generation_config,enabled").eq("id","default").maybeSingle();
+ const {data:configRow,error:cfgErr}=await admin.rpc("sarah_ai_get_runtime_config");
  if(cfgErr||!configRow||configRow.enabled!==true||configRow.provider_id!=="gemini")return respond(503,{ok:false,error:"AI_PROVIDER_NOT_CONFIGURED"});
  const {data:key,error:keyErr}=await admin.rpc("sarah_ai_get_provider_secret");if(keyErr||typeof key!=="string"||!key)return respond(503,{ok:false,error:"PROVIDER_CREDENTIAL_UNAVAILABLE"});
  const generation=configRow.generation_config||{},timeout=Math.min(Math.max(Number(generation.timeoutMs||30000),5000),120000);
