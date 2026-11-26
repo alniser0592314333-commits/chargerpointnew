@@ -537,6 +537,10 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.get_my_admin_login_gate() FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.get_my_admin_login_gate() TO authenticated;
+REVOKE ALL ON FUNCTION public.get_current_admin_profile() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.get_current_admin_profile() TO authenticated;
+REVOKE ALL ON FUNCTION public.current_admin_id() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.current_admin_id() TO authenticated;
 
 -- Legacy one-argument registration is retained for older clients but delegates
 -- to the same strict, freshness-checked browser registration path. It can never
