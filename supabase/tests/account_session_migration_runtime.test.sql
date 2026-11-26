@@ -29,6 +29,7 @@ CREATE TABLE public.admins (
   id uuid PRIMARY KEY,
   auth_user_id uuid NOT NULL,
   is_active boolean NOT NULL DEFAULT true,
+  disabled_at timestamptz,
   role text,
   email text,
   username text,
