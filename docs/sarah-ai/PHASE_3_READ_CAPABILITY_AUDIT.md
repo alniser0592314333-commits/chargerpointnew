@@ -27,10 +27,24 @@ The current `src/components/pages/dayOrdersStore.ts` exports established read fu
 ## Chat-gateway observations for later hardening
 
 - The gateway accepts bounded client-provided history; it should be treated as untrusted content, never as authorization or system instructions.
-- Current phase intentionally does not execute tools or claim access to records.
+- The first narrow read-only tool is now implemented: customer name/code lookup only. It uses the original user JWT and a typed database RPC requiring `ai:use` plus `customers:view`; it returns at most five active customer names/codes and no IDs, phone, balance, notes, or order data. No other operational tools are enabled.
 - Queue recovery deliberately avoids automatically replaying interrupted provider calls without idempotency.
 - CI for the reviewed commit passed the Sarah settings/chat contracts, Deno validation, provider-adapter tests, migration isolation, and application type-check/build. The full-main baseline diagnostic is separately known to have 44 failing test files and is not attributed to this PR.
 
 ## Next implementation gate
 
-Build a small permission-checked, sanitized read-tool catalog and execute it through an explicit app bridge; start with customer lookup and customer detail (without financial history), then order history and scoped day summaries. Add negative permission, ambiguous lookup, hard-limit, account-switch, offline/hydration, and data-minimization tests before expanding scope.
+Expand the catalog only one capability at a time. Customer lookup is implemented; customer detail (without financial history), order history, and scoped day summaries remain disabled. Add direct-RPC negative permission, ambiguity, hard-limit, account-switch, offline/hydration, and data-minimization tests before each expansion.
+
+
+## Implementation update — 26 Nov 2026
+
+The first customer lookup capability is wired through Gemini function calling in `sarah-ai-chat`. The Edge Function:
+- exposes only `lookup_customers` when the authenticated admin profile has `customers:view`;
+- executes at most one function call per user request;
+- forwards the original bearer token to `sarah_ai_lookup_customers` through the user-scoped client;
+- does not send service-role credentials to the data capability;
+- performs a second Gemini request without tools, preventing recursive/multiple tool calls.
+
+The database RPC independently requires `ai:use` and `customers:view`, derives identity/session from the JWT, validates input length/control characters, excludes inactive/deleted customers, and returns a maximum of five name/code-only matches. Direct EXECUTE is authenticated-only. Isolated SQL tests cover permission denial, inactive sessions, disabled admins, result caps, data minimization, and invalid input.
+
+This is the only active data capability. Customer detail, balances, financial history, orders, days, devices, notifications, and all mutations remain unavailable to Sarah.
