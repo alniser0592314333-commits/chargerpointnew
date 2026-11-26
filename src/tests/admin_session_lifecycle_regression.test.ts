@@ -231,6 +231,15 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(migration).toContain("session_expires_at <= now()");
   });
 
+
+  it("blocks caller-selected native reactivation of an idle-expired existing session", () => {
+    const migration = readFileSync("supabase/migrations/20261126193000_secure_idle_session_reactivation.sql", "utf8");
+    const reactivation = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION public.reactivate_my_account_session"));
+    expect(reactivation).toContain("a.session_expires_at <= now()");
+    expect(reactivation).toContain("SESSION_IDLE_EXPIRED_REQUIRES_FRESH_AUTH");
+    expect(reactivation).toContain("Fresh Auth sign-in creates a new session ID");
+    expect(reactivation).not.toContain("IF v_client_type = 'browser' AND EXISTS");
+  });
   it("validates session identity in read-only transactions without attempting session writes", () => {
     const migration = readFileSync("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql", "utf8");
     const activeSessionFunction = migration.slice(
