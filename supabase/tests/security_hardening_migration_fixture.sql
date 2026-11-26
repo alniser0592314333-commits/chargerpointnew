@@ -86,7 +86,20 @@ CREATE POLICY "Admin Delete Access" ON storage.objects
 
 CREATE TABLE public.customers (
   id uuid PRIMARY KEY,
-  name text NOT NULL
+  name text NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
+  deleted_at timestamptz,
+  status text NOT NULL DEFAULT 'ACTIVE'
+);
+CREATE TABLE public.customer_account_links (
+  id uuid PRIMARY KEY,
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  auth_user_id uuid NOT NULL,
+  account_status text NOT NULL DEFAULT 'ACTIVE'
+);
+CREATE TABLE public.jawwal_pay_settings (
+  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+  recipient_phone text NOT NULL
 );
 CREATE TABLE public.financial_ledger (
   id uuid PRIMARY KEY,
@@ -98,7 +111,10 @@ CREATE TABLE public.customer_requests (
 );
 
 INSERT INTO public.customers VALUES
-  ('20000000-0000-0000-0000-000000000001', 'Fixture customer');
+  ('20000000-0000-0000-0000-000000000001', 'Fixture customer', true, NULL, 'ACTIVE');
+INSERT INTO public.customer_account_links(id,customer_id,auth_user_id,account_status) VALUES
+  ('21000000-0000-0000-0000-000000000005','20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000005','ACTIVE');
+INSERT INTO public.jawwal_pay_settings(singleton,recipient_phone) VALUES (true, '+970599000001');
 INSERT INTO public.financial_ledger VALUES
   ('30000000-0000-0000-0000-000000000001', 100);
 INSERT INTO public.customer_requests VALUES
