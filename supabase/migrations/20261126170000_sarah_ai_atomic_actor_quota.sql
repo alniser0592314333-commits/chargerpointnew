@@ -14,8 +14,8 @@ REVOKE ALL ON TABLE public.sarah_ai_usage_windows FROM PUBLIC, anon, authenticat
 CREATE INDEX IF NOT EXISTS sarah_ai_usage_windows_started_idx
   ON public.sarah_ai_usage_windows(window_started_at);
 
--- Private atomic counter. Distinct window_seconds prevents hourly and daily
--- buckets from colliding when both start at the same UTC boundary.
+-- Private atomic counter. quota_type separates chat, tool and settings usage;
+-- window_seconds keeps each hourly and daily bucket independent.
 CREATE OR REPLACE FUNCTION public.sarah_ai_consume_quota_internal(
   p_actor_auth_user_id uuid,
   p_quota_type text,
@@ -32,6 +32,7 @@ DECLARE
   v_count integer;
 BEGIN
   IF p_actor_auth_user_id IS NULL
+     OR p_quota_type IS NULL
      OR p_quota_type NOT IN ('chat', 'tool', 'manage')
      OR p_max_requests NOT BETWEEN 1 AND 100
      OR p_window_seconds NOT BETWEEN 60 AND 86400 THEN
