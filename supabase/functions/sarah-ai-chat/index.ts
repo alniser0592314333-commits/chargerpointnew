@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
 
-const MAX_BODY_BYTES = 24 * 1024;
+const MAX_BODY_BYTES = 160 * 1024;
 const headers = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
