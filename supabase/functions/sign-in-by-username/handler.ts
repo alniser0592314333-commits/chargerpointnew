@@ -44,17 +44,20 @@ const invalidCredentials = () => {
  */
 export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
   return async (request: Request): Promise<Response> => {
+    const diagnosticsEnabled =
+      deps.getEnv("USERNAME_SIGNIN_DIAGNOSTICS") === "true"
+      || deps.getEnv("username_signin_diagnostics") === "true";
     const unavailable = (stage: string) => respond(503, {
       error: "Username sign-in is temporarily unavailable",
-      ...(deps.getEnv("username_signin_diagnostics") === "true" ? { diagnostic: stage } : {}),
+      ...(diagnosticsEnabled ? { diagnostic: stage } : {}),
     });
     if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (request.method !== "POST") return respond(405, { error: "Method not allowed" });
 
     const url = deps.getEnv("SUPABASE_URL");
-    const secretKey = deps.getEnv("auth_supabase_secret_key");
+    const secretKey = deps.getEnv("AUTH_SUPABASE_SECRET_KEY") || deps.getEnv("auth_supabase_secret_key");
     const publicKey = deps.getEnv("SUPABASE_ANON_KEY") || deps.getEnv("SUPABASE_PUBLISHABLE_KEY");
-    const rateLimitSecret = deps.getEnv("username_signin_rate_limit_secret");
+    const rateLimitSecret = deps.getEnv("USERNAME_SIGNIN_RATE_LIMIT_SECRET") || deps.getEnv("username_signin_rate_limit_secret");
     if (!url || !secretKey || !secretKey.startsWith("sb_secret_")
       || !publicKey || !rateLimitSecret || rateLimitSecret.length < 32) {
       // Fail closed unless modern server-only API credentials and a strong rate-limit
