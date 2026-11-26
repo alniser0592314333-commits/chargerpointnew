@@ -152,7 +152,11 @@ export function createUsernameSignInHandler(deps: UsernameSignInDependencies) {
       );
 
       if (!authResponse.ok) {
-        // Never forward Auth's raw response body; it may reveal account state.
+        // Record only the upstream status for operational diagnosis. Never log or
+        // forward Auth's response body, which may reveal account state.
+        console.error("Username sign-in Auth exchange failed", {
+          status: authResponse.status,
+        });
         const failure = publicAuthFailure(authResponse.status);
         return respond(failure.status, failure.body);
       }
