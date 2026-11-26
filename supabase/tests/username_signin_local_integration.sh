@@ -52,7 +52,8 @@ CREATE TABLE public.admins (
   auth_user_id uuid NOT NULL UNIQUE,
   username text NOT NULL,
   email text NOT NULL,
-  is_active boolean NOT NULL DEFAULT true
+  is_active boolean NOT NULL DEFAULT true,
+  disabled_at timestamptz
 );
 ALTER TABLE public.admins ENABLE ROW LEVEL SECURITY;
 SQL
