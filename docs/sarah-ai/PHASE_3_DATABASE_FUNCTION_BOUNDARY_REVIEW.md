@@ -74,3 +74,16 @@ This is a policy-enforcement weakness, not a demonstrated privilege escalation b
 Recommended safe remediation: require evidence of a fresh authentication event before native/PWA reactivation (server-validated Auth session creation age or a narrowly scoped, one-time server proof tied to the biometric/password reauthentication flow); never trust client type alone. Add adversarial RPC tests that attempt expired-browser-session reactivation with a spoofed `native` value and verify denial, while validating legitimate fresh native/PWA reactivation.
 
 No changes were made to the live function. This needs a new migration (not editing the already-applied migration) and a dedicated test/validation cycle.
+
+
+## Additional gateway review — request abuse and prompt-history boundary (2026-11-26)
+
+Read-only source inspection of `supabase/functions/sarah-ai-chat/index.ts` confirmed:
+
+- Each request validates the bearer token with Supabase Auth, resolves the active admin profile using `get_current_admin_profile`, verifies that profile's Auth UUID matches the authenticated user, and enforces `ai:use` (or Super Admin role) before reading the provider configuration/secret.
+- The provider credential is retrieved server-side through the service-role-only RPC; it is not sent to the client. Request body and text/history bounds are checked, and provider calls have an abort timeout.
+- The endpoint has no durable per-actor quota/rate-limit enforcement. Provider-side quota errors do not replace a server-side abuse-control policy.
+- History is client-supplied and bounded, but it is not server-authenticated as a prior transcript. It must be treated as untrusted prompt context. This is acceptable for the currently tool-less conversational gateway only if the model is not treated as a source of authorization or operational truth. Before adding tools, the server must construct/validate the tool context and scope independently; never authorize from history.
+- CORS currently allows any origin. The bearer-token and server-side authorization checks remain the security boundary, but a narrower origin policy may reduce unintended cross-origin usage and should be evaluated with the mobile/web deployment model.
+
+**Status:** findings only; no implementation, migration, or production change. A durable atomic limiter, browser-level behavioural tests, and an origin policy decision remain release gates before any operational bridge.
