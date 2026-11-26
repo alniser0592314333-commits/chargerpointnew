@@ -43,6 +43,7 @@ DECLARE
   v_user_id uuid := auth.uid();
   v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
   v_account_session public.account_sessions%ROWTYPE;
+  v_admin_disabled boolean := false;
 BEGIN
   IF v_user_id IS NULL OR v_session_id IS NULL THEN
     RETURN false;
@@ -76,12 +77,15 @@ BEGIN
 
   -- Admin disablement is an authorization revocation, even if the Auth token
   -- and account_sessions row have not yet expired or been revoked.
-  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
-    SELECT 1 FROM public.admins a
-    WHERE a.auth_user_id = v_user_id
-      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
-  ) THEN
-    RETURN false;
+  IF to_regclass('public.admins') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (
+      SELECT 1 FROM public.admins a
+      WHERE a.auth_user_id = $1
+        AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+    )' INTO v_admin_disabled USING v_user_id;
+    IF v_admin_disabled THEN
+      RETURN false;
+    END IF;
   END IF;
 
   RETURN true;
@@ -106,6 +110,7 @@ DECLARE
   v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
   v_auth_session auth.sessions%ROWTYPE;
   v_account_session public.account_sessions%ROWTYPE;
+  v_admin_disabled boolean := false;
   v_requested_client_type text := CASE
     WHEN p_client_type IN ('native', 'installed_pwa') THEN p_client_type
     ELSE 'browser'
@@ -126,12 +131,15 @@ BEGIN
     RAISE EXCEPTION 'Current authentication session is no longer active' USING ERRCODE = '28000';
   END IF;
 
-  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
-    SELECT 1 FROM public.admins a
-    WHERE a.auth_user_id = v_user_id
-      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
-  ) THEN
-    RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
+  IF to_regclass('public.admins') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (
+      SELECT 1 FROM public.admins a
+      WHERE a.auth_user_id = $1
+        AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+    )' INTO v_admin_disabled USING v_user_id;
+    IF v_admin_disabled THEN
+      RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
+    END IF;
   END IF;
 
   SELECT * INTO v_account_session
@@ -248,6 +256,7 @@ DECLARE
   v_session_id uuid := nullif(auth.jwt() ->> 'session_id', '')::uuid;
   v_auth_session auth.sessions%ROWTYPE;
   v_account_session public.account_sessions%ROWTYPE;
+  v_admin_disabled boolean := false;
   v_requested_client_type text := CASE
     WHEN p_client_type IN ('native', 'installed_pwa') THEN p_client_type
     ELSE 'browser'
@@ -268,12 +277,15 @@ BEGIN
     RAISE EXCEPTION 'Underlying Auth session is no longer active' USING ERRCODE = '28000';
   END IF;
 
-  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
-    SELECT 1 FROM public.admins a
-    WHERE a.auth_user_id = v_user_id
-      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
-  ) THEN
-    RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
+  IF to_regclass('public.admins') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (
+      SELECT 1 FROM public.admins a
+      WHERE a.auth_user_id = $1
+        AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+    )' INTO v_admin_disabled USING v_user_id;
+    IF v_admin_disabled THEN
+      RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
+    END IF;
   END IF;
 
   SELECT * INTO v_account_session
@@ -453,6 +465,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $function$
+DECLARE
+  v_admin_disabled boolean := false;
 BEGIN
   IF COALESCE(auth.jwt() ->> 'role', current_setting('request.jwt.claim.role', true)) = 'service_role' THEN
     RETURN;
@@ -466,14 +480,15 @@ BEGIN
   -- This guard is shared by legacy SECURITY DEFINER business RPCs. A valid
   -- Auth/session registry row must not keep a disabled admin authorized merely
   -- because an older RPC checks only admins.is_active.
-  IF to_regclass('public.admins') IS NOT NULL AND EXISTS (
-    SELECT 1
-    FROM public.admins a
-    WHERE a.auth_user_id = auth.uid()
-      AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
-  ) THEN
-    RAISE EXCEPTION 'Administrator account is disabled'
-      USING ERRCODE = '28000';
+  IF to_regclass('public.admins') IS NOT NULL THEN
+    EXECUTE 'SELECT EXISTS (
+      SELECT 1 FROM public.admins a
+      WHERE a.auth_user_id = $1
+        AND (a.is_active IS NOT TRUE OR a.disabled_at IS NOT NULL)
+    )' INTO v_admin_disabled USING auth.uid();
+    IF v_admin_disabled THEN
+      RAISE EXCEPTION 'Administrator account is disabled' USING ERRCODE = '28000';
+    END IF;
   END IF;
 END;
 $function$;
