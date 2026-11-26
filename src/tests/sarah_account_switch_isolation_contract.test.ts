@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 describe("Sarah account-switch asynchronous isolation", () => {
   const page = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");
   it("invalidates asynchronous work when account identity changes", () => {
-    expect(page).toContain("activeAccountRef");
-    expect(page).toContain("operationRef.current += 1");
+    expect(page).toContain("SarahAccountOperationScope");
+    expect(page).toContain("accountScopeRef.current.switchTo(session?.userId ?? null)");
     expect(page).toContain("isCurrent(accountId, operation)");
   });
   it("clears cross-account UI state on identity change", () => {
@@ -13,7 +13,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
   });
   it("binds transcript hydration and persistence to the hydrated account", () => {
     expect(page).toContain("if (!accountId || hydratedAccount !== accountId");
-    expect(page).toContain("activeAccountRef.current !== accountId");
+    expect(page).toContain("!accountScopeRef.current.isCurrentAccount(accountId)");
   });
   it("guards post-await queue and chat state updates", () => {
     expect(page).toContain("refreshQueue(accountId, operation)");
@@ -23,7 +23,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
   });
   it("does not retry another account's queued record", () => {
     expect(page).toContain("record.actorAccountId !== accountId");
-    expect(page).toContain("activeAccountRef.current !== accountId");
+    expect(page).toContain("!accountScopeRef.current.isCurrentAccount(accountId)");
     expect(page).toContain("hydratedAccount !== accountId");
   });
 });
