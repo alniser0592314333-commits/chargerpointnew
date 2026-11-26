@@ -270,15 +270,18 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(reactivation).toContain("creates a new session ID");
     expect(reactivation).not.toContain("IF v_client_type = 'browser' AND EXISTS");
   });
-  it("validates session identity in read-only transactions without attempting session writes", () => {
-    const migration = readFileSync("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql", "utf8");
+  it("keeps the final account-session authorization check read-only for RLS and rejects missing registry rows", () => {
+    const migration = readFileSync("supabase/migrations/20261126200000_strict_account_session_registry.sql", "utf8");
     const activeSessionFunction = migration.slice(
       migration.indexOf("CREATE OR REPLACE FUNCTION public.is_my_account_session_active"),
-      migration.indexOf("CREATE OR REPLACE FUNCTION public.get_my_account_sessions"),
+      migration.indexOf("CREATE OR REPLACE FUNCTION public.register_my_account_session_v2"),
     );
-    expect(activeSessionFunction).toContain("v_read_only boolean := current_setting('transaction_read_only', true) = 'on'");
-    expect(activeSessionFunction).toContain("IF v_read_only THEN");
-    expect(activeSessionFunction).toContain("IF NOT v_read_only AND");
+    expect(activeSessionFunction).toContain("STABLE");
+    expect(activeSessionFunction).toContain("IF NOT FOUND THEN");
+    expect(activeSessionFunction).toContain("RETURN false");
+    expect(activeSessionFunction).toContain("session_expires_at <= now()");
+    expect(activeSessionFunction).not.toContain("INSERT INTO public.account_sessions");
+    expect(activeSessionFunction).not.toContain("UPDATE public.account_sessions");
   });
 
   it("checks the native vault commit result and verifies persisted ciphertext", () => {
