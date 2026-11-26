@@ -101,3 +101,8 @@ Branch-only follow-up now changes interrupted-upload recovery to re-read the que
 ## Lease recovery predicate coverage
 
 The compare-and-set eligibility predicate is now isolated as a pure helper and exercised for a matching expired record, lease renewal, state change, cross-account record, and missing record. The recovery transaction calls this predicate after its in-transaction reread. These tests validate predicate cases; they do not replace multi-tab IndexedDB behavioral testing.
+
+
+## Idle-session reactivation correction (branch-only)
+
+Review found that the prior reactivation RPC treated caller-supplied `p_client_type` as the basis for the browser-only expiry rejection. A caller could label an expired registered session as native/PWA. A corrective migration in this PR now rejects reactivation for any existing registered session whose idle deadline has passed, independent of the claimed client type. This requires a fresh authentication session rather than allowing refresh/reactivation of the expired session. The source-contract regression was added. This is not deployed; compatibility with native saved-login flows and isolated database behavioral tests remain release gates.
