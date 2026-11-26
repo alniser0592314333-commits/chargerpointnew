@@ -17,7 +17,7 @@ describe("Sarah history bounds", () => {
   it("truncates an individual message to the server's 6000-character cap", () => {
     const result = buildSarahHistorySnapshot([{ role: "user", text: "س".repeat(8000) }]);
     expect(result).toHaveLength(1);
-    expect(result[0].text).toHaveLength(6000);
+    expect(result[0]?.text).toHaveLength(6000);
   });
 
   it("caps total history at 12000 characters without reordering messages", () => {
@@ -29,7 +29,7 @@ describe("Sarah history bounds", () => {
     const result = buildSarahHistorySnapshot(input);
     expect(result.reduce((total, message) => total + message.text.length, 0)).toBe(12000);
     expect(result.map((message) => message.role)).toEqual(["assistant", "user"]);
-    expect(result[0].text).toBe("ب".repeat(6000));
-    expect(result[1].text).toBe("ج".repeat(6000));
+    expect(result[0]?.text).toBe("ب".repeat(6000));
+    expect(result[1]?.text).toBe("ج".repeat(6000));
   });
 });
