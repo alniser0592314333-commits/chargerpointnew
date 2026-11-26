@@ -106,3 +106,18 @@ The compare-and-set eligibility predicate is now isolated as a pure helper and e
 ## Idle-session reactivation correction (branch-only)
 
 Review found that the prior reactivation RPC treated caller-supplied `p_client_type` as the basis for the browser-only expiry rejection. A caller could label an expired registered session as native/PWA. A corrective migration in this PR now rejects reactivation for any existing registered session whose idle deadline has passed, independent of the claimed client type. This requires a fresh authentication session rather than allowing refresh/reactivation of the expired session. The source-contract regression was added. This is not deployed; compatibility with native saved-login flows and isolated database behavioral tests remain release gates.
+
+
+## Current implementation state — 26 Nov 2026
+
+The historical findings above describe earlier branch snapshots. The latest branch adds the following changes; the latest commit still requires GitHub Actions evidence before it can be treated as verified:
+
+- **Database quota:** user-JWT RPCs derive the actor from `auth.uid()`; fixed 20/hour and 100/day limits; `ai:use` for chat and `ai:manage` for provider tests; no arbitrary-actor service-role quota RPC; private atomic counter; separate hourly/daily buckets; no direct usage-table grants to service_role or browser roles.
+- **Provider config boundary:** browser roles use caller-scoped RPCs. The service-role Edge client has no direct provider-config table privileges; it can call only a narrow runtime projection and Vault-secret RPC. Save/clear operations serialize with an advisory transaction lock.
+- **One read-only data tool:** `lookup_customers` is the only active tool. The Edge Function passes the original user JWT to `sarah_ai_lookup_customers`; the database checks `ai:use`, `customers:view`, active session and actor identity. The result is limited to five active customer names and four-character codes, with no raw IDs, phone, balance, notes, or order history. One tool call maximum per user request; the follow-up model request has no tools.
+- **No write tools:** Sarah cannot create, edit, deliver, cancel, charge, approve payments, send reminders, change settings, or run arbitrary SQL.
+- **Account switching:** a shared `SarahAccountOperationScope` invalidates asynchronous work on account switch/sign-out and prevents A→B→A stale-response reuse. New behavioral tests cover those cases.
+- **Queue recovery:** interrupted-upload recovery re-reads the record in the same IndexedDB write transaction and compares account, state, and observed lease before changing it. Predicate tests cover changed leases/states and cross-account records. Multi-tab IndexedDB behavioral tests are still outstanding.
+- **Strict admin session registry:** the separate session-hardening PR rejects missing registry rows even in read-only transactions, backfills only active admins with live Auth sessions, checks `disabled_at`, guards the day-restore RPC, and preserves first-owner bootstrap only after validating the confirmed owner identity and registering a fresh Auth session. This remains a separate PR dependency and must merge before the Sarah capability migration is deployed.
+
+The current design intentionally keeps customer detail, financial history, orders, day summaries, devices, notifications, and all mutations disabled. The first lookup capability is a bounded identity resolver, not broad customer access.
