@@ -248,6 +248,9 @@ BEGIN
   EXCEPTION WHEN SQLSTATE '28000' THEN
     NULL;
   END;
+  IF public.touch_my_account_session() IS NOT FALSE THEN
+    RAISE EXCEPTION 'An unregistered session unexpectedly passed the session heartbeat';
+  END IF;
   IF EXISTS (SELECT 1 FROM public.account_sessions WHERE session_id='ffffffff-ffff-4fff-8fff-ffffffffffff') THEN
     RAISE EXCEPTION 'Session listing unexpectedly auto-registered the current session';
   END IF;
