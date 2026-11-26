@@ -304,6 +304,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql --single-transaction -h localhost -U postgres -d native_push_debt_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261116070000_native_push_debt_reminder_session_bypass.sql
+      - name: Enforce admin session expiry for native push
+        env:
+          PGPASSWORD: postgres
+        run: psql --single-transaction -h localhost -U postgres -d native_push_debt_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261126210000_native_push_admin_session_expiry_gate.sql
       - name: Verify debt reminders bypass only the expired portal session
         env:
           PGPASSWORD: postgres
