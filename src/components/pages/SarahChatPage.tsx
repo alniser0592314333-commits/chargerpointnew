@@ -41,7 +41,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   };
 
   useEffect(() => {
-    const accountId = session?.userId;
+    const accountId = session?.authUserId || null;
     if (!accountId) return;
     const operation = accountScopeRef.current.generation;
     let cancelled = false;
@@ -58,7 +58,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   }, [session?.userId, session?.authUserId]);
 
   useEffect(() => {
-    const accountId = session?.userId;
+    const accountId = session?.authUserId || null;
     if (!accountId || hydratedAccount !== accountId) return;
     return sarahConversationStore.subscribeToClear((notice) => {
       if (notice.accountId !== accountId || !isCurrent(accountId)) return;
@@ -74,7 +74,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   }, [session?.userId, session?.authUserId, hydratedAccount]);
 
   useEffect(() => {
-    const accountId = session?.userId;
+    const accountId = session?.authUserId || null;
     if (!accountId || hydratedAccount !== accountId || !isCurrent(accountId)) return;
     // Save only the transcript explicitly hydrated for this identity.
     void sarahConversationStore.save(accountId, messages, conversationGenerationRef.current).catch((err) => {
@@ -95,7 +95,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     }
   };
   useEffect(() => {
-    const accountId = session?.userId;
+    const accountId = session?.authUserId || null;
     if (!accountId) return;
     const operation = accountScopeRef.current.generation;
     void refreshQueue(accountId, operation);
@@ -104,7 +104,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
 
   const send = async () => {
-    const accountId = session?.userId;
+    const accountId = session?.authUserId || null;
     const clean = text.trim();
     if (!clean || busy || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
     const operation = accountScopeRef.current.generation;
@@ -153,7 +153,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   };
 
   const clearTranscript = async () => {
-    const accountId = session?.userId;
+    const accountId = session?.authUserId || null;
     if (!accountId || busy || hydratedAccount !== accountId || !isCurrent(accountId)) return;
     if (!window.confirm("مسح سجل المحادثة لهذا الحساب فقط؟")) return;
     const operation = accountScopeRef.current.generation;
@@ -169,7 +169,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   };
 
   const retryQueued = async (record: SarahInputRecord) => {
-    const accountId = session?.userId;
+    const accountId = session?.authUserId || null;
     if (!accountId || busy || !navigator.onLine || !isCurrent(accountId) || record.actorAccountId !== accountId || !record.text || hydratedAccount !== accountId) return;
     const operation = accountScopeRef.current.generation;
     setBusy(true); setError("");
@@ -214,11 +214,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       </div>
       {pending.filter((item) => item.state !== "COMPLETED").length > 0 && <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20"><div className="mb-2 font-semibold">رسائل محفوظة / تحتاج متابعة</div>{pending.filter((item) => item.state !== "COMPLETED").map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 py-2"><span className="min-w-0 flex-1 truncate">{item.text || "رسالة صوتية محفوظة"} <span className="text-xs text-gray-500">({item.state})</span></span>{(item.state === "QUEUED_OFFLINE" || item.state === "NEEDS_ATTENTION") && <button type="button" disabled={busy || !navigator.onLine} onClick={() => void retryQueued(item)} className="rounded-lg bg-amber-700 px-3 py-1 text-white disabled:opacity-40">إعادة إرسال</button>}</div>)}</div>}
       <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#123832] dark:bg-[#061f1c]">
-        <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy || hydratedAccount !== session?.userId} />
-        <Button type="submit" disabled={busy || !text.trim() || hydratedAccount !== session?.userId} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
+        <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy || hydratedAccount !== session?.authUserId} />
+        <Button type="submit" disabled={busy || !text.trim() || hydratedAccount !== session?.authUserId} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
       </form>
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <button type="button" disabled={busy || hydratedAccount !== session?.userId} onClick={() => void clearTranscript()} className="text-xs text-red-600 underline disabled:opacity-40">مسح سجل المحادثة</button>
+        <button type="button" disabled={busy || hydratedAccount !== session?.authUserId} onClick={() => void clearTranscript()} className="text-xs text-red-600 underline disabled:opacity-40">مسح سجل المحادثة</button>
         <button type="button" onClick={() => accountId && void refreshQueue(accountId, accountScopeRef.current.generation)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
       </div>
       <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
