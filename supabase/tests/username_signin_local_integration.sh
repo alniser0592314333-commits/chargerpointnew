@@ -39,7 +39,7 @@ major_version = 17
 [studio]
 enabled = false
 
-[inbucket]
+[local_smtp]
 enabled = false
 
 [analytics]
