@@ -1,7 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { readBoundedRequestBody } from "../_shared/http/requestBodyLimit.ts";
+import { readBoundedRequestBody, readBoundedResponseBody } from "../_shared/http/requestBodyLimit.ts";
 
 const MAX_BODY_BYTES = 160 * 1024;
+const MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024;
 const headers = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -213,8 +214,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const firstResult = await firstResponse.json();
-    const firstCandidate = firstResult?.candidates?.[0] as Record<string, unknown> | undefined;
+    const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES).catch(() => null);
+    if (firstBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
+    let firstResult: Record<string, unknown>;
+    try {
+      firstResult = JSON.parse(new TextDecoder().decode(firstBytes)) as Record<string, unknown>;
+    } catch {
+      return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
+    }
+    const firstCandidate = (firstResult as any)?.candidates?.[0] as Record<string, unknown> | undefined;
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
     const firstParts = Array.isArray(firstContent?.parts)
       ? firstContent.parts as Array<Record<string, unknown>>
@@ -282,8 +290,15 @@ Deno.serve(async (req) => {
         });
       }
 
-      const secondResult = await secondResponse.json();
-      const secondCandidate = secondResult?.candidates?.[0] as Record<string, unknown> | undefined;
+      const secondBytes = await readBoundedResponseBody(secondResponse, MAX_PROVIDER_RESPONSE_BYTES).catch(() => null);
+      if (secondBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
+      let secondResult: Record<string, unknown>;
+      try {
+        secondResult = JSON.parse(new TextDecoder().decode(secondBytes)) as Record<string, unknown>;
+      } catch {
+        return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
+      }
+      const secondCandidate = (secondResult as any)?.candidates?.[0] as Record<string, unknown> | undefined;
       answer = extractAnswer(secondCandidate || null);
       if (!answer) {
         const secondContent = secondCandidate?.content as Record<string, unknown> | undefined;
