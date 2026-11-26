@@ -2,7 +2,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WORKDIR="${RUNNER_TEMP:-/tmp}/chargerpointnew-username-signin-integration"
+RUN_SUFFIX="${GITHUB_RUN_ID:-$}_${GITHUB_RUN_ATTEMPT:-1}"
+PORT_OFFSET=$(( (${GITHUB_RUN_ID:-$} + ${GITHUB_RUN_ATTEMPT:-1}) % 900 ))
+BASE_PORT=$((54000 + PORT_OFFSET * 6))
+API_PORT=$BASE_PORT
+DB_PORT=$((BASE_PORT + 1))
+STUDIO_PORT=$((BASE_PORT + 2))
+INBUCKET_PORT=$((BASE_PORT + 3))
+ANALYTICS_PORT=$((BASE_PORT + 4))
+WORKDIR="${RUNNER_TEMP:-/tmp}/chargerpointnew-username-signin-integration-${RUN_SUFFIX}"
 mkdir -p "$WORKDIR/supabase/migrations" "$WORKDIR/supabase/functions/sign-in-by-username"
 
 cleanup() {
@@ -16,18 +24,27 @@ cp "$ROOT/supabase/functions/sign-in-by-username/handler.ts" "$WORKDIR/supabase/
 cp "$ROOT/supabase/functions/sign-in-by-username/requestValidation.ts" "$WORKDIR/supabase/functions/sign-in-by-username/"
 
 cat > "$WORKDIR/supabase/config.toml" <<'TOML'
-project_id = "chargerpointnew_username_auth_test"
+project_id = "chargerpointnew_username_auth_${RUN_SUFFIX}"
 
 [api]
 enabled = true
-port = 54321
+port = ${API_PORT}
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 54322
+port = ${DB_PORT}
 major_version = 17
+
+[studio]
+port = ${STUDIO_PORT}
+
+[inbucket]
+port = ${INBUCKET_PORT}
+
+[analytics]
+port = ${ANALYTICS_PORT}
 
 [auth]
 enabled = true
