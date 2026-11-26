@@ -55,11 +55,10 @@ The first implementation candidate remains a narrowly typed customer lookup, not
 
 ## Gateway rate-limit implementation status (branch-only, CI pending)
 
-The branch now implements a durable atomic hourly per-actor quota. The implementation uses:
-- a server-validated Auth UUID as the key (not model input, client profile, or IP alone);
-- service-role-only RPC access, invoked only after Edge Function `getUser`, active profile/session and `ai:use` checks;
-- no public table grants and RLS enabled;
-- atomic fixed/sliding window enforcement for both short burst and daily quota (suggested initial policy: 10 calls per 15 minutes and 100 per day, subject to owner approval);
-- a safe return value indicating allow/deny and retry time, with no secret/user data in logs;
-- expiration/cleanup of old rate buckets and tests for concurrent requests, account spoofing, revoked session, denied permissions, reset-window behavior and abuse.
-Do not use Edge-instance memory as the security control; instance-local state is not durable or consistent.
+The branch currently implements a durable atomic hourly per-actor quota: 20 calls per actor per 3600-second bucket. It uses the Auth UUID validated by the gateway, service-role-only RPC, RLS, no direct browser grants, and deletes old buckets beyond 48 hours. The Edge Function fail-closes if the quota RPC fails and returns 429 when the quota is exhausted. This is the implementation currently in code; it does not implement the alternative 10-per-15-minute plus 100-per-day policy described in earlier planning.
+
+The quota test SQL and gateway contract test are included in the branch. CI and deployment validation are still pending; no production migration has been applied by this branch work.
+
+## Read-bridge blocker discovered in live catalog review
+
+The existing `_cp_assert_active_admin_permission` deliberately returns NULL for service-role requests, bypassing browser-session and permission resolution. Therefore, calling existing permission-guarded RPCs from the Edge Function using service-role credentials does **not** preserve the originating user's permission boundary. The existing gateway currently verifies the user/session and `ai:use` in its own context, but a delegated read RPC would need a distinct database-level delegated-actor validation mechanism. No read capability should be exposed until that mechanism independently validates actor identity, current registered session, effective permission and operation scope despite service-role invocation. This is a concrete security design blocker, not a prompt/UI issue.
