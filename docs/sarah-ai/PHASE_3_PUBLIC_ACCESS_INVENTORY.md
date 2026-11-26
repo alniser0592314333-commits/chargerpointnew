@@ -25,3 +25,9 @@ Wallet ledger/account tables also showed FORCE RLS enabled in the inventory.
 - This does not constitute a full audit of all exposed RPCs, views, storage policies, triggers, grants, or cross-schema paths.
 - Public QR endpoint privacy findings are not approved for Sarah access.
 - No production changes were made.
+
+## Additional table/view and storage policy spot-check
+
+- Direct browser-role privileges were cataloged for public and storage objects. Public `app_release_policies` has an intentional public SELECT policy and Super Admin guarded insert/update policies.
+- Storage catalog privileges alone are not proof of object exposure. Policy review showed public SELECT restricted to the `app-identity` bucket, and an authenticated payment-receipt read policy restricted to active admin session plus `finance:approve-payment`.
+- Storage object grants/policies remain a partial review; other storage buckets and indirect access paths require a complete inventory and testing.
