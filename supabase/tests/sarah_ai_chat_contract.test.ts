@@ -156,7 +156,6 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("public.execute_sync_command(");
     expect(adminReadMigration).toContain("'OPEN_DAY','business_days'");
     expect(adminReadMigration).not.toContain("INSERT INTO public.business_days");
-    expect(adminReadMigration).toContain("'OPEN_DAY','business_days'");
     expect(adminReadMigration).toContain("settings:manage");
   });
 
@@ -355,6 +354,21 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("Authorization BIN is required");
     expect(source).toContain("Invalid authorization BIN credential");
     expect(source).toContain("p_bin: actionBin");
+  });
+
+  it("routes AI provider management through the existing ai:manage-secured settings gateway without exposing secrets", () => {
+    expect(source).toContain('name: "get_sarah_ai_provider_settings"');
+    expect(source).toContain('name: "update_sarah_ai_provider_settings"');
+    expect(source).toContain('name: "test_sarah_ai_provider_connection"');
+    expect(source).toContain('name: "clear_sarah_ai_provider_settings"');
+    expect(source).toContain('requiredPermissionGroups: [["ai:manage"]]');
+    expect(source).toContain('caller.functions.invoke("sarah-ai-settings"');
+    expect(source).toContain('invokeSettings("read")');
+    expect(source).toContain('invokeSettings("save"');
+    expect(source).toContain('invokeSettings("test")');
+    expect(source).toContain('invokeSettings("clear")');
+    expect(source).not.toContain('apiKey: args.');
+    expect(source).toContain("Never request, accept, repeat, or expose provider API keys in chat");
   });
 
   it("routes business-hours changes through the original session-guarded endpoint", () => {
