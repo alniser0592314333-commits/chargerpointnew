@@ -107,6 +107,7 @@ CREATE TABLE public.goal_requests (
   updated_at timestamptz NOT NULL DEFAULT now(),
   version integer NOT NULL DEFAULT 1
 );
+GRANT SELECT ON public.goals,public.goal_requests TO authenticated;
 
 INSERT INTO public.device_types(id,name,name_ar,name_en,base_price_minor,charger_fee_minor,charger_fee_applicable,is_active,status,sort_order)
 VALUES
