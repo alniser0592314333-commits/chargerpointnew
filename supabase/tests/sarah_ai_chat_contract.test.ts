@@ -22,7 +22,7 @@ const customerUpdateMigration = read("supabase/migrations/20261127180000_sarah_a
 const changeLogRedactionMigration = read("supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql");
 const historicalChangeLogRedactionMigration = read("supabase/migrations/20261127200000_redact_historical_change_log_secrets.sql");
 const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
-const customerAccountStatusMigration = read("supabase/migrations/20261127220000_sarah_ai_customer_account_status.sql");
+const customerAccountStatusMigration = read("supabase/migrations/20261127240000_sarah_ai_customer_account_status.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
 
