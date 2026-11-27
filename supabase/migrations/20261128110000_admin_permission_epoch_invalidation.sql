@@ -184,4 +184,64 @@ BEGIN
 END;
 $publication$;
 
+
+-- Keep bulk permission edits to one DELETE statement and one INSERT statement.
+-- The statement-level triggers therefore emit at most two version changes per
+-- save, rather than one Realtime event per permission row.
+CREATE OR REPLACE FUNCTION public.rpc_set_admin_custom_permissions__session_guarded_impl(
+  p_target_admin_id uuid,
+  p_permissions text[],
+  p_bin text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_caller_id uuid;
+BEGIN
+  v_caller_id := public.authorize_super_admin_admin_management(p_bin);
+
+  PERFORM 1
+  FROM public.admins
+  WHERE id = p_target_admin_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Target admin not found'
+      USING ERRCODE = '23503';
+  END IF;
+
+  DELETE FROM public.admin_custom_permissions
+  WHERE admin_id = p_target_admin_id;
+
+  INSERT INTO public.admin_custom_permissions (admin_id, permission, is_grant)
+  SELECT p_target_admin_id, normalized.permission, TRUE
+  FROM (
+    SELECT DISTINCT trim(input_permission) AS permission
+    FROM unnest(COALESCE(p_permissions, ARRAY[]::text[])) AS input_permission
+    WHERE input_permission IS NOT NULL
+      AND trim(input_permission) <> ''
+  ) AS normalized
+  ON CONFLICT (admin_id, permission) DO UPDATE
+    SET is_grant = TRUE;
+
+  INSERT INTO public.admin_audit_logs (
+    actor_admin_id,
+    action,
+    target_admin_id,
+    metadata
+  ) VALUES (
+    v_caller_id,
+    'ADMIN_CUSTOM_PERMISSIONS_UPDATED',
+    p_target_admin_id,
+    jsonb_build_object(
+      'permissions_count', COALESCE(cardinality(p_permissions), 0),
+      'timestamp', now()
+    )
+  );
+END;
+$function$;
+
 COMMIT;
