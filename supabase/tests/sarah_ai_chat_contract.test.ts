@@ -26,6 +26,7 @@ const customerAccountStatusMigration = read("supabase/migrations/20261127240000_
 const dayOrderRenumberingMigration = read("supabase/migrations/20261127250000_sarah_ai_day_order_renumbering.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
+const jawwalRecipientMigration = read("supabase/migrations/20261024130000_admin_managed_jawwal_recipient.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -138,6 +139,19 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("PostgreSQL independently re-checks each permission per call");
     expect(source).not.toContain("You have two read-only tools");
     expect(source).not.toContain("canLookupCustomers = isSuperAdmin || permissions.includes");
+  });
+
+  it("connects Jawwal Pay recipient settings to the existing guarded settings RPCs", () => {
+    expect(source).toContain('name: "get_jawwal_pay_recipient"');
+    expect(source).toContain('name: "update_jawwal_pay_recipient"');
+    expect(source).toContain('caller.rpc("get_jawwal_pay_recipient")');
+    expect(source).toContain('caller.rpc("set_jawwal_pay_recipient"');
+    expect(source).toContain("/^05[0-9]{8}$/");
+    expect(source).toContain("Missing settings management permission");
+    expect(jawwalRecipientMigration).toContain("public.is_my_account_session_active() IS NOT TRUE");
+    expect(jawwalRecipientMigration).toContain("permission = 'settings:manage'");
+    expect(jawwalRecipientMigration).toContain("ON CONFLICT (singleton) DO UPDATE");
+    expect(jawwalRecipientMigration).toContain("REVOKE ALL ON public.jawwal_pay_settings FROM PUBLIC, anon, authenticated");
   });
 
   it("keeps every registered capability paired with an executor and prevents unregistered dispatch", () => {
