@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const source = read("supabase/functions/sarah-ai-chat/index.ts");
+const supabaseConfig = read("supabase/config.toml");
 const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
 const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
 const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_customer_profile_read.sql");
@@ -99,6 +100,11 @@ describe("Sarah chat gateway security contract", () => {
     expect(profileMigration).not.toContain("'phone',");
     expect(profileMigration).not.toContain("'balance',");
     expect(profileMigration).not.toContain("'notes',");
+  });
+
+  it("requires platform JWT verification before Sarah chat code runs", () => {
+    expect(supabaseConfig).toContain("[functions.sarah-ai-chat]");
+    expect(supabaseConfig).toContain("verify_jwt = true");
   });
 
   it("derives exposed tools from a permission-filtered extensible capability registry", () => {
