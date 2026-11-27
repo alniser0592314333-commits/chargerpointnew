@@ -1639,7 +1639,23 @@ Deno.serve(async (req) => {
         };
         const saved = await caller.functions.invoke("business-hours", { body: { config: nextConfig } });
         toolResult = saved.data;
-        toolError = saved.error;
+        if (saved.error) {
+          let endpointError: Record<string, unknown> = {};
+          const context = (saved.error as { context?: Response }).context;
+          if (context) {
+            try {
+              endpointError = await context.clone().json() as Record<string, unknown>;
+            } catch {
+              endpointError = {};
+            }
+          }
+          const endpointCode = String(endpointError.error || "");
+          const mappedCode = endpointCode === "SETTINGS_PERMISSION_DENIED" ? "42501"
+            : endpointCode === "ADMIN_SESSION_REQUIRED" || endpointCode === "ADMIN_AUTH_REQUIRED" ? "28000"
+            : endpointCode === "INVALID_BUSINESS_HOURS_CONFIG" || endpointCode === "INVALID_JSON" ? "22023"
+            : "P0001";
+          toolError = { code: mappedCode, message: endpointCode || saved.error.message };
+        }
       }
     } else if (toolName === "get_goals_overview") {
       const rawCustomerName = args.customer_name;
