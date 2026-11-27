@@ -21,6 +21,8 @@ export interface SarahInputRecord {
   audioBlob?: Blob;
   audioMimeType?: string;
   correlationId: string;
+  /** Immutable original history used to preserve the server task hash across retries/resumes. */
+  historySnapshot?: { role: "user" | "assistant"; text: string }[];
   aiRequestId?: string;
   pendingBinAction?: { token: string; name: string; args: Record<string, unknown>; actionRequestId: string };
   resultRef?: string;
