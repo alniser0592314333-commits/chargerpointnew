@@ -40,6 +40,35 @@ BEGIN
 END;
 $task_gateway_acl$;
 
+-- Add an active manager fixture with no AI-use grant for the negative permission test.
+INSERT INTO auth.users(id)
+VALUES ('10000000-0000-4000-8000-000000000010')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.admins(id,auth_user_id,role,is_active,disabled_at,permissions)
+VALUES (
+  '00000000-0000-4000-8000-000000000010',
+  '10000000-0000-4000-8000-000000000010',
+  'MANAGER',true,NULL,'{}'::text[]
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.sessions(id,user_id,created_at,not_after,user_agent)
+VALUES (
+  '20000000-0000-4000-8000-000000000010',
+  '10000000-0000-4000-8000-000000000010',
+  now(),NULL,'manager without ai use'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.account_sessions(session_id,user_id,revoked_at,session_expires_at)
+VALUES (
+  '20000000-0000-4000-8000-000000000010',
+  '10000000-0000-4000-8000-000000000010',
+  NULL,now()+interval '7 days'
+)
+ON CONFLICT (session_id) DO NOTHING;
+
 -- Exercise the trusted gateway with a real fixture actor/session and ensure
 -- it independently enforces active account/session and ai:use permission.
 SET ROLE service_role;
@@ -77,8 +106,8 @@ BEGIN
 
   BEGIN
     PERFORM public.sarah_ai_task_gateway_resume(
-      '10000000-0000-4000-8000-000000000009',
-      '20000000-0000-4000-8000-000000000009',
+      '10000000-0000-4000-8000-000000000010',
+      '20000000-0000-4000-8000-000000000010',
       v_request,v_hash
     );
     RAISE EXCEPTION 'Gateway accepted a different admin without ai:use';
