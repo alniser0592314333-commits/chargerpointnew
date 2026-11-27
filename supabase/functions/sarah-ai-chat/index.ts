@@ -897,8 +897,10 @@ Deno.serve(async (req) => {
       toolError = result.error;
     } else if (toolName === "get_business_day_orders") {
       const businessDate = safeText(args.business_date, 10);
+      const parsedDate = Date.parse(businessDate + "T00:00:00Z");
       const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(businessDate)
-        && new Date(businessDate + "T00:00:00Z").toISOString().slice(0, 10) === businessDate;
+        && Number.isFinite(parsedDate)
+        && new Date(parsedDate).toISOString().slice(0, 10) === businessDate;
       if (!dateOk) return { response: respond(400, { ok: false, error: "BUSINESS_DATE_INVALID" }) };
       const result = await caller.rpc("sarah_ai_get_business_day_orders", { p_business_date: businessDate });
       toolResult = result.data;
@@ -906,8 +908,10 @@ Deno.serve(async (req) => {
     } else if (toolName === "renumber_day_orders") {
       const businessDate = safeText(args.business_date, 10);
       const rawIds = args.ordered_order_ids;
+      const parsedDate = Date.parse(businessDate + "T00:00:00Z");
       const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(businessDate)
-        && new Date(businessDate + "T00:00:00Z").toISOString().slice(0, 10) === businessDate;
+        && Number.isFinite(parsedDate)
+        && new Date(parsedDate).toISOString().slice(0, 10) === businessDate;
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!dateOk || !Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 200
         || rawIds.some(id => typeof id !== "string" || !uuidPattern.test(id))
