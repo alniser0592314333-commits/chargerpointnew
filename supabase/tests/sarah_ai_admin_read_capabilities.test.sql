@@ -231,6 +231,14 @@ BEGIN
   IF v_result->>'match_count'<>'0' THEN
     RAISE EXCEPTION 'A different Auth session reused another session lookup proof';
   END IF;
+
+  v_result:=public.sarah_ai_record_and_approve_payment(
+    '40000000-0000-4000-8000-000000000008',
+    'AAAA','أحمد علي',2000,'manual cash payment',NULL
+  );
+  IF v_result->>'ok'<>'true' OR v_result->>'idempotent_replay'<>'true' THEN
+    RAISE EXCEPTION 'Same-account session renewal did not safely replay the completed payment: %',v_result;
+  END IF;
 END;
 $session_proof_isolation$;
 RESET ROLE;
