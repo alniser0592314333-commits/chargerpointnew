@@ -1,6 +1,39 @@
 -- Session-bound customer reads and atomic Sarah order creation.
 -- Run after the provider, quota, lookup, profile, and admin-read migrations plus fixture.
 
+-- Device catalog read requires devices:view and returns only a bounded projection.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000001',false);
+DO $device_catalog_read$
+DECLARE v_result jsonb;
+BEGIN
+  v_result:=public.sarah_ai_get_device_catalog();
+  IF v_result->>'ok'<>'true' OR (v_result->>'count')::integer<1
+     OR jsonb_array_length(v_result->'devices')>100 THEN
+    RAISE EXCEPTION 'Device catalog read did not return the bounded catalog projection: %',v_result;
+  END IF;
+END;
+$device_catalog_read$;
+RESET ROLE;
+
+-- An ordinary admin without devices:view cannot use Sarah to read the catalog.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000009',false);
+DO $device_catalog_permission_gate$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_get_device_catalog();
+    RAISE EXCEPTION 'Admin without devices:view unexpectedly read the device catalog';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$device_catalog_permission_gate$;
+RESET ROLE;
+
 -- Each isolated SQL test run starts with clean quota buckets for its fixed actors.
 DELETE FROM public.sarah_ai_usage_windows
 WHERE actor_auth_user_id IN (
