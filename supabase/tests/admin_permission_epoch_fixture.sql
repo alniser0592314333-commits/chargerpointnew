@@ -13,6 +13,7 @@ STABLE
 AS $function$
   SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid;
 $function$;
+GRANT USAGE ON SCHEMA auth TO authenticated, anon;
 
 CREATE TABLE public.admins (
   id uuid PRIMARY KEY,
