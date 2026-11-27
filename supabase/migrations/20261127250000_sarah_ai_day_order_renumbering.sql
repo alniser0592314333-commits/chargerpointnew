@@ -110,12 +110,25 @@ BEGIN
   END IF;
   v_session_id:=(auth.jwt()->>'session_id')::uuid;
 
-  SELECT d.id,d.is_closed INTO v_day_id,v_day_closed
+  SELECT d.id INTO v_day_id
   FROM public.business_days d
   WHERE d.business_date=p_business_date
-  FOR UPDATE;
+  LIMIT 1;
   IF v_day_id IS NULL THEN
     RAISE EXCEPTION 'Business day not found' USING ERRCODE='P0002';
+  END IF;
+
+  -- Acquire the same advisory lock as CREATE_ORDER and the canonical
+  -- RENUMBER_DAY_ORDERS command before locking the day row to avoid deadlocks.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(v_day_id::text,1)
+  );
+  SELECT d.is_closed INTO v_day_closed
+  FROM public.business_days d
+  WHERE d.id=v_day_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Business day was removed while preparing renumber' USING ERRCODE='P0002';
   END IF;
   IF v_day_closed IS TRUE THEN
     RAISE EXCEPTION 'Closed business days cannot be renumbered' USING ERRCODE='P0409';
