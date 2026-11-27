@@ -167,7 +167,7 @@ BEGIN
   BEGIN
     PERFORM public.sarah_ai_update_customer_protected_settings(
       '70000000-0000-4000-8000-000000000004',
-      v_code,'عميل اختبار سارة معدل',5000,true,NULL
+      v_code,'عميل اختبار سارة معدل',-5000,true,NULL
     );
     RAISE EXCEPTION 'Protected customer settings unexpectedly succeeded without BIN';
   EXCEPTION WHEN SQLSTATE 'P4004' THEN NULL;
@@ -175,10 +175,10 @@ BEGIN
 
   v_result:=public.sarah_ai_update_customer_protected_settings(
     '70000000-0000-4000-8000-000000000004',
-    v_code,'عميل اختبار سارة معدل',5000,true,'1234'
+    v_code,'عميل اختبار سارة معدل',-5000,true,'1234'
   );
   IF v_result->>'ok'<>'true'
-     OR (v_result->>'debt_limit_minor')::bigint<>5000
+     OR (v_result->>'debt_limit_minor')::bigint<>-5000
      OR (v_result->>'charger_fee_exempt')::boolean IS NOT TRUE THEN
     RAISE EXCEPTION 'Protected customer settings did not apply through the canonical path: %',v_result;
   END IF;
@@ -188,7 +188,7 @@ BEGIN
   WHERE entity_id=v_customer_id AND action='UPDATE'
   ORDER BY sequence_id DESC LIMIT 1;
   IF v_payload ? 'bin'
-     OR v_payload->>'debtLimitMinor'<>'5000'
+     OR v_payload->>'debtLimitMinor'<>'-5000'
      OR v_payload->>'chargerFeeExempt'<>'true' THEN
     RAISE EXCEPTION 'Protected customer change-log payload was not safely redacted: %',v_payload;
   END IF;
@@ -202,7 +202,7 @@ BEGIN
 
   v_replay:=public.sarah_ai_update_customer_protected_settings(
     '70000000-0000-4000-8000-000000000004',
-    v_code,'عميل اختبار سارة معدل',5000,true,NULL
+    v_code,'عميل اختبار سارة معدل',-5000,true,NULL
   );
   IF v_replay->>'idempotent_replay'<>'true' THEN
     RAISE EXCEPTION 'Protected customer setting replay did not use the saved result: %',v_replay;
@@ -226,7 +226,7 @@ BEGIN
   BEGIN
     PERFORM public.sarah_ai_update_customer_protected_settings(
       '70000000-0000-4000-8000-000000000005',
-      v_code,'عميل اختبار سارة معدل',6000,NULL,'1234'
+      v_code,'عميل اختبار سارة معدل',-6000,NULL,'1234'
     );
     RAISE EXCEPTION 'Admin without customers:debt-limit unexpectedly changed a protected setting';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
