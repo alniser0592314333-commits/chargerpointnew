@@ -1470,6 +1470,14 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_durable_task_checkpoints.test.sql
+      - name: Apply Sarah expired task checkpoint retention migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127297000_sarah_ai_task_checkpoint_retention.sql
+      - name: Verify Sarah expired task checkpoint cleanup and ACL isolation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_task_checkpoint_retention.test.sql
       - name: Verify Sarah session-bound reads and atomic order creation
         env:
           PGPASSWORD: postgres
