@@ -510,6 +510,7 @@ DECLARE
   v_day_date date;
   v_day_id uuid;
   v_day_closed boolean;
+  v_day_status text;
   v_day_number integer;
   v_order_id uuid;
   v_order_number integer;
@@ -765,7 +766,7 @@ BEGIN
 
   v_day_date:=(now() AT TIME ZONE 'Asia/Jerusalem')::date;
   PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('sarah_ai:business_day:'||v_day_date::text,0));
-  SELECT d.id,d.is_closed INTO v_day_id,v_day_closed
+  SELECT d.id,d.is_closed,d.status INTO v_day_id,v_day_closed,v_day_status
   FROM public.business_days d
   WHERE d.business_date=v_day_date
   FOR UPDATE;
@@ -785,9 +786,11 @@ BEGIN
     VALUES(v_day_id,v_day_date,v_day_number,'OPEN',false,now(),now(),now(),1);
     PERFORM public.record_canonical_change('business_days',v_day_id,'INSERT',jsonb_build_object(
       'id',v_day_id,'businessDate',v_day_date,'displayNumber',v_day_number,
-      'status','OPEN','isClosed',false,'openedAt',now(),'version',1
+      'business_date',v_day_date,'display_number',v_day_number,
+      'status','OPEN','isClosed',false,'is_closed',false,
+      'openedAt',now(),'opened_at',now(),'version',1
     ),1);
-  ELSIF v_day_closed IS TRUE THEN
+  ELSIF v_day_closed IS TRUE OR v_day_status IS DISTINCT FROM 'OPEN' THEN
     v_result:=jsonb_build_object('ok',false,'error','BUSINESS_DAY_CLOSED','business_date',v_day_date);
     RETURN v_result;
   END IF;
