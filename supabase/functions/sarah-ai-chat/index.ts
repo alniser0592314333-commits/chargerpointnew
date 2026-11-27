@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     ? body.requestId
     : crypto.randomUUID();
   // Never include this separate confirmation field in Gemini contents or tool arguments.
-  const actionBin = typeof body.bin === "string" && /^\\d{4,32}$/.test(body.bin)
+  const actionBin = typeof body.bin === "string" && /^\d{4,32}$/.test(body.bin)
     ? body.bin
     : null;
 
