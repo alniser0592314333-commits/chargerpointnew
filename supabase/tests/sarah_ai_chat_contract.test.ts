@@ -473,7 +473,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("deriveActionRequestId");
     expect(source).toContain("p_bin: actionBin");
     expect(source).toContain("Never ask for BIN in chat");
-    expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes, subordinate-admin permission/suspension/activation changes, business-hours changes, AI provider configuration changes or clearing, device catalog changes, customer credit/refund actions, order creation/delivery/cancellation/day renumbering, payment actions, goal changes, or history-review mutations when the user explicitly asks for that action.");
+    expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes, subordinate-admin permission/suspension/activation changes, business-hours or Jawwal Pay recipient changes, current-device manual sync, AI provider configuration changes or clearing, device catalog changes, customer credit/refund actions, order creation/delivery/cancellation/day renumbering, payment actions, goal changes, or history-review mutations when the user explicitly asks for that action.");
     expect(adminReadMigration).toContain("sarah_ai_record_and_approve_payment");
     expect(adminReadMigration).toContain("sarah_ai_review_payment_submission");
     expect(adminReadMigration).toContain("public.create_admin_pending_customer_payment");
