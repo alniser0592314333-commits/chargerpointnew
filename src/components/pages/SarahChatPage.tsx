@@ -205,6 +205,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     correlationId: string,
     bin?: string,
     confirmationAction?: SarahPendingBinAction,
+    resumeTask = false,
   ) => {
     const localSyncContext = await collectLocalSyncContext();
     let response = await sarahChatService.send(
@@ -215,6 +216,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       bin,
       localSyncContext ? { localSyncContext } : undefined,
       confirmationAction,
+      resumeTask,
     );
     if (response.requiresLocalSync && response.localSyncAction === "manual_sync") {
       if (!canManageSync) throw new Error("SYNC_MANAGE_PERMISSION_REQUIRED");
@@ -489,6 +491,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         accountId,
         continuationHistory,
         pendingAction.correlationId,
+        undefined,
+        undefined,
+        true,
       );
       if (!isCurrent(accountId, operation)) return;
       if (continuationResponse.requiresBin) {
