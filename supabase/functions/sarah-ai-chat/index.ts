@@ -114,6 +114,9 @@ Deno.serve(async (req) => {
 
   const text = safeText(body.text, 20000);
   if (!text) return respond(400, { ok: false, error: "TEXT_REQUIRED" });
+  if (/\\bBIN\\b\\s*[:：]?\\s*\\d{4,32}/i.test(text)) {
+    return respond(400, { ok: false, error: "BIN_MUST_USE_SECURE_PROMPT" });
+  }
   const confirmationMode = body.confirmationAction !== undefined && body.confirmationAction !== null;
   // The client queue reuses this ID when retrying the same message. It is not
   // included in Gemini contents and is consumed only by server-side idempotency.
@@ -139,6 +142,9 @@ Deno.serve(async (req) => {
       return respond(400, { ok: false, error: "INVALID_HISTORY" });
     }
     const entry = item as { role: "user" | "assistant"; text: string };
+    if (/\\bBIN\\b\\s*[:：]?\\s*\\d{4,32}/i.test(entry.text)) {
+      return respond(400, { ok: false, error: "BIN_MUST_USE_SECURE_PROMPT" });
+    }
     historyChars += entry.text.length;
     if (historyChars > 12000) return respond(400, { ok: false, error: "HISTORY_TOO_LARGE" });
     contents.push({
