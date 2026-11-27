@@ -511,6 +511,17 @@ BEGIN
     RAISE EXCEPTION 'Bounded customer order read did not expose verified lifecycle target IDs: %',v_result;
   END IF;
 
+  BEGIN
+    PERFORM public.sarah_ai_execute_order_action(
+      '40000000-0000-4000-8000-000000000014',
+      'AAAA','أحمد علي',
+      '70000000-0000-4000-8000-000000000001',
+      'DELIVER_ITEM',NULL,NULL
+    );
+    RAISE EXCEPTION 'Missing order target unexpectedly requested BIN';
+  EXCEPTION WHEN SQLSTATE 'P0002' THEN NULL;
+  END;
+
   v_result:=public.sarah_ai_execute_order_action(
     '40000000-0000-4000-8000-000000000011',
     'AAAA','أحمد علي',
