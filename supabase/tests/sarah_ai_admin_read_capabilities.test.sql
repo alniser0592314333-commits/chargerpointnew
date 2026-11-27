@@ -122,8 +122,49 @@ BEGIN
   v_result:=public.sarah_ai_get_customer_orders('AAAA','أحمد علي',10);
   IF v_result->>'order_count'<>'1'
      OR v_result->'orders'->0->>'order_number' IS NULL
-     OR jsonb_array_length(v_result->'orders'->0->'items')<>2 THEN
-    RAISE EXCEPTION 'Bounded customer order read failed: %',v_result;
+     OR jsonb_array_length(v_result->'orders'->0->'items')<>2
+     OR v_result->'orders'->0->>'order_id' IS NULL
+     OR v_result->'orders'->0->'items'->0->>'item_id' IS NULL
+     OR v_result->'orders'->0->'items'->0->>'item_version' IS NULL THEN
+    RAISE EXCEPTION 'Bounded customer order read did not expose verified lifecycle target IDs: %',v_result;
+  END IF;
+
+  v_result:=public.sarah_ai_execute_order_action(
+    '40000000-0000-4000-8000-000000000011',
+    'AAAA','أحمد علي',
+    (v_result->'orders'->0->'items'->0->>'item_id')::uuid,
+    'DELIVER_ITEM','1234',NULL
+  );
+  IF v_result->>'ok'<>'true'
+     OR v_result->>'action'<>'DELIVER_ITEM'
+     OR NOT EXISTS(
+       SELECT 1 FROM public.sarah_ai_test_order_actions
+       WHERE command_id='40000000-0000-4000-8000-000000000011'
+         AND command_type='DELIVER_ORDER_ITEM'
+         AND payload->>'bin'='1234'
+     ) THEN
+    RAISE EXCEPTION 'Sarah delivery action did not invoke canonical command with separate BIN: %',v_result;
+  END IF;
+
+  v_result:=public.sarah_ai_execute_order_action(
+    '40000000-0000-4000-8000-000000000012',
+    'AAAA','أحمد علي',
+    (v_result->>'target_id')::uuid,
+    'CANCEL_ITEM','1234','customer requested cancellation'
+  );
+  IF v_result->>'ok'<>'true' THEN
+    RAISE EXCEPTION 'Sarah item cancellation did not invoke canonical command: %',v_result;
+  END IF;
+
+  v_result:=public.sarah_ai_get_customer_orders('AAAA','أحمد علي',10);
+  v_result:=public.sarah_ai_execute_order_action(
+    '40000000-0000-4000-8000-000000000013',
+    'AAAA','أحمد علي',
+    (v_result->'orders'->0->>'order_id')::uuid,
+    'CANCEL_ORDER','1234','cancel whole order'
+  );
+  IF v_result->>'ok'<>'true' THEN
+    RAISE EXCEPTION 'Sarah whole-order cancellation did not invoke canonical command: %',v_result;
   END IF;
 END;
 $manager_retry$;
