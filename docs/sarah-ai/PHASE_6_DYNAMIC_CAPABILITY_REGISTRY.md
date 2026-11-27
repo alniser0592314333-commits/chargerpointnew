@@ -13,6 +13,7 @@
 - Existing PostgreSQL RPCs independently enforce actor identity, active session, ai:use, and the underlying business permission. A permission revoked while Gemini is processing therefore fails closed at the RPC boundary.
 - Customer profile, financial, and order lookups require a five-minute lookup proof bound to the current Auth user and session; guessed customer codes or a different device/session cannot be used as proof.
 - Customer balances are calculated by the existing authoritative ledger function; order reads use a bounded server-side projection.
+- The canonical goals page RPC retains its existing expiry reconciliation behavior; it is not replaced with a parallel goal engine.
 - The system prompt no longer hardcodes the number or names of tools; supplied tool schemas define the request scope.
 - The Edge Function config now requires platform JWT verification in addition to explicit auth.getUser and registered-session checks.
 
