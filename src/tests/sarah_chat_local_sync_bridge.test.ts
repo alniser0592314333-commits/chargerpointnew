@@ -8,6 +8,7 @@ describe("Sarah local Sync Center bridge", () => {
     const edge = readFileSync("supabase/functions/sarah-ai-chat/index.ts", "utf8");
 
     expect(page).toContain('permissions.includes("sync:manage")');
+    expect(page).toContain('const canManageSync = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("sync:manage")))');
     expect(page).toContain('invokeSupabaseRpc<Record<string, unknown>>("begin_sync_bootstrap")');
     expect(page).toContain("localDb.listOutbox()");
     expect(page).toContain("localDb.listHistory()");
