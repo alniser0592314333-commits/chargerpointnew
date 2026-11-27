@@ -35,6 +35,9 @@ describe("Sarah permission epoch invalidation", () => {
     expect(edge).toContain("permissionSnapshotCache.get(userData.user.id)");
     expect(edge).toContain("p_cached_permissions_version: usableCachedSnapshot?.version ?? null");
     expect(edge).toContain("ADMIN_PERMISSION_CACHE_INCONSISTENT");
+    expect(edge).toContain("usableCachedSnapshot.adminId");
+    expect(edge).toContain("p_cached_permissions_version: null");
+    expect(edge).toContain("adminId,\n      version: permissionVersion");
     expect(edge).toContain("PERMISSION_SNAPSHOT_CACHE_TTL_MS = 5 * 60 * 1000");
     expect(edge).not.toContain('caller.rpc("get_current_admin_profile")');
     expect(edge).toContain('admin.rpc("sarah_ai_task_gateway_resume"');
