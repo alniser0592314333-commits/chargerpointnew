@@ -838,8 +838,28 @@ Deno.serve(async (req) => {
       const result = await caller.functions.invoke("customer-history", {
         body: { action: "admin-list" },
       });
-      toolResult = result.data;
       toolError = result.error;
+      if (!result.error && result.data && typeof result.data === "object") {
+        const payload = result.data as Record<string, unknown>;
+        const requests = Array.isArray(payload.requests)
+          ? payload.requests as Array<Record<string, unknown>>
+          : [];
+        toolResult = {
+          ok: payload.ok === true,
+          requests: requests.slice(0,20).map((request) => {
+            const rawCustomer = request.customers;
+            const customer = Array.isArray(rawCustomer)
+              ? rawCustomer[0] as Record<string, unknown> | undefined
+              : rawCustomer as Record<string, unknown> | null;
+            return {
+              request_id: safeText(request.id,36),
+              customer_name: safeText(customer?.name,80) || "عميل",
+              status: safeText(request.status,16),
+              requested_at: request.requested_at,
+            };
+          }),
+        };
+      }
     } else if (toolName === "review_customer_history_request") {
       const requestId = safeText(args.request_id,36);
       const decision = typeof args.decision === "string" ? args.decision.toUpperCase() : "";
