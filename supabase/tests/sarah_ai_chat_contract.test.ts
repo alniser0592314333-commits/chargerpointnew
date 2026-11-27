@@ -159,6 +159,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("public.execute_sync_command(");
     expect(adminReadMigration).toContain("'CREATE_ORDER'");
     expect(adminReadMigration).toContain("'ADD_ORDER_ITEM'");
+    expect(adminReadMigration).toContain("Canonical CREATE_ORDER command did not confirm success");
+    expect(adminReadMigration).toContain("Canonical ADD_ORDER_ITEM command did not confirm success");
     expect(adminReadMigration).toContain("public._cp_assert_active_admin_permission('orders:create')");
     expect(adminReadMigration).toContain("public._cp_assert_active_admin_permission('orders:edit')");
     expect(adminReadMigration).toContain("orders:override-debt-limit");
