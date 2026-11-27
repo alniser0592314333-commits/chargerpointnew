@@ -69,7 +69,20 @@ export async function subscribeToOwnAdminPermissionEpoch(
     )
     .subscribe();
 
+  const onAuthTokenUpdated = (event: Event) => {
+    const updatedUserId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+    if (updatedUserId !== authUserId) return;
+    const latestToken = resolveAuthBearerToken();
+    if (latestToken) void client.realtime.setAuth(latestToken);
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("cp-supabase-auth-token-updated", onAuthTokenUpdated);
+  }
+
   return () => {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("cp-supabase-auth-token-updated", onAuthTokenUpdated);
+    }
     void client.removeChannel(channel).catch(() => undefined);
   };
 }
@@ -227,6 +240,13 @@ export const saveStoredSupabaseAuthSession = (session: SupabaseAuthSession) => {
         storage.removeItem(SUPABASE_AUTH_STORAGE_KEY);
       }
     } catch {}
+  }
+  if (session?.user?.id && typeof window !== "undefined") {
+    // Do not put the token in the event payload; active Realtime clients resolve
+    // it from the already persisted same-account session.
+    window.dispatchEvent(new CustomEvent("cp-supabase-auth-token-updated", {
+      detail: { userId: session.user.id },
+    }));
   }
 };
 
