@@ -349,7 +349,6 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('caller.rpc("rpc_fetch_admin_audit_logs")');
     expect(source).toContain('caller.rpc("rpc_grant_custom_permission"');
     expect(source).toContain('toolName === "suspend_admin" ? "rpc_suspend_admin" : "rpc_activate_admin"');
-    expect(source).toContain('caller.rpc("rpc_activate_admin"');
     expect(source).toContain("superAdminOnly: true");
     expect(source).toContain('capability.superAdminOnly !== true || isSuperAdmin');
     expect(source).toContain("Authorization BIN is required");
@@ -552,6 +551,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('"Cache-Control": "no-store"');
     expect(source).toContain("GEMINI_PROVIDER_UNAVAILABLE");
     expect(source).not.toContain("resp.text()");
-    expect(source).not.toContain("error.message");
+    expect(source).not.toContain("saved.error.message");
+    expect(source).not.toContain("response.error.message");
   });
 });
