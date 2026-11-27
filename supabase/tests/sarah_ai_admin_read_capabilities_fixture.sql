@@ -52,6 +52,8 @@ CREATE TABLE public.order_items (
   item_sequence integer NOT NULL,
   operational_status text NOT NULL DEFAULT 'CHARGING',
   financial_status text NOT NULL DEFAULT 'UNPAID',
+  status text NOT NULL DEFAULT 'charging',
+  replacement_of_item_id uuid,
   final_charge_snapshot_minor bigint NOT NULL DEFAULT 0,
   charger_fee_snapshot_minor bigint NOT NULL DEFAULT 0,
   discount_snapshot_minor bigint NOT NULL DEFAULT 0,
@@ -65,7 +67,44 @@ CREATE TABLE public.financial_ledger (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   customer_id uuid NOT NULL REFERENCES public.customers(id),
   amount_minor bigint NOT NULL,
+  event_type text NOT NULL DEFAULT 'PAYMENT',
+  reference_id uuid,
+  order_id uuid,
+  order_item_id uuid,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.goals (
+  id uuid PRIMARY KEY,
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  target_quantity integer NOT NULL,
+  current_progress integer NOT NULL DEFAULT 0,
+  bonus_amount_minor bigint NOT NULL,
+  duration_days integer NOT NULL,
+  status text NOT NULL DEFAULT 'ACTIVE',
+  started_at timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  completed_at timestamptz,
+  bonus_ledger_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  version integer NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX goals_one_active_per_customer_idx
+  ON public.goals(customer_id) WHERE status='ACTIVE';
+
+CREATE TABLE public.goal_requests (
+  id uuid PRIMARY KEY,
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  requested_target integer,
+  status text NOT NULL DEFAULT 'PENDING',
+  reviewed_by uuid,
+  reviewed_at timestamptz,
+  rejection_reason text,
+  resulting_goal_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  version integer NOT NULL DEFAULT 1
 );
 
 INSERT INTO public.device_types(id,name,name_ar,name_en,base_price_minor,charger_fee_minor,charger_fee_applicable,is_active,status,sort_order)
@@ -85,6 +124,10 @@ VALUES
  ('00000000-0000-4000-8000-000000000002','orders:edit',true),
  ('00000000-0000-4000-8000-000000000002','orders:deliver',true),
  ('00000000-0000-4000-8000-000000000002','orders:cancel',true),
+ ('00000000-0000-4000-8000-000000000002','goals:view',true),
+ ('00000000-0000-4000-8000-000000000002','goals:requests:view',true),
+ ('00000000-0000-4000-8000-000000000002','goals:manage',true),
+ ('00000000-0000-4000-8000-000000000002','goals:approve',true),
  ('00000000-0000-4000-8000-000000000002','finance:create-payment',true),
  ('00000000-0000-4000-8000-000000000002','finance:approve-payment',true),
  ('00000000-0000-4000-8000-000000000007','ai:use',true),
@@ -190,6 +233,37 @@ BEGIN
       0,v_device.name
     );
     RETURN jsonb_build_object('result',jsonb_build_object('provisionalFinalChargeMinor',v_charge));
+  ELSIF p_command_type='CREATE_GOAL' THEN
+    INSERT INTO public.goals(id,customer_id,target_quantity,current_progress,bonus_amount_minor,duration_days,status,started_at,expires_at)
+    VALUES(
+      (p_payload->>'id')::uuid,(p_payload->>'customerId')::uuid,
+      (p_payload->>'targetQuantity')::integer,0,(p_payload->>'bonusAmountMinor')::bigint,
+      (p_payload->>'durationDays')::integer,'ACTIVE',
+      (p_payload->>'startedAt')::timestamptz,(p_payload->>'expiresAt')::timestamptz
+    );
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('goalId',p_payload->>'id','status','ACTIVE'));
+  ELSIF p_command_type='APPROVE_GOAL_REQUEST' THEN
+    INSERT INTO public.goals(id,customer_id,target_quantity,current_progress,bonus_amount_minor,duration_days,status,started_at,expires_at)
+    SELECT (p_payload->>'resultingGoalId')::uuid,r.customer_id,
+      (p_payload->>'targetQuantity')::integer,0,(p_payload->>'bonusAmountMinor')::bigint,
+      (p_payload->>'durationDays')::integer,'ACTIVE',now(),(p_payload->>'expiresAt')::timestamptz
+    FROM public.goal_requests r WHERE r.id=(p_payload->>'requestId')::uuid;
+    UPDATE public.goal_requests SET status='APPROVED',resulting_goal_id=(p_payload->>'resultingGoalId')::uuid,
+      reviewed_at=now(),version=version+1 WHERE id=(p_payload->>'requestId')::uuid;
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('status','APPROVED'));
+  ELSIF p_command_type='REJECT_GOAL_REQUEST' THEN
+    UPDATE public.goal_requests SET status='REJECTED',rejection_reason=p_payload->>'rejectionReason',
+      reviewed_at=now(),version=version+1 WHERE id=(p_payload->>'requestId')::uuid;
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('status','REJECTED'));
+  ELSIF p_command_type='UPDATE_GOAL_CONFIG' THEN
+    UPDATE public.goals SET
+      target_quantity=COALESCE((p_payload->>'targetQuantity')::integer,target_quantity),
+      duration_days=COALESCE((p_payload->>'durationDays')::integer,duration_days),
+      bonus_amount_minor=COALESCE((p_payload->>'bonusAmountMinor')::bigint,bonus_amount_minor),
+      expires_at=COALESCE((p_payload->>'expiresAt')::timestamptz,expires_at),
+      version=version+1,updated_at=now()
+    WHERE id=(p_payload->>'id')::uuid;
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('version',2));
   ELSIF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER_ITEM','CANCEL_ORDER') THEN
     INSERT INTO public.sarah_ai_test_order_actions(command_id,command_type,aggregate_type,aggregate_id,payload)
     VALUES(p_command_id,p_command_type,p_aggregate_type,p_aggregate_id,p_payload);
@@ -222,6 +296,33 @@ CREATE TABLE public.qr_payment_submissions (
   balance_after_minor bigint,
   rejection_reason text
 );
+
+CREATE OR REPLACE FUNCTION public.admin_cancel_goal(p_goal_id uuid,p_reason text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=''
+AS $function$
+BEGIN
+  UPDATE public.goals SET status='CANCELLED',updated_at=now(),version=version+1 WHERE id=p_goal_id AND status='ACTIVE';
+  RETURN jsonb_build_object('ok',true,'goal_id',p_goal_id,'status','CANCELLED');
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.admin_review_goal_cancellation(p_goal_id uuid,p_approve boolean,p_reason text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=''
+AS $function$
+BEGIN
+  RETURN jsonb_build_object('ok',true,'goal_id',p_goal_id,'approved',p_approve);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.get_admin_goals_page_data()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=''
+AS $function$
+  SELECT jsonb_build_object(
+    'goals',COALESCE((SELECT jsonb_agg(to_jsonb(g)) FROM public.goals g),'[]'::jsonb),
+    'goal_requests',COALESCE((SELECT jsonb_agg(to_jsonb(r)) FROM public.goal_requests r),'[]'::jsonb),
+    'customers',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'name',c.name)) FROM public.customers c),'[]'::jsonb)
+  );
+$function$;
 
 CREATE OR REPLACE FUNCTION public.create_admin_pending_customer_payment(
   p_customer_id uuid,
