@@ -20,6 +20,8 @@ describe("Sarah permission epoch invalidation", () => {
 
   it("uses Realtime only as an invalidation hint and never as an authorization source", () => {
     expect(client).toContain("client.realtime.setAuth(token)");
+    expect(client).toContain("cp-supabase-auth-token-updated");
+    expect(client).toContain("window.removeEventListener(\"cp-supabase-auth-token-updated\", onAuthTokenUpdated)");
     expect(client).toContain("event: 'UPDATE'");
     expect(client).toContain("No polling or service-role credential is used");
     expect(page).toContain("Database RPCs continue to validate the live session");
