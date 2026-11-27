@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 describe("Sarah AI provider settings security contract", () => {
-  const migration = read("supabase/migrations/20261124130000_sarah_ai_provider_configuration.sql");
+  const migration = read("supabase/migrations/20261126080000_sarah_ai_provider_configuration.sql");
   const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
   const edgeFunction = read("supabase/functions/sarah-ai-settings/index.ts");
   const chatFunction = read("supabase/functions/sarah-ai-chat/index.ts");
