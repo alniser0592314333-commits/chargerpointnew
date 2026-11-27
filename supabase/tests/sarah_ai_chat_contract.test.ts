@@ -21,6 +21,7 @@ const customerCreateMigration = read("supabase/migrations/20261127170000_sarah_a
 const customerUpdateMigration = read("supabase/migrations/20261127180000_sarah_ai_customer_profile_update.sql");
 const changeLogRedactionMigration = read("supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql");
 const historicalChangeLogRedactionMigration = read("supabase/migrations/20261127200000_redact_historical_change_log_secrets.sql");
+const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -201,6 +202,20 @@ describe("Sarah chat gateway security contract", () => {
     expect(historicalChangeLogRedactionMigration).toContain("UPDATE public.change_log");
     expect(changeLogRedactionMigration).toContain("v_safe_payload");
     expect(changeLogRedactionMigration).not.toContain("RAISE NOTICE");
+  });
+
+  it("registers granular BIN-protected customer settings without exposing BIN to Gemini", () => {
+    expect(source).toContain('name: "update_customer_protected_settings"');
+    expect(source).toContain('requiredPermissionGroups: [');
+    expect(source).toContain('"customers:debt-limit", "customers:charger-exemption"');
+    expect(source).toContain('caller.rpc("sarah_ai_update_customer_protected_settings"');
+    expect(source).toContain("p_bin: actionBin");
+    expect(protectedCustomerSettingsMigration).toContain("public._cp_assert_active_admin_permission('customers:debt-limit')");
+    expect(protectedCustomerSettingsMigration).toContain("public._cp_assert_active_admin_permission('customers:charger-exemption')");
+    expect(protectedCustomerSettingsMigration).toContain("proof.auth_session_id=v_session_id");
+    expect(protectedCustomerSettingsMigration).toContain("Never persist the raw BIN in Sarah idempotency data");
+    expect(protectedCustomerSettingsMigration).toContain("USING ERRCODE='P4004'");
+    expect(protectedCustomerSettingsMigration).not.toContain("'bin',p_bin\n  );");
   });
 
   it("registers lookup-bound basic customer editing under customers:edit", () => {
