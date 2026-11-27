@@ -122,29 +122,17 @@ Deno.serve(async (req: Request) => {
     return response({ error: "SETTINGS_PERMISSION_DENIED" }, 403);
   }
 
-  let canManage = admin.role === "SUPER_ADMIN" ||
-    (Array.isArray(admin.permissions) && admin.permissions.includes("settings:manage"));
+  // Resolve the actor's current effective permissions through the same
+  // database helper used by the rest of the application. Do not trust the
+  // potentially stale admins.permissions snapshot or duplicate role logic.
+  const { data: effectivePermissions, error: permissionsError } =
+    await callerClient.rpc("get_effective_permissions", { p_admin_id: admin.id });
 
-  if (!canManage) {
-    const { data: custom } = await adminClient
-      .from("admin_custom_permissions")
-      .select("is_grant")
-      .eq("admin_id", admin.id)
-      .eq("permission", "settings:manage")
-      .maybeSingle();
-
-    if (custom) {
-      canManage = custom.is_grant === true;
-    } else {
-      const { data: rolePermission } = await adminClient
-        .from("role_permissions")
-        .select("permission")
-        .eq("role", admin.role)
-        .eq("permission", "settings:manage")
-        .maybeSingle();
-      canManage = Boolean(rolePermission);
-    }
+  if (permissionsError) {
+    return response({ error: "SETTINGS_PERMISSION_CHECK_FAILED" }, 403);
   }
+  const canManage = Array.isArray(effectivePermissions) &&
+    effectivePermissions.some((row: { permission?: string }) => row.permission === "settings:manage");
 
   if (!canManage) return response({ error: "SETTINGS_PERMISSION_DENIED" }, 403);
 
