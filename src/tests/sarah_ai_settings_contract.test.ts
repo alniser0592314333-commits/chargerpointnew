@@ -63,7 +63,7 @@ describe("Sarah AI provider settings security contract", () => {
     expect(chatFunction).toContain('caller.rpc("sarah_ai_get_customer_profile"');
     expect(chatFunction).toContain("calls.length !== 1");
     expect(chatFunction).toContain("for (let toolStep = 0; toolStep < 4; toolStep++)");
-    expect(chatFunction).toContain("toolConfig: { functionCallingConfig: { mode: "AUTO" } }");
+    expect(chatFunction).toContain('toolConfig: { functionCallingConfig: { mode: "AUTO" } }');
     expect(chatFunction).toContain("AI_TOOL_CALL_LIMIT_REACHED");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_save_provider_config(text, text, text, jsonb, text) TO authenticated");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_provider_config() TO authenticated");
