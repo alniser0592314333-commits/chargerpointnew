@@ -59,4 +59,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.sarah-ai-chat]
-verify_jwt = false
+verify_jwt = true
