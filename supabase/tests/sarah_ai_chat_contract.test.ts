@@ -14,6 +14,7 @@ const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_custo
 const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql");
 const orderActionMigration = read("supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql");
 const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_ai_goal_management_capabilities.sql");
+const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -207,6 +208,16 @@ describe("Sarah chat gateway security contract", () => {
     expect(chatPage).toContain("WAITING_FOR_CONFIRMATION");
     expect(inputQueue).toContain('UPLOADING: ["SENT_TO_AI", "WAITING_FOR_CONFIRMATION"');
     expect(chatPage).toContain("لن يُضاف إلى المحادثة أو سجل الرسائل أو يُرسل إلى Gemini");
+  });
+
+  it("registers bounded financial history only with current financial visibility permission", () => {
+    expect(source).toContain('name: "get_customer_financial_history"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["customers:financial-view", "finance:view", "finances:read"]]');
+    expect(source).toContain('caller.rpc("sarah_ai_get_customer_financial_history"');
+    expect(financialHistoryMigration).toContain("proof.auth_session_id=v_session_id");
+    expect(financialHistoryMigration).toContain("customers:financial-view");
+    expect(financialHistoryMigration).toContain("LIMIT p_limit");
+    expect(financialHistoryMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_customer_financial_history(text,text,integer) TO service_role");
   });
 
   it("registers delivery and cancellation only through same-session verified canonical order actions", () => {
