@@ -6,7 +6,7 @@ it("persists the full answer before marking either queue item complete",()=>{
   const sendIndex=page.indexOf("sendWithLocalActions(clean");
   const sendSave=page.indexOf("await sarahConversationStore.save(accountId, completedMessages", sendIndex);
   const sendComplete=page.indexOf('await sarahInputQueue.transition(accountId, id, "COMPLETED")', sendIndex);
-  const retryIndex=page.indexOf("sendWithLocalActions(record.text");
+  const retryIndex=page.indexOf("const response = await sendWithLocalActions(\\n        record.text,");
   const retrySave=page.indexOf("await sarahConversationStore.save(accountId, completedMessages", retryIndex);
   const retryComplete=page.indexOf('await sarahInputQueue.transition(accountId, record.id, "COMPLETED")', retryIndex);
   expect(sendIndex).toBeGreaterThan(-1);
