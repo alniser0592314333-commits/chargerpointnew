@@ -665,7 +665,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("Enabled mutations include customer creation/basic profile editing/protected setting changes/account activation and deactivation, subordinate-admin permission changes/suspension/activation, business-hours and Jawwal Pay recipient settings, current-device manual sync, AI provider model/generation-setting changes and explicitly requested provider clearing, device catalog creation/update/retirement, customer credit adjustments/refunds, order creation/delivery/cancellation/day renumbering, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
     expect(source).not.toContain("The currently enabled mutations are create_order_with_items and the payment actions");
     expect(source).toContain("the server will return the secure confirmation prompt");
-    expect(source).toContain("executionOrder = [\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\"]");
+    expect(source).toContain("executionOrder = [\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\", \"list_pending_payments\"]");
     expect(source).toContain("the client will replay the exact same tool name and arguments after secure confirmation");
   });
 
