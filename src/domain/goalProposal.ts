@@ -92,20 +92,3 @@ export function generateGoalProposal(
  * This is a read/UI projection only; callers must not persist its result as an
  * authoritative Order.status mutation. Cancelled items are inactive.
  */
-export function calculateOrderProjection(
-  items: Array<{ status?: string | null }>,
-  fallback: OrderStatus = 'pending'
-): OrderStatus {
-  const active = items.filter((item) => String(item.status || '').toLowerCase() !== 'cancelled');
-  if (items.length === 0) return fallback;
-  if (active.length === 0) return 'cancelled';
-  const hasCharging = active.some((item) => String(item.status || '').toLowerCase() === 'charging');
-  const hasDelivered = active.some((item) => String(item.status || '').toLowerCase() === 'delivered');
-  if (hasCharging) return 'charging';
-  if (hasDelivered) return 'delivered';
-  return fallback;
-}
-
-/**
- * Calculates authoritative goal progress based on qualifying delivered & recognized order items
- */
