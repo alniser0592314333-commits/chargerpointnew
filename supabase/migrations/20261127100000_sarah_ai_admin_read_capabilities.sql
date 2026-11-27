@@ -823,6 +823,9 @@ BEGIN
     jsonb_build_object('id',v_order_id,'dayId',v_day_id,'customerId',v_customer_id,'displayNumber',v_order_number,'notes',COALESCE(pg_catalog.btrim(p_notes),'')),
     NULL
   );
+  IF COALESCE((v_order_result->>'success')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'Canonical CREATE_ORDER command did not confirm success' USING ERRCODE='P0001';
+  END IF;
 
   v_item_index:=0;
   FOR v_item IN SELECT value FROM pg_catalog.jsonb_array_elements(v_resolved_items)
@@ -841,6 +844,9 @@ BEGIN
       )),
       NULL
     );
+    IF COALESCE((v_item_result->>'success')::boolean,false) IS NOT TRUE THEN
+      RAISE EXCEPTION 'Canonical ADD_ORDER_ITEM command did not confirm success at item %',v_item_index USING ERRCODE='P0001';
+    END IF;
     v_item_charge:=COALESCE(
       NULLIF(v_item_result->'result'->>'provisionalFinalChargeMinor','')::bigint,
       NULLIF(v_item_result->'result'->>'finalChargeMinor','')::bigint,
