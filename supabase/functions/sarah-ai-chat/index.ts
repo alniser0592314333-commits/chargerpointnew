@@ -151,6 +151,15 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "get_device_catalog",
+      requiredPermissionGroups: [["devices:view"]],
+      declaration: {
+        name: "get_device_catalog",
+        description: "Read up to one hundred active or non-retired device types, including bilingual names, base price, charger-fee policy, and version. Use this to answer device catalog questions; it does not change catalog settings.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
       name: "get_financial_summary",
       requiredPermissionGroups: [["finance:view", "reports:view"]],
       declaration: {
@@ -688,6 +697,10 @@ Deno.serve(async (req) => {
         p_items: cleanItems,
         p_notes: notes,
       });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "get_device_catalog") {
+      const result = await caller.rpc("sarah_ai_get_device_catalog");
       toolResult = result.data;
       toolError = result.error;
     } else if (toolName === "get_financial_summary") {
