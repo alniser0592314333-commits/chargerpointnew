@@ -735,6 +735,86 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "list_subordinate_admins",
+      requiredPermissionGroups: [["admin:manage"]],
+      declaration: {
+        name: "list_subordinate_admins",
+        description: "List subordinate admin accounts using the original admin-management RPC. Returns only account IDs, names, usernames, email, role, active state, version and creation time; never credentials or BINs.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
+      name: "get_admin_custom_permissions",
+      requiredPermissionGroups: [["admin:manage"]],
+      declaration: {
+        name: "get_admin_custom_permissions",
+        description: "Read the existing custom permission overrides for one exact subordinate admin ID returned by list_subordinate_admins.",
+        parameters: {
+          type: "OBJECT",
+          properties: { target_admin_id: { type: "STRING" } },
+          required: ["target_admin_id"],
+        },
+      },
+    },
+    {
+      name: "get_admin_audit_logs",
+      requiredPermissionGroups: [["admin:manage"]],
+      declaration: {
+        name: "get_admin_audit_logs",
+        description: "Read up to one hundred recent admin audit events, optionally limited to one exact subordinate admin ID.",
+        parameters: {
+          type: "OBJECT",
+          properties: { target_admin_id: { type: "STRING" } },
+        },
+      },
+    },
+    {
+      name: "set_admin_permission",
+      requiredPermissionGroups: [["admin:manage"]],
+      superAdminOnly: true,
+      declaration: {
+        name: "set_admin_permission",
+        description: "Grant or explicitly revoke one permission for a subordinate admin through the original super-admin-only RPC. First list admins and current custom permissions; use the exact target ID and change only the permission explicitly requested. The database requires the secure super-admin BIN prompt.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            target_admin_id: { type: "STRING" },
+            permission: { type: "STRING", enum: ["orders:view","orders:create","orders:override-debt-limit","orders:edit","orders:deliver","orders:cancel","orders:correct","orders:renumber-day","customers:view","customers:create","customers:edit","customers:deactivate","customers:debt-limit","customers:charger-exemption","customers:financial-view","finance:view","finance:create-payment","finance:approve-payment","finance:refund","finance:correction","finance:credit-adjustment","devices:view","devices:manage","devices:pricing","devices:charger-policy","settings:manage","ai:use","ai:manage","admin:manage","sync:manage","goals:view","goals:requests:view","goals:approve","goals:manage"] },
+            is_grant: { type: "BOOLEAN" },
+          },
+          required: ["target_admin_id","permission","is_grant"],
+        },
+      },
+    },
+    {
+      name: "suspend_admin",
+      requiredPermissionGroups: [["admin:manage"]],
+      superAdminOnly: true,
+      declaration: {
+        name: "suspend_admin",
+        description: "Suspend one exact subordinate admin returned by list_subordinate_admins. The original RPC blocks self-suspension and requires the secure super-admin BIN prompt.",
+        parameters: {
+          type: "OBJECT",
+          properties: { target_admin_id: { type: "STRING" } },
+          required: ["target_admin_id"],
+        },
+      },
+    },
+    {
+      name: "activate_admin",
+      requiredPermissionGroups: [["admin:manage"]],
+      superAdminOnly: true,
+      declaration: {
+        name: "activate_admin",
+        description: "Reactivate one exact subordinate admin returned by list_subordinate_admins through the original super-admin-only RPC; secure super-admin BIN prompt required.",
+        parameters: {
+          type: "OBJECT",
+          properties: { target_admin_id: { type: "STRING" } },
+          required: ["target_admin_id"],
+        },
+      },
+    },
+    {
       name: "get_goals_overview",
       requiredPermissionGroups: [["goals:view", "goals:manage", "goals:requests:view", "goals:approve"]],
       declaration: {
@@ -750,9 +830,11 @@ Deno.serve(async (req) => {
     },
   ] as const;
   const enabledCapabilities = capabilityRegistry.filter(
-    (capability) => isSuperAdmin || capability.requiredPermissionGroups.every(
-      (group) => group.some((permission) => permissions.includes(permission)),
-    ),
+    (capability) =>
+      (!("superAdminOnly" in capability) || capability.superAdminOnly !== true || isSuperAdmin)
+      && (isSuperAdmin || capability.requiredPermissionGroups.every(
+        (group) => group.some((permission) => permissions.includes(permission)),
+      )),
   );
   const enabledCapabilityNames = new Set(enabledCapabilities.map((capability) => capability.name));
   const hasEnabledCapabilities = enabledCapabilities.length > 0;
@@ -1378,6 +1460,102 @@ Deno.serve(async (req) => {
         p_approve: typeof approve === "boolean" ? approve : null,
       });
       toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "list_subordinate_admins") {
+      const result = await caller.rpc("rpc_fetch_admins");
+      toolError = result.error;
+      if (!result.error && Array.isArray(result.data)) {
+        toolResult = {
+          admins: (result.data as Array<Record<string, unknown>>)
+            .filter((admin) => String(admin.role || "").toUpperCase().replace(/\s+/g, "_") !== "SUPER_ADMIN")
+            .slice(0, 100)
+            .map((admin) => ({
+              admin_id: safeText(admin.id, 36),
+              username: safeText(admin.username, 64),
+              full_name: safeText(admin.full_name, 80),
+              email: safeText(admin.email, 160),
+              role: safeText(admin.role, 40),
+              is_active: admin.is_active === true,
+              version: Number(admin.version) || 0,
+              created_at: admin.created_at,
+            })),
+        };
+      }
+    } else if (toolName === "get_admin_custom_permissions") {
+      const targetAdminId = safeText(args.target_admin_id, 36);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetAdminId)) {
+        return { response: respond(400, { ok: false, error: "ADMIN_TARGET_INVALID" }) };
+      }
+      const result = await caller.rpc("rpc_fetch_custom_permissions");
+      toolError = result.error;
+      if (!result.error && Array.isArray(result.data)) {
+        toolResult = {
+          permissions: (result.data as Array<Record<string, unknown>>)
+            .filter((row) => String(row.admin_id || "") === targetAdminId)
+            .map((row) => ({
+              permission: safeText(row.permission, 80),
+              is_grant: row.is_grant === true,
+            }))
+            .slice(0, 50),
+        };
+      }
+    } else if (toolName === "get_admin_audit_logs") {
+      const rawTargetId = args.target_admin_id;
+      const targetAdminId = typeof rawTargetId === "string" ? safeText(rawTargetId, 36) : "";
+      if (rawTargetId !== undefined && rawTargetId !== null
+        && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetAdminId)) {
+        return { response: respond(400, { ok: false, error: "ADMIN_TARGET_INVALID" }) };
+      }
+      const result = await caller.rpc("rpc_fetch_admin_audit_logs");
+      toolError = result.error;
+      if (!result.error && Array.isArray(result.data)) {
+        toolResult = {
+          audit_logs: (result.data as Array<Record<string, unknown>>)
+            .filter((row) => !targetAdminId || String(row.target_admin_id || "") === targetAdminId)
+            .slice(0, 100)
+            .map((row) => ({
+              id: safeText(row.id, 36),
+              actor_admin_id: safeText(row.actor_admin_id, 36),
+              target_admin_id: safeText(row.target_admin_id, 36),
+              action: safeText(row.action, 100),
+              metadata: row.metadata && typeof row.metadata === "object" ? row.metadata : {},
+              created_at: row.created_at,
+            })),
+        };
+      }
+    } else if (toolName === "set_admin_permission") {
+      const targetAdminId = safeText(args.target_admin_id, 36);
+      const permission = safeText(args.permission, 80);
+      const isGrant = args.is_grant;
+      const allowedPermissions = new Set([
+        "orders:view","orders:create","orders:override-debt-limit","orders:edit","orders:deliver","orders:cancel","orders:correct","orders:renumber-day",
+        "customers:view","customers:create","customers:edit","customers:deactivate","customers:debt-limit","customers:charger-exemption","customers:financial-view",
+        "finance:view","finance:create-payment","finance:approve-payment","finance:refund","finance:correction","finance:credit-adjustment",
+        "devices:view","devices:manage","devices:pricing","devices:charger-policy","settings:manage","ai:use","ai:manage","admin:manage","sync:manage",
+        "goals:view","goals:requests:view","goals:approve","goals:manage",
+      ]);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetAdminId)
+        || !allowedPermissions.has(permission) || typeof isGrant !== "boolean") {
+        return { response: respond(400, { ok: false, error: "ADMIN_PERMISSION_INPUT_INVALID" }) };
+      }
+      const result = await caller.rpc("rpc_grant_custom_permission", {
+        p_target_admin_id: targetAdminId,
+        p_permission: permission,
+        p_is_grant: isGrant,
+        p_bin: actionBin,
+      });
+      toolResult = { ok: !result.error, permission, is_grant: isGrant };
+      toolError = result.error;
+    } else if (toolName === "suspend_admin" || toolName === "activate_admin") {
+      const targetAdminId = safeText(args.target_admin_id, 36);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetAdminId)) {
+        return { response: respond(400, { ok: false, error: "ADMIN_TARGET_INVALID" }) };
+      }
+      const result = await caller.rpc(
+        toolName === "suspend_admin" ? "rpc_suspend_admin" : "rpc_activate_admin",
+        { p_target_admin_id: targetAdminId, p_bin: actionBin },
+      );
+      toolResult = { ok: !result.error, target_admin_id: targetAdminId };
       toolError = result.error;
     } else if (toolName === "get_goals_overview") {
       const rawCustomerName = args.customer_name;
