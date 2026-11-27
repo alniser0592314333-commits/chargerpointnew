@@ -17,7 +17,7 @@ const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_a
 const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
 const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
 const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
-const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
+
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
