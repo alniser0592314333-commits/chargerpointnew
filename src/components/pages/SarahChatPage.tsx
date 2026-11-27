@@ -260,6 +260,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         bin,
         { localSyncContext: refreshedContext, localSyncActionResult },
         confirmationAction,
+        resumeTask,
       );
       if (response.requiresLocalSync) throw new Error("LOCAL_SYNC_HANDOFF_LOOP");
     }
