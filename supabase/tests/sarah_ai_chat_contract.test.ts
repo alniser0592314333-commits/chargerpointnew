@@ -101,6 +101,14 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("resp.text()");
   });
 
+  it("uses the trusted Palestine date for relative today order queries", () => {
+    expect(source).toContain('timeZone: "Asia/Gaza"');
+    expect(source).toContain("Authoritative Palestine local date (Asia/Gaza)");
+    expect(source).toContain("asksForToday && !explicitDateInRequest");
+    expect(source).toContain("? palestineBusinessDate");
+    expect(source).toContain("never infer today's date from conversation history or model knowledge");
+  });
+
   it("exposes bounded customer read capabilities and validates each capability in PostgreSQL", () => {
     expect(source).toContain('name: "lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
