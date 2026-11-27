@@ -138,7 +138,8 @@ VALUES
  ('00000000-0000-4000-8000-000000000008','ai:use',true),
  ('00000000-0000-4000-8000-000000000008','customers:financial-view',true),
  ('00000000-0000-4000-8000-000000000008','orders:view',true),
- ('00000000-0000-4000-8000-000000000008','orders:deliver',true);
+ ('00000000-0000-4000-8000-000000000008','orders:deliver',true)
+ON CONFLICT(admin_id,permission) DO UPDATE SET is_grant=EXCLUDED.is_grant;
 
 CREATE OR REPLACE FUNCTION public.record_canonical_change(
   p_table_name text,
