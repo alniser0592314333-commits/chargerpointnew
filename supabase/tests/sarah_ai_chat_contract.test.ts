@@ -232,7 +232,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "update_customer_protected_settings"');
     expect((source.match(/name: "update_customer_protected_settings"/g) || []).length).toBe(2);
     expect(source).toContain('requiredPermissionGroups: [');
-    expect(source).toContain('"customers:debt-limit", "customers:charger-exemption"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view", "customers:read"], ["customers:edit", "customers:write"]]');
     expect(source).toContain('caller.rpc("sarah_ai_update_customer_protected_settings"');
     expect((source.match(/toolName === "update_customer_protected_settings"/g) || []).length).toBe(1);
     expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes");
