@@ -208,6 +208,10 @@ Deno.serve(async (req) => {
   const initialTaskState: Record<string, unknown> = {
     phase: "INITIAL",
     confirmedActions: [],
+    executedCapabilityNames: [],
+    verifiedPrerequisiteNames: [],
+    resultsByIndex: {},
+    providerRetryCount: 0,
   };
   const taskActor = userData.user.id;
   const taskSession = authSessionId;
