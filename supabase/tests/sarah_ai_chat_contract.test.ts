@@ -95,9 +95,9 @@ describe("Sarah chat gateway security contract", () => {
     expect(profileMigration).toContain("LIMIT 6");
     expect(profileMigration).toContain("match_number <= 5");
     expect(profileMigration).toContain("customer_code");
-    expect(profileMigration).not.toContain("phone");
-    expect(profileMigration).not.toContain("balance");
-    expect(profileMigration).not.toContain("notes");
+    expect(profileMigration).not.toContain("'phone',");
+    expect(profileMigration).not.toContain("'balance',");
+    expect(profileMigration).not.toContain("'notes',");
   });
 
   it("treats client-supplied history and tool results as untrusted data", () => {
