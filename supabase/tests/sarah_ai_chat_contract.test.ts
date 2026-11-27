@@ -169,7 +169,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "get_goals_overview"');
     expect(source).toContain('requiredPermissionGroups: [["goals:view", "goals:requests:view"]]');
     expect(source).toContain('caller.rpc("get_admin_goals_page_data")');
-    expect(source).toContain('String(row.status || "").toUpperCase() === "PENDING"');
+    expect(source).toContain('String(row.status || "").toUpperCase() !== "PENDING"');
     expect(source).not.toContain("admin.rpc(\"rpc_get_financial_report\"");
     expect(source).not.toContain("admin.rpc(\"list_admin_manual_customer_payments\"");
     expect(source).not.toContain("admin.rpc(\"get_admin_goals_page_data\"");
