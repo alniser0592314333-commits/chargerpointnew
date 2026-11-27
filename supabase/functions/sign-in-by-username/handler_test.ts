@@ -168,8 +168,10 @@ Deno.test("successful username sign-in returns the Auth session only after Auth 
   assertEquals(calls.auth, 1);
   assertEquals(calls.authBody?.email, "private-admin@example.test");
   assertEquals(calls.authBody?.password, "correct horse");
-  assertEquals(calls.authHeaders.get("apikey"), "sb_publishable_test_only");
-  assertEquals(calls.authHeaders.get("apikey") === "sb_secret_test_only", false);
+  // The server-only secret key is required for Supabase to honor Sb-Forwarded-For.
+  // It must never be replaced with a publishable key for this server-side exchange.
+  assertEquals(calls.authHeaders.get("apikey"), "sb_secret_test_only");
+  assertEquals(calls.authHeaders.get("apikey") === "sb_publishable_test_only", false);
   assertEquals(body.session.access_token, "test-access-token");
   assertEquals(body.error, null);
 });
