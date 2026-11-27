@@ -352,7 +352,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("requests.slice(0,20)");
     expect(source).toContain("request_id: safeText(request.id,36)");
     expect(source).toContain('body: { action: "admin-review", requestId, decision }');
-    expect(source).toContain("approval is temporary for exactly 24 hours");
+    expect(source).toContain("approved access lasts 24 hours");
   });
 
   it("registers all admin goal operations through existing app permissions and canonical paths", () => {
