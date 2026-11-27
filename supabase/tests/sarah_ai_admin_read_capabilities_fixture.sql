@@ -1,0 +1,180 @@
+-- Additional disposable schema for Sarah admin read/order capability migration tests.
+-- Applied only after the existing provider, quota, lookup, and profile fixtures.
+
+ALTER TABLE public.customers
+  ADD COLUMN IF NOT EXISTS debt_limit_minor bigint NOT NULL DEFAULT 0;
+
+CREATE TABLE public.business_days (
+  id uuid PRIMARY KEY,
+  business_date date NOT NULL UNIQUE,
+  display_number integer NOT NULL,
+  status text NOT NULL DEFAULT 'OPEN',
+  is_closed boolean NOT NULL DEFAULT false,
+  opened_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  version integer NOT NULL DEFAULT 1
+);
+
+CREATE TABLE public.device_types (
+  id uuid PRIMARY KEY,
+  name text NOT NULL,
+  name_ar text,
+  name_en text,
+  base_price_minor bigint NOT NULL DEFAULT 0,
+  charger_fee_minor bigint NOT NULL DEFAULT 0,
+  charger_fee_applicable boolean NOT NULL DEFAULT false,
+  charger_fee_enabled boolean NOT NULL DEFAULT true,
+  is_active boolean NOT NULL DEFAULT true,
+  status text NOT NULL DEFAULT 'ACTIVE',
+  deleted_at timestamptz,
+  sort_order integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE public.orders (
+  id uuid PRIMARY KEY,
+  day_id uuid NOT NULL REFERENCES public.business_days(id),
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  display_number integer NOT NULL,
+  status text NOT NULL DEFAULT 'charging',
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  delivered_at timestamptz,
+  deleted_at timestamptz
+);
+
+CREATE TABLE public.order_items (
+  id uuid PRIMARY KEY,
+  order_id uuid NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  device_type_id uuid NOT NULL REFERENCES public.device_types(id),
+  item_sequence integer NOT NULL,
+  operational_status text NOT NULL DEFAULT 'CHARGING',
+  financial_status text NOT NULL DEFAULT 'UNPAID',
+  final_charge_snapshot_minor bigint NOT NULL DEFAULT 0,
+  charger_fee_snapshot_minor bigint NOT NULL DEFAULT 0,
+  discount_snapshot_minor bigint NOT NULL DEFAULT 0,
+  device_name_snapshot text,
+  delivered_at timestamptz,
+  deleted_at timestamptz
+);
+
+CREATE TABLE public.financial_ledger (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  amount_minor bigint NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO public.device_types(id,name,name_ar,name_en,base_price_minor,charger_fee_minor,charger_fee_applicable,is_active,status,sort_order)
+VALUES
+ ('30000000-0000-4000-8000-000000000001','Xiaomi','شاومي','Xiaomi',10000,500,true,true,'ACTIVE',1),
+ ('30000000-0000-4000-8000-000000000002','Headphones','سماعة','Headphones',5000,0,false,true,'ACTIVE',2),
+ ('30000000-0000-4000-8000-000000000003','Failure Device','فشل اختبار','FAIL',7000,0,false,true,'ACTIVE',3),
+ ('30000000-0000-4000-8000-000000000004','Other','أخرى','Other',0,0,false,true,'ACTIVE',4);
+
+INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
+VALUES
+ ('00000000-0000-4000-8000-000000000002','ai:use',true),
+ ('00000000-0000-4000-8000-000000000002','customers:view',true),
+ ('00000000-0000-4000-8000-000000000002','customers:financial-view',true),
+ ('00000000-0000-4000-8000-000000000002','orders:view',true),
+ ('00000000-0000-4000-8000-000000000002','orders:create',true),
+ ('00000000-0000-4000-8000-000000000002','orders:edit',true),
+ ('00000000-0000-4000-8000-000000000007','ai:use',true),
+ ('00000000-0000-4000-8000-000000000007','customers:view',true),
+ ('00000000-0000-4000-8000-000000000007','orders:create',true);
+
+CREATE OR REPLACE FUNCTION public.record_canonical_change(
+  p_table_name text,
+  p_entity_id uuid,
+  p_operation text,
+  p_payload jsonb,
+  p_version integer
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  RETURN;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.calculate_customer_authoritative_balance(p_customer_id uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT COALESCE(sum(fl.amount_minor),0)::bigint
+  FROM public.financial_ledger fl
+  WHERE fl.customer_id=p_customer_id;
+$function$;
+
+-- Test double for the canonical sync-command boundary. Production Sarah code
+-- calls the real execute_sync_command RPC; this fixture only records the same
+-- CREATE_ORDER/ADD_ORDER_ITEM aggregate and deliberately fails on FAIL device.
+CREATE OR REPLACE FUNCTION public.execute_sync_command(
+  p_command_id uuid,
+  p_command_type text,
+  p_aggregate_type text,
+  p_aggregate_id uuid,
+  p_payload jsonb,
+  p_expected_version integer DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_display_number integer;
+  v_device public.device_types%ROWTYPE;
+  v_has_charger boolean;
+  v_charge bigint;
+BEGIN
+  IF p_command_type='CREATE_ORDER' THEN
+    INSERT INTO public.orders(id,day_id,customer_id,display_number,status,notes)
+    VALUES(
+      (p_payload->>'id')::uuid,
+      (p_payload->>'dayId')::uuid,
+      (p_payload->>'customerId')::uuid,
+      (p_payload->>'displayNumber')::integer,
+      'charging',
+      p_payload->>'notes'
+    )
+    RETURNING display_number INTO v_display_number;
+    RETURN jsonb_build_object('result',jsonb_build_object('displayNumber',v_display_number));
+  ELSIF p_command_type='ADD_ORDER_ITEM' THEN
+    SELECT * INTO v_device
+    FROM public.device_types
+    WHERE id=(p_payload->>'deviceTypeId')::uuid;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Device type missing';
+    END IF;
+    IF v_device.name_en='FAIL' THEN
+      RAISE EXCEPTION 'Simulated canonical item failure';
+    END IF;
+    v_has_charger:=COALESCE((p_payload->>'hasCharger')::boolean,false);
+    v_charge:=v_device.base_price_minor
+      + CASE WHEN v_device.charger_fee_applicable AND NOT v_has_charger
+          THEN v_device.charger_fee_minor ELSE 0 END;
+    INSERT INTO public.order_items(
+      id,order_id,device_type_id,item_sequence,operational_status,financial_status,
+      final_charge_snapshot_minor,charger_fee_snapshot_minor,discount_snapshot_minor,device_name_snapshot
+    )
+    VALUES(
+      p_command_id,(p_payload->>'orderId')::uuid,v_device.id,
+      (p_payload->>'itemSequence')::integer,'CHARGING','UNPAID',
+      v_charge,
+      CASE WHEN v_device.charger_fee_applicable AND NOT v_has_charger THEN v_device.charger_fee_minor ELSE 0 END,
+      0,v_device.name
+    );
+    RETURN jsonb_build_object('result',jsonb_build_object('provisionalFinalChargeMinor',v_charge));
+  END IF;
+  RAISE EXCEPTION 'Unexpected canonical command type: %',p_command_type;
+END;
+$function$;
