@@ -60,7 +60,7 @@ The following forty-four bounded capabilities are registered today:
 | list_customer_history_requests | customers:edit OR customers:write OR customers:manage OR customer_accounts:manage OR customer_accounts:reset OR admin:manage | Up to twenty pending customer requests for temporary full-history access |
 | review_customer_history_request | same customer-account management permissions | Approves or rejects one pending request; approval creates the existing 24-hour server-side grant |
 | list_subordinate_admins | admin:manage | Up to 100 subordinate admin account summaries without credentials |
-| get_admin_custom_permissions | admin:manage | Custom permission overrides for one exact subordinate admin |
+| get_admin_custom_permissions | admin:manage AND Super Admin role | Custom permission overrides for one exact subordinate admin; original RPC is Super Admin-only |
 | get_admin_audit_logs | admin:manage | Up to 100 recent admin audit events, optionally filtered to one target |
 | set_admin_permission | admin:manage AND Super Admin role | Grants or explicitly denies one exact system permission through the original RPC; secure BIN required |
 | suspend_admin | admin:manage AND Super Admin role | Suspends one subordinate admin through the original RPC; secure BIN required |
