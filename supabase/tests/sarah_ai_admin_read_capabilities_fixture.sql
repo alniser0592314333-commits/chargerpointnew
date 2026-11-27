@@ -215,7 +215,15 @@ DECLARE
   v_has_charger boolean;
   v_charge bigint;
 BEGIN
-  IF p_command_type='OPEN_DAY' THEN
+  IF p_command_type='CREATE_CUSTOMER' THEN
+    INSERT INTO public.customers(id,name,phone,notes,debt_limit_minor,charger_fee_exempt,is_active,version)
+    VALUES(
+      (p_payload->>'id')::uuid,p_payload->>'name',NULLIF(p_payload->>'phone',''),
+      COALESCE(p_payload->>'notes',''),COALESCE((p_payload->>'debtLimitMinor')::bigint,2000),
+      COALESCE((p_payload->>'chargerFeeExempt')::boolean,false),true,1
+    );
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('customerId',p_payload->>'id'));
+  ELSIF p_command_type='OPEN_DAY' THEN
     SELECT COALESCE(max(display_number),0)+1 INTO v_display_number FROM public.business_days;
     INSERT INTO public.business_days(id,business_date,display_number,status,is_closed,opened_at,created_at,updated_at,version)
     VALUES(
