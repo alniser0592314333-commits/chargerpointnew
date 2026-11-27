@@ -14,16 +14,16 @@ BEGIN
 
   v_normalized := pg_catalog.regexp_replace(v_definition, '[[:space:]]+', '', 'g');
 
-  IF pg_catalog.position(
+  IF pg_catalog.strpos(
+    v_normalized,
     'IFp_actor_idISNOTNULLANDp_actor_id<>auth.uid()THEN'
-    IN v_normalized
   ) = 0 THEN
     RAISE EXCEPTION 'Goal actor guard must compare p_actor_id with auth.uid()';
   END IF;
 
-  IF pg_catalog.position(
+  IF pg_catalog.strpos(
+    v_normalized,
     'IFp_actor_idISNOTNULLANDp_actor_id<>v_actor_idTHEN'
-    IN v_normalized
   ) > 0 THEN
     RAISE EXCEPTION 'Goal actor guard still compares auth user ID with admins.id';
   END IF;
