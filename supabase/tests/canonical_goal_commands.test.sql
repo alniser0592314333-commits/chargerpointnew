@@ -28,7 +28,7 @@ BEGIN
   );
   v_result:=public.execute_canonical_sync_command(
     v_goal_id,'CREATE_GOAL',v_payload,'goal-hash-1','test-device',
-    '20000000-0000-4000-8000-000000000001'
+    auth.uid()
   );
   IF v_result->>'success'<>'true'
      OR v_result#>>'{result,status}'<>'ACTIVE'
@@ -37,7 +37,7 @@ BEGIN
   END IF;
   v_result:=public.execute_canonical_sync_command(
     v_goal_id,'CREATE_GOAL',v_payload,'goal-hash-1','test-device',
-    '20000000-0000-4000-8000-000000000001'
+    auth.uid()
   );
   IF v_result->>'idempotent'<>'true' THEN
     RAISE EXCEPTION 'Goal command retry was not idempotent: %',v_result;
@@ -95,7 +95,7 @@ BEGIN
   );
   v_result:=public.execute_canonical_sync_command(
     '60000000-0000-4000-8000-000000000001','RECORD_GOAL_REQUEST',v_payload,'request-hash-1','test-device',
-    '20000000-0000-4000-8000-000000000001'
+    auth.uid()
   );
   IF v_result->>'success'<>'true' OR v_result#>>'{result,status}'<>'PENDING' THEN
     RAISE EXCEPTION 'Goal request recording failed: %',v_result;
@@ -161,7 +161,7 @@ DECLARE v_result jsonb;
 BEGIN
   v_result:=public.execute_canonical_sync_command(
     '70000000-0000-4000-8000-000000000001','CREATE_ORDER','{}'::jsonb,'delegate-hash','test-device',
-    '20000000-0000-4000-8000-000000000001'
+    auth.uid()
   );
   IF v_result->>'delegated'<>'true' THEN
     RAISE EXCEPTION 'Non-goal command did not delegate to the original dispatcher: %',v_result;
