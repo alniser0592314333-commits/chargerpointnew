@@ -20,6 +20,7 @@ const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai
 const customerCreateMigration = read("supabase/migrations/20261127170000_sarah_ai_customer_create.sql");
 const customerUpdateMigration = read("supabase/migrations/20261127180000_sarah_ai_customer_profile_update.sql");
 const changeLogRedactionMigration = read("supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql");
+const historicalChangeLogRedactionMigration = read("supabase/migrations/20261127200000_redact_historical_change_log_secrets.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -197,7 +198,7 @@ describe("Sarah chat gateway security contract", () => {
   it("redacts credentials recursively from historical and future canonical change-log payloads", () => {
     expect(changeLogRedactionMigration).toContain("public._cp_redact_sensitive_change_payload");
     expect(changeLogRedactionMigration).toContain("'bin','adminbin','password'");
-    expect(changeLogRedactionMigration).toContain("UPDATE public.change_log");
+    expect(historicalChangeLogRedactionMigration).toContain("UPDATE public.change_log");
     expect(changeLogRedactionMigration).toContain("v_safe_payload");
     expect(changeLogRedactionMigration).not.toContain("RAISE NOTICE");
   });
