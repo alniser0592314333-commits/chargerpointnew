@@ -22,6 +22,7 @@ const customerUpdateMigration = read("supabase/migrations/20261127180000_sarah_a
 const changeLogRedactionMigration = read("supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql");
 const historicalChangeLogRedactionMigration = read("supabase/migrations/20261127200000_redact_historical_change_log_secrets.sql");
 const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
+const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -250,6 +251,19 @@ describe("Sarah chat gateway security contract", () => {
     expect(deviceCatalogMigration).toContain("is_active IS TRUE");
     expect(deviceCatalogMigration).toContain("status,'ACTIVE') = 'ACTIVE'");
     expect(deviceCatalogMigration).toContain("jsonb_array_length(v_devices)");
+  });
+
+  it("exposes device create, update and retire only through live permission-checked canonical commands", () => {
+    expect(source).toContain('name: "create_device_type"');
+    expect(source).toContain('name: "update_device_type"');
+    expect(source).toContain('name: "retire_device_type"');
+    expect(source).toContain('caller.rpc("sarah_ai_manage_device_type"');
+    expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:manage')");
+    expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:pricing')");
+    expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:charger-policy')");
+    expect(deviceManagementMigration).toContain("public.execute_sync_command(");
+    expect(deviceManagementMigration).toContain("'RETIRE_DEVICE_TYPE'");
+    expect(deviceManagementMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_manage_device_type");
   });
 
   it("registers finance and goals read capabilities against existing permission keys", () => {
