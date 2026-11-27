@@ -22,7 +22,7 @@ export interface SarahInputRecord {
   audioMimeType?: string;
   correlationId: string;
   aiRequestId?: string;
-  pendingBinAction?: { name: string; args: Record<string, unknown>; actionRequestId: string };
+  pendingBinAction?: { token: string; name: string; args: Record<string, unknown>; actionRequestId: string };
   resultRef?: string;
   lastErrorCode?: string;
   attempts: number;
