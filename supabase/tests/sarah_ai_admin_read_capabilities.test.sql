@@ -223,6 +223,63 @@ END;
 $customer_protected_permission_gate$;
 RESET ROLE;
 
+-- Account status lookup includes inactive customers; activation/deactivation uses exact proof and both original permissions.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000001',false);
+DO $customer_account_status$
+DECLARE
+  v_lookup jsonb;
+  v_result jsonb;
+  v_code text;
+  v_customer_id uuid;
+BEGIN
+  v_lookup:=public.sarah_ai_lookup_customer_accounts('أحمد غير نشط');
+  IF v_lookup->>'match_count'<>'1'
+     OR (v_lookup->'matches'->0->>'is_active')<>'false' THEN
+    RAISE EXCEPTION 'Inactive customer account was not discoverable through the dedicated lookup: %',v_lookup;
+  END IF;
+  v_code:=v_lookup->'matches'->0->>'customer_code';
+  SELECT id INTO v_customer_id FROM public.customers WHERE name='أحمد غير نشط' LIMIT 1;
+
+  v_result:=public.sarah_ai_set_customer_active_status(
+    '70000000-0000-4000-8000-000000000006',v_code,'أحمد غير نشط',true
+  );
+  IF v_result->>'ok'<>'true' OR v_result->>'is_active'<>'true'
+     OR NOT EXISTS(SELECT 1 FROM public.customers WHERE id=v_customer_id AND is_active IS TRUE) THEN
+    RAISE EXCEPTION 'Customer reactivation did not use the canonical update path: %',v_result;
+  END IF;
+
+  v_lookup:=public.sarah_ai_lookup_customer_accounts('أحمد غير نشط');
+  v_result:=public.sarah_ai_set_customer_active_status(
+    '70000000-0000-4000-8000-000000000007',
+    v_lookup->'matches'->0->>'customer_code','أحمد غير نشط',false
+  );
+  IF v_result->>'ok'<>'true' OR v_result->>'is_active'<>'false'
+     OR NOT EXISTS(SELECT 1 FROM public.customers WHERE id=v_customer_id AND is_active IS FALSE) THEN
+    RAISE EXCEPTION 'Customer deactivation did not use the canonical update path: %',v_result;
+  END IF;
+END;
+$customer_account_status$;
+RESET ROLE;
+
+-- Admin with customers:view/edit but without customers:deactivate cannot even look up inactive accounts.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000002',false);
+DO $customer_account_status_permission_gate$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_lookup_customer_accounts('أحمد غير نشط');
+    RAISE EXCEPTION 'Admin without customers:deactivate unexpectedly looked up inactive customer accounts';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$customer_account_status_permission_gate$;
+RESET ROLE;
+
 -- An ordinary admin without customers:create cannot create a customer through Sarah.
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
