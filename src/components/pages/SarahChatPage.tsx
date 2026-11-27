@@ -252,7 +252,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     const accountId = session?.authUserId || null;
     const bin = binValue.trim();
     if (!pendingAction || !accountId || busy || !isCurrent(accountId) || hydratedAccount !== accountId) return;
-    if (!/^\\d{4,}$/.test(bin) || bin.length > 32) {
+    if (!/^\d{4,}$/.test(bin) || bin.length > 32) {
       setBinError("أدخل رمز BIN رقميًا صحيحًا.");
       return;
     }
