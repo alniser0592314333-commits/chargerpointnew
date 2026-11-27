@@ -216,6 +216,9 @@ END;
 $payment_storage_privacy$;
 
 -- A different Auth session for the same user cannot reuse the old lookup proof.
+UPDATE public.account_sessions
+SET revoked_at=now()
+WHERE session_id='20000000-0000-4000-8000-000000000002';
 INSERT INTO auth.sessions(id,user_id,created_at,not_after,user_agent)
 VALUES('20000000-0000-4000-8000-000000000010','10000000-0000-4000-8000-000000000002',now(),NULL,'second session');
 INSERT INTO public.account_sessions(session_id,user_id,revoked_at,session_expires_at)
