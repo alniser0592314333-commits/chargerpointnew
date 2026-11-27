@@ -776,9 +776,11 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     const capabilityGate = source.indexOf("const enabledCapabilityNames");
     const progressGuard = source.indexOf("const taskHasProgress");
     const completedFastPath = source.indexOf('if (taskStatus === "COMPLETED"');
+    const failedTaskRetry = source.indexOf('if (taskStatus === "FAILED" && resumeTask)');
     expect(capabilityGate).toBeGreaterThan(-1);
     expect(progressGuard).toBeGreaterThan(capabilityGate);
     expect(completedFastPath).toBeGreaterThan(progressGuard);
+    expect(failedTaskRetry).toBeGreaterThan(progressGuard);
     const replayGuard = source.slice(progressGuard, source.indexOf("const readOnlyCapabilityNames", progressGuard));
     expect(replayGuard).toContain("taskState.phase !== \"INITIAL\" || taskStatus !== \"RUNNING\"");
     expect(replayGuard).toContain("taskState.executedCapabilityNames");
