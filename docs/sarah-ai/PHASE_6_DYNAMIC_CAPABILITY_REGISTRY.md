@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following thirty-two bounded capabilities are registered today:
+The following thirty-four bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
