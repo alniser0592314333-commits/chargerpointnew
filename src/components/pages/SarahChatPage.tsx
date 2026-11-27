@@ -234,7 +234,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         <button type="button" disabled={busy || hydratedAccount !== session?.authUserId} onClick={() => void clearTranscript()} className="text-xs text-red-600 underline disabled:opacity-40">مسح سجل المحادثة</button>
         <button type="button" onClick={() => activeAccountId && void refreshQueue(activeAccountId, accountScopeRef.current.generation)} className="text-xs text-gray-500 underline">تحديث حالة الرسائل المحفوظة</button>
       </div>
-      <p className="text-center text-[11px] text-gray-500">النسخة الحالية محادثة نصية فقط؛ تنفيذ أدوات التطبيق والصوت لم يُفعّل بعد.</p>
+      <p className="text-center text-[11px] text-gray-500">سارة تعمل وفق صلاحيات حسابك الحالية؛ وتتحقق قاعدة البيانات من كل عملية قبل تنفيذها.</p>
     </section>
   );
 };
