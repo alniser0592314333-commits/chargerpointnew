@@ -52,10 +52,10 @@ BEGIN
     END IF;
   END LOOP;
 
-  SELECT COALESCE(sum(v_profile[i]),0)::numeric/7
-  INTO v_recent_rate FROM generate_series(22,28) AS i;
+  SELECT COALESCE(sum(v_profile[idx]),0)::numeric/7
+  INTO v_recent_rate FROM generate_series(22,28) AS s(idx);
   SELECT COALESCE(sum(value),0)::numeric/28
-  INTO v_baseline_rate FROM unnest(v_profile) AS value;
+  INTO v_baseline_rate FROM unnest(v_profile) AS u(value);
   v_daily_rate:=v_recent_rate*0.65+v_baseline_rate*0.35;
 
   v_min_duration:=CASE WHEN v_daily_rate>=1.5 THEN 5 ELSE 7 END;
@@ -260,7 +260,7 @@ BEGIN
         v_proposal:=public.sarah_ai_goal_proposal_for_customer(v_customer_id);
         v_target:=COALESCE(v_request.requested_target,(v_proposal->>'target_quantity')::integer);
         v_duration:=(v_proposal->>'duration_days')::integer;
-        v_bonus:=(v_proposal->>'bonus_amount_minor')::bigint;
+        v_bonus:=LEAST((v_proposal->>'bonus_amount_minor')::bigint,v_target::bigint*20);
       ELSIF p_target_quantity IS NOT NULL AND p_duration_days IS NOT NULL AND p_bonus_amount_minor IS NOT NULL THEN
         v_target:=p_target_quantity;
         v_duration:=p_duration_days;
@@ -272,7 +272,7 @@ BEGIN
       v_expires_at:=v_started_at+pg_catalog.make_interval(days=>v_duration);
       v_command_type:='APPROVE_GOAL_REQUEST';
       v_payload:=jsonb_build_object(
-        'requestId',p_target_id,'resultingGoalId',gen_random_uuid(),
+        'requestId',p_target_id,'resultingGoalId',pg_catalog.gen_random_uuid(),
         'targetQuantity',v_target,'durationDays',v_duration,
         'bonusAmountMinor',v_bonus,'expiresAt',v_expires_at
       );
@@ -301,7 +301,7 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION 'Goal not found' USING ERRCODE='P0002'; END IF;
     v_customer_id:=v_goal.customer_id;
     v_customer_name:=(SELECT c.name FROM public.customers c WHERE c.id=v_customer_id);
-    v_payload:=jsonb_strip_nulls(jsonb_build_object(
+    v_payload:=pg_catalog.jsonb_strip_nulls(jsonb_build_object(
       'id',p_target_id,
       'targetQuantity',p_target_quantity,
       'durationDays',p_duration_days,
