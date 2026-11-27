@@ -336,6 +336,26 @@ describe("Sarah chat gateway security contract", () => {
     expect(dayOrderRenumberingMigration).toContain("hashtextextended(v_day_id::text,1)");
   });
 
+  it("registers subordinate admin visibility and super-admin-only account controls", () => {
+    expect(source).toContain('name: "list_subordinate_admins"');
+    expect(source).toContain('name: "get_admin_custom_permissions"');
+    expect(source).toContain('name: "get_admin_audit_logs"');
+    expect(source).toContain('name: "set_admin_permission"');
+    expect(source).toContain('name: "suspend_admin"');
+    expect(source).toContain('name: "activate_admin"');
+    expect(source).toContain('caller.rpc("rpc_fetch_admins")');
+    expect(source).toContain('caller.rpc("rpc_fetch_custom_permissions")');
+    expect(source).toContain('caller.rpc("rpc_fetch_admin_audit_logs")');
+    expect(source).toContain('caller.rpc("rpc_grant_custom_permission"');
+    expect(source).toContain('caller.rpc("rpc_suspend_admin"');
+    expect(source).toContain('caller.rpc("rpc_activate_admin"');
+    expect(source).toContain("superAdminOnly: true");
+    expect(source).toContain('capability.superAdminOnly !== true || isSuperAdmin');
+    expect(source).toContain("Authorization BIN is required");
+    expect(source).toContain("Invalid authorization BIN credential");
+    expect(source).toContain("p_bin: actionBin");
+  });
+
   it("registers finance and goals read capabilities against existing permission keys", () => {
     expect(source).toContain('name: "get_financial_summary"');
     expect(source).toContain('requiredPermissionGroups: [["finance:view", "reports:view"]]');
