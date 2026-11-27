@@ -240,7 +240,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "get_customer_financial_history",
-      requiredPermissionGroups: [["customers:view"], ["customers:financial-view", "finance:view", "finances:read"]],
+      requiredPermissionGroups: [["customers:view"], ["customers:financial-view"]],
       declaration: {
         name: "get_customer_financial_history",
         description: "Read up to twenty recent authoritative financial-ledger entries for a customer after lookup_customers in this same request. Includes event type, amount in ILS minor units, reference IDs, and timestamp; never infer or calculate a balance from these rows.",
@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "deliver_order_item",
-      requiredPermissionGroups: [["orders:view"], ["orders:deliver"]],
+      requiredPermissionGroups: [["customers:view"], ["orders:view"], ["orders:deliver"]],
       declaration: {
         name: "deliver_order_item",
         description: "Deliver one exact order item returned by get_customer_orders for the customer identified in this same turn. This invokes the canonical delivery/financial recognition path and requires BIN through the separate secure confirmation prompt; never ask for BIN in chat arguments.",
@@ -318,7 +318,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "cancel_order_item",
-      requiredPermissionGroups: [["orders:view"], ["orders:cancel"]],
+      requiredPermissionGroups: [["customers:view"], ["orders:view"], ["orders:cancel"]],
       declaration: {
         name: "cancel_order_item",
         description: "Cancel one exact order item returned by get_customer_orders for the customer identified in this same turn. The canonical command applies any required financial reversal and requires BIN through the separate secure confirmation prompt.",
