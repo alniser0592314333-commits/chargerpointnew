@@ -229,10 +229,6 @@ BEGIN
      OR v_payload->>'chargerFeeExempt'<>'true' THEN
     RAISE EXCEPTION 'Protected customer change-log payload was not safely redacted: %',v_payload;
   END IF;
-  IF public.test_sarah_action_has_bin('70000000-0000-4000-8000-000000000004') THEN
-    RAISE EXCEPTION 'Raw BIN was persisted in Sarah action idempotency';
-  END IF;
-
   v_replay:=public.sarah_ai_update_customer_protected_settings(
     '70000000-0000-4000-8000-000000000004',
     v_code,'عميل اختبار سارة معدل',-5000,true,NULL
@@ -243,6 +239,18 @@ BEGIN
 END;
 $customer_protected_settings$;
 RESET ROLE;
+
+DO $protected_settings_privacy$
+BEGIN
+  IF EXISTS(
+    SELECT 1 FROM public.sarah_ai_action_idempotency
+    WHERE request_id='70000000-0000-4000-8000-000000000004'
+      AND request_payload ? 'bin'
+  ) THEN
+    RAISE EXCEPTION 'Raw BIN was persisted in Sarah action idempotency';
+  END IF;
+END;
+$protected_settings_privacy$;
 
 -- An admin with customers:edit but without granular debt-limit permission is denied.
 -- Isolate this scenario from earlier test actors' hourly tool quota.
