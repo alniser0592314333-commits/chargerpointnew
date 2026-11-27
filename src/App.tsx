@@ -401,8 +401,13 @@ export default function App() {
   // the check to avoid duplicate token refreshes from the same WebView.
   useEffect(() => {
     let checkingSession = false;
+    let pendingPermissionRefresh = false;
     const handleFocus = async () => {
-      if (!isAuthenticated || isSuspended || checkingSession) return;
+      if (!isAuthenticated || isSuspended) return;
+      if (checkingSession) {
+        pendingPermissionRefresh = true;
+        return;
+      }
       checkingSession = true;
       try {
         try {
@@ -435,6 +440,10 @@ export default function App() {
         // A transient network failure is not treated as confirmed session revocation.
       } finally {
         checkingSession = false;
+        if (pendingPermissionRefresh) {
+          pendingPermissionRefresh = false;
+          void handleFocus();
+        }
       }
     };
     const onVisibilityChange = () => {
