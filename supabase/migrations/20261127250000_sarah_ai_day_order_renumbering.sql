@@ -55,7 +55,7 @@ BEGIN
     SELECT * FROM public.orders
     WHERE day_id=v_day_id
     ORDER BY display_number,id
-    LIMIT 201
+    LIMIT 200
   ) o
   JOIN public.customers c ON c.id=o.customer_id;
 
