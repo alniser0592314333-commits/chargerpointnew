@@ -2566,7 +2566,7 @@ Deno.serve(async (req) => {
           : {};
         const resultsByIndex = new Map<number, unknown>(
           Object.entries(savedResults)
-            .filter(([key]) => /^\\d+$/.test(key))
+            .filter(([key]) => /^\d+$/.test(key))
             .map(([key, value]) => [Number(key), value]),
         );
         executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index));
