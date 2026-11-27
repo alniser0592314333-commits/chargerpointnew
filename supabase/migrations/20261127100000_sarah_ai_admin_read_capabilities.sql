@@ -1045,4 +1045,127 @@ $function$;
 REVOKE ALL ON FUNCTION public.sarah_ai_record_and_approve_payment(uuid,text,text,bigint,text,text) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.sarah_ai_record_and_approve_payment(uuid,text,text,bigint,text,text) TO authenticated;
 
+
+-- Idempotent wrapper around the existing payment-submission review workflow.
+-- BIN is passed only to the canonical approval call and is never persisted.
+CREATE OR REPLACE FUNCTION public.sarah_ai_review_payment_submission(
+  p_request_id uuid,
+  p_submission_id uuid,
+  p_action text,
+  p_approved_amount_minor bigint DEFAULT NULL,
+  p_rejection_reason text DEFAULT NULL,
+  p_bin text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_session_id uuid;
+  v_request_payload jsonb;
+  v_existing_action text;
+  v_existing_payload jsonb;
+  v_saved_result jsonb;
+  v_review_result jsonb;
+  v_result jsonb;
+  v_quota jsonb;
+BEGIN
+  PERFORM public.sarah_ai_assert_use_permission();
+  PERFORM public.assert_my_account_session_active();
+  IF p_request_id IS NULL OR p_submission_id IS NULL THEN
+    RAISE EXCEPTION 'Request and submission IDs are required' USING ERRCODE='22023';
+  END IF;
+  IF auth.uid() IS NULL OR COALESCE(auth.jwt()->>'session_id','')='' THEN
+    RAISE EXCEPTION 'Authenticated session required' USING ERRCODE='28000';
+  END IF;
+  v_session_id:=(auth.jwt()->>'session_id')::uuid;
+  PERFORM public._cp_assert_active_admin_permission('finance:approve-payment');
+
+  IF pg_catalog.upper(pg_catalog.btrim(COALESCE(p_action,''))) NOT IN ('APPROVE','REJECT') THEN
+    RAISE EXCEPTION 'Unsupported payment review action' USING ERRCODE='22023';
+  END IF;
+  IF pg_catalog.upper(pg_catalog.btrim(p_action))='APPROVE' THEN
+    PERFORM public._cp_assert_active_admin_permission('finance:create-payment');
+    IF p_bin IS NULL OR pg_catalog.btrim(p_bin)='' THEN
+      RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE='P4004';
+    END IF;
+    IF p_approved_amount_minor IS NULL OR p_approved_amount_minor<=0 OR p_approved_amount_minor>99999999999 THEN
+      RAISE EXCEPTION 'Approved payment amount is invalid' USING ERRCODE='22023';
+    END IF;
+  ELSE
+    IF p_rejection_reason IS NULL OR pg_catalog.char_length(pg_catalog.btrim(p_rejection_reason))<2
+       OR pg_catalog.char_length(p_rejection_reason)>500 OR p_rejection_reason ~ '[[:cntrl:]]' THEN
+      RAISE EXCEPTION 'A rejection reason is required' USING ERRCODE='22023';
+    END IF;
+    IF p_approved_amount_minor IS NOT NULL THEN
+      RAISE EXCEPTION 'Rejected payments cannot have an approved amount' USING ERRCODE='22023';
+    END IF;
+  END IF;
+
+  v_request_payload:=jsonb_build_object(
+    'submission_id',p_submission_id,
+    'action',pg_catalog.upper(pg_catalog.btrim(p_action)),
+    'approved_amount_minor',p_approved_amount_minor,
+    'rejection_reason',p_rejection_reason
+  );
+  INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
+  VALUES(auth.uid(),v_session_id,p_request_id,'review_payment_submission',v_request_payload)
+  ON CONFLICT(auth_user_id,auth_session_id,request_id) DO NOTHING;
+  SELECT action_name,request_payload,result
+  INTO v_existing_action,v_existing_payload,v_saved_result
+  FROM public.sarah_ai_action_idempotency
+  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id
+  FOR UPDATE;
+  IF v_existing_action IS DISTINCT FROM 'review_payment_submission' THEN
+    RAISE EXCEPTION 'Request id was already used for a different action' USING ERRCODE='P0409';
+  END IF;
+  IF v_saved_result IS NOT NULL THEN
+    IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
+      RAISE EXCEPTION 'Completed request id cannot be reused with different input' USING ERRCODE='P0409';
+    END IF;
+    RETURN v_saved_result || jsonb_build_object('idempotent_replay',true);
+  END IF;
+  IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
+    UPDATE public.sarah_ai_action_idempotency SET request_payload=v_request_payload
+    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
+  END IF;
+
+  v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
+  END IF;
+  v_quota:=public.sarah_ai_consume_my_quota('tool_day');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
+  END IF;
+
+  v_review_result:=public.review_qr_payment_submission(
+    p_submission_id,
+    pg_catalog.upper(pg_catalog.btrim(p_action)),
+    p_bin,
+    p_rejection_reason,
+    p_approved_amount_minor
+  );
+  IF COALESCE((v_review_result->>'success')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'Payment submission review did not complete' USING ERRCODE='P0001';
+  END IF;
+  v_result:=jsonb_build_object(
+    'ok',true,
+    'submission_id',p_submission_id,
+    'status',v_review_result->>'status',
+    'payment_id',v_review_result->>'payment_id',
+    'approved_amount_minor',p_approved_amount_minor,
+    'balance_before_minor',v_review_result->'balance_before_minor',
+    'balance_after_minor',v_review_result->'balance_after_minor'
+  );
+  UPDATE public.sarah_ai_action_idempotency SET result=v_result
+  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.sarah_ai_review_payment_submission(uuid,uuid,text,bigint,text,text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_review_payment_submission(uuid,uuid,text,bigint,text,text) TO authenticated;
+
 COMMIT;
