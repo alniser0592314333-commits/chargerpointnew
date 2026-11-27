@@ -15,6 +15,7 @@ const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_adm
 const orderActionMigration = read("supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql");
 const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_ai_goal_management_capabilities.sql");
 const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
+const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -210,9 +211,19 @@ describe("Sarah chat gateway security contract", () => {
     expect(chatPage).toContain("لن يُضاف إلى المحادثة أو سجل الرسائل أو يُرسل إلى Gemini");
   });
 
+  it("revalidates customers:view inside every customer-scoped database capability", () => {
+    expect(permissionAlignmentMigration).toContain("sarah_ai_get_customer_financial_summary(text,text)");
+    expect(permissionAlignmentMigration).toContain("sarah_ai_get_customer_orders(text,text,integer)");
+    expect(permissionAlignmentMigration).toContain("sarah_ai_execute_order_action(uuid,text,text,uuid,text,text,text)");
+    expect(permissionAlignmentMigration).toContain("sarah_ai_get_customer_financial_history(text,text,integer)");
+    expect(permissionAlignmentMigration).toContain("customers:view");
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["customers:financial-view"]]');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:view"], ["orders:deliver"]]');
+  });
+
   it("registers bounded financial history only with current financial visibility permission", () => {
     expect(source).toContain('name: "get_customer_financial_history"');
-    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["customers:financial-view", "finance:view", "finances:read"]]');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["customers:financial-view"]]');
     expect(source).toContain('caller.rpc("sarah_ai_get_customer_financial_history"');
     expect(financialHistoryMigration).toContain("proof.auth_session_id=v_session_id");
     expect(financialHistoryMigration).toContain("customers:financial-view");
@@ -224,8 +235,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "deliver_order_item"');
     expect(source).toContain('name: "cancel_order_item"');
     expect(source).toContain('name: "cancel_order"');
-    expect(source).toContain('requiredPermissionGroups: [["orders:view"], ["orders:deliver"]]');
-    expect(source).toContain('requiredPermissionGroups: [["orders:view"], ["orders:cancel"]]');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:view"], ["orders:deliver"]]');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:view"], ["orders:cancel"]]');
     expect(source).toContain('caller.rpc("sarah_ai_execute_order_action"');
     expect(source).toContain('p_bin: actionBin');
     expect(source).toContain('const targetKey = toolName === "cancel_order" ? "order_id" : "item_id"');
