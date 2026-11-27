@@ -2,11 +2,11 @@
 
 Date: 2026-11-26
 
-**Status:** Branch implementation — CI and merge evidence pending
+**Status:** Customer name/code lookup merged; limited customer profile read is in follow-up implementation and CI validation.
 
 ## Implemented capability
 
-The first and only operational data tool is **customer name/code lookup**:
+The first operational data capability is **customer name/code lookup**:
 
 - Database RPC: `public.sarah_ai_lookup_customers(text)`
 - Migration: `20261126213000_sarah_ai_scoped_customer_lookup.sql`
@@ -20,7 +20,7 @@ The first and only operational data tool is **customer name/code lookup**:
 - The Edge Function allows at most one `lookup_customers` call per user request. The follow-up Gemini request receives the tool result but no further tools.
 - The model is instructed to treat customer names/results as data, never as instructions, and not to claim access to fields that were not returned.
 
-No customer detail, order, finance, payment, day, device, notification, or write tool is enabled.
+No customer financial history, order, finance, payment, day, device, notification, or write tool is enabled. A limited non-financial profile read is being added separately.
 
 ## Security model
 
@@ -36,6 +36,7 @@ No customer detail, order, finance, payment, day, device, notification, or write
 ## Database enforcement
 
 - `sarah_ai_lookup_customers` calls the private `sarah_ai_assert_use_permission()` and `_cp_assert_active_admin_permission('customers:view')` checks before querying.
+- The follow-up `sarah_ai_get_customer_profile` RPC applies the same independent checks, requires an exact four-character hexadecimal customer code, optionally filters by a name hint, and returns only a bounded non-financial profile DTO.
 - EXECUTE is granted only to `authenticated`; anon and service_role cannot invoke the lookup RPC.
 - The query is fixed, parameterized, active-customer-only, and capped inside PostgreSQL. The model cannot choose columns, sort expressions, joins, or row limits.
 - The strict session-registry migration separately closes the read-only missing-session acceptance path, preserves first-owner bootstrap through a fresh-auth registration wrapper, and backfills only active admin sessions with live Auth sessions.
@@ -54,7 +55,7 @@ No customer detail, order, finance, payment, day, device, notification, or write
 
 The following remain disabled until each receives a separate typed RPC, permission mapping, bounded DTO, direct-RPC negative tests, and CI evidence:
 
-1. Customer detail and customer history.
+1. Customer order history and customer history aggregates.
 2. Customer balance and financial history.
 3. Order lookup, order details, and order summaries.
 4. Day summaries and daily order lists.
@@ -73,9 +74,11 @@ The isolated customer lookup SQL test covers:
 - Denial for manager without `ai:use`, unregistered session, and disabled admin.
 - Explicit authenticated-only EXECUTE grants.
 
+The customer-profile SQL test covers code collisions and name-hint disambiguation, no-match/inactive/deleted exclusion, DTO field minimization, invalid input, independent permission denial, inactive sessions, and authenticated-only EXECUTE grants.
+
 The quota CI step additionally launches 30 concurrent requests for one authenticated actor and expects exactly 20 allowed and 10 denied, with a stored count of 30.
 
-The separate account-switch unit test covers stale async response rejection and A→B→A account switching. Multi-tab IndexedDB behavioural tests remain a release gate.
+The separate account-switch unit test covers stale async response rejection and A→B→A account switching. Multi-tab IndexedDB behavioural tests were added and merged with cross-context enqueue, upload-claim, and interrupted-upload recovery race coverage.
 
 ## Non-goals
 
@@ -85,3 +88,7 @@ The separate account-switch unit test covers stale async response rejection and 
 - No customer-to-customer data access.
 - No model-generated business mutations.
 - No claim that Sarah can inspect fields or execute actions not explicitly listed above.
+
+## Implementation update — 27 Nov 2026
+
+The limited customer profile read is being added as the second read-only customer capability. It is callable only through the original user JWT, re-checks `ai:use` and `customers:view` in PostgreSQL, charges its own tool quota, accepts a canonical four-character hexadecimal code plus optional name hint, and returns at most five sanitized non-financial profile DTOs. The DTO excludes IDs, phone, balance, debt limits, notes, orders, and financial history. It does not use the service-role data client and does not add any mutation capability.
