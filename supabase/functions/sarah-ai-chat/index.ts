@@ -349,10 +349,31 @@ Deno.serve(async (req) => {
     return respond(503, { ok: false, error: "AI_PROVIDER_CONFIGURATION_INVALID" });
   }
 
+  const stableSerialize = (value: unknown): string => {
+    if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+    if (value && typeof value === "object") {
+      const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+      return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(",")}}`;
+    }
+    return JSON.stringify(value) ?? "null";
+  };
+
+  const deriveActionRequestId = async (toolName: string, args: Record<string, unknown>): Promise<string> => {
+    const digest = new Uint8Array(await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(`${requestId}:${toolName}:${stableSerialize(args)}`),
+    ));
+    digest[6] = (digest[6] & 0x0f) | 0x50;
+    digest[8] = (digest[8] & 0x3f) | 0x80;
+    const hex = Array.from(digest.slice(0, 16)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  };
+
   const executeCapability = async (
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<{ result?: unknown; response?: Response }> => {
+    const actionRequestId = await deriveActionRequestId(toolName, args);
     let toolResult: unknown;
     let toolError: { code?: string; message?: string } | null = null;
 
@@ -432,7 +453,7 @@ Deno.serve(async (req) => {
         return { response: respond(400, { ok: false, error: "ORDER_NOTES_INVALID" }) };
       }
       const result = await caller.rpc("sarah_ai_create_order_with_items", {
-        p_request_id: requestId,
+        p_request_id: actionRequestId,
         p_customer_code: customerCode,
         p_name_hint: nameHint,
         p_items: cleanItems,
@@ -531,7 +552,8 @@ Deno.serve(async (req) => {
         return { response: respond(400, { ok: false, error: "PAYMENT_REVIEW_INPUT_INVALID" }) };
       }
       if (!actionBin) return { response: respond(428, { ok: false, error: "BIN_REQUIRED" }) };
-      const result = await caller.rpc("review_qr_payment_submission", {
+      const result = await caller.rpc("sarah_ai_review_payment_submission", {
+        p_request_id: actionRequestId,
         p_submission_id: submissionId,
         p_action: "APPROVE",
         p_bin: actionBin,
@@ -547,7 +569,8 @@ Deno.serve(async (req) => {
         || reason.length < 2) {
         return { response: respond(400, { ok: false, error: "PAYMENT_REJECTION_INPUT_INVALID" }) };
       }
-      const result = await caller.rpc("review_qr_payment_submission", {
+      const result = await caller.rpc("sarah_ai_review_payment_submission", {
+        p_request_id: actionRequestId,
         p_submission_id: submissionId,
         p_action: "REJECT",
         p_bin: null,
