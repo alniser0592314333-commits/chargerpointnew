@@ -1391,6 +1391,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql
+      - name: Apply Sarah live permission projection alignment
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql
       - name: Apply Sarah goal management capability migration
         env:
           PGPASSWORD: postgres
