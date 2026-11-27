@@ -10,7 +10,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
     expect(page).toContain("SarahAccountOperationScope");
     expect(page).toContain("const accountId = session?.authUserId || null");
     expect(page).toContain("const activeAccountId = session?.authUserId || null");
-    expect(page).toContain("refreshQueue(activeAccountId, accountScopeRef.current.generation)");
+    expect(page).toContain("refreshQueue(accountId, operation)");
     expect(page).toContain("accountScopeRef.current.switchTo(accountScopeIdentity(session?.userId, session?.authUserId))");
     expect(page).toContain("isCurrent(accountId, operation)");
   });
@@ -24,7 +24,8 @@ describe("Sarah account-switch asynchronous isolation", () => {
   it("guards post-await queue and chat state updates", () => {
     expect(page).toContain("refreshQueue(accountId, operation)");
     expect(page).toContain("if (!isCurrent(accountId, operation)) return");
-    expect(page).toContain("setMessages((prev) => isCurrent(accountId, operation) ?");
+    expect(page).toContain("if (isCurrent(accountId)) onAccepted?.()");
+    expect(page).toContain("if (!isCurrent(accountId, operation)) return");
     expect(page).toContain("if (isCurrent(accountId, operation)) setBusy(false)");
   });
   it("does not retry another account's queued record", () => {
@@ -36,7 +37,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
     expect(authService).toContain("authUserId?: ID");
     expect(authService).toContain("authUserId: signInRes.session.user.id");
     expect(authService).toContain("authUserId: refreshed.user.id");
-    expect(page).toContain("sendWithLocalActions(clean, accountId, historySnapshot, correlationId)");
+    expect(page).toContain("clean,\n          accountId,\n          historySnapshot,\n          correlationId,");
     expect(page).toContain("record.correlationId,\n        undefined,\n        record.pendingBinAction");
     expect(chatService).toContain("tokenSubject(session.token) !== expectedAuthUserId");
     expect(chatService).toContain("before?.user?.id !== expectedAuthUserId");

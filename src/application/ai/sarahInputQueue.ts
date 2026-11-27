@@ -21,6 +21,8 @@ export interface SarahInputRecord {
   audioBlob?: Blob;
   audioMimeType?: string;
   correlationId: string;
+  /** Immutable original history used to preserve the server task hash across retries/resumes. */
+  historySnapshot?: { role: "user" | "assistant"; text: string }[];
   aiRequestId?: string;
   pendingBinAction?: { token: string; name: string; args: Record<string, unknown>; actionRequestId: string };
   resultRef?: string;
@@ -189,6 +191,28 @@ export const sarahInputQueue = {
       tx.oncomplete = () => { db.close(); if (updated) resolve(updated); else reject(new Error("QUEUE_TRANSITION_REJECTED")); };
       tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_TRANSITION_FAILED")); };
       tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_TRANSITION_REJECTED")); };
+    });
+  },
+
+  async renewUploadLease(accountId: string, id: string): Promise<boolean> {
+    if (!accountId || !id) throw new Error("ACCOUNT_REQUIRED");
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite"), store = tx.objectStore(STORE);
+      const get = store.get(id);
+      let renewed = false;
+      get.onsuccess = () => {
+        const current = get.result as SarahInputRecord | undefined;
+        if (!current || current.actorAccountId !== accountId || current.state !== "UPLOADING") return;
+        store.put({
+          ...current,
+          uploadLeaseUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        });
+        renewed = true;
+      };
+      tx.oncomplete = () => { db.close(); resolve(renewed); };
+      tx.onerror = () => { db.close(); reject(tx.error || new Error("QUEUE_LEASE_RENEW_FAILED")); };
+      tx.onabort = () => { db.close(); reject(tx.error || new Error("QUEUE_LEASE_RENEW_ABORTED")); };
     });
   },
 

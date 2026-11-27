@@ -16,6 +16,8 @@ export interface SarahChatResponse {
   binError?: "BIN_INVALID";
   requiresLocalSync?: boolean;
   localSyncAction?: "manual_sync";
+  taskPending?: boolean;
+  retryAfterMs?: number;
 }
 
 export interface SarahLocalSyncContext {
@@ -128,6 +130,16 @@ export const sarahChatService = {
       data = await response.json();
     } catch {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
+    }
+    if (response.status === 202 && data.ok === true && data.pending === true) {
+      return {
+        answer: "",
+        modelId: "",
+        taskPending: true,
+        retryAfterMs: typeof data.retryAfterMs === "number"
+          ? Math.max(250, Math.min(data.retryAfterMs, 5000))
+          : 900,
+      };
     }
     if (response.status === 428 && data.error === "LOCAL_SYNC_REQUIRED" && data.action === "manual_sync") {
       return { answer: "", modelId: "", requiresLocalSync: true, localSyncAction: "manual_sync" };
