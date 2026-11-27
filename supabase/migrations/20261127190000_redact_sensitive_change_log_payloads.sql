@@ -102,10 +102,4 @@ BEGIN
 END;
 $function$;
 
--- Historical redaction preserves every change-log row and every non-secret
--- field while removing any credentials that were previously included.
-UPDATE public.change_log
-SET payload=public._cp_redact_sensitive_change_payload(payload)
-WHERE payload IS DISTINCT FROM public._cp_redact_sensitive_change_payload(payload);
-
 COMMIT;
