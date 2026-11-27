@@ -151,6 +151,36 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   }, [session?.userId, session?.authUserId]);
 
   useEffect(() => {
+    if (!activeAccountId || hydratedAccount !== activeAccountId || !pending.length) return;
+    const missing = pending.filter((item) =>
+      item.actorAccountId === activeAccountId
+      && item.state !== "COMPLETED"
+      && Boolean(item.text)
+      && Array.isArray(item.historySnapshot)
+      && !messages.some((message) => message.queueId === item.id)
+    );
+    if (!missing.length) return;
+    const recoveredMessages: Message[] = [
+      ...messages,
+      ...missing.map((item) => ({
+        role: "user" as const,
+        text: item.text || "",
+        queueId: item.id,
+        status: item.state === "QUEUED_OFFLINE" ? "offline" as const
+          : item.state === "WAITING_FOR_CONFIRMATION" ? "waiting_confirmation" as const
+          : item.state === "UPLOADING" || item.state === "SENT_TO_AI" || item.state === "READY_TO_SEND" ? "running" as const
+          : "failed" as const,
+        statusText: item.state === "QUEUED_OFFLINE" ? "بانتظار عودة الاتصال"
+          : item.state === "WAITING_FOR_CONFIRMATION" ? "بانتظار التأكيد الأمني"
+          : item.state === "UPLOADING" || item.state === "SENT_TO_AI" || item.state === "READY_TO_SEND" ? "استعادة المهمة من آخر نقطة محفوظة"
+          : "توقفت المهمة؛ يمكنك إعادة المحاولة",
+      })),
+    ];
+    setMessages(recoveredMessages);
+    void sarahConversationStore.save(activeAccountId, recoveredMessages, conversationGenerationRef.current).catch(() => undefined);
+  }, [activeAccountId, hydratedAccount, pending, messages]);
+
+  useEffect(() => {
     if (!activeAccountId || hydratedAccount !== activeAccountId || pendingBinAction) return;
     const record = pending.find((item) =>
       item.actorAccountId === activeAccountId
@@ -316,12 +346,17 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       });
       if (!isCurrent(accountId, operation)) return;
       setText("");
-      setMessages([...baseMessages, {
+      const optimisticMessages: Message[] = [...baseMessages, {
         role: "user",
         text: clean,
         status: navigator.onLine ? "sending" : "offline",
         queueId: id,
-      }]);
+        statusText: navigator.onLine ? "جارٍ الإرسال" : "بانتظار عودة الاتصال",
+      }];
+      setMessages(optimisticMessages);
+      // Persist the user's message before network work so interrupted uploads
+      // remain visible in the conversation after reload.
+      await sarahConversationStore.save(accountId, optimisticMessages, conversationGenerationRef.current).catch(() => undefined);
       await refreshQueue(accountId, operation);
       if (!isCurrent(accountId, operation)) return;
       if (!navigator.onLine) {
