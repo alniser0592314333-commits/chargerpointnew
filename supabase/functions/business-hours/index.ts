@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const bearer = req.headers.get("Authorization") || "";
-  const match = bearer.match(/^Bearer\\s+(.+)$/i);
+  const match = bearer.match(/^Bearer\s+(.+)$/i);
   if (!match) return response({ error: "ADMIN_AUTH_REQUIRED" }, 401);
   if (!anonKey) return response({ error: "SERVER_NOT_CONFIGURED" }, 500);
 
