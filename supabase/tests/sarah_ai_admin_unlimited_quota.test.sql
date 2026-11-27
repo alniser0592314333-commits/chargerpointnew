@@ -1,6 +1,15 @@
 -- Final Sarah admin quota policy: no artificial chat/tool/manage ceilings.
 -- Run after the original quota migration and the two Sarah unlimited-admin migrations.
 
+-- The preceding legacy quota tests deliberately create counters for these
+-- fixture actors. Start this final-policy test with clean counters.
+DELETE FROM public.sarah_ai_usage_windows
+WHERE actor_auth_user_id IN (
+  '10000000-0000-4000-8000-000000000001'::uuid,
+  '10000000-0000-4000-8000-000000000007'::uuid,
+  '10000000-0000-4000-8000-000000000008'::uuid
+);
+
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
