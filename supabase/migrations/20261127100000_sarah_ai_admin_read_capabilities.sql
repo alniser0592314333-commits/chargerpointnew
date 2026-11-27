@@ -575,7 +575,7 @@ BEGIN
 
   -- One request ID can only ever represent this action in this Auth session.
   DELETE FROM public.sarah_ai_action_idempotency
-  WHERE created_at <= now() - interval '7 days';
+  WHERE created_at <= now() - interval '30 days';
   INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name)
   VALUES(auth.uid(),v_session_id,p_request_id,'create_order_with_items')
   ON CONFLICT(auth_user_id,auth_session_id,request_id) DO NOTHING;
@@ -804,6 +804,7 @@ BEGIN
     RETURN v_result;
   END IF;
 
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_day_id::text,1));
   IF EXISTS(
     SELECT 1 FROM public.orders o
     WHERE o.day_id=v_day_id AND o.customer_id=v_customer_id
@@ -821,7 +822,6 @@ BEGIN
     RETURN v_result;
   END IF;
 
-  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_day_id::text,1));
   SELECT COALESCE(max(display_number),0)+1 INTO v_order_number
   FROM public.orders WHERE day_id=v_day_id;
 
