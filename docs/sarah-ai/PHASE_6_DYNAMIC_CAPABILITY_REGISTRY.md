@@ -22,13 +22,14 @@
 
 ## Current capability inventory
 
-The following twenty-three bounded capabilities are registered today:
+The following twenty-four bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
 | lookup_customers | customers:view | Up to five active customer names and display codes |
 | get_customer_profile | customers:view | Up to five bounded non-financial profile matches after a same-session lookup proof |
 | get_customer_financial_summary | customers:view AND (customers:financial-view OR finance:view OR finances:read) | One authoritative customer balance in ILS minor units |
+| get_customer_financial_history | customers:view AND (customers:financial-view OR finance:view OR finances:read) | Up to twenty recent authoritative ledger entries with bounded references |
 | get_customer_orders | customers:view AND orders:view | Up to ten recent orders and bounded item status/charge details |
 | create_order_with_items | customers:view AND orders:create AND orders:edit | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
 | get_financial_summary | finance:view OR reports:view | Aggregate ledger record count, net balance, and generation time |
