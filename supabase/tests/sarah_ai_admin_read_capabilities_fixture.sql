@@ -146,7 +146,8 @@ VALUES
  ('00000000-0000-4000-8000-000000000009','ai:use',true),
  ('00000000-0000-4000-8000-000000000009','customers:view',true),
  ('00000000-0000-4000-8000-000000000009','orders:create',true),
- ('00000000-0000-4000-8000-000000000009','orders:edit',true)
+ ('00000000-0000-4000-8000-000000000009','orders:edit',true),
+ ('00000000-0000-4000-8000-000000000009','orders:view',true)
 ON CONFLICT(admin_id,permission) DO UPDATE SET is_grant=EXCLUDED.is_grant;
 
 CREATE OR REPLACE FUNCTION public.record_canonical_change(
