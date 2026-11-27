@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "get_customer_profile",
-      requiredPermission: "customers:view",
+      requiredPermissionGroups: [["customers:view"]],
       declaration: {
         name: "get_customer_profile",
         description: "Read a limited non-financial customer profile after an exact four-character customer code has been found. Use name_hint only to disambiguate multiple customers sharing the code. No phone, balance, debt, notes, orders, or financial history.",
