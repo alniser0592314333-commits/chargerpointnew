@@ -256,6 +256,127 @@ BEGIN
 END;
 $payment_storage_privacy$;
 
+-- Goal actions reuse the app's 28-day activity-based proposal generator and canonical goal commands.
+UPDATE public.order_items
+SET status='delivered',operational_status='DELIVERED',financial_status='RECOGNIZED',delivered_at=now()
+WHERE id=(SELECT id FROM public.order_items ORDER BY item_sequence,id LIMIT 1);
+
+DO $goal_capability_reads$
+DECLARE
+  v_proposal jsonb;
+BEGIN
+  v_proposal:=public.sarah_ai_get_goal_proposal('aaaa0000-0000-4000-8000-000000000001');
+  IF (v_proposal->>'target_quantity')::integer<10
+     OR (v_proposal->>'duration_days')::integer NOT BETWEEN 5 AND 15
+     OR (v_proposal->>'bonus_amount_minor')::bigint<150
+     OR (v_proposal->>'bonus_amount_minor')::bigint>
+        (v_proposal->>'target_quantity')::bigint*20
+     OR v_proposal->>'profile_days'<>'28' THEN
+    RAISE EXCEPTION 'Server goal proposal does not match the app goal generator policy: %',v_proposal;
+  END IF;
+END;
+$goal_capability_reads$;
+
+DO $goal_capability_actions$
+DECLARE
+  v_result jsonb;
+  v_created_goal_id uuid;
+  v_approved_goal_id uuid;
+  v_request_id uuid := '60000000-0000-4000-8000-000000000001';
+BEGIN
+  v_result:=public.sarah_ai_execute_goal_action(
+    '60000000-0000-4000-8000-000000000002','CREATE_GOAL',
+    'aaaa0000-0000-4000-8000-000000000001',NULL,NULL,NULL,NULL,NULL,NULL,NULL
+  );
+  IF v_result->>'ok'<>'true'
+     OR v_result->>'target_quantity' IS NULL
+     OR v_result->>'duration_days' IS NULL
+     OR v_result->>'bonus_amount_minor' IS NULL THEN
+    RAISE EXCEPTION 'Sarah did not create a generated customer goal through the canonical command: %',v_result;
+  END IF;
+  v_created_goal_id:=(v_result->>'goal_id')::uuid;
+  IF NOT EXISTS(SELECT 1 FROM public.goals WHERE id=v_created_goal_id AND status='ACTIVE') THEN
+    RAISE EXCEPTION 'Generated goal was not persisted as ACTIVE';
+  END IF;
+
+  INSERT INTO public.goal_requests(id,customer_id,requested_target,status)
+  VALUES(
+    '60000000-0000-4000-8000-000000000003',
+    'aaaa0000-0000-4000-8000-000000000003',12,'PENDING'
+  );
+  v_result:=public.sarah_ai_execute_goal_action(
+    '60000000-0000-4000-8000-000000000004','APPROVE_GOAL_REQUEST',
+    NULL,'60000000-0000-4000-8000-000000000003',NULL,NULL,NULL,NULL,NULL,NULL
+  );
+  IF v_result->>'ok'<>'true'
+     OR v_result->>'action'<>'APPROVE_GOAL_REQUEST'
+     OR NOT EXISTS(SELECT 1 FROM public.goal_requests WHERE id='60000000-0000-4000-8000-000000000003' AND status='APPROVED') THEN
+    RAISE EXCEPTION 'Sarah did not approve the goal request through the canonical command: %',v_result;
+  END IF;
+  SELECT resulting_goal_id INTO v_approved_goal_id FROM public.goal_requests
+  WHERE id='60000000-0000-4000-8000-000000000003';
+
+  INSERT INTO public.goal_requests(id,customer_id,requested_target,status)
+  VALUES(
+    '60000000-0000-4000-8000-000000000005',
+    'aaaa0000-0000-4000-8000-000000000004',10,'PENDING'
+  );
+  v_result:=public.sarah_ai_execute_goal_action(
+    '60000000-0000-4000-8000-000000000006','REJECT_GOAL_REQUEST',
+    NULL,'60000000-0000-4000-8000-000000000005',NULL,NULL,NULL,NULL,'not suitable',NULL
+  );
+  IF v_result->>'ok'<>'true'
+     OR NOT EXISTS(SELECT 1 FROM public.goal_requests WHERE id='60000000-0000-4000-8000-000000000005' AND status='REJECTED') THEN
+    RAISE EXCEPTION 'Sarah did not reject the goal request through the canonical command: %',v_result;
+  END IF;
+
+  v_result:=public.sarah_ai_execute_goal_action(
+    '60000000-0000-4000-8000-000000000007','UPDATE_GOAL_CONFIG',
+    NULL,v_created_goal_id,15,10,200,1,NULL,NULL
+  );
+  IF v_result->>'ok'<>'true'
+     OR NOT EXISTS(SELECT 1 FROM public.goals WHERE id=v_created_goal_id AND target_quantity=15 AND duration_days=10 AND bonus_amount_minor=200) THEN
+    RAISE EXCEPTION 'Sarah did not update goal configuration through the canonical command: %',v_result;
+  END IF;
+
+  v_result:=public.sarah_ai_execute_goal_action(
+    '60000000-0000-4000-8000-000000000008','CANCEL_GOAL',
+    NULL,v_created_goal_id,NULL,NULL,NULL,NULL,'admin cancellation',NULL
+  );
+  IF v_result->>'ok'<>'true'
+     OR NOT EXISTS(SELECT 1 FROM public.goals WHERE id=v_created_goal_id AND status='CANCELLED') THEN
+    RAISE EXCEPTION 'Sarah did not cancel the goal through the existing admin RPC: %',v_result;
+  END IF;
+
+  v_result:=public.sarah_ai_execute_goal_action(
+    '60000000-0000-4000-8000-000000000009','REVIEW_GOAL_CANCELLATION',
+    NULL,v_approved_goal_id,NULL,NULL,NULL,NULL,'review test',true
+  );
+  IF v_result->>'ok'<>'true' THEN
+    RAISE EXCEPTION 'Sarah did not route cancellation review to the existing admin RPC: %',v_result;
+  END IF;
+END;
+$goal_capability_actions$;
+
+-- Ordinary admin without goals:manage cannot use Sarah to create a goal.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000007',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000007',false);
+DO $goal_permission_gate$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_execute_goal_action(
+      '60000000-0000-4000-8000-000000000010','CREATE_GOAL',
+      'aaaa0000-0000-4000-8000-000000000001',NULL,NULL,NULL,NULL,NULL,NULL,NULL
+    );
+    RAISE EXCEPTION 'Admin without goals:manage unexpectedly created a goal';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$goal_permission_gate$;
+RESET ROLE;
+
 -- A different Auth session for the same user cannot reuse the old lookup proof.
 UPDATE public.account_sessions
 SET revoked_at=now()
