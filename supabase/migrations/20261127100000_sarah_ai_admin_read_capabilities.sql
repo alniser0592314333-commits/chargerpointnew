@@ -16,8 +16,11 @@ CREATE TABLE IF NOT EXISTS public.sarah_ai_customer_lookup_proofs (
 ALTER TABLE public.sarah_ai_customer_lookup_proofs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.sarah_ai_customer_lookup_proofs FROM PUBLIC, anon, authenticated, service_role;
 
-CREATE OR REPLACE FUNCTION public.sarah_ai_record_customer_lookup_proofs(p_query text)
-RETURNS integer
+-- The existing customer lookup RPC now records its short-lived proof in
+-- the same transaction as the lookup, so a successful result and its proof
+-- cannot diverge and the normal lookup quota is charged only once.
+CREATE OR REPLACE FUNCTION public.sarah_ai_lookup_customers(p_query text)
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
@@ -25,12 +28,11 @@ AS $function$
 DECLARE
   v_query text;
   v_session_id uuid;
-  v_count integer := 0;
+  v_result jsonb;
   v_quota jsonb;
 BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public._cp_assert_active_admin_permission('customers:view');
-
   IF auth.uid() IS NULL OR COALESCE(auth.jwt()->>'session_id','') = '' THEN
     RAISE EXCEPTION 'Authenticated session required' USING ERRCODE = '28000';
   END IF;
@@ -64,8 +66,7 @@ BEGIN
   FROM (
     SELECT c.id
     FROM public.customers c
-    WHERE c.is_active IS TRUE
-      AND c.deleted_at IS NULL
+    WHERE c.is_active IS TRUE AND c.deleted_at IS NULL
       AND COALESCE(c.status, '') <> 'DELETED'
       AND (
         pg_catalog.strpos(pg_catalog.lower(c.name), pg_catalog.lower(v_query)) > 0
@@ -79,13 +80,45 @@ BEGIN
                 created_at = now(),
                 expires_at = now() + interval '5 minutes';
 
-  GET DIAGNOSTICS v_count = ROW_COUNT;
-  RETURN v_count;
+  WITH candidates AS (
+    SELECT c.id,
+      pg_catalog.left(pg_catalog.regexp_replace(pg_catalog.btrim(c.name), '[[:cntrl:]]', ' ', 'g'), 80) AS customer_name,
+      pg_catalog.upper(pg_catalog.left(pg_catalog.replace(c.id::text, '-', ''), 4)) AS customer_code
+    FROM public.customers c
+    WHERE c.is_active IS TRUE AND c.deleted_at IS NULL
+      AND COALESCE(c.status, '') <> 'DELETED'
+      AND (
+        pg_catalog.strpos(pg_catalog.lower(c.name), pg_catalog.lower(v_query)) > 0
+        OR pg_catalog.upper(pg_catalog.left(pg_catalog.replace(c.id::text, '-', ''), 4)) = pg_catalog.upper(v_query)
+      )
+    ORDER BY c.name, c.id
+    LIMIT 6
+  ),
+  ranked AS (
+    SELECT candidates.*,
+      pg_catalog.row_number() OVER (ORDER BY customer_name, id) AS match_number
+    FROM candidates
+  )
+  SELECT pg_catalog.jsonb_build_object(
+    'matches', COALESCE(
+      pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'customer_name', customer_name,
+        'customer_code', customer_code
+      ) ORDER BY match_number) FILTER (WHERE match_number <= 5),
+      '[]'::jsonb
+    ),
+    'match_count', LEAST(pg_catalog.count(*)::integer, 5),
+    'has_more', pg_catalog.count(*) > 5
+  )
+  INTO v_result
+  FROM ranked;
+
+  RETURN COALESCE(v_result, pg_catalog.jsonb_build_object('matches','[]'::jsonb,'match_count',0,'has_more',false));
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.sarah_ai_record_customer_lookup_proofs(text) FROM PUBLIC, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.sarah_ai_record_customer_lookup_proofs(text) TO authenticated;
+REVOKE ALL ON FUNCTION public.sarah_ai_lookup_customers(text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_lookup_customers(text) TO authenticated;
 
 -- Replace the profile reader so a guessed four-character code alone is never
 -- sufficient: a matching proof must belong to this exact Auth user and session.
