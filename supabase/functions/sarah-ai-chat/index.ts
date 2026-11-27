@@ -746,6 +746,7 @@ Deno.serve(async (req) => {
     {
       name: "get_admin_custom_permissions",
       requiredPermissionGroups: [["admin:manage"]],
+      superAdminOnly: true,
       declaration: {
         name: "get_admin_custom_permissions",
         description: "Read the existing custom permission overrides for one exact subordinate admin ID returned by list_subordinate_admins.",
