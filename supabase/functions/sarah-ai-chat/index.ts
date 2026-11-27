@@ -2343,7 +2343,7 @@ const deferredMutationPrerequisites: Record<string, string[]> = {
           && uniqueNames
           && mutationCalls.length === 0
           && readCalls.every((call) => call.name !== "get_customer_orders" || names.includes("lookup_customers"));
-        const deferredMutationCall = mutationCalls.length === 1 ? mutationCalls[0] : null;
+        const deferredMutationCall = requestedCalls.length > 1 && mutationCalls.length === 1 ? mutationCalls[0] : null;
         const requiredPrerequisites = deferredMutationCall
           ? deferredMutationPrerequisites[deferredMutationCall.name]
           : null;
@@ -2366,7 +2366,9 @@ const deferredMutationPrerequisites: Record<string, string[]> = {
         // mutation in the same batch, do not execute it: return an explicit
         // executed:false response so Gemini must retry it alone with the reads.
         const executionOrder = ["lookup_customers", "get_customer_orders", "get_device_catalog", "list_pending_payments"];
-        const executionCalls = [...readCalls].sort((a, b) => executionOrder.indexOf(a.name) - executionOrder.indexOf(b.name));
+        const executionCalls = requestedCalls.length === 1
+          ? requestedCalls
+          : [...readCalls].sort((a, b) => executionOrder.indexOf(a.name) - executionOrder.indexOf(b.name));
         const resultsByName = new Map<string, unknown>();
         for (const requestedCall of executionCalls) {
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
