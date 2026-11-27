@@ -7,6 +7,17 @@ ALTER TABLE public.customers
   ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS notes text;
 
+CREATE OR REPLACE FUNCTION public.derive_customer_code(p_customer_id uuid)
+RETURNS varchar
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = ''
+AS $function$
+BEGIN
+  RETURN pg_catalog.upper(pg_catalog.substring(pg_catalog.replace(p_customer_id::text,'-','') FROM 1 FOR 4));
+END;
+$function$;
+
 CREATE TABLE public.business_days (
   id uuid PRIMARY KEY,
   business_date date NOT NULL UNIQUE,
