@@ -532,8 +532,8 @@ RESET ROLE;
 -- Failure in a later item must roll back the order and every earlier item.
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
-SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
-SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000010',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000009',false);
 DO $atomic_rollback$
 DECLARE
   v_result jsonb;
