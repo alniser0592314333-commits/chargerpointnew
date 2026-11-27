@@ -28,7 +28,8 @@ CREATE TABLE public.device_types (
   is_active boolean NOT NULL DEFAULT true,
   status text NOT NULL DEFAULT 'ACTIVE',
   deleted_at timestamptz,
-  sort_order integer NOT NULL DEFAULT 0
+  sort_order integer NOT NULL DEFAULT 0,
+  version integer NOT NULL DEFAULT 1
 );
 
 CREATE TABLE public.orders (
