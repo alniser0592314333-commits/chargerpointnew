@@ -1,6 +1,14 @@
 -- Session-bound customer reads and atomic Sarah order creation.
 -- Run after the provider, quota, lookup, profile, and admin-read migrations plus fixture.
 
+-- Seed financial balances as the fixture owner; browser roles never write these tables directly.
+INSERT INTO public.financial_ledger(customer_id,amount_minor)
+VALUES
+ ('aaaa0000-0000-4000-8000-000000000001',1234),
+ ('aaaa0000-0000-4000-8000-000000000003',-1500);
+UPDATE public.customers SET debt_limit_minor=-1000
+WHERE id='aaaa0000-0000-4000-8000-000000000003';
+
 -- Manager has ai:use + customer/order permissions, but no settings:manage.
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
@@ -113,8 +121,6 @@ BEGIN
     RAISE EXCEPTION 'Same-session lookup proof did not permit bounded profile read';
   END IF;
 
-  INSERT INTO public.financial_ledger(customer_id,amount_minor)
-  VALUES('aaaa0000-0000-4000-8000-000000000001',1234);
   v_result:=public.sarah_ai_get_customer_financial_summary('AAAA','أحمد علي');
   IF v_result->>'balance_minor'<>'1234' OR v_result->>'currency'<>'ILS' THEN
     RAISE EXCEPTION 'Authoritative customer balance read failed: %',v_result;
@@ -178,10 +184,6 @@ SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
 SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000002',false);
-UPDATE public.customers SET debt_limit_minor=-1000
-WHERE id='aaaa0000-0000-4000-8000-000000000003';
-INSERT INTO public.financial_ledger(customer_id,amount_minor)
-VALUES('aaaa0000-0000-4000-8000-000000000003',-1500);
 DO $debt_limit$
 DECLARE v_result jsonb;
 BEGIN
@@ -197,8 +199,13 @@ BEGIN
   END IF;
 END;
 $debt_limit$;
+RESET ROLE;
 INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
 VALUES('00000000-0000-4000-8000-000000000002','orders:override-debt-limit',true);
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000002',false);
 DO $debt_override$
 DECLARE v_result jsonb;
 BEGIN
