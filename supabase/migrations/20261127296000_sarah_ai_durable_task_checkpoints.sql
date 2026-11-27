@@ -170,3 +170,45 @@ REVOKE ALL ON FUNCTION public.sarah_ai_task_checkpoint(uuid,bigint,text,jsonb) F
 GRANT EXECUTE ON FUNCTION public.sarah_ai_task_load_or_create(uuid,text,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.sarah_ai_task_checkpoint(uuid,bigint,text,jsonb) TO authenticated;
 
+
+CREATE OR REPLACE FUNCTION public.sarah_ai_task_resume(p_request_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_session uuid := NULLIF(auth.jwt() ->> 'session_id', '')::uuid;
+  v_task public.sarah_ai_tasks%ROWTYPE;
+BEGIN
+  PERFORM public.sarah_ai_assert_use_permission();
+  PERFORM public.assert_my_account_session_active();
+  IF v_actor IS NULL OR v_session IS NULL OR p_request_id IS NULL THEN
+    RAISE EXCEPTION 'Active authenticated session and task ID required' USING ERRCODE = '28000';
+  END IF;
+
+  SELECT * INTO v_task
+  FROM public.sarah_ai_tasks
+  WHERE auth_user_id = v_actor
+    AND auth_session_id = v_session
+    AND request_id = p_request_id
+    AND expires_at > now()
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Sarah task checkpoint unavailable' USING ERRCODE = 'P0002';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'request_id', v_task.request_id,
+    'status', v_task.status,
+    'state', v_task.state,
+    'version', v_task.version,
+    'updated', v_task.updated_at
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.sarah_ai_task_resume(uuid) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_task_resume(uuid) TO authenticated;
