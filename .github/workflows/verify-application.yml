@@ -1448,6 +1448,18 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127270000_sarah_ai_freeze_bin_payment_intent.sql
+      - name: Apply Sarah unlimited admin work quota migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127170000_sarah_ai_unlimited_admin_work_quota.sql
+      - name: Apply Sarah unlimited admin management quota migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127170100_sarah_ai_unlimited_admin_manage_quota.sql
+      - name: Verify Sarah unlimited admin workload and permission gates
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_admin_unlimited_quota.test.sql
       - name: Verify Sarah session-bound reads and atomic order creation
         env:
           PGPASSWORD: postgres
