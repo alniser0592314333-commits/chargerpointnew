@@ -60,6 +60,14 @@ BEGIN
      OR jsonb_array_length(v_result->'matches') <> 0 THEN
     RAISE EXCEPTION 'No-match profile lookup returned data';
   END IF;
+  v_result := public.sarah_ai_get_customer_profile('CCCC');
+  IF v_result->>'match_count' <> '0' THEN
+    RAISE EXCEPTION 'Inactive customer profile was returned';
+  END IF;
+  v_result := public.sarah_ai_get_customer_profile('DDDD');
+  IF v_result->>'match_count' <> '0' THEN
+    RAISE EXCEPTION 'Deleted customer profile was returned';
+  END IF;
 
   BEGIN
     PERFORM public.sarah_ai_get_customer_profile('GGGG');
