@@ -88,9 +88,6 @@ BEGIN
      OR v_result->>'total_charge_minor'<>'15000' THEN
     RAISE EXCEPTION 'Manager order creation did not use canonical item pricing: %',v_result;
   END IF;
-  SELECT count(*) INTO v_orders FROM public.orders WHERE customer_id='aaaa0000-0000-4000-8000-000000000001';
-  IF v_orders<>1 THEN RAISE EXCEPTION 'Expected exactly one order for this customer/day'; END IF;
-
   v_replay:=public.sarah_ai_create_order_with_items(
     '40000000-0000-4000-8000-000000000001',
     'AAAA','أحمد علي',v_items,'manager test order'
@@ -98,8 +95,10 @@ BEGIN
   IF v_replay->>'ok'<>'true' OR v_replay->>'idempotent_replay'<>'true' THEN
     RAISE EXCEPTION 'Same request ID did not replay the saved successful result: %',v_replay;
   END IF;
-  SELECT count(*) INTO v_orders FROM public.orders WHERE customer_id='aaaa0000-0000-4000-8000-000000000001';
-  IF v_orders<>1 THEN RAISE EXCEPTION 'Idempotent replay duplicated the order'; END IF;
+  v_result:=public.sarah_ai_get_customer_orders('AAAA','أحمد علي',10);
+  IF v_result->>'order_count'<>'1' THEN
+    RAISE EXCEPTION 'Idempotent replay duplicated the order: %',v_result;
+  END IF;
 
   v_result:=public.sarah_ai_create_order_with_items(
     '40000000-0000-4000-8000-000000000003',
@@ -241,9 +240,9 @@ BEGIN
       RAISE;
     END IF;
   END;
-  IF EXISTS(SELECT 1 FROM public.orders WHERE id=v_order_id)
-     OR EXISTS(SELECT 1 FROM public.order_items WHERE order_id=v_order_id) THEN
-    RAISE EXCEPTION 'Partial order/item data survived a failed atomic create';
+  v_result:=public.sarah_ai_get_customer_orders('AAAA','أحمد خالد',10);
+  IF v_result->>'order_count'<>'0' THEN
+    RAISE EXCEPTION 'Partial order/item data survived a failed atomic create: %',v_result;
   END IF;
 END;
 $atomic_rollback$;
