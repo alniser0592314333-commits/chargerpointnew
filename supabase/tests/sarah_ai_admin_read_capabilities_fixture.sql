@@ -155,19 +155,19 @@ VALUES
 ON CONFLICT(admin_id,permission) DO UPDATE SET is_grant=EXCLUDED.is_grant;
 
 CREATE OR REPLACE FUNCTION public.record_canonical_change(
-  p_table_name text,
+  p_entity_type text,
   p_entity_id uuid,
-  p_operation text,
+  p_action text,
   p_payload jsonb,
   p_version integer
 )
-RETURNS void
+RETURNS bigint
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
 BEGIN
-  RETURN;
+  RETURN 0;
 END;
 $function$;
 
