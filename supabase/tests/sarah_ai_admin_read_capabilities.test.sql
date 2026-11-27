@@ -730,3 +730,38 @@ BEGIN
   END IF;
 END;
 $admin_read_privileges$;
+
+
+-- Canonical change-log writes and existing rows must never retain credentials.
+DO $change_log_redaction$
+DECLARE
+  v_payload jsonb;
+  v_new_id uuid := '99000000-0000-4000-8000-000000000002';
+BEGIN
+  SELECT payload INTO v_payload
+  FROM public.change_log
+  WHERE entity_id='99000000-0000-4000-8000-000000000001'
+    AND action='UPDATE'
+  ORDER BY sequence_id DESC LIMIT 1;
+  IF v_payload ? 'bin' OR v_payload ? 'apiKey'
+     OR COALESCE(v_payload->'meta' ? 'adminBin',false)
+     OR v_payload->'meta'->>'safe'<>'keep' THEN
+    RAISE EXCEPTION 'Historical change-log secret redaction failed: %',v_payload;
+  END IF;
+
+  PERFORM public.record_canonical_change(
+    'customers',v_new_id,'UPDATE',
+    '{"name":"future redaction fixture","bin":"9999","meta":{"password":"do-not-keep","safe":"preserved"}}'::jsonb,
+    1
+  );
+  SELECT payload INTO v_payload
+  FROM public.change_log
+  WHERE entity_id=v_new_id AND action='UPDATE'
+  ORDER BY sequence_id DESC LIMIT 1;
+  IF v_payload ? 'bin'
+     OR COALESCE(v_payload->'meta' ? 'password',false)
+     OR v_payload->'meta'->>'safe'<>'preserved' THEN
+    RAISE EXCEPTION 'New canonical change-log secret redaction failed: %',v_payload;
+  END IF;
+END;
+$change_log_redaction$;
