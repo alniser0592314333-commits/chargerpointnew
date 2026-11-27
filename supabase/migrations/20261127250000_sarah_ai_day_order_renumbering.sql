@@ -171,8 +171,7 @@ BEGIN
   )
   INTO v_changes
   FROM unnest(p_order_ids) WITH ORDINALITY requested(order_id,ordinality)
-  JOIN public.orders o ON o.id=requested.order_id AND o.day_id=v_day_id
-  FOR UPDATE OF o;
+  JOIN public.orders o ON o.id=requested.order_id AND o.day_id=v_day_id;
 
   IF COALESCE(jsonb_array_length(v_changes),0)<>v_order_count THEN
     RAISE EXCEPTION 'Renumber target changed while preparing the operation; reload and review again' USING ERRCODE='P0409';
