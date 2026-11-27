@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following thirty-six bounded capabilities are registered today:
+The following forty-two bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -57,6 +57,12 @@ The following thirty-six bounded capabilities are registered today:
 | get_goals_overview | goals:view OR goals:manage OR goals:requests:view OR goals:approve | Up to fifteen matching goal/request summaries plus a bounded customer directory |
 | list_customer_history_requests | customers:edit OR customers:write OR customers:manage OR customer_accounts:manage OR customer_accounts:reset OR admin:manage | Up to twenty pending customer requests for temporary full-history access |
 | review_customer_history_request | same customer-account management permissions | Approves or rejects one pending request; approval creates the existing 24-hour server-side grant |
+| list_subordinate_admins | admin:manage | Up to 100 subordinate admin account summaries without credentials |
+| get_admin_custom_permissions | admin:manage | Custom permission overrides for one exact subordinate admin |
+| get_admin_audit_logs | admin:manage | Up to 100 recent admin audit events, optionally filtered to one target |
+| set_admin_permission | admin:manage AND Super Admin role | Grants or explicitly denies one exact system permission through the original RPC; secure BIN required |
+| suspend_admin | admin:manage AND Super Admin role | Suspends one subordinate admin through the original RPC; secure BIN required |
+| activate_admin | admin:manage AND Super Admin role | Reactivates one subordinate admin through the original RPC; secure BIN required |
 | get_customer_goal_proposal | goals:manage | Official app-generated proposal from the last 28 days of qualifying activity |
 | create_customer_goal | goals:manage | Creates one active goal with app-generated values unless all three manual values are explicitly supplied |
 | approve_goal_request | goals:approve | Approves one pending request with a complete app-generated or explicit proposal |
@@ -71,7 +77,7 @@ Order creation calls the existing canonical CREATE_ORDER and ADD_ORDER_ITEM comm
 
 Manual CASH payment entry calls the existing create_admin_pending_customer_payment and review_qr_payment_submission workflow in one transaction. Existing customer QR/Jawwal Pay/manual submissions are reviewed through the same review_qr_payment_submission path. Approval requires the account BIN in a separate password field in the app; the BIN is not part of Gemini history/tool arguments and is excluded from idempotency storage. Rejection requires a reason but no BIN.
 
-Mutations use a deterministic action-specific request ID derived from the queued message ID, tool name, and normalized tool arguments. The database binds results to the Auth user and payload, rechecks the active session and current permissions, and safely replays completed commands. Customer-specific profile/balance/order reads and order lifecycle actions require a lookup proof bound to the same Auth user and current session and expiring after five minutes. Goal operations use the exact customer/goal/request IDs returned by the permission-checked Goals page projection and recheck the relevant goals permission in the database. Order corrections, global settings changes beyond the currently wrapped business-day opening, sync-center actions, subordinate-admin management, and customer assistant mode are not enabled yet. The current inventory is therefore not the complete application permission surface; these operations remain closed until their original workflows have been safely wrapped and tested. The change-log hardening migration prevents future canonical writes from logging credential fields. A separate one-time historical redaction migration is prepared and tested in the disposable CI database; applying it to production is held for explicit approval because it edits 190 existing audit payloads while preserving their non-secret fields. Customer-history requests and their 24-hour approvals use the existing customer-history Edge Function and database grant.
+Mutations use a deterministic action-specific request ID derived from the queued message ID, tool name, and normalized tool arguments. The database binds results to the Auth user and payload, rechecks the active session and current permissions, and safely replays completed commands. Customer-specific profile/balance/order reads and order lifecycle actions require a lookup proof bound to the same Auth user and current session and expiring after five minutes. Goal operations use the exact customer/goal/request IDs returned by the permission-checked Goals page projection and recheck the relevant goals permission in the database. Order corrections, global settings changes beyond the currently wrapped business-day opening, sync-center actions, subordinate-admin creation and password/BIN credential changes, AI provider administration from chat, sync-center actions, and customer assistant mode are not enabled yet. The current inventory is therefore not the complete application permission surface; these operations remain closed until their original workflows have been safely wrapped and tested. The change-log hardening migration prevents future canonical writes from logging credential fields. A separate one-time historical redaction migration is prepared and tested in the disposable CI database; applying it to production is held for explicit approval because it edits 190 existing audit payloads while preserving their non-secret fields. Customer-history requests and their 24-hour approvals use the existing customer-history Edge Function and database grant.
 
 ## Extension contract for each new operation
 
