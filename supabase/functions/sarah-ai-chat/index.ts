@@ -1204,7 +1204,7 @@ Deno.serve(async (req) => {
   const hasEnabledCapabilities = enabledCapabilities.length > 0;
   let config: Record<string, unknown> = {};
   let apiKey = "";
-  if (!confirmationMode) {
+  if (!confirmationMode && !resumeTask) {
     const { data: hourlyQuota, error: hourlyQuotaError } =
       await caller.rpc("sarah_ai_consume_my_quota", { p_period: "hour" });
     if (hourlyQuotaError || !hourlyQuota || hourlyQuota.allowed !== true) {
@@ -1225,6 +1225,8 @@ Deno.serve(async (req) => {
       });
     }
   
+  }
+  if (!confirmationMode) {
     const { data: runtimeConfig, error: configError } = await admin.rpc("sarah_ai_get_runtime_config");
     if (configError || !runtimeConfig || runtimeConfig.enabled !== true || runtimeConfig.provider_id !== "gemini") {
       return respond(503, { ok: false, error: "AI_PROVIDER_NOT_CONFIGURED" });
@@ -2446,8 +2448,13 @@ Deno.serve(async (req) => {
     : undefined;
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // Supabase Free Edge Functions have a 150s wall-clock ceiling. Keep each
+  // provider call bounded and split long orchestrations into durable chunks.
+  const requestDeadline = Date.now() + 120_000;
+  const MAX_GEMINI_CALLS_PER_REQUEST = 2;
+  const MAX_TOOL_EXECUTIONS_PER_REQUEST = 8;
+  let geminiCallsThisRequest = 0;
+  let toolExecutionsThisRequest = 0;
   const basePayload: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: systemPromptWithLocalContext }] },
     generationConfig: {
@@ -2457,13 +2464,29 @@ Deno.serve(async (req) => {
   };
 
   const callGemini = async (payload: Record<string, unknown>) => {
-    return await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      signal: controller.signal,
-      body: JSON.stringify(payload),
-    });
+    geminiCallsThisRequest += 1;
+    const remainingMs = requestDeadline - Date.now() - 10_000;
+    if (remainingMs < 1_000) throw new DOMException("Sarah request chunk deadline reached", "AbortError");
+    const callTimeoutMs = Math.min(timeoutMs, 45_000, remainingMs);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), callTimeoutMs);
+    try {
+      return await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        signal: controller.signal,
+        body: JSON.stringify(payload),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   };
+  const pendingTaskResponse = () => respond(202, {
+    ok: true,
+    pending: true,
+    requestId,
+    retryAfterMs: 900,
+  });
 
   const extractAnswer = (candidate: Record<string, unknown> | null) => {
     const candidateContent = candidate?.content as Record<string, unknown> | undefined;
@@ -2519,6 +2542,7 @@ Deno.serve(async (req) => {
         resultsByIndex: {},
         verifiedPrerequisiteNames: [],
         executedCapabilityNames: [...executedCapabilityNames],
+        providerRetryCount: 0,
       });
     }
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
@@ -2632,6 +2656,20 @@ Deno.serve(async (req) => {
         );
         executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index));
         for (const requestedCall of executionCalls) {
+          if (toolExecutionsThisRequest >= MAX_TOOL_EXECUTIONS_PER_REQUEST) {
+            await checkpointTask("RUNNING", {
+              ...taskState,
+              phase: "EXECUTING_TOOLS",
+              currentCandidate,
+              currentContentsTail: currentContents.slice(baseContentsLength),
+              requestedCalls,
+              resultsByIndex: Object.fromEntries(resultsByIndex),
+              verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+              executedCapabilityNames: [...executedCapabilityNames],
+            });
+            return pendingTaskResponse();
+          }
+          toolExecutionsThisRequest += 1;
           executedCapabilityNames.add(requestedCall.name);
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
@@ -2749,6 +2787,19 @@ Deno.serve(async (req) => {
             });
           }
         }
+        if (geminiCallsThisRequest >= MAX_GEMINI_CALLS_PER_REQUEST) {
+          await checkpointTask("RUNNING", {
+            ...taskState,
+            phase: "MODEL_CONTINUATION",
+            currentCandidate,
+            currentContentsTail: currentContents.slice(baseContentsLength),
+            requestedCalls,
+            resultsByIndex: Object.fromEntries(resultsByIndex),
+            verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+            executedCapabilityNames: [...executedCapabilityNames],
+          });
+          return pendingTaskResponse();
+        }
         const functionResponses: Array<Record<string, unknown>> = requestedCalls.map((requestedCall, index) => ({
           functionResponse: {
             name: requestedCall.name,
@@ -2793,6 +2844,7 @@ Deno.serve(async (req) => {
           currentCandidate,
           currentContentsTail: currentContents.slice(baseContentsLength),
           resultsByIndex: {},
+          providerRetryCount: 0,
         });
       }
 
@@ -2811,13 +2863,30 @@ Deno.serve(async (req) => {
     });
     return respond(200, { ok: true, answer, modelId });
   } catch (error) {
-    return respond(503, {
-      ok: false,
-      error: error instanceof DOMException && error.name === "AbortError"
-        ? "AI_REQUEST_TIMEOUT"
-        : "AI_PROVIDER_UNAVAILABLE",
-    });
-  } finally {
-    clearTimeout(timer);
+    if (error instanceof DOMException && error.name === "AbortError") {
+      const retries = Number(taskState.providerRetryCount || 0) + 1;
+      if (retries <= 3) {
+        await checkpointTask("RUNNING", {
+          ...taskState,
+          phase: "PROVIDER_RETRY",
+          providerRetryCount: retries,
+        });
+        return pendingTaskResponse();
+      }
+      await checkpointTask("FAILED", {
+        ...taskState,
+        phase: "FAILED",
+        failureCode: "AI_REQUEST_TIMEOUT",
+        failedAt: new Date().toISOString(),
+      });
+      return respond(504, { ok: false, error: "AI_REQUEST_TIMEOUT" });
+    }
+    await checkpointTask("FAILED", {
+      ...taskState,
+      phase: "FAILED",
+      failureCode: "AI_PROVIDER_UNAVAILABLE",
+      failedAt: new Date().toISOString(),
+    }).catch(() => undefined);
+    return respond(503, { ok: false, error: "AI_PROVIDER_UNAVAILABLE" });
   }
 });
