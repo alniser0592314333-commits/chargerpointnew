@@ -208,6 +208,15 @@ describe("Sarah chat gateway security contract", () => {
     expect(changeLogRedactionMigration).not.toContain("RAISE NOTICE");
   });
 
+  it("rejects ambiguous same-code customer targets in every customer mutation RPC", () => {
+    expect(customerUpdateMigration).toContain("pg_catalog.cardinality(v_customer_ids)>1");
+    expect(protectedCustomerSettingsMigration).toContain("pg_catalog.cardinality(v_customer_ids)>1");
+    expect(customerAccountStatusMigration).toContain("pg_catalog.cardinality(v_customer_ids)>1");
+    expect(customerUpdateMigration).toContain("USING ERRCODE='P0409'");
+    expect(protectedCustomerSettingsMigration).toContain("USING ERRCODE='P0409'");
+    expect(customerAccountStatusMigration).toContain("USING ERRCODE='P0409'");
+  });
+
   it("registers inactive-account lookup and canonical activation/deactivation with exact permissions", () => {
     expect(source).toContain('name: "lookup_customer_accounts"');
     expect(source).toContain('name: "set_customer_active_status"');

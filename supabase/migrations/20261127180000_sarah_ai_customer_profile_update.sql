@@ -16,6 +16,7 @@ AS $function$
 DECLARE
   v_session_id uuid;
   v_customer_id uuid;
+  v_customer_ids uuid[];
   v_current_version integer;
   v_current_name text;
   v_current_phone text;
@@ -71,25 +72,32 @@ BEGIN
     RAISE EXCEPTION 'At least one editable customer field is required' USING ERRCODE='22023';
   END IF;
 
-  SELECT c.id,c.version,c.name,c.phone,c.notes
-    INTO v_customer_id,v_current_version,v_current_name,v_current_phone,v_current_notes
-  FROM public.customers c
-  JOIN public.sarah_ai_customer_lookup_proofs proof
-    ON proof.customer_id=c.id
-   AND proof.auth_user_id=auth.uid()
-   AND proof.auth_session_id=v_session_id
-   AND proof.customer_code=v_code
-   AND proof.expires_at>now()
-  WHERE c.is_active IS TRUE AND c.deleted_at IS NULL
-    AND COALESCE(c.status,'')<>'DELETED'
-    AND pg_catalog.upper(pg_catalog.left(pg_catalog.replace(c.id::text,'-',''),4))=v_code
-    AND pg_catalog.strpos(pg_catalog.lower(c.name),pg_catalog.lower(v_hint))>0
-  ORDER BY c.name,c.id
-  LIMIT 1
-  FOR UPDATE OF c;
-  IF v_customer_id IS NULL THEN
-    RAISE EXCEPTION 'Customer lookup proof is missing, expired, ambiguous, or no longer active' USING ERRCODE='42501';
+  SELECT pg_catalog.array_agg(match.id ORDER BY match.name,match.id)
+    INTO v_customer_ids
+  FROM (
+    SELECT c.id,c.name
+    FROM public.customers c
+    JOIN public.sarah_ai_customer_lookup_proofs proof
+      ON proof.customer_id=c.id
+     AND proof.auth_user_id=auth.uid()
+     AND proof.auth_session_id=v_session_id
+     AND proof.customer_code=v_code
+     AND proof.expires_at>now()
+    WHERE c.is_active IS TRUE AND c.deleted_at IS NULL
+      AND COALESCE(c.status,'')<>'DELETED'
+      AND pg_catalog.upper(pg_catalog.left(pg_catalog.replace(c.id::text,'-',''),4))=v_code
+      AND pg_catalog.strpos(pg_catalog.lower(c.name),pg_catalog.lower(v_hint))>0
+    FOR UPDATE OF c
+  ) AS match;
+  IF COALESCE(pg_catalog.cardinality(v_customer_ids),0)=0 THEN
+    RAISE EXCEPTION 'Customer lookup proof is missing, expired, or target is no longer active' USING ERRCODE='42501';
+  ELSIF pg_catalog.cardinality(v_customer_ids)>1 THEN
+    RAISE EXCEPTION 'Customer target is ambiguous; use a more distinctive name from lookup results' USING ERRCODE='P0409';
   END IF;
+  v_customer_id:=v_customer_ids[1];
+  SELECT c.version,c.name,c.phone,c.notes
+    INTO v_current_version,v_current_name,v_current_phone,v_current_notes
+  FROM public.customers c WHERE c.id=v_customer_id;
 
   v_request_payload:=jsonb_build_object(
     'customer_id',v_customer_id,'name',v_name,'phone',v_phone,'notes',v_notes

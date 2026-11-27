@@ -924,6 +924,51 @@ END;
 $admin_read_privileges$;
 
 
+-- A short name fragment and a shared four-character code must never select an arbitrary customer.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000001',false);
+DO $customer_target_ambiguity$
+DECLARE
+  v_lookup jsonb;
+  v_code text;
+BEGIN
+  v_lookup:=public.sarah_ai_lookup_customers('أحمد');
+  IF COALESCE((v_lookup->>'match_count')::integer,0)<2 THEN
+    RAISE EXCEPTION 'Ambiguity fixture must contain multiple Ahmed matches: %',v_lookup;
+  END IF;
+  v_code:=v_lookup->'matches'->0->>'customer_code';
+
+  BEGIN
+    PERFORM public.sarah_ai_update_customer_profile(
+      '70000000-0000-4000-8000-000000000008',v_code,'أحمد',NULL,NULL,'must not be applied'
+    );
+    RAISE EXCEPTION 'Ambiguous basic profile target unexpectedly selected';
+  EXCEPTION WHEN SQLSTATE 'P0409' THEN NULL;
+  END;
+
+  BEGIN
+    PERFORM public.sarah_ai_update_customer_protected_settings(
+      '70000000-0000-4000-8000-000000000009',v_code,'أحمد',-3000,NULL,'1234'
+    );
+    RAISE EXCEPTION 'Ambiguous protected settings target unexpectedly selected';
+  EXCEPTION WHEN SQLSTATE 'P0409' THEN NULL;
+  END;
+
+  v_lookup:=public.sarah_ai_lookup_customer_accounts('أحمد');
+  v_code:=v_lookup->'matches'->0->>'customer_code';
+  BEGIN
+    PERFORM public.sarah_ai_set_customer_active_status(
+      '70000000-0000-4000-8000-000000000010',v_code,'أحمد',true
+    );
+    RAISE EXCEPTION 'Ambiguous account status target unexpectedly selected';
+  EXCEPTION WHEN SQLSTATE 'P0409' THEN NULL;
+  END;
+END;
+$customer_target_ambiguity$;
+RESET ROLE;
+
 -- Canonical change-log writes and existing rows must never retain credentials.
 DO $change_log_redaction$
 DECLARE
