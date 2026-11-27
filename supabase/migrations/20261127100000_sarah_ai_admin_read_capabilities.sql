@@ -579,7 +579,7 @@ BEGIN
 
   -- One request ID can only ever represent this action in this Auth session.
   DELETE FROM public.sarah_ai_action_idempotency
-  WHERE created_at <= now() - interval '30 days';
+  WHERE created_at <= now() - interval '365 days';
   v_request_payload:=jsonb_build_object('customer_code',v_code,'name_hint',v_name_hint,'items',p_items,'notes',p_notes);
   INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
   VALUES(auth.uid(),v_session_id,p_request_id,'create_order_with_items',v_request_payload)
