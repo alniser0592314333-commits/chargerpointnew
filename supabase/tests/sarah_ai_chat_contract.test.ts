@@ -276,6 +276,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:pricing')");
     expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:charger-policy')");
     expect(deviceManagementMigration).toContain("public.execute_sync_command(");
+    expect(deviceManagementMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
+    expect(deviceManagementMigration).toContain("sarah_ai_consume_my_quota('tool_day')");
     expect(deviceManagementMigration).toContain("'RETIRE_DEVICE_TYPE'");
     expect(deviceManagementMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_manage_device_type");
   });
@@ -291,6 +293,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(financialAdjustmentsMigration).toContain("upper(fl.event_type)='PAYMENT'");
     expect(financialAdjustmentsMigration).toContain("Refund amount exceeds the remaining refundable payment amount");
     expect(financialAdjustmentsMigration).toContain("public.execute_sync_command(");
+    expect(financialAdjustmentsMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
+    expect(financialAdjustmentsMigration).toContain("sarah_ai_consume_my_quota('tool_day')");
     expect(financialAdjustmentsMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_adjust_customer_finances");
   });
 
