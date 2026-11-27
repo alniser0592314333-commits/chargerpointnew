@@ -2328,6 +2328,17 @@ Deno.serve(async (req) => {
       const resultError = safeText(resultRecord.error, 80);
       return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
     }
+    const confirmedActions = Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [];
+    await checkpointTask("RUNNING", {
+      ...taskState,
+      phase: "CONFIRMED_ACTION",
+      confirmedActions: [...confirmedActions, {
+        name: confirmationName,
+        actionRequestId: confirmationRequestId,
+        result: execution.result,
+        confirmedAt: new Date().toISOString(),
+      }].slice(-20),
+    });
     const money = (value: unknown) => {
       if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
       const absolute = Math.abs(value);
@@ -2420,6 +2431,12 @@ Deno.serve(async (req) => {
       return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
     }
     const firstCandidate = Array.isArray(firstResult.candidates) ? firstResult.candidates[0] as Record<string, unknown> | undefined : undefined;
+    await checkpointTask("RUNNING", {
+      ...taskState,
+      phase: "MODEL_RESPONSE",
+      contents,
+      currentCandidate: firstCandidate || null,
+    });
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
     const firstParts = Array.isArray(firstContent?.parts)
       ? firstContent.parts as Array<Record<string, unknown>>
@@ -2637,6 +2654,13 @@ Deno.serve(async (req) => {
     }
 
     if (!answer) return respond(502, { ok: false, error: "AI_EMPTY_RESPONSE" });
+    await checkpointTask("COMPLETED", {
+      phase: "COMPLETED",
+      answer,
+      modelId,
+      completedAt: new Date().toISOString(),
+      confirmedActions: Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [],
+    });
     return respond(200, { ok: true, answer, modelId });
   } catch (error) {
     return respond(503, {
