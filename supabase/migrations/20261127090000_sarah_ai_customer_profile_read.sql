@@ -33,7 +33,7 @@ BEGIN
       RAISE EXCEPTION 'Customer name hint must be 2 to 64 printable characters'
         USING ERRCODE = '22023';
     END IF;
-    v_name_hint := pg_catalog.regexp_replace(pg_catalog.btrim(p_name_hint), '\\s+', ' ', 'g');
+    v_name_hint := pg_catalog.regexp_replace(pg_catalog.btrim(p_name_hint), '\s+', ' ', 'g');
     IF pg_catalog.char_length(v_name_hint) < 2 THEN
       RAISE EXCEPTION 'Customer name hint must be 2 to 64 printable characters'
         USING ERRCODE = '22023';
