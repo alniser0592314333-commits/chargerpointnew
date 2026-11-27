@@ -577,7 +577,7 @@ BEGIN
   BEGIN
     v_result:=public.sarah_ai_create_order_with_items(
       v_order_id,'BBBB','محمود سمير',
-      '[{"device_name":"شاومي","has_charger":true},{"device_name":"فشل اختبار","has_charger":true}]'::jsonb,
+      '[{"device_name":"شاومي","has_charger":true},{"device_name":"FAIL","has_charger":true}]'::jsonb,
       NULL
     );
     RAISE EXCEPTION 'Order creation returned without simulated item failure: %',v_result;
