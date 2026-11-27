@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
   const capabilityRegistry = [
     {
       name: "lookup_customers",
-      requiredPermissions: ["customers:view"],
+      requiredPermissionGroups: [["customers:view"]],
       declaration: {
         name: "lookup_customers",
         description: "Find active ChargerPoint customers by part of their name or exact four-character customer code. Returns at most five names and codes only.",
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "get_financial_summary",
-      requiredPermissions: ["finance:view", "reports:view"],
+      requiredPermissionGroups: [["finance:view", "reports:view"]],
       declaration: {
         name: "get_financial_summary",
         description: "Read the authoritative aggregate financial report (ledger record count, net ledger balance, and generation time). Does not expose individual customer balances or ledger rows.",
@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "list_pending_payments",
-      requiredPermissions: ["finance:approve-payment", "finance:create-payment"],
+      requiredPermissionGroups: [["finance:approve-payment", "finance:create-payment"]],
       declaration: {
         name: "list_pending_payments",
         description: "List up to twenty pending manual/Jawwal Pay customer payment submissions with customer name/code, amount, method, note, and submission time. Does not approve or modify payments.",
@@ -159,8 +159,43 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "get_customer_financial_summary",
+      requiredPermissionGroups: [
+        ["customers:view"],
+        ["customers:financial-view", "finance:view", "finances:read"],
+      ],
+      declaration: {
+        name: "get_customer_financial_summary",
+        description: "Read the authoritative balance for one customer. First call lookup_customers and use the exact returned four-character code; if it collides, provide a name_hint. Requires customer financial-view permission and returns only name, code, and balance in ILS minor units.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_code: { type: "STRING", description: "Exact four-character code returned by lookup_customers." },
+            name_hint: { type: "STRING", description: "Optional customer name fragment to resolve a code collision." },
+          },
+          required: ["customer_code"],
+        },
+      },
+    },
+    {
+      name: "get_customer_orders",
+      requiredPermissionGroups: [["customers:view"], ["orders:view"]],
+      declaration: {
+        name: "get_customer_orders",
+        description: "Read up to ten recent orders and their item delivery/financial statuses for one customer. First call lookup_customers and use the exact returned four-character code; if it collides, provide a name_hint. No order changes are performed.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_code: { type: "STRING", description: "Exact four-character code returned by lookup_customers." },
+            name_hint: { type: "STRING", description: "Optional customer name fragment to resolve a code collision." },
+          },
+          required: ["customer_code"],
+        },
+      },
+    },
+    {
       name: "get_goals_overview",
-      requiredPermissions: ["goals:view", "goals:requests:view"],
+      requiredPermissionGroups: [["goals:view", "goals:requests:view"]],
       declaration: {
         name: "get_goals_overview",
         description: "Read goals and customer goal requests allowed by the current admin permissions. Optionally filter by a customer name fragment. Returns at most fifteen matching goal/request records and no mutation controls.",
@@ -174,7 +209,9 @@ Deno.serve(async (req) => {
     },
   ] as const;
   const enabledCapabilities = capabilityRegistry.filter(
-    (capability) => isSuperAdmin || capability.requiredPermissions.some((permission) => permissions.includes(permission)),
+    (capability) => isSuperAdmin || capability.requiredPermissionGroups.every(
+      (group) => group.some((permission) => permissions.includes(permission)),
+    ),
   );
   const enabledCapabilityNames = new Set(enabledCapabilities.map((capability) => capability.name));
   const hasEnabledCapabilities = enabledCapabilities.length > 0;
@@ -329,6 +366,24 @@ Deno.serve(async (req) => {
           p_customer_code: customerCode,
           p_name_hint: nameHint,
         });
+        toolResult = result.data;
+        toolError = result.error;
+      } else if (toolName === "get_customer_financial_summary" || toolName === "get_customer_orders") {
+        const customerCode = safeText(args.customer_code, 4);
+        const rawNameHint = args.name_hint;
+        const nameHint = typeof rawNameHint === "string" ? safeText(rawNameHint, 64) : null;
+        const invalidNameHint = rawNameHint !== undefined && rawNameHint !== null
+          && (typeof rawNameHint !== "string" || nameHint === null || nameHint.length < 2);
+        if (!/^[A-Fa-f0-9]{4}$/.test(customerCode) || invalidNameHint) {
+          return respond(400, { ok: false, error: "CUSTOMER_QUERY_INVALID" });
+        }
+        const rpcName = toolName === "get_customer_financial_summary"
+          ? "sarah_ai_get_customer_financial_summary"
+          : "sarah_ai_get_customer_orders";
+        const rpcArgs = toolName === "get_customer_financial_summary"
+          ? { p_customer_code: customerCode, p_name_hint: nameHint }
+          : { p_customer_code: customerCode, p_name_hint: nameHint, p_limit: 10 };
+        const result = await caller.rpc(rpcName, rpcArgs);
         toolResult = result.data;
         toolError = result.error;
       } else if (toolName === "get_financial_summary") {
