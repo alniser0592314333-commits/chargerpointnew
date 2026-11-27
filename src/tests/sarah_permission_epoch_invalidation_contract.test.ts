@@ -12,6 +12,8 @@ describe("Sarah permission epoch invalidation", () => {
     expect(page).toContain("subscribeToOwnAdminPermissionEpoch(authUserId");
     expect(page).toContain('cp-admin-permissions-invalidated');
     expect(page).toContain("if (cancelled || !isCurrent(authUserId)) return");
+    expect(page).toContain("permissions may have changed while Sarah");
+    expect(page).toContain("detail: { authUserId }");
     expect(client).toContain("table: 'admin_permission_epochs'");
     expect(client).toContain("filter: `auth_user_id=eq.${authUserId}`");
     expect(client).toContain("getStoredSupabaseAuthSession()?.user?.id !== authUserId");
