@@ -1416,10 +1416,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql
-      - name: Apply historical change-log secret redaction migration in disposable test database
+      - name: Apply historical change-log redaction fixture in disposable test database
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127200000_redact_historical_change_log_secrets.sql
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/fixtures/redact_historical_change_log_secrets.sql
       - name: Apply Sarah protected customer settings migration
         env:
           PGPASSWORD: postgres
