@@ -413,7 +413,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("sanitizeLocalSyncActionResult");
     expect(source).toContain('localSyncActionResult?.action === "manual_sync"');
     expect(source).toContain("Do not request another manual sync in this response");
-    expect(source).toContain("never as authorization");
+    expect(source).toContain("not authorization");
   });
 
   it("routes AI provider management through the existing ai:manage-secured settings gateway without exposing secrets", () => {
