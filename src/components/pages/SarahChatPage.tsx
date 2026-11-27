@@ -160,8 +160,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     );
     if (!record?.text || !record.pendingBinAction) return;
     const baseMessages = messages;
-    const historySnapshot = buildSarahHistorySnapshot(baseMessages);
-    if (historySnapshot.at(-1)?.role === "user" && historySnapshot.at(-1)?.text === record.text) historySnapshot.pop();
+    const historySnapshot = record.historySnapshot?.slice(-20) || buildSarahHistorySnapshot(baseMessages);
+    if (!record.historySnapshot && historySnapshot.at(-1)?.role === "user" && historySnapshot.at(-1)?.text === record.text) historySnapshot.pop();
     setPendingBinAction({
       id: record.id,
       correlationId: record.correlationId,
@@ -309,7 +309,10 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     try {
       await sarahInputQueue.enqueue({
         id, actorAccountId: accountId, deviceId: "web-client", kind: "text",
-        state: navigator.onLine ? "READY_TO_SEND" : "QUEUED_OFFLINE", text: clean, correlationId,
+        state: navigator.onLine ? "READY_TO_SEND" : "QUEUED_OFFLINE",
+        text: clean,
+        correlationId,
+        historySnapshot,
       });
       if (!isCurrent(accountId, operation)) return;
       setText("");
@@ -444,8 +447,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       await sarahInputQueue.transition(accountId, record.id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
       const baseMessages = messages;
-      const retryHistory = buildSarahHistorySnapshot(baseMessages);
-      if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
+      const retryHistory = record.historySnapshot?.slice(-20) || buildSarahHistorySnapshot(baseMessages);
+      if (!record.historySnapshot && retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
       const response = await sendWithLocalActions(
         record.text,
         accountId,
