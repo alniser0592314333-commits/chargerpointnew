@@ -737,6 +737,14 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("confirmedResults");
   });
 
+  it("does not persist raw user transcript text and safely recovers a task row lost before first creation", () => {
+    const stateStart = source.indexOf("const initialTaskState");
+    const stateEnd = source.indexOf("const taskLoad", stateStart);
+    expect(source.slice(stateStart, stateEnd)).not.toContain("contents");
+    expect(source).toContain("currentContentsTail");
+    expect(source).toContain('taskLoad.error?.code === "P0002"');
+  });
+
   it("keeps secure BIN outside checkpoint state and resumes after confirmation using the same request ID", () => {
     expect(source).toContain("const actionBin = typeof body.bin === \"string\"");
     expect(source).toContain("requestId,");
@@ -744,5 +752,8 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("p_bin: actionBin"); // BIN is used only in the live protected RPC call, never serialized into taskState.
     expect(chatService).toContain("if (resumeTask) requestBody.resumeTask = true");
     expect(chatPage).toContain("pendingAction.correlationId,\n        undefined,\n        undefined,\n        true,");
+    expect(chatPage).toContain("record.state !== \"QUEUED_OFFLINE\" && !record.pendingBinAction");
+    expect(chatPage).toContain('pendingBinAction: undefined');
+    expect(chatPage).toContain('transition(accountId, pendingAction.id, "READY_TO_SEND"');
   });
 });
