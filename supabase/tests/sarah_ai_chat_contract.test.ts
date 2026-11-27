@@ -6,6 +6,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 const source = read("supabase/functions/sarah-ai-chat/index.ts");
 const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
 const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
+const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_customer_profile_read.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -64,9 +65,10 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("resp.text()");
   });
 
-  it("exposes only one bounded read-only customer lookup tool and validates it in PostgreSQL", () => {
+  it("exposes bounded read-only customer tools and validates each capability in PostgreSQL", () => {
     expect(source).toContain('name: "lookup_customers"');
-    expect(source).toContain('caller.rpc(\n        "sarah_ai_lookup_customers"');
+    expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
+    expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
     expect(source).toContain("functionCalls.length !== 1");
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
@@ -80,6 +82,23 @@ describe("Sarah chat gateway security contract", () => {
     expect(lookupMigration).toContain("match_number <= 5");
     expect(lookupMigration).not.toContain("phone");
     expect(lookupMigration).not.toContain("balance");
+
+    expect(source).toContain('name: "get_customer_profile"');
+    expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
+    expect(source).toContain("p_customer_code: customerCode");
+    expect(source).toContain("p_name_hint: nameHint");
+    expect(source).toContain("functionResponse: {");
+    expect(source).toContain("name: toolName");
+    expect(profileMigration).toContain("public.sarah_ai_assert_use_permission()");
+    expect(profileMigration).toContain("public._cp_assert_active_admin_permission('customers:view')");
+    expect(profileMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
+    expect(profileMigration).toContain("sarah_ai_consume_my_quota('tool_day')");
+    expect(profileMigration).toContain("LIMIT 6");
+    expect(profileMigration).toContain("match_number <= 5");
+    expect(profileMigration).toContain("customer_code");
+    expect(profileMigration).not.toContain("'phone',");
+    expect(profileMigration).not.toContain("'balance',");
+    expect(profileMigration).not.toContain("'notes',");
   });
 
   it("treats client-supplied history and tool results as untrusted data", () => {

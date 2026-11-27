@@ -292,7 +292,9 @@ CREATE TABLE public.customers (
   balance numeric,
   is_active boolean NOT NULL DEFAULT true,
   deleted_at timestamptz,
-  status text NOT NULL DEFAULT 'ACTIVE'
+  status text NOT NULL DEFAULT 'ACTIVE',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  charger_fee_exempt boolean NOT NULL DEFAULT false
 );
 INSERT INTO public.customers(id,name,phone,balance,is_active,deleted_at,status) VALUES
  ('aaaa0000-0000-4000-8000-000000000001','أحمد علي','0599000001',125,true,NULL,'ACTIVE'),
