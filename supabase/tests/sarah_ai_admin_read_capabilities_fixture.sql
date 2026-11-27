@@ -453,6 +453,17 @@ END;
 $function$;
 
 
+-- Minimal canonical change-log table for the isolated migration test database.
+CREATE TABLE IF NOT EXISTS public.change_log (
+  sequence_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  entity_type text NOT NULL,
+  entity_id uuid NOT NULL,
+  action text NOT NULL,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  version integer,
+  changed_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- A disposable pre-hardening log row proves migration-time historical redaction.
 INSERT INTO public.change_log(entity_type,entity_id,action,payload,version,changed_at)
 VALUES(
