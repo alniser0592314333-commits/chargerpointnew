@@ -190,7 +190,7 @@ export default function App() {
   useEffect(() => {
     if (!userSession) return;
     void startNativePushNotifications('admin', () => getSupabaseAuthToken(), document.documentElement.lang);
-  }, [userSession]);
+  }, [userSession?.authUserId]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || import.meta.env.MODE !== 'admin' || !isAuthenticated) return;
