@@ -6,6 +6,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 const source = read("supabase/functions/sarah-ai-chat/index.ts");
 const chatService = read("src/services/ai/sarahChatService.ts");
 const chatPage = read("src/components/pages/SarahChatPage.tsx");
+const inputQueue = read("src/application/ai/sarahInputQueue.ts");
 const supabaseConfig = read("supabase/config.toml");
 const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
 const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
@@ -172,6 +173,38 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("admin.rpc(\"rpc_get_financial_report\"");
     expect(source).not.toContain("admin.rpc(\"list_admin_manual_customer_payments\"");
     expect(source).not.toContain("admin.rpc(\"get_admin_goals_page_data\"");
+  });
+
+  it("registers server-checked payment actions with the app's pending approval workflow", () => {
+    expect(source).toContain('name: "record_and_approve_customer_payment"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["finance:create-payment"], ["finance:approve-payment"]]');
+    expect(source).toContain('name: "approve_payment_submission"');
+    expect(source).toContain('name: "reject_payment_submission"');
+    expect(source).toContain('caller.rpc("sarah_ai_record_and_approve_payment"');
+    expect(source).toContain('caller.rpc("sarah_ai_review_payment_submission"');
+    expect(source).toContain("list_pending_qr_payment_submissions");
+    expect(source).toContain("submission_id: id");
+    expect(source).toContain("const actionBin = typeof body.bin === \"string\"");
+    expect(source).toContain("deriveActionRequestId");
+    expect(source).toContain("p_bin: actionBin");
+    expect(source).toContain("Never ask for BIN in chat");
+    expect(adminReadMigration).toContain("sarah_ai_record_and_approve_payment");
+    expect(adminReadMigration).toContain("sarah_ai_review_payment_submission");
+    expect(adminReadMigration).toContain("public.create_admin_pending_customer_payment");
+    expect(adminReadMigration).toContain("public.review_qr_payment_submission");
+    expect(adminReadMigration).not.toContain("'bin',p_bin");
+  });
+
+  it("keeps BIN outside the chat transcript and waits for secure confirmation", () => {
+    expect(chatService).toContain("requiresBin?: boolean");
+    expect(chatService).toContain("requestBody.bin = bin");
+    expect(chatService).toContain("response.status === 428 && data.error === \"BIN_REQUIRED\"");
+    expect(chatService).toContain("response.status === 403 && data.error === \"BIN_INVALID\"");
+    expect(chatPage).toContain('type="password"');
+    expect(chatPage).toContain("تأكيد أمني مطلوب");
+    expect(chatPage).toContain("WAITING_FOR_CONFIRMATION");
+    expect(inputQueue).toContain('UPLOADING: ["SENT_TO_AI", "WAITING_FOR_CONFIRMATION"');
+    expect(chatPage).toContain("لن يُضاف إلى المحادثة أو سجل الرسائل أو يُرسل إلى Gemini");
   });
 
   it("registers customer finance and order tools with all required live permission groups", () => {
