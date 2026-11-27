@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following twenty-four bounded capabilities are registered today:
+The following twenty-five bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -32,6 +32,7 @@ The following twenty-four bounded capabilities are registered today:
 | get_customer_financial_history | customers:view AND customers:financial-view | Up to twenty recent authoritative ledger entries with bounded references |
 | get_customer_orders | customers:view AND orders:view | Up to ten recent orders and bounded item status/charge details |
 | create_order_with_items | customers:view AND orders:create AND orders:edit | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
+| get_device_catalog | devices:view | Up to one hundred non-retired device types, bilingual names, base prices, and charger policy |
 | get_financial_summary | finance:view OR reports:view | Aggregate ledger record count, net balance, and generation time |
 | list_pending_payments | finance:approve-payment OR finance:create-payment | Up to twenty pending manual, customer QR, and Jawwal Pay submissions |
 | record_and_approve_customer_payment | customers:view AND finance:create-payment AND finance:approve-payment | One manual CASH payment through the existing pending-submission + approval workflow; requires secure BIN |
