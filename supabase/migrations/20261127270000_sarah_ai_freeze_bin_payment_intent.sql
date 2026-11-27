@@ -424,8 +424,12 @@ BEGIN
     RAISE EXCEPTION 'Order target does not belong to the verified customer' USING ERRCODE='42501';
   END IF;
 
-  IF p_bin IS NULL OR p_bin !~ '^\d{4,32}
-    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
+  IF p_bin IS NULL OR p_bin !~ '^\d{4,32}$' THEN
+    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE='P4004';
+  END IF;
+
+  v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
   END IF;
   v_quota:=public.sarah_ai_consume_my_quota('tool_day');
   IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
