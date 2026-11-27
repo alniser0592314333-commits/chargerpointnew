@@ -476,9 +476,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       // The confirmed protected action is complete. Continue the original
       // multi-action task with its result in context so Sarah can execute the
       // remaining actions and request another secure confirmation if needed.
+      const originalRequestAlreadyInHistory = pendingAction.historySnapshot.some(
+        (message) => message.role === "user" && message.text === pendingAction.text
+      );
       const continuationHistory: Message[] = [
         ...pendingAction.historySnapshot,
-        { role: "user", text: pendingAction.text },
+        ...(originalRequestAlreadyInHistory ? [] : [{ role: "user" as const, text: pendingAction.text }]),
         { role: "assistant", text: confirmationResponse.answer },
       ];
       const continuationResponse = await sendWithLocalActions(
