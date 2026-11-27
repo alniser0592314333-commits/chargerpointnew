@@ -252,7 +252,10 @@ BEGIN
         charger_fee_exempt=COALESCE((p_payload->>'chargerFeeExempt')::boolean,charger_fee_exempt),
         updated_at=now(),version=version+1
     WHERE id=(p_payload->>'id')::uuid;
-    PERFORM public.record_canonical_change('customers',(p_payload->>'id')::uuid,'UPDATE',p_payload,2);
+    PERFORM public.record_canonical_change(
+      'customers',(p_payload->>'id')::uuid,'UPDATE',p_payload,
+      (SELECT c.version FROM public.customers c WHERE c.id=(p_payload->>'id')::uuid)
+    );
     RETURN jsonb_build_object('success',true,'result',jsonb_build_object('customerId',p_payload->>'id'));
   ELSIF p_command_type='CREATE_ORDER' THEN
     INSERT INTO public.orders(id,day_id,customer_id,display_number,status,notes)
