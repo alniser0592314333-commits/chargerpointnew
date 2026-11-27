@@ -254,7 +254,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "get_customer_financial_summary"');
     expect(source).toContain('requiredPermissionGroups: [');
     expect(source).toContain('["customers:view"]');
-    expect(source).toContain('["customers:financial-view", "finance:view", "finances:read"]');
+    expect(source).toContain('["customers:financial-view"]');
     expect(source).toContain('caller.rpc(rpcName, rpcArgs)');
     expect(source).toContain('name: "get_customer_orders"');
     expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:view"]]');
