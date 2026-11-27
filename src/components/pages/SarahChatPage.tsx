@@ -144,6 +144,30 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     void refreshQueue(accountId, operation);
   }, [session?.userId, session?.authUserId]);
 
+  useEffect(() => {
+    if (!activeAccountId || hydratedAccount !== activeAccountId || pendingBinAction) return;
+    const record = pending.find((item) =>
+      item.actorAccountId === activeAccountId
+      && item.state === "WAITING_FOR_CONFIRMATION"
+      && Boolean(item.pendingBinAction)
+      && Boolean(item.text)
+    );
+    if (!record?.text || !record.pendingBinAction) return;
+    const baseMessages = messages;
+    const historySnapshot = buildSarahHistorySnapshot(baseMessages);
+    if (historySnapshot.at(-1)?.role === "user" && historySnapshot.at(-1)?.text === record.text) historySnapshot.pop();
+    setPendingBinAction({
+      id: record.id,
+      correlationId: record.correlationId,
+      text: record.text,
+      historySnapshot,
+      baseMessages,
+      pendingAction: record.pendingBinAction,
+    });
+    setBinValue("");
+    setBinError("");
+  }, [activeAccountId, hydratedAccount, pending, pendingBinAction, messages]);
+
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
   const canManageSync = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("sync:manage")));
 
@@ -273,6 +297,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         if (response.requiresBin) {
           await sarahInputQueue.transition(accountId, id, "WAITING_FOR_CONFIRMATION", {
             lastErrorCode: response.binError || "BIN_REQUIRED",
+            pendingBinAction: response.pendingAction,
           });
           setPendingBinAction({ id, correlationId, text: clean, historySnapshot, baseMessages, pendingAction: response.pendingAction });
           setBinValue("");
@@ -334,11 +359,19 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       const baseMessages = messages;
       const retryHistory = buildSarahHistorySnapshot(baseMessages);
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
-      const response = await sendWithLocalActions(record.text, accountId, retryHistory, record.correlationId);
+      const response = await sendWithLocalActions(
+        record.text,
+        accountId,
+        retryHistory,
+        record.correlationId,
+        undefined,
+        record.pendingBinAction,
+      );
       if (!isCurrent(accountId, operation)) return;
       if (response.requiresBin) {
         await sarahInputQueue.transition(accountId, record.id, "WAITING_FOR_CONFIRMATION", {
           lastErrorCode: response.binError || "BIN_REQUIRED",
+          pendingBinAction: response.pendingAction || record.pendingBinAction,
         });
         setPendingBinAction({
           id: record.id,
@@ -367,6 +400,24 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       }
     } finally {
       if (isCurrent(accountId, operation)) { setBusy(false); await refreshQueue(accountId, operation); }
+    }
+  };
+
+  const cancelBinConfirmation = async () => {
+    const current = pendingBinAction;
+    const accountId = session?.authUserId || null;
+    if (!current || !accountId || busy || !isCurrent(accountId)) return;
+    try {
+      await sarahInputQueue.transition(accountId, current.id, "NEEDS_ATTENTION", {
+        lastErrorCode: "BIN_CONFIRMATION_CANCELLED",
+        pendingBinAction: undefined,
+      });
+      setPendingBinAction(null);
+      setBinValue("");
+      setBinError("");
+      await refreshQueue(accountId, accountScopeRef.current.generation);
+    } catch {
+      setBinError("تعذر إلغاء خطوة التأكيد. لم تُنفذ العملية.");
     }
   };
 
@@ -407,12 +458,13 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (response.requiresBin) {
         await sarahInputQueue.transition(accountId, pendingAction.id, "WAITING_FOR_CONFIRMATION", {
           lastErrorCode: response.binError || "BIN_REQUIRED",
+          pendingBinAction: pendingAction.pendingAction,
         });
         setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "أدخل رمز BIN لإكمال العملية.");
         return;
       }
 
-      await sarahInputQueue.transition(accountId, pendingAction.id, "SENT_TO_AI", { resultRef: pendingAction.correlationId });
+      await sarahInputQueue.transition(accountId, pendingAction.id, "SENT_TO_AI", { resultRef: pendingAction.correlationId, pendingBinAction: undefined });
       const alreadyHasUserMessage = pendingAction.baseMessages.some(
         (message) => message.role === "user" && message.text === pendingAction.text
       );
@@ -486,7 +538,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         {binError && <p className="mb-2 text-xs text-red-600 dark:text-red-300">{binError}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={busy || !binValue.trim()} onClick={() => void submitBin()} className="rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:opacity-40">تأكيد وتنفيذ</button>
-          <button type="button" disabled={busy} onClick={() => { setPendingBinAction(null); setBinValue(""); setBinError(""); }} className="rounded-xl border border-gray-300 px-4 py-2 dark:border-[#31554f]">إلغاء</button>
+          <button type="button" disabled={busy} onClick={() => void cancelBinConfirmation()} className="rounded-xl border border-gray-300 px-4 py-2 dark:border-[#31554f]">إلغاء</button>
         </div>
       </div>}
       {pending.filter((item) => item.state !== "COMPLETED").length > 0 && <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20"><div className="mb-2 font-semibold">رسائل محفوظة / تحتاج متابعة</div>{pending.filter((item) => item.state !== "COMPLETED").map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 py-2"><span className="min-w-0 flex-1 truncate">{item.text || "رسالة صوتية محفوظة"} <span className="text-xs text-gray-500">({item.state})</span></span>{(item.state === "QUEUED_OFFLINE" || item.state === "NEEDS_ATTENTION" || item.state === "WAITING_FOR_CONFIRMATION") && <button type="button" disabled={busy || !navigator.onLine} onClick={() => void retryQueued(item)} className="rounded-lg bg-amber-700 px-3 py-1 text-white disabled:opacity-40">إعادة إرسال</button>}</div>)}</div>}
