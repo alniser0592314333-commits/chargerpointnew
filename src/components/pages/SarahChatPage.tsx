@@ -450,7 +450,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       await sarahInputQueue.transition(accountId, pendingAction.id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
 
-      const response = await sendWithLocalActions(
+      const confirmationResponse = await sendWithLocalActions(
         pendingAction.text,
         accountId,
         pendingAction.historySnapshot,
@@ -460,12 +460,48 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       );
       setBinValue("");
       if (!isCurrent(accountId, operation)) return;
-      if (response.requiresBin) {
+      if (confirmationResponse.requiresBin) {
         await sarahInputQueue.transition(accountId, pendingAction.id, "WAITING_FOR_CONFIRMATION", {
-          lastErrorCode: response.binError || "BIN_REQUIRED",
-          pendingBinAction: pendingAction.pendingAction,
+          lastErrorCode: confirmationResponse.binError || "BIN_REQUIRED",
+          pendingBinAction: confirmationResponse.pendingAction || pendingAction.pendingAction,
         });
-        setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "أدخل رمز BIN لإكمال العملية.");
+        setPendingBinAction({
+          ...pendingAction,
+          pendingAction: confirmationResponse.pendingAction || pendingAction.pendingAction,
+        });
+        setBinError(confirmationResponse.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "أدخل رمز BIN لإكمال العملية.");
+        return;
+      }
+
+      // The confirmed protected action is complete. Continue the original
+      // multi-action task with its result in context so Sarah can execute the
+      // remaining actions and request another secure confirmation if needed.
+      const originalRequestAlreadyInHistory = pendingAction.historySnapshot.some(
+        (message) => message.role === "user" && message.text === pendingAction.text
+      );
+      const continuationHistory: Message[] = [
+        ...pendingAction.historySnapshot,
+        ...(originalRequestAlreadyInHistory ? [] : [{ role: "user" as const, text: pendingAction.text }]),
+        { role: "assistant", text: confirmationResponse.answer },
+      ];
+      const continuationResponse = await sendWithLocalActions(
+        "تابعي تنفيذ بقية المهام في طلبي السابق. العملية التي أكدتُها نُفذت؛ لا تعيديها إلا إذا كان ذلك ضرورياً للتحقق من نتيجتها، وواصلي بقية الخطوات.",
+        accountId,
+        continuationHistory,
+        pendingAction.correlationId,
+      );
+      if (!isCurrent(accountId, operation)) return;
+      if (continuationResponse.requiresBin) {
+        await sarahInputQueue.transition(accountId, pendingAction.id, "WAITING_FOR_CONFIRMATION", {
+          lastErrorCode: continuationResponse.binError || "BIN_REQUIRED",
+          pendingBinAction: continuationResponse.pendingAction,
+        });
+        setPendingBinAction({
+          ...pendingAction,
+          historySnapshot: continuationHistory,
+          pendingAction: continuationResponse.pendingAction,
+        });
+        setBinError(continuationResponse.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "توجد عملية أخرى تحتاج إلى تأكيد أمني.");
         return;
       }
 
@@ -476,7 +512,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       const transcriptBeforeAnswer = alreadyHasUserMessage
         ? pendingAction.baseMessages
         : [...pendingAction.baseMessages, { role: "user" as const, text: pendingAction.text }];
-      const completedMessages = [...transcriptBeforeAnswer, { role: "assistant" as const, text: response.answer }];
+      const completedMessages = [...transcriptBeforeAnswer, { role: "assistant" as const, text: continuationResponse.answer }];
       await sarahConversationStore.save(accountId, completedMessages, conversationGenerationRef.current);
       await sarahInputQueue.transition(accountId, pendingAction.id, "COMPLETED");
       if (!isCurrent(accountId, operation)) return;

@@ -9,6 +9,8 @@ const chatPage = read("src/components/pages/SarahChatPage.tsx");
 const inputQueue = read("src/application/ai/sarahInputQueue.ts");
 const supabaseConfig = read("supabase/config.toml");
 const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
+const unlimitedWorkQuotaMigration = read("supabase/migrations/20261127280000_sarah_ai_unlimited_admin_work_quota.sql");
+const unlimitedManageQuotaMigration = read("supabase/migrations/20261127280100_sarah_ai_unlimited_admin_manage_quota.sql");
 const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
 const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_customer_profile_read.sql");
 const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql");
@@ -41,7 +43,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("body.userId");
   });
 
-  it("enforces atomic per-actor hourly and daily quotas before provider secret access", () => {
+  it("retains actor-scoped authorization gates while the final admin policy removes artificial quotas", () => {
     expect(source).toContain('caller.rpc("sarah_ai_consume_my_quota", { p_period: "hour" })');
     expect(source).toContain('caller.rpc("sarah_ai_consume_my_quota", { p_period: "day" })');
     expect(source).toContain("AI_RATE_LIMITED");
@@ -56,6 +58,12 @@ describe("Sarah chat gateway security contract", () => {
     expect(quotaMigration).toContain("v_actor, 'tool', 20, 3600");
     expect(quotaMigration).toContain("v_actor, 'tool', 100, 86400");
     expect(quotaMigration).toContain("100, 86400");
+    expect(unlimitedWorkQuotaMigration).toContain("sarah_ai_assert_use_permission");
+    expect(unlimitedWorkQuotaMigration).toContain("'unlimited', true");
+    expect(unlimitedWorkQuotaMigration).not.toContain("sarah_ai_consume_quota_internal");
+    expect(unlimitedManageQuotaMigration).toContain("sarah_ai_assert_manage_permission");
+    expect(unlimitedManageQuotaMigration).toContain("'unlimited', true");
+    expect(unlimitedManageQuotaMigration).not.toContain("sarah_ai_consume_quota_internal");
   });
 
   it("enforces the request byte cap while streaming, before buffering the body", () => {
@@ -92,11 +100,15 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
-    expect(source).toContain("safeParallelReadBatch = new Set<string>([\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\", \"list_pending_payments\"])");
-    expect(source).toContain("AI_TOOL_CALL_BATCH_NOT_SAFE");
-    expect(source).toContain("safeDeferredMutationBatch");
-    expect(source).toContain("requestedCalls.length === 1");
-    expect(source).toContain("requestedCalls.length > 1 && mutationCalls.length === 1");
+    expect(source).toContain("readOnlyCapabilityNames = new Set<string>");
+    expect(source).not.toContain("AI_TOOL_CALL_BATCH_NOT_SAFE");
+    expect(source).toContain("deferredMutationPrerequisites");
+    expect(source).toContain("shouldDeferMutations");
+    expect(source).toContain("mutationCalls.length > 0");
+    expect(source).toContain("verifiedPrerequisiteNames");
+    expect(source).toContain("resultsByIndex");
+    expect(source).toContain("while (!completed)");
+    expect(source).not.toContain("toolStep < 4");
     expect(source).toContain("create_order_with_items: [\"lookup_customers\", \"get_device_catalog\"]");
     expect(source).toContain("add_item_to_existing_order: [\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\"]");
     expect(source).toContain("record_and_approve_customer_payment: [\"lookup_customers\"]");
@@ -105,7 +117,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("retry_after_prerequisites: true");
     expect(source).toContain("registeredCapabilityNames.has(call.name)");
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
-    expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
+    expect(source).not.toContain("AI_TOOL_CALL_LIMIT_REACHED");
     expect(lookupMigration).toContain("public.sarah_ai_assert_use_permission()");
     expect(lookupMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
     expect(lookupMigration).toContain("sarah_ai_consume_my_quota('tool_day')");
@@ -203,16 +215,19 @@ describe("Sarah chat gateway security contract", () => {
     expect(new Set(executorNames)).toEqual(new Set(uniqueRegistryNames));
   });
 
-  it("passes stable request IDs outside Gemini history and allows bounded multi-step tool chains", () => {
+  it("passes stable request IDs outside Gemini history and allows multi-action tool chains without a fixed call-count ceiling", () => {
     expect(chatService).toContain("requestId?: string");
     expect(chatService).toContain("requestId: stableRequestId");
     expect(chatPage).toContain("historySnapshot, correlationId");
     expect(chatPage).toContain("record.correlationId,\n        undefined,\n        record.pendingBinAction");
     expect(source).toContain("const requestId = typeof body.requestId === \"string\"");
     expect(source).toContain("const executeCapability = async");
-    expect(source).toContain("for (let toolStep = 0; toolStep < 4; toolStep++)");
+    expect(source).toContain("while (!completed)");
+    expect(source).not.toContain("for (let toolStep = 0; toolStep < 4; toolStep++)");
+    expect(source).not.toContain("AI_TOOL_CALL_LIMIT_REACHED");
+    expect(source).toContain("multiple mutation calls in one response");
     expect(source).toContain("toolConfig: { functionCallingConfig: { mode: \"AUTO\" } }");
-    expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
+    expect(source).not.toContain("AI_TOOL_CALL_LIMIT_REACHED");
   });
 
   it("opens a missing business day only through the canonical OPEN_DAY command", () => {
@@ -545,6 +560,9 @@ describe("Sarah chat gateway security contract", () => {
     expect(chatPage).toContain("pendingBinAction: response.pendingAction");
     expect(chatPage).toContain("record.pendingBinAction");
     expect(chatPage).toContain("cancelBinConfirmation");
+    expect(chatPage).toContain("continuationHistory");
+    expect(chatPage).toContain("continuationResponse.requiresBin");
+    expect(chatPage).toContain("تابعي تنفيذ بقية المهام في طلبي السابق");
   });
 
   it("keeps BIN outside the chat transcript and waits for secure confirmation", () => {
@@ -670,7 +688,9 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("Enabled mutations include customer creation/basic profile editing/protected setting changes/account activation and deactivation, subordinate-admin permission changes/suspension/activation, business-hours and Jawwal Pay recipient settings, current-device manual sync, AI provider model/generation-setting changes and explicitly requested provider clearing, device catalog creation/update/retirement, customer credit adjustments/refunds, order creation/delivery/cancellation/day renumbering, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
     expect(source).not.toContain("The currently enabled mutations are create_order_with_items and the payment actions");
     expect(source).toContain("the server will return the secure confirmation prompt");
-    expect(source).toContain("executionOrder = [\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\", \"list_pending_payments\"]");
+    expect(source).toContain("readExecutionOrder = [");
+    expect(source).toContain("decompose the entire request into an internal checklist");
+    expect(source).toContain("pursue every authorized task");
     expect(source).toContain("the client will replay the exact same tool name and arguments after secure confirmation");
   });
 
