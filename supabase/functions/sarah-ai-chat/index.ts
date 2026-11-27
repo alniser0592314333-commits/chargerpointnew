@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
   const capabilityRegistry = [
     {
       name: "lookup_customers",
-      requiredPermission: "customers:view",
+      requiredPermissions: ["customers:view"],
       declaration: {
         name: "lookup_customers",
         description: "Find active ChargerPoint customers by part of their name or exact four-character customer code. Returns at most five names and codes only.",
@@ -140,9 +140,41 @@ Deno.serve(async (req) => {
         },
       },
     },
+    {
+      name: "get_financial_summary",
+      requiredPermissions: ["finance:view", "reports:view"],
+      declaration: {
+        name: "get_financial_summary",
+        description: "Read the authoritative aggregate financial report (ledger record count, net ledger balance, and generation time). Does not expose individual customer balances or ledger rows.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
+      name: "list_pending_payments",
+      requiredPermissions: ["finance:approve-payment", "finance:create-payment"],
+      declaration: {
+        name: "list_pending_payments",
+        description: "List up to twenty pending manual/Jawwal Pay customer payment submissions with customer name/code, amount, method, note, and submission time. Does not approve or modify payments.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
+      name: "get_goals_overview",
+      requiredPermissions: ["goals:view", "goals:requests:view"],
+      declaration: {
+        name: "get_goals_overview",
+        description: "Read goals and customer goal requests allowed by the current admin permissions. Optionally filter by a customer name fragment. Returns at most fifteen matching goal/request records and no mutation controls.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_name: { type: "STRING", description: "Optional customer name fragment, 2 to 64 characters." },
+          },
+        },
+      },
+    },
   ] as const;
   const enabledCapabilities = capabilityRegistry.filter(
-    (capability) => isSuperAdmin || permissions.includes(capability.requiredPermission),
+    (capability) => isSuperAdmin || capability.requiredPermissions.some((permission) => permissions.includes(permission)),
   );
   const enabledCapabilityNames = new Set(enabledCapabilities.map((capability) => capability.name));
   const hasEnabledCapabilities = enabledCapabilities.length > 0;
@@ -299,13 +331,85 @@ Deno.serve(async (req) => {
         });
         toolResult = result.data;
         toolError = result.error;
+      } else if (toolName === "get_financial_summary") {
+        const result = await caller.rpc("rpc_get_financial_report");
+        toolResult = result.data;
+        toolError = result.error;
+      } else if (toolName === "list_pending_payments") {
+        const result = await caller.rpc("list_admin_manual_customer_payments");
+        toolError = result.error;
+        if (!result.error) {
+          const rows = Array.isArray(result.data) ? result.data as Array<Record<string, unknown>> : [];
+          toolResult = rows
+            .filter((row) => String(row.status || "").toUpperCase() === "PENDING")
+            .slice(0, 20)
+            .map((row) => ({
+              customer_name: safeText(row.customer_name, 80),
+              customer_code: safeText(row.customer_code, 8),
+              amount_minor: Number(row.amount_minor || 0),
+              note: safeText(row.note, 240),
+              created_at: row.created_at,
+              payment_method: safeText(row.payment_method, 40),
+              submission_source: safeText(row.submission_source, 40),
+            }));
+        }
+      } else if (toolName === "get_goals_overview") {
+        const rawCustomerName = args.customer_name;
+        const customerName = typeof rawCustomerName === "string" ? safeText(rawCustomerName, 64) : "";
+        if (rawCustomerName !== undefined && rawCustomerName !== null
+          && (typeof rawCustomerName !== "string" || customerName.length < 2)) {
+          return respond(400, { ok: false, error: "GOALS_QUERY_INVALID" });
+        }
+        const result = await caller.rpc("get_admin_goals_page_data");
+        toolError = result.error;
+        if (!result.error && result.data && typeof result.data === "object") {
+          const data = result.data as Record<string, unknown>;
+          const customers = Array.isArray(data.customers)
+            ? data.customers as Array<Record<string, unknown>>
+            : [];
+          const customerNames = new Map(customers.map((customer) => [
+            String(customer.id || ""),
+            safeText(customer.name, 80),
+          ]));
+          const matchesCustomer = (customerId: unknown) => {
+            const name = customerNames.get(String(customerId || "")) || "";
+            return !customerName || name.toLocaleLowerCase().includes(customerName.toLocaleLowerCase());
+          };
+          const goals = (Array.isArray(data.goals) ? data.goals as Array<Record<string, unknown>> : [])
+            .filter((goal) => matchesCustomer(goal.customer_id))
+            .slice(0, 15)
+            .map((goal) => ({
+              customer_name: customerNames.get(String(goal.customer_id || "")) || "عميل",
+              target_quantity: goal.target_quantity,
+              current_progress: goal.current_progress,
+              bonus_amount_minor: goal.bonus_amount_minor,
+              duration_days: goal.duration_days,
+              status: goal.status,
+              started_at: goal.started_at,
+              expires_at: goal.expires_at,
+              completed_at: goal.completed_at,
+            }));
+          const goalRequests = (Array.isArray(data.goal_requests)
+            ? data.goal_requests as Array<Record<string, unknown>> : [])
+            .filter((request) => matchesCustomer(request.customer_id))
+            .slice(0, Math.max(0, 15 - goals.length))
+            .map((request) => ({
+              customer_name: customerNames.get(String(request.customer_id || "")) || "عميل",
+              requested_target: request.requested_target,
+              status: request.status,
+              created_at: request.created_at,
+              reviewed_at: request.reviewed_at,
+              rejection_reason: safeText(request.rejection_reason, 240),
+            }));
+          toolResult = { goals, goal_requests: goalRequests };
+        }
       } else {
         return respond(502, { ok: false, error: "AI_TOOL_CALL_NOT_ALLOWED" });
       }
 
       if (toolError) {
         if (toolError.code === "42501") {
-          return respond(403, { ok: false, error: "CUSTOMER_LOOKUP_PERMISSION_REQUIRED" });
+          return respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" });
         }
         if (toolError.code === "28000") {
           return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
