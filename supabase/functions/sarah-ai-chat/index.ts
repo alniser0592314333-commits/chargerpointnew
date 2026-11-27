@@ -257,10 +257,6 @@ Deno.serve(async (req) => {
     taskStatus = status;
     taskState = nextState;
   };
-  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
-    return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
-  }
-
   // Server-derived, extensible capability registry. Super Admin inherits all
   // registered capabilities; ordinary admins inherit only their live effective
   // permissions. PostgreSQL independently re-checks each permission per call.
@@ -1112,6 +1108,24 @@ Deno.serve(async (req) => {
   );
   const enabledCapabilityNames = new Set<string>(enabledCapabilities.map((capability) => capability.name));
   const registeredCapabilityNames = new Set<string>(capabilityRegistry.map((capability) => capability.name));
+  const executedCapabilityNames = new Set<string>(
+    Array.isArray(taskState.executedCapabilityNames)
+      ? taskState.executedCapabilityNames.filter((name): name is string => typeof name === "string")
+      : [],
+  );
+  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
+    const savedExecutedNames = Array.isArray(taskState.executedCapabilityNames)
+      ? taskState.executedCapabilityNames
+      : null;
+    // Fail closed for legacy/malformed completed checkpoints. A completed answer
+    // may contain data read under permissions that have since been revoked.
+    if (!savedExecutedNames || savedExecutedNames.some(
+      (name) => typeof name !== "string" || !enabledCapabilityNames.has(name),
+    )) {
+      return respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" });
+    }
+    return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
+  }
   const readOnlyCapabilityNames = new Set<string>([
     "lookup_customers", "get_customer_profile", "lookup_customer_accounts",
     "list_customers_above_debt_threshold",
@@ -2337,6 +2351,7 @@ Deno.serve(async (req) => {
       const resultError = safeText(resultRecord.error, 80);
       return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
     }
+    executedCapabilityNames.add(confirmationName);
     const confirmedActions = Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [];
     const savedResults = taskState.resultsByIndex && typeof taskState.resultsByIndex === "object"
       && !Array.isArray(taskState.resultsByIndex)
@@ -2353,6 +2368,7 @@ Deno.serve(async (req) => {
       ...stateWithoutPendingAction,
       phase: "CONFIRMED_ACTION",
       resultsByIndex: confirmedResults,
+      executedCapabilityNames: [...executedCapabilityNames],
       confirmedActions: [...confirmedActions, {
         name: confirmationName,
         actionRequestId: confirmationRequestId,
@@ -2583,6 +2599,7 @@ Deno.serve(async (req) => {
         );
         executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index));
         for (const requestedCall of executionCalls) {
+          executedCapabilityNames.add(requestedCall.name);
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
             if (execution.response.status === 428 && binProtectedCapabilityNames.has(requestedCall.name)) {
@@ -2606,6 +2623,7 @@ Deno.serve(async (req) => {
                 requestedCalls,
                 resultsByIndex: Object.fromEntries(resultsByIndex),
                 verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
               });
               return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
             }
@@ -2625,6 +2643,7 @@ Deno.serve(async (req) => {
               requestedCalls,
               resultsByIndex: Object.fromEntries(resultsByIndex),
               verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
             });
             continue;
           }
@@ -2652,6 +2671,7 @@ Deno.serve(async (req) => {
               requestedCalls,
               resultsByIndex: Object.fromEntries(resultsByIndex),
               verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
             });
             return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
           }
@@ -2668,6 +2688,7 @@ Deno.serve(async (req) => {
             requestedCalls,
             resultsByIndex: Object.fromEntries(resultsByIndex),
             verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
           });
         }
 
@@ -2753,6 +2774,7 @@ Deno.serve(async (req) => {
       modelId,
       completedAt: new Date().toISOString(),
       confirmedActions: Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [],
+      executedCapabilityNames: [...executedCapabilityNames],
     });
     return respond(200, { ok: true, answer, modelId });
   } catch (error) {
