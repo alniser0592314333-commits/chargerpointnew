@@ -5,7 +5,7 @@
 ## Implemented in this phase
 
 - The chat gateway now defines one capability registry for Sarah's currently approved capabilities.
-- Each entry owns its Gemini declaration and the exact effective application permission required to expose it.
+- Each entry owns its Gemini declaration and the exact existing effective application permission key(s) required to expose it.
 - The enabled tool list is derived from the authenticated admin profile returned by the original user JWT.
 - Super Admin receives every capability registered in this catalog without a separate per-tool permission toggle.
 - Ordinary admins receive only capabilities present in their current effective permission projection. The UI does not supply this list.
@@ -16,7 +16,7 @@
 
 ## Current capability inventory
 
-Only these two read-only capabilities are registered today:
+The following five bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
