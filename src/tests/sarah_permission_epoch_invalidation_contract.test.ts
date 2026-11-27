@@ -26,7 +26,12 @@ describe("Sarah permission epoch invalidation", () => {
     expect(app).toContain("detail.authUserId !== userSession?.authUserId");
     expect(app).toContain("void handleFocus()");
     expect(app).toContain("authService.getCurrentSession(true)");
-    expect(edge).toContain('caller.rpc("get_current_admin_profile")');
+    expect(edge).toContain('caller.rpc("sarah_ai_get_chat_access_context"');
+    expect(edge).toContain("permissionSnapshotCache.get(userData.user.id)");
+    expect(edge).toContain("p_cached_permissions_version: usableCachedSnapshot?.version ?? null");
+    expect(edge).toContain("ADMIN_PERMISSION_CACHE_INCONSISTENT");
+    expect(edge).toContain("PERMISSION_SNAPSHOT_CACHE_TTL_MS = 5 * 60 * 1000");
+    expect(edge).not.toContain('caller.rpc("get_current_admin_profile")');
     expect(edge).toContain('admin.rpc("sarah_ai_task_gateway_resume"');
   });
 
@@ -44,6 +49,10 @@ describe("Sarah permission epoch invalidation", () => {
     expect(migration).toContain("AFTER UPDATE ON public.admin_custom_permissions");
     expect(migration).toContain("REFERENCING NEW TABLE AS inserted_permissions");
     expect(migration).toContain("REFERENCING OLD TABLE AS deleted_permissions");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION public.sarah_ai_get_chat_access_context(");
+    expect(migration).toContain("PERFORM public.assert_my_account_session_active()");
+    expect(migration).toContain("p_cached_permissions_version = v_permissions_version");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_chat_access_context(bigint) TO authenticated");
   });
 
   it("batches bulk permission replacement to avoid a Realtime event per permission", () => {
