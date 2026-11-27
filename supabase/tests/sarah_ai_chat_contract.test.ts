@@ -731,6 +731,7 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("MAX_TOOL_EXECUTIONS_PER_REQUEST = 8");
     expect(source).toContain("return pendingTaskResponse()");
     expect(source).toContain("providerRetryCount");
+    expect(source).toContain("executedCapabilityNames: []");
     expect(chatService).toContain("response.status === 202 && data.ok === true && data.pending === true");
     expect(chatPage).toContain("while (response.taskPending)");
     expect(chatPage).toContain("sarahInputQueue.renewUploadLease");
