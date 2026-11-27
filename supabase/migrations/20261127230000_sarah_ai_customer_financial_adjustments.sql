@@ -48,7 +48,7 @@ BEGIN
      OR p_name_hint IS NULL OR pg_catalog.char_length(pg_catalog.btrim(p_name_hint))<2
      OR pg_catalog.char_length(p_name_hint)>64 OR p_name_hint ~ '[[:cntrl:]]'
      OR p_amount_minor IS NULL OR p_amount_minor<=0
-     OR (p_note IS NOT NULL AND pg_catalog.char_length(p_note)>500) THEN
+     OR (p_note IS NOT NULL AND (pg_catalog.char_length(p_note)>500 OR p_note ~ '[[:cntrl:]]')) THEN
     RAISE EXCEPTION 'Invalid customer financial adjustment' USING ERRCODE='22023';
   END IF;
 
