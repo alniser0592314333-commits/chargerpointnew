@@ -28,6 +28,8 @@ const historicalChangeLogRedactionMigration = read("supabase/tests/fixtures/reda
 const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
 const customerAccountStatusMigration = read("supabase/migrations/20261127240000_sarah_ai_customer_account_status.sql");
 const dayOrderRenumberingMigration = read("supabase/migrations/20261127250000_sarah_ai_day_order_renumbering.sql");
+const durableTaskMigration = read("supabase/migrations/20261127296000_sarah_ai_durable_task_checkpoints.sql");
+const durableTaskSqlTest = read("supabase/tests/sarah_ai_durable_task_checkpoints.test.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
 const jawwalRecipientMigration = read("supabase/migrations/20261024130000_admin_managed_jawwal_recipient.sql");
@@ -735,6 +737,13 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index))");
     expect(source).toContain("pendingCallIndex: requestedCall.index");
     expect(source).toContain("confirmedResults");
+  });
+
+  it("does not restart a task that belongs to another or expired Auth session", () => {
+    expect(durableTaskMigration).toContain("Sarah task belongs to another or expired session");
+    expect(durableTaskMigration).toContain("auth_user_id = v_actor");
+    expect(durableTaskSqlTest).toContain("Expired Sarah task unexpectedly resumed");
+    expect(chatService).toContain("AI_TASK_CHECKPOINT_UNAVAILABLE");
   });
 
   it("does not persist raw user transcript text and safely recovers a task row lost before first creation", () => {
