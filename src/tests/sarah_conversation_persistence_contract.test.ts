@@ -3,7 +3,7 @@ const store=readFileSync("src/application/ai/sarahConversationStore.ts","utf8"),
 describe("Sarah conversation persistence",()=>{it("uses account keyed durable IndexedDB store and validates account",()=>{expect(store).toContain('keyPath:"accountId"');expect(store).toContain("ACCOUNT_REQUIRED");expect(store).toContain("indexedDB");});it("bounds retained conversation and persists transcript",()=>{expect(store).toContain("messages.length>500");expect(store).toContain("updatedAt");});it("hydrates and saves only the active account transcript",()=>{expect(page).toContain("sarahConversationStore.load(accountId)");expect(page).toContain("hydratedAccount !== accountId");expect(page).toContain("sarahConversationStore.save(accountId, messages, conversationGenerationRef.current)");expect(page).toContain("isCurrent(accountId, operation)");});
 
 it("persists the full answer before marking either queue item complete",()=>{
-  const sendIndex=page.indexOf("sendWithLocalActions(clean");
+  const sendIndex=page.indexOf("const response = await sendWithLocalActions(\n          clean,");
   const sendSave=page.indexOf("await sarahConversationStore.save(accountId, completedMessages", sendIndex);
   const sendComplete=page.indexOf('await sarahInputQueue.transition(accountId, id, "COMPLETED")', sendIndex);
   const retryIndex=page.indexOf("const response = await sendWithLocalActions(\n        record.text,");
