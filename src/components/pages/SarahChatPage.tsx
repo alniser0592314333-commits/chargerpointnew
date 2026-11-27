@@ -393,10 +393,19 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     } catch (err) {
       if (isCurrent(accountId, operation)) {
         setError("");
-        await sarahConversationStore.save(accountId, messages.map((item) => item.queueId === id
-          ? { ...item, status: typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "failed",
-              statusText: typeof navigator !== "undefined" && !navigator.onLine ? "بانتظار عودة الاتصال" : "فشلت المهمة" }
-          : item), conversationGenerationRef.current).catch(() => undefined);
+        const offline = typeof navigator !== "undefined" && !navigator.onLine;
+        const failureMessages = [
+          ...baseMessages,
+          {
+            role: "user" as const,
+            text: clean,
+            status: offline ? "offline" as const : "failed" as const,
+            queueId: id,
+            statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة",
+          },
+        ];
+        setMessages(failureMessages);
+        await sarahConversationStore.save(accountId, failureMessages, conversationGenerationRef.current).catch(() => undefined);
         await refreshQueue(accountId, operation);
       }
     } finally {
@@ -472,7 +481,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       }
       await sarahInputQueue.transition(accountId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
       const hasUserMessage = baseMessages.some((message) => message.role === "user" && message.text === record.text);
-      const retryMessages = hasUserMessage ? baseMessages : [...baseMessages, { role: "user" as const, text: record.text, queueId: record.id }];
+      const retryMessages = (hasUserMessage
+        ? baseMessages
+        : [...baseMessages, { role: "user" as const, text: record.text, queueId: record.id }])
+        .map((item) => item.queueId === record.id
+          ? { ...item, status: undefined, statusText: undefined }
+          : item);
       const completedMessages = [...retryMessages, { role: "assistant" as const, text: response.answer }];
       await sarahConversationStore.save(accountId, completedMessages, conversationGenerationRef.current);
       await sarahInputQueue.transition(accountId, record.id, "COMPLETED");
@@ -492,6 +506,24 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     }
   };
 
+  useEffect(() => {
+    const accountId = session?.authUserId || null;
+    if (!accountId || hydratedAccount !== accountId) return;
+    const handleOnline = async () => {
+      if (busy || !isCurrent(accountId)) return;
+      try {
+        const rows = await sarahInputQueue.list(accountId);
+        const next = rows.find((row) => row.actorAccountId === accountId
+          && row.state === "QUEUED_OFFLINE" && Boolean(row.text));
+        if (next) await retryQueued(next);
+      } catch {
+        // The message remains visible as pending; the user can retry from it.
+      }
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [session?.authUserId, hydratedAccount, busy, messages, pending]);
+
   const cancelBinConfirmation = async () => {
     const current = pendingBinAction;
     const accountId = session?.authUserId || null;
@@ -504,6 +536,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       setPendingBinAction(null);
       setBinValue("");
       setBinError("");
+      setMessages((prev) => prev.map((item) => item.queueId === current.id
+        ? { ...item, status: "failed", statusText: "أُلغي التأكيد الأمني؛ لم تُنفذ هذه العملية" }
+        : item));
       await refreshQueue(accountId, accountScopeRef.current.generation);
     } catch {
       setBinError("تعذر إلغاء خطوة التأكيد. لم تُنفذ العملية.");
@@ -618,17 +653,22 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       setBinError("");
     } catch (err) {
       if (isCurrent(accountId, operation)) {
+        const offline = typeof navigator !== "undefined" && !navigator.onLine;
         try {
           const rows = await sarahInputQueue.list(accountId);
           const current = rows.find((row) => row.id === pendingAction.id);
           if (current?.state === "UPLOADING" || current?.state === "SENT_TO_AI") {
-            await sarahInputQueue.transition(accountId, pendingAction.id, "NEEDS_ATTENTION", {
+            await sarahInputQueue.transition(accountId, pendingAction.id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", {
               lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
             });
           }
         } catch {}
-        setBinError("تعذر إكمال العملية. يمكنك إعادة المحاولة؛ لن يُحفظ رمز BIN.");
-        setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
+        setMessages((prev) => prev.map((item) => item.queueId === pendingAction.id
+          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة بعد التأكيد الأمني" }
+          : item));
+        setPendingBinAction(null);
+        setBinValue("");
+        setBinError("");
       }
     } finally {
       setBinValue("");
