@@ -151,6 +151,13 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("settings:manage");
   });
 
+  it("exposes one device catalog read and requires it before order creation", () => {
+    expect((source.match(/name: "get_device_catalog"/g) || []).length).toBe(2);
+    expect((source.match(/toolName === "get_device_catalog"/g) || []).length).toBe(1);
+    expect(source).toContain("call get_device_catalog and resolve each device");
+    expect(source).toContain('requiredPermissionGroups: [["devices:view"]]');
+  });
+
   it("registers atomic order creation with current permissions and canonical app commands", () => {
     expect(source).toContain('name: "create_order_with_items"');
     expect(source).toContain('requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:create"], ["orders:edit", "orders:write"]]');
