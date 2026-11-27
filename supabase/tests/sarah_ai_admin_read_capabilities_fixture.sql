@@ -131,6 +131,8 @@ CREATE TABLE public.sarah_ai_test_order_actions(
   payload jsonb NOT NULL
 );
 
+GRANT SELECT ON public.sarah_ai_test_order_actions TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.execute_sync_command(
   p_command_id uuid,
   p_command_type text,
