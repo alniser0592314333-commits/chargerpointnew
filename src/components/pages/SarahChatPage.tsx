@@ -7,6 +7,10 @@ import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInp
 import { sarahConversationStore } from "../../application/ai/sarahConversationStore";
 import { SarahAccountOperationScope } from "../../application/ai/sarahAccountOperationScope";
 import { buildSarahHistorySnapshot } from "../../application/ai/sarahHistory";
+import { localDb } from "../../infrastructure/localDb/localDb";
+import { isBinRequiredOutboxCommand } from "../../infrastructure/sync/binAuthorization";
+import { globalSyncBridge } from "../../infrastructure/sync/syncBridge";
+import type { SarahLocalSyncActionResult, SarahLocalSyncContext } from "../../services/ai/sarahChatService";
 
 type Message = { role: "user" | "assistant"; text: string };
 type PendingBinAction = {
@@ -117,6 +121,89 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   }, [session?.userId, session?.authUserId]);
 
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
+  const canManageSync = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("sync:manage")));
+
+  const collectLocalSyncContext = async (): Promise<SarahLocalSyncContext | undefined> => {
+    if (!canManageSync) return undefined;
+    try {
+      const [outbox, history, syncState] = await Promise.all([
+        localDb.listOutbox(),
+        localDb.listHistory(),
+        localDb.getSyncState("global"),
+      ]);
+      const recentErrorClasses = [...history]
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime())
+        .filter((record) => Boolean(record.errorClass))
+        .slice(0, 5)
+        .map((record) => String(record.errorClass || "UNKNOWN").toUpperCase().replace(/[^A-Z_]/g, "").slice(0, 32) || "UNKNOWN");
+      return {
+        online: typeof navigator !== "undefined" ? navigator.onLine : false,
+        pendingCount: outbox.filter((record) => record.status === "pending" || record.status === "syncing").length,
+        blockedCount: outbox.filter((record) => record.status === "blocked").length,
+        failedCount: outbox.filter((record) => record.status === "rejected" || record.status === "conflict").length,
+        binRequiredCount: outbox.filter(isBinRequiredOutboxCommand).length,
+        lastPulledAt: typeof syncState?.lastPulledAt === "string" ? syncState.lastPulledAt : null,
+        recentErrorClasses,
+      };
+    } catch {
+      return undefined;
+    }
+  };
+
+  const sendWithLocalActions = async (
+    message: string,
+    accountId: string,
+    history: Message[],
+    correlationId: string,
+    bin?: string,
+  ) => {
+    const localSyncContext = await collectLocalSyncContext();
+    let response = await sarahChatService.send(
+      message,
+      accountId,
+      history,
+      correlationId,
+      bin,
+      localSyncContext ? { localSyncContext } : undefined,
+    );
+    if (response.requiresLocalSync && response.localSyncAction === "manual_sync") {
+      if (!canManageSync) throw new Error("SYNC_MANAGE_PERMISSION_REQUIRED");
+      let localSyncActionResult: SarahLocalSyncActionResult;
+      try {
+        const result = await globalSyncBridge.requestManualSync();
+        localSyncActionResult = {
+          action: "manual_sync",
+          success: true,
+          pushed: result.pushed,
+          pulled: result.pulled,
+        };
+      } catch (syncError) {
+        const message = syncError instanceof Error ? syncError.message : "";
+        localSyncActionResult = {
+          action: "manual_sync",
+          success: false,
+          pushed: 0,
+          pulled: 0,
+          errorCode: typeof navigator !== "undefined" && !navigator.onLine
+            ? "NETWORK_OFFLINE"
+            : /already in progress/i.test(message)
+            ? "SYNC_ALREADY_IN_PROGRESS"
+            : "SYNC_FAILED",
+        };
+      }
+      const refreshedContext = await collectLocalSyncContext();
+      response = await sarahChatService.send(
+        message,
+        accountId,
+        history,
+        correlationId,
+        bin,
+        { localSyncContext: refreshedContext, localSyncActionResult },
+      );
+      if (response.requiresLocalSync) throw new Error("LOCAL_SYNC_HANDOFF_LOOP");
+    }
+    return response;
+  };
 
   const send = async () => {
     const accountId = session?.authUserId || null;
@@ -146,7 +233,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       await sarahInputQueue.transition(accountId, id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
       try {
-        const response = await sarahChatService.send(clean, session?.authUserId || '', historySnapshot, correlationId);
+        const response = await sendWithLocalActions(clean, accountId, historySnapshot, correlationId);
         if (!isCurrent(accountId, operation)) return;
         if (response.requiresBin) {
           await sarahInputQueue.transition(accountId, id, "WAITING_FOR_CONFIRMATION", {
@@ -212,7 +299,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       const baseMessages = messages;
       const retryHistory = buildSarahHistorySnapshot(baseMessages);
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
-      const response = await sarahChatService.send(record.text, session?.authUserId || '', retryHistory, record.correlationId);
+      const response = await sendWithLocalActions(record.text, accountId, retryHistory, record.correlationId);
       if (!isCurrent(accountId, operation)) return;
       if (response.requiresBin) {
         await sarahInputQueue.transition(accountId, record.id, "WAITING_FOR_CONFIRMATION", {
@@ -271,7 +358,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       await sarahInputQueue.transition(accountId, pendingAction.id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
 
-      const response = await sarahChatService.send(
+      const response = await sendWithLocalActions(
         pendingAction.text,
         accountId,
         pendingAction.historySnapshot,
