@@ -2430,7 +2430,7 @@ Deno.serve(async (req) => {
         actionRequestId: confirmationRequestId,
         result: execution.result,
         confirmedAt: new Date().toISOString(),
-      }].slice(-20),
+      }].slice(-100),
     });
     const money = (value: unknown) => {
       if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
