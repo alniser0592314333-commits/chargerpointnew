@@ -90,10 +90,20 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
+DECLARE
+  v_quota jsonb;
 BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public.assert_my_account_session_active();
   PERFORM public._cp_assert_active_admin_permission('goals:manage');
+  v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
+  END IF;
+  v_quota:=public.sarah_ai_consume_my_quota('tool_day');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
+  END IF;
   RETURN public.sarah_ai_goal_proposal_for_customer(p_customer_id);
 END;
 $function$;
