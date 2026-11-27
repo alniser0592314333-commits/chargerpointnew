@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following forty-eight bounded capabilities are registered today:
+The following fifty bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -35,6 +35,8 @@ The following forty-eight bounded capabilities are registered today:
 | renumber_day_orders | orders:view AND orders:renumber-day | Reorders the complete order set for one open day through the canonical command with version and set validation |
 | get_business_hours_settings | settings:manage | Reads current public business hours through the app's existing Edge Function |
 | update_business_hours_settings | settings:manage | Updates only explicit fields after reading current settings through the canonical SET_SYSTEM_SETTING command; the database rechecks session and permission on the write |
+| get_jawwal_pay_recipient | settings:manage | Reads the central public Jawwal Pay recipient number through the app's existing authenticated RPC |
+| update_jawwal_pay_recipient | settings:manage | Updates the central recipient number in 05xxxxxxxx format through the original session- and permission-guarded RPC |
 | get_customer_orders | (customers:view OR customers:read) AND (orders:view OR orders:read) | Up to ten recent orders and bounded item status/charge details |
 | create_order_with_items | (customers:view OR customers:read) AND orders:create AND (orders:edit OR orders:write) | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
 | lookup_customer_accounts | (customers:view OR customers:read) AND customers:deactivate | Up to five active or inactive account names, codes, and active states; creates same-session proof |
@@ -75,7 +77,7 @@ The following forty-eight bounded capabilities are registered today:
 | cancel_customer_goal | goals:manage | Cancels one active goal through the existing admin RPC |
 | review_goal_cancellation | goals:approve OR goals:manage | Approves/rejects one pending cancellation request through the existing admin RPC |
 
-Read capabilities include customer/profile/balance/order lookup, non-retired device catalog, aggregate financial reporting, pending payment lists, goal/request summaries, official goal proposals, and sanitized AI provider settings. Enabled mutations include customer creation, basic profile editing and BIN-protected debt-limit/charger-exemption changes, device catalog creation/update/retirement, customer credit adjustments and payment refunds, customer activation/suspension, business-hours settings, AI provider model/generation-setting changes and explicitly requested provider clearing, order creation, delivery, item/order cancellation, full-day order renumbering, manual CASH payment record-and-approval, approval/rejection of existing pending payment submissions, and goal creation, request approval/rejection, goal configuration updates, goal cancellation, and cancellation-request review. Provider API keys remain confined to the secure AI settings screen and are never accepted or returned in chat. Device price and charger-policy changes are checked independently against the exact original permission keys inside PostgreSQL.
+Read capabilities include customer/profile/balance/order lookup, non-retired device catalog, aggregate financial reporting, pending payment lists, goal/request summaries, official goal proposals, Jawwal Pay recipient number, and sanitized AI provider settings. Enabled mutations include customer creation, basic profile editing and BIN-protected debt-limit/charger-exemption changes, device catalog creation/update/retirement, customer credit adjustments and payment refunds, customer activation/suspension, business-hours and Jawwal Pay recipient settings, AI provider model/generation-setting changes and explicitly requested provider clearing, order creation, delivery, item/order cancellation, full-day order renumbering, manual CASH payment record-and-approval, approval/rejection of existing pending payment submissions, and goal creation, request approval/rejection, goal configuration updates, goal cancellation, and cancellation-request review. Provider API keys remain confined to the secure AI settings screen and are never accepted or returned in chat. Device price and charger-policy changes are checked independently against the exact original permission keys inside PostgreSQL.
 
 Order creation calls the existing canonical CREATE_ORDER and ADD_ORDER_ITEM commands inside one database transaction; any failed item rolls back the whole order. It rechecks active customer/device state, the debt-limit rule, duplicate same-customer/day orders, open-day state, and current account permissions. If today's Palestine business day does not exist, it is created only when the actor has settings:manage; a closed day is never reopened.
 
