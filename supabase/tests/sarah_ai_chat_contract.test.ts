@@ -202,7 +202,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(customerUpdateMigration).toContain("proof.auth_session_id=v_session_id");
     expect(customerUpdateMigration).toContain("'UPDATE_CUSTOMER','customers'");
     expect(customerUpdateMigration).not.toContain("p_bin");
-    expect(customerUpdateMigration).toContain("now() + interval '5 minutes'");
+    expect(customerUpdateMigration).toContain("proof.expires_at>now()");
   });
 
   it("registers customer creation through the canonical command and customers:create permission", () => {
