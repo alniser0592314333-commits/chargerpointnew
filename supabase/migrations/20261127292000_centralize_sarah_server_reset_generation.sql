@@ -49,8 +49,10 @@ DECLARE
   v_definition text;
   v_old text := 'public.execute_sync_command(';
   v_new text := 'public.sarah_ai_execute_sync_command(';
-  v_total_functions integer := 0;
-  v_total_calls integer := 0;
+  v_direct_functions integer := 0;
+  v_direct_calls integer := 0;
+  v_bridge_functions integer := 0;
+  v_bridge_calls integer := 0;
   v_count integer;
 BEGIN
   FOR r IN
@@ -61,23 +63,32 @@ BEGIN
       AND p.proname LIKE 'sarah_ai_%'
       AND p.proname <> 'sarah_ai_execute_sync_command'
       AND p.prokind = 'f'
-      AND pg_get_functiondef(p.oid) LIKE '%public.execute_sync_command(%'
     ORDER BY p.proname, p.oid
   LOOP
     v_definition := pg_get_functiondef(r.oid);
     v_count := (length(v_definition) - length(replace(v_definition, v_old, ''))) / length(v_old);
-    IF v_count < 1 THEN
-      RAISE EXCEPTION 'Unexpected empty Sarah executor reference in %', r.proname;
+    IF v_count > 0 THEN
+      v_definition := replace(v_definition, v_old, v_new);
+      EXECUTE v_definition;
+      v_direct_functions := v_direct_functions + 1;
+      v_direct_calls := v_direct_calls + v_count;
+    ELSE
+      v_count := (length(v_definition) - length(replace(v_definition, v_new, ''))) / length(v_new);
+      IF v_count > 0 THEN
+        v_bridge_functions := v_bridge_functions + 1;
+        v_bridge_calls := v_bridge_calls + v_count;
+      END IF;
     END IF;
-    v_definition := replace(v_definition, v_old, v_new);
-    EXECUTE v_definition;
-    v_total_functions := v_total_functions + 1;
-    v_total_calls := v_total_calls + v_count;
   END LOOP;
 
-  IF v_total_functions <> 11 OR v_total_calls <> 15 THEN
-    RAISE EXCEPTION 'Expected 11 Sarah RPCs / 15 canonical calls to be bridged, got % RPCs / % calls; transaction aborted',
-      v_total_functions, v_total_calls;
+  IF v_direct_functions = 11 AND v_direct_calls = 15 THEN
+    NULL; -- All expected RPCs have just been rewritten.
+  ELSIF v_direct_functions = 0 AND v_direct_calls = 0
+        AND v_bridge_functions = 11 AND v_bridge_calls = 15 THEN
+    NULL; -- Already applied through the production migration runner.
+  ELSE
+    RAISE EXCEPTION 'Unexpected Sarah executor inventory: direct %/% calls, bridged %/% calls; migration aborted',
+      v_direct_functions, v_direct_calls, v_bridge_functions, v_bridge_calls;
   END IF;
 END
 $migration$;
