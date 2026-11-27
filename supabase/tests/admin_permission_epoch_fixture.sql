@@ -30,3 +30,35 @@ CREATE TABLE public.admin_custom_permissions (
   is_grant boolean NOT NULL DEFAULT true,
   PRIMARY KEY (admin_id, permission)
 );
+
+CREATE OR REPLACE FUNCTION public.assert_my_account_session_active()
+RETURNS void
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.get_effective_permissions__session_guarded_impl(p_admin_id uuid)
+RETURNS TABLE(permission text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+AS $function$
+  WITH custom_state AS (
+    SELECT EXISTS (
+      SELECT 1 FROM public.admin_custom_permissions p WHERE p.admin_id = p_admin_id
+    ) AS has_custom_state
+  )
+  SELECT trim(p.permission)
+  FROM public.admin_custom_permissions p
+  WHERE p.admin_id = p_admin_id AND p.is_grant IS TRUE
+    AND (SELECT has_custom_state FROM custom_state)
+  UNION
+  SELECT unnest(a.permissions)
+  FROM public.admins a
+  WHERE a.id = p_admin_id AND NOT (SELECT has_custom_state FROM custom_state);
+$function$;
