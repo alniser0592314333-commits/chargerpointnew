@@ -1448,6 +1448,8 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127270000_sarah_ai_freeze_bin_payment_intent.sql
+      # Final policy override: the legacy quota tests above validate their historical
+      # migration; these steps assert the current unmetered admin-agent behavior.
       - name: Apply Sarah unlimited admin work quota migration
         env:
           PGPASSWORD: postgres
