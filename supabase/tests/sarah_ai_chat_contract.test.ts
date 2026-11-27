@@ -141,6 +141,24 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("canLookupCustomers = isSuperAdmin || permissions.includes");
   });
 
+  it("bridges only sanitized device-local sync status and rechecks sync permission before execution", () => {
+    expect(source).toContain('name: "get_local_sync_status"');
+    expect(source).toContain('name: "request_manual_sync"');
+    expect(source).toContain('requiredPermissionGroups: [["sync:manage"]]');
+    expect(source).toContain("sanitizeLocalSyncContext");
+    expect(source).toContain("sanitizeLocalSyncActionResult");
+    expect(source).toContain('caller.rpc("begin_sync_bootstrap")');
+    expect(chatService).toContain("localSyncContext?: SarahLocalSyncContext");
+    expect(chatService).toContain("requestBody.localSyncActionResult = clientContext.localSyncActionResult");
+    expect(chatPage).toContain('invokeSupabaseRpc<Record<string, unknown>>("begin_sync_bootstrap")');
+    expect(chatPage).toContain("globalSyncBridge.requestManualSync()");
+    expect(chatPage.indexOf('invokeSupabaseRpc<Record<string, unknown>>("begin_sync_bootstrap")'))
+      .toBeLessThan(chatPage.indexOf("globalSyncBridge.requestManualSync()"));
+    expect(chatPage).toContain("SYNC_MANAGE_PERMISSION_REQUIRED");
+    expect(chatPage).toContain("recentErrorClasses");
+    expect(chatPage).not.toContain("requestBody");
+  });
+
   it("connects Jawwal Pay recipient settings to the existing guarded settings RPCs", () => {
     expect(source).toContain('name: "get_jawwal_pay_recipient"');
     expect(source).toContain('name: "update_jawwal_pay_recipient"');
