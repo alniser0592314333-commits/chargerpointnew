@@ -2346,7 +2346,9 @@ Deno.serve(async (req) => {
     const confirmedResults = Number.isInteger(pendingCallIndex) && pendingCallIndex >= 0
       ? { ...savedResults, [String(pendingCallIndex)]: execution.result }
       : savedResults;
-    const { pendingAction: _pendingAction, pendingCallIndex: _pendingCallIndex, ...stateWithoutPendingAction } = taskState;
+    const stateWithoutPendingAction = { ...taskState };
+    delete stateWithoutPendingAction.pendingAction;
+    delete stateWithoutPendingAction.pendingCallIndex;
     await checkpointTask("RUNNING", {
       ...stateWithoutPendingAction,
       phase: "CONFIRMED_ACTION",
