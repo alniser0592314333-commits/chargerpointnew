@@ -188,7 +188,6 @@ BEGIN
       0,v_device.name
     );
     RETURN jsonb_build_object('result',jsonb_build_object('provisionalFinalChargeMinor',v_charge));
-  END IF;
   ELSIF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER_ITEM','CANCEL_ORDER') THEN
     INSERT INTO public.sarah_ai_test_order_actions(command_id,command_type,aggregate_type,aggregate_id,payload)
     VALUES(p_command_id,p_command_type,p_aggregate_type,p_aggregate_id,p_payload);
