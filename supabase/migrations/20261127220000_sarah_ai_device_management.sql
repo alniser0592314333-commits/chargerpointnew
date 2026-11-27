@@ -30,6 +30,12 @@ DECLARE
   v_payload jsonb;
   v_result jsonb;
   v_quota jsonb;
+  v_session_id uuid;
+  v_existing_session_id uuid;
+  v_request_payload jsonb;
+  v_existing_action text;
+  v_existing_payload jsonb;
+  v_saved_result jsonb;
 BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public.assert_my_account_session_active();
@@ -71,6 +77,35 @@ BEGIN
     END IF;
   END IF;
 
+  IF auth.uid() IS NULL OR COALESCE(auth.jwt()->>'session_id','')='' THEN
+    RAISE EXCEPTION 'Authenticated admin session required' USING ERRCODE='28000';
+  END IF;
+  v_session_id:=(auth.jwt()->>'session_id')::uuid;
+  v_request_payload:=jsonb_build_object(
+    'action',v_action,'device_id',v_device_id,'payload',v_payload,
+    'expected_version',p_expected_version
+  );
+  INSERT INTO public.sarah_ai_action_idempotency(
+    auth_user_id,auth_session_id,request_id,action_name,request_payload
+  )
+  VALUES(auth.uid(),v_session_id,p_request_id,'manage_device_type',v_request_payload)
+  ON CONFLICT(auth_user_id,request_id) DO NOTHING;
+  SELECT auth_session_id,action_name,request_payload,result
+  INTO v_existing_session_id,v_existing_action,v_existing_payload,v_saved_result
+  FROM public.sarah_ai_action_idempotency
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id
+  FOR UPDATE;
+  IF v_existing_session_id IS DISTINCT FROM v_session_id
+     OR v_existing_action IS DISTINCT FROM 'manage_device_type' THEN
+    RAISE EXCEPTION 'Request id belongs to another session or action' USING ERRCODE='P0409';
+  END IF;
+  IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
+    RAISE EXCEPTION 'Completed request id cannot be reused with different device input' USING ERRCODE='P0409';
+  END IF;
+  IF v_saved_result IS NOT NULL THEN
+    RETURN v_saved_result || jsonb_build_object('idempotent_replay',true);
+  END IF;
+
   v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
   IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
     RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
@@ -91,6 +126,9 @@ BEGIN
   IF COALESCE((v_result->>'success')::boolean,false) IS NOT TRUE THEN
     RAISE EXCEPTION 'Canonical device command did not confirm success' USING ERRCODE='P0001';
   END IF;
+  UPDATE public.sarah_ai_action_idempotency
+  SET result=v_result
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id;
   RETURN v_result;
 END;
 $function$;
