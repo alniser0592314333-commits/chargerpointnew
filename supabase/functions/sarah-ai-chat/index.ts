@@ -194,6 +194,64 @@ Deno.serve(async (req) => {
     return respond(403, { ok: false, error: "AI_USE_PERMISSION_REQUIRED" });
   }
 
+  // Durable task identity is bound to the authenticated user/session by the
+  // database RPCs. Continuations and secure confirmations load that same task.
+  const resumeTask = body.resumeTask === true || confirmationMode;
+  const taskHashBytes = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify({ text, history })),
+  ));
+  const taskRequestHash = Array.from(taskHashBytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const initialTaskState: Record<string, unknown> = {
+    phase: "INITIAL",
+    contents,
+    confirmedActions: [],
+  };
+  const taskLoad = resumeTask
+    ? await caller.rpc("sarah_ai_task_resume", { p_request_id: requestId })
+    : await caller.rpc("sarah_ai_task_load_or_create", {
+        p_request_id: requestId,
+        p_request_hash: taskRequestHash,
+        p_initial_state: initialTaskState,
+      });
+  if (taskLoad.error || !taskLoad.data || typeof taskLoad.data !== "object") {
+    return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_UNAVAILABLE" });
+  }
+  const loadedTask = taskLoad.data as Record<string, unknown>;
+  let taskVersion = Number(loadedTask.version);
+  let taskStatus = safeText(loadedTask.status, 40);
+  let taskState = loadedTask.state && typeof loadedTask.state === "object" && !Array.isArray(loadedTask.state)
+    ? loadedTask.state as Record<string, unknown>
+    : initialTaskState;
+  if (!Number.isSafeInteger(taskVersion) || taskVersion < 1) {
+    return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_INVALID" });
+  }
+  const checkpointTask = async (
+    status: "RUNNING" | "WAITING_CONFIRMATION" | "WAITING_CLARIFICATION" | "COMPLETED" | "FAILED",
+    nextState: Record<string, unknown>,
+  ) => {
+    const saved = await caller.rpc("sarah_ai_task_checkpoint", {
+      p_request_id: requestId,
+      p_expected_version: taskVersion,
+      p_status: status,
+      p_state: nextState,
+    });
+    if (saved.error || !saved.data || typeof saved.data !== "object") {
+      throw new Error("AI_TASK_CHECKPOINT_WRITE_FAILED");
+    }
+    const row = saved.data as Record<string, unknown>;
+    const nextVersion = Number(row.version);
+    if (!Number.isSafeInteger(nextVersion) || nextVersion <= taskVersion) {
+      throw new Error("AI_TASK_CHECKPOINT_INVALID");
+    }
+    taskVersion = nextVersion;
+    taskStatus = status;
+    taskState = nextState;
+  };
+  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
+    return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
+  }
+
   // Server-derived, extensible capability registry. Super Admin inherits all
   // registered capabilities; ordinary admins inherit only their live effective
   // permissions. PostgreSQL independently re-checks each permission per call.
