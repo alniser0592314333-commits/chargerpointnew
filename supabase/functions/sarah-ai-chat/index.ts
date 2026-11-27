@@ -73,6 +73,7 @@ const mapGeminiError = (status: number) =>
     : "GEMINI_REQUEST_REJECTED";
 
 type PermissionSnapshotCacheEntry = {
+  adminId: string;
   version: string;
   permissions: string[];
   expiresAt: number;
@@ -210,12 +211,27 @@ Deno.serve(async (req) => {
   // This RPC validates the live account session and reads the current epoch on
   // every request. It returns the effective permission array only on a cache
   // miss or epoch change, avoiding a repeated permission-table scan per message.
-  const { data: profile, error: profileError } = await caller.rpc("sarah_ai_get_chat_access_context", {
+  let { data: profile, error: profileError } = await caller.rpc("sarah_ai_get_chat_access_context", {
     p_cached_permissions_version: usableCachedSnapshot?.version ?? null,
   });
+  // A deleted/recreated admin row must not inherit a cache entry merely because
+  // its numeric epoch restarted at the same value.
+  if (!profileError && profile?.permissions_unchanged === true && usableCachedSnapshot
+    && safeText(profile.admin_id, 36) !== usableCachedSnapshot.adminId) {
+    const refreshed = await caller.rpc("sarah_ai_get_chat_access_context", {
+      p_cached_permissions_version: null,
+    });
+    profile = refreshed.data;
+    profileError = refreshed.error;
+  }
   if (profileError || !profile || profile.authenticated !== true || profile.is_admin !== true
     || profile.is_active !== true || profile.auth_user_id !== userData.user.id) {
     return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
+  }
+
+  const adminId = safeText(profile.admin_id, 36);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(adminId)) {
+    return respond(503, { ok: false, error: "ADMIN_PERMISSION_CONTEXT_UNAVAILABLE" });
   }
 
   const permissionVersion = safeText(profile.permissions_version, 32);
@@ -240,6 +256,7 @@ Deno.serve(async (req) => {
         )
       : [];
     rememberPermissionSnapshot(userData.user.id, {
+      adminId,
       version: permissionVersion,
       permissions,
       expiresAt: Date.now() + PERMISSION_SNAPSHOT_CACHE_TTL_MS,
