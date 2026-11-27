@@ -129,6 +129,92 @@ END;
 $manager_retry$;
 RESET ROLE;
 
+-- Payment entry and review stay inside the existing pending-submission workflow.
+INSERT INTO public.qr_payment_submissions(
+  id,customer_id,amount_minor,status,payment_method,submission_source,note
+)
+VALUES(
+  '50000000-0000-4000-8000-000000000001',
+  'aaaa0000-0000-4000-8000-000000000001',
+  3000,'PENDING','JAWALPAY','CUSTOMER_JAWAL_PAY','pending test submission'
+);
+
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000002',false);
+DO $payment_record_and_approve$
+DECLARE
+  v_result jsonb;
+  v_replay jsonb;
+BEGIN
+  PERFORM public.sarah_ai_lookup_customers('أحمد علي');
+  BEGIN
+    PERFORM public.sarah_ai_record_and_approve_payment(
+      '40000000-0000-4000-8000-000000000008','AAAA','أحمد علي',2000,'manual cash payment',NULL
+    );
+    RAISE EXCEPTION 'Payment creation unexpectedly proceeded without BIN';
+  EXCEPTION WHEN SQLSTATE 'P4004' THEN NULL;
+  END;
+
+  BEGIN
+    PERFORM public.sarah_ai_record_and_approve_payment(
+      '40000000-0000-4000-8000-000000000008','AAAA','أحمد علي',2000,'manual cash payment','0000'
+    );
+    RAISE EXCEPTION 'Payment creation unexpectedly accepted invalid BIN';
+  EXCEPTION WHEN SQLSTATE 'P0003' THEN NULL;
+  END;
+
+  v_result:=public.sarah_ai_record_and_approve_payment(
+    '40000000-0000-4000-8000-000000000008','AAAA','أحمد علي',2000,'manual cash payment','1234'
+  );
+  IF v_result->>'ok'<>'true'
+     OR v_result->>'status'<>'APPROVED'
+     OR v_result->>'amount_minor'<>'2000'
+     OR v_result->>'balance_after_minor'<>'3234' THEN
+    RAISE EXCEPTION 'BIN-gated payment record/approval failed: %',v_result;
+  END IF;
+
+  v_replay:=public.sarah_ai_record_and_approve_payment(
+    '40000000-0000-4000-8000-000000000008','AAAA','أحمد علي',2000,'manual cash payment','9999'
+  );
+  IF v_replay->>'ok'<>'true' OR v_replay->>'idempotent_replay'<>'true' THEN
+    RAISE EXCEPTION 'Successful payment was not safely replayed: %',v_replay;
+  END IF;
+
+  v_result:=public.sarah_ai_review_payment_submission(
+    '40000000-0000-4000-8000-000000000009',
+    '50000000-0000-4000-8000-000000000001',
+    'REJECT',NULL,'receipt mismatch',NULL
+  );
+  IF v_result->>'ok'<>'true' OR v_result->>'status'<>'REJECTED' THEN
+    RAISE EXCEPTION 'Payment rejection did not use the canonical review path: %',v_result;
+  END IF;
+END;
+$payment_record_and_approve$;
+RESET ROLE;
+
+DO $payment_storage_privacy$
+BEGIN
+  IF (SELECT count(*) FROM public.qr_payment_submissions
+      WHERE customer_id='aaaa0000-0000-4000-8000-000000000001'
+        AND status='APPROVED' AND amount_minor=2000)<>1 THEN
+    RAISE EXCEPTION 'Payment retry created more than one approved submission';
+  END IF;
+  IF EXISTS(
+    SELECT 1 FROM public.sarah_ai_action_idempotency
+    WHERE request_id='40000000-0000-4000-8000-000000000008'
+      AND request_payload ? 'bin'
+  ) THEN
+    RAISE EXCEPTION 'Raw BIN must never be persisted in action idempotency data';
+  END IF;
+  IF (SELECT status FROM public.qr_payment_submissions
+      WHERE id='50000000-0000-4000-8000-000000000001')<>'REJECTED' THEN
+    RAISE EXCEPTION 'Rejected payment submission status was not persisted';
+  END IF;
+END;
+$payment_storage_privacy$;
+
 -- A different Auth session for the same user cannot reuse the old lookup proof.
 INSERT INTO auth.sessions(id,user_id,created_at,not_after,user_agent)
 VALUES('20000000-0000-4000-8000-000000000010','10000000-0000-4000-8000-000000000002',now(),NULL,'second session');
@@ -263,7 +349,11 @@ BEGIN
      OR NOT has_function_privilege('authenticated','public.sarah_ai_get_customer_orders(text,text,integer)','EXECUTE')
      OR NOT has_function_privilege('authenticated','public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text)','EXECUTE')
      OR has_function_privilege('anon','public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text)','EXECUTE')
-     OR has_function_privilege('service_role','public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text)','EXECUTE') THEN
+     OR has_function_privilege('service_role','public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.sarah_ai_record_and_approve_payment(uuid,text,text,bigint,text,text)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.sarah_ai_review_payment_submission(uuid,uuid,text,bigint,text,text)','EXECUTE')
+     OR has_function_privilege('anon','public.sarah_ai_record_and_approve_payment(uuid,text,text,bigint,text,text)','EXECUTE')
+     OR has_function_privilege('service_role','public.sarah_ai_record_and_approve_payment(uuid,text,text,bigint,text,text)','EXECUTE') THEN
     RAISE EXCEPTION 'Sarah admin read/order RPC grants are incorrect';
   END IF;
 END;
