@@ -133,7 +133,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       await sarahInputQueue.transition(accountId, id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
       try {
-        const response = await sarahChatService.send(clean, session?.authUserId || '', historySnapshot);
+        const response = await sarahChatService.send(clean, session?.authUserId || '', historySnapshot, correlationId);
         if (!isCurrent(accountId, operation)) return;
         await sarahInputQueue.transition(accountId, id, "SENT_TO_AI", { resultRef: correlationId });
         const completedMessages = [...baseMessages, { role: "user" as const, text: clean }, { role: "assistant" as const, text: response.answer }];
@@ -187,7 +187,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       const baseMessages = messages;
       const retryHistory = buildSarahHistorySnapshot(baseMessages);
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
-      const response = await sarahChatService.send(record.text, session?.authUserId || '', retryHistory);
+      const response = await sarahChatService.send(record.text, session?.authUserId || '', retryHistory, record.correlationId);
       if (!isCurrent(accountId, operation)) return;
       await sarahInputQueue.transition(accountId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
       const hasUserMessage = baseMessages.some((message) => message.role === "user" && message.text === record.text);
