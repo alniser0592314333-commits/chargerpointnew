@@ -165,6 +165,18 @@ Deno.serve(async (req) => {
   if (userError || !userData.user) {
     return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
   }
+  let authSessionId = "";
+  try {
+    const jwtPayloadPart = bearer.split(".")[1];
+    if (!jwtPayloadPart) throw new Error("JWT payload missing");
+    const normalizedPayload = jwtPayloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const decodedPayload = atob(normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, "="));
+    const jwtClaims = JSON.parse(decodedPayload) as Record<string, unknown>;
+    authSessionId = typeof jwtClaims.session_id === "string" ? jwtClaims.session_id : "";
+  } catch {
+    authSessionId = "";
+  }
+  if (!authSessionId) return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
 
   const { data: profile, error: profileError } = await caller.rpc("get_current_admin_profile");
   if (profileError || !profile || profile.authenticated !== true || profile.is_admin !== true
@@ -1120,7 +1132,7 @@ Deno.serve(async (req) => {
   ) => {
     const payload = {
       version: 1,
-      actorId: user.id,
+      actorId: userData.user.id,
       sessionId: authSessionId,
       requestId,
       actionName,
@@ -2140,7 +2152,7 @@ Deno.serve(async (req) => {
     const signedAction = confirmationToken ? await verifyPendingActionToken(confirmationToken) : null;
     if (!signedAction) return respond(400, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
     if (signedAction.expiresAt <= Date.now()) return respond(409, { ok: false, error: "BIN_CONFIRMATION_EXPIRED" });
-    if (signedAction.actorId !== user.id || signedAction.sessionId !== authSessionId || signedAction.requestId !== requestId) {
+    if (signedAction.actorId !== userData.user.id || signedAction.sessionId !== authSessionId || signedAction.requestId !== requestId) {
       return respond(403, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
     }
     const confirmationName = safeText(signedAction.actionName, 80);
