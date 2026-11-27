@@ -283,7 +283,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('requiredPermissionGroups: [["customers:view", "customers:read"], ["customers:edit", "customers:write"]]');
     expect(source).toContain('caller.rpc("sarah_ai_update_customer_protected_settings"');
     expect((source.match(/toolName === "update_customer_protected_settings"/g) || []).length).toBe(1);
-    expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes");
+    expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes, subordinate-admin permission/suspension/activation changes, business-hours or Jawwal Pay recipient changes, current-device manual sync, AI provider configuration changes or clearing, device catalog changes, customer credit/refund actions, order creation/delivery/cancellation/day renumbering, payment actions, goal changes, or history-review mutations when the user explicitly asks for that action.");
     expect(source).toContain("p_bin: actionBin");
     expect(protectedCustomerSettingsMigration).toContain("public._cp_assert_active_admin_permission('customers:debt-limit')");
     expect(source).toContain("Optional positive ILS minor units, only for the catalog's Other device type.");
