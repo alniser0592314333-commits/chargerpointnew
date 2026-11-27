@@ -339,6 +339,7 @@ describe("Sarah chat gateway security contract", () => {
   it("registers subordinate admin visibility and super-admin-only account controls", () => {
     expect(source).toContain('name: "list_subordinate_admins"');
     expect(source).toContain('name: "get_admin_custom_permissions"');
+    expect(source).toContain('name: "get_admin_custom_permissions",\n      requiredPermissionGroups: [["admin:manage"]],\n      superAdminOnly: true');
     expect(source).toContain('name: "get_admin_audit_logs"');
     expect(source).toContain('name: "set_admin_permission"');
     expect(source).toContain('name: "suspend_admin"');
