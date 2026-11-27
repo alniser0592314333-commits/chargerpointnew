@@ -834,6 +834,36 @@ Deno.serve(async (req) => {
       });
       toolResult = result.data;
       toolError = result.error;
+    } else if (toolName === "adjust_customer_finances") {
+      const action = safeText(args.action, 20).toUpperCase();
+      const customerCode = safeText(args.customer_code, 4);
+      const nameHint = safeText(args.name_hint, 64);
+      const amountMinor = args.amount_minor;
+      const rawReferenceId = args.reference_event_id;
+      const referenceEventId = typeof rawReferenceId === "string" ? safeText(rawReferenceId, 36) : null;
+      const rawNote = args.note;
+      const note = typeof rawNote === "string" ? safeText(rawNote, 500) : null;
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!["ADD_CREDIT","USE_CREDIT","REFUND"].includes(action)
+        || !/^[A-Fa-f0-9]{4}$/.test(customerCode) || nameHint.length < 2
+        || typeof amountMinor !== "number" || !Number.isSafeInteger(amountMinor) || amountMinor <= 0
+        || (action === "REFUND" && (!referenceEventId || !uuidPattern.test(referenceEventId)))
+        || (action !== "REFUND" && rawReferenceId !== undefined)
+        || (rawNote !== undefined && rawNote !== null && typeof rawNote !== "string")) {
+        return { response: respond(400, { ok: false, error: "CUSTOMER_FINANCIAL_ADJUSTMENT_INPUT_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_adjust_customer_finances", {
+        p_request_id: actionRequestId,
+        p_action: action,
+        p_customer_code: customerCode,
+        p_name_hint: nameHint,
+        p_amount_minor: amountMinor,
+        p_reference_event_id: referenceEventId,
+        p_note: note,
+        p_bin: actionBin,
+      });
+      toolResult = result.data;
+      toolError = result.error;
     } else if (toolName === "get_customer_financial_summary" || toolName === "get_customer_orders") {
       const customerCode = safeText(args.customer_code, 4);
       const rawNameHint = args.name_hint;
