@@ -111,7 +111,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("const capabilityRegistry = [");
     expect(source).toContain("requiredPermission: \"customers:view\"");
     expect(source).toContain("const enabledCapabilities = capabilityRegistry.filter(");
-    expect(source).toContain("isSuperAdmin || permissions.includes(capability.requiredPermission)");
+    expect(source).toContain("isSuperAdmin || capability.requiredPermissions.some((permission) => permissions.includes(permission))");
     expect(source).toContain("enabledCapabilities.map((capability) => capability.declaration)");
     expect(source).toContain("const hasEnabledCapabilities = enabledCapabilities.length > 0");
     expect(source).not.toContain("canLookupCustomers");
