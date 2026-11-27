@@ -1379,6 +1379,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql
+      - name: Apply Sarah session-scoped order lifecycle action migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql
       - name: Verify Sarah session-bound reads and atomic order creation
         env:
           PGPASSWORD: postgres
