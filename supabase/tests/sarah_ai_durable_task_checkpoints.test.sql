@@ -74,6 +74,25 @@ $task_checkpoint_lifecycle$;
 
 RESET ROLE;
 
+-- An expired checkpoint must not be mistaken for a never-created request.
+UPDATE public.sarah_ai_tasks
+SET expires_at = now() - interval '1 second'
+WHERE auth_user_id = '10000000-0000-4000-8000-000000000001'
+  AND auth_session_id = '20000000-0000-4000-8000-000000000001'
+  AND request_id = '70000000-0000-4000-8000-000000000099';
+
+SET ROLE authenticated;
+DO $task_checkpoint_expiry$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_task_resume('70000000-0000-4000-8000-000000000099');
+    RAISE EXCEPTION 'Expired Sarah task unexpectedly resumed';
+  EXCEPTION WHEN SQLSTATE '28000' THEN NULL;
+  END;
+END;
+$task_checkpoint_expiry$;
+RESET ROLE;
+
 DO $task_checkpoint_acl$
 DECLARE
   v_table oid := 'public.sarah_ai_tasks'::regclass;
