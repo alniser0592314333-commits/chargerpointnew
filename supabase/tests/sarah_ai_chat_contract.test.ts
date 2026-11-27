@@ -225,7 +225,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("AI_TOOL_CALL_LIMIT_REACHED");
     expect(source).toContain("multiple mutation calls in one response");
     expect(source).toContain("toolConfig: { functionCallingConfig: { mode: \"AUTO\" } }");
-    expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
+    expect(source).not.toContain("AI_TOOL_CALL_LIMIT_REACHED");
   });
 
   it("opens a missing business day only through the canonical OPEN_DAY command", () => {
