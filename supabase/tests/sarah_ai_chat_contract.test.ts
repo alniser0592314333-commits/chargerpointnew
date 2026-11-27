@@ -516,6 +516,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(binPaymentIntentMigration).toContain("v_existing_payload IS DISTINCT FROM v_request_payload");
     expect(binPaymentIntentMigration).toContain("v_existing_session_id IS DISTINCT FROM v_session_id");
     expect(source).toContain("actionResult.requires_bin === true");
+    expect(source).toContain("if (!confirmationMode)");
+    expect(source).toContain("BIN_MUST_USE_SECURE_PROMPT");
     expect(source).toContain("confirmationInput");
     expect(source).toContain("executeCapability(confirmationName, confirmationArgs, confirmationRequestId)");
     expect(source).toContain("binProtectedCapabilityNames.has(confirmationName)");
