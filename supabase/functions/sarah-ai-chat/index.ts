@@ -1768,16 +1768,24 @@ Deno.serve(async (req) => {
           const currentConfig = current.data?.config && typeof current.data.config === "object"
             ? current.data.config as Record<string, unknown>
             : {};
-          const currentGeneration = currentConfig.generationConfig && typeof currentConfig.generationConfig === "object"
-            ? currentConfig.generationConfig as Record<string, unknown>
-            : { temperature: 0.2, maxOutputTokens: 2048, timeoutMs: 30000 };
-          const saved = await invokeSettings("save", {
+          if (currentConfig.hasApiKey !== true) {
+            toolResult = {
+              ok: false,
+              requiresSecureApiKeySetup: true,
+              message: "Enter the provider API key in the secure Sarah AI settings screen; keys are never accepted in chat.",
+            };
+          } else {
+            const currentGeneration = currentConfig.generationConfig && typeof currentConfig.generationConfig === "object"
+              ? currentConfig.generationConfig as Record<string, unknown>
+              : { temperature: 0.2, maxOutputTokens: 2048, timeoutMs: 30000 };
+            const saved = await invokeSettings("save", {
             providerId: "gemini",
             modelId,
             generationConfig: { ...currentGeneration, ...generationConfig },
-          });
-          toolError = saved.error;
-          if (!saved.error) toolResult = saved.data;
+            });
+            toolError = saved.error;
+            if (!saved.error) toolResult = saved.data;
+          }
         }
       } else if (toolName === "test_sarah_ai_provider_connection") {
         const result = await invokeSettings("test");
