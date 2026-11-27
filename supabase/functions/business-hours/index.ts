@@ -187,7 +187,17 @@ Deno.serve(async (req: Request) => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId)
     ? input.requestId
     : crypto.randomUUID();
-  const payloadForHash = JSON.stringify({ key: settingKey, config, resetGeneration });
+  const requestedConfig = {
+    isActive: incoming.isActive,
+    todayOpenTime: incoming.todayOpenTime,
+    todayCloseTime: incoming.todayCloseTime,
+    tomorrowOpenTime: incoming.tomorrowOpenTime,
+    tomorrowCloseTime: incoming.tomorrowCloseTime,
+    tomorrowDescription: typeof incoming.tomorrowDescription === "string"
+      ? incoming.tomorrowDescription.slice(0, 300)
+      : null,
+  };
+  const payloadForHash = JSON.stringify({ key: settingKey, requestedConfig, resetGeneration });
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payloadForHash));
   const payloadHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 
@@ -197,7 +207,7 @@ Deno.serve(async (req: Request) => {
     p_command_id: requestId,
     p_command_type: "SET_SYSTEM_SETTING",
     p_aggregate_type: "system_settings",
-    p_aggregate_id: crypto.randomUUID(),
+    p_aggregate_id: requestId,
     p_payload: {
       key: settingKey,
       valueType: "json",
