@@ -309,10 +309,10 @@ BEGIN
     );
 
   ELSIF v_action='UPDATE_GOAL_CONFIG' THEN
-    IF p_target_id IS NULL OR (
+    IF p_target_id IS NULL OR p_expected_version IS NULL OR p_expected_version<1 OR (
       p_target_quantity IS NULL AND p_duration_days IS NULL AND p_bonus_amount_minor IS NULL
     ) THEN
-      RAISE EXCEPTION 'Goal ID and at least one configuration value are required' USING ERRCODE='22023';
+      RAISE EXCEPTION 'Goal ID, current version, and at least one configuration value are required' USING ERRCODE='22023';
     END IF;
     SELECT * INTO v_goal FROM public.goals g WHERE g.id=p_target_id FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'Goal not found' USING ERRCODE='P0002'; END IF;
