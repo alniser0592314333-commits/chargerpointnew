@@ -28,7 +28,7 @@ BEGIN
   );
   v_result:=public.execute_canonical_sync_command(
     v_goal_id,'CREATE_GOAL',v_payload,'goal-hash-1','test-device',
-    auth.uid()
+    NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
   );
   IF v_result->>'success'<>'true'
      OR v_result#>>'{result,status}'<>'ACTIVE'
@@ -37,7 +37,7 @@ BEGIN
   END IF;
   v_result:=public.execute_canonical_sync_command(
     v_goal_id,'CREATE_GOAL',v_payload,'goal-hash-1','test-device',
-    auth.uid()
+    NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
   );
   IF v_result->>'idempotent'<>'true' THEN
     RAISE EXCEPTION 'Goal command retry was not idempotent: %',v_result;
@@ -52,7 +52,7 @@ BEGIN
     );
     PERFORM public.execute_canonical_sync_command(
       '50000000-0000-4000-8000-000000000002','CREATE_GOAL',v_payload,'goal-hash-2','test-device',
-      auth.uid()
+      NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
     );
     RAISE EXCEPTION 'Second active goal for one customer was accepted';
   EXCEPTION WHEN SQLSTATE 'P0001' THEN NULL;
@@ -67,7 +67,7 @@ BEGIN
     );
     PERFORM public.execute_canonical_sync_command(
       '50000000-0000-4000-8000-000000000003','CREATE_GOAL',v_payload,'goal-hash-3','test-device',
-      auth.uid()
+      NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
     );
     RAISE EXCEPTION 'Goal above the 20-minor-unit-per-device cap was accepted';
   EXCEPTION WHEN SQLSTATE '22023' THEN NULL;
@@ -82,7 +82,7 @@ BEGIN
     );
     PERFORM public.execute_canonical_sync_command(
       '50000000-0000-4000-8000-000000000004','CREATE_GOAL',v_payload,'goal-hash-4','test-device',
-      auth.uid()
+      NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
     );
     RAISE EXCEPTION 'Goal for an inactive customer was accepted';
   EXCEPTION WHEN SQLSTATE 'P0002' THEN NULL;
@@ -95,7 +95,7 @@ BEGIN
   );
   v_result:=public.execute_canonical_sync_command(
     '60000000-0000-4000-8000-000000000001','RECORD_GOAL_REQUEST',v_payload,'request-hash-1','test-device',
-    auth.uid()
+    NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
   );
   IF v_result->>'success'<>'true' OR v_result#>>'{result,status}'<>'PENDING' THEN
     RAISE EXCEPTION 'Goal request recording failed: %',v_result;
@@ -119,7 +119,7 @@ BEGIN
       'targetQuantity',10,'durationDays',5,'bonusAmountMinor',150,
       'startedAt',v_started,'expiresAt',v_started+interval '5 days','resetGeneration',1
     ),
-    'goal-hash-5','test-device',auth.uid()
+    'goal-hash-5','test-device',NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
   );
   IF v_result->>'success'<>'true' THEN RAISE EXCEPTION 'Authorized ordinary admin goal creation failed: %',v_result; END IF;
 END;
@@ -142,7 +142,7 @@ BEGIN
         'targetQuantity',10,'durationDays',5,'bonusAmountMinor',150,
         'startedAt',v_started,'expiresAt',v_started+interval '5 days','resetGeneration',1
       ),
-      'goal-hash-6','test-device',auth.uid()
+      'goal-hash-6','test-device',NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
     );
     RAISE EXCEPTION 'Admin without goals:manage was allowed to create a goal';
   EXCEPTION WHEN SQLSTATE 'P4003' THEN NULL;
@@ -161,7 +161,7 @@ DECLARE v_result jsonb;
 BEGIN
   v_result:=public.execute_canonical_sync_command(
     '70000000-0000-4000-8000-000000000001','CREATE_ORDER','{}'::jsonb,'delegate-hash','test-device',
-    auth.uid()
+    NULLIF(current_setting('request.jwt.claim.sub',true),'')::uuid
   );
   IF v_result->>'delegated'<>'true' THEN
     RAISE EXCEPTION 'Non-goal command did not delegate to the original dispatcher: %',v_result;
