@@ -219,10 +219,10 @@ BEGIN
   INSERT INTO public.admin_custom_permissions (admin_id, permission, is_grant)
   SELECT p_target_admin_id, normalized.permission, TRUE
   FROM (
-    SELECT DISTINCT trim(input_permission) AS permission
-    FROM unnest(COALESCE(p_permissions, ARRAY[]::text[])) AS input_permission
-    WHERE input_permission IS NOT NULL
-      AND trim(input_permission) <> ''
+    SELECT DISTINCT trim(input.input_permission) AS permission
+    FROM unnest(COALESCE(p_permissions, ARRAY[]::text[])) AS input(input_permission)
+    WHERE input.input_permission IS NOT NULL
+      AND trim(input.input_permission) <> ''
   ) AS normalized
   ON CONFLICT (admin_id, permission) DO UPDATE
     SET is_grant = TRUE;
