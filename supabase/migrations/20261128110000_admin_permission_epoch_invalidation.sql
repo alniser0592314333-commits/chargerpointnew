@@ -244,4 +244,76 @@ BEGIN
 END;
 $function$;
 
+
+-- Read the current session and permission epoch on every Sarah request, but
+-- return the effective permission array only when the Edge isolate's cache is
+-- absent or stale. The caller-supplied version is server-memory-only; the
+-- browser cannot populate or control this cache.
+CREATE OR REPLACE FUNCTION public.sarah_ai_get_chat_access_context(
+  p_cached_permissions_version bigint DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_admin_id uuid;
+  v_auth_user_id uuid;
+  v_role text;
+  v_permissions_version bigint;
+  v_permissions text[] := '{}'::text[];
+BEGIN
+  PERFORM public.assert_my_account_session_active();
+
+  SELECT a.id, a.auth_user_id, a.role, e.version
+    INTO v_admin_id, v_auth_user_id, v_role, v_permissions_version
+  FROM public.admins AS a
+  JOIN public.admin_permission_epochs AS e ON e.admin_id = a.id
+  WHERE a.auth_user_id = auth.uid()
+    AND a.is_active IS TRUE
+    AND a.disabled_at IS NULL
+  LIMIT 1;
+
+  IF v_admin_id IS NULL OR v_auth_user_id IS DISTINCT FROM auth.uid()
+     OR v_permissions_version IS NULL THEN
+    RAISE EXCEPTION 'Active administrator permission context unavailable'
+      USING ERRCODE = '42501';
+  END IF;
+
+  IF p_cached_permissions_version IS NOT NULL
+     AND p_cached_permissions_version = v_permissions_version THEN
+    RETURN jsonb_build_object(
+      'authenticated', true,
+      'is_admin', true,
+      'is_active', true,
+      'admin_id', v_admin_id,
+      'auth_user_id', v_auth_user_id,
+      'role', v_role,
+      'permissions_version', v_permissions_version::text,
+      'permissions_unchanged', true
+    );
+  END IF;
+
+  SELECT COALESCE(array_agg(ep.permission ORDER BY ep.permission), '{}'::text[])
+    INTO v_permissions
+  FROM public.get_effective_permissions__session_guarded_impl(v_admin_id) AS ep;
+
+  RETURN jsonb_build_object(
+    'authenticated', true,
+    'is_admin', true,
+    'is_active', true,
+    'admin_id', v_admin_id,
+    'auth_user_id', v_auth_user_id,
+    'role', v_role,
+    'permissions_version', v_permissions_version::text,
+    'permissions_unchanged', false,
+    'permissions', COALESCE(v_permissions, '{}'::text[])
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.sarah_ai_get_chat_access_context(bigint) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_get_chat_access_context(bigint) TO authenticated;
+
 COMMIT;
