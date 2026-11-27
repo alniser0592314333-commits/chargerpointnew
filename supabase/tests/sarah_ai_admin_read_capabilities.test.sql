@@ -88,6 +88,47 @@ END;
 $customer_create$;
 RESET ROLE;
 
+-- Basic customer edits require customers:view + customers:edit and a same-session lookup proof.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000001',false);
+DO $customer_profile_update$
+DECLARE
+  v_lookup jsonb;
+  v_result jsonb;
+  v_replay jsonb;
+  v_code text;
+BEGIN
+  v_lookup:=public.sarah_ai_lookup_customers('عميل اختبار سارة');
+  IF v_lookup->>'match_count'<>'1' THEN
+    RAISE EXCEPTION 'New customer lookup failed before profile edit: %',v_lookup;
+  END IF;
+  v_code:=v_lookup->'matches'->0->>'customer_code';
+  v_result:=public.sarah_ai_update_customer_profile(
+    '70000000-0000-4000-8000-000000000003',
+    v_code,'عميل اختبار سارة',
+    'عميل اختبار سارة معدل','0591234567','تم التعديل عبر سارة'
+  );
+  IF v_result->>'ok'<>'true'
+     OR v_result->>'customer_name'<>'عميل اختبار سارة معدل'
+     OR v_result->>'phone'<>'0591234567'
+     OR v_result->>'notes'<>'تم التعديل عبر سارة' THEN
+    RAISE EXCEPTION 'Customer profile edit did not return the canonical updated values: %',v_result;
+  END IF;
+  v_replay:=public.sarah_ai_update_customer_profile(
+    '70000000-0000-4000-8000-000000000003',
+    v_code,'عميل اختبار سارة معدل',
+    'عميل اختبار سارة معدل','0591234567','تم التعديل عبر سارة'
+  );
+  IF v_replay->>'idempotent_replay'<>'true'
+     OR (SELECT count(*) FROM public.customers WHERE name='عميل اختبار سارة معدل')<>1 THEN
+    RAISE EXCEPTION 'Customer profile update retry was not idempotent: %',v_replay;
+  END IF;
+END;
+$customer_profile_update$;
+RESET ROLE;
+
 -- An ordinary admin without customers:create cannot create a customer through Sarah.
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
