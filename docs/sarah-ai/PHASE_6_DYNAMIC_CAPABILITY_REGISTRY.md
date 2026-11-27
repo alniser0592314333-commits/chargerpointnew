@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following fifty-two bounded capabilities are registered today:
+The following fifty-three bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -41,6 +41,7 @@ The following fifty-two bounded capabilities are registered today:
 | request_manual_sync | sync:manage | Requests the existing current-device manual sync cycle; the server and client both recheck the live permission before local execution |
 | get_customer_orders | (customers:view OR customers:read) AND (orders:view OR orders:read) | Up to ten recent orders and bounded item status/charge details |
 | create_order_with_items | (customers:view OR customers:read) AND orders:create AND (orders:edit OR orders:write) | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
+| add_item_to_existing_order | (customers:view OR customers:read) AND (orders:view OR orders:read) AND (orders:edit OR orders:write) AND devices:view | Adds one active catalog device to the exact existing customer order returned by the same-session order lookup; canonical pricing and charger-fee rules apply |
 | lookup_customer_accounts | (customers:view OR customers:read) AND customers:deactivate | Up to five active or inactive account names, codes, and active states; creates same-session proof |
 | set_customer_active_status | (customers:view OR customers:read) AND (customers:edit OR customers:write) AND customers:deactivate | Activates/deactivates one exact account through canonical UPDATE_CUSTOMER |
 | update_customer_protected_settings | (customers:view OR customers:read) AND (customers:edit OR customers:write), with the database checking the exact field permission | Updates only the protected field for which the admin has the granular permission; requires separate secure BIN and redacted canonical audit logging |
