@@ -67,6 +67,7 @@ export const sarahChatService = {
     bin?: string,
     clientContext?: SarahChatClientContext,
     confirmationAction?: SarahPendingBinAction,
+    resumeTask = false,
   ): Promise<SarahChatResponse> {
     const clean = text.trim();
     if (!clean) throw new Error("TEXT_REQUIRED");
@@ -102,6 +103,7 @@ export const sarahChatService = {
     if (clientContext?.localSyncContext) requestBody.localSyncContext = clientContext.localSyncContext;
     if (clientContext?.localSyncActionResult) requestBody.localSyncActionResult = clientContext.localSyncActionResult;
     if (confirmationAction) requestBody.confirmationAction = { token: confirmationAction.token };
+    if (resumeTask) requestBody.resumeTask = true;
 
     let response: Response;
     try {
