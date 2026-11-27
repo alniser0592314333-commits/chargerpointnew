@@ -14,7 +14,7 @@ IMMUTABLE
 SET search_path = ''
 AS $function$
 BEGIN
-  RETURN pg_catalog.upper(pg_catalog.substring(pg_catalog.replace(p_customer_id::text,'-','') FROM 1 FOR 4));
+  RETURN pg_catalog.upper(pg_catalog.substr(pg_catalog.replace(p_customer_id::text,'-',''),1,4));
 END;
 $function$;
 
