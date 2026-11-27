@@ -332,6 +332,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(dayOrderRenumberingMigration).toContain("cardinality(p_order_ids)>200");
     expect(dayOrderRenumberingMigration).toContain("auth_session_id,request_id,action_name,request_payload");
     expect(dayOrderRenumberingMigration).toContain("public.execute_sync_command(");
+    expect(dayOrderRenumberingMigration).toContain("pg_catalog.pg_advisory_xact_lock");
+    expect(dayOrderRenumberingMigration).toContain("hashtextextended(v_day_id::text,1)");
   });
 
   it("registers finance and goals read capabilities against existing permission keys", () => {
