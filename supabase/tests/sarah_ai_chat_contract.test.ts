@@ -8,6 +8,7 @@ const supabaseConfig = read("supabase/config.toml");
 const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
 const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
 const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_customer_profile_read.sql");
+const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -109,7 +110,7 @@ describe("Sarah chat gateway security contract", () => {
 
   it("derives exposed tools from a permission-filtered extensible capability registry", () => {
     expect(source).toContain("const capabilityRegistry = [");
-    expect(source).toContain("requiredPermission: \"customers:view\"");
+    expect(source).toContain("requiredPermissionGroups: [[\"customers:view\"]]");
     expect(source).toContain("const enabledCapabilities = capabilityRegistry.filter(");
     expect(source).toContain("isSuperAdmin || capability.requiredPermissions.some((permission) => permissions.includes(permission))");
     expect(source).toContain("enabledCapabilities.map((capability) => capability.declaration)");
@@ -123,18 +124,47 @@ describe("Sarah chat gateway security contract", () => {
 
   it("registers finance and goals read capabilities against existing permission keys", () => {
     expect(source).toContain('name: "get_financial_summary"');
-    expect(source).toContain('requiredPermissions: ["finance:view", "reports:view"]');
+    expect(source).toContain('requiredPermissionGroups: [["finance:view", "reports:view"]]');
     expect(source).toContain('caller.rpc("rpc_get_financial_report")');
     expect(source).toContain('name: "list_pending_payments"');
-    expect(source).toContain('requiredPermissions: ["finance:approve-payment", "finance:create-payment"]');
+    expect(source).toContain('requiredPermissionGroups: [["finance:approve-payment", "finance:create-payment"]]');
     expect(source).toContain('caller.rpc("list_admin_manual_customer_payments")');
     expect(source).toContain('name: "get_goals_overview"');
-    expect(source).toContain('requiredPermissions: ["goals:view", "goals:requests:view"]');
+    expect(source).toContain('requiredPermissionGroups: [["goals:view", "goals:requests:view"]]');
     expect(source).toContain('caller.rpc("get_admin_goals_page_data")');
     expect(source).toContain('String(row.status || "").toUpperCase() === "PENDING"');
     expect(source).not.toContain("admin.rpc(\"rpc_get_financial_report\"");
     expect(source).not.toContain("admin.rpc(\"list_admin_manual_customer_payments\"");
     expect(source).not.toContain("admin.rpc(\"get_admin_goals_page_data\"");
+  });
+
+  it("registers customer finance and order tools with all required live permission groups", () => {
+    expect(source).toContain('name: "get_customer_financial_summary"');
+    expect(source).toContain('requiredPermissionGroups: [');
+    expect(source).toContain('["customers:view"]');
+    expect(source).toContain('["customers:financial-view", "finance:view", "finances:read"]');
+    expect(source).toContain('caller.rpc(rpcName, rpcArgs)');
+    expect(source).toContain('name: "get_customer_orders"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:view"]]');
+    expect(source).toContain('sarah_ai_get_customer_financial_summary');
+    expect(source).toContain('sarah_ai_get_customer_orders');
+  });
+
+  it("binds profile, financial, and order reads to a recent lookup in the same Auth session", () => {
+    expect(adminReadMigration).toContain("sarah_ai_customer_lookup_proofs");
+    expect(adminReadMigration).toContain("auth_session_id uuid NOT NULL");
+    expect(adminReadMigration).toContain("ENABLE ROW LEVEL SECURITY");
+    expect(adminReadMigration).toContain("REVOKE ALL ON TABLE public.sarah_ai_customer_lookup_proofs");
+    expect(adminReadMigration).toContain("now() + interval '5 minutes'");
+    expect(adminReadMigration).toContain("public.sarah_ai_lookup_customers");
+    expect(adminReadMigration).toContain("proof.auth_user_id = auth.uid()");
+    expect(adminReadMigration).toContain("proof.auth_session_id = v_session_id");
+    expect(adminReadMigration).toContain("public._cp_assert_active_admin_permission('customers:financial-view')");
+    expect(adminReadMigration).toContain("public._cp_assert_active_admin_permission('orders:view')");
+    expect(adminReadMigration).toContain("public.calculate_customer_authoritative_balance(v_customer_id)");
+    expect(adminReadMigration).toContain("LIMIT p_limit");
+    expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_customer_financial_summary(text, text) TO service_role");
+    expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_customer_orders(text, text, integer) TO service_role");
   });
 
   it("treats client-supplied history and tool results as untrusted data", () => {
