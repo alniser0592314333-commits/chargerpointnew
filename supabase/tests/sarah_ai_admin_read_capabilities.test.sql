@@ -103,7 +103,6 @@ DO $customer_create$
 DECLARE
   v_result jsonb;
   v_replay jsonb;
-  v_customer_id uuid;
 BEGIN
   v_result:=public.sarah_ai_create_customer(
     '70000000-0000-4000-8000-000000000001','عميل اختبار سارة',NULL
@@ -115,24 +114,29 @@ BEGIN
      OR (v_result->>'charger_fee_exempt')::boolean IS TRUE THEN
     RAISE EXCEPTION 'Sarah customer creation did not follow the app defaults: %',v_result;
   END IF;
-  v_customer_id:=(v_result->>'customer_id')::uuid;
-  IF NOT EXISTS(
-    SELECT 1 FROM public.customers
-    WHERE id=v_customer_id AND name='عميل اختبار سارة'
-      AND debt_limit_minor=2000 AND charger_fee_exempt IS FALSE
-  ) THEN
-    RAISE EXCEPTION 'Canonical customer creation did not persist the expected customer';
-  END IF;
   v_replay:=public.sarah_ai_create_customer(
     '70000000-0000-4000-8000-000000000001','عميل اختبار سارة',NULL
   );
   IF v_replay->>'idempotent_replay'<>'true'
-     OR (SELECT count(*) FROM public.customers WHERE name='عميل اختبار سارة')<>1 THEN
+     THEN
     RAISE EXCEPTION 'Customer creation retry was not idempotent: %',v_replay;
   END IF;
 END;
 $customer_create$;
 RESET ROLE;
+
+-- Verify persisted rows as the migration-test owner, not as the restricted app role.
+DO $customer_create_persisted$
+BEGIN
+  IF NOT EXISTS(
+    SELECT 1 FROM public.customers
+    WHERE name='عميل اختبار سارة'
+      AND debt_limit_minor=2000 AND charger_fee_exempt IS FALSE
+  ) OR (SELECT count(*) FROM public.customers WHERE name='عميل اختبار سارة')<>1 THEN
+    RAISE EXCEPTION 'Canonical customer creation did not persist exactly one row with app defaults';
+  END IF;
+END;
+$customer_create_persisted$;
 
 -- Basic customer edits require customers:view + customers:edit and a same-session lookup proof.
 -- Isolate this scenario from earlier test actors' hourly tool quota.
