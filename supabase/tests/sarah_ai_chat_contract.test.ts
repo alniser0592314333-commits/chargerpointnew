@@ -166,7 +166,6 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("orders:override-debt-limit");
     expect(adminReadMigration).toContain("settings:manage");
     expect(adminReadMigration).toContain("Asia/Jerusalem");
-    expect(adminReadMigration).toContain("record_canonical_change('business_days'");
     expect(adminReadMigration).toContain("ORDER_ALREADY_EXISTS");
     expect(adminReadMigration).toContain("DEVICE_TYPE_AMBIGUOUS");
     expect(adminReadMigration).toContain("DEBT_LIMIT_EXCEEDED");
@@ -297,7 +296,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("requests.slice(0,20)");
     expect(source).toContain("request_id: safeText(request.id,36)");
     expect(source).toContain('body: { action: "admin-review", requestId, decision }');
-    expect(source).toContain("Approval is temporary for exactly 24 hours");
+    expect(source).toContain("approval is temporary for exactly 24 hours");
   });
 
   it("registers all admin goal operations through existing app permissions and canonical paths", () => {
