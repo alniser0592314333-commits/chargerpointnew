@@ -221,7 +221,7 @@ BEGIN
       p_payload->>'notes'
     )
     RETURNING display_number INTO v_display_number;
-    RETURN jsonb_build_object('result',jsonb_build_object('displayNumber',v_display_number));
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('displayNumber',v_display_number));
   ELSIF p_command_type='ADD_ORDER_ITEM' THEN
     SELECT * INTO v_device
     FROM public.device_types
@@ -247,7 +247,7 @@ BEGIN
       CASE WHEN v_device.charger_fee_applicable AND NOT v_has_charger THEN v_device.charger_fee_minor ELSE 0 END,
       0,v_device.name
     );
-    RETURN jsonb_build_object('result',jsonb_build_object('provisionalFinalChargeMinor',v_charge));
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('provisionalFinalChargeMinor',v_charge));
   ELSIF p_command_type='CREATE_GOAL' THEN
     INSERT INTO public.goals(id,customer_id,target_quantity,current_progress,bonus_amount_minor,duration_days,status,started_at,expires_at)
     VALUES(
