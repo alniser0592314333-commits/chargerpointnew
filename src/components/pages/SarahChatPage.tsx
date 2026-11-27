@@ -479,7 +479,13 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       ? { ...item, status: "sending", statusText: "جارٍ إعادة الإرسال" }
       : item));
     try {
-      if (record.state === "NEEDS_ATTENTION" || record.state === "QUEUED_OFFLINE" || record.state === "WAITING_FOR_CONFIRMATION") {
+      if (record.state === "SENT_TO_AI") {
+        await sarahInputQueue.transition(accountId, record.id, "NEEDS_ATTENTION", {
+          lastErrorCode: "TRANSCRIPT_SAVE_INTERRUPTED",
+        });
+      }
+      if (record.state === "NEEDS_ATTENTION" || record.state === "QUEUED_OFFLINE"
+        || record.state === "WAITING_FOR_CONFIRMATION" || record.state === "SENT_TO_AI") {
         await sarahInputQueue.transition(accountId, record.id, "READY_TO_SEND");
       }
       await sarahInputQueue.transition(accountId, record.id, "UPLOADING");
@@ -549,13 +555,29 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   useEffect(() => {
     const accountId = session?.authUserId || null;
+    if (!accountId || hydratedAccount !== accountId
+      || !pending.some((row) => row.actorAccountId === accountId && row.state === "UPLOADING")) return;
+    // A tab that disappeared cannot renew its upload lease. Recheck after the
+    // lease window; an active request finishes sooner and clears the queue row.
+    const timer = window.setTimeout(() => {
+      void refreshQueue(accountId, accountScopeRef.current.generation);
+    }, 5 * 60 * 1000 + 1000);
+    return () => window.clearTimeout(timer);
+  }, [session?.authUserId, hydratedAccount, pending]);
+
+  useEffect(() => {
+    const accountId = session?.authUserId || null;
     if (!accountId || hydratedAccount !== accountId) return;
     const handleOnline = async () => {
       if (busy || !isCurrent(accountId)) return;
       try {
         const rows = await sarahInputQueue.list(accountId);
         const next = rows.find((row) => row.actorAccountId === accountId
-          && row.state === "QUEUED_OFFLINE" && Boolean(row.text));
+          && Boolean(row.text)
+          && (row.state === "QUEUED_OFFLINE"
+            || row.state === "READY_TO_SEND"
+            || row.state === "SENT_TO_AI"
+            || (row.state === "NEEDS_ATTENTION" && row.lastErrorCode === "UPLOAD_INTERRUPTED_REQUIRES_REVIEW")));
         if (next) await retryQueued(next);
       } catch {
         // The message remains visible as pending; the user can retry from it.
