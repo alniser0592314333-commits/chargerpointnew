@@ -417,6 +417,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("sanitizeLocalSyncActionResult");
     expect(source).toContain('localSyncActionResult?.action === "manual_sync"');
     expect(source).toContain("Do not request another manual sync in this response");
+    expect(source).toContain("not independently verified");
     expect(source).toContain("not authorization");
   });
 
