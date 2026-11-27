@@ -31,6 +31,12 @@ ON CONFLICT(admin_id,permission) DO UPDATE SET is_grant=EXCLUDED.is_grant;
 DELETE FROM public.sarah_ai_usage_windows
 WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000009';
 
+-- Capture the order count as the privileged test runner; the authenticated
+-- actor must not receive direct SELECT access to business tables.
+CREATE TEMP TABLE sarah_existing_order_count_before AS
+SELECT count(*)::integer AS order_count FROM public.orders
+WHERE customer_id='aaab0000-0000-4000-8000-000000000001' AND deleted_at IS NULL;
+
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
@@ -41,18 +47,12 @@ DECLARE
   v_lookup jsonb;
   v_code text;
   v_result jsonb;
-  v_before_orders integer;
-  v_after_orders integer;
-  v_item_count integer;
 BEGIN
   v_lookup:=public.sarah_ai_lookup_customers('Sarah Existing Order Fixture');
   IF COALESCE((v_lookup->>'match_count')::integer,0)<>1 THEN
     RAISE EXCEPTION 'Existing-order fixture customer lookup did not resolve uniquely: %',v_lookup;
   END IF;
   v_code:=v_lookup->'matches'->0->>'customer_code';
-
-  SELECT count(*) INTO v_before_orders FROM public.orders
-  WHERE customer_id='aaab0000-0000-4000-8000-000000000001' AND deleted_at IS NULL;
 
   v_result:=public.sarah_ai_add_item_to_existing_order(
     'ddab0000-0000-4000-8000-000000000001',
@@ -67,22 +67,32 @@ BEGIN
     RAISE EXCEPTION 'Sarah did not add the device to the exact existing order: %',v_result;
   END IF;
 
+END;
+$add_item_to_existing_order$;
+RESET ROLE;
+
+-- Verify the canonical write and no-new-order invariant as the privileged
+-- test runner, without weakening authenticated table grants.
+DO $verify_existing_order_item$
+DECLARE
+  v_before_orders integer;
+  v_after_orders integer;
+  v_item_count integer;
+BEGIN
+  SELECT order_count INTO v_before_orders FROM sarah_existing_order_count_before;
   SELECT count(*) INTO v_item_count FROM public.order_items
   WHERE order_id='ccab0000-0000-4000-8000-000000000001'
-    AND id='ddab0000-0000-4000-8000-000000000001'
     AND device_type_id='30000000-0000-4000-8000-000000000001';
   IF v_item_count<>1 THEN
     RAISE EXCEPTION 'Canonical ADD_ORDER_ITEM did not add exactly one item to the existing order';
   END IF;
-
   SELECT count(*) INTO v_after_orders FROM public.orders
   WHERE customer_id='aaab0000-0000-4000-8000-000000000001' AND deleted_at IS NULL;
   IF v_after_orders<>v_before_orders THEN
     RAISE EXCEPTION 'Adding an item unexpectedly created another order';
   END IF;
 END;
-$add_item_to_existing_order$;
-RESET ROLE;
+$verify_existing_order_item$;
 
 -- The permission is checked again inside PostgreSQL; revoking it in the same
 -- Auth session immediately prevents the next add-item operation.
