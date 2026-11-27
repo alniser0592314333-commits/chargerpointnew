@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following eleven bounded capabilities are registered today:
+The following twenty-one bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -36,15 +36,25 @@ The following eleven bounded capabilities are registered today:
 | record_and_approve_customer_payment | customers:view AND finance:create-payment AND finance:approve-payment | One manual CASH payment through the existing pending-submission + approval workflow; requires secure BIN |
 | approve_payment_submission | finance:approve-payment AND finance:create-payment | Approves one existing pending submission using its ID and amount; requires secure BIN |
 | reject_payment_submission | finance:approve-payment | Rejects one existing pending submission with a reason; no BIN |
-| get_goals_overview | goals:view OR goals:requests:view | Up to fifteen matching goal/request summaries; read-only |
+| deliver_order_item | orders:view AND orders:deliver | Delivers one exact item through canonical financial recognition; secure BIN required |
+| cancel_order_item | orders:view AND orders:cancel | Cancels one exact item through canonical financial reversal; secure BIN required |
+| cancel_order | orders:view AND orders:cancel | Cancels one full order through canonical item-level reversals; secure BIN required |
+| get_goals_overview | goals:view OR goals:manage OR goals:requests:view OR goals:approve | Up to fifteen matching goal/request summaries plus a bounded customer directory |
+| get_customer_goal_proposal | goals:manage | Official app-generated proposal from the last 28 days of qualifying activity |
+| create_customer_goal | goals:manage | Creates one active goal with app-generated values unless all three manual values are explicitly supplied |
+| approve_goal_request | goals:approve | Approves one pending request with a complete app-generated or explicit proposal |
+| reject_goal_request | goals:approve | Rejects one pending goal request with a reason |
+| update_customer_goal | goals:manage | Updates target/duration/bonus only, using expected-version protection |
+| cancel_customer_goal | goals:manage | Cancels one active goal through the existing admin RPC |
+| review_goal_cancellation | goals:approve OR goals:manage | Approves/rejects one pending cancellation request through the existing admin RPC |
 
-Read capabilities include customer/profile/balance/order lookup, aggregate financial reporting, pending payment lists, and goal/request summaries. The enabled mutations are order creation, manual CASH payment record-and-approval, approval of an existing pending payment submission, and rejection of an existing pending submission.
+Read capabilities include customer/profile/balance/order lookup, aggregate financial reporting, pending payment lists, goal/request summaries, and official goal proposals. Enabled mutations include order creation, delivery, item/order cancellation, manual CASH payment record-and-approval, approval/rejection of existing pending payment submissions, and goal creation, request approval/rejection, goal configuration updates, goal cancellation, and cancellation-request review.
 
 Order creation calls the existing canonical CREATE_ORDER and ADD_ORDER_ITEM commands inside one database transaction; any failed item rolls back the whole order. It rechecks active customer/device state, the debt-limit rule, duplicate same-customer/day orders, open-day state, and current account permissions. If today's Palestine business day does not exist, it is created only when the actor has settings:manage; a closed day is never reopened.
 
 Manual CASH payment entry calls the existing create_admin_pending_customer_payment and review_qr_payment_submission workflow in one transaction. Existing customer QR/Jawwal Pay/manual submissions are reviewed through the same review_qr_payment_submission path. Approval requires the account BIN in a separate password field in the app; the BIN is not part of Gemini history/tool arguments and is excluded from idempotency storage. Rejection requires a reason but no BIN.
 
-Mutations use a deterministic action-specific request ID derived from the queued message ID, tool name, and normalized tool arguments. The database binds the result to the Auth user and payload, rechecks the currently active session and permissions, and can safely replay a completed action after the same account renews its session. Customer-specific reads and new customer-targeted actions still require a lookup proof bound to the same Auth user and current session and expiring after five minutes. Order delivery/cancellation/editing, payment refunds/corrections, goal creation/approval/cancellation, customer-history access, and customer assistant mode are not enabled yet.
+Mutations use a deterministic action-specific request ID derived from the queued message ID, tool name, and normalized tool arguments. The database binds results to the Auth user and payload, rechecks the active session and current permissions, and safely replays completed commands. Customer-specific profile/balance/order reads and order lifecycle actions require a lookup proof bound to the same Auth user and current session and expiring after five minutes. Goal operations use the exact customer/goal/request IDs returned by the permission-checked Goals page projection and recheck the relevant goals permission in the database. Payment refunds/corrections, customer-history access requests/24-hour grants, and customer assistant mode are not enabled yet.
 
 ## Extension contract for each new operation
 
