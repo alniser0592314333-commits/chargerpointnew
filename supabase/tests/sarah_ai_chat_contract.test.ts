@@ -707,3 +707,42 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("response.error.message");
   });
 });
+
+
+describe("Sarah durable orchestration checkpoint contract", () => {
+  it("loads tasks through the authenticated actor/session RPCs and never accesses the task table directly", () => {
+    expect(source).toContain('caller.rpc("sarah_ai_task_load_or_create"');
+    expect(source).toContain('caller.rpc("sarah_ai_task_resume"');
+    expect(source).toContain('caller.rpc("sarah_ai_task_checkpoint"');
+    expect(source).toContain("taskRequestHash");
+    expect(source).toContain("requestHash");
+    expect(source).not.toContain('admin.from("sarah_ai_tasks")');
+    expect(source).toContain("AI_TASK_CHECKPOINT_WRITE_FAILED");
+  });
+
+  it("checkpoints model responses, each tool result, and completed task output", () => {
+    expect(source).toContain('phase: "MODEL_RESPONSE"');
+    expect(source).toContain('phase: "EXECUTING_TOOLS"');
+    expect(source).toContain('phase: "WAITING_CONFIRMATION"');
+    expect(source).toContain('phase: "CONFIRMED_ACTION"');
+    expect(source).toContain('checkpointTask("COMPLETED"');
+    expect(source).toContain("resultsByIndex: Object.fromEntries(resultsByIndex)");
+  });
+
+  it("restores a saved candidate and skips tool calls with previously checkpointed results", () => {
+    expect(source).toContain("const savedCandidate = taskState.currentCandidate");
+    expect(source).toContain("const savedResults = taskState.resultsByIndex");
+    expect(source).toContain("executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index))");
+    expect(source).toContain("pendingCallIndex: requestedCall.index");
+    expect(source).toContain("confirmedResults");
+  });
+
+  it("keeps secure BIN outside checkpoint state and resumes after confirmation using the same request ID", () => {
+    expect(source).toContain("const actionBin = typeof body.bin === \"string\"");
+    expect(source).toContain("requestId,");
+    expect(source).toContain("resumeTask = body.resumeTask === true || confirmationMode");
+    expect(source).not.toContain("p_bin: actionBin");
+    expect(chatService).toContain("if (resumeTask) requestBody.resumeTask = true");
+    expect(chatPage).toContain("pendingAction.correlationId,\n        undefined,\n        undefined,\n        true,");
+  });
+});
