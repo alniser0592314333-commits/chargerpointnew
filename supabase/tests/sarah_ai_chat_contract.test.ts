@@ -257,6 +257,15 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_customer_orders(text, text, integer) TO service_role");
   });
 
+  it("connects customer-history requests to the existing 24-hour grant workflow", () => {
+    expect(source).toContain('name: "list_customer_history_requests"');
+    expect(source).toContain('name: "review_customer_history_request"');
+    expect(source).toContain('caller.functions.invoke("customer-history"');
+    expect(source).toContain('body: { action: "admin-list" }');
+    expect(source).toContain('body: { action: "admin-review", requestId, decision }');
+    expect(source).toContain("temporary 24-hour grant");
+  });
+
   it("registers all admin goal operations through existing app permissions and canonical paths", () => {
     expect(source).toContain('name: "get_customer_goal_proposal"');
     expect(source).toContain('name: "create_customer_goal"');
