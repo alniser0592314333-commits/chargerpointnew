@@ -386,6 +386,37 @@ END;
 $goal_permission_gate$;
 RESET ROLE;
 
+-- A live financial/order permission does not replace customers:view.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000008',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000008',false);
+DO $customer_visibility_gate$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_get_customer_financial_summary('AAAA','أحمد علي');
+    RAISE EXCEPTION 'Financial visibility permission bypassed missing customers:view';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.sarah_ai_get_customer_orders('AAAA','أحمد علي',10);
+    RAISE EXCEPTION 'Order view permission bypassed missing customers:view';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    PERFORM public.sarah_ai_execute_order_action(
+      '70000000-0000-4000-8000-000000000001',
+      'AAAA','أحمد علي',
+      '30000000-0000-4000-8000-000000000001',
+      'DELIVER_ITEM','1234',NULL
+    );
+    RAISE EXCEPTION 'Order lifecycle permission bypassed missing customers:view';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$customer_visibility_gate$;
+RESET ROLE;
+
 -- A different Auth session for the same user cannot reuse the old lookup proof.
 UPDATE public.account_sessions
 SET revoked_at=now()
