@@ -197,6 +197,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "create_customer"');
     expect(source).toContain('requiredPermissionGroups: [["customers:create"]]');
     expect(source).toContain('caller.rpc("sarah_ai_create_customer"');
+    expect(source).toContain("Before create_customer, call lookup_customers with the proposed name");
     expect(customerCreateMigration).toContain("public._cp_assert_active_admin_permission('customers:create')");
     expect(customerCreateMigration).toContain("'CREATE_CUSTOMER','customers'");
     expect(customerCreateMigration).toContain("'debtLimitMinor',2000");
