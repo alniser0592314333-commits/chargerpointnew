@@ -55,15 +55,15 @@ BEGIN
     RAISE EXCEPTION 'Exact customer code profile read failed';
   END IF;
 
-  v_result := public.sarah_ai_get_customer_profile('ZZZZ');
+  v_result := public.sarah_ai_get_customer_profile('9999');
   IF v_result->>'match_count' <> '0'
      OR jsonb_array_length(v_result->'matches') <> 0 THEN
     RAISE EXCEPTION 'No-match profile lookup returned data';
   END IF;
 
   BEGIN
-    PERFORM public.sarah_ai_get_customer_profile('AAA');
-    RAISE EXCEPTION 'Short customer code was accepted';
+    PERFORM public.sarah_ai_get_customer_profile('GGGG');
+    RAISE EXCEPTION 'Non-hex customer code was accepted';
   EXCEPTION WHEN invalid_parameter_value THEN NULL;
   END;
   BEGIN
