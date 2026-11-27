@@ -367,10 +367,10 @@ Deno.serve(async (req) => {
           const customers = Array.isArray(data.customers)
             ? data.customers as Array<Record<string, unknown>>
             : [];
-          const customerNames = new Map(customers.map((customer) => [
+          const customerNames = new Map<string, string>(customers.map((customer) => [
             String(customer.id || ""),
             safeText(customer.name, 80),
-          ]));
+          ] as const));
           const matchesCustomer = (customerId: unknown) => {
             const name = customerNames.get(String(customerId || "")) || "";
             return !customerName || name.toLocaleLowerCase().includes(customerName.toLocaleLowerCase());
