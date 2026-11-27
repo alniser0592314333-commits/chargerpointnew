@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
-import { sarahChatService, SarahPendingBinAction } from "../../services/ai/sarahChatService";
+import { sarahChatService, type SarahPendingBinAction } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
 import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
