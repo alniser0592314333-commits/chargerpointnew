@@ -1729,7 +1729,7 @@ Deno.serve(async (req) => {
           : endpointCode === "PROVIDER_NOT_CONFIGURED" || endpointCode === "API_KEY_REQUIRED" ? "P0002"
           : endpointCode === "AI_RATE_LIMITED" || endpointCode === "AI_DAILY_LIMIT_REACHED" ? "P0001"
           : "P0001";
-        return { data: endpointError, error: { code, message: endpointCode || response.error.message || "Sarah provider settings request failed" } };
+        return { data: endpointError, error: { code, message: endpointCode || "Sarah provider settings request failed" } };
       };
 
       if (toolName === "get_sarah_ai_provider_settings") {
