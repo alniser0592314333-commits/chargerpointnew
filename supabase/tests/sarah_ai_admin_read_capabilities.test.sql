@@ -119,6 +119,15 @@ BEGIN
     RAISE EXCEPTION 'Authoritative customer balance read failed: %',v_result;
   END IF;
 
+  v_result:=public.sarah_ai_get_customer_financial_history('AAAA','أحمد علي',20);
+  IF v_result->>'match_count'<>'1'
+     OR (v_result->>'entry_count')::integer<1
+     OR v_result->'entries'->0->>'event_type'<>'PAYMENT'
+     OR v_result->'entries'->0->>'amount_minor'<>'1234'
+     OR v_result->>'currency'<>'ILS' THEN
+    RAISE EXCEPTION 'Bounded authoritative financial history read failed: %',v_result;
+  END IF;
+
   v_result:=public.sarah_ai_get_customer_orders('AAAA','أحمد علي',10);
   IF v_result->>'order_count'<>'1'
      OR v_result->'orders'->0->>'order_number' IS NULL
