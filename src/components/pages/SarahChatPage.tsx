@@ -521,6 +521,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       }
     };
     window.addEventListener("online", handleOnline);
+    if (typeof navigator !== "undefined" && navigator.onLine) void handleOnline();
     return () => window.removeEventListener("online", handleOnline);
   }, [session?.authUserId, hydratedAccount, busy, messages, pending]);
 
