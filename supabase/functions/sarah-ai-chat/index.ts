@@ -992,9 +992,9 @@ Deno.serve(async (req) => {
     }
 
     if (toolError) {
-      if (toolError.code === "42501") return { response: respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" }) };
+      if (toolError.code === "42501" || toolError.code === "P4003") return { response: respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" }) };
       if (toolError.code === "28000") return { response: respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" }) };
-      if (toolError.code === "22023") return { response: respond(400, { ok: false, error: "AI_CAPABILITY_INPUT_INVALID" }) };
+      if (toolError.code === "22023" || toolError.code === "P2201") return { response: respond(400, { ok: false, error: "AI_CAPABILITY_INPUT_INVALID" }) };
       if (toolError.code === "P0001") {
         const message = String(toolError.message || "");
         if (message.includes("AI_TOOL_QUOTA_EXCEEDED") || message.includes("AI_TOOL_DAILY_LIMIT_REACHED")) {
@@ -1005,7 +1005,7 @@ Deno.serve(async (req) => {
       if (toolError.code === "P0409") return { response: respond(409, { ok: false, error: "AI_CAPABILITY_CONFLICT" }) };
       if (toolError.code === "P4004") return { response: respond(428, { ok: false, error: "BIN_REQUIRED" }) };
       if (toolError.code === "P0003") return { response: respond(403, { ok: false, error: "BIN_INVALID" }) };
-      if (toolError.code === "P0002") return { response: respond(404, { ok: false, error: "AI_CAPABILITY_NOT_FOUND" }) };
+      if (toolError.code === "P0002" || toolError.code === "23503") return { response: respond(404, { ok: false, error: "AI_CAPABILITY_NOT_FOUND" }) };
       return { response: respond(503, { ok: false, error: "AI_CAPABILITY_UNAVAILABLE" }) };
     }
     return { result: toolResult };
