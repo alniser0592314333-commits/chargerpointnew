@@ -231,7 +231,7 @@ describe("Sarah chat gateway security contract", () => {
   it("passes stable request IDs outside Gemini history and allows multi-action tool chains without a fixed call-count ceiling", () => {
     expect(chatService).toContain("requestId?: string");
     expect(chatService).toContain("requestId: stableRequestId");
-    expect(chatPage).toContain("historySnapshot, correlationId");
+    expect(chatPage).toContain("pendingAction.historySnapshot,\n        pendingAction.correlationId");
     expect(chatPage).toContain("record.correlationId,\n        undefined,\n        record.pendingBinAction");
     expect(source).toContain("const requestId = typeof body.requestId === \"string\"");
     expect(source).toContain("const executeCapability = async");
@@ -573,9 +573,12 @@ describe("Sarah chat gateway security contract", () => {
     expect(chatPage).toContain("pendingBinAction: response.pendingAction");
     expect(chatPage).toContain("record.pendingBinAction");
     expect(chatPage).toContain("cancelBinConfirmation");
-    expect(chatPage).toContain("continuationHistory");
+    expect(chatPage).toContain("pendingAction.historySnapshot");
+    expect(chatPage).not.toContain("continuationHistory");
+    expect(chatPage).toContain("setPendingBinAction(null)");
     expect(chatPage).toContain("continuationResponse.requiresBin");
-    expect(chatPage).toContain("تابعي تنفيذ بقية المهام في طلبي السابق");
+    expect(chatPage).toContain("pendingAction.text");
+    expect(chatPage).toContain("pendingAction.historySnapshot");
   });
 
   it("keeps BIN outside the chat transcript and waits for secure confirmation", () => {
@@ -704,7 +707,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("readExecutionOrder = [");
     expect(source).toContain("decompose the entire request into an internal checklist");
     expect(source).toContain("pursue every authorized task");
-    expect(source).toContain("the client will replay the exact same tool name and arguments after secure confirmation");
+    expect(source).toContain("the secure confirmation flow executes the exact saved action once and resumes this task from its durable checkpoint");
   });
 
   it("treats client-supplied history and tool results as untrusted data", () => {
@@ -723,6 +726,17 @@ describe("Sarah chat gateway security contract", () => {
 
 
 describe("Sarah durable orchestration checkpoint contract", () => {
+  it("chunks large tasks without imposing a total tool-call ceiling", () => {
+    expect(source).toContain("MAX_GEMINI_CALLS_PER_REQUEST = 2");
+    expect(source).toContain("MAX_TOOL_EXECUTIONS_PER_REQUEST = 8");
+    expect(source).toContain("return pendingTaskResponse()");
+    expect(source).toContain("providerRetryCount");
+    expect(chatService).toContain("response.status === 202 && data.ok === true && data.pending === true");
+    expect(chatPage).toContain("while (response.taskPending)");
+    expect(chatPage).toContain("sarahInputQueue.renewUploadLease");
+    expect(chatPage).toContain("record.historySnapshot?.slice(-20)");
+  });
+
   it("loads and checkpoints task state only through the trusted service-role gateway", () => {
     expect(source).toContain('admin.rpc("sarah_ai_task_gateway_load_or_create"');
     expect(source).toContain('admin.rpc("sarah_ai_task_gateway_resume"');
