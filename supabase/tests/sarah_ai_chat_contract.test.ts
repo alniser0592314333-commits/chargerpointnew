@@ -179,7 +179,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('requiredPermissionGroups: [["finance:approve-payment", "finance:create-payment"]]');
     expect(source).toContain('caller.rpc("list_admin_manual_customer_payments")');
     expect(source).toContain('name: "get_goals_overview"');
-    expect(source).toContain('requiredPermissionGroups: [["goals:view", "goals:requests:view"]]');
+    expect(source).toContain('requiredPermissionGroups: [["goals:view", "goals:manage", "goals:requests:view", "goals:approve"]]');
     expect(source).toContain('caller.rpc("get_admin_goals_page_data")');
     expect(source).toContain('String(row.status || "").toUpperCase() !== "PENDING"');
     expect(source).not.toContain("admin.rpc(\"rpc_get_financial_report\"");
@@ -295,7 +295,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("requests.slice(0,20)");
     expect(source).toContain("request_id: safeText(request.id,36)");
     expect(source).toContain('body: { action: "admin-review", requestId, decision }');
-    expect(source).toContain("temporary 24-hour grant");
+    expect(source).toContain("Approval is temporary for exactly 24 hours");
   });
 
   it("registers all admin goal operations through existing app permissions and canonical paths", () => {
