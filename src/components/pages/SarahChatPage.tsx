@@ -10,6 +10,7 @@ import { buildSarahHistorySnapshot } from "../../application/ai/sarahHistory";
 import { localDb } from "../../infrastructure/localDb/localDb";
 import { isBinRequiredOutboxCommand } from "../../infrastructure/sync/binAuthorization";
 import { globalSyncBridge } from "../../infrastructure/sync/syncBridge";
+import { invokeSupabaseRpc } from "../../services/supabase/client";
 import type { SarahLocalSyncActionResult, SarahLocalSyncContext } from "../../services/ai/sarahChatService";
 
 type Message = { role: "user" | "assistant"; text: string };
@@ -168,8 +169,16 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     );
     if (response.requiresLocalSync && response.localSyncAction === "manual_sync") {
       if (!canManageSync) throw new Error("SYNC_MANAGE_PERMISSION_REQUIRED");
+      if (!isCurrent(accountId)) throw new Error("ACCOUNT_CHANGED");
       let localSyncActionResult: SarahLocalSyncActionResult;
       try {
+        // Recheck the live database permission immediately before touching the
+        // device-local outbox; the cached session permission is only a UI hint.
+        const permissionCheck = await invokeSupabaseRpc<Record<string, unknown>>("begin_sync_bootstrap");
+        if (permissionCheck.error || typeof permissionCheck.data?.admin_id !== "string") {
+          throw new Error("SYNC_MANAGE_PERMISSION_REQUIRED");
+        }
+        if (!isCurrent(accountId)) throw new Error("ACCOUNT_CHANGED");
         const result = await globalSyncBridge.requestManualSync();
         localSyncActionResult = {
           action: "manual_sync",
