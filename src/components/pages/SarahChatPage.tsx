@@ -268,6 +268,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     const accountId = session?.authUserId || null;
     const clean = text.trim();
     if (!clean || busy || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
+    if (/\bBIN\b\s*[:：]?\s*\d{4,32}/i.test(clean)) {
+      setText("");
+      setError("لا ترسل رمز BIN داخل المحادثة؛ أدخله فقط في خانة التأكيد الأمني.");
+      return;
+    }
     const operation = accountScopeRef.current.generation;
     const baseMessages = messages;
     const historySnapshot = buildSarahHistorySnapshot(baseMessages);
