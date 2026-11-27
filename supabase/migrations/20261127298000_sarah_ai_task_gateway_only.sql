@@ -246,10 +246,8 @@ BEGIN
 END;
 $function$;
 
--- Revoke every browser-callable path that can return or mutate full task state.
-REVOKE ALL ON FUNCTION public.sarah_ai_task_load_or_create(uuid,text,jsonb) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.sarah_ai_task_checkpoint(uuid,bigint,text,jsonb) FROM PUBLIC, anon, authenticated, service_role;
-REVOKE ALL ON FUNCTION public.sarah_ai_task_resume(uuid) FROM PUBLIC, anon, authenticated, service_role;
+-- Legacy authenticated RPCs are revoked in the follow-up cutover migration,
+-- after the new Edge Function has been deployed to use this service-role gateway.
 
 REVOKE ALL ON FUNCTION public.sarah_ai_task_assert_gateway_actor(uuid,uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.sarah_ai_task_gateway_load_or_create(uuid,uuid,uuid,text,jsonb) FROM PUBLIC, anon, authenticated, service_role;
