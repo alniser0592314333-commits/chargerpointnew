@@ -18,6 +18,7 @@ const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah
 const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
 const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
 const customerCreateMigration = read("supabase/migrations/20261127170000_sarah_ai_customer_create.sql");
+const customerUpdateMigration = read("supabase/migrations/20261127180000_sarah_ai_customer_profile_update.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -191,6 +192,17 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("DEVICE_TYPE_AMBIGUOUS");
     expect(adminReadMigration).toContain("DEBT_LIMIT_EXCEEDED");
     expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text) TO service_role");
+  });
+
+  it("registers lookup-bound basic customer editing under customers:edit", () => {
+    expect(source).toContain('name: "update_customer_profile"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view", "customers:read"], ["customers:edit", "customers:write"]]');
+    expect(source).toContain('caller.rpc("sarah_ai_update_customer_profile"');
+    expect(customerUpdateMigration).toContain("public._cp_assert_active_admin_permission('customers:edit')");
+    expect(customerUpdateMigration).toContain("proof.auth_session_id=v_session_id");
+    expect(customerUpdateMigration).toContain("'UPDATE_CUSTOMER','customers'");
+    expect(customerUpdateMigration).not.toContain("p_bin");
+    expect(customerUpdateMigration).toContain("now() + interval '5 minutes'");
   });
 
   it("registers customer creation through the canonical command and customers:create permission", () => {
