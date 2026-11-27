@@ -140,6 +140,17 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("canLookupCustomers = isSuperAdmin || permissions.includes");
   });
 
+  it("keeps every registered capability paired with an executor and prevents unregistered dispatch", () => {
+    const registryStart = source.indexOf("const capabilityRegistry = [");
+    const registryEnd = source.indexOf("const enabledCapabilities =", registryStart);
+    const registrySection = source.slice(registryStart, registryEnd);
+    const registryNames = [...registrySection.matchAll(/^\\s+name: "([^"]+)",$/gm)].map((match) => match[1]);
+    const uniqueRegistryNames = [...new Set(registryNames)];
+    const executorNames = [...source.matchAll(/toolName === "([^"]+)"/g)].map((match) => match[1]);
+    expect(registryNames.length).toBe(uniqueRegistryNames.length * 2);
+    expect(new Set(executorNames)).toEqual(new Set(uniqueRegistryNames));
+  });
+
   it("passes stable request IDs outside Gemini history and allows bounded multi-step tool chains", () => {
     expect(chatService).toContain("requestId?: string");
     expect(chatService).toContain("requestId: stableRequestId");
