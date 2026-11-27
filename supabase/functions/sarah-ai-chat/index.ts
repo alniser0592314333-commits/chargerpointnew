@@ -114,6 +114,7 @@ Deno.serve(async (req) => {
 
   const text = safeText(body.text, 20000);
   if (!text) return respond(400, { ok: false, error: "TEXT_REQUIRED" });
+  const confirmationMode = body.confirmationAction !== undefined && body.confirmationAction !== null;
   // The client queue reuses this ID when retrying the same message. It is not
   // included in Gemini contents and is consumed only by server-side idempotency.
   const requestId = typeof body.requestId === "string"
@@ -1019,43 +1020,51 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: hourlyQuota, error: hourlyQuotaError } =
-    await caller.rpc("sarah_ai_consume_my_quota", { p_period: "hour" });
-  if (hourlyQuotaError || !hourlyQuota || hourlyQuota.allowed !== true) {
-    return respond(hourlyQuotaError ? 503 : 429, {
-      ok: false,
-      error: hourlyQuotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_RATE_LIMITED",
-      retryAfterSeconds: 3600,
-    });
+  let config: Record<string, unknown> = {};
+  let apiKey = "";
+  if (!confirmationMode) {
+    const { data: hourlyQuota, error: hourlyQuotaError } =
+      await caller.rpc("sarah_ai_consume_my_quota", { p_period: "hour" });
+    if (hourlyQuotaError || !hourlyQuota || hourlyQuota.allowed !== true) {
+      return respond(hourlyQuotaError ? 503 : 429, {
+        ok: false,
+        error: hourlyQuotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_RATE_LIMITED",
+        retryAfterSeconds: 3600,
+      });
+    }
+  
+    const { data: dailyQuota, error: dailyQuotaError } =
+      await caller.rpc("sarah_ai_consume_my_quota", { p_period: "day" });
+    if (dailyQuotaError || !dailyQuota || dailyQuota.allowed !== true) {
+      return respond(dailyQuotaError ? 503 : 429, {
+        ok: false,
+        error: dailyQuotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_DAILY_LIMIT_REACHED",
+        retryAfterSeconds: 86400,
+      });
+    }
+  
+    const { data: runtimeConfig, error: configError } = await admin.rpc("sarah_ai_get_runtime_config");
+    if (configError || !runtimeConfig || runtimeConfig.enabled !== true || runtimeConfig.provider_id !== "gemini") {
+      return respond(503, { ok: false, error: "AI_PROVIDER_NOT_CONFIGURED" });
+    }
+    const { data: providerSecret, error: keyError } = await admin.rpc("sarah_ai_get_provider_secret");
+    if (keyError || typeof providerSecret !== "string" || !providerSecret) {
+      return respond(503, { ok: false, error: "PROVIDER_CREDENTIAL_UNAVAILABLE" });
+    }
+    config = runtimeConfig as Record<string, unknown>;
+    apiKey = providerSecret;
+  
+    const generation = config.generation_config || {};
   }
 
-  const { data: dailyQuota, error: dailyQuotaError } =
-    await caller.rpc("sarah_ai_consume_my_quota", { p_period: "day" });
-  if (dailyQuotaError || !dailyQuota || dailyQuota.allowed !== true) {
-    return respond(dailyQuotaError ? 503 : 429, {
-      ok: false,
-      error: dailyQuotaError ? "AI_QUOTA_SERVICE_UNAVAILABLE" : "AI_DAILY_LIMIT_REACHED",
-      retryAfterSeconds: 86400,
-    });
-  }
-
-  const { data: config, error: configError } = await admin.rpc("sarah_ai_get_runtime_config");
-  if (configError || !config || config.enabled !== true || config.provider_id !== "gemini") {
-    return respond(503, { ok: false, error: "AI_PROVIDER_NOT_CONFIGURED" });
-  }
-  const { data: apiKey, error: keyError } = await admin.rpc("sarah_ai_get_provider_secret");
-  if (keyError || typeof apiKey !== "string" || !apiKey) {
-    return respond(503, { ok: false, error: "PROVIDER_CREDENTIAL_UNAVAILABLE" });
-  }
-
-  const generation = config.generation_config || {};
+  const generation = (config.generation_config as Record<string, unknown>) || {};
   const timeoutMs = Math.min(Math.max(Number(generation.timeoutMs || 30000), 5000), 120000);
   const configuredOutputTokens = Number(generation.maxOutputTokens ?? 2048);
   const maxOutputTokens = Number.isInteger(configuredOutputTokens)
     ? Math.min(Math.max(configuredOutputTokens, 1), 4096)
     : 2048;
-  const modelId = safeText(config.model_id, 128);
-  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(modelId)) {
+  const modelId = confirmationMode ? "secure-bin-confirmation" : safeText(config.model_id, 128);
+  if (!confirmationMode && !/^[A-Za-z0-9._:-]{1,128}$/.test(modelId)) {
     return respond(503, { ok: false, error: "AI_PROVIDER_CONFIGURATION_INVALID" });
   }
 
