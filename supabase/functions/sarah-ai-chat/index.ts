@@ -822,6 +822,28 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "get_jawwal_pay_recipient",
+      requiredPermissionGroups: [["settings:manage"]],
+      declaration: {
+        name: "get_jawwal_pay_recipient",
+        description: "Read the centrally configured public Jawwal Pay recipient number using the same authenticated RPC used by the app. This number is also visible to customers.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
+      name: "update_jawwal_pay_recipient",
+      requiredPermissionGroups: [["settings:manage"]],
+      declaration: {
+        name: "update_jawwal_pay_recipient",
+        description: "Change the shared Jawwal Pay recipient number used by all customers. Requires an exact Palestinian mobile number in 05xxxxxxxx format; the original database RPC rechecks the active admin session and settings:manage permission.",
+        parameters: {
+          type: "OBJECT",
+          properties: { recipient_phone: { type: "STRING", description: "Palestinian mobile number in 05xxxxxxxx format." } },
+          required: ["recipient_phone"],
+        },
+      },
+    },
+    {
       name: "get_sarah_ai_provider_settings",
       requiredPermissionGroups: [["ai:manage"]],
       declaration: {
@@ -1680,6 +1702,23 @@ Deno.serve(async (req) => {
           toolError = { code: mappedCode, message: endpointCode || "Business hours update failed" };
         }
       }
+    } else if (toolName === "get_jawwal_pay_recipient") {
+      const result = await caller.rpc("get_jawwal_pay_recipient");
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "update_jawwal_pay_recipient") {
+      const rawPhone = args.recipient_phone;
+      const recipientPhone = typeof rawPhone === "string"
+        ? rawPhone.replace(/[\\s()-]/g, "")
+        : "";
+      if (!/^05[0-9]{8}$/.test(recipientPhone)) {
+        return { response: respond(400, { ok: false, error: "JAWAL_PAY_RECIPIENT_INVALID" }) };
+      }
+      const result = await caller.rpc("set_jawwal_pay_recipient", {
+        p_recipient_phone: recipientPhone,
+      });
+      toolResult = result.data;
+      toolError = result.error;
     } else if (
       toolName === "get_sarah_ai_provider_settings"
       || toolName === "update_sarah_ai_provider_settings"
@@ -1856,6 +1895,9 @@ Deno.serve(async (req) => {
         const message = String(toolError.message || "");
         if (message.includes("AI_TOOL_QUOTA_EXCEEDED") || message.includes("AI_TOOL_DAILY_LIMIT_REACHED")) {
           return { response: respond(429, { ok: false, error: "AI_TOOL_RATE_LIMITED" }) };
+        }
+        if (message.includes("Missing settings management permission")) {
+          return { response: respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" }) };
         }
         return { response: respond(409, { ok: false, error: "AI_CAPABILITY_CONFLICT" }) };
       }
