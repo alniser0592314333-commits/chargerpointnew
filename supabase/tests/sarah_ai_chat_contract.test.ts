@@ -22,6 +22,7 @@ const customerUpdateMigration = read("supabase/migrations/20261127180000_sarah_a
 const changeLogRedactionMigration = read("supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql");
 const historicalChangeLogRedactionMigration = read("supabase/migrations/20261127200000_redact_historical_change_log_secrets.sql");
 const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
+const customerAccountStatusMigration = read("supabase/migrations/20261127220000_sarah_ai_customer_account_status.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 
 
@@ -203,6 +204,18 @@ describe("Sarah chat gateway security contract", () => {
     expect(historicalChangeLogRedactionMigration).toContain("UPDATE public.change_log");
     expect(changeLogRedactionMigration).toContain("v_safe_payload");
     expect(changeLogRedactionMigration).not.toContain("RAISE NOTICE");
+  });
+
+  it("registers inactive-account lookup and canonical activation/deactivation with exact permissions", () => {
+    expect(source).toContain('name: "lookup_customer_accounts"');
+    expect(source).toContain('name: "set_customer_active_status"');
+    expect(source).toContain('caller.rpc("sarah_ai_lookup_customer_accounts"');
+    expect(source).toContain('caller.rpc("sarah_ai_set_customer_active_status"');
+    expect(customerAccountStatusMigration).toContain("public._cp_assert_active_admin_permission('customers:deactivate')");
+    expect(customerAccountStatusMigration).toContain("public._cp_assert_active_admin_permission('customers:edit')");
+    expect(customerAccountStatusMigration).toContain("proof.auth_session_id=v_session_id");
+    expect(customerAccountStatusMigration).toContain("'UPDATE_CUSTOMER','customers'");
+    expect(customerAccountStatusMigration).toContain("expires_at>now()");
   });
 
   it("registers granular BIN-protected customer settings without exposing BIN to Gemini", () => {
