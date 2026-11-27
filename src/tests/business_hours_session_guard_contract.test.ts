@@ -13,5 +13,9 @@ describe("Business-hours elevated-write session guard", () => {
     expect(sessionCheck).toBeGreaterThan(callerClient);
     expect(adminLookup).toBeGreaterThan(sessionCheck);
     expect(denial).toBeGreaterThan(sessionCheck);
+    expect(source).toContain('callerClient.rpc("get_effective_permissions", { p_admin_id: admin.id })');
+    expect(source).not.toContain('admin.permissions.includes("settings:manage")');
+    expect(source).not.toContain('.from("admin_custom_permissions")');
+    expect(source).not.toContain('.from("role_permissions")');
   });
 });
