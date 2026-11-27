@@ -277,11 +277,10 @@ Deno.serve(async (req) => {
       } else if (toolName === "get_customer_profile") {
         const customerCode = safeText(args.customer_code, 4);
         const rawNameHint = args.name_hint;
-        const nameHint = rawNameHint === undefined || rawNameHint === null
-          ? null
-          : typeof rawNameHint === "string" ? safeText(rawNameHint, 64) : "";
-        if (!/^[A-Fa-f0-9]{4}$/.test(customerCode)
-          || (rawNameHint !== undefined && rawNameHint !== null && nameHint.length < 2)) {
+        const nameHint = typeof rawNameHint === "string" ? safeText(rawNameHint, 64) : null;
+        const invalidNameHint = rawNameHint !== undefined && rawNameHint !== null
+          && (typeof rawNameHint !== "string" || nameHint === null || nameHint.length < 2);
+        if (!/^[A-Fa-f0-9]{4}$/.test(customerCode) || invalidNameHint) {
           return respond(400, { ok: false, error: "CUSTOMER_PROFILE_QUERY_INVALID" });
         }
         const result = await caller.rpc("sarah_ai_get_customer_profile", {
