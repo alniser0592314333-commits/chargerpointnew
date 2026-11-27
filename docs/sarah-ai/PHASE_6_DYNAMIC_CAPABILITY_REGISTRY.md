@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following twenty-six bounded capabilities are registered today:
+The following twenty-seven bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -32,6 +32,7 @@ The following twenty-six bounded capabilities are registered today:
 | get_customer_financial_history | customers:view AND customers:financial-view | Up to twenty recent authoritative ledger entries with bounded references |
 | get_customer_orders | customers:view AND orders:view | Up to ten recent orders and bounded item status/charge details |
 | create_order_with_items | customers:view AND orders:create AND orders:edit | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
+| update_customer_profile | (customers:view OR customers:read) AND (customers:edit OR customers:write) | Updates only name, phone, or notes after a same-session lookup; protected debt-limit and charger-fee exemption fields remain excluded |
 | create_customer | customers:create | Creates one active customer through the canonical command with the app's default ₪20 debt limit and no charger exemption; stable request ID prevents duplicate creation |
 | get_device_catalog | devices:view | Up to one hundred non-retired device types with active-state, bilingual names, base prices, and charger policy |
 | get_financial_summary | finance:view OR reports:view | Aggregate ledger record count, net balance, and generation time |
