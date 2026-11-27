@@ -20,6 +20,45 @@ END;
 $device_catalog_read$;
 RESET ROLE;
 
+-- Permissions are re-evaluated on every database capability call, even within
+-- one still-valid account session: grant, use, revoke, then immediately deny.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000009';
+INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
+VALUES('00000000-0000-4000-8000-000000000009','devices:view',true)
+ON CONFLICT(admin_id,permission) DO UPDATE SET is_grant=EXCLUDED.is_grant;
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000009',false);
+DO $live_permission_grant$
+DECLARE v_result jsonb;
+BEGIN
+  v_result:=public.sarah_ai_get_device_catalog();
+  IF v_result->>'ok'<>'true' THEN
+    RAISE EXCEPTION 'Freshly granted device permission was not honored: %',v_result;
+  END IF;
+END;
+$live_permission_grant$;
+RESET ROLE;
+DELETE FROM public.admin_custom_permissions
+WHERE admin_id='00000000-0000-4000-8000-000000000009'
+  AND permission='devices:view';
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000009';
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000009',false);
+DO $live_permission_revocation$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_get_device_catalog();
+    RAISE EXCEPTION 'Sarah retained devices:view after it was revoked in the same session';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$live_permission_revocation$;
+RESET ROLE;
+
 -- An ordinary admin without devices:view cannot use Sarah to read the catalog.
 -- Isolate this scenario from earlier test actors' hourly tool quota.
 DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000009';
