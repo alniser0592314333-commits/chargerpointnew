@@ -288,6 +288,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:manage')");
     expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:pricing')");
     expect(deviceManagementMigration).toContain("public._cp_assert_active_admin_permission('devices:charger-policy')");
+    expect(deviceManagementMigration).toContain("Device icon is invalid");
     expect(deviceManagementMigration).toContain("public.execute_sync_command(");
     expect(deviceManagementMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
     expect(deviceManagementMigration).toContain("sarah_ai_consume_my_quota('tool_day')");
@@ -307,6 +308,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(financialAdjustmentsMigration).toContain("proof.auth_session_id=v_session_id");
     expect(financialAdjustmentsMigration).toContain("upper(fl.event_type)='PAYMENT'");
     expect(financialAdjustmentsMigration).toContain("Refund amount exceeds the remaining refundable payment amount");
+    expect(financialAdjustmentsMigration).toContain("p_note ~ '[[:cntrl:]]'");
     expect(financialAdjustmentsMigration.indexOf("FROM public.processed_commands pc") < financialAdjustmentsMigration.indexOf("IF v_action='REFUND'")).toBe(true);
     expect(financialAdjustmentsMigration).toContain("public.execute_sync_command(");
     expect(financialAdjustmentsMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
