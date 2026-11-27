@@ -25,6 +25,7 @@ export const sarahChatService = {
     text: string,
     expectedAuthUserId: string,
     history: { role: "user" | "assistant"; text: string }[] = [],
+    requestId?: string,
   ): Promise<SarahChatResponse> {
     const clean = text.trim();
     if (!clean) throw new Error("TEXT_REQUIRED");
@@ -44,6 +45,10 @@ export const sarahChatService = {
       throw new Error("ACCOUNT_CHANGED");
     }
 
+    const stableRequestId = requestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)
+      ? requestId
+      : crypto.randomUUID();
+
     let response: Response;
     try {
       response = await fetch(endpoint(), {
@@ -53,7 +58,9 @@ export const sarahChatService = {
           Authorization: `Bearer ${session.token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ text: clean, history: history.slice(-20) }),
+        // Stable across retries of the same queued message; used only for server-side
+        // action idempotency and never included in the Gemini prompt/history.
+        body: JSON.stringify({ text: clean, history: history.slice(-20), requestId: stableRequestId }),
         cache: "no-store",
       });
     } catch {
