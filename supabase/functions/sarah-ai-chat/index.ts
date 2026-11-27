@@ -239,6 +239,22 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "get_customer_financial_history",
+      requiredPermissionGroups: [["customers:view"], ["customers:financial-view", "finance:view", "finances:read"]],
+      declaration: {
+        name: "get_customer_financial_history",
+        description: "Read up to twenty recent authoritative financial-ledger entries for a customer after lookup_customers in this same request. Includes event type, amount in ILS minor units, reference IDs, and timestamp; never infer or calculate a balance from these rows.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_code: { type: "STRING" },
+            name_hint: { type: "STRING" },
+          },
+          required: ["customer_code"],
+        },
+      },
+    },
+    {
       name: "get_customer_orders",
       requiredPermissionGroups: [["customers:view"], ["orders:view"]],
       declaration: {
@@ -592,6 +608,22 @@ Deno.serve(async (req) => {
       const result = await caller.rpc("sarah_ai_get_customer_profile", {
         p_customer_code: customerCode,
         p_name_hint: nameHint,
+      });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "get_customer_financial_history") {
+      const customerCode = safeText(args.customer_code,4);
+      const rawNameHint = args.name_hint;
+      const nameHint = typeof rawNameHint === "string" ? safeText(rawNameHint,64) : null;
+      const invalidNameHint = rawNameHint !== undefined && rawNameHint !== null
+        && (typeof rawNameHint !== "string" || nameHint === null || nameHint.length < 2);
+      if (!/^[A-Fa-f0-9]{4}$/.test(customerCode) || invalidNameHint) {
+        return { response: respond(400, { ok: false, error: "CUSTOMER_FINANCIAL_HISTORY_INPUT_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_get_customer_financial_history", {
+        p_customer_code: customerCode,
+        p_name_hint: nameHint,
+        p_limit: 20,
       });
       toolResult = result.data;
       toolError = result.error;
