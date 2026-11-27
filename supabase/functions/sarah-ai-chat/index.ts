@@ -1625,6 +1625,13 @@ Deno.serve(async (req) => {
     }
 
     if (toolError) {
+      const toolErrorMessage = String(toolError.message || "");
+      if (toolError.code === "22023" && /Authorization BIN is required/i.test(toolErrorMessage)) {
+        return { response: respond(428, { ok: false, error: "BIN_REQUIRED" }) };
+      }
+      if (toolError.code === "42501" && /Invalid authorization BIN credential/i.test(toolErrorMessage)) {
+        return { response: respond(403, { ok: false, error: "BIN_INVALID" }) };
+      }
       if (toolError.code === "42501" || toolError.code === "P4003") return { response: respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" }) };
       if (toolError.code === "28000") return { response: respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" }) };
       if (toolError.code === "22023" || toolError.code === "P2201") return { response: respond(400, { ok: false, error: "AI_CAPABILITY_INPUT_INVALID" }) };
