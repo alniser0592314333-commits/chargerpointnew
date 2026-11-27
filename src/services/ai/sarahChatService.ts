@@ -6,6 +6,31 @@ export interface SarahChatResponse {
   modelId: string;
   requiresBin?: boolean;
   binError?: "BIN_INVALID";
+  requiresLocalSync?: boolean;
+  localSyncAction?: "manual_sync";
+}
+
+export interface SarahLocalSyncContext {
+  online: boolean;
+  pendingCount: number;
+  blockedCount: number;
+  failedCount: number;
+  binRequiredCount: number;
+  lastPulledAt: string | null;
+  recentErrorClasses: string[];
+}
+
+export interface SarahLocalSyncActionResult {
+  action: "manual_sync";
+  success: boolean;
+  pushed?: number;
+  pulled?: number;
+  errorCode?: "NETWORK_OFFLINE" | "SYNC_ALREADY_IN_PROGRESS" | "SYNC_FAILED";
+}
+
+export interface SarahChatClientContext {
+  localSyncContext?: SarahLocalSyncContext;
+  localSyncActionResult?: SarahLocalSyncActionResult;
 }
 
 const endpoint = () => {
@@ -32,6 +57,7 @@ export const sarahChatService = {
     history: { role: "user" | "assistant"; text: string }[] = [],
     requestId?: string,
     bin?: string,
+    clientContext?: SarahChatClientContext,
   ): Promise<SarahChatResponse> {
     const clean = text.trim();
     if (!clean) throw new Error("TEXT_REQUIRED");
@@ -64,6 +90,8 @@ export const sarahChatService = {
     };
     // BIN is sent only as a separate transport field; never added to chat text/history.
     if (bin) requestBody.bin = bin;
+    if (clientContext?.localSyncContext) requestBody.localSyncContext = clientContext.localSyncContext;
+    if (clientContext?.localSyncActionResult) requestBody.localSyncActionResult = clientContext.localSyncActionResult;
 
     let response: Response;
     try {
@@ -88,6 +116,9 @@ export const sarahChatService = {
       data = await response.json();
     } catch {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
+    }
+    if (response.status === 428 && data.error === "LOCAL_SYNC_REQUIRED" && data.action === "manual_sync") {
+      return { answer: "", modelId: "", requiresLocalSync: true, localSyncAction: "manual_sync" };
     }
     if (response.status === 428 && data.error === "BIN_REQUIRED") {
       return { answer: "", modelId: "", requiresBin: true };
