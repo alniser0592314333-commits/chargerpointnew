@@ -741,7 +741,7 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("const actionBin = typeof body.bin === \"string\"");
     expect(source).toContain("requestId,");
     expect(source).toContain("resumeTask = body.resumeTask === true || confirmationMode");
-    expect(source).not.toContain("p_bin: actionBin");
+    expect(source).toContain("p_bin: actionBin"); // BIN is used only in the live protected RPC call, never serialized into taskState.
     expect(chatService).toContain("if (resumeTask) requestBody.resumeTask = true");
     expect(chatPage).toContain("pendingAction.correlationId,\n        undefined,\n        undefined,\n        true,");
   });
