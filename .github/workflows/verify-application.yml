@@ -1423,10 +1423,6 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127220000_sarah_ai_customer_account_status.sql
-      - name: Apply Sarah customer account status migration
-        env:
-          PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127220000_sarah_ai_customer_account_status.sql
       - name: Apply Sarah device management capability migration
         env:
           PGPASSWORD: postgres
@@ -1435,6 +1431,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql
+      - name: Apply Sarah customer account status migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127240000_sarah_ai_customer_account_status.sql
       - name: Verify Sarah session-bound reads and atomic order creation
         env:
           PGPASSWORD: postgres
