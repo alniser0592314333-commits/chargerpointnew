@@ -378,7 +378,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "get_business_hours_settings"');
     expect(source).toContain('name: "update_business_hours_settings"');
     expect(source).toContain('caller.functions.invoke("business-hours", { method: "GET" })');
-    expect(source).toContain('caller.functions.invoke("business-hours", { body: { config: nextConfig } })');
+    expect(source).toContain('caller.functions.invoke("business-hours", { body: { config: nextConfig, requestId: actionRequestId } })');
     expect(source).toContain("preserve all fields the user did not explicitly ask to change");
     expect(source).toContain("BUSINESS_HOURS_TIME_INVALID");
   });
