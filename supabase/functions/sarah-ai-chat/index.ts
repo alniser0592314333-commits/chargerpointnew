@@ -337,8 +337,127 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "get_customer_goal_proposal",
+      requiredPermissionGroups: [["goals:manage"]],
+      declaration: {
+        name: "get_customer_goal_proposal",
+        description: "Generate the official app goal proposal for one customer from the last 28 days of delivered, financially recognized, non-replacement devices. Returns server-generated target, duration, bonus, and expiry; do not invent these values.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_id: { type: "STRING", description: "Exact customer_id returned by get_goals_overview." },
+          },
+          required: ["customer_id"],
+        },
+      },
+    },
+    {
+      name: "create_customer_goal",
+      requiredPermissionGroups: [["goals:manage"]],
+      declaration: {
+        name: "create_customer_goal",
+        description: "Create one active goal for a customer. Use customer_id from get_goals_overview. If the user did not explicitly supply all target, duration, and bonus values, omit all three and the database will use the app's official activity-based goal generator. Never invent a partial proposal.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_id: { type: "STRING", description: "Exact active customer_id from get_goals_overview." },
+            target_quantity: { type: "INTEGER", description: "Optional explicit target. If supplied, duration_days and bonus_amount_minor must also be supplied." },
+            duration_days: { type: "INTEGER", description: "Optional explicit duration from 3 through 15 days." },
+            bonus_amount_minor: { type: "INTEGER", description: "Optional explicit bonus in ILS minor units, capped at 20 per target device." },
+          },
+          required: ["customer_id"],
+        },
+      },
+    },
+    {
+      name: "approve_goal_request",
+      requiredPermissionGroups: [["goals:approve"]],
+      declaration: {
+        name: "approve_goal_request",
+        description: "Approve one exact pending goal request returned by get_goals_overview. If the user did not explicitly supply all target, duration, and bonus values, omit all three and the database uses the app generator, preserving a valid requested target when present.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            request_id: { type: "STRING", description: "Exact pending request_id returned by get_goals_overview." },
+            target_quantity: { type: "INTEGER" },
+            duration_days: { type: "INTEGER" },
+            bonus_amount_minor: { type: "INTEGER" },
+          },
+          required: ["request_id"],
+        },
+      },
+    },
+    {
+      name: "reject_goal_request",
+      requiredPermissionGroups: [["goals:approve"]],
+      declaration: {
+        name: "reject_goal_request",
+        description: "Reject one exact pending goal request returned by get_goals_overview with a required reason.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            request_id: { type: "STRING" },
+            reason: { type: "STRING", description: "Required rejection reason, 2 to 500 characters." },
+          },
+          required: ["request_id", "reason"],
+        },
+      },
+    },
+    {
+      name: "update_customer_goal",
+      requiredPermissionGroups: [["goals:manage"]],
+      declaration: {
+        name: "update_customer_goal",
+        description: "Update target, duration, or bonus of an active goal returned by get_goals_overview. Never change progress. Use its current version for optimistic conflict protection.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            goal_id: { type: "STRING" },
+            expected_version: { type: "INTEGER" },
+            target_quantity: { type: "INTEGER" },
+            duration_days: { type: "INTEGER" },
+            bonus_amount_minor: { type: "INTEGER" },
+          },
+          required: ["goal_id", "expected_version"],
+        },
+      },
+    },
+    {
+      name: "cancel_customer_goal",
+      requiredPermissionGroups: [["goals:manage"]],
+      declaration: {
+        name: "cancel_customer_goal",
+        description: "Cancel one active goal returned by get_goals_overview using the app's existing admin cancellation workflow.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            goal_id: { type: "STRING" },
+            reason: { type: "STRING", description: "Optional cancellation reason, up to 500 characters." },
+          },
+          required: ["goal_id"],
+        },
+      },
+    },
+    {
+      name: "review_goal_cancellation",
+      requiredPermissionGroups: [["goals:approve", "goals:manage"]],
+      declaration: {
+        name: "review_goal_cancellation",
+        description: "Approve or reject a pending customer goal-cancellation request using the existing admin review workflow.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            goal_id: { type: "STRING" },
+            approve: { type: "BOOLEAN" },
+            reason: { type: "STRING", description: "Optional review note, up to 500 characters." },
+          },
+          required: ["goal_id", "approve"],
+        },
+      },
+    },
+    {
       name: "get_goals_overview",
-      requiredPermissionGroups: [["goals:view", "goals:requests:view"]],
+      requiredPermissionGroups: [["goals:view", "goals:manage", "goals:requests:view", "goals:approve"]],
       declaration: {
         name: "get_goals_overview",
         description: "Read goals and customer goal requests allowed by the current admin permissions. Optionally filter by a customer name fragment. Returns at most fifteen matching goal/request records and no mutation controls.",
@@ -658,6 +777,58 @@ Deno.serve(async (req) => {
       });
       toolResult = result.data;
       toolError = result.error;
+    } else if (toolName === "get_customer_goal_proposal") {
+      const customerId = safeText(args.customer_id, 36);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId)) {
+        return { response: respond(400, { ok: false, error: "GOAL_CUSTOMER_ID_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_get_goal_proposal", { p_customer_id: customerId });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if ([
+      "create_customer_goal","approve_goal_request","reject_goal_request",
+      "update_customer_goal","cancel_customer_goal","review_goal_cancellation",
+    ].includes(toolName)) {
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const customerId = toolName === "create_customer_goal" ? safeText(args.customer_id,36) : null;
+      const targetId = toolName === "create_customer_goal" ? null
+        : safeText(args.request_id ?? args.goal_id,36);
+      const targetQuantity = args.target_quantity;
+      const durationDays = args.duration_days;
+      const bonusAmount = args.bonus_amount_minor;
+      const expectedVersion = args.expected_version;
+      const rawReason = args.reason;
+      const reason = typeof rawReason === "string" ? safeText(rawReason,500) : null;
+      const approve = args.approve;
+      const numericValues = [targetQuantity,durationDays,bonusAmount,expectedVersion];
+      if ((toolName === "create_customer_goal" && !uuidPattern.test(customerId || ""))
+        || (toolName !== "create_customer_goal" && !uuidPattern.test(targetId || ""))
+        || numericValues.some((value) => value !== undefined && value !== null
+          && (typeof value !== "number" || !Number.isSafeInteger(value)))
+        || (rawReason !== undefined && rawReason !== null && typeof rawReason !== "string")
+        || (toolName === "review_goal_cancellation" && typeof approve !== "boolean")) {
+        return { response: respond(400, { ok: false, error: "GOAL_ACTION_INPUT_INVALID" }) };
+      }
+      const action = toolName === "create_customer_goal" ? "CREATE_GOAL"
+        : toolName === "approve_goal_request" ? "APPROVE_GOAL_REQUEST"
+        : toolName === "reject_goal_request" ? "REJECT_GOAL_REQUEST"
+        : toolName === "update_customer_goal" ? "UPDATE_GOAL_CONFIG"
+        : toolName === "cancel_customer_goal" ? "CANCEL_GOAL"
+        : "REVIEW_GOAL_CANCELLATION";
+      const result = await caller.rpc("sarah_ai_execute_goal_action", {
+        p_request_id: actionRequestId,
+        p_action: action,
+        p_customer_id: customerId,
+        p_target_id: targetId,
+        p_target_quantity: targetQuantity ?? null,
+        p_duration_days: durationDays ?? null,
+        p_bonus_amount_minor: bonusAmount ?? null,
+        p_expected_version: expectedVersion ?? null,
+        p_reason: reason,
+        p_approve: typeof approve === "boolean" ? approve : null,
+      });
+      toolResult = result.data;
+      toolError = result.error;
     } else if (toolName === "get_goals_overview") {
       const rawCustomerName = args.customer_name;
       const customerName = typeof rawCustomerName === "string" ? safeText(rawCustomerName, 64) : "";
@@ -684,6 +855,9 @@ Deno.serve(async (req) => {
           .filter((goal) => matchesCustomer(goal.customer_id))
           .slice(0, 15)
           .map((goal) => ({
+            goal_id: goal.id,
+            customer_id: goal.customer_id,
+            version: goal.version,
             customer_name: customerNames.get(String(goal.customer_id || "")) || "عميل",
             target_quantity: goal.target_quantity,
             current_progress: goal.current_progress,
@@ -693,12 +867,16 @@ Deno.serve(async (req) => {
             started_at: goal.started_at,
             expires_at: goal.expires_at,
             completed_at: goal.completed_at,
+            cancellation_request_status: goal.cancellation_request_status,
+            cancellation_request_reason: safeText(goal.cancellation_request_reason,240),
           }));
         const goalRequests = (Array.isArray(data.goal_requests)
           ? data.goal_requests as Array<Record<string, unknown>> : [])
           .filter((request) => matchesCustomer(request.customer_id))
           .slice(0, Math.max(0, 15 - goals.length))
           .map((request) => ({
+            request_id: request.id,
+            customer_id: request.customer_id,
             customer_name: customerNames.get(String(request.customer_id || "")) || "عميل",
             requested_target: request.requested_target,
             status: request.status,
@@ -706,7 +884,13 @@ Deno.serve(async (req) => {
             reviewed_at: request.reviewed_at,
             rejection_reason: safeText(request.rejection_reason, 240),
           }));
-        toolResult = { goals, goal_requests: goalRequests };
+        const customerDirectory = customers
+          .filter((customer) => customer.is_active === true)
+          .filter((customer) => !customerName
+            || safeText(customer.name,80).toLocaleLowerCase().includes(customerName.toLocaleLowerCase()))
+          .slice(0,20)
+          .map((customer) => ({ customer_id: customer.id, customer_name: safeText(customer.name,80) }));
+        toolResult = { goals, goal_requests: goalRequests, customers: customerDirectory };
       }
     } else {
       return { response: respond(502, { ok: false, error: "AI_TOOL_CALL_NOT_ALLOWED" }) };
