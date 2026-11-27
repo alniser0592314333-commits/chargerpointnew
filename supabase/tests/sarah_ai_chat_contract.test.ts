@@ -14,6 +14,7 @@ const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_custo
 const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql");
 const orderActionMigration = read("supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql");
 const addExistingOrderItemMigration = read("supabase/migrations/20261127260000_sarah_ai_add_item_to_existing_order.sql");
+const binPaymentIntentMigration = read("supabase/migrations/20261127270000_sarah_ai_freeze_bin_payment_intent.sql");
 const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_ai_goal_management_capabilities.sql");
 const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
 const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
@@ -91,10 +92,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
-    expect(source).toContain("safeParallelReadPair = new Set([\"lookup_customers\", \"get_device_catalog\"])");
-    expect(source).toContain("AI_TOOL_CALL_BATCH_NOT_SAFE");
-    expect(source).toContain("requestedCalls.length === 2");
-    expect(source).toContain("registeredCapabilityNames.has(call.name)");
+    expect(source).toContain("calls.length !== 1");
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
     expect(lookupMigration).toContain("public.sarah_ai_assert_use_permission()");
@@ -204,11 +202,6 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("for (let toolStep = 0; toolStep < 4; toolStep++)");
     expect(source).toContain("toolConfig: { functionCallingConfig: { mode: \"AUTO\" } }");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
-    expect(source).toContain("confirmationInput");
-    expect(source).toContain("executeCapability(confirmationName, confirmationArgs, confirmationRequestId)");
-    expect(source).toContain("client will replay the exact same tool name and arguments after secure confirmation");
-    expect(chatService).toContain("requestBody.confirmationAction = confirmationAction");
-    expect(chatPage).toContain("pendingAction.pendingAction");
   });
 
   it("opens a missing business day only through the canonical OPEN_DAY command", () => {
@@ -515,6 +508,19 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).not.toContain("'bin',p_bin");
   });
 
+  it("freezes BIN-gated payment intent and replays the exact selected capability", () => {
+    expect(binPaymentIntentMigration).toContain("requires_bin',true,'status','AWAITING_BIN'");
+    expect(binPaymentIntentMigration).toContain("v_existing_payload IS DISTINCT FROM v_request_payload");
+    expect(binPaymentIntentMigration).toContain("v_existing_session_id IS DISTINCT FROM v_session_id");
+    expect(source).toContain("actionResult.requires_bin === true");
+    expect(source).toContain("confirmationInput");
+    expect(source).toContain("executeCapability(confirmationName, confirmationArgs, confirmationRequestId)");
+    expect(source).toContain("binProtectedCapabilityNames.has(confirmationName)");
+    expect(chatService).toContain("pendingAction?: SarahPendingBinAction");
+    expect(chatService).toContain("requestBody.confirmationAction = confirmationAction");
+    expect(chatPage).toContain("pendingAction.pendingAction");
+  });
+
   it("keeps BIN outside the chat transcript and waits for secure confirmation", () => {
     expect(chatService).toContain("requiresBin?: boolean");
     expect(chatService).toContain("requestBody.bin = bin");
@@ -637,7 +643,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("Customer-history review uses only a request_id returned by list_customer_history_requests");
     expect(source).toContain("Enabled mutations include customer creation/basic profile editing/protected setting changes/account activation and deactivation, subordinate-admin permission changes/suspension/activation, business-hours and Jawwal Pay recipient settings, current-device manual sync, AI provider model/generation-setting changes and explicitly requested provider clearing, device catalog creation/update/retirement, customer credit adjustments/refunds, order creation/delivery/cancellation/day renumbering, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
     expect(source).not.toContain("The currently enabled mutations are create_order_with_items and the payment actions");
-    expect(source).toContain("the server will return the secure confirmation prompt");
+    expect(source).toContain("if a payment/order action returns BIN_REQUIRED");
   });
 
   it("treats client-supplied history and tool results as untrusted data", () => {
