@@ -1095,6 +1095,63 @@ Deno.serve(async (req) => {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
   };
 
+  const base64UrlEncode = (bytes: Uint8Array) => {
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  };
+  const base64UrlDecode = (value: string) => {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const binary = atob(padded);
+    return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  };
+  const pendingActionSigningKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(serviceRoleKey),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+  const createPendingActionToken = async (
+    actionName: string,
+    args: Record<string, unknown>,
+    actionRequestId: string,
+  ) => {
+    const payload = {
+      version: 1,
+      actorId: user.id,
+      sessionId: authSessionId,
+      requestId,
+      actionName,
+      args,
+      actionRequestId,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    };
+    const encodedPayload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+    const signature = new Uint8Array(await crypto.subtle.sign(
+      "HMAC", pendingActionSigningKey, new TextEncoder().encode(encodedPayload),
+    ));
+    return `${encodedPayload}.${base64UrlEncode(signature)}`;
+  };
+  const verifyPendingActionToken = async (token: string): Promise<Record<string, unknown> | null> => {
+    const parts = token.split(".");
+    if (parts.length !== 2 || !/^[A-Za-z0-9_-]+$/.test(parts[0]) || !/^[A-Za-z0-9_-]+$/.test(parts[1])) return null;
+    try {
+      const valid = await crypto.subtle.verify(
+        "HMAC", pendingActionSigningKey, base64UrlDecode(parts[1]), new TextEncoder().encode(parts[0]),
+      );
+      if (!valid) return null;
+      const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0]))) as Record<string, unknown>;
+      if (payload.version !== 1 || typeof payload.actorId !== "string" || typeof payload.sessionId !== "string"
+        || typeof payload.requestId !== "string" || typeof payload.actionName !== "string"
+        || typeof payload.actionRequestId !== "string" || typeof payload.expiresAt !== "number"
+        || !payload.args || typeof payload.args !== "object" || Array.isArray(payload.args)) return null;
+      return payload;
+    } catch {
+      return null;
+    }
+  };
   const executeCapability = async (
     toolName: string,
     args: Record<string, unknown>,
@@ -2079,17 +2136,30 @@ Deno.serve(async (req) => {
     ? body.confirmationAction as Record<string, unknown>
     : null;
   if (confirmationInput) {
-    const confirmationName = safeText(confirmationInput.name, 80);
-    const confirmationArgs = confirmationInput.args && typeof confirmationInput.args === "object" && !Array.isArray(confirmationInput.args)
-      ? confirmationInput.args as Record<string, unknown> : null;
-    const confirmationRequestId = safeText(confirmationInput.actionRequestId, 36);
+    const confirmationToken = safeText(confirmationInput.token, 12000);
+    const signedAction = confirmationToken ? await verifyPendingActionToken(confirmationToken) : null;
+    if (!signedAction) return respond(400, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
+    if (signedAction.expiresAt <= Date.now()) return respond(409, { ok: false, error: "BIN_CONFIRMATION_EXPIRED" });
+    if (signedAction.actorId !== user.id || signedAction.sessionId !== authSessionId || signedAction.requestId !== requestId) {
+      return respond(403, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
+    }
+    const confirmationName = safeText(signedAction.actionName, 80);
+    const confirmationArgs = signedAction.args as Record<string, unknown>;
+    const confirmationRequestId = safeText(signedAction.actionRequestId, 36);
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!confirmationArgs || !uuidPattern.test(confirmationRequestId) || !binProtectedCapabilityNames.has(confirmationName))
+    if (!uuidPattern.test(confirmationRequestId) || !binProtectedCapabilityNames.has(confirmationName))
       return respond(400, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
     if (!registeredCapabilityNames.has(confirmationName)) return respond(400, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
     if (!enabledCapabilityNames.has(confirmationName)) return respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" });
     const execution = await executeCapability(confirmationName, confirmationArgs, confirmationRequestId);
-    if (execution.response) return execution.response;
+    if (execution.response) {
+      if (execution.response.status === 428) {
+        return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction: {
+          token: confirmationToken, name: confirmationName, args: confirmationArgs, actionRequestId: confirmationRequestId,
+        } });
+      }
+      return execution.response;
+    }
     const resultRecord = execution.result && typeof execution.result === "object" && !Array.isArray(execution.result)
       ? execution.result as Record<string, unknown> : {};
     if (resultRecord.requires_bin === true) {
@@ -2097,6 +2167,7 @@ Deno.serve(async (req) => {
         ok: false,
         error: "BIN_REQUIRED",
         pendingAction: {
+          token: confirmationToken,
           name: confirmationName,
           args: confirmationArgs,
           actionRequestId: confirmationRequestId,
@@ -2269,6 +2340,11 @@ Deno.serve(async (req) => {
                 ok: false,
                 error: "BIN_REQUIRED",
                 pendingAction: {
+                  token: await createPendingActionToken(
+                    requestedCall.name,
+                    requestedCall.args,
+                    await deriveActionRequestId(requestedCall.name, requestedCall.args),
+                  ),
                   name: requestedCall.name,
                   args: requestedCall.args,
                   actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
@@ -2285,6 +2361,11 @@ Deno.serve(async (req) => {
               ok: false,
               error: "BIN_REQUIRED",
               pendingAction: {
+                token: await createPendingActionToken(
+                  requestedCall.name,
+                  requestedCall.args,
+                  await deriveActionRequestId(requestedCall.name, requestedCall.args),
+                ),
                 name: requestedCall.name,
                 args: requestedCall.args,
                 actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
