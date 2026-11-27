@@ -4,6 +4,8 @@ import { describe, it, expect } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const source = read("supabase/functions/sarah-ai-chat/index.ts");
+const chatService = read("src/services/ai/sarahChatService.ts");
+const chatPage = read("src/components/pages/SarahChatPage.tsx");
 const supabaseConfig = read("supabase/config.toml");
 const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_actor_quota.sql");
 const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
@@ -54,7 +56,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("MAX_ASSISTANT_OUTPUT_CHARS = 12_000");
     expect(source).toContain(".slice(0, MAX_ASSISTANT_OUTPUT_CHARS)");
     expect(source).toContain("readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES)");
-    expect(source).toContain("readBoundedResponseBody(secondResponse, MAX_PROVIDER_RESPONSE_BYTES)");
+    expect(source).toContain("readBoundedResponseBody(followUpResponse, MAX_PROVIDER_RESPONSE_BYTES)");
     expect(source).not.toContain("firstResponse.json()");
     expect(source).not.toContain("secondResponse.json()");
     expect(source).toContain("safeText(body.text, 20000)");
@@ -67,11 +69,11 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("resp.text()");
   });
 
-  it("exposes bounded read-only customer tools and validates each capability in PostgreSQL", () => {
+  it("exposes bounded customer read capabilities and validates each capability in PostgreSQL", () => {
     expect(source).toContain('name: "lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
-    expect(source).toContain("functionCalls.length !== 1");
+    expect(source).toContain("calls.length !== 1");
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
     expect(lookupMigration).toContain("public.sarah_ai_assert_use_permission()");
@@ -112,7 +114,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("const capabilityRegistry = [");
     expect(source).toContain("requiredPermissionGroups: [[\"customers:view\"]]");
     expect(source).toContain("const enabledCapabilities = capabilityRegistry.filter(");
-    expect(source).toContain("isSuperAdmin || capability.requiredPermissions.some((permission) => permissions.includes(permission))");
+    expect(source).toContain("isSuperAdmin || capability.requiredPermissionGroups.every(");
     expect(source).toContain("enabledCapabilities.map((capability) => capability.declaration)");
     expect(source).toContain("const hasEnabledCapabilities = enabledCapabilities.length > 0");
     expect(source).not.toContain("canLookupCustomers");
@@ -120,6 +122,40 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("PostgreSQL independently re-checks each permission per call");
     expect(source).not.toContain("You have two read-only tools");
     expect(source).not.toContain("canLookupCustomers = isSuperAdmin || permissions.includes");
+  });
+
+  it("passes stable request IDs outside Gemini history and allows bounded multi-step tool chains", () => {
+    expect(chatService).toContain("requestId?: string");
+    expect(chatService).toContain("requestId: stableRequestId");
+    expect(chatPage).toContain("historySnapshot, correlationId");
+    expect(chatPage).toContain("retryHistory, record.correlationId");
+    expect(source).toContain("const requestId = typeof body.requestId === \"string\"");
+    expect(source).toContain("const executeCapability = async");
+    expect(source).toContain("for (let toolStep = 0; toolStep < 4; toolStep++)");
+    expect(source).toContain("toolConfig: { functionCallingConfig: { mode: \"AUTO\" } }");
+    expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
+  });
+
+  it("registers atomic order creation with current permissions and canonical app commands", () => {
+    expect(source).toContain('name: "create_order_with_items"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:create"], ["orders:edit"]]');
+    expect(source).toContain('caller.rpc("sarah_ai_create_order_with_items"');
+    expect(source).toContain("p_request_id: requestId");
+    expect(adminReadMigration).toContain("public.sarah_ai_action_idempotency");
+    expect(adminReadMigration).toContain("request_payload jsonb NOT NULL");
+    expect(adminReadMigration).toContain("public.execute_sync_command(");
+    expect(adminReadMigration).toContain("'CREATE_ORDER'");
+    expect(adminReadMigration).toContain("'ADD_ORDER_ITEM'");
+    expect(adminReadMigration).toContain("public._cp_assert_active_admin_permission('orders:create')");
+    expect(adminReadMigration).toContain("public._cp_assert_active_admin_permission('orders:edit')");
+    expect(adminReadMigration).toContain("orders:override-debt-limit");
+    expect(adminReadMigration).toContain("settings:manage");
+    expect(adminReadMigration).toContain("Asia/Jerusalem");
+    expect(adminReadMigration).toContain("record_canonical_change('business_days'");
+    expect(adminReadMigration).toContain("ORDER_ALREADY_EXISTS");
+    expect(adminReadMigration).toContain("DEVICE_TYPE_AMBIGUOUS");
+    expect(adminReadMigration).toContain("DEBT_LIMIT_EXCEEDED");
+    expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text) TO service_role");
   });
 
   it("registers finance and goals read capabilities against existing permission keys", () => {
