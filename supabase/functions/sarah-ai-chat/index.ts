@@ -2348,10 +2348,12 @@ const deferredMutationPrerequisites: Record<string, string[]> = {
           ? deferredMutationPrerequisites[deferredMutationCall.name]
           : null;
         const safeDeferredMutationBatch = requestedCalls.length > 1
+          && requestedCalls.length <= 5
           && uniqueNames
           && Boolean(requiredPrerequisites)
-          && readCalls.length === requiredPrerequisites.length
-          && requiredPrerequisites!.every((requiredName) => readCalls.some((call) => call.name === requiredName));
+          && requiredPrerequisites!.every((requiredName) => readCalls.some((call) => call.name === requiredName))
+          && (!readCalls.some((call) => call.name === "get_customer_orders")
+            || readCalls.some((call) => call.name === "lookup_customers"));
         if (requestedCalls.length > 1 && !safeReadOnlyBatch && !safeDeferredMutationBatch) {
           console.warn("Sarah rejected an unsafe parallel tool batch", {
             reason: "parallel_batch_missing_safe_prerequisites",
