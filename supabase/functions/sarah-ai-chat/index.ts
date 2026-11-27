@@ -1129,17 +1129,20 @@ Deno.serve(async (req) => {
       ? taskState.executedCapabilityNames.filter((name): name is string => typeof name === "string")
       : [],
   );
-  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
+  const taskHasProgress = taskState.phase !== "INITIAL" || taskStatus !== "RUNNING";
+  if (taskHasProgress) {
     const savedExecutedNames = Array.isArray(taskState.executedCapabilityNames)
       ? taskState.executedCapabilityNames
       : null;
-    // Fail closed for legacy/malformed completed checkpoints. A completed answer
-    // may contain data read under permissions that have since been revoked.
+    // Every resumed checkpoint may contain saved reads or verified prerequisites.
+    // Revalidate all of them against live permissions before restoring any result.
     if (!savedExecutedNames || savedExecutedNames.some(
       (name) => typeof name !== "string" || !enabledCapabilityNames.has(name),
     )) {
       return respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" });
     }
+  }
+  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
     return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
   }
   const readOnlyCapabilityNames = new Set<string>([
@@ -2498,6 +2501,7 @@ Deno.serve(async (req) => {
         currentContentsTail: [],
         resultsByIndex: {},
         verifiedPrerequisiteNames: [],
+        executedCapabilityNames: [...executedCapabilityNames],
       });
     }
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
