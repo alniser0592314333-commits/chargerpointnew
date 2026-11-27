@@ -204,7 +204,6 @@ Deno.serve(async (req) => {
   const taskRequestHash = Array.from(taskHashBytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
   const initialTaskState: Record<string, unknown> = {
     phase: "INITIAL",
-    contents,
     confirmedActions: [],
   };
   const taskLoad = resumeTask
@@ -2427,7 +2426,7 @@ Deno.serve(async (req) => {
     } else {
       const firstPayload: Record<string, unknown> = {
         ...basePayload,
-        contents: Array.isArray(taskState.contents) ? taskState.contents as Array<Record<string, unknown>> : contents,
+        contents,
       };
       if (tools) {
         firstPayload.tools = tools;
@@ -2455,9 +2454,8 @@ Deno.serve(async (req) => {
       await checkpointTask("RUNNING", {
         ...taskState,
         phase: "MODEL_RESPONSE",
-        contents: Array.isArray(taskState.contents) ? taskState.contents : contents,
         currentCandidate: firstCandidate || null,
-        currentContents: Array.isArray(taskState.contents) ? taskState.contents : contents,
+        currentContentsTail: [],
         resultsByIndex: {},
         verifiedPrerequisiteNames: [],
       });
@@ -2471,9 +2469,11 @@ Deno.serve(async (req) => {
     let answer = "";
     if (functionCalls.length > 0) {
       let currentCandidate = firstCandidate || null;
-      let currentContents = Array.isArray(taskState.currentContents)
-        ? taskState.currentContents as Array<Record<string, unknown>>
-        : (Array.isArray(taskState.contents) ? taskState.contents as Array<Record<string, unknown>> : contents);
+      const savedContentsTail = Array.isArray(taskState.currentContentsTail)
+        ? taskState.currentContentsTail as Array<Record<string, unknown>>
+        : [];
+      let currentContents = [...contents, ...savedContentsTail];
+      const baseContentsLength = contents.length;
       let completed = false;
 
       const verifiedPrerequisiteNames = new Set<string>(
@@ -2590,7 +2590,7 @@ Deno.serve(async (req) => {
                 pendingAction,
                 pendingCallIndex: requestedCall.index,
                 currentCandidate,
-                currentContents,
+                currentContentsTail: currentContents.slice(baseContentsLength),
                 requestedCalls,
                 resultsByIndex: Object.fromEntries(resultsByIndex),
                 verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
@@ -2724,7 +2724,7 @@ Deno.serve(async (req) => {
           ...taskState,
           phase: "MODEL_RESPONSE",
           currentCandidate,
-          currentContents,
+          currentContentsTail: currentContents.slice(baseContentsLength),
           resultsByIndex: {},
         });
       }
