@@ -18,6 +18,8 @@ describe("Business-hours elevated-write session guard", () => {
     expect(source).toContain('p_command_type: "SET_SYSTEM_SETTING"');
     expect(source).toContain('key: settingKey');
     expect(source).toContain('payloadHash');
+    expect(source).toContain('requestedConfig');
+    expect(source).not.toContain('JSON.stringify({ key: settingKey, config, resetGeneration })');
     expect(source).toContain('resetGeneration');
     expect(source).not.toContain('adminClient.from("admins")');
     expect(source).not.toContain('adminClient.from("system_settings").upsert');
