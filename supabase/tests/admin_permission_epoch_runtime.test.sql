@@ -62,6 +62,45 @@ BEGIN
 END;
 $epochs$;
 
+SELECT set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-000000000001', true);
+DO $cache$
+DECLARE
+  v_first jsonb;
+  v_same jsonb;
+  v_changed jsonb;
+  v_version bigint;
+BEGIN
+  v_first := public.sarah_ai_get_chat_access_context(NULL);
+  IF COALESCE((v_first ->> 'permissions_unchanged')::boolean, true) IS NOT FALSE
+     OR NOT (v_first ? 'permissions') THEN
+    RAISE EXCEPTION 'Cache miss must return the current effective permissions';
+  END IF;
+  v_version := (v_first ->> 'permissions_version')::bigint;
+
+  v_same := public.sarah_ai_get_chat_access_context(v_version);
+  IF COALESCE((v_same ->> 'permissions_unchanged')::boolean, false) IS NOT TRUE
+     OR (v_same ? 'permissions') THEN
+    RAISE EXCEPTION 'Cache hit must return identity/version only, not re-read permissions';
+  END IF;
+
+  INSERT INTO public.admin_custom_permissions (admin_id, permission, is_grant)
+  VALUES ('10000000-0000-4000-8000-000000000001', 'orders:correct', true);
+
+  v_changed := public.sarah_ai_get_chat_access_context(v_version);
+  IF COALESCE((v_changed ->> 'permissions_unchanged')::boolean, true) IS NOT FALSE
+     OR NOT (v_changed ? 'permissions')
+     OR NOT ((v_changed -> 'permissions') ? 'orders:correct') THEN
+    RAISE EXCEPTION 'Permission epoch change must force a fresh permission projection';
+  END IF;
+
+  v_version := (v_changed ->> 'permissions_version')::bigint;
+  v_same := public.sarah_ai_get_chat_access_context(v_version);
+  IF COALESCE((v_same ->> 'permissions_unchanged')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'Fresh permission version must become a cache hit';
+  END IF;
+END;
+$cache$;
+
 DO $acl$
 BEGIN
   IF NOT (SELECT relrowsecurity AND relforcerowsecurity
