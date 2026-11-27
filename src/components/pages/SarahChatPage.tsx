@@ -305,7 +305,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       );
       if (response.requiresLocalSync) throw new Error("LOCAL_SYNC_HANDOFF_LOOP");
     }
-    onAccepted?.();
+    if (isCurrent(accountId)) onAccepted?.();
     while (response.taskPending) {
       if (!isCurrent(accountId)) throw new Error("ACCOUNT_CHANGED");
       if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("AI_SETTINGS_NETWORK_ERROR");
@@ -391,9 +391,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
             setMessages((prev) => prev.map((item) => item.queueId === id
               ? { ...item, status: "sent", statusText: "تم الإرسال" }
               : item));
-            setTimeout(() => setMessages((prev) => prev.map((item) => item.queueId === id && item.status === "sent"
-              ? { ...item, status: undefined, statusText: undefined }
-              : item)), 1000);
+            setTimeout(() => {
+              if (!isCurrent(accountId, operation)) return;
+              setMessages((prev) => prev.map((item) => item.queueId === id && item.status === "sent"
+                ? { ...item, status: undefined, statusText: undefined }
+                : item));
+            }, 1000);
           },
           async () => { await sarahInputQueue.renewUploadLease(accountId, id); },
         );
