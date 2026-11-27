@@ -256,9 +256,13 @@ Deno.serve(async (req) => {
   if (taskStatus === "FAILED" && resumeTask) {
     // An explicit user retry reopens only a previously checkpointed task.
     // Completed tool results and deterministic action IDs remain unchanged.
-    const retryState = { ...taskState, phase: "PROVIDER_RETRY", providerRetryCount: 0 };
-    delete retryState.failureCode;
-    delete retryState.failedAt;
+    const retryState = {
+      ...taskState,
+      phase: "PROVIDER_RETRY",
+      providerRetryCount: 0,
+      failureCode: null,
+      failedAt: null,
+    };
     const reopened = await admin.rpc("sarah_ai_task_gateway_checkpoint", {
       p_actor_id: taskActor,
       p_session_id: taskSession,
