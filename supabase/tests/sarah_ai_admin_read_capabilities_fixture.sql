@@ -4,7 +4,8 @@
 ALTER TABLE public.customers
   ADD COLUMN IF NOT EXISTS debt_limit_minor bigint NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+  ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS notes text;
 
 CREATE TABLE public.business_days (
   id uuid PRIMARY KEY,
@@ -232,6 +233,14 @@ BEGIN
       COALESCE((p_payload->>'chargerFeeExempt')::boolean,false),
       COALESCE((p_payload->>'debtLimitMinor')::bigint,0),now(),1
     );
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('customerId',p_payload->>'id'));
+  ELSIF p_command_type='UPDATE_CUSTOMER' THEN
+    UPDATE public.customers
+    SET name=COALESCE(p_payload->>'name',name),
+        phone=COALESCE(p_payload->>'phone',phone),
+        notes=COALESCE(p_payload->>'notes',notes),
+        updated_at=now(),version=version+1
+    WHERE id=(p_payload->>'id')::uuid;
     RETURN jsonb_build_object('success',true,'result',jsonb_build_object('customerId',p_payload->>'id'));
   ELSIF p_command_type='CREATE_ORDER' THEN
     INSERT INTO public.orders(id,day_id,customer_id,display_number,status,notes)
