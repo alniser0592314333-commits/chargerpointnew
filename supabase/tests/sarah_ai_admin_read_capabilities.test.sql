@@ -575,12 +575,12 @@ DECLARE
 BEGIN
   PERFORM public.sarah_ai_lookup_customers('محمود سمير');
   BEGIN
-    PERFORM public.sarah_ai_create_order_with_items(
+    v_result:=public.sarah_ai_create_order_with_items(
       v_order_id,'BBBB','محمود سمير',
       '[{"device_name":"شاومي","has_charger":true},{"device_name":"فشل اختبار","has_charger":true}]'::jsonb,
       NULL
     );
-    RAISE EXCEPTION 'Simulated canonical item failure did not abort the order';
+    RAISE EXCEPTION 'Order creation returned without simulated item failure: %',v_result;
   EXCEPTION WHEN OTHERS THEN
     IF SQLERRM='Simulated canonical item failure' THEN
       NULL;
