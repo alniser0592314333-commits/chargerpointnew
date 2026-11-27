@@ -523,19 +523,5 @@ AS $function$
   ORDER BY sequence_id DESC LIMIT 1;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.test_sarah_action_has_bin(p_request_id uuid)
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $function$
-  SELECT EXISTS(
-    SELECT 1 FROM public.sarah_ai_action_idempotency
-    WHERE request_id=p_request_id AND request_payload ? 'bin'
-  );
-$function$;
-
 GRANT EXECUTE ON FUNCTION public.test_sarah_customer_snapshot(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.test_sarah_customer_change_payload(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.test_sarah_action_has_bin(uuid) TO authenticated;
