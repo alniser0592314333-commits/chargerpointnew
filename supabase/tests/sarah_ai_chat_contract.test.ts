@@ -516,7 +516,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(binPaymentIntentMigration).toContain("v_existing_payload IS DISTINCT FROM v_request_payload");
     expect(binPaymentIntentMigration).toContain("v_existing_session_id IS DISTINCT FROM v_session_id");
     expect(binPaymentIntentMigration).toContain("q.status='PENDING'");
-    expect(binPaymentIntentMigration.indexOf("Customer lookup proof is missing")).toBeLessThan(binPaymentIntentMigration.indexOf("requires_bin',true,'status','AWAITING_BIN'"));
+    expect(binPaymentIntentMigration.indexOf("IF v_customer_count=0 THEN")).toBeLessThan(binPaymentIntentMigration.indexOf("RETURN jsonb_build_object('requires_bin',true,'status','AWAITING_BIN')"));
     expect(binPaymentIntentMigration.indexOf("Order target does not belong to the verified customer")).toBeLessThan(binPaymentIntentMigration.indexOf("IF p_bin IS NULL OR p_bin !~"));
     expect(binPaymentIntentMigration).toContain("public.sarah_ai_execute_order_action");
     expect(source).toContain("actionResult.requires_bin === true");
