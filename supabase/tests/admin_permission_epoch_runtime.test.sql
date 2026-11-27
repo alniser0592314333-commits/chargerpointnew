@@ -38,6 +38,29 @@ BEGIN
   END IF;
 
   v_before := v_after;
+  UPDATE public.admin_custom_permissions
+  SET is_grant = false
+  WHERE admin_id = '10000000-0000-4000-8000-000000000001'
+    AND permission = 'orders:edit';
+  SELECT version INTO v_after
+  FROM public.admin_permission_epochs
+  WHERE admin_id = '10000000-0000-4000-8000-000000000001';
+  IF v_after <> v_before + 1 THEN
+    RAISE EXCEPTION 'Custom permission update must increment epoch exactly once';
+  END IF;
+
+  v_before := v_after;
+  DELETE FROM public.admin_custom_permissions
+  WHERE admin_id = '10000000-0000-4000-8000-000000000001'
+    AND permission = 'orders:deliver';
+  SELECT version INTO v_after
+  FROM public.admin_permission_epochs
+  WHERE admin_id = '10000000-0000-4000-8000-000000000001';
+  IF v_after <> v_before + 1 THEN
+    RAISE EXCEPTION 'Custom permission deletion must increment epoch exactly once';
+  END IF;
+
+  v_before := v_after;
   UPDATE public.admins
   SET permissions = ARRAY['orders:view', 'orders:create']
   WHERE id = '10000000-0000-4000-8000-000000000001';
@@ -115,6 +138,10 @@ BEGIN
      OR has_table_privilege('authenticated', 'public.admin_permission_epochs', 'UPDATE')
      OR has_table_privilege('authenticated', 'public.admin_permission_epochs', 'DELETE') THEN
     RAISE EXCEPTION 'Authenticated role must have read-only access to permission epochs';
+  END IF;
+  IF has_function_privilege('anon', 'public.sarah_ai_get_chat_access_context(bigint)', 'EXECUTE')
+     OR NOT has_function_privilege('authenticated', 'public.sarah_ai_get_chat_access_context(bigint)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Sarah access-context RPC must be authenticated-only';
   END IF;
 END;
 $acl$;
