@@ -179,7 +179,7 @@ BEGIN
          AND schemaname = 'public'
          AND tablename = 'admin_permission_epochs'
      ) THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.admin_permission_epochs;
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.admin_permission_epochs';
   END IF;
 END;
 $publication$;
