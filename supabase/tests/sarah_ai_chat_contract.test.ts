@@ -141,6 +141,14 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
   });
 
+  it("opens a missing business day only through the canonical OPEN_DAY command", () => {
+    expect(adminReadMigration).toContain("public.execute_sync_command(");
+    expect(adminReadMigration).toContain("'OPEN_DAY','business_days'");
+    expect(adminReadMigration).not.toContain("INSERT INTO public.business_days");
+    expect(adminReadMigration).not.toContain("record_canonical_change('business_days'");
+    expect(adminReadMigration).toContain("settings:manage");
+  });
+
   it("registers atomic order creation with current permissions and canonical app commands", () => {
     expect(source).toContain('name: "create_order_with_items"');
     expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:create"], ["orders:edit"]]');
