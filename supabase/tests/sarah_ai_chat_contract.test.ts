@@ -114,7 +114,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("p_customer_code: customerCode");
     expect(source).toContain("p_name_hint: nameHint");
     expect(source).toContain("functionResponse: {");
-    expect(source).toContain("name: toolName");
+    expect(source).toContain("name: requestedCall.name");
     expect(profileMigration).toContain("public.sarah_ai_assert_use_permission()");
     expect(profileMigration).toContain("public._cp_assert_active_admin_permission('customers:view')");
     expect(profileMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
@@ -140,7 +140,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("enabledCapabilities.map((capability) => capability.declaration)");
     expect(source).toContain("const hasEnabledCapabilities = enabledCapabilities.length > 0");
     expect(source).not.toContain("canLookupCustomers");
-    expect(source).toContain("enabledCapabilityNames.has(toolName");
+    expect(source).toContain("enabledCapabilityNames.has(call.name)");
     expect(source).toContain("PostgreSQL independently re-checks each permission per call");
     expect(source).not.toContain("You have two read-only tools");
     expect(source).not.toContain("canLookupCustomers = isSuperAdmin || permissions.includes");
@@ -199,7 +199,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(chatService).toContain("requestId?: string");
     expect(chatService).toContain("requestId: stableRequestId");
     expect(chatPage).toContain("historySnapshot, correlationId");
-    expect(chatPage).toContain("retryHistory, record.correlationId");
+    expect(chatPage).toContain("record.correlationId,\n        undefined,\n        record.pendingBinAction");
     expect(source).toContain("const requestId = typeof body.requestId === \"string\"");
     expect(source).toContain("const executeCapability = async");
     expect(source).toContain("for (let toolStep = 0; toolStep < 4; toolStep++)");
