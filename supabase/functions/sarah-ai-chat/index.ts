@@ -1793,9 +1793,14 @@ Deno.serve(async (req) => {
       toolResult = result.data;
       toolError = result.error;
     } else if (toolName === "get_local_sync_status") {
-      toolResult = localSyncContext
-        ? { available: true, ...localSyncContext }
-        : { available: false, message: "No local Sync Center snapshot was supplied by this device." };
+      const { error: syncPermissionError } = await caller.rpc("begin_sync_bootstrap");
+      if (syncPermissionError) {
+        toolError = syncPermissionError;
+      } else {
+        toolResult = localSyncContext
+          ? { available: true, ...localSyncContext }
+          : { available: false, message: "No local Sync Center snapshot was supplied by this device." };
+      }
     } else if (toolName === "request_manual_sync") {
       const { error: syncPermissionError } = await caller.rpc("begin_sync_bootstrap");
       if (syncPermissionError) {
