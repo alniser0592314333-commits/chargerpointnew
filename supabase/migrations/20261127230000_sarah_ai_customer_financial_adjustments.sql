@@ -30,6 +30,7 @@ DECLARE
   v_original_amount bigint;
   v_refunded_amount bigint;
   v_result jsonb;
+  v_quota jsonb;
 BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public.assert_my_account_session_active();
@@ -83,6 +84,15 @@ BEGIN
     RAISE EXCEPTION 'Customer code is ambiguous; provide a more specific name hint' USING ERRCODE='22023';
   END IF;
 
+  v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
+  END IF;
+  v_quota:=public.sarah_ai_consume_my_quota('tool_day');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
+  END IF;
+
   IF v_action='REFUND' THEN
     SELECT fl.amount_minor INTO v_original_amount
     FROM public.financial_ledger fl
@@ -96,7 +106,7 @@ BEGIN
     END IF;
     SELECT COALESCE(sum(-fl.amount_minor),0)::bigint INTO v_refunded_amount
     FROM public.financial_ledger fl
-    WHERE fl.event_type='refund' AND fl.reference_id=p_reference_event_id;
+    WHERE upper(fl.event_type)='REFUND' AND fl.reference_id=p_reference_event_id;
     IF p_amount_minor>v_original_amount-v_refunded_amount THEN
       RAISE EXCEPTION 'Refund amount exceeds the remaining refundable payment amount' USING ERRCODE='22023';
     END IF;
