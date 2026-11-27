@@ -314,7 +314,9 @@ BEGIN
     )
     VALUES(
       p_command_id,(p_payload->>'orderId')::uuid,v_device.id,
-      (p_payload->>'itemSequence')::integer,'CHARGING','UNPAID',
+      COALESCE((p_payload->>'itemSequence')::integer,
+        (SELECT COALESCE(MAX(item_sequence),0)+1 FROM public.order_items WHERE order_id=(p_payload->>'orderId')::uuid)),
+      'CHARGING','UNPAID',
       v_charge,
       CASE WHEN v_device.charger_fee_applicable AND NOT v_has_charger THEN v_device.charger_fee_minor ELSE 0 END,
       0,v_device.name
