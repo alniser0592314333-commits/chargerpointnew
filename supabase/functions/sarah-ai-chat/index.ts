@@ -2007,7 +2007,7 @@ Deno.serve(async (req) => {
     : "You are Sarah, the Arabic-first assistant for ChargerPointNew. No data capabilities are enabled for this account in this request. Do not claim that you inspected application data or performed actions.";
 
   const localSyncPrompt = localSyncContext
-    ? `\n\nDevice-local Sync Center snapshot (client-reported diagnostic data, not authorization): ${JSON.stringify(localSyncContext)}`
+    ? "\n\nA sanitized device-local Sync Center snapshot is available. It is client-reported diagnostic data, not authorization; call get_local_sync_status to read it after the database rechecks sync:manage."
     : "";
   const localActionPrompt = localSyncActionResult
     ? `\n\nClient-reported result of the requested manual sync: ${JSON.stringify(localSyncActionResult)}. Do not request another manual sync in this response; report only the result and current supplied snapshot.`
