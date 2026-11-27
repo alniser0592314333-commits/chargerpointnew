@@ -8,7 +8,7 @@ Status: **prepared, not deployed**. This document records the read-only producti
 - The provider configuration table, Sarah quota table/RPCs, scoped lookup RPC, limited customer-profile RPC, and Super Admin BIN-session-proof table/RPC are not present in production.
 - Supabase Vault is available, but no Sarah-named Vault secret exists yet.
 - Neither `sarah-ai-settings` nor `sarah-ai-chat` is deployed.
-- Current session inventory: 234 account-session rows, 175 active registered administrator sessions, 2 active administrators, and 4 currently valid administrator Auth sessions without an account-session registry row. The strict registry migration is designed to backfill missing valid sessions; repeat this count immediately before deployment.
+- Current session inventory: 234 account-session rows, 175 active registered administrator-session rows, 2 active administrators, and 4 currently valid administrator Auth sessions without an account-session registry row. The strict registry migration explicitly backfills those missing rows as **browser sessions for 7 days** (it does not infer native/PWA from user-agent); repeat this count immediately before deployment.
 - `ai:use` and `ai:manage` currently have zero rows in `admin_custom_permissions`. Super Admin is allowed by the server-side bypass; other administrators must be explicitly granted the required permission after deployment.
 - Existing native-push event routing, order/item lifecycle, goal-completion, manual-top-up triggers, and the app-release policy table/guard/RLS policies are already present. Do not replay those migrations just because their current local filenames have different timestamps.
 
@@ -66,8 +66,15 @@ Vault is ready but contains no Sarah provider key. The key must be entered by th
 
 - GitHub Actions run `45952841261` passed all six jobs, including the duplicate migration-prefix guard, isolated SQL fixtures, Sarah provider/quota/lookup/profile contracts, account-session tests, TypeScript checks, Edge Function checks, lint, and production bundle build.
 - The optional full-suite diagnostic reports 45 failing test files / 172 failing tests on both this PR and the `main` baseline (114 files and 1,122 tests pass in each run). The counts match exactly, so these are pre-existing baseline failures, not regressions from this migration rename.
-- The Vercel preview status is failing with `build-rate-limit`. This is a platform build quota result, not a TypeScript/production-build failure; the GitHub production bundle job passed. Do not upgrade a plan just to clear this preview check.
-- GitHub reports the PR as mergeable, but branch-protection requirements could not be read by the integration. Confirm required checks in GitHub before merging.
+- The latest Vercel production deployment is READY at commit `522e109`; current `main` is one commit ahead at `b8f3157`. The current PR changes only migration naming, tests, and documentation, but merging it can cause Vercel to deploy the current `main` tree. The PR preview was previously rate-limited; its latest status is checked separately.
+- The repository's `main` branch is not protected and has no required status checks configured. GitHub currently reports PR #331 as mergeable and the branch is 0 commits behind main. Do not treat this as a substitute for the production release gates below.
+
+
+## 6. Client compatibility and release-policy checks
+
+- The latest published admin APK in GitHub Releases is `v1.4.2` (18 Nov 2026). That APK uses the legacy `register_my_account_session` call. The strict registry migration preserves this endpoint but deliberately classifies new legacy registrations as `browser`, which receives a 7-day idle window. The current `main` source uses `reactivate_my_account_session` / `register_my_account_session_v2` and identifies native/installed-PWA clients, which receive a 30-day idle window.
+- The existing APK remains on the compatibility path, but the four backfilled sessions and any new legacy registrations are browser-class for 7 days. Build and publish a new signed admin APK from the current reviewed `main` source before/alongside the strict-session rollout if native 30-day behavior is required. The current source also reactivates the session immediately after BIN verification, avoiding the older APK's delayed registration after app hydration.
+- The latest published customer APK asset is `v1.3.0` (5 Nov 2026). The live app-release policy rows currently say admin `1.0.1` and customer `1.2.7`; both have download URLs, and both grace windows are expired. These values are behind the latest GitHub release assets. This is separate from Sarah; confirm the intended rollout versions before changing the policy because it can trigger update prompts.
 
 ## 7. Safety boundary
 
