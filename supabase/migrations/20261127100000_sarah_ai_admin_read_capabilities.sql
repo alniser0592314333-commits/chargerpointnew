@@ -467,7 +467,7 @@ CREATE TABLE IF NOT EXISTS public.sarah_ai_action_idempotency (
   request_payload jsonb NOT NULL,
   result jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (auth_user_id, auth_session_id, request_id)
+  PRIMARY KEY (auth_user_id, request_id)
 );
 ALTER TABLE public.sarah_ai_action_idempotency ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.sarah_ai_action_idempotency FROM PUBLIC, anon, authenticated, service_role;
@@ -584,11 +584,11 @@ BEGIN
   v_request_payload:=jsonb_build_object('customer_code',v_code,'name_hint',v_name_hint,'items',p_items,'notes',p_notes);
   INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
   VALUES(auth.uid(),v_session_id,p_request_id,'create_order_with_items',v_request_payload)
-  ON CONFLICT(auth_user_id,auth_session_id,request_id) DO NOTHING;
+  ON CONFLICT(auth_user_id,request_id) DO NOTHING;
   SELECT action_name,request_payload,result
   INTO v_existing_action,v_existing_payload,v_saved_result
   FROM public.sarah_ai_action_idempotency
-  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id
   FOR UPDATE;
   IF v_existing_action IS DISTINCT FROM 'create_order_with_items' THEN
     RAISE EXCEPTION 'Request id was already used for a different action' USING ERRCODE = 'P0409';
@@ -601,10 +601,9 @@ BEGIN
   END IF;
   -- A validation-only attempt has no side effects; the model may perform a
   -- lookup/clarification and retry within the same user turn before commit.
-  IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
-    UPDATE public.sarah_ai_action_idempotency SET request_payload=v_request_payload
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
-  END IF;
+  UPDATE public.sarah_ai_action_idempotency
+  SET request_payload=v_request_payload,auth_session_id=v_session_id
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id AND result IS NULL;
 
   v_quota := public.sarah_ai_consume_my_quota('tool_hour');
   IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
@@ -864,7 +863,7 @@ BEGIN
     'currency','ILS'
   );
   UPDATE public.sarah_ai_action_idempotency SET result=v_result
-  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id;
   RETURN v_result;
 END;
 $function$;
@@ -940,10 +939,6 @@ BEGIN
   IF p_note IS NOT NULL AND (pg_catalog.char_length(p_note)>500 OR p_note ~ '[[:cntrl:]]') THEN
     RAISE EXCEPTION 'Payment note is too long or contains control characters' USING ERRCODE = '22023';
   END IF;
-  IF p_bin IS NULL OR pg_catalog.btrim(p_bin)='' THEN
-    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE = 'P4004';
-  END IF;
-
   v_request_payload:=jsonb_build_object(
     'customer_code',v_code,
     'name_hint',v_name_hint,
@@ -952,11 +947,11 @@ BEGIN
   );
   INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
   VALUES(auth.uid(),v_session_id,p_request_id,'record_and_approve_payment',v_request_payload)
-  ON CONFLICT(auth_user_id,auth_session_id,request_id) DO NOTHING;
+  ON CONFLICT(auth_user_id,request_id) DO NOTHING;
   SELECT action_name,request_payload,result
   INTO v_existing_action,v_existing_payload,v_saved_result
   FROM public.sarah_ai_action_idempotency
-  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id
   FOR UPDATE;
   IF v_existing_action IS DISTINCT FROM 'record_and_approve_payment' THEN
     RAISE EXCEPTION 'Request id was already used for a different action' USING ERRCODE = 'P0409';
@@ -967,9 +962,11 @@ BEGIN
     END IF;
     RETURN v_saved_result || jsonb_build_object('idempotent_replay',true);
   END IF;
-  IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
-    UPDATE public.sarah_ai_action_idempotency SET request_payload=v_request_payload
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
+  UPDATE public.sarah_ai_action_idempotency
+  SET request_payload=v_request_payload,auth_session_id=v_session_id
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id AND result IS NULL;
+  IF p_bin IS NULL OR pg_catalog.btrim(p_bin)='' THEN
+    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE = 'P4004';
   END IF;
 
   v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
@@ -1037,7 +1034,7 @@ BEGIN
     'currency','ILS'
   );
   UPDATE public.sarah_ai_action_idempotency SET result=v_result
-  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id;
   RETURN v_result;
 END;
 $function$;
@@ -1087,9 +1084,6 @@ BEGIN
   END IF;
   IF pg_catalog.upper(pg_catalog.btrim(p_action))='APPROVE' THEN
     PERFORM public._cp_assert_active_admin_permission('finance:create-payment');
-    IF p_bin IS NULL OR pg_catalog.btrim(p_bin)='' THEN
-      RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE='P4004';
-    END IF;
     IF p_approved_amount_minor IS NULL OR p_approved_amount_minor<=0 OR p_approved_amount_minor>99999999999 THEN
       RAISE EXCEPTION 'Approved payment amount is invalid' USING ERRCODE='22023';
     END IF;
@@ -1111,11 +1105,11 @@ BEGIN
   );
   INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
   VALUES(auth.uid(),v_session_id,p_request_id,'review_payment_submission',v_request_payload)
-  ON CONFLICT(auth_user_id,auth_session_id,request_id) DO NOTHING;
+  ON CONFLICT(auth_user_id,request_id) DO NOTHING;
   SELECT action_name,request_payload,result
   INTO v_existing_action,v_existing_payload,v_saved_result
   FROM public.sarah_ai_action_idempotency
-  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id
   FOR UPDATE;
   IF v_existing_action IS DISTINCT FROM 'review_payment_submission' THEN
     RAISE EXCEPTION 'Request id was already used for a different action' USING ERRCODE='P0409';
@@ -1126,9 +1120,12 @@ BEGIN
     END IF;
     RETURN v_saved_result || jsonb_build_object('idempotent_replay',true);
   END IF;
-  IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
-    UPDATE public.sarah_ai_action_idempotency SET request_payload=v_request_payload
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
+  UPDATE public.sarah_ai_action_idempotency
+  SET request_payload=v_request_payload,auth_session_id=v_session_id
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id AND result IS NULL;
+  IF pg_catalog.upper(pg_catalog.btrim(p_action))='APPROVE'
+     AND (p_bin IS NULL OR pg_catalog.btrim(p_bin)='') THEN
+    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE='P4004';
   END IF;
 
   v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
@@ -1160,7 +1157,7 @@ BEGIN
     'balance_after_minor',v_review_result->'balance_after_minor'
   );
   UPDATE public.sarah_ai_action_idempotency SET result=v_result
-  WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id;
   RETURN v_result;
 END;
 $function$;
