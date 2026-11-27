@@ -238,7 +238,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes");
     expect(source).toContain("p_bin: actionBin");
     expect(protectedCustomerSettingsMigration).toContain("public._cp_assert_active_admin_permission('customers:debt-limit')");
-    expect(source).toContain("use a negative value (for example -2000 for ₪20)");
+    expect(source).toContain("Optional positive ILS minor units, only for the catalog's Other device type.");
     expect(protectedCustomerSettingsMigration).toContain("public._cp_assert_active_admin_permission('customers:charger-exemption')");
     expect(protectedCustomerSettingsMigration).toContain("proof.auth_session_id=v_session_id");
     expect(protectedCustomerSettingsMigration).toContain("Never persist the raw BIN in Sarah idempotency data");
