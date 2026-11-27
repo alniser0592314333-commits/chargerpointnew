@@ -307,7 +307,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         try {
           const rows = await sarahInputQueue.list(accountId);
           const current = rows.find((row) => row.id === pendingAction.id);
-          if (current?.state === "UPLOADING") {
+          if (current?.state === "UPLOADING" || current?.state === "SENT_TO_AI") {
             await sarahInputQueue.transition(accountId, pendingAction.id, "NEEDS_ATTENTION", {
               lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
             });
@@ -317,6 +317,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
       }
     } finally {
+      setBinValue("");
       if (isCurrent(accountId, operation)) {
         setBusy(false);
         await refreshQueue(accountId, operation);
