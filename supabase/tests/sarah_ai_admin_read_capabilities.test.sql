@@ -98,6 +98,16 @@ BEGIN
   IF v_lookup->>'match_count'<>'1' OR v_lookup->'matches'->0->>'customer_code'<>'BBBB' THEN
     RAISE EXCEPTION 'Super Admin customer lookup failed';
   END IF;
+
+  v_result:=public.sarah_ai_get_device_catalog();
+  IF v_result->>'ok'<>'true'
+     OR (v_result->>'count')::integer<3
+     OR NOT EXISTS(
+       SELECT 1 FROM jsonb_array_elements(v_result->'devices') device
+       WHERE device->>'name_ar'='فشل اختبار' AND device->>'is_active'='true'
+     ) THEN
+    RAISE EXCEPTION 'Permission-checked device catalog read failed: %',v_result;
+  END IF;
   v_result:=public.sarah_ai_create_order_with_items(
     '40000000-0000-4000-8000-000000000002',
     'BBBB','محمود سمير',
