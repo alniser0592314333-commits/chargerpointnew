@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
-import { sarahChatService } from "../../services/ai/sarahChatService";
+import { sarahChatService, SarahPendingBinAction } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
 import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
@@ -20,6 +20,7 @@ type PendingBinAction = {
   text: string;
   historySnapshot: { role: "user" | "assistant"; text: string }[];
   baseMessages: Message[];
+  pendingAction?: SarahPendingBinAction;
 };
 const accountScopeIdentity = (accountId?: string | null, authUserId?: string) =>
   accountId ? `${accountId}:${authUserId || "unverified"}` : null;
@@ -157,6 +158,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     history: Message[],
     correlationId: string,
     bin?: string,
+    confirmationAction?: SarahPendingBinAction,
   ) => {
     const localSyncContext = await collectLocalSyncContext();
     let response = await sarahChatService.send(
@@ -166,6 +168,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       correlationId,
       bin,
       localSyncContext ? { localSyncContext } : undefined,
+      confirmationAction,
     );
     if (response.requiresLocalSync && response.localSyncAction === "manual_sync") {
       if (!canManageSync) throw new Error("SYNC_MANAGE_PERMISSION_REQUIRED");
@@ -208,6 +211,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         correlationId,
         bin,
         { localSyncContext: refreshedContext, localSyncActionResult },
+        confirmationAction,
       );
       if (response.requiresLocalSync) throw new Error("LOCAL_SYNC_HANDOFF_LOOP");
     }
@@ -248,7 +252,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
           await sarahInputQueue.transition(accountId, id, "WAITING_FOR_CONFIRMATION", {
             lastErrorCode: response.binError || "BIN_REQUIRED",
           });
-          setPendingBinAction({ id, correlationId, text: clean, historySnapshot, baseMessages });
+          setPendingBinAction({ id, correlationId, text: clean, historySnapshot, baseMessages, pendingAction: response.pendingAction });
           setBinValue("");
           setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "");
           await refreshQueue(accountId, operation);
@@ -320,6 +324,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
           text: record.text,
           historySnapshot: retryHistory,
           baseMessages,
+          pendingAction: response.pendingAction,
         });
         setBinValue("");
         setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "");
@@ -372,7 +377,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         accountId,
         pendingAction.historySnapshot,
         pendingAction.correlationId,
-        bin
+        bin,
+        pendingAction.pendingAction,
       );
       setBinValue("");
       if (!isCurrent(accountId, operation)) return;
