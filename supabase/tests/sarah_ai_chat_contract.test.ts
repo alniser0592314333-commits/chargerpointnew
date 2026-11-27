@@ -67,7 +67,8 @@ describe("Sarah chat gateway security contract", () => {
 
   it("exposes bounded read-only customer tools and validates each capability in PostgreSQL", () => {
     expect(source).toContain('name: "lookup_customers"');
-    expect(source).toContain('caller.rpc(\n        "sarah_ai_lookup_customers"');
+    expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
+    expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
     expect(source).toContain("functionCalls.length !== 1");
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
