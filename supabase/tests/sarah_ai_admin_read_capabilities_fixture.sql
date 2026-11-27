@@ -197,6 +197,7 @@ BEGIN
         WHEN p_command_type='DELIVER_ORDER_ITEM' THEN 'DELIVERED'
         ELSE 'CANCELLED' END)
     );
+  END IF;
   RAISE EXCEPTION 'Unexpected canonical command type: %',p_command_type;
 END;
 $function$;
