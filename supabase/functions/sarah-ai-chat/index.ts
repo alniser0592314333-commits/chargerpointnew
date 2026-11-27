@@ -187,28 +187,6 @@ Deno.serve(async (req) => {
       },
     },
     {
-      name: "update_customer_protected_settings",
-      requiredPermissionGroups: [
-        ["customers:view", "customers:read"],
-        ["customers:edit", "customers:write"],
-        ["customers:debt-limit", "customers:charger-exemption"],
-      ],
-      declaration: {
-        name: "update_customer_protected_settings",
-        description: "Change a customer's debt limit and/or charger-fee exemption only when the admin has the exact granular permission. The database requires the separate secure BIN confirmation; BIN is never a tool argument.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            customer_code: { type: "STRING", description: "Exact four-character customer code returned by lookup_customers." },
-            name_hint: { type: "STRING", description: "Customer name fragment returned by lookup_customers." },
-            debt_limit_minor: { type: "INTEGER", description: "Optional new debt limit in ILS minor units. Match the customer edit screen sign convention: use a negative value (for example -2000 for ₪20)." },
-            charger_fee_exempt: { type: "BOOLEAN", description: "Optional new charger-fee exemption state." },
-          },
-          required: ["customer_code", "name_hint"],
-        },
-      },
-    },
-    {
       name: "update_customer_profile",
       requiredPermissionGroups: [["customers:view", "customers:read"], ["customers:edit", "customers:write"]],
       declaration: {
@@ -229,7 +207,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "update_customer_protected_settings",
-      requiredPermissionGroups: [["customers:view"], ["customers:edit"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"], ["customers:edit", "customers:write"]],
       declaration: {
         name: "update_customer_protected_settings",
         description: "Change a customer's debt limit or charger-fee exemption. First use lookup_customers in this same request and pass its exact code and name hint. Each protected field is separately checked against the app's live customers:debt-limit or customers:charger-exemption permission and uses the existing idempotent protected-settings workflow. Both changes require the separate secure BIN confirmation; never ask for BIN in chat.",
