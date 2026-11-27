@@ -739,6 +739,21 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("confirmedResults");
   });
 
+  it("revalidates live permissions before returning a completed task's saved answer", () => {
+    const capabilityGate = source.indexOf("const enabledCapabilityNames");
+    const completedFastPath = source.indexOf('if (taskStatus === "COMPLETED"');
+    expect(capabilityGate).toBeGreaterThan(-1);
+    expect(completedFastPath).toBeGreaterThan(capabilityGate);
+    const completedGuard = source.slice(completedFastPath, source.indexOf("const readOnlyCapabilityNames", completedFastPath));
+    expect(completedGuard).toContain("taskState.executedCapabilityNames");
+    expect(completedGuard).toContain("savedExecutedNames.some(");
+    expect(completedGuard).toContain("!enabledCapabilityNames.has(name)");
+    expect(completedGuard).toContain("AI_CAPABILITY_PERMISSION_REQUIRED");
+    expect(source).toContain("executedCapabilityNames.add(requestedCall.name)");
+    expect(source).toContain("executedCapabilityNames.add(confirmationName)");
+    expect(source).toContain("executedCapabilityNames: [...executedCapabilityNames]");
+  });
+
   it("does not restart a task that belongs to another or expired Auth session", () => {
     expect(durableTaskMigration).toContain("Sarah task belongs to another or expired session");
     expect(durableTaskMigration).toContain("auth_user_id = v_actor");
