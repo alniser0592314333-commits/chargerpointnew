@@ -436,3 +436,14 @@ BEGIN
 END;
 $function$;
 
+
+-- A disposable pre-hardening log row proves migration-time historical redaction.
+INSERT INTO public.change_log(entity_type,entity_id,action,payload,version,changed_at)
+VALUES(
+  'customers',
+  '99000000-0000-4000-8000-000000000001',
+  'UPDATE',
+  '{"name":"redaction fixture","bin":"1234","meta":{"adminBin":"5678","safe":"keep"},"apiKey":"fixture-secret"}'::jsonb,
+  1,
+  now()
+);
