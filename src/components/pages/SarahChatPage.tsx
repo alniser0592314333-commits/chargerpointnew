@@ -243,6 +243,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     confirmationAction?: SarahPendingBinAction,
     resumeTask = false,
     onAccepted?: () => void,
+    onProgress?: () => Promise<void>,
   ) => {
     const localSyncContext = await collectLocalSyncContext();
     let continuationContext: { localSyncContext?: SarahLocalSyncContext; localSyncActionResult?: SarahLocalSyncActionResult } =
@@ -308,6 +309,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     while (response.taskPending) {
       if (!isCurrent(accountId)) throw new Error("ACCOUNT_CHANGED");
       if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("AI_SETTINGS_NETWORK_ERROR");
+      try { await onProgress?.(); } catch { /* Lease renewal must not discard the durable task. */ }
       await new Promise((resolve) => setTimeout(resolve, response.retryAfterMs || 900));
       response = await sarahChatService.send(
         message,
@@ -393,6 +395,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
               ? { ...item, status: undefined, statusText: undefined }
               : item)), 1000);
           },
+          async () => { await sarahInputQueue.renewUploadLease(accountId, id); },
         );
         if (!isCurrent(accountId, operation)) return;
         if (response.requiresBin) {
@@ -504,6 +507,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         () => setMessages((prev) => prev.map((item) => item.queueId === record.id
           ? { ...item, status: "sent", statusText: "تم الإرسال" }
           : item)),
+        async () => { await sarahInputQueue.renewUploadLease(accountId, record.id); },
       );
       if (!isCurrent(accountId, operation)) return;
       if (response.requiresBin) {
@@ -555,13 +559,18 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
 
   useEffect(() => {
     const accountId = session?.authUserId || null;
-    if (!accountId || hydratedAccount !== accountId
-      || !pending.some((row) => row.actorAccountId === accountId && row.state === "UPLOADING")) return;
-    // A tab that disappeared cannot renew its upload lease. Recheck after the
-    // lease window; an active request finishes sooner and clears the queue row.
+    if (!accountId || hydratedAccount !== accountId) return;
+    const leases = pending
+      .filter((row) => row.actorAccountId === accountId && row.state === "UPLOADING" && row.uploadLeaseUntil)
+      .map((row) => Date.parse(row.uploadLeaseUntil || ""))
+      .filter(Number.isFinite);
+    if (!leases.length) return;
+    // Active chunk loops renew their lease. A closed tab cannot; recheck just
+    // after the nearest lease expires, then recover that task safely.
+    const nextExpiry = Math.min(...leases);
     const timer = window.setTimeout(() => {
       void refreshQueue(accountId, accountScopeRef.current.generation);
-    }, 5 * 60 * 1000 + 1000);
+    }, Math.max(0, nextExpiry - Date.now() + 1000));
     return () => window.clearTimeout(timer);
   }, [session?.authUserId, hydratedAccount, pending]);
 
@@ -678,6 +687,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         undefined,
         undefined,
         true,
+        undefined,
+        async () => { await sarahInputQueue.renewUploadLease(accountId, pendingAction.id); },
       );
       if (!isCurrent(accountId, operation)) return;
       if (continuationResponse.requiresBin) {
