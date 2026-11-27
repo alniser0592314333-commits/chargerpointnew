@@ -124,6 +124,7 @@ INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
 VALUES
  ('00000000-0000-4000-8000-000000000002','ai:use',true),
  ('00000000-0000-4000-8000-000000000002','customers:view',true),
+ ('00000000-0000-4000-8000-000000000002','customers:edit',true),
  ('00000000-0000-4000-8000-000000000002','customers:financial-view',true),
  ('00000000-0000-4000-8000-000000000002','orders:view',true),
  ('00000000-0000-4000-8000-000000000002','orders:create',true),
@@ -235,12 +236,23 @@ BEGIN
     );
     RETURN jsonb_build_object('success',true,'result',jsonb_build_object('customerId',p_payload->>'id'));
   ELSIF p_command_type='UPDATE_CUSTOMER' THEN
+    IF (p_payload ? 'debtLimitMinor' OR p_payload ? 'chargerFeeExempt') THEN
+      IF COALESCE(p_payload->>'bin','')='' THEN
+        RAISE EXCEPTION 'BIN required for protected customer settings' USING ERRCODE='P4004';
+      END IF;
+      IF p_payload->>'bin'<>'1234' THEN
+        RAISE EXCEPTION 'Invalid test BIN' USING ERRCODE='P0003';
+      END IF;
+    END IF;
     UPDATE public.customers
     SET name=COALESCE(p_payload->>'name',name),
         phone=COALESCE(p_payload->>'phone',phone),
         notes=COALESCE(p_payload->>'notes',notes),
+        debt_limit_minor=COALESCE((p_payload->>'debtLimitMinor')::bigint,debt_limit_minor),
+        charger_fee_exempt=COALESCE((p_payload->>'chargerFeeExempt')::boolean,charger_fee_exempt),
         updated_at=now(),version=version+1
     WHERE id=(p_payload->>'id')::uuid;
+    PERFORM public.record_canonical_change('customers',(p_payload->>'id')::uuid,'UPDATE',p_payload,2);
     RETURN jsonb_build_object('success',true,'result',jsonb_build_object('customerId',p_payload->>'id'));
   ELSIF p_command_type='CREATE_ORDER' THEN
     INSERT INTO public.orders(id,day_id,customer_id,display_number,status,notes)
