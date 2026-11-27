@@ -2,7 +2,9 @@
 -- Applied only after the existing provider, quota, lookup, and profile fixtures.
 
 ALTER TABLE public.customers
-  ADD COLUMN IF NOT EXISTS debt_limit_minor bigint NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS debt_limit_minor bigint NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
 
 CREATE TABLE public.business_days (
   id uuid PRIMARY KEY,
@@ -220,6 +222,17 @@ BEGIN
       'OPEN',false,now(),now(),now(),1
     );
     RETURN jsonb_build_object('success',true,'result',jsonb_build_object('id',p_payload->>'id','status','OPEN'));
+  ELSIF p_command_type='CREATE_CUSTOMER' THEN
+    INSERT INTO public.customers(
+      id,name,phone,balance,is_active,deleted_at,status,charger_fee_exempt,
+      debt_limit_minor,updated_at,version
+    )
+    VALUES(
+      (p_payload->>'id')::uuid,p_payload->>'name',p_payload->>'phone',0,true,NULL,'ACTIVE',
+      COALESCE((p_payload->>'chargerFeeExempt')::boolean,false),
+      COALESCE((p_payload->>'debtLimitMinor')::bigint,0),now(),1
+    );
+    RETURN jsonb_build_object('success',true,'result',jsonb_build_object('customerId',p_payload->>'id'));
   ELSIF p_command_type='CREATE_ORDER' THEN
     INSERT INTO public.orders(id,day_id,customer_id,display_number,status,notes)
     VALUES(
