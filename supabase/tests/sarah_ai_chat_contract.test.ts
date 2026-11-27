@@ -230,6 +230,7 @@ describe("Sarah chat gateway security contract", () => {
 
   it("registers granular BIN-protected customer settings without exposing BIN to Gemini", () => {
     expect(source).toContain('name: "update_customer_protected_settings"');
+    expect((source.match(/name: "update_customer_protected_settings"/g) || []).length).toBe(2);
     expect(source).toContain('requiredPermissionGroups: [');
     expect(source).toContain('"customers:debt-limit", "customers:charger-exemption"');
     expect(source).toContain('caller.rpc("sarah_ai_update_customer_protected_settings"');
