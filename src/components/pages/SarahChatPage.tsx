@@ -82,7 +82,14 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       }));
     }).then((stop) => {
       if (cancelled) stop();
-      else unsubscribe = stop;
+      else {
+        unsubscribe = stop;
+        // Refresh once on entry too: permissions may have changed while Sarah
+        // was closed, when there was intentionally no Realtime subscription.
+        window.dispatchEvent(new CustomEvent("cp-admin-permissions-invalidated", {
+          detail: { authUserId },
+        }));
+      }
     }).catch(() => {
       // Realtime is best-effort only. Do not poll or weaken server-side checks.
     });
