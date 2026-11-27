@@ -153,11 +153,11 @@ jobs:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run src/tests/sarah_ai_settings_contract.test.ts
-      - name: Run Sarah AI chat gateway security contracts
+      - name: Run Sarah AI chat gateway and account-isolation tests
         env:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run supabase/tests/sarah_ai_chat_contract.test.ts src/tests/sarah_conversation_persistence_contract.test.ts
+        run: npx vitest run supabase/tests/sarah_ai_chat_contract.test.ts src/tests/sarah_account_operation_scope.test.ts src/tests/sarah_account_switch_isolation_contract.test.ts src/tests/sarah_conversation_persistence_contract.test.ts src/tests/sarah_history_bounds.test.ts src/tests/sarah_input_queue_contract.test.ts src/tests/sarah_input_queue_multitab.test.ts
 
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2

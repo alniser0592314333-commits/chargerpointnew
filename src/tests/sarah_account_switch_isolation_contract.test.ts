@@ -24,7 +24,7 @@ describe("Sarah account-switch asynchronous isolation", () => {
   it("guards post-await queue and chat state updates", () => {
     expect(page).toContain("refreshQueue(accountId, operation)");
     expect(page).toContain("if (!isCurrent(accountId, operation)) return");
-    expect(page).toContain("if (isCurrent(accountId, operation)) setMessages");
+    expect(page).toContain("setMessages((prev) => isCurrent(accountId, operation) ?");
     expect(page).toContain("if (isCurrent(accountId, operation)) setBusy(false)");
   });
   it("does not retry another account's queued record", () => {

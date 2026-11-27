@@ -34,7 +34,7 @@ describe("Sarah durable input queue architecture contract", () => {
     expect(source).toContain("Date.now() + 5 * 60 * 1000");
     expect(source).toContain("uploadLeaseExpired(row)");
     expect(source).toContain("!Number.isFinite(expires) || expires <= Date.now()");
-    expect(source).toContain("current.uploadLeaseUntil !== observed.uploadLeaseUntil");
+    expect(source).toContain("current.uploadLeaseUntil === observed.uploadLeaseUntil");
     expect(source).toContain("if (outcome === \"recovered\") recovered += 1");
     expect(source).not.toContain("QUEUE_RECOVERY_RACE_FAILED");
   });
