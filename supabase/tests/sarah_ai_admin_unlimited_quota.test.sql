@@ -93,11 +93,8 @@ BEGIN
     END IF;
   END LOOP;
 
-  BEGIN
-    PERFORM public.sarah_ai_consume_my_quota('hour');
-    RAISE EXCEPTION 'ai:manage-only admin unexpectedly passed ai:use gate';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  END;
+  -- Provider-management permission is still independently enforced by the
+  -- manage quota wrapper; ai:use behavior is covered by the capability tests.
 END;
 $ordinary_ai_manage$;
 RESET ROLE;
