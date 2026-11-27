@@ -485,3 +485,57 @@ VALUES(
   1,
   now()
 );
+
+
+-- Test-only, narrow inspection helpers. They are installed only in the disposable
+-- migration-test database; production migrations never create or grant these.
+CREATE OR REPLACE FUNCTION public.test_sarah_customer_snapshot(p_name text)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT COALESCE(
+    (SELECT jsonb_build_object(
+      'id',c.id,'name',c.name,'is_active',c.is_active,
+      'debt_limit_minor',c.debt_limit_minor,
+      'charger_fee_exempt',c.charger_fee_exempt,
+      'count',(SELECT count(*) FROM public.customers same_name WHERE same_name.name=p_name)
+    )
+     FROM public.customers c
+     WHERE c.name=p_name
+     ORDER BY c.created_at DESC NULLS LAST,c.id
+     LIMIT 1),
+    jsonb_build_object('count',(SELECT count(*) FROM public.customers same_name WHERE same_name.name=p_name))
+  );
+$function$;
+
+CREATE OR REPLACE FUNCTION public.test_sarah_customer_change_payload(p_customer_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT payload FROM public.change_log
+  WHERE entity_id=p_customer_id AND action='UPDATE'
+  ORDER BY sequence_id DESC LIMIT 1;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.test_sarah_action_has_bin(p_request_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT EXISTS(
+    SELECT 1 FROM public.sarah_ai_action_idempotency
+    WHERE request_id=p_request_id AND request_payload ? 'bin'
+  );
+$function$;
+
+GRANT EXECUTE ON FUNCTION public.test_sarah_customer_snapshot(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.test_sarah_customer_change_payload(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.test_sarah_action_has_bin(uuid) TO authenticated;
