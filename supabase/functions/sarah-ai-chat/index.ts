@@ -118,6 +118,9 @@ Deno.serve(async (req) => {
     return respond(400, { ok: false, error: "BIN_MUST_USE_SECURE_PROMPT" });
   }
   const confirmationMode = body.confirmationAction !== undefined && body.confirmationAction !== null;
+  if (confirmationMode && (typeof body.confirmationAction !== "object" || Array.isArray(body.confirmationAction))) {
+    return respond(400, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
+  }
   // The client queue reuses this ID when retrying the same message. It is not
   // included in Gemini contents and is consumed only by server-side idempotency.
   const requestId = typeof body.requestId === "string"
