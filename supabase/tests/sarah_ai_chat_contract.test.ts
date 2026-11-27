@@ -141,7 +141,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "create_order_with_items"');
     expect(source).toContain('requiredPermissionGroups: [["customers:view"], ["orders:create"], ["orders:edit"]]');
     expect(source).toContain('caller.rpc("sarah_ai_create_order_with_items"');
-    expect(source).toContain("p_request_id: requestId");
+    expect(source).toContain("p_request_id: actionRequestId");
     expect(adminReadMigration).toContain("public.sarah_ai_action_idempotency");
     expect(adminReadMigration).toContain("request_payload jsonb NOT NULL");
     expect(adminReadMigration).toContain("public.execute_sync_command(");
