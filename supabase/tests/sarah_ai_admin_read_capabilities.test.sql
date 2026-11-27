@@ -1,6 +1,20 @@
 -- Session-bound customer reads and atomic Sarah order creation.
 -- Run after the provider, quota, lookup, profile, and admin-read migrations plus fixture.
 
+-- Each isolated SQL test run starts with clean quota buckets for its fixed actors.
+DELETE FROM public.sarah_ai_usage_windows
+WHERE actor_auth_user_id IN (
+ '10000000-0000-4000-8000-000000000001',
+ '10000000-0000-4000-8000-000000000002',
+ '10000000-0000-4000-8000-000000000003',
+ '10000000-0000-4000-8000-000000000004',
+ '10000000-0000-4000-8000-000000000005',
+ '10000000-0000-4000-8000-000000000006',
+ '10000000-0000-4000-8000-000000000007',
+ '10000000-0000-4000-8000-000000000008'
+);
+
+
 -- Seed financial balances as the fixture owner; browser roles never write these tables directly.
 INSERT INTO public.financial_ledger(customer_id,amount_minor)
 VALUES
