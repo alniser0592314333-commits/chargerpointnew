@@ -11,22 +11,26 @@
 - Ordinary admins receive only capabilities present in their current effective permission projection. The UI does not supply this list.
 - The server rejects any model tool call that is not in the current request's enabled registry.
 - Existing PostgreSQL RPCs independently enforce actor identity, active session, ai:use, and the underlying business permission. A permission revoked while Gemini is processing therefore fails closed at the RPC boundary.
+- Customer profile, financial, and order lookups require a five-minute lookup proof bound to the current Auth user and session; guessed customer codes or a different device/session cannot be used as proof.
+- Customer balances are calculated by the existing authoritative ledger function; order reads use a bounded server-side projection.
 - The system prompt no longer hardcodes the number or names of tools; supplied tool schemas define the request scope.
 - The Edge Function config now requires platform JWT verification in addition to explicit auth.getUser and registered-session checks.
 
 ## Current capability inventory
 
-The following five bounded capabilities are registered today:
+The following seven bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
 | lookup_customers | customers:view | Up to five active customer names and display codes |
-| get_customer_profile | customers:view | Up to five bounded non-financial profile matches |
+| get_customer_profile | customers:view | Up to five bounded non-financial profile matches after a same-session lookup proof |
+| get_customer_financial_summary | customers:view AND (customers:financial-view OR finance:view OR finances:read) | One authoritative customer balance in ILS minor units |
+| get_customer_orders | customers:view AND orders:view | Up to ten recent orders and bounded item status/charge details |
 | get_financial_summary | finance:view OR reports:view | Aggregate ledger record count, net balance, and generation time |
 | list_pending_payments | finance:approve-payment OR finance:create-payment | Up to twenty pending manual/Jawwal Pay submissions; read-only |
 | get_goals_overview | goals:view OR goals:requests:view | Up to fifteen matching goal/request summaries; read-only |
 
-The finance and goals tools are read-only. No order listing, delivery, payment creation/approval, goal creation/approval/cancellation, or customer-history access/write operation is enabled yet.
+All currently registered business capabilities are read-oriented. Customer profile, balance, and order reads require a lookup proof bound to the same Auth user and session and expiring after five minutes. No order creation/delivery/cancellation, payment creation/approval, goal creation/approval/cancellation, customer-history access, or customer assistant mode is enabled yet.
 
 ## Extension contract for each new operation
 
