@@ -365,6 +365,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('caller.functions.invoke("sarah-ai-settings"');
     expect(source).toContain('invokeSettings("read")');
     expect(source).toContain('invokeSettings("save"');
+    expect(source).toContain("currentConfig.hasApiKey !== true");
+    expect(source).toContain("requiresSecureApiKeySetup: true");
     expect(source).toContain('invokeSettings("test")');
     expect(source).toContain('invokeSettings("clear")');
     expect(source).not.toContain('apiKey: args.');
