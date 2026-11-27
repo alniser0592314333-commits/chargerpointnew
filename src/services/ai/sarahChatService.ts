@@ -156,11 +156,11 @@ export const sarahChatService = {
     if (!response.ok || data.ok !== true) {
       const code = typeof data.error === "string" ? data.error : "AI_REQUEST_FAILED";
       const friendly: Record<string, string> = {
-        AI_TOOL_CALL_BATCH_NOT_SAFE: "سارة حاولت طلب أكثر من إجراء في نفس اللحظة. لم يتم تنفيذ أي تعديل؛ أعد الطلب وستنفذ الخطوات بالتتابع.",
+        AI_TOOL_CALL_BATCH_NOT_SAFE: "تعذر ترتيب بعض خطوات الطلب بأمان. لم تُنفذ الخطوات غير المؤكدة؛ أعد المحاولة وسيُعاد فحص المتطلبات قبل التنفيذ.",
         AI_CAPABILITY_PERMISSION_REQUIRED: "صلاحيات حسابك الحالية لا تسمح بهذا الإجراء.",
         AI_TOOL_UNKNOWN: "تعذر التعرّف على الإجراء المطلوب. لم يتم تنفيذ أي تغيير.",
         AI_TOOL_CALL_NOT_ALLOWED: "الأداة المطلوبة غير متاحة لهذا الحساب. لم يتم تنفيذ أي تغيير.",
-        AI_TOOL_CALL_LIMIT_REACHED: "الطلب يحتاج خطوات أكثر من الحد المسموح. قسّم الطلب إلى خطوات أصغر.",
+        AI_TOOL_CALL_LIMIT_REACHED: "توقفت دورة التنفيذ قبل اكتمال جميع الخطوات. أعد متابعة الطلب نفسه؛ ستُراجع النتائج السابقة قبل إعادة أي عملية.",
         AI_CUSTOMER_NEEDS_DISAMBIGUATION: "وجدت أكثر من عميل مطابق. حدّد العميل المقصود قبل المتابعة.",
         AI_CAPABILITY_CONFLICT: "لم يتم تنفيذ العملية بسبب تعارض أو نقص في البيانات. لم يتم تأكيد أي تغيير.",
         BIN_CONFIRMATION_INVALID: "تعذر استعادة العملية الأمنية. أعد طلب العملية من جديد.",
