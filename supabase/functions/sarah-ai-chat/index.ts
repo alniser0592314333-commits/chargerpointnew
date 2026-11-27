@@ -250,7 +250,7 @@ Deno.serve(async (req) => {
     return respond(200, {
       ok: true,
       answer: taskState.answer,
-      modelId: typeof taskState.modelId === "string" ? taskState.modelId : modelId,
+      modelId: typeof taskState.modelId === "string" ? taskState.modelId : "",
     });
   }
   if (taskStatus === "FAILED") {
