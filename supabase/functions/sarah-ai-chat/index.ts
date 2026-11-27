@@ -842,6 +842,97 @@ Deno.serve(async (req) => {
       });
       toolResult = result.data;
       toolError = result.error;
+    } else if (toolName === "update_customer_controls") {
+      const customerCode = safeText(args.customer_code, 4);
+      const nameHint = safeText(args.name_hint, 64);
+      const debtLimit = args.debt_limit_minor;
+      const isActive = args.is_active;
+      const chargerExempt = args.charger_fee_exempt;
+      if (!/^[A-Fa-f0-9]{4}$/.test(customerCode) || nameHint.length < 2
+        || (debtLimit !== undefined && (typeof debtLimit !== "number" || !Number.isSafeInteger(debtLimit) || debtLimit < 0))
+        || (isActive !== undefined && typeof isActive !== "boolean")
+        || (chargerExempt !== undefined && typeof chargerExempt !== "boolean")
+        || (debtLimit === undefined && isActive === undefined && chargerExempt === undefined)) {
+        return { response: respond(400, { ok: false, error: "CUSTOMER_CONTROLS_INPUT_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_manage_customer_controls", {
+        p_request_id: actionRequestId,
+        p_customer_code: customerCode,
+        p_name_hint: nameHint,
+        p_debt_limit_minor: debtLimit ?? null,
+        p_is_active: isActive ?? null,
+        p_charger_fee_exempt: chargerExempt ?? null,
+        p_bin: actionBin,
+      });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "create_device_type") {
+      const name = safeText(args.name, 80);
+      const nameAr = args.name_ar === undefined ? null : safeText(args.name_ar, 80);
+      const nameEn = args.name_en === undefined ? null : safeText(args.name_en, 80);
+      const icon = args.icon === undefined ? null : safeText(args.icon, 40);
+      const price = args.base_price_minor;
+      const chargerEnabled = args.charger_fee_enabled;
+      const chargerApplicable = args.charger_fee_applicable;
+      const sortOrder = args.sort_order;
+      if (!name || name.length < 1 || typeof price !== "number" || !Number.isSafeInteger(price) || price <= 0
+        || (args.name_ar !== undefined && (typeof args.name_ar !== "string" || !nameAr))
+        || (args.name_en !== undefined && (typeof args.name_en !== "string" || !nameEn))
+        || (args.icon !== undefined && (typeof args.icon !== "string" || !icon))
+        || (chargerEnabled !== undefined && typeof chargerEnabled !== "boolean")
+        || (chargerApplicable !== undefined && typeof chargerApplicable !== "boolean")
+        || (sortOrder !== undefined && (typeof sortOrder !== "number" || !Number.isSafeInteger(sortOrder) || sortOrder < 0))) {
+        return { response: respond(400, { ok: false, error: "DEVICE_CREATE_INPUT_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_manage_device_type", {
+        p_request_id: actionRequestId, p_action: "CREATE", p_device_id: null,
+        p_name: name, p_name_ar: nameAr, p_name_en: nameEn, p_icon: icon,
+        p_base_price_minor: price, p_charger_fee_enabled: chargerEnabled ?? null,
+        p_charger_fee_applicable: chargerApplicable ?? null, p_is_active: true,
+        p_sort_order: sortOrder ?? null, p_expected_version: null,
+      });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "update_device_type" || toolName === "retire_device_type") {
+      const deviceId = safeText(args.device_id, 36);
+      const expectedVersion = args.expected_version;
+      const isRetire = toolName === "retire_device_type";
+      const rawOptional = ["name","name_ar","name_en","icon"];
+      const optionalText: Record<string, string | null> = {};
+      for (const key of rawOptional) {
+        const value = args[key];
+        if (value !== undefined) {
+          const max = key === "icon" ? 40 : 80;
+          const cleaned = typeof value === "string" ? safeText(value, max) : null;
+          if (!cleaned) return { response: respond(400, { ok: false, error: "DEVICE_UPDATE_INPUT_INVALID" }) };
+          optionalText[key] = cleaned;
+        } else optionalText[key] = null;
+      }
+      const price = args.base_price_minor;
+      const chargerEnabled = args.charger_fee_enabled;
+      const chargerApplicable = args.charger_fee_applicable;
+      const isActive = args.is_active;
+      const sortOrder = args.sort_order;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(deviceId)
+        || typeof expectedVersion !== "number" || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1
+        || (price !== undefined && (typeof price !== "number" || !Number.isSafeInteger(price) || price <= 0))
+        || (chargerEnabled !== undefined && typeof chargerEnabled !== "boolean")
+        || (chargerApplicable !== undefined && typeof chargerApplicable !== "boolean")
+        || (isActive !== undefined && typeof isActive !== "boolean")
+        || (sortOrder !== undefined && (typeof sortOrder !== "number" || !Number.isSafeInteger(sortOrder) || sortOrder < 0))
+        || (isRetire && Object.keys(args).some(k => !["device_id","expected_version"].includes(k)))) {
+        return { response: respond(400, { ok: false, error: "DEVICE_UPDATE_INPUT_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_manage_device_type", {
+        p_request_id: actionRequestId, p_action: isRetire ? "RETIRE" : "UPDATE",
+        p_device_id: deviceId, p_name: optionalText.name, p_name_ar: optionalText.name_ar,
+        p_name_en: optionalText.name_en, p_icon: optionalText.icon,
+        p_base_price_minor: price ?? null, p_charger_fee_enabled: chargerEnabled ?? null,
+        p_charger_fee_applicable: chargerApplicable ?? null, p_is_active: isActive ?? null,
+        p_sort_order: sortOrder ?? null, p_expected_version: expectedVersion,
+      });
+      toolResult = result.data;
+      toolError = result.error;
     } else if (toolName === "create_customer") {
       const name = safeText(args.name,80);
       const rawPhone = args.phone;
