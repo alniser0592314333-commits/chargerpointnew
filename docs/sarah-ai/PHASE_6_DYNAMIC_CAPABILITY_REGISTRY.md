@@ -22,15 +22,18 @@ Only these two read-only capabilities are registered today:
 |---|---|---|
 | lookup_customers | customers:view | Up to five active customer names and display codes |
 | get_customer_profile | customers:view | Up to five bounded non-financial profile matches |
+| get_financial_summary | finance:view OR reports:view | Aggregate ledger record count, net balance, and generation time |
+| list_pending_payments | finance:approve-payment OR finance:create-payment | Up to twenty pending manual/Jawwal Pay submissions; read-only |
+| get_goals_overview | goals:view OR goals:requests:view | Up to fifteen matching goal/request summaries; read-only |
 
-No financial, order, delivery, payment, goal, or customer-history write operation is enabled by this change.
+The finance and goals tools are read-only. No order listing, delivery, payment creation/approval, goal creation/approval/cancellation, or customer-history access/write operation is enabled yet.
 
 ## Extension contract for each new operation
 
 Every future registry entry must be added only after its implementation is ready and must include:
 
 1. A single stable tool name and strict input schema.
-2. The exact existing application permission key (or a documented new permission managed by the current admin permissions UI).
+2. One or more exact existing application permission keys. The registry exposes the tool when at least one listed permission is present; the canonical database RPC must enforce the same effective permission rule.
 3. A typed executor that calls the original canonical application RPC/Use Case, never arbitrary SQL or a model-selected RPC.
 4. Independent database-side actor/session/permission checks on every invocation.
 5. A bounded, minimized result DTO and explicit ambiguity handling.
