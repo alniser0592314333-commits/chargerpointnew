@@ -55,6 +55,30 @@ BEGIN
   IF p_sort_order IS NOT NULL AND p_sort_order<0 THEN
     RAISE EXCEPTION 'Device sort order cannot be negative' USING ERRCODE='22023';
   END IF;
+  IF p_name IS NOT NULL AND (
+       pg_catalog.char_length(pg_catalog.btrim(p_name)) NOT BETWEEN 1 AND 80
+       OR p_name ~ '[[:cntrl:]]'
+     ) THEN
+    RAISE EXCEPTION 'Device name is invalid' USING ERRCODE='22023';
+  END IF;
+  IF p_name_ar IS NOT NULL AND (
+       pg_catalog.char_length(pg_catalog.btrim(p_name_ar)) NOT BETWEEN 1 AND 80
+       OR p_name_ar ~ '[[:cntrl:]]'
+     ) THEN
+    RAISE EXCEPTION 'Arabic device name is invalid' USING ERRCODE='22023';
+  END IF;
+  IF p_name_en IS NOT NULL AND (
+       pg_catalog.char_length(pg_catalog.btrim(p_name_en)) NOT BETWEEN 1 AND 80
+       OR p_name_en ~ '[[:cntrl:]]'
+     ) THEN
+    RAISE EXCEPTION 'English device name is invalid' USING ERRCODE='22023';
+  END IF;
+  IF p_icon IS NOT NULL AND (
+       pg_catalog.char_length(pg_catalog.btrim(p_icon)) NOT BETWEEN 1 AND 40
+       OR p_icon ~ '[[:cntrl:]]'
+     ) THEN
+    RAISE EXCEPTION 'Device icon is invalid' USING ERRCODE='22023';
+  END IF;
 
   IF v_action='CREATE' THEN
     IF p_device_id IS NOT NULL OR p_name IS NULL
