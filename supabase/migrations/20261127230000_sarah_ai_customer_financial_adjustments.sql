@@ -93,6 +93,25 @@ BEGIN
     RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
   END IF;
 
+  v_aggregate_id:=p_request_id;
+  v_payload:=pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
+    'id',p_request_id,
+    'customerId',v_customer_id,
+    'amountMinor',p_amount_minor,
+    'reference',p_note,
+    'referenceEventId',p_reference_event_id,
+    'bin',CASE WHEN v_action IN ('ADD_CREDIT','REFUND') THEN p_bin ELSE NULL END
+  ));
+
+  -- Let the canonical command replay a completed request before evaluating
+  -- remaining refundable value; retries must not look like a second refund.
+  IF EXISTS (SELECT 1 FROM public.processed_commands pc WHERE pc.command_id=p_request_id) THEN
+    v_result:=public.execute_sync_command(
+      p_request_id,v_command_type,v_aggregate_type,v_aggregate_id,v_payload,NULL
+    );
+    RETURN v_result;
+  END IF;
+
   IF v_action='REFUND' THEN
     SELECT fl.amount_minor INTO v_original_amount
     FROM public.financial_ledger fl
@@ -112,15 +131,6 @@ BEGIN
     END IF;
   END IF;
 
-  v_aggregate_id:=p_request_id;
-  v_payload:=pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
-    'id',p_request_id,
-    'customerId',v_customer_id,
-    'amountMinor',p_amount_minor,
-    'reference',p_note,
-    'referenceEventId',p_reference_event_id,
-    'bin',CASE WHEN v_action IN ('ADD_CREDIT','REFUND') THEN p_bin ELSE NULL END
-  ));
   v_result:=public.execute_sync_command(
     p_request_id,v_command_type,v_aggregate_type,v_aggregate_id,v_payload,NULL
   );
