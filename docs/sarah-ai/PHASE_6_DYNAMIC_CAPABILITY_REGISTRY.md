@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following twenty-one bounded capabilities are registered today:
+The following twenty-three bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -40,6 +40,8 @@ The following twenty-one bounded capabilities are registered today:
 | cancel_order_item | orders:view AND orders:cancel | Cancels one exact item through canonical financial reversal; secure BIN required |
 | cancel_order | orders:view AND orders:cancel | Cancels one full order through canonical item-level reversals; secure BIN required |
 | get_goals_overview | goals:view OR goals:manage OR goals:requests:view OR goals:approve | Up to fifteen matching goal/request summaries plus a bounded customer directory |
+| list_customer_history_requests | customers:edit OR customers:write OR customers:manage OR customer_accounts:manage OR customer_accounts:reset OR admin:manage | Pending customer requests for temporary full-history access |
+| review_customer_history_request | same customer-account management permissions | Approves or rejects one pending request; approval creates the existing 24-hour server-side grant |
 | get_customer_goal_proposal | goals:manage | Official app-generated proposal from the last 28 days of qualifying activity |
 | create_customer_goal | goals:manage | Creates one active goal with app-generated values unless all three manual values are explicitly supplied |
 | approve_goal_request | goals:approve | Approves one pending request with a complete app-generated or explicit proposal |
@@ -54,7 +56,7 @@ Order creation calls the existing canonical CREATE_ORDER and ADD_ORDER_ITEM comm
 
 Manual CASH payment entry calls the existing create_admin_pending_customer_payment and review_qr_payment_submission workflow in one transaction. Existing customer QR/Jawwal Pay/manual submissions are reviewed through the same review_qr_payment_submission path. Approval requires the account BIN in a separate password field in the app; the BIN is not part of Gemini history/tool arguments and is excluded from idempotency storage. Rejection requires a reason but no BIN.
 
-Mutations use a deterministic action-specific request ID derived from the queued message ID, tool name, and normalized tool arguments. The database binds results to the Auth user and payload, rechecks the active session and current permissions, and safely replays completed commands. Customer-specific profile/balance/order reads and order lifecycle actions require a lookup proof bound to the same Auth user and current session and expiring after five minutes. Goal operations use the exact customer/goal/request IDs returned by the permission-checked Goals page projection and recheck the relevant goals permission in the database. Payment refunds/corrections, customer-history access requests/24-hour grants, and customer assistant mode are not enabled yet.
+Mutations use a deterministic action-specific request ID derived from the queued message ID, tool name, and normalized tool arguments. The database binds results to the Auth user and payload, rechecks the active session and current permissions, and safely replays completed commands. Customer-specific profile/balance/order reads and order lifecycle actions require a lookup proof bound to the same Auth user and current session and expiring after five minutes. Goal operations use the exact customer/goal/request IDs returned by the permission-checked Goals page projection and recheck the relevant goals permission in the database. Payment refunds/corrections and customer assistant mode are not enabled yet. Customer-history requests and their 24-hour approvals use the existing customer-history Edge Function and database grant.
 
 ## Extension contract for each new operation
 
