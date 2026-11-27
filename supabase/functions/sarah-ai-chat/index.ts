@@ -530,7 +530,6 @@ Deno.serve(async (req) => {
         || (rawNote !== undefined && rawNote !== null && typeof rawNote !== "string")) {
         return { response: respond(400, { ok: false, error: "PAYMENT_INPUT_INVALID" }) };
       }
-      if (!actionBin) return { response: respond(428, { ok: false, error: "BIN_REQUIRED" }) };
       const result = await caller.rpc("sarah_ai_record_and_approve_payment", {
         p_request_id: requestId,
         p_customer_code: customerCode,
@@ -551,7 +550,6 @@ Deno.serve(async (req) => {
         || (rawNote !== undefined && rawNote !== null && typeof rawNote !== "string")) {
         return { response: respond(400, { ok: false, error: "PAYMENT_REVIEW_INPUT_INVALID" }) };
       }
-      if (!actionBin) return { response: respond(428, { ok: false, error: "BIN_REQUIRED" }) };
       const result = await caller.rpc("sarah_ai_review_payment_submission", {
         p_request_id: actionRequestId,
         p_submission_id: submissionId,
