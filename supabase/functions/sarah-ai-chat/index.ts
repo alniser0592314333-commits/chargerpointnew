@@ -900,6 +900,8 @@ Deno.serve(async (req) => {
         || (toolName !== "create_customer_goal" && !uuidPattern.test(targetId || ""))
         || numericValues.some((value) => value !== undefined && value !== null
           && (typeof value !== "number" || !Number.isSafeInteger(value)))
+        || (toolName === "update_customer_goal"
+          && (typeof expectedVersion !== "number" || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1))
         || (rawReason !== undefined && rawReason !== null && typeof rawReason !== "string")
         || (toolName === "review_goal_cancellation" && typeof approve !== "boolean")) {
         return { response: respond(400, { ok: false, error: "GOAL_ACTION_INPUT_INVALID" }) };
