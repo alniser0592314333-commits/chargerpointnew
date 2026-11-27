@@ -51,10 +51,14 @@ BEGIN
 
   v_before := v_after;
   UPDATE public.admins
-  SET full_name = full_name
+  SET role = role
   WHERE id = '10000000-0000-4000-8000-000000000001';
-  -- The fixture intentionally has no unrelated columns; all tested updates above
-  -- target only the authorization fields covered by the trigger.
+  SELECT version INTO v_after
+  FROM public.admin_permission_epochs
+  WHERE admin_id = '10000000-0000-4000-8000-000000000001';
+  IF v_after <> v_before THEN
+    RAISE EXCEPTION 'No-op authorization update must not emit an epoch change';
+  END IF;
 END;
 $epochs$;
 
