@@ -425,6 +425,76 @@ BEGIN
   END IF;
 
   IF p_bin IS NULL OR p_bin !~ '^\d{4,32}
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
+  END IF;
+  v_quota:=public.sarah_ai_consume_my_quota('tool_day');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
+  END IF;
+
+  IF v_action='CANCEL_ORDER' THEN
+    v_payload:=pg_catalog.jsonb_strip_nulls(jsonb_build_object(
+      'orderId',p_target_id,'bin',p_bin,'reason',p_reason
+    ));
+  ELSE
+    v_payload:=pg_catalog.jsonb_strip_nulls(jsonb_build_object(
+      'itemId',p_target_id,'bin',p_bin,'reason',p_reason
+    ));
+  END IF;
+
+  v_result:=public.execute_sync_command(
+    p_request_id,v_command_type,v_aggregate_type,p_target_id,v_payload,NULL
+  );
+  RETURN jsonb_build_object(
+    'ok',COALESCE((v_result->>'success')::boolean,false),
+    'action',v_action,
+    'target_id',p_target_id,
+    'canonical_result',v_result->'result',
+    'idempotent_replay',COALESCE((v_result->>'idempotent')::boolean,false)
+  );
+END;
+$function$; THEN
+    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE='P4004';
+  END IF;
+
+  v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
+  END IF;
+  v_quota:=public.sarah_ai_consume_my_quota('tool_day');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
+  END IF;
+
+  IF v_action='CANCEL_ORDER' THEN
+    v_payload:=pg_catalog.jsonb_strip_nulls(jsonb_build_object(
+      'orderId',p_target_id,'bin',p_bin,'reason',p_reason
+    ));
+  ELSE
+    v_payload:=pg_catalog.jsonb_strip_nulls(jsonb_build_object(
+      'itemId',p_target_id,'bin',p_bin,'reason',p_reason
+    ));
+  END IF;
+
+  v_result:=public.execute_sync_command(
+    p_request_id,v_command_type,v_aggregate_type,p_target_id,v_payload,NULL
+  );
+  RETURN jsonb_build_object(
+    'ok',COALESCE((v_result->>'success')::boolean,false),
+    'action',v_action,
+    'target_id',p_target_id,
+    'canonical_result',v_result->'result',
+    'idempotent_replay',COALESCE((v_result->>'idempotent')::boolean,false)
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.sarah_ai_execute_order_action(uuid,text,text,uuid,text,text,text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.sarah_ai_execute_order_action(uuid,text,text,uuid,text,text,text) TO authenticated;
+ THEN
+    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE='P4004';
+  END IF;
+
+  v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
   IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
     RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
   END IF;
