@@ -23,6 +23,7 @@ const changeLogRedactionMigration = read("supabase/migrations/20261127190000_red
 const historicalChangeLogRedactionMigration = read("supabase/migrations/20261127200000_redact_historical_change_log_secrets.sql");
 const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
 const customerAccountStatusMigration = read("supabase/migrations/20261127240000_sarah_ai_customer_account_status.sql");
+const dayOrderRenumberingMigration = read("supabase/migrations/20261127250000_sarah_ai_day_order_renumbering.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
 
@@ -305,6 +306,21 @@ describe("Sarah chat gateway security contract", () => {
     expect(financialAdjustmentsMigration).toContain("idempotent_replay");
     expect(financialAdjustmentsMigration).not.toContain("'bin',p_bin");
     expect(financialAdjustmentsMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_adjust_customer_finances");
+  });
+
+  it("renumbers a complete business day only through the canonical version-checked command", () => {
+    expect(source).toContain('name: "get_business_day_orders"');
+    expect(source).toContain('name: "renumber_day_orders"');
+    expect(source).toContain('caller.rpc("sarah_ai_get_business_day_orders"');
+    expect(source).toContain('caller.rpc("sarah_ai_renumber_business_day_orders"');
+    expect(source).toContain("get_business_day_orders in this same request");
+    expect(dayOrderRenumberingMigration).toContain("public._cp_assert_active_admin_permission('orders:renumber-day')");
+    expect(dayOrderRenumberingMigration).toContain("public._cp_assert_active_admin_permission('orders:view')");
+    expect(dayOrderRenumberingMigration).toContain("'RENUMBER_DAY_ORDERS'");
+    expect(dayOrderRenumberingMigration).toContain("expectedVersion");
+    expect(dayOrderRenumberingMigration).toContain("cardinality(p_order_ids)>200");
+    expect(dayOrderRenumberingMigration).toContain("auth_session_id,request_id,action_name,request_payload");
+    expect(dayOrderRenumberingMigration).toContain("public.execute_sync_command(");
   });
 
   it("registers finance and goals read capabilities against existing permission keys", () => {
