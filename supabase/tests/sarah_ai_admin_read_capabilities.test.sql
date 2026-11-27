@@ -540,10 +540,10 @@ DECLARE
   v_result jsonb;
   v_order_id uuid := '40000000-0000-4000-8000-000000000005';
 BEGIN
-  PERFORM public.sarah_ai_lookup_customers('أحمد خالد');
+  PERFORM public.sarah_ai_lookup_customers('محمود سمير');
   BEGIN
     PERFORM public.sarah_ai_create_order_with_items(
-      v_order_id,'AAAA','أحمد خالد',
+      v_order_id,'BBBB','محمود سمير',
       '[{"device_name":"شاومي","has_charger":true},{"device_name":"فشل اختبار","has_charger":true}]'::jsonb,
       NULL
     );
@@ -555,7 +555,7 @@ BEGIN
       RAISE;
     END IF;
   END;
-  v_result:=public.sarah_ai_get_customer_orders('AAAA','أحمد خالد',10);
+  v_result:=public.sarah_ai_get_customer_orders('BBBB','محمود سمير',10);
   IF v_result->>'order_count'<>'0' THEN
     RAISE EXCEPTION 'Partial order/item data survived a failed atomic create: %',v_result;
   END IF;
