@@ -73,7 +73,7 @@ ON CONFLICT (session_id) DO NOTHING;
 -- Exercise the trusted gateway with a real fixture actor/session and ensure
 -- it independently enforces active account/session and ai:use permission.
 SET ROLE service_role;
-SELECT set_config('request.jwt.claim.role','service_role',false);
+SELECT set_config('request.jwt.claim.role','service_role',true);
 
 DO $task_gateway_lifecycle$
 DECLARE
