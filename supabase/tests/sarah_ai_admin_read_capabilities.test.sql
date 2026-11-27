@@ -561,6 +561,14 @@ VALUES(
   'aaaa0000-0000-4000-8000-000000000001',
   3000,'PENDING','JAWALPAY','CUSTOMER_JAWAL_PAY','pending test submission'
 );
+INSERT INTO public.qr_payment_submissions(
+  id,customer_id,amount_minor,status,payment_method,submission_source,note
+)
+VALUES(
+  '50000000-0000-4000-8000-000000000002',
+  'aaaa0000-0000-4000-8000-000000000002',
+  3000,'PENDING','JAWALPAY','CUSTOMER_JAWAL_PAY','pending approval test submission'
+);
 
 -- Isolate this scenario from earlier test actors' hourly tool quota.
 DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
@@ -615,6 +623,54 @@ BEGIN
   END IF;
 
   v_result:=public.sarah_ai_review_payment_submission(
+    '40000000-0000-4000-8000-000000000010',
+    '50000000-0000-4000-8000-000000000002',
+    'APPROVE',3000,NULL,NULL
+  );
+  IF v_result->>'requires_bin'<>'true' OR v_result->>'status'<>'AWAITING_BIN' THEN
+    RAISE EXCEPTION 'Payment review did not persist a pending secure-confirmation intent: %',v_result;
+  END IF;
+
+  BEGIN
+    PERFORM public.sarah_ai_review_payment_submission(
+      '40000000-0000-4000-8000-000000000010',
+      '50000000-0000-4000-8000-000000000002',
+      'APPROVE',3500,NULL,'1234'
+    );
+    RAISE EXCEPTION 'Payment review confirmation unexpectedly accepted changed amount';
+  EXCEPTION WHEN SQLSTATE 'P0409' THEN NULL;
+  END;
+
+  BEGIN
+    PERFORM public.sarah_ai_review_payment_submission(
+      '40000000-0000-4000-8000-000000000010',
+      '50000000-0000-4000-8000-000000000002',
+      'APPROVE',3000,NULL,'0000'
+    );
+    RAISE EXCEPTION 'Payment review unexpectedly accepted invalid BIN';
+  EXCEPTION WHEN SQLSTATE 'P0003' THEN NULL;
+  END;
+
+  v_result:=public.sarah_ai_review_payment_submission(
+    '40000000-0000-4000-8000-000000000010',
+    '50000000-0000-4000-8000-000000000002',
+    'APPROVE',3000,NULL,'1234'
+  );
+  IF v_result->>'ok'<>'true' OR v_result->>'status'<>'APPROVED' THEN
+    RAISE EXCEPTION 'BIN-gated payment review did not complete: %',v_result;
+  END IF;
+
+  BEGIN
+    PERFORM public.sarah_ai_review_payment_submission(
+      '40000000-0000-4000-8000-000000000011',
+      '50000000-0000-4000-8000-000000000099',
+      'APPROVE',3000,NULL,NULL
+    );
+    RAISE EXCEPTION 'Missing payment submission unexpectedly requested BIN';
+  EXCEPTION WHEN SQLSTATE 'P0002' THEN NULL;
+  END;
+
+  v_result:=public.sarah_ai_review_payment_submission(
     '40000000-0000-4000-8000-000000000009',
     '50000000-0000-4000-8000-000000000001',
     'REJECT',NULL,'receipt mismatch',NULL
@@ -643,6 +699,10 @@ BEGIN
   IF (SELECT status FROM public.qr_payment_submissions
       WHERE id='50000000-0000-4000-8000-000000000001')<>'REJECTED' THEN
     RAISE EXCEPTION 'Rejected payment submission status was not persisted';
+  END IF;
+  IF (SELECT status FROM public.qr_payment_submissions
+      WHERE id='50000000-0000-4000-8000-000000000002')<>'APPROVED' THEN
+    RAISE EXCEPTION 'Approved payment submission status was not persisted';
   END IF;
 END;
 $payment_storage_privacy$;
