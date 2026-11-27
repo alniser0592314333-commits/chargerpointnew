@@ -22,7 +22,7 @@
 
 ## Current capability inventory
 
-The following twenty-seven bounded capabilities are registered today:
+The following twenty-eight bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
@@ -32,6 +32,7 @@ The following twenty-seven bounded capabilities are registered today:
 | get_customer_financial_history | (customers:view OR customers:read) AND (customers:financial-view OR finance:view OR finances:read) | Up to twenty recent authoritative ledger entries with bounded references |
 | get_customer_orders | (customers:view OR customers:read) AND (orders:view OR orders:read) | Up to ten recent orders and bounded item status/charge details |
 | create_order_with_items | (customers:view OR customers:read) AND orders:create AND (orders:edit OR orders:write) | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
+| update_customer_protected_settings | (customers:view OR customers:read) AND (customers:edit OR customers:write) AND (customers:debt-limit OR customers:charger-exemption) | Updates only the protected field for which the admin has the granular permission; requires separate secure BIN and redacted canonical audit logging |
 | update_customer_profile | (customers:view OR customers:read) AND (customers:edit OR customers:write) | Updates only name, phone, or notes after a same-session lookup; protected debt-limit and charger-fee exemption fields remain excluded |
 | create_customer | customers:create | Creates one active customer through the canonical command with the app's default ₪20 debt limit and no charger exemption; stable request ID prevents duplicate creation |
 | get_device_catalog | devices:view | Up to one hundred active device types, bilingual names, base prices, and charger policy |
@@ -54,7 +55,7 @@ The following twenty-seven bounded capabilities are registered today:
 | cancel_customer_goal | goals:manage | Cancels one active goal through the existing admin RPC |
 | review_goal_cancellation | goals:approve OR goals:manage | Approves/rejects one pending cancellation request through the existing admin RPC |
 
-Read capabilities include customer/profile/balance/order lookup, active device catalog, aggregate financial reporting, pending payment lists, goal/request summaries, and official goal proposals. Enabled mutations include customer creation and basic profile editing, order creation, delivery, item/order cancellation, manual CASH payment record-and-approval, approval/rejection of existing pending payment submissions, and goal creation, request approval/rejection, goal configuration updates, goal cancellation, and cancellation-request review.
+Read capabilities include customer/profile/balance/order lookup, active device catalog, aggregate financial reporting, pending payment lists, goal/request summaries, and official goal proposals. Enabled mutations include customer creation, basic profile editing and BIN-protected debt-limit/charger-exemption changes, order creation, delivery, item/order cancellation, manual CASH payment record-and-approval, approval/rejection of existing pending payment submissions, and goal creation, request approval/rejection, goal configuration updates, goal cancellation, and cancellation-request review.
 
 Order creation calls the existing canonical CREATE_ORDER and ADD_ORDER_ITEM commands inside one database transaction; any failed item rolls back the whole order. It rechecks active customer/device state, the debt-limit rule, duplicate same-customer/day orders, open-day state, and current account permissions. If today's Palestine business day does not exist, it is created only when the actor has settings:manage; a closed day is never reopened.
 
