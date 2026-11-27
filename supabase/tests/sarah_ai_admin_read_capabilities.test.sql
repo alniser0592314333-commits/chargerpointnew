@@ -574,12 +574,19 @@ DECLARE
   v_replay jsonb;
 BEGIN
   PERFORM public.sarah_ai_lookup_customers('أحمد علي');
+  v_result:=public.sarah_ai_record_and_approve_payment(
+    '40000000-0000-4000-8000-000000000008','AAAA','أحمد علي',2000,'manual cash payment',NULL
+  );
+  IF v_result->>'requires_bin'<>'true' OR v_result->>'status'<>'AWAITING_BIN' THEN
+    RAISE EXCEPTION 'Payment did not persist a pending secure-confirmation intent: %',v_result;
+  END IF;
+
   BEGIN
     PERFORM public.sarah_ai_record_and_approve_payment(
-      '40000000-0000-4000-8000-000000000008','AAAA','أحمد علي',2000,'manual cash payment',NULL
+      '40000000-0000-4000-8000-000000000008','AAAA','أحمد علي',2500,'manual cash payment','1234'
     );
-    RAISE EXCEPTION 'Payment creation unexpectedly proceeded without BIN';
-  EXCEPTION WHEN SQLSTATE 'P4004' THEN NULL;
+    RAISE EXCEPTION 'Payment confirmation unexpectedly accepted changed amount';
+  EXCEPTION WHEN SQLSTATE 'P0409' THEN NULL;
   END;
 
   BEGIN
