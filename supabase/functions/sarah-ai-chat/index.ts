@@ -161,6 +161,9 @@ Deno.serve(async (req) => {
     global: { headers: { Authorization: `Bearer ${bearer}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const { data: userData, error: userError } = await caller.auth.getUser(bearer);
   if (userError || !userData.user) {
     return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
@@ -206,9 +209,18 @@ Deno.serve(async (req) => {
     phase: "INITIAL",
     confirmedActions: [],
   };
+  const taskActor = userData.user.id;
+  const taskSession = authSessionId;
   let taskLoad = resumeTask
-    ? await caller.rpc("sarah_ai_task_resume", { p_request_id: requestId })
-    : await caller.rpc("sarah_ai_task_load_or_create", {
+    ? await admin.rpc("sarah_ai_task_gateway_resume", {
+        p_actor_id: taskActor,
+        p_session_id: taskSession,
+        p_request_id: requestId,
+        p_request_hash: taskRequestHash,
+      })
+    : await admin.rpc("sarah_ai_task_gateway_load_or_create", {
+        p_actor_id: taskActor,
+        p_session_id: taskSession,
         p_request_id: requestId,
         p_request_hash: taskRequestHash,
         p_initial_state: initialTaskState,
@@ -217,7 +229,9 @@ Deno.serve(async (req) => {
   // Only a missing-task result falls back to first-time creation; permission,
   // session, expiry, and request-identity errors remain fail-closed.
   if (resumeTask && taskLoad.error?.code === "P0002") {
-    taskLoad = await caller.rpc("sarah_ai_task_load_or_create", {
+    taskLoad = await admin.rpc("sarah_ai_task_gateway_load_or_create", {
+      p_actor_id: taskActor,
+      p_session_id: taskSession,
       p_request_id: requestId,
       p_request_hash: taskRequestHash,
       p_initial_state: initialTaskState,
@@ -239,7 +253,9 @@ Deno.serve(async (req) => {
     status: "RUNNING" | "WAITING_CONFIRMATION" | "WAITING_CLARIFICATION" | "COMPLETED" | "FAILED",
     nextState: Record<string, unknown>,
   ) => {
-    const saved = await caller.rpc("sarah_ai_task_checkpoint", {
+    const saved = await admin.rpc("sarah_ai_task_gateway_checkpoint", {
+      p_actor_id: taskActor,
+      p_session_id: taskSession,
       p_request_id: requestId,
       p_expected_version: taskVersion,
       p_status: status,
@@ -1183,10 +1199,6 @@ Deno.serve(async (req) => {
     "set_customer_active_status","set_admin_permission","suspend_admin","activate_admin",
   ]);
   const hasEnabledCapabilities = enabledCapabilities.length > 0;
-  const admin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
   let config: Record<string, unknown> = {};
   let apiKey = "";
   if (!confirmationMode) {
