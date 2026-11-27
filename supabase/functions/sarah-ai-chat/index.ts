@@ -2669,7 +2669,8 @@ Deno.serve(async (req) => {
         );
         executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index));
         for (const requestedCall of executionCalls) {
-          if (toolExecutionsThisRequest >= MAX_TOOL_EXECUTIONS_PER_REQUEST) {
+          if (toolExecutionsThisRequest >= MAX_TOOL_EXECUTIONS_PER_REQUEST
+            || Date.now() >= requestDeadline - 15_000) {
             await checkpointTask("RUNNING", {
               ...taskState,
               phase: "EXECUTING_TOOLS",
