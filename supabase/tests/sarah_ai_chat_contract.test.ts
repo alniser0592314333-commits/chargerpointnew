@@ -19,6 +19,7 @@ const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sa
 const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
 const customerCreateMigration = read("supabase/migrations/20261127170000_sarah_ai_customer_create.sql");
 const customerUpdateMigration = read("supabase/migrations/20261127180000_sarah_ai_customer_profile_update.sql");
+const changeLogRedactionMigration = read("supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -191,6 +192,14 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("DEVICE_TYPE_AMBIGUOUS");
     expect(adminReadMigration).toContain("DEBT_LIMIT_EXCEEDED");
     expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text) TO service_role");
+  });
+
+  it("redacts credentials recursively from historical and future canonical change-log payloads", () => {
+    expect(changeLogRedactionMigration).toContain("public._cp_redact_sensitive_change_payload");
+    expect(changeLogRedactionMigration).toContain("'bin','adminbin','password'");
+    expect(changeLogRedactionMigration).toContain("UPDATE public.change_log");
+    expect(changeLogRedactionMigration).toContain("v_safe_payload");
+    expect(changeLogRedactionMigration).not.toContain("RAISE NOTICE");
   });
 
   it("registers lookup-bound basic customer editing under customers:edit", () => {
