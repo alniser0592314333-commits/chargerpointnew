@@ -492,7 +492,6 @@ DECLARE
   v_admin_id uuid;
   v_admin_role text;
   v_is_super_admin boolean := false;
-  v_can_open_day boolean := false;
   v_can_override_debt boolean := false;
   v_existing_action text;
   v_existing_payload jsonb;
@@ -511,7 +510,7 @@ DECLARE
   v_day_id uuid;
   v_day_closed boolean;
   v_day_status text;
-  v_day_number integer;
+  v_day_result jsonb;
   v_order_id uuid;
   v_order_number integer;
   v_order_result jsonb;
@@ -772,24 +771,28 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    v_can_open_day:=v_is_super_admin OR EXISTS(
-      SELECT 1 FROM public.get_effective_permissions(v_admin_id) ep
-      WHERE ep.permission='settings:manage'
+    -- Use the same OPEN_DAY command and settings:manage gate as the app's
+    -- createBusinessDay use case; never insert a business day from the AI path.
+    v_day_id:=gen_random_uuid();
+    v_day_result:=public.execute_sync_command(
+      v_day_id,'OPEN_DAY','business_days',v_day_id,
+      jsonb_build_object(
+        'id',v_day_id,'businessDate',v_day_date,'isClosed',false,
+        'createdAt',now(),'updatedAt',now(),'version',1
+      ),
+      NULL
     );
-    IF NOT v_can_open_day THEN
-      v_result:=jsonb_build_object('ok',false,'error','NO_OPEN_BUSINESS_DAY','business_date',v_day_date);
+    IF COALESCE((v_day_result->>'success')::boolean,false) IS NOT TRUE THEN
+      v_result:=jsonb_build_object('ok',false,'error','BUSINESS_DAY_OPEN_FAILED');
       RETURN v_result;
     END IF;
-    v_day_id:=gen_random_uuid();
-    SELECT COALESCE(max(display_number),0)+1 INTO v_day_number FROM public.business_days;
-    INSERT INTO public.business_days(id,business_date,display_number,status,is_closed,opened_at,created_at,updated_at,version)
-    VALUES(v_day_id,v_day_date,v_day_number,'OPEN',false,now(),now(),now(),1);
-    PERFORM public.record_canonical_change('business_days',v_day_id,'INSERT',jsonb_build_object(
-      'id',v_day_id,'businessDate',v_day_date,'displayNumber',v_day_number,
-      'business_date',v_day_date,'display_number',v_day_number,
-      'status','OPEN','isClosed',false,'is_closed',false,
-      'openedAt',now(),'opened_at',now(),'version',1
-    ),1);
+    SELECT d.id,d.is_closed,d.status INTO v_day_id,v_day_closed,v_day_status
+    FROM public.business_days d
+    WHERE d.business_date=v_day_date
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Canonical OPEN_DAY command did not create the requested business day';
+    END IF;
   ELSIF v_day_closed IS TRUE OR v_day_status IS DISTINCT FROM 'OPEN' THEN
     v_result:=jsonb_build_object('ok',false,'error','BUSINESS_DAY_CLOSED','business_date',v_day_date);
     RETURN v_result;
