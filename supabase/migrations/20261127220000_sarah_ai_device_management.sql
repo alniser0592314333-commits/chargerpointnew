@@ -29,6 +29,7 @@ DECLARE
   v_device_id uuid;
   v_payload jsonb;
   v_result jsonb;
+  v_quota jsonb;
 BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public.assert_my_account_session_active();
@@ -68,6 +69,15 @@ BEGIN
        AND p_charger_fee_applicable IS NULL AND p_is_active IS NULL AND p_sort_order IS NULL THEN
       RAISE EXCEPTION 'No device fields were supplied for update' USING ERRCODE='22023';
     END IF;
+  END IF;
+
+  v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
+  END IF;
+  v_quota:=public.sarah_ai_consume_my_quota('tool_day');
+  IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
   END IF;
 
   v_payload:=pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
