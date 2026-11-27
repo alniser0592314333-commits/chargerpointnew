@@ -539,4 +539,66 @@ describe('Outbox Dependency Revalidation & Automated Unblocking (Phase 2)', () =
     expect(result.blocked.size).toBe(0);
   });
 
+  it('does not confuse a Purchase Book item reference with an order item dependency', async () => {
+    const itemId = 'purchase-item-existing';
+    await localDb.set('purchaseItems', itemId, {
+      id: itemId, adminId: 'admin_1', name: 'مصروف', isActive: true,
+    });
+    const purchaseOrder = {
+      commandId: 'purchase-order-save',
+      commandType: 'SAVE_PURCHASE_ORDER',
+      aggregateType: 'purchase_orders',
+      aggregateId: 'purchase-order-1',
+      payload: { id: 'purchase-order-1', itemId },
+      createdAt: '2026-11-18T18:03:45.643Z',
+      deviceId: 'dev_1',
+      actorAdminId: 'admin_1',
+      status: 'pending' as const,
+      retryCount: 0,
+    };
+    const result = await new OutboxScheduler().schedule(
+      [purchaseOrder],
+      [purchaseOrder],
+      async (id) => localDb.getHistoryByCommandId(id),
+    );
+    expect(result.ready.map((item) => item.commandId)).toContain('purchase-order-save');
+    expect(result.blocked.has('purchase-order-save')).toBe(false);
+  });
+
+  it('waits for a pending SAVE_PURCHASE_ITEM creator before saving its purchase order', async () => {
+    const itemId = 'purchase-item-created-offline';
+    const itemCommand = {
+      commandId: itemId,
+      commandType: 'SAVE_PURCHASE_ITEM',
+      aggregateType: 'purchase_items',
+      aggregateId: itemId,
+      payload: { id: itemId, adminId: 'admin_1', name: 'قطعة نادرة', isActive: false },
+      createdAt: '2026-11-18T18:03:44.000Z',
+      deviceId: 'dev_1',
+      actorAdminId: 'admin_1',
+      status: 'pending' as const,
+      retryCount: 0,
+    };
+    const purchaseOrder = {
+      commandId: 'purchase-order-save-after-item',
+      commandType: 'SAVE_PURCHASE_ORDER',
+      aggregateType: 'purchase_orders',
+      aggregateId: 'purchase-order-2',
+      payload: { id: 'purchase-order-2', itemId },
+      createdAt: '2026-11-18T18:03:45.000Z',
+      deviceId: 'dev_1',
+      actorAdminId: 'admin_1',
+      status: 'pending' as const,
+      retryCount: 0,
+    };
+    const outbox = [itemCommand, purchaseOrder];
+    const result = await new OutboxScheduler().schedule(
+      outbox,
+      outbox,
+      async (id) => localDb.getHistoryByCommandId(id),
+    );
+    expect(result.ready.map((item) => item.commandId)).toContain(itemId);
+    expect(result.blocked.get(purchaseOrder.commandId)?.unsatisfiedDependencies).toContain(itemId);
+  });
+
 });

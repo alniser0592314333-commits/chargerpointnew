@@ -51,6 +51,8 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const [paymentStatus,setPaymentStatus]=useState<'PAID'|'UNPAID'>('UNPAID');
   const [supplierIdValue,setSupplierIdValue]=useState('');
   const [itemIdValue,setItemIdValue]=useState('');
+  const [itemMode,setItemMode]=useState<'catalog'|'one-time'>('catalog');
+  const [oneTimeItemName,setOneTimeItemName]=useState('');
   const [methodIdValue,setMethodIdValue]=useState('');
   const [quickAdd,setQuickAdd]=useState<'suppliers'|'items'|'methods'|null>(null);
   const [quickName,setQuickName]=useState('');
@@ -101,10 +103,10 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
   const openOrderForm=()=>{setError('');setNotice('');setSupplierIdValue(supplierId || '');setShowOrderForm(true);};
   const submitOrder=async()=>{
     try{
-      if(!supplierIdValue||!itemIdValue||!amount){setError('أكمل الجهة والعنصر والسعر أولاً.');return;}
+      if(!supplierIdValue||!amount||(itemMode==='catalog'&&!itemIdValue)||(itemMode==='one-time'&&!oneTimeItemName.trim())){setError('أكمل الجهة والصنف/الملاحظة والسعر أولاً.');return;}
       if(paymentStatus==='PAID'&&!methodIdValue){setError('اختر طريقة الدفع للطلب المدفوع.');return;}
-      await addPurchaseOrder({supplierId:supplierIdValue,itemId:itemIdValue,paymentMethodId:methodIdValue||undefined,amount:Number(amount),currency,paymentStatus});
-      setShowOrderForm(false);setAmount('');setNotice('تمت إضافة الطلب وحفظه محلياً.');setError('');await reload();
+      await addPurchaseOrder({supplierId:supplierIdValue,itemId:itemMode==='catalog'?itemIdValue:undefined,itemName:itemMode==='one-time'?oneTimeItemName:undefined,paymentMethodId:methodIdValue||undefined,amount:Number(amount),currency,paymentStatus});
+      setShowOrderForm(false);setAmount('');setOneTimeItemName('');setItemMode('catalog');setNotice('تمت إضافة الطلب وحفظه محلياً.');setError('');await reload();
     }catch(e){
       if(e instanceof PurchaseBookOperationError && e.code==='PURCHASE_DAY_MISSING'){setShowNoDayDialog(true);return;}
       setError(e instanceof Error?e.message:'تعذّر حفظ الطلب.');
@@ -331,7 +333,17 @@ export const PurchaseBookPage:React.FC<PurchaseBookPageProps> = ({supplierId,onN
           {error&&<p className="text-xs text-rose-600">{error}</p>}
           <div className="space-y-3">
             {supplierId ? <div className="text-xs font-semibold">الجهة <div className="mt-1 rounded-lg border border-gray-200 dark:border-[#28564d] p-3">{nameOf(suppliers,supplierId)}</div></div> : <label className="block text-xs font-semibold">الجهة <select value={supplierIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('suppliers');setQuickName('');}else setSupplierIdValue(e.target.value);}} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="">اختر الجهة</option>{activeSuppliers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة جهة جديدة</option></select></label>}
-            <label className="block text-xs font-semibold">العنصر المشترى <select value={itemIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('items');setQuickName('');}else setItemIdValue(e.target.value);}} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="">اختر العنصر</option>{activeItems.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة عنصر جديد</option></select></label>
+            <div className="space-y-2">
+              <div className="text-xs font-semibold">الصنف المشترى أو الملاحظة</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={()=>setItemMode('catalog')} className={`rounded-lg px-3 py-2 text-xs font-bold ${itemMode==='catalog'?'bg-emerald-700 text-white':'bg-gray-100 dark:bg-[#0c312b]'}`}>صنف ثابت</button>
+                <button type="button" onClick={()=>setItemMode('one-time')} className={`rounded-lg px-3 py-2 text-xs font-bold ${itemMode==='one-time'?'bg-emerald-700 text-white':'bg-gray-100 dark:bg-[#0c312b]'}`}>صنف / ملاحظة لمرة واحدة</button>
+              </div>
+              {itemMode==='catalog'
+                ? <select value={itemIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('items');setQuickName('');}else setItemIdValue(e.target.value);}} className="w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3 text-xs"><option value="">اختر العنصر</option>{activeItems.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة عنصر ثابت</option></select>
+                : <input value={oneTimeItemName} onChange={e=>setOneTimeItemName(e.target.value)} maxLength={120} placeholder="اكتب اسم الصنف أو الملاحظة (مثلاً: شراء قطعة نادرة أو مصروف نقل)" className="w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3 text-xs"/>}
+              {itemMode==='one-time'&&<p className="text-[10px] text-gray-500">سيظهر في سجل هذه المشتريات فقط، ولن يُضاف إلى قائمة الأصناف الثابتة.</p>}
+            </div>
             <label className="block text-xs font-semibold">طريقة الدفع {paymentStatus==='PAID'?'(مطلوبة)':'(اختيارية)'} <select value={methodIdValue} onChange={e=>{if(e.target.value==='__add__'){setQuickAdd('methods');setQuickName('');}else setMethodIdValue(e.target.value);}} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="">اختر طريقة الدفع</option>{activeMethods.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}<option value="__add__">+ إضافة طريقة دفع</option></select></label>
             <div className="grid grid-cols-2 gap-3"><label className="block text-xs font-semibold">السعر<input type="number" min="0.001" step={currency==='JOD'?'0.001':'0.01'} value={amount} onChange={e=>setAmount(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"/></label><label className="block text-xs font-semibold">العملة<select value={currency} onChange={e=>setCurrency(e.target.value as PurchaseCurrency)} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="ILS">شيكل (ILS)</option><option value="USD">دولار (USD)</option><option value="JOD">دينار (JOD)</option></select></label></div>
             <label className="block text-xs font-semibold">حالة الدفع<select value={paymentStatus} onChange={e=>setPaymentStatus(e.target.value as 'PAID'|'UNPAID')} className="mt-1 w-full rounded-lg border border-gray-200 dark:border-[#28564d] bg-transparent p-3"><option value="UNPAID">غير مدفوع</option><option value="PAID">مدفوع</option></select></label>
