@@ -36,8 +36,8 @@ describe("Sarah account-switch asynchronous isolation", () => {
     expect(authService).toContain("authUserId?: ID");
     expect(authService).toContain("authUserId: signInRes.session.user.id");
     expect(authService).toContain("authUserId: refreshed.user.id");
-    expect(page).toContain("sarahChatService.send(clean, session?.authUserId || '', historySnapshot, correlationId)");
-    expect(page).toContain("sarahChatService.send(record.text, session?.authUserId || '', retryHistory, record.correlationId)");
+    expect(page).toContain("sendWithLocalActions(clean, accountId, historySnapshot, correlationId)");
+    expect(page).toContain("sendWithLocalActions(record.text, accountId, retryHistory, record.correlationId)");
     expect(chatService).toContain("tokenSubject(session.token) !== expectedAuthUserId");
     expect(chatService).toContain("before?.user?.id !== expectedAuthUserId");
     expect(chatService).toContain("after?.user?.id !== expectedAuthUserId");
