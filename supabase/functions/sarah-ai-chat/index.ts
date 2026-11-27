@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
           properties: {
             customer_code: { type: "STRING" },
             name_hint: { type: "STRING" },
-            debt_limit_minor: { type: "INTEGER", description: "Optional non-negative debt limit in ILS minor units." },
+            debt_limit_minor: { type: "INTEGER", description: "Optional debt limit in ILS minor units using the customer edit screen sign convention: use a negative value (for example -2000 for ₪20)." },
             charger_fee_exempt: { type: "BOOLEAN", description: "Optional charger-fee exemption state." },
           },
           required: ["customer_code", "name_hint"],
