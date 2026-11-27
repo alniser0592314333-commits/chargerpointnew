@@ -30,6 +30,9 @@ const customerAccountStatusMigration = read("supabase/migrations/20261127240000_
 const dayOrderRenumberingMigration = read("supabase/migrations/20261127250000_sarah_ai_day_order_renumbering.sql");
 const durableTaskMigration = read("supabase/migrations/20261127296000_sarah_ai_durable_task_checkpoints.sql");
 const durableTaskSqlTest = read("supabase/tests/sarah_ai_durable_task_checkpoints.test.sql");
+const taskGatewayMigration = read("supabase/migrations/20261127298000_sarah_ai_task_gateway_only.sql");
+const taskGatewayRevokeMigration = read("supabase/migrations/20261127298100_revoke_legacy_sarah_task_rpcs.sql");
+const taskGatewaySqlTest = read("supabase/tests/sarah_ai_task_gateway_only.test.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
 const jawwalRecipientMigration = read("supabase/migrations/20261024130000_admin_managed_jawwal_recipient.sql");
@@ -712,14 +715,22 @@ describe("Sarah chat gateway security contract", () => {
 
 
 describe("Sarah durable orchestration checkpoint contract", () => {
-  it("loads tasks through the authenticated actor/session RPCs and never accesses the task table directly", () => {
-    expect(source).toContain('caller.rpc("sarah_ai_task_load_or_create"');
-    expect(source).toContain('caller.rpc("sarah_ai_task_resume"');
-    expect(source).toContain('caller.rpc("sarah_ai_task_checkpoint"');
-    expect(source).toContain("taskRequestHash");
-    expect(source).toContain("taskRequestHash");
+  it("loads and checkpoints task state only through the trusted service-role gateway", () => {
+    expect(source).toContain('admin.rpc("sarah_ai_task_gateway_load_or_create"');
+    expect(source).toContain('admin.rpc("sarah_ai_task_gateway_resume"');
+    expect(source).toContain('admin.rpc("sarah_ai_task_gateway_checkpoint"');
+    expect(source).toContain("p_actor_id: taskActor");
+    expect(source).toContain("p_session_id: taskSession");
+    expect(source).toContain("p_request_hash: taskRequestHash");
+    expect(source).not.toContain('caller.rpc("sarah_ai_task_load_or_create"');
+    expect(source).not.toContain('caller.rpc("sarah_ai_task_resume"');
+    expect(source).not.toContain('caller.rpc("sarah_ai_task_checkpoint"');
     expect(source).not.toContain('admin.from("sarah_ai_tasks")');
     expect(source).toContain("AI_TASK_CHECKPOINT_WRITE_FAILED");
+    expect(taskGatewayRevokeMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_task_resume(uuid) FROM PUBLIC, anon, authenticated, service_role");
+    expect(taskGatewayMigration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_task_gateway_resume(uuid,uuid,uuid,text) TO service_role");
+    expect(taskGatewaySqlTest).toContain("Legacy browser-callable Sarah task RPCs must be fully revoked");
+    expect(taskGatewaySqlTest).toContain("Gateway accepted a different admin without ai:use");
   });
 
   it("checkpoints model responses, each tool result, and completed task output", () => {
@@ -737,6 +748,24 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index))");
     expect(source).toContain("pendingCallIndex: requestedCall.index");
     expect(source).toContain("confirmedResults");
+  });
+
+  it("revalidates all saved tool and prerequisite permissions before resuming any progressed task", () => {
+    const capabilityGate = source.indexOf("const enabledCapabilityNames");
+    const progressGuard = source.indexOf("const taskHasProgress");
+    const completedFastPath = source.indexOf('if (taskStatus === "COMPLETED"');
+    expect(capabilityGate).toBeGreaterThan(-1);
+    expect(progressGuard).toBeGreaterThan(capabilityGate);
+    expect(completedFastPath).toBeGreaterThan(progressGuard);
+    const replayGuard = source.slice(progressGuard, source.indexOf("const readOnlyCapabilityNames", progressGuard));
+    expect(replayGuard).toContain("taskState.phase !== \"INITIAL\" || taskStatus !== \"RUNNING\"");
+    expect(replayGuard).toContain("taskState.executedCapabilityNames");
+    expect(replayGuard).toContain("savedExecutedNames.some(");
+    expect(replayGuard).toContain("!enabledCapabilityNames.has(name)");
+    expect(replayGuard).toContain("AI_CAPABILITY_PERMISSION_REQUIRED");
+    expect(source).toContain("executedCapabilityNames.add(requestedCall.name)");
+    expect(source).toContain("executedCapabilityNames.add(confirmationName)");
+    expect(source).toContain("executedCapabilityNames: [...executedCapabilityNames]");
   });
 
   it("does not restart a task that belongs to another or expired Auth session", () => {

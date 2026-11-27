@@ -161,6 +161,9 @@ Deno.serve(async (req) => {
     global: { headers: { Authorization: `Bearer ${bearer}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const { data: userData, error: userError } = await caller.auth.getUser(bearer);
   if (userError || !userData.user) {
     return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
@@ -206,9 +209,18 @@ Deno.serve(async (req) => {
     phase: "INITIAL",
     confirmedActions: [],
   };
+  const taskActor = userData.user.id;
+  const taskSession = authSessionId;
   let taskLoad = resumeTask
-    ? await caller.rpc("sarah_ai_task_resume", { p_request_id: requestId })
-    : await caller.rpc("sarah_ai_task_load_or_create", {
+    ? await admin.rpc("sarah_ai_task_gateway_resume", {
+        p_actor_id: taskActor,
+        p_session_id: taskSession,
+        p_request_id: requestId,
+        p_request_hash: taskRequestHash,
+      })
+    : await admin.rpc("sarah_ai_task_gateway_load_or_create", {
+        p_actor_id: taskActor,
+        p_session_id: taskSession,
         p_request_id: requestId,
         p_request_hash: taskRequestHash,
         p_initial_state: initialTaskState,
@@ -217,7 +229,9 @@ Deno.serve(async (req) => {
   // Only a missing-task result falls back to first-time creation; permission,
   // session, expiry, and request-identity errors remain fail-closed.
   if (resumeTask && taskLoad.error?.code === "P0002") {
-    taskLoad = await caller.rpc("sarah_ai_task_load_or_create", {
+    taskLoad = await admin.rpc("sarah_ai_task_gateway_load_or_create", {
+      p_actor_id: taskActor,
+      p_session_id: taskSession,
       p_request_id: requestId,
       p_request_hash: taskRequestHash,
       p_initial_state: initialTaskState,
@@ -239,7 +253,9 @@ Deno.serve(async (req) => {
     status: "RUNNING" | "WAITING_CONFIRMATION" | "WAITING_CLARIFICATION" | "COMPLETED" | "FAILED",
     nextState: Record<string, unknown>,
   ) => {
-    const saved = await caller.rpc("sarah_ai_task_checkpoint", {
+    const saved = await admin.rpc("sarah_ai_task_gateway_checkpoint", {
+      p_actor_id: taskActor,
+      p_session_id: taskSession,
       p_request_id: requestId,
       p_expected_version: taskVersion,
       p_status: status,
@@ -257,10 +273,6 @@ Deno.serve(async (req) => {
     taskStatus = status;
     taskState = nextState;
   };
-  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
-    return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
-  }
-
   // Server-derived, extensible capability registry. Super Admin inherits all
   // registered capabilities; ordinary admins inherit only their live effective
   // permissions. PostgreSQL independently re-checks each permission per call.
@@ -1112,6 +1124,27 @@ Deno.serve(async (req) => {
   );
   const enabledCapabilityNames = new Set<string>(enabledCapabilities.map((capability) => capability.name));
   const registeredCapabilityNames = new Set<string>(capabilityRegistry.map((capability) => capability.name));
+  const executedCapabilityNames = new Set<string>(
+    Array.isArray(taskState.executedCapabilityNames)
+      ? taskState.executedCapabilityNames.filter((name): name is string => typeof name === "string")
+      : [],
+  );
+  const taskHasProgress = taskState.phase !== "INITIAL" || taskStatus !== "RUNNING";
+  if (taskHasProgress) {
+    const savedExecutedNames = Array.isArray(taskState.executedCapabilityNames)
+      ? taskState.executedCapabilityNames
+      : null;
+    // Every resumed checkpoint may contain saved reads or verified prerequisites.
+    // Revalidate all of them against live permissions before restoring any result.
+    if (!savedExecutedNames || savedExecutedNames.some(
+      (name) => typeof name !== "string" || !enabledCapabilityNames.has(name),
+    )) {
+      return respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" });
+    }
+  }
+  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
+    return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
+  }
   const readOnlyCapabilityNames = new Set<string>([
     "lookup_customers", "get_customer_profile", "lookup_customer_accounts",
     "list_customers_above_debt_threshold",
@@ -1169,10 +1202,6 @@ Deno.serve(async (req) => {
     "set_customer_active_status","set_admin_permission","suspend_admin","activate_admin",
   ]);
   const hasEnabledCapabilities = enabledCapabilities.length > 0;
-  const admin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
   let config: Record<string, unknown> = {};
   let apiKey = "";
   if (!confirmationMode) {
@@ -2337,6 +2366,7 @@ Deno.serve(async (req) => {
       const resultError = safeText(resultRecord.error, 80);
       return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
     }
+    executedCapabilityNames.add(confirmationName);
     const confirmedActions = Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [];
     const savedResults = taskState.resultsByIndex && typeof taskState.resultsByIndex === "object"
       && !Array.isArray(taskState.resultsByIndex)
@@ -2353,6 +2383,7 @@ Deno.serve(async (req) => {
       ...stateWithoutPendingAction,
       phase: "CONFIRMED_ACTION",
       resultsByIndex: confirmedResults,
+      executedCapabilityNames: [...executedCapabilityNames],
       confirmedActions: [...confirmedActions, {
         name: confirmationName,
         actionRequestId: confirmationRequestId,
@@ -2470,6 +2501,7 @@ Deno.serve(async (req) => {
         currentContentsTail: [],
         resultsByIndex: {},
         verifiedPrerequisiteNames: [],
+        executedCapabilityNames: [...executedCapabilityNames],
       });
     }
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
@@ -2583,6 +2615,7 @@ Deno.serve(async (req) => {
         );
         executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index));
         for (const requestedCall of executionCalls) {
+          executedCapabilityNames.add(requestedCall.name);
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
             if (execution.response.status === 428 && binProtectedCapabilityNames.has(requestedCall.name)) {
@@ -2606,6 +2639,7 @@ Deno.serve(async (req) => {
                 requestedCalls,
                 resultsByIndex: Object.fromEntries(resultsByIndex),
                 verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
               });
               return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
             }
@@ -2625,6 +2659,7 @@ Deno.serve(async (req) => {
               requestedCalls,
               resultsByIndex: Object.fromEntries(resultsByIndex),
               verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
             });
             continue;
           }
@@ -2652,6 +2687,7 @@ Deno.serve(async (req) => {
               requestedCalls,
               resultsByIndex: Object.fromEntries(resultsByIndex),
               verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
             });
             return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
           }
@@ -2668,6 +2704,7 @@ Deno.serve(async (req) => {
             requestedCalls,
             resultsByIndex: Object.fromEntries(resultsByIndex),
             verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+                executedCapabilityNames: [...executedCapabilityNames],
           });
         }
 
@@ -2753,6 +2790,7 @@ Deno.serve(async (req) => {
       modelId,
       completedAt: new Date().toISOString(),
       confirmedActions: Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [],
+      executedCapabilityNames: [...executedCapabilityNames],
     });
     return respond(200, { ok: true, answer, modelId });
   } catch (error) {
