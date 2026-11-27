@@ -462,6 +462,37 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "get_business_day_orders",
+      requiredPermissionGroups: [["orders:view"]],
+      declaration: {
+        name: "get_business_day_orders",
+        description: "Read the complete bounded order list for one business date. Returns exact order IDs, current display numbers, versions, customer names and item counts. Use this before any day renumbering.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            business_date: { type: "STRING", description: "Business date in YYYY-MM-DD format." },
+          },
+          required: ["business_date"],
+        },
+      },
+    },
+    {
+      name: "renumber_day_orders",
+      requiredPermissionGroups: [["orders:view"], ["orders:renumber-day"]],
+      declaration: {
+        name: "renumber_day_orders",
+        description: "Renumber every order in one open business day using the canonical app command. First call get_business_day_orders in this same request; pass every exact order_id once in the intended final order. Never invent IDs or omit orders. Closed days and days over the 200-order safety limit cannot be renumbered.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            business_date: { type: "STRING" },
+            ordered_order_ids: { type: "ARRAY", items: { type: "STRING" }, description: "Every exact order_id returned by get_business_day_orders, arranged in the desired new sequence." },
+          },
+          required: ["business_date", "ordered_order_ids"],
+        },
+      },
+    },
+    {
       name: "get_customer_orders",
       requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:view", "orders:read"]],
       declaration: {
@@ -861,6 +892,32 @@ Deno.serve(async (req) => {
         p_reference_event_id: referenceEventId,
         p_note: note,
         p_bin: actionBin,
+      });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "get_business_day_orders") {
+      const businessDate = safeText(args.business_date, 10);
+      const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(businessDate)
+        && new Date(businessDate + "T00:00:00Z").toISOString().slice(0, 10) === businessDate;
+      if (!dateOk) return { response: respond(400, { ok: false, error: "BUSINESS_DATE_INVALID" }) };
+      const result = await caller.rpc("sarah_ai_get_business_day_orders", { p_business_date: businessDate });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "renumber_day_orders") {
+      const businessDate = safeText(args.business_date, 10);
+      const rawIds = args.ordered_order_ids;
+      const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(businessDate)
+        && new Date(businessDate + "T00:00:00Z").toISOString().slice(0, 10) === businessDate;
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!dateOk || !Array.isArray(rawIds) || rawIds.length < 1 || rawIds.length > 200
+        || rawIds.some(id => typeof id !== "string" || !uuidPattern.test(id))
+        || new Set(rawIds).size !== rawIds.length) {
+        return { response: respond(400, { ok: false, error: "ORDER_RENUMBER_INPUT_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_renumber_business_day_orders", {
+        p_request_id: actionRequestId,
+        p_business_date: businessDate,
+        p_order_ids: rawIds,
       });
       toolResult = result.data;
       toolError = result.error;
