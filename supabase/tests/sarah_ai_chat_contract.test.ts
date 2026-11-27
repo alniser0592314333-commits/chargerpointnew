@@ -13,6 +13,7 @@ const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped
 const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_customer_profile_read.sql");
 const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql");
 const orderActionMigration = read("supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql");
+const addExistingOrderItemMigration = read("supabase/migrations/20261127260000_sarah_ai_add_item_to_existing_order.sql");
 const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_ai_goal_management_capabilities.sql");
 const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
 const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
@@ -224,6 +225,28 @@ describe("Sarah chat gateway security contract", () => {
     expect((source.match(/toolName === "get_device_catalog"/g) || []).length).toBe(1);
     expect(source).toContain("call get_device_catalog and resolve each device");
     expect(source).toContain('requiredPermissionGroups: [["devices:view"]]');
+  });
+
+  it("adds catalog items to an existing verified order through the canonical command", () => {
+    expect(source).toContain('name: "add_item_to_existing_order"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:view", "orders:read"], ["orders:edit", "orders:write"], ["devices:view"]]');
+    expect(source).toContain('caller.rpc("sarah_ai_add_item_to_existing_order"');
+    expect(source).toContain("p_order_id: orderId");
+    expect(source).toContain("p_device_type_id: deviceTypeId");
+    expect(source).toContain("First call lookup_customers, get_customer_orders, and get_device_catalog");
+    expect(source).toContain("never substitute create_order_with_items");
+    expect(addExistingOrderItemMigration).toContain("public.sarah_ai_assert_use_permission()");
+    expect(addExistingOrderItemMigration).toContain("public.assert_my_account_session_active()");
+    expect(addExistingOrderItemMigration).toContain("proof.auth_session_id=v_session_id");
+    expect(addExistingOrderItemMigration).toContain("public._cp_assert_active_admin_permission('orders:edit')");
+    expect(addExistingOrderItemMigration).toContain("public._cp_assert_active_admin_permission('orders:view')");
+    expect(addExistingOrderItemMigration).toContain("public._cp_assert_active_admin_permission('devices:view')");
+    expect(addExistingOrderItemMigration).toContain("bd.is_closed");
+    expect(addExistingOrderItemMigration).toContain("dt.is_active IS TRUE");
+    expect(addExistingOrderItemMigration).toContain("public.execute_sync_command(");
+    expect(addExistingOrderItemMigration).toContain("'ADD_ORDER_ITEM'");
+    expect(addExistingOrderItemMigration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_add_item_to_existing_order");
+    expect(addExistingOrderItemMigration).not.toContain("INSERT INTO public.order_items");
   });
 
   it("registers atomic order creation with current permissions and canonical app commands", () => {
