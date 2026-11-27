@@ -41,6 +41,7 @@ CREATE TABLE public.orders (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   delivered_at timestamptz,
+  cancelled_at timestamptz,
   deleted_at timestamptz,
   version integer NOT NULL DEFAULT 1
 );
