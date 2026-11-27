@@ -20,10 +20,10 @@ BEGIN
   )
   INTO v_definition;
 
-  IF pg_catalog.position(v_old IN v_definition) > 0 THEN
+  IF pg_catalog.strpos(v_definition, v_old) > 0 THEN
     v_definition := pg_catalog.replace(v_definition, v_old, v_new);
     EXECUTE v_definition;
-  ELSIF pg_catalog.position(v_new IN v_definition) = 0 THEN
+  ELSIF pg_catalog.strpos(v_definition, v_new) = 0 THEN
     RAISE EXCEPTION 'Unexpected execute_canonical_sync_command_unlocked actor guard; refusing unsafe patch';
   END IF;
 END;
