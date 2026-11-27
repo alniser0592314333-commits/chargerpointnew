@@ -174,7 +174,7 @@ BEGIN
     'عميل اختبار سارة معدل','0591234567','تم التعديل عبر سارة'
   );
   IF v_replay->>'idempotent_replay'<>'true'
-     OR (SELECT count(*) FROM public.customers WHERE name='عميل اختبار سارة معدل')<>1 THEN
+     OR (public.test_sarah_customer_snapshot('عميل اختبار سارة معدل')->>'count')::integer<>1 THEN
     RAISE EXCEPTION 'Customer profile update retry was not idempotent: %',v_replay;
   END IF;
 END;
@@ -202,10 +202,7 @@ BEGIN
     RAISE EXCEPTION 'Protected customer setting lookup failed: %',v_lookup;
   END IF;
   v_code:=v_lookup->'matches'->0->>'customer_code';
-  SELECT id INTO v_customer_id
-  FROM public.customers
-  WHERE name='عميل اختبار سارة معدل' AND is_active IS TRUE AND deleted_at IS NULL
-  LIMIT 1;
+  v_customer_id:=(public.test_sarah_customer_snapshot('عميل اختبار سارة معدل')->>'id')::uuid;
 
   BEGIN
     PERFORM public.sarah_ai_update_customer_protected_settings(
@@ -226,20 +223,13 @@ BEGIN
     RAISE EXCEPTION 'Protected customer settings did not apply through the canonical path: %',v_result;
   END IF;
 
-  SELECT payload INTO v_payload
-  FROM public.change_log
-  WHERE entity_id=v_customer_id AND action='UPDATE'
-  ORDER BY sequence_id DESC LIMIT 1;
+  v_payload:=public.test_sarah_customer_change_payload(v_customer_id);
   IF v_payload ? 'bin'
      OR v_payload->>'debtLimitMinor'<>'-5000'
      OR v_payload->>'chargerFeeExempt'<>'true' THEN
     RAISE EXCEPTION 'Protected customer change-log payload was not safely redacted: %',v_payload;
   END IF;
-  IF EXISTS(
-    SELECT 1 FROM public.sarah_ai_action_idempotency
-    WHERE request_id='70000000-0000-4000-8000-000000000004'
-      AND request_payload ? 'bin'
-  ) THEN
+  IF public.test_sarah_action_has_bin('70000000-0000-4000-8000-000000000004') THEN
     RAISE EXCEPTION 'Raw BIN was persisted in Sarah action idempotency';
   END IF;
 
@@ -298,13 +288,13 @@ BEGIN
     RAISE EXCEPTION 'Inactive customer account was not discoverable through the dedicated lookup: %',v_lookup;
   END IF;
   v_code:=v_lookup->'matches'->0->>'customer_code';
-  SELECT id INTO v_customer_id FROM public.customers WHERE name='أحمد غير نشط' LIMIT 1;
+  v_customer_id:=(public.test_sarah_customer_snapshot('أحمد غير نشط')->>'id')::uuid;
 
   v_result:=public.sarah_ai_set_customer_active_status(
     '70000000-0000-4000-8000-000000000006',v_code,'أحمد غير نشط',true
   );
   IF v_result->>'ok'<>'true' OR v_result->>'is_active'<>'true'
-     OR NOT EXISTS(SELECT 1 FROM public.customers WHERE id=v_customer_id AND is_active IS TRUE) THEN
+     OR (public.test_sarah_customer_snapshot('أحمد غير نشط')->>'is_active')<>'true' THEN
     RAISE EXCEPTION 'Customer reactivation did not use the canonical update path: %',v_result;
   END IF;
 
@@ -314,7 +304,7 @@ BEGIN
     v_lookup->'matches'->0->>'customer_code','أحمد غير نشط',false
   );
   IF v_result->>'ok'<>'true' OR v_result->>'is_active'<>'false'
-     OR NOT EXISTS(SELECT 1 FROM public.customers WHERE id=v_customer_id AND is_active IS FALSE) THEN
+     OR (public.test_sarah_customer_snapshot('أحمد غير نشط')->>'is_active')<>'false' THEN
     RAISE EXCEPTION 'Customer deactivation did not use the canonical update path: %',v_result;
   END IF;
 END;
