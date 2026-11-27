@@ -148,6 +148,9 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("sanitizeLocalSyncContext");
     expect(source).toContain("sanitizeLocalSyncActionResult");
     expect(source).toContain('caller.rpc("begin_sync_bootstrap")');
+    const localSyncReadStart = source.indexOf('toolName === "get_local_sync_status"');
+    const localSyncReadEnd = source.indexOf('toolName === "request_manual_sync"', localSyncReadStart);
+    expect(source.slice(localSyncReadStart, localSyncReadEnd)).toContain('caller.rpc("begin_sync_bootstrap")');
     expect(chatService).toContain("localSyncContext?: SarahLocalSyncContext");
     expect(chatService).toContain("requestBody.localSyncActionResult = clientContext.localSyncActionResult");
     expect(chatPage).toContain('invokeSupabaseRpc<Record<string, unknown>>("begin_sync_bootstrap")');
