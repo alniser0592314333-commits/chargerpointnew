@@ -1355,6 +1355,18 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_customer_profile.test.sql
+      - name: Prepare Sarah admin read and order capability fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_admin_read_capabilities_fixture.sql
+      - name: Apply Sarah admin read and order capability migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql
+      - name: Verify Sarah session-bound reads and atomic order creation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_admin_read_capabilities.test.sql
       - name: Verify atomic quota enforcement under concurrent requests
         env:
           PGPASSWORD: postgres
