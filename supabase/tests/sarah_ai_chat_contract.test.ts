@@ -522,11 +522,16 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("actionResult.requires_bin === true");
     expect(source).toContain("if (!confirmationMode)");
     expect(source).toContain("BIN_MUST_USE_SECURE_PROMPT");
+    expect(source).toContain("name: \"HMAC\"");
+    expect(source).toContain("expiresAt: Date.now() + 15 * 60 * 1000");
+    expect(source).toContain("signedAction.actorId !== userData.user.id");
+    expect(source).toContain("signedAction.sessionId !== authSessionId");
+    expect(source).toContain("signedAction.requestId !== requestId");
     expect(source).toContain("confirmationInput");
     expect(source).toContain("executeCapability(confirmationName, confirmationArgs, confirmationRequestId)");
     expect(source).toContain("binProtectedCapabilityNames.has(confirmationName)");
     expect(chatService).toContain("pendingAction?: SarahPendingBinAction");
-    expect(chatService).toContain("requestBody.confirmationAction = confirmationAction");
+    expect(chatService).toContain("requestBody.confirmationAction = { token: confirmationAction.token }");
     expect(chatPage).toContain("pendingAction.pendingAction");
     expect(inputQueue).toContain("pendingBinAction?:");
     expect(chatPage).toContain("pendingBinAction: response.pendingAction");
