@@ -13,6 +13,7 @@ const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped
 const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_customer_profile_read.sql");
 const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql");
 const orderActionMigration = read("supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql");
+const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_ai_goal_management_capabilities.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -254,6 +255,32 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("LIMIT p_limit");
     expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_customer_financial_summary(text, text) TO service_role");
     expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_get_customer_orders(text, text, integer) TO service_role");
+  });
+
+  it("registers all admin goal operations through existing app permissions and canonical paths", () => {
+    expect(source).toContain('name: "get_customer_goal_proposal"');
+    expect(source).toContain('name: "create_customer_goal"');
+    expect(source).toContain('name: "approve_goal_request"');
+    expect(source).toContain('name: "reject_goal_request"');
+    expect(source).toContain('name: "update_customer_goal"');
+    expect(source).toContain('name: "cancel_customer_goal"');
+    expect(source).toContain('name: "review_goal_cancellation"');
+    expect(source).toContain('caller.rpc("sarah_ai_get_goal_proposal"');
+    expect(source).toContain('caller.rpc("sarah_ai_execute_goal_action"');
+    expect(source).toContain("customer_id: goal.customer_id");
+    expect(source).toContain("request_id: request.id");
+    expect(goalManagementMigration).toContain("public.sarah_ai_goal_proposal_for_customer");
+    expect(goalManagementMigration).toContain("v_profile integer[] := array_fill(0, ARRAY[28])");
+    expect(goalManagementMigration).toContain("i.financial_status='RECOGNIZED'");
+    expect(goalManagementMigration).toContain("public.execute_sync_command(");
+    expect(goalManagementMigration).toContain("'CREATE_GOAL'");
+    expect(goalManagementMigration).toContain("'APPROVE_GOAL_REQUEST'");
+    expect(goalManagementMigration).toContain("'REJECT_GOAL_REQUEST'");
+    expect(goalManagementMigration).toContain("'UPDATE_GOAL_CONFIG'");
+    expect(goalManagementMigration).toContain("public.admin_cancel_goal");
+    expect(goalManagementMigration).toContain("public.admin_review_goal_cancellation");
+    expect(goalManagementMigration).toContain("request_payload");
+    expect(goalManagementMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_execute_goal_action(uuid,text,uuid,uuid,integer,integer,bigint,integer,text,boolean) TO service_role");
   });
 
   it("treats client-supplied history and tool results as untrusted data", () => {
