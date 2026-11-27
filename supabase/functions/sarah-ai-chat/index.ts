@@ -1709,7 +1709,7 @@ Deno.serve(async (req) => {
     } else if (toolName === "update_jawwal_pay_recipient") {
       const rawPhone = args.recipient_phone;
       const recipientPhone = typeof rawPhone === "string"
-        ? rawPhone.replace(/[\\s()-]/g, "")
+        ? rawPhone.replace(/[\s()-]/g, "")
         : "";
       if (!/^05[0-9]{8}$/.test(recipientPhone)) {
         return { response: respond(400, { ok: false, error: "JAWAL_PAY_RECIPIENT_INVALID" }) };
