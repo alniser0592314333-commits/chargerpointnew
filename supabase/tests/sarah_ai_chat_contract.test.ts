@@ -382,6 +382,19 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("p_bin: actionBin");
   });
 
+  it("bridges local Sync Center status and manual sync only through sync:manage", () => {
+    expect(source).toContain('name: "get_local_sync_status"');
+    expect(source).toContain('name: "request_manual_sync"');
+    expect(source).toContain('requiredPermissionGroups: [["sync:manage"]]');
+    expect(source).toContain('caller.rpc("begin_sync_bootstrap")');
+    expect(source).toContain('error: "LOCAL_SYNC_REQUIRED"');
+    expect(source).toContain("sanitizeLocalSyncContext");
+    expect(source).toContain("sanitizeLocalSyncActionResult");
+    expect(source).toContain('localSyncActionResult?.action === "manual_sync"');
+    expect(source).toContain("Do not request another manual sync in this response");
+    expect(source).toContain("never as authorization");
+  });
+
   it("routes AI provider management through the existing ai:manage-secured settings gateway without exposing secrets", () => {
     expect(source).toContain('name: "get_sarah_ai_provider_settings"');
     expect(source).toContain('name: "update_sarah_ai_provider_settings"');
