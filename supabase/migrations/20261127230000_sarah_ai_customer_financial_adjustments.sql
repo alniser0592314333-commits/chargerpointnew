@@ -31,6 +31,11 @@ DECLARE
   v_refunded_amount bigint;
   v_result jsonb;
   v_quota jsonb;
+  v_existing_session_id uuid;
+  v_request_payload jsonb;
+  v_existing_action text;
+  v_existing_payload jsonb;
+  v_saved_result jsonb;
 BEGIN
   PERFORM public.sarah_ai_assert_use_permission();
   PERFORM public.assert_my_account_session_active();
@@ -84,6 +89,31 @@ BEGIN
     RAISE EXCEPTION 'Customer code is ambiguous; provide a more specific name hint' USING ERRCODE='22023';
   END IF;
 
+  v_request_payload:=jsonb_build_object(
+    'action',v_action,'customer_id',v_customer_id,'amount_minor',p_amount_minor,
+    'reference_event_id',p_reference_event_id,'note',p_note
+  );
+  INSERT INTO public.sarah_ai_action_idempotency(
+    auth_user_id,auth_session_id,request_id,action_name,request_payload
+  )
+  VALUES(auth.uid(),v_session_id,p_request_id,'adjust_customer_finances',v_request_payload)
+  ON CONFLICT(auth_user_id,request_id) DO NOTHING;
+  SELECT auth_session_id,action_name,request_payload,result
+  INTO v_existing_session_id,v_existing_action,v_existing_payload,v_saved_result
+  FROM public.sarah_ai_action_idempotency
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id
+  FOR UPDATE;
+  IF v_existing_session_id IS DISTINCT FROM v_session_id
+     OR v_existing_action IS DISTINCT FROM 'adjust_customer_finances' THEN
+    RAISE EXCEPTION 'Request id belongs to another session or action' USING ERRCODE='P0409';
+  END IF;
+  IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
+    RAISE EXCEPTION 'Completed request id cannot be reused with different financial input' USING ERRCODE='P0409';
+  END IF;
+  IF v_saved_result IS NOT NULL THEN
+    RETURN v_saved_result || jsonb_build_object('idempotent_replay',true);
+  END IF;
+
   v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
   IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
     RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
@@ -102,15 +132,6 @@ BEGIN
     'referenceEventId',p_reference_event_id,
     'bin',CASE WHEN v_action IN ('ADD_CREDIT','REFUND') THEN p_bin ELSE NULL END
   ));
-
-  -- Let the canonical command replay a completed request before evaluating
-  -- remaining refundable value; retries must not look like a second refund.
-  IF EXISTS (SELECT 1 FROM public.processed_commands pc WHERE pc.command_id=p_request_id) THEN
-    v_result:=public.execute_sync_command(
-      p_request_id,v_command_type,v_aggregate_type,v_aggregate_id,v_payload,NULL
-    );
-    RETURN v_result;
-  END IF;
 
   IF v_action='REFUND' THEN
     SELECT fl.amount_minor INTO v_original_amount
@@ -137,6 +158,9 @@ BEGIN
   IF COALESCE((v_result->>'success')::boolean,false) IS NOT TRUE THEN
     RAISE EXCEPTION 'Canonical financial command did not confirm success' USING ERRCODE='P0001';
   END IF;
+  UPDATE public.sarah_ai_action_idempotency
+  SET result=v_result
+  WHERE auth_user_id=auth.uid() AND request_id=p_request_id;
   RETURN v_result;
 END;
 $function$;
