@@ -816,6 +816,34 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "get_business_hours_settings",
+      requiredPermissionGroups: [["settings:manage"]],
+      declaration: {
+        name: "get_business_hours_settings",
+        description: "Read the current shared public business-hours configuration using the app's existing business-hours endpoint.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
+      name: "update_business_hours_settings",
+      requiredPermissionGroups: [["settings:manage"]],
+      declaration: {
+        name: "update_business_hours_settings",
+        description: "Update only the explicitly requested business-hours fields. First call get_business_hours_settings in this same request and preserve every field the user did not ask to change. Times must be 24-hour HH:MM. The original endpoint re-checks the active admin session and settings:manage permission before saving.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            is_active: { type: "BOOLEAN" },
+            today_open_time: { type: "STRING" },
+            today_close_time: { type: "STRING" },
+            tomorrow_open_time: { type: "STRING" },
+            tomorrow_close_time: { type: "STRING" },
+            tomorrow_description: { type: "STRING", description: "Optional note for tomorrow, up to 300 characters." },
+          },
+        },
+      },
+    },
+    {
       name: "get_goals_overview",
       requiredPermissionGroups: [["goals:view", "goals:manage", "goals:requests:view", "goals:approve"]],
       declaration: {
@@ -1558,6 +1586,61 @@ Deno.serve(async (req) => {
       );
       toolResult = { ok: !result.error, target_admin_id: targetAdminId };
       toolError = result.error;
+    } else if (toolName === "get_business_hours_settings") {
+      const result = await caller.functions.invoke("business-hours", { method: "GET" });
+      toolError = result.error;
+      if (!result.error && result.data?.config) {
+        const cfg = result.data.config as Record<string, unknown>;
+        toolResult = {
+          exists: result.data.exists === true,
+          config: {
+            isActive: cfg.isActive,
+            todayDate: cfg.todayDate,
+            todayOpenTime: cfg.todayOpenTime,
+            todayCloseTime: cfg.todayCloseTime,
+            tomorrowOpenTime: cfg.tomorrowOpenTime,
+            tomorrowCloseTime: cfg.tomorrowCloseTime,
+            tomorrowDescription: cfg.tomorrowDescription,
+            lastUpdated: cfg.lastUpdated,
+          },
+        };
+      } else if (!result.error) {
+        toolError = { code: "P0002", message: "Business hours configuration was not returned" };
+      }
+    } else if (toolName === "update_business_hours_settings") {
+      const allowedKeys = new Set([
+        "is_active","today_open_time","today_close_time",
+        "tomorrow_open_time","tomorrow_close_time","tomorrow_description",
+      ]);
+      if (Object.keys(args).some((key) => !allowedKeys.has(key)) || Object.keys(args).length === 0
+        || (args.is_active !== undefined && typeof args.is_active !== "boolean")
+        || (args.tomorrow_description !== undefined
+          && (typeof args.tomorrow_description !== "string" || args.tomorrow_description.length > 300 || /[\u0000-\u001f]/.test(args.tomorrow_description)))) {
+        return { response: respond(400, { ok: false, error: "BUSINESS_HOURS_INPUT_INVALID" }) };
+      }
+      for (const key of ["today_open_time","today_close_time","tomorrow_open_time","tomorrow_close_time"]) {
+        const value = args[key];
+        if (value !== undefined && (typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value))) {
+          return { response: respond(400, { ok: false, error: "BUSINESS_HOURS_TIME_INVALID" }) };
+        }
+      }
+      const current = await caller.functions.invoke("business-hours", { method: "GET" });
+      if (current.error || !current.data?.config) {
+        toolError = current.error || { code: "P0002", message: "Current business hours are unavailable" };
+      } else {
+        const cfg = current.data.config as Record<string, unknown>;
+        const nextConfig = {
+          isActive: args.is_active ?? cfg.isActive,
+          todayOpenTime: args.today_open_time ?? cfg.todayOpenTime,
+          todayCloseTime: args.today_close_time ?? cfg.todayCloseTime,
+          tomorrowOpenTime: args.tomorrow_open_time ?? cfg.tomorrowOpenTime,
+          tomorrowCloseTime: args.tomorrow_close_time ?? cfg.tomorrowCloseTime,
+          tomorrowDescription: args.tomorrow_description ?? cfg.tomorrowDescription ?? "",
+        };
+        const saved = await caller.functions.invoke("business-hours", { body: { config: nextConfig } });
+        toolResult = saved.data;
+        toolError = saved.error;
+      }
     } else if (toolName === "get_goals_overview") {
       const rawCustomerName = args.customer_name;
       const customerName = typeof rawCustomerName === "string" ? safeText(rawCustomerName, 64) : "";
