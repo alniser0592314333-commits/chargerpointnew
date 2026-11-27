@@ -13,6 +13,7 @@
 - Existing PostgreSQL RPCs independently enforce actor identity, active session, ai:use, and the underlying business permission. A permission revoked while Gemini is processing therefore fails closed at the RPC boundary.
 - Customer profile, financial, order, and order-creation lookups require a five-minute proof bound to the current Auth user and session; guessed customer codes or a different device/session cannot be used as proof.
 - Order creation uses a stable client request ID and invokes the canonical order/item commands within one SQL transaction; the AI model never chooses an RPC name or supplies an actor ID.
+- Delivery and cancellation expose target IDs only in the proof-scoped customer order projection; the database wrapper checks customer ownership and delegates to canonical commands, including BIN enforcement and financial reversal behavior.
 - Customer balances are calculated by the existing authoritative ledger function; order reads use a bounded server-side projection.
 - The canonical goals page RPC retains its existing expiry reconciliation behavior; it is not replaced with a parallel goal engine.
 - The system prompt no longer hardcodes the number or names of tools; supplied tool schemas define the request scope.
