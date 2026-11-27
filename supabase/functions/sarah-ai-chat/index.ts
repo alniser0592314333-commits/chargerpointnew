@@ -2534,20 +2534,27 @@ Deno.serve(async (req) => {
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
             if (execution.response.status === 428 && binProtectedCapabilityNames.has(requestedCall.name)) {
-              return respond(428, {
-                ok: false,
-                error: "BIN_REQUIRED",
-                pendingAction: {
-                  token: await createPendingActionToken(
-                    requestedCall.name,
-                    requestedCall.args,
-                    await deriveActionRequestId(requestedCall.name, requestedCall.args),
-                  ),
-                  name: requestedCall.name,
-                  args: requestedCall.args,
-                  actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
-                },
+              const pendingAction = {
+                token: await createPendingActionToken(
+                  requestedCall.name,
+                  requestedCall.args,
+                  await deriveActionRequestId(requestedCall.name, requestedCall.args),
+                ),
+                name: requestedCall.name,
+                args: requestedCall.args,
+                actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
+              };
+              await checkpointTask("WAITING_CONFIRMATION", {
+                ...taskState,
+                phase: "WAITING_CONFIRMATION",
+                pendingAction,
+                currentCandidate,
+                currentContents,
+                requestedCalls,
+                resultsByIndex: Object.fromEntries(resultsByIndex),
+                verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
               });
+              return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
             }
             if (execution.response.status === 401) return execution.response;
             resultsByIndex.set(requestedCall.index, {
@@ -2563,20 +2570,27 @@ Deno.serve(async (req) => {
             ? execution.result as Record<string, unknown>
             : {};
           if (actionResult.requires_bin === true && binProtectedCapabilityNames.has(requestedCall.name)) {
-            return respond(428, {
-              ok: false,
-              error: "BIN_REQUIRED",
-              pendingAction: {
-                token: await createPendingActionToken(
-                  requestedCall.name,
-                  requestedCall.args,
-                  await deriveActionRequestId(requestedCall.name, requestedCall.args),
-                ),
-                name: requestedCall.name,
-                args: requestedCall.args,
-                actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
-              },
+            const pendingAction = {
+              token: await createPendingActionToken(
+                requestedCall.name,
+                requestedCall.args,
+                await deriveActionRequestId(requestedCall.name, requestedCall.args),
+              ),
+              name: requestedCall.name,
+              args: requestedCall.args,
+              actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
+            };
+            await checkpointTask("WAITING_CONFIRMATION", {
+              ...taskState,
+              phase: "WAITING_CONFIRMATION",
+              pendingAction,
+              currentCandidate,
+              currentContents,
+              requestedCalls,
+              resultsByIndex: Object.fromEntries(resultsByIndex),
+              verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
             });
+            return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
           }
           resultsByIndex.set(requestedCall.index, execution.result);
           const succeeded = actionResult.ok !== false && actionResult.success !== false;
