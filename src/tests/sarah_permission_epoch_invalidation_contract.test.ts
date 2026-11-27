@@ -29,6 +29,7 @@ describe("Sarah permission epoch invalidation", () => {
     expect(page).toContain("Database RPCs continue to validate the live session");
     expect(app).toContain("detail.authUserId !== userSession?.authUserId");
     expect(app).toContain("void handleFocus()");
+    expect(app).toContain("}, [userSession?.authUserId]);");
     expect(app).toContain("authService.getCurrentSession(true)");
     expect(edge).toContain('caller.rpc("sarah_ai_get_chat_access_context"');
     expect(edge).toContain("permissionSnapshotCache.get(userData.user.id)");
