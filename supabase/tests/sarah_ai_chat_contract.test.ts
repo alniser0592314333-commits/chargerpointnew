@@ -17,6 +17,7 @@ const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_a
 const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
 const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
 const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
+const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -149,6 +150,16 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).not.toContain("INSERT INTO public.business_days");
     expect(adminReadMigration).toContain("'OPEN_DAY','business_days'");
     expect(adminReadMigration).toContain("settings:manage");
+  });
+
+  it("backs device catalog reads with a bounded permission-checked database RPC", () => {
+    expect(deviceCatalogMigration).toContain("public.sarah_ai_assert_use_permission()");
+    expect(deviceCatalogMigration).toContain("public.assert_my_account_session_active()");
+    expect(deviceCatalogMigration).toContain("devices:view");
+    expect(deviceCatalogMigration).toContain("LIMIT 100");
+    expect(deviceCatalogMigration).toContain("deleted_at IS NULL");
+    expect(deviceCatalogMigration).toContain("COALESCE(status,'ACTIVE') <> 'RETIRED'");
+    expect(deviceCatalogMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_get_device_catalog() FROM PUBLIC,anon,service_role");
   });
 
   it("exposes one device catalog read and requires it before order creation", () => {
