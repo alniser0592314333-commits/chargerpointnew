@@ -92,9 +92,9 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
-    expect(source).toContain("safeParallelReadPair = new Set([\"lookup_customers\", \"get_device_catalog\"])");
+    expect(source).toContain("safeParallelReadBatch = new Set<string>([\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\"])");
     expect(source).toContain("AI_TOOL_CALL_BATCH_NOT_SAFE");
-    expect(source).toContain("requestedCalls.length === 2");
+    expect(source).toContain("requestedCalls.length <= 3");
     expect(source).toContain("registeredCapabilityNames.has(call.name)");
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
@@ -657,6 +657,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("Enabled mutations include customer creation/basic profile editing/protected setting changes/account activation and deactivation, subordinate-admin permission changes/suspension/activation, business-hours and Jawwal Pay recipient settings, current-device manual sync, AI provider model/generation-setting changes and explicitly requested provider clearing, device catalog creation/update/retirement, customer credit adjustments/refunds, order creation/delivery/cancellation/day renumbering, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
     expect(source).not.toContain("The currently enabled mutations are create_order_with_items and the payment actions");
     expect(source).toContain("the server will return the secure confirmation prompt");
+    expect(source).toContain("executionOrder = [\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\"]");
     expect(source).toContain("the client will replay the exact same tool name and arguments after secure confirmation");
   });
 
