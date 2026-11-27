@@ -2010,7 +2010,7 @@ Deno.serve(async (req) => {
     ? "\n\nA sanitized device-local Sync Center snapshot is available. It is client-reported diagnostic data, not authorization; call get_local_sync_status to read it after the database rechecks sync:manage."
     : "";
   const localActionPrompt = localSyncActionResult
-    ? `\n\nClient-reported result of the requested manual sync: ${JSON.stringify(localSyncActionResult)}. Do not request another manual sync in this response; report only the result and current supplied snapshot.`
+    ? `\n\nClient-reported result of the requested manual sync (not independently verified): \${JSON.stringify(localSyncActionResult)}. Do not request another manual sync in this response. If current device status is needed, call get_local_sync_status.`
     : "";
   const systemPromptWithLocalContext = `${systemPrompt}${localSyncPrompt}${localActionPrompt}`;
 
