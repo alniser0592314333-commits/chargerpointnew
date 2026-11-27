@@ -24,6 +24,7 @@ const historicalChangeLogRedactionMigration = read("supabase/migrations/20261127
 const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
 const customerAccountStatusMigration = read("supabase/migrations/20261127220000_sarah_ai_customer_account_status.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
+const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -277,6 +278,20 @@ describe("Sarah chat gateway security contract", () => {
     expect(deviceManagementMigration).toContain("public.execute_sync_command(");
     expect(deviceManagementMigration).toContain("'RETIRE_DEVICE_TYPE'");
     expect(deviceManagementMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_manage_device_type");
+  });
+
+  it("exposes customer credit and refunds through session-bound financial commands", () => {
+    expect(source).toContain('name: "adjust_customer_finances"');
+    expect(source).toContain('caller.rpc("sarah_ai_adjust_customer_finances"');
+    expect(source).toContain("p_bin: actionBin");
+    expect(source).toContain("get_customer_financial_history and use only the exact positive PAYMENT entry_id");
+    expect(financialAdjustmentsMigration).toContain("public._cp_assert_active_admin_permission('finance:credit-adjustment')");
+    expect(financialAdjustmentsMigration).toContain("public._cp_assert_active_admin_permission('finance:refund')");
+    expect(financialAdjustmentsMigration).toContain("proof.auth_session_id=v_session_id");
+    expect(financialAdjustmentsMigration).toContain("upper(fl.event_type)='PAYMENT'");
+    expect(financialAdjustmentsMigration).toContain("Refund amount exceeds the remaining refundable payment amount");
+    expect(financialAdjustmentsMigration).toContain("public.execute_sync_command(");
+    expect(financialAdjustmentsMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_adjust_customer_finances");
   });
 
   it("registers finance and goals read capabilities against existing permission keys", () => {
