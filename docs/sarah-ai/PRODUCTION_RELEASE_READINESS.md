@@ -70,7 +70,7 @@ Vault is ready but contains no Sarah provider key. The key must be entered by th
 - The repository's `main` branch is not protected and has no required status checks configured. GitHub currently reports PR #331 as mergeable and the branch is 0 commits behind main. Do not treat this as a substitute for the production release gates below.
 
 
-## 6. Client compatibility and release-policy checks
+## 7. Client compatibility and release-policy checks
 
 - The latest published admin APK in GitHub Releases is `v1.4.2` (18 Nov 2026). That APK uses the legacy `register_my_account_session` call. The strict registry migration preserves this endpoint but deliberately classifies new legacy registrations as `browser`, which receives a 7-day idle window. The current `main` source uses `reactivate_my_account_session` / `register_my_account_session_v2` and identifies native/installed-PWA clients, which receive a 30-day idle window.
 - The existing APK remains on the compatibility path, but the four backfilled sessions and any new legacy registrations are browser-class for 7 days. Build and publish a new signed admin APK from the current reviewed `main` source before/alongside the strict-session rollout if native 30-day behavior is required. The current source also reactivates the session immediately after BIN verification, avoiding the older APK's delayed registration after app hydration.
@@ -79,6 +79,6 @@ Vault is ready but contains no Sarah provider key. The key must be entered by th
 - The customer portal uses its separate customer-account session system; the strict administrator registry migration explicitly preserves that boundary and does not require older customer apps to adopt the administrator registry.
 
 
-## 7. Safety boundary
+## 8. Safety boundary
 
 This PR is code/documentation only. Do not merge, apply SQL, deploy Edge Functions, or enter the provider key until the release operator explicitly approves the production window. There are no down migrations for the session-security changes; take an available backup first, apply forward-only changes one at a time, and prepare a forward-fix path rather than attempting an improvised rollback.
